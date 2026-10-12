@@ -725,7 +725,7 @@ describe("changes made in place are never persisted, through composition too (de
         const before = await rows(world);
         const error = await failure(world.mesh.meddleAccount({ id: opened.id, how }, world.ctx));
         expect(error).toBeInstanceOf(FrameworkError);
-        expect((error as Error).message).toMatch(/^Account\.meddle: a function cannot change the record/);
+        expect((error as Error).message).toMatch(/^Account\#meddle: a function cannot change the record/);
         expect(await rows(world)).toEqual(before);
       } finally { await world.db.close(); }
     });
@@ -754,7 +754,7 @@ describe("an entity bound alone", () => {
       expect((await alone.deposit({ id: to.id, amount: 1 }, world.ctx)).balance).toBe(1);
       const error = await failure(alone.transfer({ id: from.id, to: to.id, amount: 10 }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toBe("Account.transfer reads `actions.depositAccount`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
+      expect((error as Error).message).toBe("Account#transfer reads `actions.depositAccount`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
       expect((await rows(world)).accounts.map((row: { balance: number }) => row.balance)).toEqual([100, 1]);
     } finally { await world.db.close(); }
   });
@@ -926,7 +926,7 @@ describe("a nested write to the caller's own row before the caller's write is a 
       const before = await rows(world);
       const error = await failure(world.mesh.renameBeforeAccount({ id: opened.id, newName: "lost?" }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toMatch(/^Account\.renameBefore: a call made before this action's write changed the row this action is updating \(\{"id":1\}\), so this action's checks and steps decided on a stale row\. /);
+      expect((error as Error).message).toMatch(/^Account\#renameBefore: a call made before this action's write changed the row this action is updating \(\{"id":1\}\), so this action's checks and steps decided on a stale row\. /);
       expect((error as Error).message).toMatch(/run \[after=:write\]$/);
       expect(await rows(world)).toEqual(before);
     } finally { await world.db.close(); }

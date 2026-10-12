@@ -92,7 +92,7 @@ export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
       const parsed = cast ?? (await $castInput(layer, readTaskInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery(
-          "Task",
+          "work.Task",
           [
             "childrenSettled",
             "claimed",
@@ -115,7 +115,7 @@ export function bindTaskReads(layer: $DataLayer, options: $BindOptions = {}) {
           return $rows as unknown as L extends unknown ? TaskTxWith<TaskLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Task", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.Task", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -140,7 +140,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "create", [
+      const $policies = $authorizer("work.Task", "create", [
         {
           name: "isMember",
           when: null,
@@ -170,14 +170,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.create"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#create"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "create" },
+        { entity: "work.Task", action: "create" },
         parsed,
         context,
         async (tx) => {
@@ -196,17 +196,17 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           };
           const $record: $Row = { ...$changes, title: null, creatorId: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.create",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#create",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.create"),
+              input: $readOnlyRecord(parsed, "work.Task#create"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Task.create", $clock),
+              ...$composed(compose, tx, context, "work.Task#create", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<CreateTaskInput>;
@@ -244,7 +244,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "create" },
+            { entity: "work.Task", action: "create" },
             null,
             $stored,
             parsed,
@@ -262,7 +262,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "update", [
+      const $policies = $authorizer("work.Task", "update", [
         {
           name: "isMember",
           when: null,
@@ -292,14 +292,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.update"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#update"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "update" },
+        { entity: "work.Task", action: "update" },
         parsed,
         context,
         async (tx) => {
@@ -307,25 +307,25 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.update",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#update",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.update"),
+              input: $readOnlyRecord(parsed, "work.Task#update"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.update",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#update",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.update", $clock),
+              ...$composed(compose, tx, context, "work.Task#update", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UpdateTaskInput>;
@@ -371,15 +371,15 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.update");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#update");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "update" },
+            { entity: "work.Task", action: "update" },
             $before,
             $stored,
             parsed,
@@ -397,7 +397,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "setPriority", [
+      const $policies = $authorizer("work.Task", "setPriority", [
         {
           name: "isMember",
           when: null,
@@ -427,14 +427,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.setPriority"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Task#setPriority"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "setPriority" },
+        { entity: "work.Task", action: "setPriority" },
         parsed,
         context,
         async (tx) => {
@@ -442,25 +446,25 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.setPriority",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#setPriority",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.setPriority"),
+              input: $readOnlyRecord(parsed, "work.Task#setPriority"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.setPriority",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#setPriority",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.setPriority", $clock),
+              ...$composed(compose, tx, context, "work.Task#setPriority", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<SetPriorityTaskInput>;
@@ -498,15 +502,15 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.setPriority");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#setPriority");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "setPriority" },
+            { entity: "work.Task", action: "setPriority" },
             $before,
             $stored,
             parsed,
@@ -524,7 +528,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "move", [
+      const $policies = $authorizer("work.Task", "move", [
         {
           name: "isMember",
           when: null,
@@ -554,14 +558,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.move"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#move"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "move" },
+        { entity: "work.Task", action: "move" },
         parsed,
         context,
         async (tx) => {
@@ -569,26 +573,26 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.move",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#move",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.move"),
+              input: $readOnlyRecord(parsed, "work.Task#move"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.move",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#move",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.move", $clock),
+              ...$composed(compose, tx, context, "work.Task#move", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<MoveTaskInput>;
@@ -597,7 +601,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "Task", tx, $record, ["claimed"], $load);
+          await $loadInto($loadPlan, "work.Task", tx, $record, ["claimed"], $load);
           await $runCheck($issues, $checks, {
             label: "taskOpen",
             code: "task.open",
@@ -637,7 +641,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           if ($issues.length > 0) throw new $InvalidInputError($issues);
           // the input: the member inputs the caller sent, applied now that the checks have passed
           if (parsed.parent !== undefined) $changes.parentId = $record.parentId = parsed.parent;
-          $unloadFrom($loadPlan, "Task", $record);
+          $unloadFrom($loadPlan, "work.Task", $record);
           // do: the steps run in written order, each seeing the record as the ones before it left it
           {
             const $value = await $expressions["move.step.0.set.version"]($s);
@@ -647,18 +651,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               );
             $changes.version = $record.version = $value;
           }
-          $unloadFrom($loadPlan, "Task", $record);
+          $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.move");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#move");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "move" },
+            { entity: "work.Task", action: "move" },
             $before,
             $stored,
             parsed,
@@ -676,7 +680,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "reopen", [
+      const $policies = $authorizer("work.Task", "reopen", [
         {
           name: "isMember",
           when: null,
@@ -719,14 +723,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.reopen"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#reopen"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "reopen" },
+        { entity: "work.Task", action: "reopen" },
         parsed,
         context,
         async (tx) => {
@@ -734,25 +738,25 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.reopen",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#reopen",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.reopen"),
+              input: $readOnlyRecord(parsed, "work.Task#reopen"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.reopen",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#reopen",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.reopen", $clock),
+              ...$composed(compose, tx, context, "work.Task#reopen", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<ReopenTaskInput>;
@@ -793,15 +797,15 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.reopen");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#reopen");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "reopen" },
+            { entity: "work.Task", action: "reopen" },
             $before,
             $stored,
             parsed,
@@ -819,7 +823,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "touch", [
+      const $policies = $authorizer("work.Task", "touch", [
         {
           name: "internal",
           when: null,
@@ -836,14 +840,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.touch"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#touch"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "touch" },
+        { entity: "work.Task", action: "touch" },
         parsed,
         context,
         async (tx) => {
@@ -851,25 +855,25 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.touch",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#touch",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.touch"),
+              input: $readOnlyRecord(parsed, "work.Task#touch"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.touch",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#touch",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.touch", $clock),
+              ...$composed(compose, tx, context, "work.Task#touch", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<TouchTaskInput>;
@@ -884,15 +888,15 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.touch");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#touch");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "touch" },
+            { entity: "work.Task", action: "touch" },
             $before,
             $stored,
             parsed,
@@ -910,7 +914,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "cancel", [
+      const $policies = $authorizer("work.Task", "cancel", [
         {
           name: "isMember",
           when: null,
@@ -953,14 +957,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.cancel"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#cancel"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "cancel" },
+        { entity: "work.Task", action: "cancel" },
         parsed,
         context,
         async (tx) => {
@@ -968,25 +972,25 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.cancel",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#cancel",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.cancel"),
+              input: $readOnlyRecord(parsed, "work.Task#cancel"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.cancel",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#cancel",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.cancel", $clock),
+              ...$composed(compose, tx, context, "work.Task#cancel", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<CancelTaskInput>;
@@ -1023,15 +1027,15 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.cancel");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#cancel");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "cancel" },
+            { entity: "work.Task", action: "cancel" },
             $before,
             $stored,
             parsed,
@@ -1041,8 +1045,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $written, "action function"),
-              "Task.cancel",
+              $guarded($loadPlan, "work.Task", $written, "action function"),
+              "work.Task#cancel",
             ),
           });
           await $expressions["cancel.step.1.run"]($after);
@@ -1050,7 +1054,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $result = await tx.selectByKey(tables.task, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Task.cancel: a step after the write deleted the row this action returns",
+              "work.Task#cancel: a step after the write deleted the row this action returns",
             );
           return $result as Task;
         },
@@ -1064,7 +1068,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "complete", [
+      const $policies = $authorizer("work.Task", "complete", [
         {
           name: "isMember",
           when: null,
@@ -1119,14 +1123,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.complete"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Task#complete"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "complete" },
+        { entity: "work.Task", action: "complete" },
         parsed,
         context,
         async (tx) => {
@@ -1134,26 +1142,26 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.complete",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#complete",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.complete"),
+              input: $readOnlyRecord(parsed, "work.Task#complete"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.complete",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#complete",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.complete", $clock),
+              ...$composed(compose, tx, context, "work.Task#complete", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<CompleteTaskInput>;
@@ -1164,7 +1172,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $checks = $checkScope($s);
           await $loadInto(
             $loadPlan,
-            "Task",
+            "work.Task",
             tx,
             $record,
             ["children", "childrenSettled", "claims", "completions", "maxFence", "submissions"],
@@ -1251,18 +1259,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               );
             $changes.version = $record.version = $value;
           }
-          $unloadFrom($loadPlan, "Task", $record);
+          $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.complete");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#complete");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "complete" },
+            { entity: "work.Task", action: "complete" },
             $before,
             $stored,
             parsed,
@@ -1272,8 +1280,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $written, "action function"),
-              "Task.complete",
+              $guarded($loadPlan, "work.Task", $written, "action function"),
+              "work.Task#complete",
             ),
           });
           await $expressions["complete.step.1.run"]($after);
@@ -1281,7 +1289,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $result = await tx.selectByKey(tables.task, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Task.complete: a step after the write deleted the row this action returns",
+              "work.Task#complete: a step after the write deleted the row this action returns",
             );
           return $result as Task;
         },
@@ -1295,7 +1303,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "assign", [
+      const $policies = $authorizer("work.Task", "assign", [
         {
           name: "isMember",
           when: null,
@@ -1325,14 +1333,14 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.assign"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "work.Task#assign"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "assign" },
+        { entity: "work.Task", action: "assign" },
         parsed,
         context,
         async (tx) => {
@@ -1340,26 +1348,26 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.assign",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#assign",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.assign"),
+              input: $readOnlyRecord(parsed, "work.Task#assign"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.assign",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#assign",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.assign", $clock),
+              ...$composed(compose, tx, context, "work.Task#assign", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<AssignTaskInput>;
@@ -1368,7 +1376,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "Task", tx, $record, ["assignments"], $load);
+          await $loadInto($loadPlan, "work.Task", tx, $record, ["assignments"], $load);
           await $runCheck($issues, $checks, {
             label: "taskOpen",
             code: "task.open",
@@ -1415,18 +1423,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               );
             $changes.version = $record.version = $value;
           }
-          $unloadFrom($loadPlan, "Task", $record);
+          $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.assign");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#assign");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "assign" },
+            { entity: "work.Task", action: "assign" },
             $before,
             $stored,
             parsed,
@@ -1436,8 +1444,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $written, "action function"),
-              "Task.assign",
+              $guarded($loadPlan, "work.Task", $written, "action function"),
+              "work.Task#assign",
             ),
           });
           await $expressions["assign.step.1.run"]($after);
@@ -1445,7 +1453,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $result = await tx.selectByKey(tables.task, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Task.assign: a step after the write deleted the row this action returns",
+              "work.Task#assign: a step after the write deleted the row this action returns",
             );
           return $result as Task;
         },
@@ -1459,7 +1467,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Task", "unassign", [
+      const $policies = $authorizer("work.Task", "unassign", [
         {
           name: "isMember",
           when: null,
@@ -1502,14 +1510,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Task.unassign"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Task#unassign"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Task", action: "unassign" },
+        { entity: "work.Task", action: "unassign" },
         parsed,
         context,
         async (tx) => {
@@ -1517,26 +1529,26 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.task, $key);
-          if ($before === undefined) throw new $NotFoundError("Task", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Task", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Task", $record, "action function"),
-            "Task.unassign",
+            $guarded($loadPlan, "work.Task", $record, "action function"),
+            "work.Task#unassign",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Task.unassign"),
+              input: $readOnlyRecord(parsed, "work.Task#unassign"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Task", $before, "before"),
-                "Task.unassign",
+                $guarded($loadPlan, "work.Task", $before, "before"),
+                "work.Task#unassign",
               ) as unknown as Task,
-              ...$composed(compose, tx, context, "Task.unassign", $clock),
+              ...$composed(compose, tx, context, "work.Task#unassign", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UnassignTaskInput>;
@@ -1545,7 +1557,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "Task", tx, $record, ["assigned"], $load);
+          await $loadInto($loadPlan, "work.Task", tx, $record, ["assigned"], $load);
           await $runCheck($issues, $checks, {
             label: "assignmentCurrent",
             code: "assignment.current",
@@ -1571,18 +1583,18 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
               );
             $changes.version = $record.version = $value;
           }
-          $unloadFrom($loadPlan, "Task", $record);
+          $unloadFrom($loadPlan, "work.Task", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "Task.unassign");
+          await $checkUnchanged(tx, $writes, tables.task, $key, $before, "work.Task#unassign");
           const $stored = await tx.updateByKey(tables.task, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Task", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Task", action: "unassign" },
+            { entity: "work.Task", action: "unassign" },
             $before,
             $stored,
             parsed,
@@ -1592,8 +1604,8 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Task", $written, "action function"),
-              "Task.unassign",
+              $guarded($loadPlan, "work.Task", $written, "action function"),
+              "work.Task#unassign",
             ),
           });
           await $expressions["unassign.step.1.run"]($after);
@@ -1601,7 +1613,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           const $result = await tx.selectByKey(tables.task, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Task.unassign: a step after the write deleted the row this action returns",
+              "work.Task#unassign: a step after the write deleted the row this action returns",
             );
           return $result as Task;
         },
@@ -1618,7 +1630,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readTaskInput, input);
       if (
-        !(await $authorizer("Task", "read", [
+        !(await $authorizer("work.Task", "read", [
           {
             name: "membersRead",
             when: null,
@@ -1635,7 +1647,7 @@ export function bindTask(layer: $DataLayer, options: $BindOptions = {}, compose?
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Task.read"),
+              input: $readOnlyRecord($parsed as never, "work.Task#read"),
               actor: $actor,
               context: $context,
             },

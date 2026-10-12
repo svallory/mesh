@@ -85,7 +85,7 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "SessionReference", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "execution.SessionReference", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -119,7 +119,7 @@ export function bindSessionReference(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("SessionReference", "record", [
+      const $policies = $authorizer("execution.SessionReference", "record", [
         {
           name: "isMember",
           when: null,
@@ -150,7 +150,7 @@ export function bindSessionReference(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "SessionReference.record"),
+            input: $readOnlyRecord(parsed, "execution.SessionReference#record"),
             actor: $actor,
             context: $context,
           },
@@ -160,7 +160,7 @@ export function bindSessionReference(
       return $runAction(
         layer,
         options.seams,
-        { entity: "SessionReference", action: "record" },
+        { entity: "execution.SessionReference", action: "record" },
         parsed,
         context,
         async (tx) => {
@@ -183,17 +183,17 @@ export function bindSessionReference(
             recordedById: null,
           };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "SessionReference", $record, "action function"),
-            "SessionReference.record",
+            $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
+            "execution.SessionReference#record",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "SessionReference.record"),
+              input: $readOnlyRecord(parsed, "execution.SessionReference#record"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "SessionReference.record", $clock),
+              ...$composed(compose, tx, context, "execution.SessionReference#record", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordSessionReferenceInput>;
@@ -243,7 +243,7 @@ export function bindSessionReference(
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "SessionReference", action: "record" },
+            { entity: "execution.SessionReference", action: "record" },
             null,
             $stored,
             parsed,
@@ -264,7 +264,7 @@ export function bindSessionReference(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("SessionReference", "setAvailability", [
+      const $policies = $authorizer("execution.SessionReference", "setAvailability", [
         {
           name: "sessionRecorder",
           when: null,
@@ -283,7 +283,7 @@ export function bindSessionReference(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "SessionReference.setAvailability"),
+            input: $readOnlyRecord(parsed, "execution.SessionReference#setAvailability"),
             actor: $actor,
             context: $context,
           },
@@ -293,7 +293,7 @@ export function bindSessionReference(
       return $runAction(
         layer,
         options.seams,
-        { entity: "SessionReference", action: "setAvailability" },
+        { entity: "execution.SessionReference", action: "setAvailability" },
         parsed,
         context,
         async (tx) => {
@@ -301,25 +301,31 @@ export function bindSessionReference(
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
-          if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "SessionReference", $record, "action function"),
-            "SessionReference.setAvailability",
+            $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
+            "execution.SessionReference#setAvailability",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "SessionReference.setAvailability"),
+              input: $readOnlyRecord(parsed, "execution.SessionReference#setAvailability"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "SessionReference", $before, "before"),
-                "SessionReference.setAvailability",
+                $guarded($loadPlan, "execution.SessionReference", $before, "before"),
+                "execution.SessionReference#setAvailability",
               ) as unknown as SessionReference,
-              ...$composed(compose, tx, context, "SessionReference.setAvailability", $clock),
+              ...$composed(
+                compose,
+                tx,
+                context,
+                "execution.SessionReference#setAvailability",
+                $clock,
+              ),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
@@ -372,16 +378,16 @@ export function bindSessionReference(
             tables.sessionReference,
             $key,
             $before,
-            "SessionReference.setAvailability",
+            "execution.SessionReference#setAvailability",
           );
           const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "SessionReference", action: "setAvailability" },
+            { entity: "execution.SessionReference", action: "setAvailability" },
             $before,
             $stored,
             parsed,
@@ -402,7 +408,7 @@ export function bindSessionReference(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("SessionReference", "redact", [
+      const $policies = $authorizer("execution.SessionReference", "redact", [
         {
           name: "isMember",
           when: null,
@@ -433,7 +439,7 @@ export function bindSessionReference(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "SessionReference.redact"),
+            input: $readOnlyRecord(parsed, "execution.SessionReference#redact"),
             actor: $actor,
             context: $context,
           },
@@ -443,7 +449,7 @@ export function bindSessionReference(
       return $runAction(
         layer,
         options.seams,
-        { entity: "SessionReference", action: "redact" },
+        { entity: "execution.SessionReference", action: "redact" },
         parsed,
         context,
         async (tx) => {
@@ -451,25 +457,25 @@ export function bindSessionReference(
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.sessionReference, $key);
-          if ($before === undefined) throw new $NotFoundError("SessionReference", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "SessionReference", $record, "action function"),
-            "SessionReference.redact",
+            $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
+            "execution.SessionReference#redact",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "SessionReference.redact"),
+              input: $readOnlyRecord(parsed, "execution.SessionReference#redact"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "SessionReference", $before, "before"),
-                "SessionReference.redact",
+                $guarded($loadPlan, "execution.SessionReference", $before, "before"),
+                "execution.SessionReference#redact",
               ) as unknown as SessionReference,
-              ...$composed(compose, tx, context, "SessionReference.redact", $clock),
+              ...$composed(compose, tx, context, "execution.SessionReference#redact", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RedactSessionReferenceInput>;
@@ -513,16 +519,16 @@ export function bindSessionReference(
             tables.sessionReference,
             $key,
             $before,
-            "SessionReference.redact",
+            "execution.SessionReference#redact",
           );
           const $stored = await tx.updateByKey(tables.sessionReference, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("SessionReference", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "SessionReference", action: "redact" },
+            { entity: "execution.SessionReference", action: "redact" },
             $before,
             $stored,
             parsed,
@@ -543,7 +549,7 @@ export function bindSessionReference(
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readSessionReferenceInput, input);
       if (
-        !(await $authorizer("SessionReference", "read", [
+        !(await $authorizer("execution.SessionReference", "read", [
           {
             name: "membersRead",
             when: null,
@@ -560,7 +566,7 @@ export function bindSessionReference(
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "SessionReference.read"),
+              input: $readOnlyRecord($parsed as never, "execution.SessionReference#read"),
               actor: $actor,
               context: $context,
             },

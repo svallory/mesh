@@ -674,7 +674,7 @@ describe("a function cannot reach past what it was given", () => {
       const row = await openTask(world);
       const error = await failure(world.mesh.peekTask({ id: row.id }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toContain("Task.owner");
+      expect((error as Error).message).toContain("Task#owner");
       expect((error as Error).message).toContain("`before` holds the stored columns");
       expect((error as Error).message).not.toContain("so Mesh loads what it reads");
     } finally { await world.db.close(); }
@@ -686,7 +686,7 @@ describe("a function cannot reach past what it was given", () => {
       const row = await openTask(world, { title: "keep" });
       const error = await failure(world.mesh.scribbleTask({ id: row.id }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toContain("Task.scribble");
+      expect((error as Error).message).toContain("Task#scribble");
       expect((error as Error).message).toContain("`set`");
       expect((await world.mesh.readTask({}, world.ctx))[0]).toMatchObject({ title: "keep" });
     } finally { await world.db.close(); }

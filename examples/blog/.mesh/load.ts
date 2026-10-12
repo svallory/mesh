@@ -20,11 +20,11 @@ import type { Post, PostLoadable, PostTxWith } from "./domain/blog/post.types";
  * a caller's load of it runs (none listed: a caller loads none of its records).
  */
 export const loadPlan = {
-  Comment: {
+  "blog.Comment": {
     table: tables.comment,
     key: "id",
     relations: {
-      post: { kind: "belongs-to", target: "Post", column: "postId", nullable: false },
+      post: { kind: "belongs-to", target: "blog.Post", column: "postId", nullable: false },
     },
     computed: {},
     reads: [
@@ -42,12 +42,12 @@ export const loadPlan = {
       },
     ],
   },
-  Post: {
+  "blog.Post": {
     table: tables.post,
     key: "id",
     relations: {
-      author: { kind: "belongs-to", target: "User", column: "authorId", nullable: false },
-      comments: { kind: "has-many", target: "Comment", column: "postId" },
+      author: { kind: "belongs-to", target: "blog.User", column: "authorId", nullable: false },
+      comments: { kind: "has-many", target: "blog.Comment", column: "postId" },
     },
     computed: {
       excerpt: {
@@ -73,7 +73,7 @@ export const loadPlan = {
       },
     ],
   },
-  User: {
+  "blog.User": {
     table: tables.user,
     key: "id",
     relations: {},
@@ -107,7 +107,7 @@ export async function loadCommentFields<const N extends keyof CommentLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<CommentTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Comment", tx, rows, names, {
+  return (await $loadRows(loadPlan, "blog.Comment", tx, rows, names, {
     ...options,
     policies: false,
   })) as CommentTxWith<N>[];
@@ -125,7 +125,7 @@ export async function loadPostFields<const N extends keyof PostLoadable>(
   names: readonly N[],
   options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
 ): Promise<PostTxWith<N>[]> {
-  return (await $loadRows(loadPlan, "Post", tx, rows, names, {
+  return (await $loadRows(loadPlan, "blog.Post", tx, rows, names, {
     ...options,
     policies: false,
   })) as PostTxWith<N>[];

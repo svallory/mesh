@@ -70,7 +70,7 @@ export function bindCompletionReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Completion", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.Completion", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -98,7 +98,7 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Completion", "record", [
+      const $policies = $authorizer("work.Completion", "record", [
         {
           name: "internal",
           when: null,
@@ -115,14 +115,18 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Completion.record"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Completion#record"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Completion", action: "record" },
+        { entity: "work.Completion", action: "record" },
         parsed,
         context,
         async (tx) => {
@@ -136,17 +140,17 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
           };
           const $record: $Row = { ...$changes, rule: null, taskId: null, completedById: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Completion", $record, "action function"),
-            "Completion.record",
+            $guarded($loadPlan, "work.Completion", $record, "action function"),
+            "work.Completion#record",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Completion.record"),
+              input: $readOnlyRecord(parsed, "work.Completion#record"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Completion.record", $clock),
+              ...$composed(compose, tx, context, "work.Completion#record", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordCompletionInput>;
@@ -171,7 +175,7 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Completion", action: "record" },
+            { entity: "work.Completion", action: "record" },
             null,
             $stored,
             parsed,
@@ -192,7 +196,7 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readCompletionInput, input);
       if (
-        !(await $authorizer("Completion", "read", [
+        !(await $authorizer("work.Completion", "read", [
           {
             name: "membersRead",
             when: null,
@@ -209,7 +213,7 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Completion.read"),
+              input: $readOnlyRecord($parsed as never, "work.Completion#read"),
               actor: $actor,
               context: $context,
             },

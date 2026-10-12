@@ -170,7 +170,7 @@ test("unknown member has exactly the documented suggestion", () => {
     "    string :title\n  actions\n    create :create\n      input\n        &titel\n";
   expect(build(source).diagnostics[0]).toMatchObject({
     code: "MESH_UNKNOWN_MEMBER",
-    message: "&titel is not a member of :Todo. Did you mean &title?",
+    message: "&titel is not a member of todo.Todo. Did you mean &title?",
     position: { line: 8, column: 8, offset: source.indexOf("&titel") },
   });
 });

@@ -19,7 +19,7 @@ test("fix2: imported name must be exported by the target entity", () => {
 test.each(["sum", "avg", "min", "max"])("fix3: %s must cross a relationship", (fn) => {
   const result = build(keyed.replace(":Todo", ":Invoice") + `    integer :n\n  computed\n    ${fn} :x of="n"\n`);
   expect(result.document).toBeNull();
-  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_ROLLUP_PATH", message: "`n` is an attribute of :Invoice, not a relationship; `of` is a path through relationships", position: { line: 6, column: 12 + fn.length } });
+  expect(result.diagnostics[0]).toMatchObject({ code: "MESH_ROLLUP_PATH", message: "`n` is an attribute of todo.Invoice, not a relationship; `of` is a path through relationships", position: { line: 6, column: 12 + fn.length } });
 });
 
 test("fix4: duplicate policy and check names use member diagnostics", () => {

@@ -85,7 +85,7 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Membership", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "identity.Membership", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -110,7 +110,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Membership", "grant", [
+      const $policies = $authorizer("identity.Membership", "grant", [
         {
           name: "isMember",
           when: null,
@@ -140,14 +140,18 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Membership.grant"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "identity.Membership#grant"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Membership", action: "grant" },
+        { entity: "identity.Membership", action: "grant" },
         parsed,
         context,
         async (tx) => {
@@ -168,17 +172,17 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             grantedById: null,
           };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Membership", $record, "action function"),
-            "Membership.grant",
+            $guarded($loadPlan, "identity.Membership", $record, "action function"),
+            "identity.Membership#grant",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Membership.grant"),
+              input: $readOnlyRecord(parsed, "identity.Membership#grant"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Membership.grant", $clock),
+              ...$composed(compose, tx, context, "identity.Membership#grant", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<GrantMembershipInput>;
@@ -230,7 +234,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Membership", action: "grant" },
+            { entity: "identity.Membership", action: "grant" },
             null,
             $stored,
             parsed,
@@ -251,7 +255,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Membership", "changeRole", [
+      const $policies = $authorizer("identity.Membership", "changeRole", [
         {
           name: "isMember",
           when: null,
@@ -282,7 +286,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Membership.changeRole"),
+            input: $readOnlyRecord(parsed, "identity.Membership#changeRole"),
             actor: $actor,
             context: $context,
           },
@@ -292,7 +296,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       return $runAction(
         layer,
         options.seams,
-        { entity: "Membership", action: "changeRole" },
+        { entity: "identity.Membership", action: "changeRole" },
         parsed,
         context,
         async (tx) => {
@@ -300,25 +304,25 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
-          if ($before === undefined) throw new $NotFoundError("Membership", $key);
+          if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Membership", $record, "action function"),
-            "Membership.changeRole",
+            $guarded($loadPlan, "identity.Membership", $record, "action function"),
+            "identity.Membership#changeRole",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Membership.changeRole"),
+              input: $readOnlyRecord(parsed, "identity.Membership#changeRole"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Membership", $before, "before"),
-                "Membership.changeRole",
+                $guarded($loadPlan, "identity.Membership", $before, "before"),
+                "identity.Membership#changeRole",
               ) as unknown as Membership,
-              ...$composed(compose, tx, context, "Membership.changeRole", $clock),
+              ...$composed(compose, tx, context, "identity.Membership#changeRole", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<ChangeRoleMembershipInput>;
@@ -376,16 +380,16 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             tables.membership,
             $key,
             $before,
-            "Membership.changeRole",
+            "identity.Membership#changeRole",
           );
           const $stored = await tx.updateByKey(tables.membership, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Membership", $key);
+          if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Membership", action: "changeRole" },
+            { entity: "identity.Membership", action: "changeRole" },
             $before,
             $stored,
             parsed,
@@ -406,7 +410,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Membership", "revoke", [
+      const $policies = $authorizer("identity.Membership", "revoke", [
         {
           name: "isMember",
           when: null,
@@ -436,14 +440,18 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Membership.revoke"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "identity.Membership#revoke"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Membership", action: "revoke" },
+        { entity: "identity.Membership", action: "revoke" },
         parsed,
         context,
         async (tx) => {
@@ -451,25 +459,25 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.membership, $key);
-          if ($before === undefined) throw new $NotFoundError("Membership", $key);
+          if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Membership", $record, "action function"),
-            "Membership.revoke",
+            $guarded($loadPlan, "identity.Membership", $record, "action function"),
+            "identity.Membership#revoke",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Membership.revoke"),
+              input: $readOnlyRecord(parsed, "identity.Membership#revoke"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Membership", $before, "before"),
-                "Membership.revoke",
+                $guarded($loadPlan, "identity.Membership", $before, "before"),
+                "identity.Membership#revoke",
               ) as unknown as Membership,
-              ...$composed(compose, tx, context, "Membership.revoke", $clock),
+              ...$composed(compose, tx, context, "identity.Membership#revoke", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RevokeMembershipInput>;
@@ -521,15 +529,22 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.membership, $key, $before, "Membership.revoke");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.membership,
+            $key,
+            $before,
+            "identity.Membership#revoke",
+          );
           const $stored = await tx.updateByKey(tables.membership, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Membership", $key);
+          if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Membership", action: "revoke" },
+            { entity: "identity.Membership", action: "revoke" },
             $before,
             $stored,
             parsed,
@@ -550,7 +565,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readMembershipInput, input);
       if (
-        !(await $authorizer("Membership", "read", [
+        !(await $authorizer("identity.Membership", "read", [
           {
             name: "membersRead",
             when: null,
@@ -567,7 +582,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Membership.read"),
+              input: $readOnlyRecord($parsed as never, "identity.Membership#read"),
               actor: $actor,
               context: $context,
             },

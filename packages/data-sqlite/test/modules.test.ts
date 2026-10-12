@@ -291,7 +291,7 @@ describe("a module's action functions on the default binding", () => {
     const before = (await app.orders.readOrder({})).length;
     const error = await alone.place({ item: "solo", amount: 1 }).then(() => null, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(FrameworkError);
-    expect((error as Error).message).toBe("Order.place reads `actions.issueInvoice`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
+    expect((error as Error).message).toBe("sales.orders.Order#place reads `actions.issueInvoice`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
     expect((await app.orders.readOrder({})).length).toBe(before);
   });
 

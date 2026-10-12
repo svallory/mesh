@@ -9,13 +9,17 @@ import { submissionSubmit } from "../src/domain/work/work.commands";
 import { as, empty, populate, setup, world } from "./world";
 
 const ENTITIES = [
-  "Assignment", "Attempt", "Claim", "Collaborator", "Completion", "Dependency", "Event", "EvidenceReference", "Invocation",
-  "LateResult", "Machine", "Membership", "Review", "Run", "SessionReference", "Submission", "Task", "Workspace",
+  "work.Assignment", "execution.Attempt", "work.Claim", "identity.Collaborator", "work.Completion", "work.Dependency", "audit.Event",
+  "work.EvidenceReference", "execution.Invocation", "work.LateResult", "execution.Machine", "identity.Membership", "work.Review",
+  "execution.Run", "execution.SessionReference", "work.Submission", "work.Task", "identity.Workspace",
 ];
 
+/** The declaration part of an FQN: `work.Review` is `Review`. */
+const bareOf = (fqn: string) => fqn.slice(fqn.lastIndexOf(".") + 1);
+
 /** An entity's table and the key of one of its rows: every entity keys on `id` but Event, which keys on `seq`. */
-const tableOf = (entity: string) => (tables as unknown as Record<string, never>)[entity[0]!.toLowerCase() + entity.slice(1)]!;
-const keyOf = (entity: string, row: Record<string, unknown>) => (entity === "Event" ? { seq: row.seq } : { id: row.id }) as never;
+const tableOf = (entity: string) => (tables as unknown as Record<string, never>)[bareOf(entity)[0]!.toLowerCase() + bareOf(entity).slice(1)]!;
+const keyOf = (entity: string, row: Record<string, unknown>) => (entity === "audit.Event" ? { seq: row.seq } : { id: row.id }) as never;
 
 /** Every seam call, in order, as plain data; `after` and `commit` hold what the seams received. */
 function recorder(extra: Seams = {}) {
@@ -24,13 +28,13 @@ function recorder(extra: Seams = {}) {
   const writes: AfterWriteEvent[] = [];
   const commits: AfterCommitEvent[] = [];
   const seams: Seams = {
-    async beforeTransaction(event) { log.push(`beforeTransaction ${event.entity}.${event.action}`); before.push(event); await extra.beforeTransaction?.(event); },
-    async afterWrite(db, event) { log.push(`afterWrite ${event.entity}.${event.action}`); writes.push(event); await extra.afterWrite?.(db, event); },
+    async beforeTransaction(event) { log.push(`beforeTransaction ${event.entity}#${event.action}`); before.push(event); await extra.beforeTransaction?.(event); },
+    async afterWrite(db, event) { log.push(`afterWrite ${event.entity}#${event.action}`); writes.push(event); await extra.afterWrite?.(db, event); },
     async afterCommit(event) { log.push(`afterCommit ${event.changes.length}`); commits.push(event); await extra.afterCommit?.(event); },
   };
   return { seams, log, before, writes, commits };
 }
-const shape = (change: { readonly entity: string; readonly action: string }) => `${change.entity}.${change.action}`;
+const shape = (change: { readonly entity: string; readonly action: string }) => `${change.entity}#${change.action}`;
 
 describe("acceptance 1: afterWrite runs once for each row written, with its before and after; a read runs no seam", () => {
   test("every write of the 18 entities calls afterWrite with the row as it was and as written, and nothing else does", async () => {
@@ -49,12 +53,12 @@ describe("acceptance 1: afterWrite runs once for each row written, with its befo
       // row as the last event left it, so no row is written twice for one call and none is missed.
       const rows = new Map<string, Record<string, unknown>>();
       for (const { entity, action, before, after } of rec.writes) {
-        expect(after, `${entity}.${action}`).not.toBeNull();
-        const key = `${entity}/${String(entity === "Event" ? after!.seq : after!.id)}`;
+        expect(after, `${entity}#${action}`).not.toBeNull();
+        const key = `${entity}/${String(entity === "audit.Event" ? after!.seq : after!.id)}`;
         const known = rows.get(key);
-        if (known === undefined) expect(before, `${entity}.${action} creates ${key}`).toBeNull();
-        else expect(before, `${entity}.${action} updates ${key}`).toEqual(known);
-        if (known !== undefined) expect(before, `${entity}.${action} changed nothing`).not.toEqual(after);
+        if (known === undefined) expect(before, `${entity}#${action} creates ${key}`).toBeNull();
+        else expect(before, `${entity}#${action} updates ${key}`).toEqual(known);
+        if (known !== undefined) expect(before, `${entity}#${action} changed nothing`).not.toEqual(after);
         rows.set(key, after!);
       }
       // What the events say the rows are is what is stored.
@@ -71,11 +75,11 @@ describe("acceptance 1: afterWrite runs once for each row written, with its befo
     const fresh = await empty({ seams: rec.seams });
     try {
       const alice = await fresh.hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
-      expect(rec.log).toEqual(["beforeTransaction Collaborator.register", "afterWrite Collaborator.register", "afterCommit 1"]);
-      expect(rec.writes[0]).toMatchObject({ entity: "Collaborator", action: "register", before: null, after: alice, input: { kind: "human", name: "Alice" }, context: setup });
+      expect(rec.log).toEqual(["beforeTransaction identity.Collaborator#register", "afterWrite identity.Collaborator#register", "afterCommit 1"]);
+      expect(rec.writes[0]).toMatchObject({ entity: "identity.Collaborator", action: "register", before: null, after: alice, input: { kind: "human", name: "Alice" }, context: setup });
       rec.log.length = 0;
       const renamed = await fresh.hyper.updateCollaborator({ id: alice.id, name: "Alicia" }, setup);
-      expect(rec.log).toEqual(["beforeTransaction Collaborator.update", "afterWrite Collaborator.update", "afterCommit 1"]);
+      expect(rec.log).toEqual(["beforeTransaction identity.Collaborator#update", "afterWrite identity.Collaborator#update", "afterCommit 1"]);
       expect(rec.writes[1]).toMatchObject({ before: alice, after: renamed });
       rec.log.length = 0;
       expect(await fresh.hyper.readCollaborator({}, setup)).toEqual([renamed]);
@@ -97,10 +101,10 @@ describe("acceptance 2: a nested write reaches the seams in the order the rows a
       await watched.acceptReview({ submission: submitted.submission.id }, as(w.alice));
       const seen = rec.writes.map(shape);
       // Written in the order the lifecycle runs them: the review's row, then the steps after it, which call the others.
-      expect(seen).toEqual(["Review.accept", "Submission.settle", "Task.complete", "Completion.record"]);
+      expect(seen).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#complete", "work.Completion#record"]);
       // The seams see the whole call as one transaction: the top-level action is the only one that ran beforeTransaction,
       // and afterCommit ran once, after every write, with the same list.
-      expect(rec.before.map((event) => `${event.entity}.${event.action}`)).toEqual(["Review.accept"]);
+      expect(rec.before.map((event) => `${event.entity}#${event.action}`)).toEqual(["work.Review#accept"]);
       expect(rec.commits).toHaveLength(1);
       expect(rec.commits[0]!.changes.map(shape)).toEqual(seen);
       expect(rec.log.at(-1)).toBe(`afterCommit ${seen.length}`);
@@ -137,8 +141,8 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
         seams: {
           async afterWrite(db, { entity, action }) {
             // Written through `db` by the first seam call, before the nested ones: it must go too.
-            if (entity === "Review") await db.insert(tables.workspace, { id: "00000000-0000-4000-8000-0000000000f1", name: "seam", location: "local", state: "active", version: 1 });
-            if (entity === "Completion" && action === "record") throw boom;
+            if (entity === "work.Review") await db.insert(tables.workspace, { id: "00000000-0000-4000-8000-0000000000f1", name: "seam", location: "local", state: "active", version: 1 });
+            if (entity === "work.Completion" && action === "record") throw boom;
           },
         },
       });
@@ -183,7 +187,7 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
     try {
       const submission = await pending(w);
       const untouched = await state(w);
-      const watched = bind(w.db, { clock: w.clock, seams: { afterWrite(_db, { entity }) { if (entity === "Submission") throw boom; } } });
+      const watched = bind(w.db, { clock: w.clock, seams: { afterWrite(_db, { entity }) { if (entity === "work.Submission") throw boom; } } });
       await expect(watched.acceptReview({ submission: submission.id }, as(w.alice))).rejects.toBe(boom);
       expect(await state(w)).toEqual(untouched);
     } finally { await w.db.close(); }
@@ -192,7 +196,7 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
 
 describe("acceptance 4: afterCommit runs once, after the commit, with every change in order", () => {
   test("it is not called when the transaction rolls back, whichever seam or step failed it", async () => {
-    const rec = recorder({ afterWrite(_db, { entity }) { if (entity === "Completion") throw boom; } });
+    const rec = recorder({ afterWrite(_db, { entity }) { if (entity === "work.Completion") throw boom; } });
     const w = await world();
     try {
       const submission = await pending(w);
@@ -215,7 +219,7 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
       expect(rec.commits).toHaveLength(1);
       // The same rows afterWrite received, in the same order: before and after as plain data.
       expect(rec.commits[0]!.changes).toEqual(rec.writes.map(({ entity, action, before, after }) => ({ entity, action, before, after })));
-      expect(rec.commits[0]!.changes.map(shape)).toEqual(["Review.accept", "Submission.settle", "Task.complete", "Completion.record"]);
+      expect(rec.commits[0]!.changes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#complete", "work.Completion#record"]);
       // After the commit: what the call changed is there to read, and afterCommit came after every afterWrite.
       expect(rec.log.at(-1)).toBe("afterCommit 4");
     } finally { await w.db.close(); }
@@ -234,7 +238,7 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
         return [first, second];
       }, as(w.alice));
       expect(rec.commits).toHaveLength(1);
-      expect(rec.commits[0]!.changes.map((change) => [shape(change), change.after!.id])).toEqual([["Task.create", created[0]!.id], ["Task.create", created[1]!.id]]);
+      expect(rec.commits[0]!.changes.map((change) => [shape(change), change.after!.id])).toEqual([["work.Task#create", created[0]!.id], ["work.Task#create", created[1]!.id]]);
       // The actions it called joined it: none ran beforeTransaction.
       expect(rec.before).toEqual([]);
     } finally { await w.db.close(); }
@@ -291,7 +295,7 @@ describe("acceptance 5: beforeTransaction runs for the call that opens the trans
       const rec = recorder({ beforeTransaction() { throw boom; } });
       const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
       await expect(watched.createTask({ title: "Refused" }, as(w.alice))).rejects.toBe(boom);
-      expect(rec.log).toEqual(["beforeTransaction Task.create"]);
+      expect(rec.log).toEqual(["beforeTransaction work.Task#create"]);
       expect(await state(w)).toEqual(untouched);
       // The caller does not wait on a transaction the refusal never opened: the layer is free for the next call.
       await w.hyper.createTask({ title: "Fine" }, as(w.alice));
@@ -306,7 +310,7 @@ describe("acceptance 5: beforeTransaction runs for the call that opens the trans
       const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
       const context = { ...as(w.alice), commandId: "c-1" };
       await watched.acceptReview({ submission: submission.id }, context);
-      expect(rec.before).toEqual([{ entity: "Review", action: "accept", input: { submission: submission.id }, context }]);
+      expect(rec.before).toEqual([{ entity: "work.Review", action: "accept", input: { submission: submission.id }, context }]);
       expect(rec.writes.length).toBe(4);
     } finally { await w.db.close(); }
   });
@@ -320,7 +324,7 @@ describe("acceptance 5: beforeTransaction runs for the call that opens the trans
       expect(rec.before).toEqual([]);
       // A call made after it, at top level, is a new transaction and runs it again.
       await watched.createTask({ title: "Top" }, as(w.alice));
-      expect(rec.before.map(shape)).toEqual(["Task.create"]);
+      expect(rec.before.map(shape)).toEqual(["work.Task#create"]);
     } finally { await w.db.close(); }
   });
 
@@ -343,7 +347,7 @@ describe("acceptance 6: the context of a call reaches the seams of every row it 
       const rec = recorder();
       const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
       await watched.acceptReview({ submission: submission.id }, { ...as(w.alice), commandId: "cmd-7", caller: "cli" });
-      expect(rec.writes.map(shape)).toEqual(["Review.accept", "Submission.settle", "Task.complete", "Completion.record"]);
+      expect(rec.writes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#complete", "work.Completion#record"]);
       for (const event of rec.writes) expect(event.context, shape(event)).toMatchObject({ commandId: "cmd-7", caller: "cli", actor: { id: w.alice.id } });
       // A nested call's own input, not the caller's.
       expect(rec.writes[1]!.input).toEqual({ id: submission.id, outcome: "accepted" });
@@ -371,9 +375,9 @@ describe("a destroy gives its seams the row it deleted", () => {
       rec.commits.length = 0;
       await fresh.hyper.removeDependency({ id: dependency.id }, setup);
       // The destroy's own write, then the Task it touches in a step after the write.
-      expect(rec.writes.map(shape)).toEqual(["Dependency.remove", "Task.touch"]);
+      expect(rec.writes.map(shape)).toEqual(["work.Dependency#remove", "work.Task#touch"]);
       expect(rec.writes[0]).toMatchObject({ before: dependency, after: null });
-      expect(rec.commits[0]!.changes[0]).toEqual({ entity: "Dependency", action: "remove", before: dependency, after: null });
+      expect(rec.commits[0]!.changes[0]).toEqual({ entity: "work.Dependency", action: "remove", before: dependency, after: null });
       expect(rec.commits[0]!.changes).toHaveLength(2);
       expect(await fresh.hyper.readDependency({}, setup)).toEqual([]);
     } finally { await fresh.db.close(); }
@@ -396,7 +400,7 @@ describe("db", () => {
     const rec = recorder({
       async afterWrite(db, { entity }) {
         seen = db;
-        if (entity !== "Workspace") return;
+        if (entity !== "identity.Workspace") return;
         const key = { id: "00000000-0000-4000-8000-0000000000f2" };
         const row = await db.insert(tables.workspace, { ...key, name: "log", location: "local", state: "active", version: 1 });
         expect(await db.selectByKey(tables.workspace, key)).toEqual(row);
@@ -411,7 +415,7 @@ describe("db", () => {
       await fresh.hyper.createWorkspace({ name: "Home" }, setup);
       expect(Object.keys(seen!).sort()).toEqual(["deleteByKey", "insert", "selectByKey", "updateByKey"]);
       expect(rec.writes).toHaveLength(1);
-      expect(rec.commits[0]!.changes.map(shape)).toEqual(["Workspace.create"]);
+      expect(rec.commits[0]!.changes.map(shape)).toEqual(["identity.Workspace#create"]);
       expect((await fresh.hyper.readWorkspace({}, setup)).map((row) => row.name).sort()).toEqual(["Home", "log 2"]);
     } finally { await fresh.db.close(); }
   });

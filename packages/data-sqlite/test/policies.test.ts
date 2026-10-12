@@ -230,7 +230,7 @@ describe("deny by default", () => {
     try {
       const error = await denial(mesh.addLoose({ text: "x" }, alice));
       expect(error).toMatchObject({ code: "forbidden", entity: "Loose", action: "add", policies: [], breakdown: [] });
-      expect(error.message).toContain("no policy of :Loose covers it");
+      expect(error.message).toContain("no policy of Loose covers it");
       expect(error.message).toContain("policy :open actions=[&add] authorize-if=() => true");
       // A read no policy covers is forbidden too: deny by default holds for reads.
       await denial(mesh.readLoose({}, alice));
@@ -252,11 +252,11 @@ describe("authorize-if and forbid-if combine (POL-03)", () => {
       await mesh.freezeBoard({ id: board.id }, alice);
       const locked = await denial(mesh.renameBoard({ id: board.id, name: "Again" }, alice));
       expect(locked.policies).toEqual(["frozen"]);
-      expect(locked.message).toBe("Board.rename is forbidden by policy :frozen");
+      expect(locked.message).toBe("Board#rename is forbidden by policy :frozen");
       // Both fail: the error names both, in the order the file declares them.
       const both = await denial(mesh.renameBoard({ id: board.id, name: "Again" }, bob));
       expect(both.policies).toEqual(["owner", "frozen"]);
-      expect(both.message).toBe("Board.rename is forbidden by policies :owner, :frozen");
+      expect(both.message).toBe("Board#rename is forbidden by policies :owner, :frozen");
       // The auto destroy is covered by types=[:destroy].
       await denial(mesh.destroyBoard({ id: board.id }, bob));
       await mesh.destroyBoard({ id: board.id }, alice);

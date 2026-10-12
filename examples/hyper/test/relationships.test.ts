@@ -314,7 +314,7 @@ describe("acceptance 5: an unloaded relationship is a type error; a load that ca
     const { db, hyper } = await fresh();
     try {
       await expect(hyper.readTask({ filter: { maxFence: { gt: 1 } } }, context)).rejects.toThrow("filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10");
-      await expect(hyper.readTask({ sort: ["-derivedState"] }, context)).rejects.toThrow("A sort by Task.derivedState is not available yet");
+      await expect(hyper.readTask({ sort: ["-derivedState"] }, context)).rejects.toThrow("A sort by work.Task#derivedState is not available yet");
     } finally { await db.close(); }
   });
 });

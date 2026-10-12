@@ -66,7 +66,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("User", "create", [
+      const $policies = $authorizer("blog.User", "create", [
         {
           name: "signedIn",
           when: null,
@@ -83,14 +83,14 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "User.create"), actor: $actor, context: $context },
+          { input: $readOnlyRecord(parsed, "blog.User#create"), actor: $actor, context: $context },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "User", action: "create" },
+        { entity: "blog.User", action: "create" },
         parsed,
         context,
         async (tx) => {
@@ -107,7 +107,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "User", action: "create" },
+            { entity: "blog.User", action: "create" },
             null,
             $stored,
             parsed,
@@ -125,7 +125,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readUserInput, input);
       if (
-        !(await $authorizer("User", "read", [
+        !(await $authorizer("blog.User", "read", [
           {
             name: "signedIn",
             when: null,
@@ -142,7 +142,7 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "User.read"),
+              input: $readOnlyRecord($parsed as never, "blog.User#read"),
               actor: $actor,
               context: $context,
             },

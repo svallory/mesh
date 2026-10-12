@@ -195,7 +195,7 @@ test(
       ).diagnostics[0],
     ).toMatchObject({
       code: "MESH_UNKNOWN_MEMBER",
-      message: "&titel is not a member of :Todo. Did you mean &title?",
+      message: "&titel is not a member of todo.Todo. Did you mean &title?",
     });
   },
 );

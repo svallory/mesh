@@ -58,7 +58,7 @@ export function bindCommentReads(layer: $DataLayer, options: $BindOptions = {}) 
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Comment", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "blog.Comment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -86,7 +86,7 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readCommentInput, input);
       if (
-        !(await $authorizer("Comment", "read", [
+        !(await $authorizer("blog.Comment", "read", [
           {
             name: "signedIn",
             when: null,
@@ -103,7 +103,7 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Comment.read"),
+              input: $readOnlyRecord($parsed as never, "blog.Comment#read"),
               actor: $actor,
               context: $context,
             },

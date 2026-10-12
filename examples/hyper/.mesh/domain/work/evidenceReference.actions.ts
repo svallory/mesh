@@ -76,7 +76,7 @@ export function bindEvidenceReferenceReads(layer: $DataLayer, options: $BindOpti
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "EvidenceReference", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.EvidenceReference", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -110,7 +110,7 @@ export function bindEvidenceReference(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("EvidenceReference", "record", [
+      const $policies = $authorizer("work.EvidenceReference", "record", [
         {
           name: "isMember",
           when: null,
@@ -141,7 +141,7 @@ export function bindEvidenceReference(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "EvidenceReference.record"),
+            input: $readOnlyRecord(parsed, "work.EvidenceReference#record"),
             actor: $actor,
             context: $context,
           },
@@ -151,7 +151,7 @@ export function bindEvidenceReference(
       return $runAction(
         layer,
         options.seams,
-        { entity: "EvidenceReference", action: "record" },
+        { entity: "work.EvidenceReference", action: "record" },
         parsed,
         context,
         async (tx) => {
@@ -166,17 +166,17 @@ export function bindEvidenceReference(
           };
           const $record: $Row = { ...$changes, kind: null, locator: null, recordedById: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "EvidenceReference", $record, "action function"),
-            "EvidenceReference.record",
+            $guarded($loadPlan, "work.EvidenceReference", $record, "action function"),
+            "work.EvidenceReference#record",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "EvidenceReference.record"),
+              input: $readOnlyRecord(parsed, "work.EvidenceReference#record"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "EvidenceReference.record", $clock),
+              ...$composed(compose, tx, context, "work.EvidenceReference#record", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RecordEvidenceReferenceInput>;
@@ -205,7 +205,7 @@ export function bindEvidenceReference(
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "EvidenceReference", action: "record" },
+            { entity: "work.EvidenceReference", action: "record" },
             null,
             $stored,
             parsed,
@@ -226,7 +226,7 @@ export function bindEvidenceReference(
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readEvidenceReferenceInput, input);
       if (
-        !(await $authorizer("EvidenceReference", "read", [
+        !(await $authorizer("work.EvidenceReference", "read", [
           {
             name: "membersRead",
             when: null,
@@ -243,7 +243,7 @@ export function bindEvidenceReference(
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "EvidenceReference.read"),
+              input: $readOnlyRecord($parsed as never, "work.EvidenceReference#read"),
               actor: $actor,
               context: $context,
             },

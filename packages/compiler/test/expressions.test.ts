@@ -298,7 +298,7 @@ describe("type rules", () => {
       const source = computed(body);
       const d = build(source).diagnostics.filter((x) => x.code === "MESH_COMPUTED_COMPOSES");
       expect(d, body).toHaveLength(1);
-      expect(d[0]!.message).toContain("computed :c of :Task reads `");
+      expect(d[0]!.message).toContain("computed :c of Task reads `");
       expect(d[0]!.position.offset, body).toBe(source.indexOf(body));
     }
     // A string or a property that spells the name is not a read.

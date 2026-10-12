@@ -22,7 +22,7 @@ const roles = new Map<string, Role>();
 /** The `afterCommit` seam that keeps `roles` current: a membership written active sets its role, a revoked one clears it. */
 function trackRoles({ changes }: AfterCommitEvent): void {
   for (const change of changes) {
-    if (change.entity !== "Membership" || !change.after) continue;
+    if (change.entity !== "identity.Membership" || !change.after) continue;
     const { collaboratorId, role, state } = change.after as { collaboratorId: string; role: Role; state: string };
     if (state === "active") roles.set(collaboratorId, role);
     else roles.delete(collaboratorId);

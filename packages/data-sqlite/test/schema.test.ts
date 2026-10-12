@@ -121,7 +121,7 @@ describe("MESH_SCHEMA_* build errors", () => {
     })));
     expect(error.diagnostic).toEqual({
       severity: "error", code: "MESH_SCHEMA_DUPLICATE_TABLE",
-      message: 'Entities Note (src/domain/b/note.mesh.mx) and Post (src/domain/a/post.mesh.mx) both use the SQLite table "posts"',
+      message: 'Entities b.Note (src/domain/b/note.mesh.mx) and a.Post (src/domain/a/post.mesh.mx) both use the SQLite table "posts"',
       position: { file: "src/domain/a/post.mesh.mx", line: 1, column: 0, offset: 0 },
       fix: 'Give each entity its own table="..."',
     });
@@ -134,7 +134,7 @@ describe("MESH_SCHEMA_* build errors", () => {
     })));
     expect(error.diagnostic).toEqual({
       severity: "error", code: "MESH_SCHEMA_DUPLICATE_EXPORT",
-      message: "Entities Post (src/domain/blog/post.mesh.mx) and Post (src/domain/sales/post.mesh.mx) both become the schema export postTable",
+      message: "Entities blog.Post (src/domain/blog/post.mesh.mx) and sales.Post (src/domain/sales/post.mesh.mx) both become the schema export postTable",
       position: { file: "src/domain/sales/post.mesh.mx", line: 1, column: 0, offset: 0 },
       fix: "Rename one entity: schema.ts exports one table per entity name",
     });

@@ -387,6 +387,7 @@
       ],
       "computed": [],
       "file": "src/domain/audit/event.mesh.mx",
+      "fqn": "audit.Event",
       "imports": [
         {
           "from": "../work/task.mesh.mx",
@@ -2812,6 +2813,7 @@
       ],
       "computed": [],
       "file": "src/domain/execution/attempt.mesh.mx",
+      "fqn": "execution.Attempt",
       "imports": [
         {
           "from": "./run.mesh.mx",
@@ -4775,6 +4777,7 @@
       ],
       "computed": [],
       "file": "src/domain/execution/invocation.mesh.mx",
+      "fqn": "execution.Invocation",
       "imports": [
         {
           "from": "./attempt.mesh.mx",
@@ -6429,6 +6432,7 @@
       ],
       "computed": [],
       "file": "src/domain/execution/machine.mesh.mx",
+      "fqn": "execution.Machine",
       "imports": [
         {
           "from": "../identity/collaborator.mesh.mx",
@@ -7849,6 +7853,7 @@
       ],
       "computed": [],
       "file": "src/domain/execution/run.mesh.mx",
+      "fqn": "execution.Run",
       "imports": [
         {
           "from": "../work/task.mesh.mx",
@@ -9512,6 +9517,7 @@
       ],
       "computed": [],
       "file": "src/domain/execution/session-reference.mesh.mx",
+      "fqn": "execution.SessionReference",
       "imports": [
         {
           "from": "./machine.mesh.mx",
@@ -11115,6 +11121,7 @@
       ],
       "computed": [],
       "file": "src/domain/identity/collaborator.mesh.mx",
+      "fqn": "identity.Collaborator",
       "imports": [
         {
           "from": "./membership.mesh.mx",
@@ -12770,6 +12777,7 @@
       ],
       "computed": [],
       "file": "src/domain/identity/membership.mesh.mx",
+      "fqn": "identity.Membership",
       "imports": [
         {
           "from": "./collaborator.mesh.mx",
@@ -13575,6 +13583,7 @@
       ],
       "computed": [],
       "file": "src/domain/identity/workspace.mesh.mx",
+      "fqn": "identity.Workspace",
       "imports": [
         {
           "from": "./identity.helpers",
@@ -14225,6 +14234,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/assignment.mesh.mx",
+      "fqn": "work.Assignment",
       "imports": [
         {
           "from": "./task.mesh.mx",
@@ -17452,6 +17462,7 @@
         }
       ],
       "file": "src/domain/work/claim.mesh.mx",
+      "fqn": "work.Claim",
       "imports": [
         {
           "from": "./task.mesh.mx",
@@ -18292,6 +18303,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/completion.mesh.mx",
+      "fqn": "work.Completion",
       "imports": [
         {
           "from": "./task.mesh.mx",
@@ -19252,6 +19264,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/dependency.mesh.mx",
+      "fqn": "work.Dependency",
       "imports": [
         {
           "from": "./task.mesh.mx",
@@ -19807,6 +19820,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/evidence-reference.mesh.mx",
+      "fqn": "work.EvidenceReference",
       "imports": [
         {
           "from": "../identity/collaborator.mesh.mx",
@@ -20392,6 +20406,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/late-result.mesh.mx",
+      "fqn": "work.LateResult",
       "imports": [
         {
           "from": "./task.mesh.mx",
@@ -21523,6 +21538,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/review.mesh.mx",
+      "fqn": "work.Review",
       "imports": [
         {
           "from": "./submission.mesh.mx",
@@ -23283,6 +23299,7 @@
       ],
       "computed": [],
       "file": "src/domain/work/submission.mesh.mx",
+      "fqn": "work.Submission",
       "imports": [
         {
           "from": "./task.mesh.mx",
@@ -29410,6 +29427,7 @@
         }
       ],
       "file": "src/domain/work/task.mesh.mx",
+      "fqn": "work.Task",
       "imports": [
         {
           "from": "./dependency.mesh.mx",

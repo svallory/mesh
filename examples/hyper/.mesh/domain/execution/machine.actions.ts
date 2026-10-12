@@ -86,7 +86,7 @@ export function bindMachineReads(layer: $DataLayer, options: $BindOptions = {}) 
           return $rows as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Machine", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "execution.Machine", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -111,7 +111,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Machine", "register", [
+      const $policies = $authorizer("execution.Machine", "register", [
         {
           name: "isMember",
           when: null,
@@ -141,14 +141,18 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Machine.register"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Machine#register"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Machine", action: "register" },
+        { entity: "execution.Machine", action: "register" },
         parsed,
         context,
         async (tx) => {
@@ -165,17 +169,17 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           };
           const $record: $Row = { ...$changes, name: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Machine", $record, "action function"),
-            "Machine.register",
+            $guarded($loadPlan, "execution.Machine", $record, "action function"),
+            "execution.Machine#register",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Machine.register"),
+              input: $readOnlyRecord(parsed, "execution.Machine#register"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Machine.register", $clock),
+              ...$composed(compose, tx, context, "execution.Machine#register", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RegisterMachineInput>;
@@ -208,7 +212,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Machine", action: "register" },
+            { entity: "execution.Machine", action: "register" },
             null,
             $stored,
             parsed,
@@ -226,7 +230,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Machine", "report", [
+      const $policies = $authorizer("execution.Machine", "report", [
         {
           name: "internal",
           when: null,
@@ -243,14 +247,18 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Machine.report"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Machine#report"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Machine", action: "report" },
+        { entity: "execution.Machine", action: "report" },
         parsed,
         context,
         async (tx) => {
@@ -267,17 +275,17 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           };
           const $record: $Row = { ...$changes, name: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Machine", $record, "action function"),
-            "Machine.report",
+            $guarded($loadPlan, "execution.Machine", $record, "action function"),
+            "execution.Machine#report",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Machine.report"),
+              input: $readOnlyRecord(parsed, "execution.Machine#report"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Machine.report", $clock),
+              ...$composed(compose, tx, context, "execution.Machine#report", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<ReportMachineInput>;
@@ -307,7 +315,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Machine", action: "report" },
+            { entity: "execution.Machine", action: "report" },
             null,
             $stored,
             parsed,
@@ -325,7 +333,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Machine", "update", [
+      const $policies = $authorizer("execution.Machine", "update", [
         {
           name: "isMember",
           when: null,
@@ -355,14 +363,18 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Machine.update"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Machine#update"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Machine", action: "update" },
+        { entity: "execution.Machine", action: "update" },
         parsed,
         context,
         async (tx) => {
@@ -370,25 +382,25 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
-          if ($before === undefined) throw new $NotFoundError("Machine", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Machine", $record, "action function"),
-            "Machine.update",
+            $guarded($loadPlan, "execution.Machine", $record, "action function"),
+            "execution.Machine#update",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Machine.update"),
+              input: $readOnlyRecord(parsed, "execution.Machine#update"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Machine", $before, "before"),
-                "Machine.update",
+                $guarded($loadPlan, "execution.Machine", $before, "before"),
+                "execution.Machine#update",
               ) as unknown as Machine,
-              ...$composed(compose, tx, context, "Machine.update", $clock),
+              ...$composed(compose, tx, context, "execution.Machine#update", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UpdateMachineInput>;
@@ -426,15 +438,22 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.update");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.machine,
+            $key,
+            $before,
+            "execution.Machine#update",
+          );
           const $stored = await tx.updateByKey(tables.machine, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Machine", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Machine", action: "update" },
+            { entity: "execution.Machine", action: "update" },
             $before,
             $stored,
             parsed,
@@ -452,7 +471,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Machine", "retire", [
+      const $policies = $authorizer("execution.Machine", "retire", [
         {
           name: "isMember",
           when: null,
@@ -482,14 +501,18 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Machine.retire"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "execution.Machine#retire"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Machine", action: "retire" },
+        { entity: "execution.Machine", action: "retire" },
         parsed,
         context,
         async (tx) => {
@@ -497,26 +520,26 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.machine, $key);
-          if ($before === undefined) throw new $NotFoundError("Machine", $key);
+          if ($before === undefined) throw new $NotFoundError("execution.Machine", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Machine", $record, "action function"),
-            "Machine.retire",
+            $guarded($loadPlan, "execution.Machine", $record, "action function"),
+            "execution.Machine#retire",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Machine.retire"),
+              input: $readOnlyRecord(parsed, "execution.Machine#retire"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Machine", $before, "before"),
-                "Machine.retire",
+                $guarded($loadPlan, "execution.Machine", $before, "before"),
+                "execution.Machine#retire",
               ) as unknown as Machine,
-              ...$composed(compose, tx, context, "Machine.retire", $clock),
+              ...$composed(compose, tx, context, "execution.Machine#retire", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RetireMachineInput>;
@@ -525,7 +548,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           // validate: every check runs, and every failed check is reported together
           const $issues: $Issue[] = [];
           const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "Machine", tx, $record, ["attempts"], $load);
+          await $loadInto($loadPlan, "execution.Machine", tx, $record, ["attempts"], $load);
           await $runCheck($issues, $checks, {
             label: "machineActive",
             code: "machine.active",
@@ -559,18 +582,25 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
               );
             $changes.version = $record.version = $value;
           }
-          $unloadFrom($loadPlan, "Machine", $record);
+          $unloadFrom($loadPlan, "execution.Machine", $record);
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.machine, $key, $before, "Machine.retire");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.machine,
+            $key,
+            $before,
+            "execution.Machine#retire",
+          );
           const $stored = await tx.updateByKey(tables.machine, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Machine", $key);
+          if ($stored === undefined) throw new $NotFoundError("execution.Machine", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Machine", action: "retire" },
+            { entity: "execution.Machine", action: "retire" },
             $before,
             $stored,
             parsed,
@@ -591,7 +621,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readMachineInput, input);
       if (
-        !(await $authorizer("Machine", "read", [
+        !(await $authorizer("execution.Machine", "read", [
           {
             name: "membersRead",
             when: null,
@@ -608,7 +638,7 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Machine.read"),
+              input: $readOnlyRecord($parsed as never, "execution.Machine#read"),
               actor: $actor,
               context: $context,
             },

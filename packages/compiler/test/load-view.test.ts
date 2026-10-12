@@ -52,7 +52,7 @@ const input = (document: ModelDocument): EmitInput => ({ document, config });
 describe("the load view", () => {
   test("one plan entry per entity, in the fixed entity order, and a loader only for an entity with something to load", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
-    expect(view.entities.map((entity) => entity.nameLiteral)).toEqual(['"Author"', '"Lonely"', '"Post"']);
+    expect(view.entities.map((entity) => entity.nameLiteral)).toEqual(['"app.Author"', '"app.Lonely"', '"app.Post"']);
     expect(view.entities.map((entity) => entity.loader?.name ?? null)).toEqual(["loadAuthorFields", null, "loadPostFields"]);
     expect(view.entities[0]!.table).toBe("tables.author");
     expect(view.entities[0]!.keyLiteral).toBe('"id"');
@@ -61,18 +61,18 @@ describe("the load view", () => {
 
   test("a relationship plan names its kind, target and key column; a has-many follows the belongs-to of the target", () => {
     const [authorEntry, , postEntry] = loadView(input(documentOf()), "generated/load.ts").entities;
-    expect(authorEntry!.relations).toEqual([{ key: "posts", plan: '{ kind: "has-many", target: "Post", column: "authorId" }' }]);
+    expect(authorEntry!.relations).toEqual([{ key: "posts", plan: '{ kind: "has-many", target: "app.Post", column: "authorId" }' }]);
     expect(postEntry!.relations).toEqual([
-      { key: "author", plan: '{ kind: "belongs-to", target: "Author", column: "authorId", nullable: false }' },
-      { key: "replyTo", plan: '{ kind: "belongs-to", target: "Post", column: "replyToId", nullable: true }' },
-      { key: "replies", plan: '{ kind: "has-many", target: "Post", column: "replyToId" }' },
+      { key: "author", plan: '{ kind: "belongs-to", target: "app.Author", column: "authorId", nullable: false }' },
+      { key: "replyTo", plan: '{ kind: "belongs-to", target: "app.Post", column: "replyToId", nullable: true }' },
+      { key: "replies", plan: '{ kind: "has-many", target: "app.Post", column: "replyToId" }' },
     ]);
   });
 
   test("a has-many with no belongs-to back has a null column, which fails when it is loaded", () => {
     const orphaned = documentOf({ author: author.replace("    has-many :posts entity=Post\n", '    has-many :posts entity=Post\n    has-many :lonelies entity=Lonely\n').replace('import { Post }', 'import { Lonely } from "./lonely.mesh.mx"\nimport { Post }'), post, lonely });
     const entry = loadView(input(orphaned), "generated/load.ts").entities[0]!;
-    expect(entry.relations[1]).toEqual({ key: "lonelies", plan: '{ kind: "has-many", target: "Lonely", column: null }' });
+    expect(entry.relations[1]).toEqual({ key: "lonelies", plan: '{ kind: "has-many", target: "app.Lonely", column: null }' });
   });
 
   test("a rollup names its function and path; a body names what it needs and the expression it runs", () => {
@@ -128,7 +128,7 @@ describe("the load generator", () => {
     const fields = "entity :AuthorFields table=\"author_fields\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :load\n";
     const document = documentOf({ author, post, lonely, "author-fields": fields });
     await expect(generateFiles(input(document))).rejects.toThrow(
-      /Entity :Author's load function and Action :load of :AuthorFields .* both become the top-level name `loadAuthorFields`/);
+      /Entity app.Author's load function and Action :load of app.AuthorFields .* both become the top-level name `loadAuthorFields`/);
     await expect(generateFiles(input(document))).rejects.toBeInstanceOf(EmitError);
   });
 

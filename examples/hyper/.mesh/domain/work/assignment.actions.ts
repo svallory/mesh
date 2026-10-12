@@ -83,7 +83,7 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Assignment", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.Assignment", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -108,7 +108,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Assignment", "start", [
+      const $policies = $authorizer("work.Assignment", "start", [
         {
           name: "internal",
           when: null,
@@ -125,14 +125,18 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Assignment.start"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Assignment#start"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Assignment", action: "start" },
+        { entity: "work.Assignment", action: "start" },
         parsed,
         context,
         async (tx) => {
@@ -152,17 +156,17 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
             delegatorId: null,
           };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Assignment", $record, "action function"),
-            "Assignment.start",
+            $guarded($loadPlan, "work.Assignment", $record, "action function"),
+            "work.Assignment#start",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Assignment.start"),
+              input: $readOnlyRecord(parsed, "work.Assignment#start"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Assignment.start", $clock),
+              ...$composed(compose, tx, context, "work.Assignment#start", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<StartAssignmentInput>;
@@ -196,7 +200,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Assignment", action: "start" },
+            { entity: "work.Assignment", action: "start" },
             null,
             $stored,
             parsed,
@@ -217,7 +221,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Assignment", "finish", [
+      const $policies = $authorizer("work.Assignment", "finish", [
         {
           name: "internal",
           when: null,
@@ -234,14 +238,18 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Assignment.finish"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Assignment#finish"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Assignment", action: "finish" },
+        { entity: "work.Assignment", action: "finish" },
         parsed,
         context,
         async (tx) => {
@@ -249,25 +257,25 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.assignment, $key);
-          if ($before === undefined) throw new $NotFoundError("Assignment", $key);
+          if ($before === undefined) throw new $NotFoundError("work.Assignment", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Assignment", $record, "action function"),
-            "Assignment.finish",
+            $guarded($loadPlan, "work.Assignment", $record, "action function"),
+            "work.Assignment#finish",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Assignment.finish"),
+              input: $readOnlyRecord(parsed, "work.Assignment#finish"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Assignment", $before, "before"),
-                "Assignment.finish",
+                $guarded($loadPlan, "work.Assignment", $before, "before"),
+                "work.Assignment#finish",
               ) as unknown as Assignment,
-              ...$composed(compose, tx, context, "Assignment.finish", $clock),
+              ...$composed(compose, tx, context, "work.Assignment#finish", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<FinishAssignmentInput>;
@@ -293,15 +301,22 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.assignment, $key, $before, "Assignment.finish");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.assignment,
+            $key,
+            $before,
+            "work.Assignment#finish",
+          );
           const $stored = await tx.updateByKey(tables.assignment, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Assignment", $key);
+          if ($stored === undefined) throw new $NotFoundError("work.Assignment", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Assignment", action: "finish" },
+            { entity: "work.Assignment", action: "finish" },
             $before,
             $stored,
             parsed,
@@ -322,7 +337,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readAssignmentInput, input);
       if (
-        !(await $authorizer("Assignment", "read", [
+        !(await $authorizer("work.Assignment", "read", [
           {
             name: "membersRead",
             when: null,
@@ -339,7 +354,7 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Assignment.read"),
+              input: $readOnlyRecord($parsed as never, "work.Assignment#read"),
               actor: $actor,
               context: $context,
             },

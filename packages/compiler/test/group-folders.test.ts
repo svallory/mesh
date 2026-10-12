@@ -59,7 +59,7 @@ test("the same entity name across a group is a duplicate", () => {
   });
   expect(result.diagnostics).toHaveLength(1);
   expect(result.diagnostics[0]).toMatchObject({ code: "MESH_DUPLICATE_ENTITY" });
-  expect(result.diagnostics[0]!.message).toContain('in module "tasks"');
+  expect(result.diagnostics[0]!.message).toContain("Duplicate entity tasks.Task;");
   expect(result.diagnostics[0]!.message).toContain(`${D}/tasks/task.mesh.mx`);
 });
 test("the same name in a submodule and its parent is not a duplicate", () => {
@@ -67,7 +67,7 @@ test("the same name in a submodule and its parent is not a duplicate", () => {
 });
 test("two groups in the root module collide at the root", () => {
   const result = build({ [`${D}/_a/t.mesh.mx`]: entity("T"), [`${D}/_b/t.mesh.mx`]: entity("T") });
-  expect(result.diagnostics[0]!.message).toContain("at the domain root");
+  expect(result.diagnostics[0]!.message).toContain("Duplicate entity T;");
 });
 test("a segment that is only an underscore is an error with a clear message", () => {
   const result = build({ [`${D}/tasks/_/a.mesh.mx`]: entity("A") });
@@ -186,4 +186,14 @@ test("an ignore pattern that matches nothing is a warning naming the pattern, no
   expect(loaded.diagnostics[0]).toMatchObject({ severity: "warning", code: "MESH_IGNORE_UNUSED" });
   expect(loaded.diagnostics[0]!.message).toContain('"src/legacy"');
   expect(loaded.config!.entityFiles).toEqual([resolve(root, "src/domain/a.mesh.mx")]);
+});
+
+test("an entity's fqn is its module's folders joined by dots, then its name; a root entity's fqn is its name (PRJ-18)", () => {
+  const fqns = (files: Record<string, string>) => Object.fromEntries((build(files).document?.entities ?? []).map((e) => [e.name, e.fqn]));
+  expect(fqns({
+    [`${D}/work/project/task.mesh.mx`]: entity("Task"),
+    [`${D}/work/_services/review.mesh.mx`]: entity("Review"),
+    [`${D}/_x/root.mesh.mx`]: entity("Root"),
+    [`${D}/top.mesh.mx`]: entity("Top"),
+  })).toEqual({ Task: "work.project.Task", Review: "work.Review", Root: "Root", Top: "Top" });
 });

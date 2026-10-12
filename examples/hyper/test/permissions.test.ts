@@ -75,9 +75,9 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
     // Claim's policies without `internal`, the only one that covers `expire`: nothing covers it, so it is denied.
     const policies = specsOf("Claim", "expire", claimExpressions).filter((policy) => policy.name !== "internal");
     expect(policies).toEqual([]);
-    const denial = await authorizer("Claim", "expire", policies).before(layer, {}).then(() => null, (cause: unknown) => cause as ForbiddenError);
+    const denial = await authorizer("work.Claim", "expire", policies).before(layer, {}).then(() => null, (cause: unknown) => cause as ForbiddenError);
     expect(denial).toBeInstanceOf(ForbiddenError);
-    expect(denial).toMatchObject({ entity: "Claim", action: "expire", policies: [], reason: "not-covered" });
+    expect(denial).toMatchObject({ entity: "work.Claim", action: "expire", policies: [], reason: "not-covered" });
     expect(denial!.message).toContain("policy :open actions=[&expire] authorize-if=() => true");
   });
 
@@ -200,14 +200,14 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
     const root = resolve(import.meta.dir, "..");
     const files = [...new Glob("src/domain/**/*.mesh.mx").scanSync(root)].sort().map((file) => ({ file, source: readFileSync(resolve(root, file), "utf8") }));
     expect(files).toHaveLength(18);
-    expect(buildModel({ root, files }).diagnostics).toEqual([]);
+    expect(buildModel({ root, files, domainRoot: "src/domain" }).diagnostics).toEqual([]);
     const typo = files.map((entry) => entry.file.endsWith("/claim.mesh.mx")
       ? { ...entry, source: entry.source.replace("policy :claimHolder actions=[&renew, &release]", "policy :claimHolder actions=[&renw, &release]") }
       : entry);
     expect(typo).not.toEqual(files);
-    const built = buildModel({ root, files: typo });
+    const built = buildModel({ root, files: typo, domainRoot: "src/domain" });
     expect(built.diagnostics).toMatchObject([{ code: "MESH_UNKNOWN_ACTION", severity: "error", position: { file: "src/domain/work/claim.mesh.mx" } }]);
-    expect(built.diagnostics[0]!.message).toContain("&renw is not an action of :Claim");
+    expect(built.diagnostics[0]!.message).toContain("&renw is not an action of work.Claim");
   });
 });
 
@@ -249,7 +249,7 @@ describe("group 02.1: guests", () => {
     await w.hyper.assignTask({ id: assigned.id, assignee: w.bot.id }, as(w.alice));
     const answers = [];
     for (const task of [GHOST, w.task.id, assigned.id]) answers.push(await denialOf(w.hyper.acquireClaim({ task }, as(outsider))));
-    expect(answers[0]).toMatchObject({ entity: "Claim", action: "acquire", policies: ["isMember", "ownerOrMember"], reason: "failed" });
+    expect(answers[0]).toMatchObject({ entity: "work.Claim", action: "acquire", policies: ["isMember", "ownerOrMember"], reason: "failed" });
     expect(answers[1]).toEqual(answers[0]);
     expect(answers[2]).toEqual(answers[0]);
     // A guest may read every Task, so a missing one is not found for it, in the permission phase.
@@ -717,7 +717,7 @@ interface ModelPolicy {
   readonly authorizeIf?: readonly ModelCheck[];
   readonly forbidIf?: readonly ModelCheck[];
 }
-interface ModelEntity { readonly name: string; readonly actions: readonly { readonly name: string; readonly kind: string }[]; readonly policies: readonly ModelPolicy[] }
+interface ModelEntity { readonly name: string; readonly fqn: string; readonly actions: readonly { readonly name: string; readonly kind: string }[]; readonly policies: readonly ModelPolicy[] }
 const model = JSON.parse(readFileSync(resolve(import.meta.dir, "../.mesh/model.json"), "utf8")) as { readonly entities: readonly ModelEntity[] };
 
 /** The policies of `entity` that cover `action` by their scope: `actions=` names it, `types=` names its kind, or neither is set. */
@@ -755,7 +755,7 @@ const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
 
 /** The decision of `authorizer` over the policies in this order: "allowed", or the refusing policies in a fixed order. */
 async function decide(entity: string, action: string, policies: readonly PolicySpec[], scope: object): Promise<string> {
-  const policy = authorizer(entity, action, policies);
+  const policy = authorizer(model.entities.find((candidate) => candidate.name === entity)!.fqn, action, policies);
   try {
     await policy.before(layer, scope);
     await policy.inside(scope);

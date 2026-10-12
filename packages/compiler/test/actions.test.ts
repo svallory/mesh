@@ -151,7 +151,7 @@ describe("actions view", () => {
       "const $stored = await tx.insert(tables.article, $changes);",
       "$noteWrite(tx);",
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $recordWrite(tx, options.seams, { entity: "Article", action: "create" }, null, $stored, parsed, context);',
+      'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "create" }, null, $stored, parsed, context);',
       "return $stored as Article;",
     ]);
     expect(create.notRun).toBe("Not run in this version: on:load load");
@@ -161,8 +161,8 @@ describe("actions view", () => {
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
       "const $actor = $context.actor;",
       "const $clock = $pinClock(options.clock);",
-      'const $policies = $authorizer("Article", "create", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]);',
-      'await $policies.before(layer, $scope({ input: $readOnlyRecord(parsed, "Article.create"), actor: $actor, context: $context }, { clock: $clock }));',
+      'const $policies = $authorizer("blog.Article", "create", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]);',
+      'await $policies.before(layer, $scope({ input: $readOnlyRecord(parsed, "blog.Article#create"), actor: $actor, context: $context }, { clock: $clock }));',
     ]);
   });
 
@@ -170,7 +170,7 @@ describe("actions view", () => {
     const [, rename, publish] = viewOf("Article").methods;
     const text = rename!.statements.join("\n");
     expect(text).toContain("const $before = await tx.selectByKeyForUpdate(tables.article, $key);");
-    expect(text).toContain('if ($before === undefined) throw new $NotFoundError("Article", $key);');
+    expect(text).toContain('if ($before === undefined) throw new $NotFoundError("blog.Article", $key);');
     expect(text).toContain("if (parsed.title !== undefined) $changes.title = $record.title = parsed.title;");
     expect(text).toContain("if (parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;");
     // ACT-01: the checks see the stored record; the input is applied after them, before the steps and the write
@@ -205,7 +205,7 @@ describe("actions view", () => {
       "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
       'const $clock = clock ?? $pinClock(options.clock);',
-      'return (await $loadRows($loadPlan, "Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
+      'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
       // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a read through `tx` casts it in the body.
       contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
@@ -221,7 +221,7 @@ describe("actions view", () => {
     // The checks see the cast input, as a write's do (N2 of the review); an invalid input is reported as one, denied or not.
     expect(readMethod.preCheck.slice(4)).toEqual([
       "const $parsed = await $castInput(layer, readArticleInput, input);",
-      'if (!(await $authorizer("Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]).filter(layer, $scope({ input: $readOnlyRecord($parsed as never, "Article.read"), actor: $actor, context: $context }, { clock: $clock })))) return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);',
+      'if (!(await $authorizer("blog.Article", "read", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]).filter(layer, $scope({ input: $readOnlyRecord($parsed as never, "blog.Article#read"), actor: $actor, context: $context }, { clock: $clock })))) return [] as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never);',
     ]);
   });
 
@@ -231,12 +231,12 @@ describe("actions view", () => {
       "const $key = { id: parsed.id };",
       // a seam that wants the changes reads the row first, so `before` is never null on a destroy (M6 ruling 4)
       "const $before = $wantsChanges(options.seams) ? await tx.selectByKeyForUpdate(tables.article, $key) : undefined;",
-      'if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError("Article", $key);',
+      'if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError("blog.Article", $key);',
       "// data layer",
-      'if (!(await tx.deleteByKey(tables.article, $key))) throw new $NotFoundError("Article", $key);',
+      'if (!(await tx.deleteByKey(tables.article, $key))) throw new $NotFoundError("blog.Article", $key);',
       "$noteWrite(tx);",
       "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $recordWrite(tx, options.seams, { entity: "Article", action: "destroy" }, $before ?? null, null, parsed, context);',
+      'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "destroy" }, $before ?? null, null, parsed, context);',
     ]);
     expect(destroy.notRun).toBeNull();
   });
@@ -254,7 +254,7 @@ describe("build errors", () => {
     expect(error.diagnostic).toEqual({
       severity: "error",
       code: "MESH_EMIT_UNFILLABLE",
-      message: "Create action :create of :Article cannot fill `title`: it is not accepted, has no default and is not nullable",
+      message: "Create action :create of blog.Article cannot fill `title`: it is not accepted, has no default and is not nullable",
       position: expect.objectContaining({ file: "blog/article.mesh.mx", line: 6 }),
       fix: "Accept &title in the action's input, give it a default, make it nullable or fill it with a `set` step",
     });
@@ -263,7 +263,7 @@ describe("build errors", () => {
   test("MESH_EMIT_UNFILLABLE for a required belongs-to that is not accepted", () => {
     const source = article.replace("        &author\n      do", "      do");
     const error = emitErrorOf(() => viewOf("Article", inputOf(documentOf({ "blog/author.mesh.mx": author, "blog/article.mesh.mx": source }))));
-    expect(error.diagnostic.message).toBe("Create action :create of :Article cannot fill `authorId`: it is not accepted, has no default and is not nullable");
+    expect(error.diagnostic.message).toBe("Create action :create of blog.Article cannot fill `authorId`: it is not accepted, has no default and is not nullable");
     expect(error.diagnostic.position.line).toBe(14);
   });
 
@@ -285,7 +285,7 @@ describe("build errors", () => {
     const twice = { "x/ab.mesh.mx": a, "y/ab.mesh.mx": a };
     const error = emitErrorOf(() => actionsGenerator.views(inputOf(documentOf(twice))));
     expect(error.diagnostic.code).toBe("MESH_EMIT_NAME");
-    expect(error.diagnostic.message).toBe("Entity :Ab's binding and Entity :Ab's binding (x/ab.mesh.mx:1:1) both become the top-level name `bindAb`");
+    expect(error.diagnostic.message).toBe("Entity y.Ab's binding and Entity x.Ab's binding (x/ab.mesh.mx:1:1) both become the top-level name `bindAb`");
     expect(error.diagnostic.position.file).toBe("y/ab.mesh.mx");
   });
 
@@ -294,7 +294,7 @@ describe("build errors", () => {
     const two = "entity :ForUserItem\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const three = "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n";
     const error = emitErrorOf(() => actionsGenerator.views(inputOf(documentOf({ "a/item.mesh.mx": one, "b/user-item.mesh.mx": three, "c/x.mesh.mx": two }))));
-    expect(error.diagnostic.message).toBe("Action :for of :UserItem and Action :forUser of :Item (a/item.mesh.mx:5:5) both become the top-level name `forUserItem`");
+    expect(error.diagnostic.message).toBe("Action :for of b.UserItem and Action :forUser of a.Item (a/item.mesh.mx:5:5) both become the top-level name `forUserItem`");
     expect(error.diagnostic.position).toMatchObject({ file: "b/user-item.mesh.mx", line: 5 });
   });
 
@@ -379,7 +379,7 @@ describe("explain", () => {
   const article_ = () => documentOf().entities.find((entity) => entity.name === "Article")!;
   test("an update is a read then a write, and lists the always check, its checks and its steps in order", () => {
     expect(explainAction(article_(), "publish")!.join("\n")).toBe([
-      "Article.publish (update)",
+      "blog.Article#publish (update)",
       "  strategy     read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it",
       "  input        none",
       "  policies     :everyone",
@@ -451,7 +451,7 @@ describe("explain", () => {
     // The count is taken after the locked read and before any function runs, and checked just before the write.
     expect(at("const $writes = $writeCount(tx);")).toBeGreaterThan(at("const $before = await tx.selectByKeyForUpdate"));
     expect(at("const $writes = $writeCount(tx);")).toBeLessThan(at("const $self = "));
-    expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.article, $key, $before, "Article.rename");');
+    expect(rename[at("const $stored = await tx.updateByKey(") - 1]).toBe('await $checkUnchanged(tx, $writes, tables.article, $key, $before, "blog.Article#rename");');
     expect(rename[at("const $stored = ") + 2]).toBe("$noteWrite(tx);");
     // The row is read again after the after-write steps, and that is what the call returns.
     expect(at("const $result = await tx.selectByKey(tables.article, ")).toBeGreaterThan(at("const $stored = "));
@@ -467,7 +467,7 @@ describe("explain", () => {
     expect(plain.some((line) => line.startsWith("const $result = await tx.selectByKey("))).toBe(true);
   });
   test("an auto action is explained and an unknown action is undefined", () => {
-    expect(explainAction(article_(), "destroy")![0]).toBe("Article.destroy (destroy)");
+    expect(explainAction(article_(), "destroy")![0]).toBe("blog.Article#destroy (destroy)");
     expect(explainAction(article_(), "nope")).toBeUndefined();
   });
 });

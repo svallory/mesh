@@ -84,7 +84,7 @@ export function bindCollaboratorReads(layer: $DataLayer, options: $BindOptions =
             : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Collaborator", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "identity.Collaborator", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -116,7 +116,7 @@ export function bindCollaborator(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Collaborator", "register", [
+      const $policies = $authorizer("identity.Collaborator", "register", [
         {
           name: "isMember",
           when: null,
@@ -147,7 +147,7 @@ export function bindCollaborator(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Collaborator.register"),
+            input: $readOnlyRecord(parsed, "identity.Collaborator#register"),
             actor: $actor,
             context: $context,
           },
@@ -157,7 +157,7 @@ export function bindCollaborator(
       return $runAction(
         layer,
         options.seams,
-        { entity: "Collaborator", action: "register" },
+        { entity: "identity.Collaborator", action: "register" },
         parsed,
         context,
         async (tx) => {
@@ -170,17 +170,17 @@ export function bindCollaborator(
           };
           const $record: $Row = { ...$changes, kind: null, name: null };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Collaborator", $record, "action function"),
-            "Collaborator.register",
+            $guarded($loadPlan, "identity.Collaborator", $record, "action function"),
+            "identity.Collaborator#register",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Collaborator.register"),
+              input: $readOnlyRecord(parsed, "identity.Collaborator#register"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Collaborator.register", $clock),
+              ...$composed(compose, tx, context, "identity.Collaborator#register", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<RegisterCollaboratorInput>;
@@ -207,7 +207,7 @@ export function bindCollaborator(
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Collaborator", action: "register" },
+            { entity: "identity.Collaborator", action: "register" },
             null,
             $stored,
             parsed,
@@ -228,7 +228,7 @@ export function bindCollaborator(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Collaborator", "update", [
+      const $policies = $authorizer("identity.Collaborator", "update", [
         {
           name: "isMember",
           when: null,
@@ -259,7 +259,7 @@ export function bindCollaborator(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Collaborator.update"),
+            input: $readOnlyRecord(parsed, "identity.Collaborator#update"),
             actor: $actor,
             context: $context,
           },
@@ -269,7 +269,7 @@ export function bindCollaborator(
       return $runAction(
         layer,
         options.seams,
-        { entity: "Collaborator", action: "update" },
+        { entity: "identity.Collaborator", action: "update" },
         parsed,
         context,
         async (tx) => {
@@ -277,25 +277,25 @@ export function bindCollaborator(
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
-          if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
+          if ($before === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Collaborator", $record, "action function"),
-            "Collaborator.update",
+            $guarded($loadPlan, "identity.Collaborator", $record, "action function"),
+            "identity.Collaborator#update",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Collaborator.update"),
+              input: $readOnlyRecord(parsed, "identity.Collaborator#update"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Collaborator", $before, "before"),
-                "Collaborator.update",
+                $guarded($loadPlan, "identity.Collaborator", $before, "before"),
+                "identity.Collaborator#update",
               ) as unknown as Collaborator,
-              ...$composed(compose, tx, context, "Collaborator.update", $clock),
+              ...$composed(compose, tx, context, "identity.Collaborator#update", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<UpdateCollaboratorInput>;
@@ -353,16 +353,16 @@ export function bindCollaborator(
             tables.collaborator,
             $key,
             $before,
-            "Collaborator.update",
+            "identity.Collaborator#update",
           );
           const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Collaborator", $key);
+          if ($stored === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Collaborator", action: "update" },
+            { entity: "identity.Collaborator", action: "update" },
             $before,
             $stored,
             parsed,
@@ -383,7 +383,7 @@ export function bindCollaborator(
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Collaborator", "retire", [
+      const $policies = $authorizer("identity.Collaborator", "retire", [
         {
           name: "isMember",
           when: null,
@@ -414,7 +414,7 @@ export function bindCollaborator(
         layer,
         $scope(
           {
-            input: $readOnlyRecord(parsed, "Collaborator.retire"),
+            input: $readOnlyRecord(parsed, "identity.Collaborator#retire"),
             actor: $actor,
             context: $context,
           },
@@ -424,7 +424,7 @@ export function bindCollaborator(
       return $runAction(
         layer,
         options.seams,
-        { entity: "Collaborator", action: "retire" },
+        { entity: "identity.Collaborator", action: "retire" },
         parsed,
         context,
         async (tx) => {
@@ -432,25 +432,25 @@ export function bindCollaborator(
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.collaborator, $key);
-          if ($before === undefined) throw new $NotFoundError("Collaborator", $key);
+          if ($before === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Collaborator", $record, "action function"),
-            "Collaborator.retire",
+            $guarded($loadPlan, "identity.Collaborator", $record, "action function"),
+            "identity.Collaborator#retire",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Collaborator.retire"),
+              input: $readOnlyRecord(parsed, "identity.Collaborator#retire"),
               actor: $actor,
               context: $context,
               before: $readOnlyRecord(
-                $guarded($loadPlan, "Collaborator", $before, "before"),
-                "Collaborator.retire",
+                $guarded($loadPlan, "identity.Collaborator", $before, "before"),
+                "identity.Collaborator#retire",
               ) as unknown as Collaborator,
-              ...$composed(compose, tx, context, "Collaborator.retire", $clock),
+              ...$composed(compose, tx, context, "identity.Collaborator#retire", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RetireCollaboratorInput>;
@@ -500,16 +500,16 @@ export function bindCollaborator(
             tables.collaborator,
             $key,
             $before,
-            "Collaborator.retire",
+            "identity.Collaborator#retire",
           );
           const $stored = await tx.updateByKey(tables.collaborator, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Collaborator", $key);
+          if ($stored === undefined) throw new $NotFoundError("identity.Collaborator", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Collaborator", action: "retire" },
+            { entity: "identity.Collaborator", action: "retire" },
             $before,
             $stored,
             parsed,
@@ -530,7 +530,7 @@ export function bindCollaborator(
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readCollaboratorInput, input);
       if (
-        !(await $authorizer("Collaborator", "read", [
+        !(await $authorizer("identity.Collaborator", "read", [
           {
             name: "membersRead",
             when: null,
@@ -547,7 +547,7 @@ export function bindCollaborator(
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Collaborator.read"),
+              input: $readOnlyRecord($parsed as never, "identity.Collaborator#read"),
               actor: $actor,
               context: $context,
             },

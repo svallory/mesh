@@ -73,7 +73,7 @@ export function bindReviewReads(layer: $DataLayer, options: $BindOptions = {}) {
           return $rows as unknown as L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Review", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "work.Review", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -98,7 +98,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Review", "accept", [
+      const $policies = $authorizer("work.Review", "accept", [
         {
           name: "isMember",
           when: null,
@@ -141,14 +141,18 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Review.accept"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Review#accept"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Review", action: "accept" },
+        { entity: "work.Review", action: "accept" },
         parsed,
         context,
         async (tx) => {
@@ -169,17 +173,17 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Review", $record, "action function"),
-            "Review.accept",
+            $guarded($loadPlan, "work.Review", $record, "action function"),
+            "work.Review#accept",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Review.accept"),
+              input: $readOnlyRecord(parsed, "work.Review#accept"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Review.accept", $clock),
+              ...$composed(compose, tx, context, "work.Review#accept", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<AcceptReviewInput>;
@@ -225,7 +229,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
               );
             $changes.reviewerId = $record.reviewerId = $value;
           }
-          await $loadInto($loadPlan, "Review", tx, $record, ["submission"], $load);
+          await $loadInto($loadPlan, "work.Review", tx, $record, ["submission"], $load);
           {
             const $value = await $expressions["accept.step.0.set.ruleApplied"]($s);
             if ($value === undefined || $value === null)
@@ -234,7 +238,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
               );
             $changes.ruleApplied = $record.ruleApplied = $value;
           }
-          $unloadFrom($loadPlan, "Review", $record);
+          $unloadFrom($loadPlan, "work.Review", $record);
           // data layer
           const $stored = await tx.insert(tables.review, $changes);
           $noteWrite(tx);
@@ -242,7 +246,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Review", action: "accept" },
+            { entity: "work.Review", action: "accept" },
             null,
             $stored,
             parsed,
@@ -252,8 +256,8 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Review", $written, "action function"),
-              "Review.accept",
+              $guarded($loadPlan, "work.Review", $written, "action function"),
+              "work.Review#accept",
             ),
           });
           await $expressions["accept.step.1.run"]($after);
@@ -261,7 +265,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           const $result = await tx.selectByKey(tables.review, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Review.accept: a step after the write deleted the row this action returns",
+              "work.Review#accept: a step after the write deleted the row this action returns",
             );
           return $result as Review;
         },
@@ -275,7 +279,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Review", "return", [
+      const $policies = $authorizer("work.Review", "return", [
         {
           name: "isMember",
           when: null,
@@ -318,14 +322,18 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Review.return"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "work.Review#return"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Review", action: "return" },
+        { entity: "work.Review", action: "return" },
         parsed,
         context,
         async (tx) => {
@@ -346,17 +354,17 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           };
           const $load = { actor: $actor, context: $context, clock: $clock };
           const $self = $readOnlyRecord(
-            $guarded($loadPlan, "Review", $record, "action function"),
-            "Review.return",
+            $guarded($loadPlan, "work.Review", $record, "action function"),
+            "work.Review#return",
           );
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Review.return"),
+              input: $readOnlyRecord(parsed, "work.Review#return"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Review.return", $clock),
+              ...$composed(compose, tx, context, "work.Review#return", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<ReturnReviewInput>;
@@ -398,7 +406,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
               );
             $changes.reviewerId = $record.reviewerId = $value;
           }
-          await $loadInto($loadPlan, "Review", tx, $record, ["submission"], $load);
+          await $loadInto($loadPlan, "work.Review", tx, $record, ["submission"], $load);
           {
             const $value = await $expressions["return.step.0.set.ruleApplied"]($s);
             if ($value === undefined || $value === null)
@@ -407,7 +415,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
               );
             $changes.ruleApplied = $record.ruleApplied = $value;
           }
-          $unloadFrom($loadPlan, "Review", $record);
+          $unloadFrom($loadPlan, "work.Review", $record);
           // data layer
           const $stored = await tx.insert(tables.review, $changes);
           $noteWrite(tx);
@@ -415,7 +423,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Review", action: "return" },
+            { entity: "work.Review", action: "return" },
             null,
             $stored,
             parsed,
@@ -425,8 +433,8 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           const $written: $Row = { ...$stored };
           const $after = $rescope($s, {
             self: $readOnlyRecord(
-              $guarded($loadPlan, "Review", $written, "action function"),
-              "Review.return",
+              $guarded($loadPlan, "work.Review", $written, "action function"),
+              "work.Review#return",
             ),
           });
           await $expressions["return.step.1.run"]($after);
@@ -434,7 +442,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           const $result = await tx.selectByKey(tables.review, { id: $stored.id });
           if ($result === undefined)
             throw new $FrameworkError(
-              "Review.return: a step after the write deleted the row this action returns",
+              "work.Review#return: a step after the write deleted the row this action returns",
             );
           return $result as Review;
         },
@@ -451,7 +459,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readReviewInput, input);
       if (
-        !(await $authorizer("Review", "read", [
+        !(await $authorizer("work.Review", "read", [
           {
             name: "membersRead",
             when: null,
@@ -468,7 +476,7 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Review.read"),
+              input: $readOnlyRecord($parsed as never, "work.Review#read"),
               actor: $actor,
               context: $context,
             },

@@ -88,7 +88,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Workspace", "create", [
+      const $policies = $authorizer("identity.Workspace", "create", [
         {
           name: "isMember",
           when: null,
@@ -118,14 +118,18 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Workspace.create"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "identity.Workspace#create"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Workspace", action: "create" },
+        { entity: "identity.Workspace", action: "create" },
         parsed,
         context,
         async (tx) => {
@@ -139,15 +143,15 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
             version: 1,
           };
           const $record: $Row = { ...$changes };
-          const $self = $readOnlyRecord($record, "Workspace.create");
+          const $self = $readOnlyRecord($record, "identity.Workspace#create");
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Workspace.create"),
+              input: $readOnlyRecord(parsed, "identity.Workspace#create"),
               actor: $actor,
               context: $context,
               before: null,
-              ...$composed(compose, tx, context, "Workspace.create", $clock),
+              ...$composed(compose, tx, context, "identity.Workspace#create", $clock),
             },
             { clock: $clock },
           ) as unknown as $Scope<CreateWorkspaceInput>;
@@ -160,7 +164,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Workspace", action: "create" },
+            { entity: "identity.Workspace", action: "create" },
             null,
             $stored,
             parsed,
@@ -178,7 +182,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Workspace", "rename", [
+      const $policies = $authorizer("identity.Workspace", "rename", [
         {
           name: "isMember",
           when: null,
@@ -208,14 +212,18 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Workspace.rename"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "identity.Workspace#rename"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Workspace", action: "rename" },
+        { entity: "identity.Workspace", action: "rename" },
         parsed,
         context,
         async (tx) => {
@@ -223,19 +231,19 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
           const $key = { id: parsed.id };
           const $before = await tx.selectByKeyForUpdate(tables.workspace, $key);
-          if ($before === undefined) throw new $NotFoundError("Workspace", $key);
+          if ($before === undefined) throw new $NotFoundError("identity.Workspace", $key);
           const $changes: $Row = {};
           const $record: $Row = { ...$before };
           const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord($record, "Workspace.rename");
+          const $self = $readOnlyRecord($record, "identity.Workspace#rename");
           const $s = $scope(
             {
               self: $self,
-              input: $readOnlyRecord(parsed, "Workspace.rename"),
+              input: $readOnlyRecord(parsed, "identity.Workspace#rename"),
               actor: $actor,
               context: $context,
-              before: $readOnlyRecord($before, "Workspace.rename") as unknown as Workspace,
-              ...$composed(compose, tx, context, "Workspace.rename", $clock),
+              before: $readOnlyRecord($before, "identity.Workspace#rename") as unknown as Workspace,
+              ...$composed(compose, tx, context, "identity.Workspace#rename", $clock),
             },
             { clock: $clock },
           ) as unknown as $StoredScope<RenameWorkspaceInput>;
@@ -273,15 +281,22 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           }
           // data layer
           // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.workspace, $key, $before, "Workspace.rename");
+          await $checkUnchanged(
+            tx,
+            $writes,
+            tables.workspace,
+            $key,
+            $before,
+            "identity.Workspace#rename",
+          );
           const $stored = await tx.updateByKey(tables.workspace, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("Workspace", $key);
+          if ($stored === undefined) throw new $NotFoundError("identity.Workspace", $key);
           $noteWrite(tx);
           // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Workspace", action: "rename" },
+            { entity: "identity.Workspace", action: "rename" },
             $before,
             $stored,
             parsed,
@@ -299,7 +314,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readWorkspaceInput, input);
       if (
-        !(await $authorizer("Workspace", "read", [
+        !(await $authorizer("identity.Workspace", "read", [
           {
             name: "membersRead",
             when: null,
@@ -316,7 +331,7 @@ export function bindWorkspace(layer: $DataLayer, options: $BindOptions = {}, com
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Workspace.read"),
+              input: $readOnlyRecord($parsed as never, "identity.Workspace#read"),
               actor: $actor,
               context: $context,
             },

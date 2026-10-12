@@ -60,7 +60,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
           return $rows as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
         const $context = (context ?? {}) as unknown as Record<string, unknown>;
         const $clock = clock ?? $pinClock(options.clock);
-        return (await $loadRows($loadPlan, "Event", tx, $rows, parsed.load, {
+        return (await $loadRows($loadPlan, "audit.Event", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,
           clock: $clock,
@@ -85,7 +85,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
-      const $policies = $authorizer("Event", "record", [
+      const $policies = $authorizer("audit.Event", "record", [
         {
           name: "internal",
           when: null,
@@ -102,14 +102,18 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       await $policies.before(
         layer,
         $scope(
-          { input: $readOnlyRecord(parsed, "Event.record"), actor: $actor, context: $context },
+          {
+            input: $readOnlyRecord(parsed, "audit.Event#record"),
+            actor: $actor,
+            context: $context,
+          },
           { clock: $clock },
         ),
       );
       return $runAction(
         layer,
         options.seams,
-        { entity: "Event", action: "record" },
+        { entity: "audit.Event", action: "record" },
         parsed,
         context,
         async (tx) => {
@@ -139,7 +143,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
           await $recordWrite(
             tx,
             options.seams,
-            { entity: "Event", action: "record" },
+            { entity: "audit.Event", action: "record" },
             null,
             $stored,
             parsed,
@@ -160,7 +164,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readEventInput, input);
       if (
-        !(await $authorizer("Event", "read", [
+        !(await $authorizer("audit.Event", "read", [
           {
             name: "membersRead",
             when: null,
@@ -177,7 +181,7 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
           layer,
           $scope(
             {
-              input: $readOnlyRecord($parsed as never, "Event.read"),
+              input: $readOnlyRecord($parsed as never, "audit.Event#read"),
               actor: $actor,
               context: $context,
             },
