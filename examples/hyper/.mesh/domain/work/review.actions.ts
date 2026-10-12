@@ -9,6 +9,7 @@ import {
   castInput as $castInput,
   checkScope as $checkScope,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -31,7 +32,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Review,
+  Review as $Record,
   ReviewWith,
   ReviewTxWith,
   ReviewLoadNames,
@@ -495,3 +496,27 @@ export function bindReview(layer: $DataLayer, options: $BindOptions = {}, compos
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Review.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("work.Review", bindReview, bindReviewReads, ($call) => ({
+  accept(input: AcceptReviewInput, ...context: $ContextArgument): Promise<Review> {
+    return $call("accept", input, context);
+  },
+
+  return(input: ReturnReviewInput, ...context: $ContextArgument): Promise<Review> {
+    return $call("return", input, context);
+  },
+
+  read<const L extends readonly (keyof ReviewLoadable)[] = readonly []>(
+    input: Omit<ReadReviewInput, "load"> & ReviewLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? ReviewWith<ReviewLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Review };
+/** The record type, under the entity value's name. */
+export type Review = $Record;

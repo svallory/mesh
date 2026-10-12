@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createSchema, sqlite, type SQLiteLayer } from "@meshfw/data-sqlite";
 import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type Change, type DataLayer, type DataOperations, type Seams } from "@meshfw/runtime";
 import { bind, connect, disconnect, tables } from "#mesh";
-import { createPost, createUser, readPost, type PostFilter, type PostSort } from "#mesh/domain/blog";
+import { Comment, Post, User, type PostFilter, type PostSort } from "#mesh/domain/blog";
 import config from "../mesh.config";
 import { alice } from "../src/context";
 
@@ -22,21 +22,23 @@ async function fresh() {
 test("acceptance 1: create, read, update, destroy, and a write after destroy is not found", async () => {
   const { db, blog } = await fresh();
   try {
-    const author = await blog.createUser({ name: "Alice" }, context);
-    const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-    expect(post).toMatchObject({ title: "Hello", body: null, views: 0, price: 0, featured: false, state: "draft", authorId: author.id });
-    expect(await blog.readPost({}, context)).toEqual([post]);
+    await blog.run(async () => {
+      const author = await User.create({ name: "Alice" }, context);
+      const post = await Post.create({ title: "Hello", author: author.id }, context);
+      expect(post).toMatchObject({ title: "Hello", body: null, views: 0, price: 0, featured: false, state: "draft", authorId: author.id });
+      expect(await Post.read({}, context)).toEqual([post]);
 
-    const published = await blog.publishPost({ id: post.id }, as(author));
-    expect(published.state).toBe("published");
-    expect(published.insertedAt).toEqual(post.insertedAt);
+      const published = await Post.publish({ id: post.id }, as(author));
+      expect(published.state).toBe("published");
+      expect(published.insertedAt).toEqual(post.insertedAt);
 
-    await blog.destroyPost({ id: post.id }, as(author));
-    expect(await blog.readPost({}, context)).toEqual([]);
-    // Not found comes before forbidden (POL-18): `context` is not the author, and the row is gone.
-    await expect(blog.publishPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
-    await expect(blog.destroyPost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
-    await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
+      await Post.destroy({ id: post.id }, as(author));
+      expect(await Post.read({}, context)).toEqual([]);
+      // Not found comes before forbidden (POL-18): `context` is not the author, and the row is gone.
+      await expect(Post.publish({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(Post.destroy({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(Post.archive({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
+    });
   } finally { await db.close(); }
 });
 
@@ -62,15 +64,17 @@ describe("a destroy the :owner policy covers reads the row once under the lock, 
     const counter = { locked: 0 };
     const blog = bind(counting(db, counter), { seams });
     try {
-      const author = await blog.createUser({ name: "Alice" }, context);
-      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-      const before = counter.locked;
-      await blog.destroyPost({ id: post.id }, as(author));
-      const first = counter.locked - before;
-      const gone = await blog.destroyPost({ id: post.id }, as(author)).catch((cause: unknown) => cause);
-      expect(gone).toBeInstanceOf(NotFoundError);
-      // two destroys: the first of a row that is there, the second of one that is not
-      return { locked: counter.locked - before, first, post };
+      return await blog.run(async () => {
+        const author = await User.create({ name: "Alice" }, context);
+        const post = await Post.create({ title: "Hello", author: author.id }, context);
+        const before = counter.locked;
+        await Post.destroy({ id: post.id }, as(author));
+        const first = counter.locked - before;
+        const gone = await Post.destroy({ id: post.id }, as(author)).catch((cause: unknown) => cause);
+        expect(gone).toBeInstanceOf(NotFoundError);
+        // two destroys: the first of a row that is there, the second of one that is not
+        return { locked: counter.locked - before, first, post };
+      });
     } finally { await db.close(); }
   };
 
@@ -95,68 +99,80 @@ describe("a destroy the :owner policy covers reads the row once under the lock, 
 test("a create fills timestamps from one clock reading, and an update moves only updatedAt", async () => {
   const { db, blog } = await fresh();
   try {
-    const author = await blog.createUser({ name: "Alice" }, context);
-    const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-    expect(post.insertedAt).toBeInstanceOf(Date);
-    expect(post.insertedAt.getTime()).toBe(post.updatedAt.getTime());
-    await Bun.sleep(5);
-    const published = await blog.publishPost({ id: post.id }, as(author));
-    expect(published.insertedAt.getTime()).toBe(post.insertedAt.getTime());
-    expect(published.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime());
+    await blog.run(async () => {
+      const author = await User.create({ name: "Alice" }, context);
+      const post = await Post.create({ title: "Hello", author: author.id }, context);
+      expect(post.insertedAt).toBeInstanceOf(Date);
+      expect(post.insertedAt.getTime()).toBe(post.updatedAt.getTime());
+      await Bun.sleep(5);
+      const published = await Post.publish({ id: post.id }, as(author));
+      expect(published.insertedAt.getTime()).toBe(post.insertedAt.getTime());
+      expect(published.updatedAt.getTime()).toBeGreaterThan(post.updatedAt.getTime());
+    });
   } finally { await db.close(); }
 });
 
 test("acceptance 2: a field not in the action's input is rejected, and nothing is written", async () => {
   const { db, blog } = await fresh();
   try {
-    const author = await blog.createUser({ name: "Alice" }, context);
-    // @ts-expect-error `state` is not in createPost's input
-    const call = blog.createPost({ title: "Hello", author: author.id, state: "published" }, context);
-    await expect(call).rejects.toBeInstanceOf(InvalidInputError);
-    expect(await blog.readPost({}, context)).toEqual([]);
+    await blog.run(async () => {
+      const author = await User.create({ name: "Alice" }, context);
+      // @ts-expect-error `state` is not in Post.create's input
+      const call = Post.create({ title: "Hello", author: author.id, state: "published" }, context);
+      await expect(call).rejects.toBeInstanceOf(InvalidInputError);
+      expect(await Post.read({}, context)).toEqual([]);
+    });
   } finally { await db.close(); }
 });
 
 test("acceptance 3: a failing validation's first frame outside node_modules and Mesh's packages is the generated action", async () => {
   const { db, blog } = await fresh();
   try {
-    let caught: unknown;
-    try { await blog.createPost({ title: "", author: alice.id }, context); }
-    catch (error) { caught = error; }
-    expect(caught).toBeInstanceOf(InvalidInputError);
-    const frames = (caught as Error).stack!.split("\n").filter((line) => line.trimStart().startsWith("at "));
-    const packages = resolve(import.meta.dir, "../../../packages");
-    const first = frames.find((frame) => !frame.includes("node_modules") && !frame.includes(packages));
-    expect(first).toContain(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"));
+    await blog.run(async () => {
+      let caught: unknown;
+      try { await Post.create({ title: "", author: alice.id }, context); }
+      catch (error) { caught = error; }
+      expect(caught).toBeInstanceOf(InvalidInputError);
+      const frames = (caught as Error).stack!.split("\n").filter((line) => line.trimStart().startsWith("at "));
+      const packages = resolve(import.meta.dir, "../../../packages");
+      const first = frames.find((frame) => !frame.includes("node_modules") && !frame.includes(packages));
+      expect(first).toContain(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"));
+    });
   } finally { await db.close(); }
 });
 
-test("a constant set is applied: publishPost sets state to published", async () => {
+test("a constant set is applied: Post.publish sets state to published", async () => {
   const { db, blog } = await fresh();
   try {
-    const author = await blog.createUser({ name: "Alice" }, context);
-    const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-    await blog.publishPost({ id: post.id }, as(author));
-    expect((await blog.readPost({}, context))[0]?.state).toBe("published");
+    await blog.run(async () => {
+      const author = await User.create({ name: "Alice" }, context);
+      const post = await Post.create({ title: "Hello", author: author.id }, context);
+      await Post.publish({ id: post.id }, as(author));
+      expect((await Post.read({}, context))[0]?.state).toBe("published");
+    });
   } finally { await db.close(); }
 });
 
 test("a read with filter and sort throws the M4 FrameworkError instead of returning unfiltered rows", async () => {
   const { db, blog } = await fresh();
   try {
-    await expect(blog.publishedPost({}, context)).rejects.toThrow(
-      new FrameworkError("publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10"));
+    await blog.run(async () => {
+      await expect(Post.published({}, context)).rejects.toThrow(
+        new FrameworkError("publishedPost cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10"));
+    });
   } finally { await db.close(); }
 });
 
 /** A blog with one author and the titles given, created in order; `body` is set on every other post. */
 async function seeded(titles: string[]) {
   const world = await fresh();
-  const author = await world.blog.createUser({ name: "Alice" }, context);
-  const posts = [];
-  for (const [index, title] of titles.entries())
-    posts.push(await world.blog.createPost({ title, author: author.id, ...(index % 2 === 0 ? { body: `body ${title}` } : {}) }, context));
-  return { ...world, author, posts };
+  return world.blog.run(async () => {
+    const author = await User.create({ name: "Alice" }, context);
+    const posts = [];
+    for (const [index, title] of titles.entries())
+      posts.push(await Post.create({ title, author: author.id, ...(index % 2 === 0 ? { body: `body ${title}` } : {}) }, context));
+    return { ...world, author, posts };
+  });
 }
 const titlesOf = (posts: { title: string }[]) => posts.map((post) => post.title);
 
@@ -164,82 +180,90 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
   test("only the author publishes, archives or destroys a post; anyone else gets ForbiddenError and nothing is written", async () => {
     const { db, blog } = await fresh();
     try {
-      const author = await blog.createUser({ name: "Alice" }, context);
-      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-      const error = await blog.publishPost({ id: post.id }, context).catch((cause: unknown) => cause);
-      expect(error).toBeInstanceOf(ForbiddenError);
-      expect(error).toMatchObject({ code: "forbidden", entity: "blog.Post", action: "publish", policies: ["owner"], message: "blog.Post#publish is forbidden by policy :owner" });
-      // The breakdown is plain data: it survives JSON unchanged.
-      const breakdown = (error as ForbiddenError).breakdown;
-      expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
-      expect(JSON.parse(JSON.stringify(breakdown))).toEqual(breakdown);
-      await expect(blog.archivePost({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(blog.destroyPost({ id: post.id }, context)).rejects.toMatchObject({ code: "forbidden", policies: ["owner"] });
-      expect(await blog.readPost({}, context)).toEqual([post]);
-      // A post that does not exist is not found, whoever asks (POL-18): the row is read before the policy that reads it.
-      await expect(blog.publishPost({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
-      await expect(blog.destroyPost({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
+      await blog.run(async () => {
+        const author = await User.create({ name: "Alice" }, context);
+        const post = await Post.create({ title: "Hello", author: author.id }, context);
+        const error = await Post.publish({ id: post.id }, context).catch((cause: unknown) => cause);
+        expect(error).toBeInstanceOf(ForbiddenError);
+        expect(error).toMatchObject({ code: "forbidden", entity: "blog.Post", action: "publish", policies: ["owner"], message: "blog.Post#publish is forbidden by policy :owner" });
+        // The breakdown is plain data: it survives JSON unchanged.
+        const breakdown = (error as ForbiddenError).breakdown;
+        expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
+        expect(JSON.parse(JSON.stringify(breakdown))).toEqual(breakdown);
+        await expect(Post.archive({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
+        await expect(Post.destroy({ id: post.id }, context)).rejects.toMatchObject({ code: "forbidden", policies: ["owner"] });
+        expect(await Post.read({}, context)).toEqual([post]);
+        // A post that does not exist is not found, whoever asks (POL-18): the row is read before the policy that reads it.
+        await expect(Post.publish({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
+        await expect(Post.destroy({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
+      });
     } finally { await db.close(); }
   });
 
   test("the policy runs before validate: a stranger is told they may not publish, not that the title is missing", async () => {
     const { db, blog } = await fresh();
     try {
-      const author = await blog.createUser({ name: "Alice" }, context);
-      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-      // A title `titlePresent` rejects, which no create can store (`min=1`): written past the actions.
-      await db.transaction((tx) => tx.updateByKey(tables.posts, { id: post.id }, { title: "" }));
-      const other = await blog.createUser({ name: "Bob" }, context);
-      await expect(blog.publishPost({ id: post.id }, as(other))).rejects.toBeInstanceOf(ForbiddenError);
-      // The author passes the policy and meets validate.
-      await expect(blog.publishPost({ id: post.id }, as(author))).rejects.toMatchObject({ issues: [expect.objectContaining({ code: "title_required" })] });
-      expect((await blog.readPost({}, context))[0]).toMatchObject({ title: "", state: "draft" });
+      await blog.run(async () => {
+        const author = await User.create({ name: "Alice" }, context);
+        const post = await Post.create({ title: "Hello", author: author.id }, context);
+        // A title `titlePresent` rejects, which no create can store (`min=1`): written past the actions.
+        await db.transaction((tx) => tx.updateByKey(tables.posts, { id: post.id }, { title: "" }));
+        const other = await User.create({ name: "Bob" }, context);
+        await expect(Post.publish({ id: post.id }, as(other))).rejects.toBeInstanceOf(ForbiddenError);
+        // The author passes the policy and meets validate.
+        await expect(Post.publish({ id: post.id }, as(author))).rejects.toMatchObject({ issues: [expect.objectContaining({ code: "title_required" })] });
+        expect((await Post.read({}, context))[0]).toMatchObject({ title: "", state: "draft" });
+      });
     } finally { await db.close(); }
   });
 
   test("what a caller loads runs the read policies of the entity it reaches (POL-17); through tx nothing is filtered", async () => {
     const { db, blog } = await fresh();
     try {
-      const author = await blog.createUser({ name: "Alice" }, context);
-      const post = await blog.createPost({ title: "Hello", author: author.id }, context);
-      // Comment has no create action: the row is written past the actions.
-      await db.transaction((tx) => tx.insert(tables.comments, { id: crypto.randomUUID(), body: "First", postId: post.id }));
-      const load = ["comments", "author", "commentCount"] as const;
-      // A guest may read posts (`:public`) but not users or comments (`:signedIn`).
-      const guest = { actor: {} } as unknown as typeof context;
-      const [seen] = await blog.readPost({ load }, guest);
-      expect(seen).toMatchObject({ id: post.id, comments: [], author: null, commentCount: 0 });
-      const [signedIn] = await blog.readPost({ load }, context);
-      expect(signedIn).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
-      // Inside a transaction, `tx` runs no policy (ADR-0068): the same guest's read sees everything.
-      const [inside] = await blog.transaction(({ tx }) => tx.readPost({ load }), guest);
-      expect(inside).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
-      // The types say the same: a caller's author may be null, while through `tx` the key always finds it.
-      const typed = (caller: NonNullable<typeof seen>, inTx: NonNullable<typeof inside>): string[] => [
-        // @ts-expect-error a caller's `author` is `User | null`
-        caller.author.name,
-        inTx.author.name,
-      ];
-      void typed;
-      // A write's `load` step gives the caller the result, so it runs the same policies.
-      expect((await blog.publishPost({ id: post.id }, as(author))).comments).toEqual([expect.objectContaining({ body: "First" })]);
+      await blog.run(async () => {
+        const author = await User.create({ name: "Alice" }, context);
+        const post = await Post.create({ title: "Hello", author: author.id }, context);
+        // Comment has no create action: the row is written past the actions.
+        await db.transaction((tx) => tx.insert(tables.comments, { id: crypto.randomUUID(), body: "First", postId: post.id }));
+        const load = ["comments", "author", "commentCount"] as const;
+        // A guest may read posts (`:public`) but not users or comments (`:signedIn`).
+        const guest = { actor: {} } as unknown as typeof context;
+        const [seen] = await Post.read({ load }, guest);
+        expect(seen).toMatchObject({ id: post.id, comments: [], author: null, commentCount: 0 });
+        const [signedIn] = await Post.read({ load }, context);
+        expect(signedIn).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
+        // Inside a transaction, `tx` runs no policy (ADR-0068): the same guest's read sees everything.
+        const [inside] = await blog.transaction(({ tx }) => tx.readPost({ load }), guest);
+        expect(inside).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
+        // The types say the same: a caller's author may be null, while through `tx` the key always finds it.
+        const typed = (caller: NonNullable<typeof seen>, inTx: NonNullable<typeof inside>): string[] => [
+          // @ts-expect-error a caller's `author` is `User | null`
+          caller.author.name,
+          inTx.author.name,
+        ];
+        void typed;
+        // A write's `load` step gives the caller the result, so it runs the same policies.
+        expect((await Post.publish({ id: post.id }, as(author))).comments).toEqual([expect.objectContaining({ body: "First" })]);
+      });
     } finally { await db.close(); }
   });
 
   test("a call whose actor has no id reads every post, may not create a user or a post, and reads no user or comment", async () => {
     const { db, blog } = await fresh();
     try {
-      const author = await blog.createUser({ name: "Alice" }, context);
-      await blog.createPost({ title: "Hello", author: author.id }, context);
-      const anonymous = { actor: {} } as unknown as typeof context;
-      expect(await blog.readPost({}, anonymous)).toHaveLength(1);
-      await expect(blog.createUser({ name: "Eve" }, anonymous)).rejects.toMatchObject({ code: "forbidden", policies: ["signedIn"] });
-      await expect(blog.createPost({ title: "Spam", author: author.id }, anonymous)).rejects.toBeInstanceOf(ForbiddenError);
-      // A read whose policies do not admit the caller gives no rows, never an error.
-      expect(await blog.readUser({}, anonymous)).toEqual([]);
-      expect(await blog.readComment({}, anonymous)).toEqual([]);
-      expect(await blog.readUser({}, context)).toHaveLength(1);
-      expect(await blog.readPost({}, context)).toHaveLength(1);
+      await blog.run(async () => {
+        const author = await User.create({ name: "Alice" }, context);
+        await Post.create({ title: "Hello", author: author.id }, context);
+        const anonymous = { actor: {} } as unknown as typeof context;
+        expect(await Post.read({}, anonymous)).toHaveLength(1);
+        await expect(User.create({ name: "Eve" }, anonymous)).rejects.toMatchObject({ code: "forbidden", policies: ["signedIn"] });
+        await expect(Post.create({ title: "Spam", author: author.id }, anonymous)).rejects.toBeInstanceOf(ForbiddenError);
+        // A read whose policies do not admit the caller gives no rows, never an error.
+        expect(await User.read({}, anonymous)).toEqual([]);
+        expect(await Comment.read({}, anonymous)).toEqual([]);
+        expect(await User.read({}, context)).toHaveLength(1);
+        expect(await Post.read({}, context)).toHaveLength(1);
+      });
     } finally { await db.close(); }
   });
 });
@@ -261,8 +285,10 @@ describe("ids (UUIDv7, filled when Mesh builds the new record, ACT-27)", () => {
     expect(actions).not.toMatch(/randomUUID|^\s+id: (?!\$uuidv7\(\),$)/m);
     const { db, blog, author } = await seeded([]);
     try {
-      // @ts-expect-error the id is not part of createPost's input
-      await expect(blog.createPost({ title: "x", author: author.id, id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      await blog.run(async () => {
+        // @ts-expect-error the id is not part of Post.create's input
+        await expect(Post.create({ title: "x", author: author.id, id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      });
     } finally { await db.close(); }
   });
 });
@@ -279,11 +305,13 @@ describe("json attributes", () => {
     ["null", null],
   ];
   test.each(values)("%s is stored and returned as it was given", async (_name, metadata) => {
-    const { db, blog, author } = await fresh().then(async (world) => ({ ...world, author: await world.blog.createUser({ name: "Alice" }, context) }));
+    const { db, blog, author } = await fresh().then(async (world) => ({ ...world, author: await world.blog.run(() => User.create({ name: "Alice" }, context)) }));
     try {
-      const post = await blog.createPost({ title: "Hello", author: author.id, metadata }, context);
-      expect(post.metadata).toEqual(metadata);
-      expect((await blog.readPost({}, context))[0]!.metadata).toEqual(metadata);
+      await blog.run(async () => {
+        const post = await Post.create({ title: "Hello", author: author.id, metadata }, context);
+        expect(post.metadata).toEqual(metadata);
+        expect((await Post.read({}, context))[0]!.metadata).toEqual(metadata);
+      });
     } finally { await db.close(); }
   });
 
@@ -305,20 +333,24 @@ describe("json attributes", () => {
     ["a symbol", Symbol("x")],
     ["a bigint", 1n],
   ])("%s fails at the validator and nothing is written", async (_name, metadata) => {
-    const { db, blog, author } = await fresh().then(async (world) => ({ ...world, author: await world.blog.createUser({ name: "Alice" }, context) }));
+    const { db, blog, author } = await fresh().then(async (world) => ({ ...world, author: await world.blog.run(() => User.create({ name: "Alice" }, context)) }));
     try {
-      await expect(blog.createPost({ title: "Hello", author: author.id, metadata }, context)).rejects.toBeInstanceOf(InvalidInputError);
-      expect(await blog.readPost({}, context)).toEqual([]);
+      await blog.run(async () => {
+        await expect(Post.create({ title: "Hello", author: author.id, metadata }, context)).rejects.toBeInstanceOf(InvalidInputError);
+        expect(await Post.read({}, context)).toEqual([]);
+      });
     } finally { await db.close(); }
   });
 
   test("a json attribute is not filterable or sortable, in the types or at run time", async () => {
     const { db, blog } = await seeded(["a"]);
     try {
-      // @ts-expect-error metadata is json: not a key of PostFilter
-      await expect(blog.readPost({ filter: { metadata: { eq: "x" } } }, context)).rejects.toBeInstanceOf(InvalidInputError);
-      // @ts-expect-error metadata is json: not a sort key
-      await expect(blog.readPost({ sort: ["metadata"] }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      await blog.run(async () => {
+        // @ts-expect-error metadata is json: not a key of PostFilter
+        await expect(Post.read({ filter: { metadata: { eq: "x" } } }, context)).rejects.toBeInstanceOf(InvalidInputError);
+        // @ts-expect-error metadata is json: not a sort key
+        await expect(Post.read({ sort: ["metadata"] }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      });
     } finally { await db.close(); }
   });
 });
@@ -328,99 +360,113 @@ describe("reads take a filter, sort, limit and offset", () => {
 
   test("no input returns every row in key order, which is creation order", async () => {
     const { db, blog } = await seeded(titles);
-    try { expect(titlesOf(await blog.readPost({}, context))).toEqual(titles); } finally { await db.close(); }
+    try { await blog.run(async () => { expect(titlesOf(await Post.read({}, context))).toEqual(titles); }); } finally { await db.close(); }
   });
 
   test("eq, ne, in and nil", async () => {
     const { db, blog } = await seeded(titles);
     try {
-      expect(titlesOf(await blog.readPost({ filter: { title: { eq: "echo" } } }, context))).toEqual(["echo"]);
-      expect(titlesOf(await blog.readPost({ filter: { title: { ne: "echo" } } }, context))).toEqual(["delta", "alpha", "bravo", "charlie"]);
-      expect(titlesOf(await blog.readPost({ filter: { title: { in: ["bravo", "delta", "nope"] } } }, context))).toEqual(["delta", "bravo"]);
-      expect(await blog.readPost({ filter: { title: { in: [] } } }, context)).toEqual([]);
-      // Posts 0, 2 and 4 have a body.
-      expect(titlesOf(await blog.readPost({ filter: { body: { nil: true } } }, context))).toEqual(["alpha", "bravo"]);
-      expect(titlesOf(await blog.readPost({ filter: { body: { nil: false } } }, context))).toEqual(["delta", "echo", "charlie"]);
-      expect(titlesOf(await blog.readPost({ filter: { body: { eq: null } } }, context))).toEqual(["alpha", "bravo"]);
+      await blog.run(async () => {
+        expect(titlesOf(await Post.read({ filter: { title: { eq: "echo" } } }, context))).toEqual(["echo"]);
+        expect(titlesOf(await Post.read({ filter: { title: { ne: "echo" } } }, context))).toEqual(["delta", "alpha", "bravo", "charlie"]);
+        expect(titlesOf(await Post.read({ filter: { title: { in: ["bravo", "delta", "nope"] } } }, context))).toEqual(["delta", "bravo"]);
+        expect(await Post.read({ filter: { title: { in: [] } } }, context)).toEqual([]);
+        // Posts 0, 2 and 4 have a body.
+        expect(titlesOf(await Post.read({ filter: { body: { nil: true } } }, context))).toEqual(["alpha", "bravo"]);
+        expect(titlesOf(await Post.read({ filter: { body: { nil: false } } }, context))).toEqual(["delta", "echo", "charlie"]);
+        expect(titlesOf(await Post.read({ filter: { body: { eq: null } } }, context))).toEqual(["alpha", "bravo"]);
+      });
     } finally { await db.close(); }
   });
 
   test("lt, lte, gt and gte compare text, numbers and dates", async () => {
     const { db, blog, posts } = await seeded(titles);
     try {
-      expect(titlesOf(await blog.readPost({ filter: { title: { gt: "charlie" } }, sort: ["title"] }, context))).toEqual(["delta", "echo"]);
-      expect(titlesOf(await blog.readPost({ filter: { title: { gte: "charlie", lt: "echo" } }, sort: ["title"] }, context))).toEqual(["charlie", "delta"]);
-      expect(titlesOf(await blog.readPost({ filter: { title: { lte: "alpha" } } }, context))).toEqual(["alpha"]);
-      expect(await blog.readPost({ filter: { views: { gt: 0 } } }, context)).toEqual([]);
-      expect(await blog.readPost({ filter: { views: { eq: 0 } } }, context)).toHaveLength(5);
-      const stamp = posts[0]!.insertedAt;
-      expect(await blog.readPost({ filter: { insertedAt: { gt: new Date(stamp.getTime() + 60_000) } } }, context)).toEqual([]);
-      expect(await blog.readPost({ filter: { insertedAt: { lte: new Date(stamp.getTime() + 60_000) } } }, context)).toHaveLength(5);
+      await blog.run(async () => {
+        expect(titlesOf(await Post.read({ filter: { title: { gt: "charlie" } }, sort: ["title"] }, context))).toEqual(["delta", "echo"]);
+        expect(titlesOf(await Post.read({ filter: { title: { gte: "charlie", lt: "echo" } }, sort: ["title"] }, context))).toEqual(["charlie", "delta"]);
+        expect(titlesOf(await Post.read({ filter: { title: { lte: "alpha" } } }, context))).toEqual(["alpha"]);
+        expect(await Post.read({ filter: { views: { gt: 0 } } }, context)).toEqual([]);
+        expect(await Post.read({ filter: { views: { eq: 0 } } }, context)).toHaveLength(5);
+        const stamp = posts[0]!.insertedAt;
+        expect(await Post.read({ filter: { insertedAt: { gt: new Date(stamp.getTime() + 60_000) } } }, context)).toEqual([]);
+        expect(await Post.read({ filter: { insertedAt: { lte: new Date(stamp.getTime() + 60_000) } } }, context)).toHaveLength(5);
+      });
     } finally { await db.close(); }
   });
 
   test("booleans, enums and the key column of a relationship", async () => {
     const { db, blog, author, posts } = await seeded(titles);
     try {
-      await blog.publishPost({ id: posts[1]!.id }, as(author));
-      expect(titlesOf(await blog.readPost({ filter: { state: { eq: "published" } } }, context))).toEqual(["alpha"]);
-      expect(await blog.readPost({ filter: { featured: { eq: true } } }, context)).toEqual([]);
-      expect(await blog.readPost({ filter: { authorId: { eq: author.id } } }, context)).toHaveLength(5);
-      expect(await blog.readPost({ filter: { authorId: { ne: author.id } } }, context)).toEqual([]);
-      // @ts-expect-error "archived" is not a value of the state enum
-      await expect(blog.readPost({ filter: { state: { eq: "archived" } } }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      await blog.run(async () => {
+        await Post.publish({ id: posts[1]!.id }, as(author));
+        expect(titlesOf(await Post.read({ filter: { state: { eq: "published" } } }, context))).toEqual(["alpha"]);
+        expect(await Post.read({ filter: { featured: { eq: true } } }, context)).toEqual([]);
+        expect(await Post.read({ filter: { authorId: { eq: author.id } } }, context)).toHaveLength(5);
+        expect(await Post.read({ filter: { authorId: { ne: author.id } } }, context)).toEqual([]);
+        // @ts-expect-error "archived" is not a value of the state enum
+        await expect(Post.read({ filter: { state: { eq: "archived" } } }, context)).rejects.toBeInstanceOf(InvalidInputError);
+      });
     } finally { await db.close(); }
   });
 
   test("and, or and nesting", async () => {
     const { db, blog } = await seeded(titles);
     try {
-      const filter = { and: [{ or: [{ title: { eq: "delta" } }, { title: { eq: "bravo" } }] }, { body: { nil: true } }] };
-      expect(titlesOf(await blog.readPost({ filter }, context))).toEqual(["bravo"]);
-      expect(titlesOf(await blog.readPost({ filter: { or: [{ title: { eq: "delta" } }, { body: { nil: true } }] } }, context))).toEqual(["delta", "alpha", "bravo"]);
-      expect(await blog.readPost({ filter: { and: [] } }, context)).toHaveLength(5);
-      expect(await blog.readPost({ filter: { or: [] } }, context)).toEqual([]);
-      expect(await blog.readPost({ filter: {} }, context)).toHaveLength(5);
-      expect(titlesOf(await blog.readPost({ filter: { title: { gt: "a", lt: "c" } } }, context))).toEqual(["alpha", "bravo"]);
+      await blog.run(async () => {
+        const filter = { and: [{ or: [{ title: { eq: "delta" } }, { title: { eq: "bravo" } }] }, { body: { nil: true } }] };
+        expect(titlesOf(await Post.read({ filter }, context))).toEqual(["bravo"]);
+        expect(titlesOf(await Post.read({ filter: { or: [{ title: { eq: "delta" } }, { body: { nil: true } }] } }, context))).toEqual(["delta", "alpha", "bravo"]);
+        expect(await Post.read({ filter: { and: [] } }, context)).toHaveLength(5);
+        expect(await Post.read({ filter: { or: [] } }, context)).toEqual([]);
+        expect(await Post.read({ filter: {} }, context)).toHaveLength(5);
+        expect(titlesOf(await Post.read({ filter: { title: { gt: "a", lt: "c" } } }, context))).toEqual(["alpha", "bravo"]);
+      });
     } finally { await db.close(); }
   });
 
   test("sort ascending, descending, by several keys, with the key as the last tie-break", async () => {
     const { db, blog } = await seeded(titles);
     try {
-      expect(titlesOf(await blog.readPost({ sort: ["title"] }, context))).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
-      expect(titlesOf(await blog.readPost({ sort: ["-title"] }, context))).toEqual(["echo", "delta", "charlie", "bravo", "alpha"]);
-      // Every post has the same `views`, so the next key decides; then the id.
-      expect(titlesOf(await blog.readPost({ sort: ["views", "-title"] }, context))).toEqual(["echo", "delta", "charlie", "bravo", "alpha"]);
-      expect(titlesOf(await blog.readPost({ sort: ["views"] }, context))).toEqual(titles);
-      expect(titlesOf(await blog.readPost({ sort: ["-views"] }, context))).toEqual(titles);
-      const readOnly = ["title"] as const;
-      expect(titlesOf(await blog.readPost({ sort: readOnly }, context))[0]).toBe("alpha");
+      await blog.run(async () => {
+        expect(titlesOf(await Post.read({ sort: ["title"] }, context))).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+        expect(titlesOf(await Post.read({ sort: ["-title"] }, context))).toEqual(["echo", "delta", "charlie", "bravo", "alpha"]);
+        // Every post has the same `views`, so the next key decides; then the id.
+        expect(titlesOf(await Post.read({ sort: ["views", "-title"] }, context))).toEqual(["echo", "delta", "charlie", "bravo", "alpha"]);
+        expect(titlesOf(await Post.read({ sort: ["views"] }, context))).toEqual(titles);
+        expect(titlesOf(await Post.read({ sort: ["-views"] }, context))).toEqual(titles);
+        const readOnly = ["title"] as const;
+        expect(titlesOf(await Post.read({ sort: readOnly }, context))[0]).toBe("alpha");
+      });
     } finally { await db.close(); }
   });
 
   test("limit and offset page the result, and an offset past the end returns nothing", async () => {
     const { db, blog } = await seeded(titles);
     try {
-      const sort = ["title"] as const;
-      expect(titlesOf(await blog.readPost({ sort, limit: 2 }, context))).toEqual(["alpha", "bravo"]);
-      expect(titlesOf(await blog.readPost({ sort, limit: 2, offset: 2 }, context))).toEqual(["charlie", "delta"]);
-      expect(titlesOf(await blog.readPost({ sort, limit: 2, offset: 4 }, context))).toEqual(["echo"]);
-      expect(await blog.readPost({ sort, limit: 2, offset: 10 }, context)).toEqual([]);
-      expect(titlesOf(await blog.readPost({ sort, offset: 3 }, context))).toEqual(["delta", "echo"]);
-      expect(await blog.readPost({ limit: 0 }, context)).toEqual([]);
-      expect(await blog.readPost({ limit: 100 }, context)).toHaveLength(5);
-      const pages = [];
-      for (let offset = 0; offset < 5; offset += 2) pages.push(titlesOf(await blog.readPost({ sort, limit: 2, offset }, context)));
-      expect(pages.flat()).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+      await blog.run(async () => {
+        const sort = ["title"] as const;
+        expect(titlesOf(await Post.read({ sort, limit: 2 }, context))).toEqual(["alpha", "bravo"]);
+        expect(titlesOf(await Post.read({ sort, limit: 2, offset: 2 }, context))).toEqual(["charlie", "delta"]);
+        expect(titlesOf(await Post.read({ sort, limit: 2, offset: 4 }, context))).toEqual(["echo"]);
+        expect(await Post.read({ sort, limit: 2, offset: 10 }, context)).toEqual([]);
+        expect(titlesOf(await Post.read({ sort, offset: 3 }, context))).toEqual(["delta", "echo"]);
+        expect(await Post.read({ limit: 0 }, context)).toEqual([]);
+        expect(await Post.read({ limit: 100 }, context)).toHaveLength(5);
+        const pages = [];
+        for (let offset = 0; offset < 5; offset += 2) pages.push(titlesOf(await Post.read({ sort, limit: 2, offset }, context)));
+        expect(pages.flat()).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+      });
     } finally { await db.close(); }
   });
 
   test("filter, sort and limit together return the expected page", async () => {
     const { db, blog, author } = await seeded(titles);
     try {
-      const page = await blog.readPost({ filter: { authorId: { eq: author.id }, title: { ne: "alpha" } }, sort: ["-title"], limit: 3 }, context);
-      expect(titlesOf(page)).toEqual(["echo", "delta", "charlie"]);
+      await blog.run(async () => {
+        const page = await Post.read({ filter: { authorId: { eq: author.id }, title: { ne: "alpha" } }, sort: ["-title"], limit: 3 }, context);
+        expect(titlesOf(page)).toEqual(["echo", "delta", "charlie"]);
+      });
     } finally { await db.close(); }
   });
 
@@ -445,7 +491,7 @@ describe("reads take a filter, sort, limit and offset", () => {
     ["an unknown field", { where: {} }],
   ])("%s is an InvalidInputError", async (_name, input) => {
     const { db, blog } = await seeded(["a"]);
-    try { await expect(blog.readPost(input as never, context)).rejects.toBeInstanceOf(InvalidInputError); } finally { await db.close(); }
+    try { await blog.run(async () => { await expect(Post.read(input as never, context)).rejects.toBeInstanceOf(InvalidInputError); }); } finally { await db.close(); }
   });
 
   test("the types name the filter and sort of the entity", () => {
@@ -462,10 +508,12 @@ test("two bindings do not share rows", async () => {
   const one = await fresh();
   const two = await fresh();
   try {
-    const author = await one.blog.createUser({ name: "Alice" }, context);
-    await one.blog.createPost({ title: "Hello", author: author.id }, context);
-    expect(await one.blog.readPost({}, context)).toHaveLength(1);
-    expect(await two.blog.readPost({}, context)).toEqual([]);
+    await one.blog.run(async () => {
+      const author = await User.create({ name: "Alice" }, context);
+      await Post.create({ title: "Hello", author: author.id }, context);
+      expect(await Post.read({}, context)).toHaveLength(1);
+      expect(await two.blog.run(() => Post.read({}, context))).toEqual([]);
+    });
   } finally { await one.db.close(); await two.db.close(); }
 });
 
@@ -482,8 +530,8 @@ describe("connect and disconnect (ADR-0047)", () => {
   });
 
   test("a call before connect throws FrameworkError, and disconnect without connect does nothing", async () => {
-    await expect(readPost({}, context)).rejects.toThrow(new FrameworkError(
-      "readPost was called while not connected: call connect() first, or use bind(db) with a data layer of your own"));
+    await expect(Post.read({}, context)).rejects.toThrow(new FrameworkError(
+      "blog.Post.read was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     await disconnect();
   });
 
@@ -493,32 +541,32 @@ describe("connect and disconnect (ADR-0047)", () => {
     expect(existsSync("blog.db")).toBe(false);
     // The configured value is a descriptor and, for sqlite(), the run-time layer too.
     await createSchema(config.data as SQLiteLayer, tables);
-    const author = await createUser({ name: "Alice" }, context);
-    await createPost({ title: "Hello", author: author.id }, context);
-    expect(await readPost({}, context)).toHaveLength(1);
+    const author = await User.create({ name: "Alice" }, context);
+    await Post.create({ title: "Hello", author: author.id }, context);
+    expect(await Post.read({}, context)).toHaveLength(1);
     await expect(connect()).rejects.toThrow(new FrameworkError("connect() was called while connected; call disconnect() first"));
   });
 
   test("calls after disconnect throw; connect again reopens the same file", async () => {
     await disconnect();
-    await expect(readPost({}, context)).rejects.toBeInstanceOf(FrameworkError);
+    await expect(Post.read({}, context)).rejects.toBeInstanceOf(FrameworkError);
     await connect();
-    expect(await readPost({}, context)).toHaveLength(1);
+    expect(await Post.read({}, context)).toHaveLength(1);
     await disconnect();
   });
 
   test("disconnect waits for a call already made to settle before it closes the layer", async () => {
     await connect();
-    const author = await createUser({ name: "Bob" }, context);
+    const author = await User.create({ name: "Bob" }, context);
     // Not awaited: the call is in flight (validating its input) when disconnect starts.
-    const pending = createPost({ title: "In flight", author: author.id }, context);
+    const pending = Post.create({ title: "In flight", author: author.id }, context);
     let settled = false;
     void pending.then(() => { settled = true; });
     await disconnect();
     expect(settled).toBe(true);
     expect((await pending).title).toBe("In flight");
     await connect();
-    expect((await readPost({}, context)).map((post) => post.title)).toContain("In flight");
+    expect((await Post.read({}, context)).map((post) => post.title)).toContain("In flight");
     await disconnect();
   });
 
@@ -532,10 +580,10 @@ describe("connect and disconnect (ADR-0047)", () => {
     };
     try {
       await connect();
-      const author = await createUser({ name: "Seamed" }, context);
+      const author = await User.create({ name: "Seamed" }, context);
       expect(calls).toEqual(["before blog.User#create", "write blog.User#create", "commit"]);
       expect(changes).toEqual([{ entity: "blog.User", action: "create", before: null, after: author }]);
-      await readPost({}, context);
+      await Post.read({}, context);
       expect(calls).toHaveLength(3);
     } finally {
       delete config.seams;
@@ -543,7 +591,7 @@ describe("connect and disconnect (ADR-0047)", () => {
     }
     // Read when connect() runs: a config without seams binds none.
     await connect();
-    await createUser({ name: "Quiet" }, context);
+    await User.create({ name: "Quiet" }, context);
     expect(calls).toHaveLength(3);
     await disconnect();
   });
@@ -553,8 +601,26 @@ describe("connect and disconnect (ADR-0047)", () => {
     try {
       await connect();
       await disconnect();
-      expect(await blog.readPost({}, context)).toEqual([]);
+      expect(await blog.run(() => Post.read({}, context))).toEqual([]);
     } finally { await db.close(); }
+  });
+
+  test("while connected, a call inside run() of a binding runs on that binding, and one outside any run on the connected one", async () => {
+    const { db, blog } = await fresh();
+    await connect();
+    try {
+      const connected = (await Post.read({}, context)).length;
+      expect(connected).toBeGreaterThan(0);
+      await blog.run(async () => {
+        const author = await User.create({ name: "Scoped" }, context);
+        await Post.create({ title: "Scoped", author: author.id }, context);
+        expect((await Post.read({}, context)).map((post) => post.title)).toEqual(["Scoped"]);
+      });
+      expect(await Post.read({}, context)).toHaveLength(connected);
+    } finally {
+      await disconnect();
+      await db.close();
+    }
   });
 });
 
@@ -598,8 +664,9 @@ test("a mesh.config.ts that declares seams passes mesh build and build --check, 
     try {
       const configured = (await import(join(copy, "mesh.config.ts"))).default as { data: SQLiteLayer };
       await createSchema(configured.data, mesh.tables);
-      await blog.createUser({ name: "Configured" }, context);
-      await blog.readPost({}, context);
+      // The copy's own entity values: `connect()` above bound them, not this project's.
+      await blog.User.create({ name: "Configured" }, context);
+      await blog.Post.read({}, context);
     } finally { await mesh.disconnect(); }
     expect(log).toEqual(["before blog.User#create", "write blog.User#create", "commit 1"]);
   } finally {
@@ -677,7 +744,7 @@ test("acceptance 8: a relative path into .mesh/, or a #mesh specifier the packag
   };
   try {
     put("src/main.ts", [
-      'import { createPost } from "#mesh/domain/blog";',
+      'import { Post } from "#mesh/domain/blog";',
       'import { connect } from "#mesh";',
       'import { alice } from "./context";',
       'import { bindPost } from "../.mesh/domain/blog/post.actions";',

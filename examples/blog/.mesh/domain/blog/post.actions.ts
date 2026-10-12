@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   failJoined as $failJoined,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -35,7 +36,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Post,
+  Post as $Record,
   PostWith,
   PostTxWith,
   PostLoadNames,
@@ -531,3 +532,45 @@ export function bindPost(layer: $DataLayer, options: $BindOptions = {}, compose?
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Post.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("blog.Post", bindPost, bindPostReads, ($call) => ({
+  create(input: CreatePostInput, ...context: $ContextArgument): Promise<Post> {
+    return $call("create", input, context);
+  },
+
+  publish(
+    input: PublishPostInput,
+    ...context: $ContextArgument
+  ): Promise<PostWith<"comments" | "excerpt">> {
+    return $call("publish", input, context);
+  },
+
+  archive(input: ArchivePostInput, ...context: $ContextArgument): Promise<void> {
+    return $call("archive", input, context);
+  },
+
+  published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
+    return $call("published", input, context);
+  },
+
+  read<const L extends readonly (keyof PostLoadable)[] = readonly []>(
+    input: Omit<ReadPostInput, "load"> & PostLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+
+  destroy(input: DestroyPostInput, ...context: $ContextArgument): Promise<void> {
+    return $call("destroy", input, context);
+  },
+}));
+export { $entityValue as Post };
+/** The record type, under the entity value's name. */
+export type Post = $Record;

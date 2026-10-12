@@ -8,6 +8,7 @@ import {
   castInput as $castInput,
   checkScope as $checkScope,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
@@ -25,7 +26,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  EvidenceReference,
+  EvidenceReference as $Record,
   EvidenceReferenceWith,
   EvidenceReferenceTxWith,
   EvidenceReferenceLoadNames,
@@ -266,3 +267,31 @@ export function bindEvidenceReference(
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `EvidenceReference.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity(
+  "work.EvidenceReference",
+  bindEvidenceReference,
+  bindEvidenceReferenceReads,
+  ($call) => ({
+    record(
+      input: RecordEvidenceReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<EvidenceReference> {
+      return $call("record", input, context);
+    },
+
+    read<const L extends readonly (keyof EvidenceReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadEvidenceReferenceInput, "load"> & EvidenceReferenceLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? EvidenceReferenceWith<EvidenceReferenceLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
+export { $entityValue as EvidenceReference };
+/** The record type, under the entity value's name. */
+export type EvidenceReference = $Record;

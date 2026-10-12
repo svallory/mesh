@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
@@ -31,7 +32,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Collaborator,
+  Collaborator as $Record,
   CollaboratorWith,
   CollaboratorLoadNames,
   CollaboratorLoadArg,
@@ -562,3 +563,39 @@ export function bindCollaborator(
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Collaborator.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity(
+  "identity.Collaborator",
+  bindCollaborator,
+  bindCollaboratorReads,
+  ($call) => ({
+    register(
+      input: RegisterCollaboratorInput,
+      ...context: $ContextArgument
+    ): Promise<Collaborator> {
+      return $call("register", input, context);
+    },
+
+    update(input: UpdateCollaboratorInput, ...context: $ContextArgument): Promise<Collaborator> {
+      return $call("update", input, context);
+    },
+
+    retire(input: RetireCollaboratorInput, ...context: $ContextArgument): Promise<Collaborator> {
+      return $call("retire", input, context);
+    },
+
+    read<const L extends readonly (keyof CollaboratorLoadable)[] = readonly []>(
+      input: Omit<ReadCollaboratorInput, "load"> & CollaboratorLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
+export { $entityValue as Collaborator };
+/** The record type, under the entity value's name. */
+export type Collaborator = $Record;

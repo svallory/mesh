@@ -5,6 +5,7 @@
 import {
   authorizer as $authorizer,
   castInput as $castInput,
+  entity as $entity,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
@@ -19,7 +20,7 @@ import {
   type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
-import type { User, CreateUserInput, ReadUserInput } from "./user.types";
+import type { User as $Record, CreateUserInput, ReadUserInput } from "./user.types";
 import { createUserInput, readUserInput } from "./user.validators";
 import { tables } from "../../schema";
 import { expressions as $expressions } from "./user.expressions";
@@ -155,3 +156,20 @@ export function bindUser(layer: $DataLayer, options: $BindOptions = {}, _compose
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `User.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("blog.User", bindUser, bindUserReads, ($call) => ({
+  create(input: CreateUserInput, ...context: $ContextArgument): Promise<User> {
+    return $call("create", input, context);
+  },
+
+  read(input: ReadUserInput, ...context: $ContextArgument): Promise<User[]> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as User };
+/** The record type, under the entity value's name. */
+export type User = $Record;

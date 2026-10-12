@@ -3,6 +3,10 @@
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { ForbiddenError, InvalidInputError, type ActionContext, type AfterCommitEvent, type Issue, type Seams } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
+import { Event } from "#mesh/domain/audit";
+import { Invocation, Machine, Run } from "#mesh/domain/execution";
+import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
+import { Claim, Dependency, EvidenceReference, Task } from "#mesh/domain/work";
 import type { Role } from "../src/context";
 import type { Binding } from "../src/domain/binding";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
@@ -80,23 +84,24 @@ export type Hyper = Empty["hyper"];
  */
 export async function world() {
   const base = await empty();
-  const { hyper } = base;
-  const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
-  const bob = await hyper.registerCollaborator({ kind: "human", name: "Bob" }, setup);
-  const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
-  // The bootstrap grant (PROTOCOL.md:48): the engine grants the first owner, recorded as granted by that owner.
-  const owner = await hyper.grantMembership({ collaborator: alice.id, role: "owner" }, asSystem(alice));
-  const bobMember = await hyper.grantMembership({ collaborator: bob.id, role: "member" }, as(alice));
-  const botMember = await hyper.grantMembership({ collaborator: bot.id, role: "member" }, as(alice));
-  const task = await hyper.createTask({ title: "Ship" }, as(alice));
-  return { ...base, alice, bob, bot, memberships: { alice: owner, bob: bobMember, bot: botMember }, task };
+  return base.hyper.run(async () => {
+    const alice = await Collaborator.register({ kind: "human", name: "Alice" }, setup);
+    const bob = await Collaborator.register({ kind: "human", name: "Bob" }, setup);
+    const bot = await Collaborator.register({ kind: "agent", name: "Bot" }, setup);
+    // The bootstrap grant (PROTOCOL.md:48): the engine grants the first owner, recorded as granted by that owner.
+    const owner = await Membership.grant({ collaborator: alice.id, role: "owner" }, asSystem(alice));
+    const bobMember = await Membership.grant({ collaborator: bob.id, role: "member" }, as(alice));
+    const botMember = await Membership.grant({ collaborator: bot.id, role: "member" }, as(alice));
+    const task = await Task.create({ title: "Ship" }, as(alice));
+    return { ...base, alice, bob, bot, memberships: { alice: owner, bob: bobMember, bot: botMember }, task };
+  });
 }
 export type World = Awaited<ReturnType<typeof world>>;
 
-/** Run `body` on a fresh world and close its database. */
+/** Run `body` on a fresh world, with its binding in scope, and close its database. */
 export async function within<T>(body: (w: World) => Promise<T>): Promise<T> {
   const w = await world();
-  try { return await body(w); } finally { await w.db.close(); }
+  try { return await w.hyper.run(() => body(w)); } finally { await w.db.close(); }
 }
 
 /** The issues a call fails with, or `[]` when it succeeds; any other error is rethrown. */
@@ -142,35 +147,38 @@ export function eventOf(n: number, extra: Record<string, unknown> = {}) {
 /**
  * One row of every entity (two of Collaborator, Membership, Task, Claim and Assignment), each written by the generated
  * actions or the command functions, through one piece of work: Bot claims, submits and has its work accepted on the
- * child task, then claims the parent, reports an attempt on a machine, loses the claim and reports late.
+ * child task, then claims the parent, reports an attempt on a machine, loses the claim and reports late. It runs with
+ * `hyper` in scope.
  */
 export async function populate({ hyper, binding }: Pick<Empty, "hyper" | "binding">) {
-  const workspace = await hyper.createWorkspace({ name: "Home" }, setup);
-  const alice = await hyper.registerCollaborator({ kind: "human", name: "Alice" }, setup);
-  const bot = await hyper.registerCollaborator({ kind: "agent", name: "Bot" }, setup);
-  const membership = await hyper.grantMembership({ role: "owner", collaborator: alice.id }, asSystem(alice));
-  const botMembership = await hyper.grantMembership({ role: "member", collaborator: bot.id }, as(alice));
-  const task = await hyper.createTask({ title: "Ship", priority: 2 }, as(alice));
-  const child = await hyper.createTask({ title: "Test", parent: task.id }, as(alice));
-  const dependency = await hyper.addDependency({ dependent: task.id, prerequisite: child.id }, as(alice));
-  await hyper.assignTask({ id: child.id, assignee: bot.id }, as(alice));
-  const childClaim = await hyper.acquireClaim({ task: child.id }, as(bot));
-  const evidence = await hyper.recordEvidenceReference({ kind: "file", locator: "notes.md" }, as(bot));
-  const submitted = await submissionSubmit({ summary: "done", evidence: [evidence.id], fence: childClaim.fence, task: child.id }, as(bot), binding);
-  if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
-  const accepted = await reviewAccept({ submission: submitted.submission.id }, as(alice), binding);
-  const machine = await hyper.registerMachine({ name: "laptop", platform: "linux" }, as(bot));
-  const { sessionReference: session } = await sessionRecord({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: "laptop", agentProfile: bot.id }, as(bot), binding);
-  const run = await hyper.startRun({ inputs: { goal: "ship", steps: [1, 2] }, task: task.id }, as(alice));
-  const claim = await hyper.acquireClaim({ task: task.id }, as(bot));
-  const { attempt } = await attemptStart({ run: run.id, machine: "laptop", session: session.id }, as(bot), binding);
-  const invocation = await hyper.recordInvocation({ usageSource: "runtime", estimatedCost: 0.25, inputTokens: 10, outputTokens: 5, attempt: attempt.id }, as(bot));
-  await hyper.revokeClaim({ id: claim.id, reason: "taking over" }, as(alice));
-  const late = await submissionSubmit({ summary: "late", fence: claim.fence, task: task.id }, as(bot), binding);
-  if (late.outcome !== "late-result-recorded") throw new Error(late.outcome);
-  const event = await hyper.recordEvent(eventOf(1, { recordId: task.id, payload: { taskId: task.id, title: "Ship" }, task: task.id }), setup);
-  return {
-    workspace, alice, bot, membership, botMembership, task, child, dependency, childClaim, claim, evidence,
-    submission: submitted.submission, review: accepted.review, completion: accepted.completion, lateResult: late.lateResult, machine, session, run, attempt, invocation, event,
-  };
+  return hyper.run(async () => {
+    const workspace = await Workspace.create({ name: "Home" }, setup);
+    const alice = await Collaborator.register({ kind: "human", name: "Alice" }, setup);
+    const bot = await Collaborator.register({ kind: "agent", name: "Bot" }, setup);
+    const membership = await Membership.grant({ role: "owner", collaborator: alice.id }, asSystem(alice));
+    const botMembership = await Membership.grant({ role: "member", collaborator: bot.id }, as(alice));
+    const task = await Task.create({ title: "Ship", priority: 2 }, as(alice));
+    const child = await Task.create({ title: "Test", parent: task.id }, as(alice));
+    const dependency = await Dependency.add({ dependent: task.id, prerequisite: child.id }, as(alice));
+    await Task.assign({ id: child.id, assignee: bot.id }, as(alice));
+    const childClaim = await Claim.acquire({ task: child.id }, as(bot));
+    const evidence = await EvidenceReference.record({ kind: "file", locator: "notes.md" }, as(bot));
+    const submitted = await submissionSubmit({ summary: "done", evidence: [evidence.id], fence: childClaim.fence, task: child.id }, as(bot), binding);
+    if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
+    const accepted = await reviewAccept({ submission: submitted.submission.id }, as(alice), binding);
+    const machine = await Machine.register({ name: "laptop", platform: "linux" }, as(bot));
+    const { sessionReference: session } = await sessionRecord({ runtime: "claude", runtimeSessionId: "s-1", availability: "complete", machine: "laptop", agentProfile: bot.id }, as(bot), binding);
+    const run = await Run.start({ inputs: { goal: "ship", steps: [1, 2] }, task: task.id }, as(alice));
+    const claim = await Claim.acquire({ task: task.id }, as(bot));
+    const { attempt } = await attemptStart({ run: run.id, machine: "laptop", session: session.id }, as(bot), binding);
+    const invocation = await Invocation.record({ usageSource: "runtime", estimatedCost: 0.25, inputTokens: 10, outputTokens: 5, attempt: attempt.id }, as(bot));
+    await Claim.revoke({ id: claim.id, reason: "taking over" }, as(alice));
+    const late = await submissionSubmit({ summary: "late", fence: claim.fence, task: task.id }, as(bot), binding);
+    if (late.outcome !== "late-result-recorded") throw new Error(late.outcome);
+    const event = await Event.record(eventOf(1, { recordId: task.id, payload: { taskId: task.id, title: "Ship" }, task: task.id }), setup);
+    return {
+      workspace, alice, bot, membership, botMembership, task, child, dependency, childClaim, claim, evidence,
+      submission: submitted.submission, review: accepted.review, completion: accepted.completion, lateResult: late.lateResult, machine, session, run, attempt, invocation, event,
+    };
+  });
 }

@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -35,7 +36,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Claim,
+  Claim as $Record,
   ClaimWith,
   ClaimTxWith,
   ClaimLoadNames,
@@ -1080,3 +1081,43 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Claim.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("work.Claim", bindClaim, bindClaimReads, ($call) => ({
+  acquire(input: AcquireClaimInput, ...context: $ContextArgument): Promise<Claim> {
+    return $call("acquire", input, context);
+  },
+
+  renew(input: RenewClaimInput, ...context: $ContextArgument): Promise<Claim> {
+    return $call("renew", input, context);
+  },
+
+  release(input: ReleaseClaimInput, ...context: $ContextArgument): Promise<Claim> {
+    return $call("release", input, context);
+  },
+
+  revoke(input: RevokeClaimInput, ...context: $ContextArgument): Promise<Claim> {
+    return $call("revoke", input, context);
+  },
+
+  expire(input: ExpireClaimInput, ...context: $ContextArgument): Promise<Claim> {
+    return $call("expire", input, context);
+  },
+
+  end(input: EndClaimInput, ...context: $ContextArgument): Promise<Claim> {
+    return $call("end", input, context);
+  },
+
+  read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Claim };
+/** The record type, under the entity value's name. */
+export type Claim = $Record;

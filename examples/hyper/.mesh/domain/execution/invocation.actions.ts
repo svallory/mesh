@@ -9,6 +9,7 @@ import {
   castInput as $castInput,
   checkScope as $checkScope,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -30,7 +31,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Invocation,
+  Invocation as $Record,
   InvocationWith,
   InvocationTxWith,
   InvocationLoadNames,
@@ -557,3 +558,32 @@ export function bindInvocation(layer: $DataLayer, options: $BindOptions = {}, co
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Invocation.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity(
+  "execution.Invocation",
+  bindInvocation,
+  bindInvocationReads,
+  ($call) => ({
+    record(input: RecordInvocationInput, ...context: $ContextArgument): Promise<Invocation> {
+      return $call("record", input, context);
+    },
+
+    correct(input: CorrectInvocationInput, ...context: $ContextArgument): Promise<Invocation> {
+      return $call("correct", input, context);
+    },
+
+    read<const L extends readonly (keyof InvocationLoadable)[] = readonly []>(
+      input: Omit<ReadInvocationInput, "load"> & InvocationLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? InvocationWith<InvocationLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
+export { $entityValue as Invocation };
+/** The record type, under the entity value's name. */
+export type Invocation = $Record;

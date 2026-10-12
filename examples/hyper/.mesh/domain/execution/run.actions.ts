@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -33,7 +34,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Run,
+  Run as $Record,
   RunWith,
   RunTxWith,
   RunLoadNames,
@@ -561,3 +562,31 @@ export function bindRun(layer: $DataLayer, options: $BindOptions = {}, compose?:
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Run.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("execution.Run", bindRun, bindRunReads, ($call) => ({
+  start(input: StartRunInput, ...context: $ContextArgument): Promise<Run> {
+    return $call("start", input, context);
+  },
+
+  cancel(input: CancelRunInput, ...context: $ContextArgument): Promise<Run> {
+    return $call("cancel", input, context);
+  },
+
+  settle(input: SettleRunInput, ...context: $ContextArgument): Promise<Run> {
+    return $call("settle", input, context);
+  },
+
+  read<const L extends readonly (keyof RunLoadable)[] = readonly []>(
+    input: Omit<ReadRunInput, "load"> & RunLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? RunWith<RunLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Run };
+/** The record type, under the entity value's name. */
+export type Run = $Record;

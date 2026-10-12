@@ -11,6 +11,7 @@ import {
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
@@ -33,7 +34,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Machine,
+  Machine as $Record,
   MachineWith,
   MachineLoadNames,
   MachineLoadArg,
@@ -651,3 +652,35 @@ export function bindMachine(layer: $DataLayer, options: $BindOptions = {}, compo
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Machine.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("execution.Machine", bindMachine, bindMachineReads, ($call) => ({
+  register(input: RegisterMachineInput, ...context: $ContextArgument): Promise<Machine> {
+    return $call("register", input, context);
+  },
+
+  report(input: ReportMachineInput, ...context: $ContextArgument): Promise<Machine> {
+    return $call("report", input, context);
+  },
+
+  update(input: UpdateMachineInput, ...context: $ContextArgument): Promise<Machine> {
+    return $call("update", input, context);
+  },
+
+  retire(input: RetireMachineInput, ...context: $ContextArgument): Promise<Machine> {
+    return $call("retire", input, context);
+  },
+
+  read<const L extends readonly (keyof MachineLoadable)[] = readonly []>(
+    input: Omit<ReadMachineInput, "load"> & MachineLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Machine };
+/** The record type, under the entity value's name. */
+export type Machine = $Record;

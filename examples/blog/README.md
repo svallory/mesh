@@ -20,16 +20,16 @@ bun run test         # mesh build --check, then bun test against an in-memory da
 - [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the Post declaration. It covers all ten attribute types, relationships, computed fields, action inputs, validation, steps, a filtered and sorted read, `on:load`, and policies, with `&name` member references in every position. [`user.mesh.mx`](src/domain/blog/user.mesh.mx) and [`comment.mesh.mx`](src/domain/blog/comment.mesh.mx) are the imported entities.
 - [`src/context.ts`](src/context.ts) declares the action context: a required `actor`, so every call passes `{ actor }` ([`test/context.check.ts`](test/context.check.ts) checks that leaving it out does not compile).
 - [`src/main.ts`](src/main.ts) is the program: `connect()`, the calls, `disconnect()`.
-- [`test/blog.test.ts`](test/blog.test.ts) binds its own `sqlite({ file: ":memory:" })` with `createSchema(db, tables)` and `bind(db)`, and covers the M2 acceptance tests.
+- [`test/blog.test.ts`](test/blog.test.ts) binds its own `sqlite({ file: ":memory:" })` with `createSchema(db, tables)` and `bind(db)`, makes its calls inside that binding's `run`, and covers the M2 acceptance tests.
 
-`mesh.config.ts` reads `src/domain/`, selects the SQLite adapter and writes `.mesh/`. The folder relative to the domain root is the module, so the module is `blog` and its files land under `.mesh/domain/blog/`. `package.json` maps three specifiers: `#mesh` to `./.mesh/index.ts`, which exports `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Actions` and `Reads` types; `#mesh/domain/*` to `./.mesh/domain/*/index.ts`, so `#mesh/domain/blog` exports the module's action functions (`createPost`, `readPost`, ...) and its record and input types; and `#mesh/domain` to `./.mesh/domain/index.ts`, for entities at the domain root (this example has none). Code in this example imports those specifiers, never a path inside `.mesh/`.
+`mesh.config.ts` reads `src/domain/`, selects the SQLite adapter and writes `.mesh/`. The folder relative to the domain root is the module, so the module is `blog` and its files land under `.mesh/domain/blog/`. `package.json` maps three specifiers: `#mesh` to `./.mesh/index.ts`, which exports `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding`, `Actions` and `Reads` types; `#mesh/domain/*` to `./.mesh/domain/*/index.ts`, so `#mesh/domain/blog` exports the module's entity values (`Post`, `User`, `Comment`), whose methods are the actions (`Post.create(input, context)`, `Post.read(input, context)`), and its record and input types; and `#mesh/domain` to `./.mesh/domain/index.ts`, the domain root, which exports one namespace per folder (`blog`). A call runs on the binding whose `run` it is made inside, else on the one `connect()` opened. Code in this example imports those specifiers, never a path inside `.mesh/`.
 
 ## What this version runs
 
 Mesh is at milestone M2 ([roadmap](../../apps/docs/docs/architecture/roadmap/roadmap.md)). A generated action validates its input (an unknown field is rejected), runs one transaction and writes or reads the row. Not yet:
 
-- `validate` checks, and `do` steps other than a `set` whose values are literals or atoms (M4, M5): `publishPost` sets `state` to `published` but does not check `titlePresent`;
-- a read with `filter` or `sort` (M4): `publishedPost` throws a `FrameworkError` rather than return unfiltered rows;
+- `validate` checks, and `do` steps other than a `set` whose values are literals or atoms (M4, M5): `Post.publish` sets `state` to `published` but does not check `titlePresent`;
+- a read with `filter` or `sort` (M4): `Post.published` throws a `FrameworkError` rather than return unfiltered rows;
 - `load`, computed fields and `on:load` (M7);
 - `can<Action>` (M8b), and a read policy that reads the record (M10): the read policy `:public` cannot yet keep drafts out (`&state === :published` would be a filter on the query), so it lets every caller read every post.
 

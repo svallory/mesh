@@ -7,6 +7,7 @@ import {
   authorizer as $authorizer,
   castInput as $castInput,
   composed as $composed,
+  entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
@@ -24,7 +25,7 @@ import {
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
-  Completion,
+  Completion as $Record,
   CompletionWith,
   CompletionTxWith,
   CompletionLoadNames,
@@ -234,3 +235,23 @@ export function bindCompletion(layer: $DataLayer, options: $BindOptions = {}, co
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Completion.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("work.Completion", bindCompletion, bindCompletionReads, ($call) => ({
+  record(input: RecordCompletionInput, ...context: $ContextArgument): Promise<Completion> {
+    return $call("record", input, context);
+  },
+
+  read<const L extends readonly (keyof CompletionLoadable)[] = readonly []>(
+    input: Omit<ReadCompletionInput, "load"> & CompletionLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? CompletionWith<CompletionLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Completion };
+/** The record type, under the entity value's name. */
+export type Completion = $Record;

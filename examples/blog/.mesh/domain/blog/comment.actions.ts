@@ -5,6 +5,7 @@
 import {
   authorizer as $authorizer,
   castInput as $castInput,
+  entity as $entity,
   loadRows as $loadRows,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
@@ -16,7 +17,7 @@ import {
   type CastOutput as $CastOutput,
 } from "@meshfw/runtime";
 import type {
-  Comment,
+  Comment as $Record,
   CommentWith,
   CommentTxWith,
   CommentLoadNames,
@@ -122,3 +123,19 @@ export function bindComment(layer: $DataLayer, options: $BindOptions = {}, _comp
     },
   });
 }
+
+/**
+ * The entity value (CMP-16): `Comment.<action>(input, context)` runs the action on the binding in scope, the
+ * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
+ */
+const $entityValue = $entity("blog.Comment", bindComment, bindCommentReads, ($call) => ({
+  read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
+    input: Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
+    ...context: $ContextArgument
+  ): Promise<L extends unknown ? CommentWith<CommentLoadNames<L>>[] : never> {
+    return $call("read", input, context);
+  },
+}));
+export { $entityValue as Comment };
+/** The record type, under the entity value's name. */
+export type Comment = $Record;
