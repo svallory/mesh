@@ -13,6 +13,7 @@ import type {
   FinishAssignmentInput as $work$Assignment$FinishAssignmentInput,
   StartAssignmentInput as $work$Assignment$StartAssignmentInput,
 } from "./assignment.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Assignment reads; `I` is the input of the action it runs in. */
 export type $work$Assignment$Scope<I = unknown> = $Scope<{
@@ -27,14 +28,14 @@ export type $work$Assignment$StoredScope<I = unknown> = $work$Assignment$Scope<I
   before: $DeepReadonly<$work$Assignment$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Assignment$CheckScope<I = unknown> = Omit<$work$Assignment$Scope<I>, "before">;
+export type $work$Assignment$CheckScope<I = unknown> = $Omit<$work$Assignment$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Assignment$NewScope<I = unknown> = Omit<
+export type $work$Assignment$NewScope<I = unknown> = $Omit<
   $work$Assignment$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $work$Assignment$Loaded,
       "startedAt" | "taskId" | "task" | "assigneeId" | "assignee" | "delegatorId" | "delegator"
     > & {

@@ -1,6 +1,7 @@
 import type { AttributeType, Entity } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
-import { entityInputs, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
+import { entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
+import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityFileComment } from "./types.ts";
 
 /**
@@ -20,6 +21,8 @@ export interface ValidatorsView {
   readonly schemas: readonly InputSchema[];
   /** The schemas of what a caller may filter and sort a read by; `null` when the entity has no read action. */
   readonly query: QuerySchema | null;
+  /** The globals the file names (`$RegExp`, `$Object`), from `$globals.ts`; null when it names none. */
+  readonly globals: GlobalsImport | null;
 }
 
 /** The filter and sort schemas a read input uses. */
@@ -82,7 +85,7 @@ export const VALIDATOR_TYPES = {
 /** The validators view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */
 export function validatorsView({ document }: EmitInput, entity: Entity): ValidatorsView {
   const inputs = entityInputs(entity, document);
-  return {
+  const view = {
     entityFile: entityFileComment(entity),
     hasInputs: inputs.length > 0,
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
@@ -99,6 +102,8 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
     })),
     query: hasRead(entity) ? queryView(entity) : null,
   };
+  // The template prints `$Object.keys` in the comparison schema a read's filter uses; a file with no input imports nothing.
+  return { ...view, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
 }
 
 const lowerFirst = (name: string) => name[0]!.toLowerCase() + name.slice(1);
@@ -142,6 +147,6 @@ export function fieldSchema(field: FieldShape, optional: boolean): string {
       : VALIDATOR_TYPES[field.type];
   if (field.min !== undefined) base += `.min(${field.min})`;
   if (field.max !== undefined) base += `.max(${field.max})`;
-  if (field.match) base += `.regex(new RegExp(${JSON.stringify(field.match.pattern)}, ${JSON.stringify(field.match.flags)}))`;
+  if (field.match) base += `.regex(new $RegExp(${JSON.stringify(field.match.pattern)}, ${JSON.stringify(field.match.flags)}))`;
   return base + (field.nullable ? ".nullable()" : "") + (optional ? ".optional()" : "");
 }

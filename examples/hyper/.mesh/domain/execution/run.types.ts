@@ -18,15 +18,17 @@ import type {
   AttemptLoaded as $execution$Attempt$Loaded,
 } from "./attempt.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Run = {
   id: string;
   inputs: unknown;
   outcome: unknown;
   state: "running" | "succeeded" | "failed" | "canceled";
   cancelReason: string | null;
-  endedAt: Date | null;
+  endedAt: $Date | null;
   version: number;
-  startedAt: Date;
+  startedAt: $Date;
   taskId: string;
   responsibleId: string;
   startedById: string;
@@ -74,7 +76,7 @@ export type RunLoadable = {
 };
 
 /** A Run with the relationships and computed fields named in N loaded. */
-export type RunWith<N extends keyof RunLoadable> = Run & Pick<RunLoadable, N>;
+export type RunWith<N extends keyof RunLoadable> = Run & $Pick<RunLoadable, N>;
 
 /** What a load through `privileged` attaches to a Run: it runs no policy, so every related record the key names is there. */
 export type RunTxLoadable = {
@@ -86,7 +88,7 @@ export type RunTxLoadable = {
 };
 
 /** A Run loaded through `privileged`, with the relationships and computed fields named in N. */
-export type RunTxWith<N extends keyof RunLoadable> = Run & Pick<RunTxLoadable, N>;
+export type RunTxWith<N extends keyof RunLoadable> = Run & $Pick<RunTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type RunLoadNames<L extends readonly (keyof RunLoadable)[]> = number extends L["length"]
@@ -114,9 +116,9 @@ export type RunFilter =
       id?: $Comparison<string>;
       state?: $Comparison<"running" | "succeeded" | "failed" | "canceled">;
       cancelReason?: $Comparison<string>;
-      endedAt?: $Comparison<Date>;
+      endedAt?: $Comparison<$Date>;
       version?: $Comparison<number>;
-      startedAt?: $Comparison<Date>;
+      startedAt?: $Comparison<$Date>;
       taskId?: $Comparison<string>;
       responsibleId?: $Comparison<string>;
       startedById?: $Comparison<string>;

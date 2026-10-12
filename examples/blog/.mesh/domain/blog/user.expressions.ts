@@ -10,6 +10,7 @@ import type {
   User as $blog$User$Record,
   CreateUserInput as $blog$User$CreateUserInput,
 } from "./user.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of User reads; `I` is the input of the action it runs in. */
 export type $blog$User$Scope<I = unknown> = $Scope<{
@@ -24,11 +25,11 @@ export type $blog$User$StoredScope<I = unknown> = $blog$User$Scope<I> & {
   before: $DeepReadonly<$blog$User$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $blog$User$CheckScope<I = unknown> = Omit<$blog$User$Scope<I>, "before">;
+export type $blog$User$CheckScope<I = unknown> = $Omit<$blog$User$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $blog$User$NewScope<I = unknown> = Omit<$blog$User$CheckScope<I>, "self"> & {
+export type $blog$User$NewScope<I = unknown> = $Omit<$blog$User$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<$blog$User$Record, "name"> & { [K in "name"]: $blog$User$Record[K] | null }
+    $Omit<$blog$User$Record, "name"> & { [K in "name"]: $blog$User$Record[K] | null }
   >;
 };
 

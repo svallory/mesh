@@ -36,6 +36,7 @@ import type {
   RenewClaimInput as $work$Claim$RenewClaimInput,
   RevokeClaimInput as $work$Claim$RevokeClaimInput,
 } from "./claim.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Claim reads; `I` is the input of the action it runs in. */
 export type $work$Claim$Scope<I = unknown> = $Scope<{
@@ -50,11 +51,11 @@ export type $work$Claim$StoredScope<I = unknown> = $work$Claim$Scope<I> & {
   before: $DeepReadonly<$work$Claim$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Claim$CheckScope<I = unknown> = Omit<$work$Claim$Scope<I>, "before">;
+export type $work$Claim$CheckScope<I = unknown> = $Omit<$work$Claim$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Claim$NewScope<I = unknown> = Omit<$work$Claim$CheckScope<I>, "self"> & {
+export type $work$Claim$NewScope<I = unknown> = $Omit<$work$Claim$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $work$Claim$Loaded,
       "fence" | "acquiredAt" | "expiresAt" | "taskId" | "task" | "holderId" | "holder" | "lapsed"
     > & {

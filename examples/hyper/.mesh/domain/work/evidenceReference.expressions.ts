@@ -12,6 +12,7 @@ import type {
   EvidenceReferenceLoaded as $work$EvidenceReference$Loaded,
   RecordEvidenceReferenceInput as $work$EvidenceReference$RecordEvidenceReferenceInput,
 } from "./evidenceReference.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of EvidenceReference reads; `I` is the input of the action it runs in. */
 export type $work$EvidenceReference$Scope<I = unknown> = $Scope<{
@@ -26,17 +27,17 @@ export type $work$EvidenceReference$StoredScope<I = unknown> = $work$EvidenceRef
   before: $DeepReadonly<$work$EvidenceReference$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$EvidenceReference$CheckScope<I = unknown> = Omit<
+export type $work$EvidenceReference$CheckScope<I = unknown> = $Omit<
   $work$EvidenceReference$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$EvidenceReference$NewScope<I = unknown> = Omit<
+export type $work$EvidenceReference$NewScope<I = unknown> = $Omit<
   $work$EvidenceReference$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<$work$EvidenceReference$Loaded, "kind" | "locator" | "recordedById" | "recordedBy"> & {
+    $Omit<$work$EvidenceReference$Loaded, "kind" | "locator" | "recordedById" | "recordedBy"> & {
       [K in "kind" | "locator" | "recordedById" | "recordedBy"]:
         | $work$EvidenceReference$Loaded[K]
         | null;

@@ -45,8 +45,7 @@ export function printTree(n: ExprNode, bool = false): string {
 }
 
 /** The whole function of one expression: `(s: Scope) => ...`. */
-export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES,
-  cloneValue = false): string {
+export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES): string {
   const withScope = (body: string) => `(${/\$s(?![A-Za-z0-9_$])/.test(body) ? SCOPE : `_${SCOPE}`}: ${scopeType}) => ${body}`;
   if (e.tree) return withScope(printTree(e.tree, boolean));
   const plain = e.plain!;
@@ -63,7 +62,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     (plain.privileged ? `const privileged = ${PRIVILEGED}; ` : "") +
     // `structuredClone` cannot copy the read-only views a function is handed (they are proxies); `cloneValue` can. It is
     // bound here, not at module level, so the file declares no name an entity file's helper import could also have.
-    (cloneValue ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
+    (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
     // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
     // finished loading by then) and typed so that what its actions resolve with is read-only (CMP-16).
     (plain.entities ?? []).map((name) => {
@@ -75,7 +74,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
 
 /** How the expressions file imports `privileged` (TXN-16). */
 export const PRIVILEGED = "$privileged";
-/** How the expressions file imports `cloneValue`, which a function that mentions `structuredClone` binds under that name. */
+/** How the expressions file imports `cloneValue`, which a function that calls the global `structuredClone` binds under that name. */
 export const CLONE_VALUE = "$cloneValue";
 /**
  * The locals the expressions file imports an entity value and its read-only type under, by the name a function of the
@@ -85,8 +84,3 @@ export type EntityLocals = (name: string) => { readonly value: string; readonly 
 const NO_ENTITIES: EntityLocals = (name) => {
   throw new Error(`No local for the entity ${name}`);
 };
-
-/** Names in `names` that a plain expression's authored text mentions. */
-export function mentioned(e: Expression, names: Iterable<string>): string[] {
-  return [...names].filter((name) => new RegExp(`(?<![A-Za-z0-9_$.])${name.replace(/\$/g, "\\$")}\\b`).test(e.source));
-}

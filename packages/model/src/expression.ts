@@ -68,8 +68,20 @@ export interface PlainReason {
   entities?: string[];
   /** The authored text calls a method of an entity it names (`Task.touch(...)`): it runs another action. */
   acts?: true;
-  /** The authored text names a function it imports from a helper module (POL-21: a policy that does runs inside the transaction). */
-  helpers?: true;
+  /**
+   * The helpers the authored text reads as values (a call, a reference) that it imports from a helper module, by the name
+   * the file imports them under, sorted (POL-21: a policy that names one runs inside the transaction). The expressions file
+   * imports these. A free scope name (`input`, `context`) is the root, never a helper of that name (EXP-12). A helper
+   * named only in a type (`const x: Money`, `typeof fmt`) is not here: MX strips the types from the node the front end
+   * reads, so the TypeScript back end finds it in the printed function and imports it as a type.
+   */
+  helpers?: string[];
+  /**
+   * The authored text calls the global `structuredClone`, which no binding of the function and no import of the file hides
+   * (PRJ-20). It cannot copy the read-only views the function is handed (they are proxies), so the printed function binds
+   * it to `cloneValue`, which can.
+   */
+  structuredClone?: true;
   /** The authored text is a method (`(params) { body }`), so TypeScript needs `function` before it. */
   method?: true;
   /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */

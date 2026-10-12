@@ -16,6 +16,7 @@ import type {
   PublishPostInput as $blog$Post$PublishPostInput,
   PublishedPostInput as $blog$Post$PublishedPostInput,
 } from "./post.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Post reads; `I` is the input of the action it runs in. */
 export type $blog$Post$Scope<I = unknown> = $Scope<{
@@ -30,11 +31,11 @@ export type $blog$Post$StoredScope<I = unknown> = $blog$Post$Scope<I> & {
   before: $DeepReadonly<$blog$Post$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $blog$Post$CheckScope<I = unknown> = Omit<$blog$Post$Scope<I>, "before">;
+export type $blog$Post$CheckScope<I = unknown> = $Omit<$blog$Post$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $blog$Post$NewScope<I = unknown> = Omit<$blog$Post$CheckScope<I>, "self"> & {
+export type $blog$Post$NewScope<I = unknown> = $Omit<$blog$Post$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<$blog$Post$Loaded, "title" | "authorId" | "author"> & {
+    $Omit<$blog$Post$Loaded, "title" | "authorId" | "author"> & {
       [K in "title" | "authorId" | "author"]: $blog$Post$Loaded[K] | null;
     }
   >;

@@ -35,6 +35,8 @@ import type {
   EventLoaded as $audit$Event$Loaded,
 } from "../audit/event.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Task = {
   id: string;
   title: string;
@@ -42,8 +44,8 @@ export type Task = {
   priority: number | null;
   state: "open" | "done" | "canceled";
   version: number;
-  createdAt: Date;
-  reopenedAt: Date | null;
+  createdAt: $Date;
+  reopenedAt: $Date | null;
   parentId: string | null;
   creatorId: string;
 };
@@ -147,7 +149,7 @@ export type TaskLoadable = {
 };
 
 /** A Task with the relationships and computed fields named in N loaded. */
-export type TaskWith<N extends keyof TaskLoadable> = Task & Pick<TaskLoadable, N>;
+export type TaskWith<N extends keyof TaskLoadable> = Task & $Pick<TaskLoadable, N>;
 
 /** What a load through `privileged` attaches to a Task: it runs no policy, so every related record the key names is there. */
 export type TaskTxLoadable = {
@@ -172,7 +174,7 @@ export type TaskTxLoadable = {
 };
 
 /** A Task loaded through `privileged`, with the relationships and computed fields named in N. */
-export type TaskTxWith<N extends keyof TaskLoadable> = Task & Pick<TaskTxLoadable, N>;
+export type TaskTxWith<N extends keyof TaskLoadable> = Task & $Pick<TaskTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type TaskLoadNames<L extends readonly (keyof TaskLoadable)[]> = number extends L["length"]
@@ -218,8 +220,8 @@ export type TaskFilter =
       priority?: $Comparison<number>;
       state?: $Comparison<"open" | "done" | "canceled">;
       version?: $Comparison<number>;
-      createdAt?: $Comparison<Date>;
-      reopenedAt?: $Comparison<Date>;
+      createdAt?: $Comparison<$Date>;
+      reopenedAt?: $Comparison<$Date>;
       parentId?: $Comparison<string>;
       creatorId?: $Comparison<string>;
       childrenSettled?: $Comparison<boolean>;

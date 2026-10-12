@@ -14,8 +14,11 @@ import type {
   @end
   @end
 } from {{ typesFromLiteral }};
+@if(globals)
+{{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
+@end
 
-type Keys<T> = T extends Record<string, never> ? never : keyof T;
+type Keys<T> = T extends { [key: string]: never } ? never : keyof T;
 
 type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
   ? [Keys<B>] extends [Keys<A>]
@@ -42,7 +45,7 @@ const comparison = <T extends z.ZodType>(value: T) =>
       in: z.array(value).readonly().exactOptional(),
       nil: z.boolean().exactOptional(),
     })
-    .refine((operators) => Object.keys(operators).length > 0, { message: "a comparison needs an operator" });
+    .refine((operators) => $Object.keys(operators).length > 0, { message: "a comparison needs an operator" });
 
 export const {{ query.filterConst }}: z.ZodType<{{ query.filterTypeName }}> = z.lazy(
   () =>

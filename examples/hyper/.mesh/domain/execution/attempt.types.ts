@@ -25,6 +25,8 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Attempt = {
   id: string;
   step: string;
@@ -33,9 +35,9 @@ export type Attempt = {
   runtime: string | null;
   outcome: unknown;
   state: "running" | "succeeded" | "failed" | "stopped" | "abandoned";
-  endedAt: Date | null;
+  endedAt: $Date | null;
   version: number;
-  startedAt: Date;
+  startedAt: $Date;
   runId: string;
   taskId: string;
   performerId: string;
@@ -97,7 +99,7 @@ export type AttemptLoadable = {
 };
 
 /** A Attempt with the relationships and computed fields named in N loaded. */
-export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptLoadable, N>;
+export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & $Pick<AttemptLoadable, N>;
 
 /** What a load through `privileged` attaches to a Attempt: it runs no policy, so every related record the key names is there. */
 export type AttemptTxLoadable = {
@@ -110,7 +112,7 @@ export type AttemptTxLoadable = {
 };
 
 /** A Attempt loaded through `privileged`, with the relationships and computed fields named in N. */
-export type AttemptTxWith<N extends keyof AttemptLoadable> = Attempt & Pick<AttemptTxLoadable, N>;
+export type AttemptTxWith<N extends keyof AttemptLoadable> = Attempt & $Pick<AttemptTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type AttemptLoadNames<L extends readonly (keyof AttemptLoadable)[]> =
@@ -143,9 +145,9 @@ export type AttemptFilter =
       claimFence?: $Comparison<number>;
       runtime?: $Comparison<string>;
       state?: $Comparison<"running" | "succeeded" | "failed" | "stopped" | "abandoned">;
-      endedAt?: $Comparison<Date>;
+      endedAt?: $Comparison<$Date>;
       version?: $Comparison<number>;
-      startedAt?: $Comparison<Date>;
+      startedAt?: $Comparison<$Date>;
       runId?: $Comparison<string>;
       taskId?: $Comparison<string>;
       performerId?: $Comparison<string>;

@@ -194,7 +194,7 @@ test("generated validators and all ten scalar mappings typecheck with exact opti
 test("validator drift tripwires catch keys, requiredness, nullability and scalar width", async () => {
   const out = await emitted();
   const title =
-    'title: z.string().min(1).max(20).regex(new RegExp("^[A-Z]", ""))';
+    'title: z.string().min(1).max(20).regex(new $RegExp("^[A-Z]", ""))';
   const body = "body: z.string().nullable().optional(),";
   // Use an unconstrained title for stable one-line formatting in this mutation test.
   const plain = await emitted(

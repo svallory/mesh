@@ -8,6 +8,8 @@ import type {
   TaskLoaded as $work$Task$Loaded,
 } from "../work/task.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Event = {
   seq: number;
   type: string;
@@ -18,8 +20,8 @@ export type Event = {
   recordVersion: number;
   actor: string;
   caller: string;
-  occurredAt: Date;
-  recordedAt: Date;
+  occurredAt: $Date;
+  recordedAt: $Date;
   cause: unknown;
   checks: unknown;
   payload: unknown;
@@ -35,7 +37,7 @@ export type RecordEventInput = {
   recordVersion: number;
   actor: string;
   caller: string;
-  occurredAt: Date;
+  occurredAt: $Date;
   cause?: unknown | undefined;
   checks?: unknown | undefined;
   payload?: unknown | undefined;
@@ -61,7 +63,7 @@ export type EventLoadable = {
 };
 
 /** A Event with the relationships and computed fields named in N loaded. */
-export type EventWith<N extends keyof EventLoadable> = Event & Pick<EventLoadable, N>;
+export type EventWith<N extends keyof EventLoadable> = Event & $Pick<EventLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type EventLoadNames<L extends readonly (keyof EventLoadable)[]> = number extends L["length"]
@@ -95,8 +97,8 @@ export type EventFilter =
       recordVersion?: $Comparison<number>;
       actor?: $Comparison<string>;
       caller?: $Comparison<string>;
-      occurredAt?: $Comparison<Date>;
-      recordedAt?: $Comparison<Date>;
+      occurredAt?: $Comparison<$Date>;
+      recordedAt?: $Comparison<$Date>;
       taskId?: $Comparison<string>;
     };
 

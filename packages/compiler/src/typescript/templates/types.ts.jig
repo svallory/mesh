@@ -9,6 +9,10 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 import type { {{ type.names }} } from {{ type.fromLiteral }};
 
 @end
+@if(globals)
+{{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
+
+@end
 export type {{ record.name }} = {
   @each(member in record.members)
   {{ member.key }}: {{ member.type }};
@@ -44,7 +48,7 @@ export type {{ loadable.name }} = {
 };
 
 /** A {{ record.name }} with the relationships and computed fields named in N loaded. */
-export type {{ loadable.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & Pick<{{ loadable.name }}, N>;
+export type {{ loadable.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & $Pick<{{ loadable.name }}, N>;
 @if(loadable.tx)
 
 /** What a load through `privileged` attaches to a {{ record.name }}: it runs no policy, so every related record the key names is there. */
@@ -55,7 +59,7 @@ export type {{ loadable.tx.name }} = {
 };
 
 /** A {{ record.name }} loaded through `privileged`, with the relationships and computed fields named in N. */
-export type {{ loadable.tx.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & Pick<{{ loadable.tx.name }}, N>;
+export type {{ loadable.tx.withName }}<N extends keyof {{ loadable.name }}> = {{ record.name }} & $Pick<{{ loadable.tx.name }}, N>;
 @end
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

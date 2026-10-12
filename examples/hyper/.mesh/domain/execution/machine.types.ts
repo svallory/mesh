@@ -13,13 +13,15 @@ import type {
   AttemptLoaded as $execution$Attempt$Loaded,
 } from "./attempt.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Machine = {
   id: string;
   name: string;
   platform: string | null;
   state: "active" | "retired";
   version: number;
-  registeredAt: Date;
+  registeredAt: $Date;
   firstReportedById: string | null;
 };
 
@@ -64,7 +66,7 @@ export type MachineLoadable = {
 };
 
 /** A Machine with the relationships and computed fields named in N loaded. */
-export type MachineWith<N extends keyof MachineLoadable> = Machine & Pick<MachineLoadable, N>;
+export type MachineWith<N extends keyof MachineLoadable> = Machine & $Pick<MachineLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type MachineLoadNames<L extends readonly (keyof MachineLoadable)[]> =
@@ -92,7 +94,7 @@ export type MachineFilter =
       platform?: $Comparison<string>;
       state?: $Comparison<"active" | "retired">;
       version?: $Comparison<number>;
-      registeredAt?: $Comparison<Date>;
+      registeredAt?: $Comparison<$Date>;
       firstReportedById?: $Comparison<string>;
     };
 

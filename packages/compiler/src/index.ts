@@ -12,6 +12,7 @@ export { FORMATTER_OPTIONS, formatTypescript } from "./typescript/format.ts";
 export { stableJsonStringify } from "./typescript/stable-json.ts";
 export { typesView, type TypesView, type TypeImport, type RecordDeclaration, type TypeDeclaration, type TypeMember } from "./typescript/views/types.ts";
 export { validatorsView, type ValidatorsView, type InputSchema, type SchemaField } from "./typescript/views/validators.ts";
+export type { GlobalsImport, GlobalsView, GlobalAlias } from "./typescript/views/globals.ts";
 export { RESERVED_COMMAND_WORDS, loadAdapterBuild, type AdapterBuild, type AdapterBuildResult, type AdapterCommand, type AdapterCommandContext } from "./typescript/adapter.ts";
 export { explainAction } from "./typescript/explain.ts";
 export { resolveName, type NameResolution } from "./model/resolve-name.ts";

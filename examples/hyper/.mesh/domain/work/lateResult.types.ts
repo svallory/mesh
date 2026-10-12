@@ -10,12 +10,14 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "../identity/collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type LateResult = {
   id: string;
   fence: number;
   summary: string | null;
   evidence: unknown;
-  recordedAt: Date;
+  recordedAt: $Date;
   taskId: string;
   submitterId: string;
 };
@@ -48,7 +50,7 @@ export type LateResultLoadable = {
 
 /** A LateResult with the relationships and computed fields named in N loaded. */
 export type LateResultWith<N extends keyof LateResultLoadable> = LateResult &
-  Pick<LateResultLoadable, N>;
+  $Pick<LateResultLoadable, N>;
 
 /** What a load through `privileged` attaches to a LateResult: it runs no policy, so every related record the key names is there. */
 export type LateResultTxLoadable = {
@@ -58,7 +60,7 @@ export type LateResultTxLoadable = {
 
 /** A LateResult loaded through `privileged`, with the relationships and computed fields named in N. */
 export type LateResultTxWith<N extends keyof LateResultLoadable> = LateResult &
-  Pick<LateResultTxLoadable, N>;
+  $Pick<LateResultTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type LateResultLoadNames<L extends readonly (keyof LateResultLoadable)[]> =
@@ -84,7 +86,7 @@ export type LateResultFilter =
       id?: $Comparison<string>;
       fence?: $Comparison<number>;
       summary?: $Comparison<string>;
-      recordedAt?: $Comparison<Date>;
+      recordedAt?: $Comparison<$Date>;
       taskId?: $Comparison<string>;
       submitterId?: $Comparison<string>;
     };

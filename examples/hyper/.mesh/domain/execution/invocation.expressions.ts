@@ -24,6 +24,7 @@ import type {
   CorrectInvocationInput as $execution$Invocation$CorrectInvocationInput,
   RecordInvocationInput as $execution$Invocation$RecordInvocationInput,
 } from "./invocation.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Invocation reads; `I` is the input of the action it runs in. */
 export type $execution$Invocation$Scope<I = unknown> = $Scope<{
@@ -38,17 +39,17 @@ export type $execution$Invocation$StoredScope<I = unknown> = $execution$Invocati
   before: $DeepReadonly<$execution$Invocation$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $execution$Invocation$CheckScope<I = unknown> = Omit<
+export type $execution$Invocation$CheckScope<I = unknown> = $Omit<
   $execution$Invocation$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $execution$Invocation$NewScope<I = unknown> = Omit<
+export type $execution$Invocation$NewScope<I = unknown> = $Omit<
   $execution$Invocation$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $execution$Invocation$Loaded,
       "usageSource" | "attemptId" | "attempt" | "taskId" | "task" | "recordedById" | "recordedBy"
     > & {

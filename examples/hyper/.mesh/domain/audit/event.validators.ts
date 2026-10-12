@@ -4,8 +4,9 @@
 import { z } from "zod";
 
 import type { RecordEventInput, ReadEventInput, EventFilter, EventLoadable } from "./event.types";
+import { $Object } from "../../$globals";
 
-type Keys<T> = T extends Record<string, never> ? never : keyof T;
+type Keys<T> = T extends { [key: string]: never } ? never : keyof T;
 
 type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
   ? [Keys<B>] extends [Keys<A>]
@@ -31,7 +32,7 @@ const comparison = <T extends z.ZodType>(value: T) =>
       in: z.array(value).readonly().exactOptional(),
       nil: z.boolean().exactOptional(),
     })
-    .refine((operators) => Object.keys(operators).length > 0, {
+    .refine((operators) => $Object.keys(operators).length > 0, {
       message: "a comparison needs an operator",
     });
 

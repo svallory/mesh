@@ -5,6 +5,8 @@ import type { Comparison as $Comparison } from "@meshfw/runtime";
 
 import type { Post as $blog$Post$Record, PostLoaded as $blog$Post$Loaded } from "./post.types";
 
+import type { $Pick } from "../../$globals";
+
 export type Comment = {
   id: string;
   body: string;
@@ -30,7 +32,7 @@ export type CommentLoadable = {
 };
 
 /** A Comment with the relationships and computed fields named in N loaded. */
-export type CommentWith<N extends keyof CommentLoadable> = Comment & Pick<CommentLoadable, N>;
+export type CommentWith<N extends keyof CommentLoadable> = Comment & $Pick<CommentLoadable, N>;
 
 /** What a load through `privileged` attaches to a Comment: it runs no policy, so every related record the key names is there. */
 export type CommentTxLoadable = {
@@ -38,7 +40,7 @@ export type CommentTxLoadable = {
 };
 
 /** A Comment loaded through `privileged`, with the relationships and computed fields named in N. */
-export type CommentTxWith<N extends keyof CommentLoadable> = Comment & Pick<CommentTxLoadable, N>;
+export type CommentTxWith<N extends keyof CommentLoadable> = Comment & $Pick<CommentTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type CommentLoadNames<L extends readonly (keyof CommentLoadable)[]> =

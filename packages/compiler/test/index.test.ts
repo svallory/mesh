@@ -4,8 +4,7 @@ import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import { buildModel } from "../src/front-end/build.ts";
-import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
-import { actionsGenerator } from "../src/typescript/emitters/actions.ts";
+import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { bindingView } from "../src/typescript/views/binding.ts";
 import { indexView } from "../src/typescript/views/index.ts";
 import { moduleViews } from "../src/typescript/views/module.ts";
@@ -73,7 +72,7 @@ describe("binding, module and index views", () => {
     const table = "entity :Table\n  attributes\n    uuid :id primary-key\n  actions\n    read :note\n";
     const files = await generateFiles({ document: documentOf({ "a/note.mesh.mx": note, "b/table.mesh.mx": table }), config: configOf("/project", ".mesh") });
     expect(files.find((file) => file.path === ".mesh/domain/b/index.ts")!.contents).toContain('export { Table } from "./table.actions";');
-    expect(files.find((file) => file.path === ".mesh/domain/b/table.actions.ts")!.contents).toContain("  note(input: NoteTableInput, ...context: $ContextArgument): Promise<Table[]> {");
+    expect(files.find((file) => file.path === ".mesh/domain/b/table.actions.ts")!.contents).toContain("  note(input: NoteTableInput, ...context: $ContextArgument): $Promise<Table[]> {");
     expect(files.find((file) => file.path === ".mesh/index.ts")!.contents).not.toContain("noteTable");
   });
 });
@@ -277,12 +276,13 @@ describe("entity names never break the generated files", () => {
     ]);
   });
 
-  test.each(["Promise", "Partial", "ReturnType"])("an entity named %s, which would shadow a global type the generated code uses, is MESH_EMIT_NAME", (name) => {
-    let error: unknown;
-    try { actionsGenerator.views({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") }); }
-    catch (cause) { error = cause; }
-    expect(error).toBeInstanceOf(EmitError);
-    expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME", fix: "Rename the entity",
-      message: `Entity ${name} would generate the type ${name}, which shadows the global ${name} the generated code uses` });
+  // PRJ-20: generated code reaches every global through `$globals.ts` (`$Promise`, `$Date`), so an entity may take the
+  // name of one. That no generated file names a global itself is checked by the TypeScript checker
+  // (`free-globals.test.ts`, and packages/cli/test/generated-names.test.ts, which builds, type-checks and runs such entities).
+  test.each(["Promise", "Partial", "ReturnType", "Date", "Object", "Pick", "Omit", "Record", "Set", "RegExp", "Map", "Boolean"])("an entity named %s builds and is exported under its name", async (name) => {
+    const generated = await generateFiles({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") });
+    const actions = generated.find((file) => file.path.endsWith(".actions.ts"))!.contents;
+    expect(actions).toContain(`export type ${name} = $Record;`);
+    expect(actions).toMatch(/from "\.\.?\/(\.\.\/)*\$globals";/);
   });
 });

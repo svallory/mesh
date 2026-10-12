@@ -83,6 +83,8 @@ describe("typesView", () => {
         loadedName: "ListLoaded",
         loadedMembers: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Loaded | null" }],
       },
+      // The loaded types name `Pick` as `$Pick`, from `$globals.ts`: no entity name can hide it.
+      globals: { typeOnly: true, keyword: "import type", names: "$Pick", fromLiteral: '"../../$globals"' },
     });
   });
 
@@ -107,10 +109,10 @@ describe("typesView", () => {
       "views: number",
       "rating: number | null",
       "amount: number",
-      "dueOn: Date | null",
-      "paidAt: Date | null",
-      "insertedAt: Date",
-      "updatedAt: Date",
+      "dueOn: $Date | null",
+      "paidAt: $Date | null",
+      "insertedAt: $Date",
+      "updatedAt: $Date",
       "metadata: unknown",
       "listId: string",
     ]);
@@ -186,10 +188,17 @@ describe("typesView", () => {
     const todo = entityOf(document, "Todo");
     todo.actions.push({ ...todo.actions[0]!, name: "Create" });
     expect(() => types(document, "Todo")).toThrow(EmitError);
+  });
+
+  test("an entity named Date with a date attribute is a view: the attribute's type is the global's `$` alias (PRJ-20)", () => {
+    const document = documentOf();
     const list = entityOf(document, "List");
     list.name = "Date";
     list.attributes.push({ ...list.attributes[1]!, name: "at", type: "date" });
-    expect(() => types(document, "Date")).toThrow("Generated Date would shadow the Date type");
+    const view = types(document, "Date");
+    expect(view.record.name).toBe("Date");
+    expect(view.record.members.find((m) => m.name === "at")!.type).toBe("$Date");
+    expect(view.globals).toEqual({ typeOnly: true, keyword: "import type", names: "$Date, $Pick", fromLiteral: '"../../$globals"' });
   });
 });
 
@@ -201,6 +210,7 @@ describe("validatorsView", () => {
       typesFromLiteral: '"./list.types"',
       schemas: [],
       query: null,
+      globals: null,
     });
   });
 
@@ -234,14 +244,14 @@ describe("validatorsView", () => {
   test("field schemas: bounds, pattern, enum values, nullability and optionality", () => {
     const view = validators(documentOf(), "Todo");
     expect(view.schemas[0]!.fields).toEqual([
-      { name: "title", key: "title", schema: 'z.string().min(1).max(100).regex(new RegExp("^.+$", ""))' },
+      { name: "title", key: "title", schema: 'z.string().min(1).max(100).regex(new $RegExp("^.+$", ""))' },
       { name: "list", key: "list", schema: "z.uuid()" },
       { name: "status", key: "status", schema: 'z.enum(["draft", "sent"]).optional()' },
       { name: "reason", key: "reason", schema: "z.string().nullable().optional()" },
     ]);
     expect(view.schemas[1]!.fields.map((f) => f.schema)).toEqual([
       "z.uuid()",
-      'z.string().min(1).max(100).regex(new RegExp("^.+$", "")).optional()',
+      'z.string().min(1).max(100).regex(new $RegExp("^.+$", "")).optional()',
       "z.int().min(1)",
     ]);
   });

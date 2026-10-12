@@ -8,12 +8,14 @@ import type {
   CollaboratorLoaded as $identity$Collaborator$Loaded,
 } from "./collaborator.types";
 
+import type { $Date, $Pick } from "../../$globals";
+
 export type Membership = {
   id: string;
   role: "owner" | "member" | "guest";
   state: "active" | "revoked";
-  grantedAt: Date;
-  revokedAt: Date | null;
+  grantedAt: $Date;
+  revokedAt: $Date | null;
   version: number;
   collaboratorId: string;
   grantedById: string;
@@ -59,7 +61,7 @@ export type MembershipLoadable = {
 
 /** A Membership with the relationships and computed fields named in N loaded. */
 export type MembershipWith<N extends keyof MembershipLoadable> = Membership &
-  Pick<MembershipLoadable, N>;
+  $Pick<MembershipLoadable, N>;
 
 /** What a load through `privileged` attaches to a Membership: it runs no policy, so every related record the key names is there. */
 export type MembershipTxLoadable = {
@@ -70,7 +72,7 @@ export type MembershipTxLoadable = {
 
 /** A Membership loaded through `privileged`, with the relationships and computed fields named in N. */
 export type MembershipTxWith<N extends keyof MembershipLoadable> = Membership &
-  Pick<MembershipTxLoadable, N>;
+  $Pick<MembershipTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */
 export type MembershipLoadNames<L extends readonly (keyof MembershipLoadable)[]> =
@@ -97,8 +99,8 @@ export type MembershipFilter =
       id?: $Comparison<string>;
       role?: $Comparison<"owner" | "member" | "guest">;
       state?: $Comparison<"active" | "revoked">;
-      grantedAt?: $Comparison<Date>;
-      revokedAt?: $Comparison<Date>;
+      grantedAt?: $Comparison<$Date>;
+      revokedAt?: $Comparison<$Date>;
       version?: $Comparison<number>;
       collaboratorId?: $Comparison<string>;
       grantedById?: $Comparison<string>;

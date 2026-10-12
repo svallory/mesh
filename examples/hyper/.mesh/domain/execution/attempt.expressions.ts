@@ -36,6 +36,7 @@ import type {
   ReportStoppedAttemptInput as $execution$Attempt$ReportStoppedAttemptInput,
   StartAttemptInput as $execution$Attempt$StartAttemptInput,
 } from "./attempt.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Attempt reads; `I` is the input of the action it runs in. */
 export type $execution$Attempt$Scope<I = unknown> = $Scope<{
@@ -50,17 +51,17 @@ export type $execution$Attempt$StoredScope<I = unknown> = $execution$Attempt$Sco
   before: $DeepReadonly<$execution$Attempt$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $execution$Attempt$CheckScope<I = unknown> = Omit<
+export type $execution$Attempt$CheckScope<I = unknown> = $Omit<
   $execution$Attempt$Scope<I>,
   "before"
 >;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $execution$Attempt$NewScope<I = unknown> = Omit<
+export type $execution$Attempt$NewScope<I = unknown> = $Omit<
   $execution$Attempt$CheckScope<I>,
   "self"
 > & {
   self: $DeepReadonly<
-    Omit<
+    $Omit<
       $execution$Attempt$Loaded,
       | "number"
       | "runId"

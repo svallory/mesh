@@ -67,6 +67,7 @@ import type {
   UnassignTaskInput as $work$Task$UnassignTaskInput,
   UpdateTaskInput as $work$Task$UpdateTaskInput,
 } from "./task.types";
+import type { $Omit } from "../../$globals";
 
 /** What every expression of Task reads; `I` is the input of the action it runs in. */
 export type $work$Task$Scope<I = unknown> = $Scope<{
@@ -81,11 +82,11 @@ export type $work$Task$StoredScope<I = unknown> = $work$Task$Scope<I> & {
   before: $DeepReadonly<$work$Task$Record>;
 };
 /** What a check reads: `self` is the record before the input is applied, the caller's values are `input`, and there is no `before`. */
-export type $work$Task$CheckScope<I = unknown> = Omit<$work$Task$Scope<I>, "before">;
+export type $work$Task$CheckScope<I = unknown> = $Omit<$work$Task$Scope<I>, "before">;
 /** What a check that can run on a create reads: `self` may be the new instance, where what the input or a step fills is still null. */
-export type $work$Task$NewScope<I = unknown> = Omit<$work$Task$CheckScope<I>, "self"> & {
+export type $work$Task$NewScope<I = unknown> = $Omit<$work$Task$CheckScope<I>, "self"> & {
   self: $DeepReadonly<
-    Omit<$work$Task$Loaded, "title" | "creatorId" | "creator"> & {
+    $Omit<$work$Task$Loaded, "title" | "creatorId" | "creator"> & {
       [K in "title" | "creatorId" | "creator"]: $work$Task$Loaded[K] | null;
     }
   >;
