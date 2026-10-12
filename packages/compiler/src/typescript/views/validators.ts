@@ -1,6 +1,6 @@
 import type { AttributeType, Entity } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
-import { entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
+import { entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, schemaName, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityFileComment } from "./types.ts";
 
@@ -31,11 +31,11 @@ export interface QuerySchema {
   readonly typeImports: readonly string[];
   /** The filter type's name, e.g. `PostFilter`. */
   readonly filterTypeName: string;
-  /** The exported filter schema, e.g. `postFilter`: `export const postFilter: z.ZodType<PostFilter>`. */
+  /** The exported filter schema, e.g. `postFilterSchema`: `export const postFilterSchema: z.ZodType<PostFilter>`. */
   readonly filterConst: string;
-  /** One property per column a filter may name: `<key>: comparison(<value schema>).optional(),`. */
+  /** One property per column a filter may name: `<key>: comparison(<value schema>).optional(),` (`undefined` is a column left out). */
   readonly filterFields: readonly SchemaField[];
-  /** The exported sort schema, e.g. `postSort`. */
+  /** The exported sort schema, e.g. `postSortSchema`. */
   readonly sortConst: string;
   /** The sort keys as printed in `z.enum([ ... ])`, ascending then descending per column. */
   readonly sortKeys: readonly string[];
@@ -47,7 +47,7 @@ export interface InputSchema {
   readonly typeName: string;
   /** The type argument the schema is checked at: `<keyof PostLoadable>` for a read that takes `load` (every name it may list), else the empty string. */
   readonly typeArguments: string;
-  /** The exported schema constant: `typeName` with its first letter lower-cased, e.g. `createPostInput`. */
+  /** The exported schema constant: `typeName` with its first letter lower-cased, then `Schema` (`schemaName`), e.g. `createPostInputSchema`. */
   readonly constName: string;
   /** The exported compile-time assertion that schema output and input type agree, e.g. `CreatePostInputShape`. */
   readonly shapeTypeName: string;
@@ -106,9 +106,8 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
   return { ...view, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
 }
 
-const lowerFirst = (name: string) => name[0]!.toLowerCase() + name.slice(1);
-const filterConst = (entity: Entity) => lowerFirst(filterTypeName(entity));
-const sortConst = (entity: Entity) => lowerFirst(sortTypeName(entity));
+const filterConst = (entity: Entity) => schemaName(filterTypeName(entity));
+const sortConst = (entity: Entity) => schemaName(sortTypeName(entity));
 
 /** The schema of a read's `filter`, `sort`, `limit` or `offset`. All four are optional. */
 function querySchema(entity: Entity, field: QueryField): string {
@@ -133,7 +132,7 @@ function queryView(entity: Entity): QuerySchema {
     filterConst: filterConst(entity),
     filterFields: columns
       .filter((column) => column.name !== "and" && column.name !== "or")
-      .map((column) => ({ name: column.name, key: propertyName(column.name), schema: `comparison(${comparedSchema(column)}).exactOptional()` })),
+      .map((column) => ({ name: column.name, key: propertyName(column.name), schema: `comparison(${comparedSchema(column)}).optional()` })),
     sortConst: sortConst(entity),
     sortKeys: columns.flatMap((column) => [JSON.stringify(column.name), JSON.stringify(`-${column.name}`)]),
   };

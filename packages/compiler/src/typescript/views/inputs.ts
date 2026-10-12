@@ -117,7 +117,7 @@ export const hasRead = (entity: Entity) => effectiveActions(entity).some((action
 export interface PlannedInput {
   /** The input's type: `ArchiveItemInput` for `:archive` of `Item` (`inputNames`). */
   name: string;
-  /** The value of its validator: `archiveItemInput` (`inputNames`). */
+  /** The value of its validator: `archiveItemInputSchema` (`inputNames`). */
   validator: string;
   /** The action it is the input of, as written: what a message about a generated name names. */
   action: string;
@@ -125,29 +125,36 @@ export interface PlannedInput {
   fields: PlannedField[];
 }
 /**
+ * The name of the validator (a Zod schema) of a generated type: the type's name with the first letter after any leading
+ * underscores in lower case, then `Schema` (`CreateUserInput` gives `createUserInputSchema`, `UserFilter` gives
+ * `userFilterSchema`). Every validator in a validators file is named this way, so none is spelled like a type there, even
+ * where the first letter has no lower case (`_1stItemInput`): every other type it names ends in `Input`, `Filter`, `Sort`,
+ * `Loadable` or `Shape`, and the record's type is the entity's name, which every validator holds and adds to.
+ */
+export function schemaName(type: string): string {
+  const leading = /^_*/.exec(type)![0].length;
+  return `${type.slice(0, leading)}${type.charAt(leading).toLowerCase()}${type.slice(leading + 1)}Schema`;
+}
+/**
  * The two names an action's input gives the generated files: its type, the action's name in PascalCase, the entity's and
- * `Input` (`ArchiveItemInput`), and its validator, the same with the first letter after any leading underscore in lower
- * case (`archiveItemInput`). PascalCase keeps leading underscores and drops every other one (`pascalCase`), so `_archive`
- * gives `_ArchiveItemInput` and `_archiveItemInput`, and `archive_` gives what `archive` gives. The method of the entity
- * value is the action's name as written, so it needs no name here.
+ * `Input` (`ArchiveItemInput`), and its validator (`schemaName`: `archiveItemInputSchema`). PascalCase keeps leading
+ * underscores and drops every other one (`pascalCase`), so `_archive` gives `_ArchiveItemInput` and
+ * `_archiveItemInputSchema`, and `archive_` gives what `archive` gives. The method of the entity value is the action's
+ * name as written, so it needs no name here.
  */
 export function inputNames(action: Pick<Action, "name" | "position">, entity: Entity): { name: string; validator: string } {
   const name = `${typeName(action.name, action.position)}${typeName(entity.name, entity.position)}Input`;
-  const leading = /^_*/.exec(name)![0].length;
-  return { name, validator: name.slice(0, leading) + name.charAt(leading).toLowerCase() + name.slice(leading + 1) };
+  return { name, validator: schemaName(name) };
 }
 /**
- * Two actions whose inputs would get one generated name, or one whose input type and validator would be spelled alike, are
- * `MESH_EMIT_NAME` naming the actions: PascalCase drops the underscores inside and at the end of a name, so `fooBar` and
- * `foo_bar`, or `archive` and `archive_`, give one type; `_1st` gives `_1stItemInput` for both, since a digit has no
- * lower case. The build fails rather than spell the names apart, so that every generated name stays the PascalCase of
- * the action (PR #92, ENT-18).
+ * Two actions whose inputs would get one generated name are `MESH_EMIT_NAME` naming both: PascalCase drops the
+ * underscores inside and at the end of a name, so `fooBar` and `foo_bar`, or `archive` and `archive_`, give one type.
+ * The build fails rather than spell the names apart, so that every generated name stays the PascalCase of the action
+ * (PR #92, ENT-18).
  */
 function checkInputNames(entity: Entity, inputs: readonly PlannedInput[]): void {
   const taken = new Map<string, string>();
   for (const input of inputs) {
-    if (input.validator === input.name)
-      throw emitError("MESH_EMIT_NAME", `Action :${input.action} of ${entity.fqn} would generate its input type and its validator under one name, ${input.name}`, input.position, "Rename the action so that it does not start with underscores followed by a digit");
     for (const [kind, name] of [["type", input.name], ["value", input.validator]] as const) {
       const other = taken.get(name);
       if (other !== undefined)

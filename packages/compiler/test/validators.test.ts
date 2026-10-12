@@ -114,7 +114,7 @@ function check(root: string, files: string[]) {
 test("v4 validators enforce member types, enum values and string/numeric rules through Standard Schema", async () => {
   const { schemas } = await emitted();
   const validate = (input: unknown) =>
-    schemas.createPostInput!["~standard"].validate(input);
+    schemas.createPostInputSchema!["~standard"].validate(input);
   expect(await validate({ title: "Hello" })).toEqual({
     value: { title: "Hello" },
   });
@@ -158,10 +158,10 @@ test("nullable, omitted and explicit undefined inputs preserve v4 requiredness",
     { title: "Hello", body: undefined },
     { title: "Hello", body: null },
   ])
-    expect(await schemas.createPostInput!["~standard"].validate(input)).toEqual(
+    expect(await schemas.createPostInputSchema!["~standard"].validate(input)).toEqual(
       { value: input },
     );
-  for (const name of ["updatePostInput", "destroyPostInput"]) {
+  for (const name of ["updatePostInputSchema", "destroyPostInputSchema"]) {
     const valid = { id: "00000000-0000-4000-8000-000000000001" };
     expect(
       (await schemas[name]!["~standard"].validate(valid)).issues,
@@ -256,7 +256,7 @@ test("strict object validators reject own inherited-method names and all unknown
   const { schemas } = await emitted();
   expect(
     (
-      await schemas.createPostInput!["~standard"].validate({
+      await schemas.createPostInputSchema!["~standard"].validate({
         title: "Hello",
         constructor: "own",
       })

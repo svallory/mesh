@@ -265,7 +265,9 @@ function queryDeclaration(entity: Entity): QueryDeclaration {
     filterName: filterTypeName(entity),
     filterMembers: columns
       .filter((column) => column.name !== "and" && column.name !== "or")
-      .map((column): TypeMember => ({ name: column.name, optional: true, key: propertyName(column.name), type: `$Comparison<${baseType(column)}>` })),
+      // `| undefined`, as on an optional input field: a filter literal may leave out a member named like a member of
+      // `Object.prototype` (`toString`, ENT-18) only by giving it as `undefined`, since TypeScript reads the inherited one.
+      .map((column): TypeMember => ({ name: column.name, optional: true, key: propertyName(column.name), type: `$Comparison<${baseType(column)}> | undefined` })),
     sortName: sortTypeName(entity),
     sortKeys: columns.flatMap((column) => [JSON.stringify(column.name), JSON.stringify(`-${column.name}`)]),
   };

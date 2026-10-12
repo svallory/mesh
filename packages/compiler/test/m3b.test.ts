@@ -145,24 +145,24 @@ describe("json in the generated code", () => {
 
   test("the validator accepts any JSON value and null, and nothing else", async () => {
     const { root } = await generated({ "m/note.mesh.mx": note });
-    const { createNoteInput, changeNoteInput } = await import(resolve(root, "generated/domain/m/note.validators.ts"));
-    const ok = (payload: unknown, extra: unknown = undefined) => createNoteInput.safeParse({ title: "t", payload, ...(extra === undefined ? {} : { extra }) }).success;
+    const { createNoteInputSchema, changeNoteInputSchema } = await import(resolve(root, "generated/domain/m/note.validators.ts"));
+    const ok = (payload: unknown, extra: unknown = undefined) => createNoteInputSchema.safeParse({ title: "t", payload, ...(extra === undefined ? {} : { extra }) }).success;
     for (const value of [{}, [], "s", 0, 1.5, true, false, { a: [1, { b: null }] }, [null, [[]]], "", null, -0, 1e21]) expect(ok(value)).toBe(true);
     for (const value of [() => 1, new Date(), new Map(), Symbol("s"), 1n, Number.NaN, Number.POSITIVE_INFINITY, { a: undefined }, { a: () => 1 }, new (class X {})()])
       expect(ok(value)).toBe(false);
-    expect(createNoteInput.safeParse({ title: "t" }).success).toBe(true);
+    expect(createNoteInputSchema.safeParse({ title: "t" }).success).toBe(true);
     expect(ok({}, null)).toBe(true);
     expect(ok({}, [1])).toBe(true);
-    expect(createNoteInput.safeParse({ title: "t", payload: {}, extra: undefined }).success).toBe(true);
-    expect(changeNoteInput.safeParse({ id: "00000000-0000-4000-8000-000000000000", extra: null }).success).toBe(true);
-    expect(changeNoteInput.safeParse({ id: "00000000-0000-4000-8000-000000000000", payload: null }).success).toBe(true);
+    expect(createNoteInputSchema.safeParse({ title: "t", payload: {}, extra: undefined }).success).toBe(true);
+    expect(changeNoteInputSchema.safeParse({ id: "00000000-0000-4000-8000-000000000000", extra: null }).success).toBe(true);
+    expect(changeNoteInputSchema.safeParse({ id: "00000000-0000-4000-8000-000000000000", payload: null }).success).toBe(true);
   });
 
   test("a create writes the default of a json attribute as data, even when it looks like an atom", async () => {
     const source = note.replace("json :payload default={}", 'json :payload default={ value: "x" }');
     const { document } = await generated({ "m/note.mesh.mx": source });
     const view = actionsView({ document, config: configOf("/p") }, document.entities[0]!);
-    expect(view.methods.find((m) => m.name === "create")!.statements.join("\n")).toContain('payload: parsed.payload === undefined ? {"value":"x"} : parsed.payload');
+    expect(view.methods.find((m) => m.name === "create")!.statements.join("\n")).toContain('payload: $Object.hasOwn(parsed, "payload") && parsed.payload !== undefined ? parsed.payload : {"value":"x"}');
   });
 });
 
@@ -187,11 +187,13 @@ describe("the key of a create", () => {
   test("integer :seq primary-key is left to the data layer, and is null on the instance until the write", async () => {
     const plain = await generated({ "m/item.mesh.mx": items("integer :seq primary-key") });
     const statements = actionsView({ document: plain.document, config: configOf("/p") }, plain.document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
-    expect(statements.slice(2)).toEqual(['const $changes: $Omit<$Record, "seq"> & { seq: $Record["seq"] | null } = {', "name: parsed.name,", "seq: null,", "};", "// data layer", "const $stored = await tx.insert(tables.items, $changes);", "$noteWrite(tx);", "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values", 'await frame.plain(() => $recordWrite(tx, options.seams, { entity: "m.Item", action: "create" }, null, $stored, parsed, context));', "return $stored as Item;"]);
-    // The row to insert and the instance a check sees hold the key as null, and the data layer gives it.
+    // The written key stays out of the row to insert: the data layer gives it, and an adapter never sees it as null.
+    expect(statements.slice(2)).toEqual(['const $changes: $Omit<$Record, "seq"> = {', "name: parsed.name,", "};", "// data layer", "const $stored = await tx.insert(tables.items, $changes);", "$noteWrite(tx);", "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values", 'await frame.plain(() => $recordWrite(tx, options.seams, { entity: "m.Item", action: "create" }, null, $stored, parsed, context));', "return $stored as Item;"]);
+    // The instance a check sees holds the key as null until the write; the row to insert leaves it out.
     const checked = await generated({ "m/item.mesh.mx": items("integer :seq primary-key").replace("        &name\n", "        &name\n      validate\n        check :named that=({ input }) => input.name !== \"\" code=\"named\" message=\"a name\"\n") });
     const lines = actionsView({ document: checked.document, config: configOf("/p") }, checked.document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
-    expect(lines).toContain('const $record: $Omit<$Record, "seq" | "name"> & { seq: $Record["seq"] | null; name: $Record["name"] | null } = { ...$changes };');
+    expect(lines).toContain('const $changes: $Omit<$Record, "name" | "seq"> & { name: $Record["name"] | null } = {');
+    expect(lines).toContain('const $record: $Omit<$Record, "name" | "seq"> & { name: $Record["name"] | null; seq: $Record["seq"] | null } = { ...$changes, seq: null };');
     expect(lines.join("\n")).not.toContain("uuidv7");
   });
 
@@ -205,7 +207,7 @@ describe("the key of a create", () => {
     const types = typesView({ document, config: configOf("/p") }, document.entities[0]!);
     expect(types.record.members[0]).toMatchObject({ key: "seq", type: "number" });
     expect(types.inputs.find((i) => i.name === "DestroyItemInput")!.members).toEqual([{ name: "seq", optional: false, key: "seq", type: "number" }]);
-    expect(types.query!.filterMembers[0]).toMatchObject({ key: "seq", type: "$Comparison<number>" });
+    expect(types.query!.filterMembers[0]).toMatchObject({ key: "seq", type: "$Comparison<number> | undefined" });
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
 
@@ -234,7 +236,7 @@ describe("a read's input", () => {
     expect(view.inputs.find((i) => i.name === "ReadItemInput")!.members.map((m) => m.key)).toEqual(["filter", "sort", "limit", "offset"]);
     const schema = validatorsView({ document, config: configOf("/p") }, document.entities[0]!);
     expect(schema.query!.filterFields.map((f) => f.key)).toEqual(["id", "name", "count"]);
-    expect(schema.query!.filterFields[0]!.schema).toBe("comparison(z.uuid()).exactOptional()");
+    expect(schema.query!.filterFields[0]!.schema).toBe("comparison(z.uuid()).optional()");
   });
 
   test.each(["filter", "sort", "limit", "offset"])("an argument called %s is refused: the read takes it from the caller", async (name) => {
@@ -384,16 +386,16 @@ describe("hyphens in enum values", () => {
     const entity = document.entities[0]!;
     const view = typesView({ document, config: configOf("/p") }, entity);
     expect(view.record.members[1]!.type).toBe('"review-accepted" | "performer-is-reviewer" | "plain"');
-    expect(view.query!.filterMembers[1]!.type).toBe('$Comparison<"review-accepted" | "performer-is-reviewer" | "plain">');
+    expect(view.query!.filterMembers[1]!.type).toBe('$Comparison<"review-accepted" | "performer-is-reviewer" | "plain"> | undefined');
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
-    const { makeRuleInput, readRuleInput } = await import(resolve(root, "generated/domain/m/rule.validators.ts"));
-    expect(makeRuleInput.safeParse({ kind: "performer-is-reviewer" }).success).toBe(true);
-    expect(makeRuleInput.safeParse({}).success).toBe(true);
-    for (const kind of ["performer_is_reviewer", "performer-is-reviewer ", "review accepted", "", null]) expect(makeRuleInput.safeParse({ kind }).success).toBe(false);
-    expect(readRuleInput.safeParse({ filter: { kind: { eq: "review-accepted" } } }).success).toBe(true);
-    expect(readRuleInput.safeParse({ filter: { kind: { eq: "review_accepted" } } }).success).toBe(false);
+    const { makeRuleInputSchema, readRuleInputSchema } = await import(resolve(root, "generated/domain/m/rule.validators.ts"));
+    expect(makeRuleInputSchema.safeParse({ kind: "performer-is-reviewer" }).success).toBe(true);
+    expect(makeRuleInputSchema.safeParse({}).success).toBe(true);
+    for (const kind of ["performer_is_reviewer", "performer-is-reviewer ", "review accepted", "", null]) expect(makeRuleInputSchema.safeParse({ kind }).success).toBe(false);
+    expect(readRuleInputSchema.safeParse({ filter: { kind: { eq: "review-accepted" } } }).success).toBe(true);
+    expect(readRuleInputSchema.safeParse({ filter: { kind: { eq: "review_accepted" } } }).success).toBe(false);
     const actions = actionsView({ document, config: configOf("/p") }, entity);
     expect(actions.methods.find((m) => m.name === "waive")!.statements.join("\n")).toContain('$changes.kind = $record.kind = "performer-is-reviewer";');
-    expect(actions.methods.find((m) => m.name === "make")!.statements.join("\n")).toContain('kind: parsed.kind === undefined ? "review-accepted" : parsed.kind');
+    expect(actions.methods.find((m) => m.name === "make")!.statements.join("\n")).toContain('kind: $Object.hasOwn(parsed, "kind") && parsed.kind !== undefined ? parsed.kind : "review-accepted"');
   }, 30_000);
 });

@@ -220,11 +220,11 @@ describe("validatorsView", () => {
     expect(view.hasInputs).toBe(true);
     expect(view.typesFromLiteral).toBe('"./todo.types"');
     expect(view.schemas.map((s) => [s.typeName, s.constName, s.shapeTypeName])).toEqual([
-      ["CreateTodoInput", "createTodoInput", "CreateTodoInputShape"],
-      ["CompleteTodoInput", "completeTodoInput", "CompleteTodoInputShape"],
-      ["PendingTodoInput", "pendingTodoInput", "PendingTodoInputShape"],
-      ["ReadTodoInput", "readTodoInput", "ReadTodoInputShape"],
-      ["DestroyTodoInput", "destroyTodoInput", "DestroyTodoInputShape"],
+      ["CreateTodoInput", "createTodoInputSchema", "CreateTodoInputShape"],
+      ["CompleteTodoInput", "completeTodoInputSchema", "CompleteTodoInputShape"],
+      ["PendingTodoInput", "pendingTodoInputSchema", "PendingTodoInputShape"],
+      ["ReadTodoInput", "readTodoInputSchema", "ReadTodoInputShape"],
+      ["DestroyTodoInput", "destroyTodoInputSchema", "DestroyTodoInputShape"],
     ]);
     expect(view.schemas.map((s) => s.fields.map((f) => f.name))).toEqual(
       types(document, "Todo").inputs.map((input) => input.members.map((m) => m.name)),
@@ -233,8 +233,8 @@ describe("validatorsView", () => {
 
   test("a read's schema holds the five query fields, each optional; load lists the relationships and computed fields", () => {
     expect(validators(documentOf(), "Todo").schemas.find((s) => s.typeName === "ReadTodoInput")!.fields).toEqual([
-      { name: "filter", key: "filter", schema: "todoFilter.optional()" },
-      { name: "sort", key: "sort", schema: "todoSort.optional()" },
+      { name: "filter", key: "filter", schema: "todoFilterSchema.optional()" },
+      { name: "sort", key: "sort", schema: "todoSortSchema.optional()" },
       { name: "limit", key: "limit", schema: "z.int().min(0).optional()" },
       { name: "offset", key: "offset", schema: "z.int().min(0).optional()" },
       { name: "load", key: "load", schema: 'z.array(z.enum(["list", "children", "detail", "label", "childCount", "largest"])).readonly().optional()' },
