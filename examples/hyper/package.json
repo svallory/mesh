@@ -17,13 +17,13 @@
   },
   "devDependencies": {
     "@meshfw/compiler": "workspace:*",
-    "drizzle-kit": "0.31.11",
-    "meshfw": "workspace:*"
+    "drizzle-kit": "0.31.11"
   },
   "dependencies": {
     "@meshfw/data-sqlite": "workspace:*",
     "@meshfw/runtime": "workspace:*",
     "drizzle-orm": "0.45.3",
+    "meshfw": "workspace:*",
     "zod": "4.6.5"
   }
 }
