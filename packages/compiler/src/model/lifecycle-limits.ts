@@ -1,5 +1,5 @@
 import { dirname, resolve } from "node:path";
-import type { ActionType, Diagnostic, Entity, ModelDocument, Step } from "@meshfw/model";
+import type { ActionType, Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions, type ActionExpression } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
@@ -16,9 +16,14 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
  * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
- * (M8) `before`, a call to an entity's action and, on a read or a load, reading the record, and a policy with no check.
+ * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
+ * policy with no check. `privilegedCallsOf` gives where a function calls `privileged`, kept by the front end.
  */
-export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
+export function checkLifecycleLimits(
+  document: ModelDocument,
+  diagnostics: Diagnostic[],
+  options: { privilegedCallsOf?: (expression: Expression) => readonly SourcePosition[] } = {},
+): void {
   // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies (POL-17).
   const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
   // A relationship to an entity whose policies leave out the read a load runs gives every caller's load of it nothing
@@ -100,6 +105,18 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     for (const policy of entity.policies) {
       const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
       if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
+      // A read policy is a filter on the query: it reads the row in hand and the caller, never another entity. A call
+      // hidden in a helper it calls is caught at run time instead, while the policy is evaluated (TXN-18).
+      if (covered.length)
+        for (const { expression, what } of policyExpressions(policy)) {
+          if (!expression.plain?.privileged) continue;
+          const calls = options.privilegedCallsOf?.(expression) ?? [];
+          for (const position of calls.length ? calls : [expression.position])
+            diagnostics.push(error("MESH_READ_POLICY_PRIVILEGED",
+              `${what} calls \`privileged\`, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy is a filter on the query, and reads no other entity`,
+              position,
+              "Move the condition into a write policy (scope this one to the writes with `types=` or `actions=`) or a check, or into a computed field that the filter compares"));
+        }
       const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression, "read")) : undefined;
       if (!reading) continue;
       diagnostics.push(error("MESH_NOT_IMPLEMENTED",

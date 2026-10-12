@@ -176,7 +176,10 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
       // An imported `now` or `today` is the import, as it is in translated code (`convert`).
-      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!) && !ctx.helpers.has(n.name!)) clock.add(n.name!);
+      if (!property && !objectKey && !label && n.name! in REGISTERED_CALLS && !scope.has(n.name!) && !ctx.helpers.has(n.name!)) {
+        clock.add(n.name!);
+        if (n.name === "privileged") (names.privileged ??= []).push(ctx.at(start(n)));
+      }
       if (!property && !objectKey && !label && !scope.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.helpers.has(n.name!)) names.helpers = true;
@@ -229,7 +232,7 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
 }
 
 /** What a function names besides its scope: the entities, whether it calls an entity's action, whether it calls a helper. */
-interface Names { entities: Set<string>; acts: boolean; helpers: boolean }
+interface Names { entities: Set<string>; acts: boolean; helpers: boolean; privileged?: SourcePosition[] }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -458,8 +461,12 @@ export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now"
 const demotions = new WeakMap<object, Demotion>();
 export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
 export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
+/** Where a function names Mesh's `privileged`, each call at its callee: a read policy must not (MESH_READ_POLICY_PRIVILEGED). */
+const privilegedCalls = new WeakMap<object, readonly SourcePosition[]>();
+export const privilegedCallsOf = (expression: object): readonly SourcePosition[] => privilegedCalls.get(expression) ?? [];
+export const rememberPrivilegedCalls = (expression: object, calls: readonly SourcePosition[]): void => { privilegedCalls.set(expression, calls); };
 
-export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion } {
+export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[] } {
   const f = fn as N;
   const called = new Set<string>();
   const names: Names = { entities: new Set(), acts: false, helpers: false };
@@ -494,11 +501,13 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     }
     return { parts, rest };
   };
-  const plain = (e: Plain): { plain: PlainReason } => {
+  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[] } => {
     // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
     const object = e.why === "unsupported-parameter" ? undefined : objectParts();
     return {
       plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...named, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+      // A function that names `privileged` is always plain (`uses-privileged`), so only a plain one carries the calls.
+      ...(names.privileged ? { privilegedCalls: names.privileged } : {}),
     };
   };
   try {

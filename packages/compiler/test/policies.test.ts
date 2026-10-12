@@ -119,9 +119,43 @@ describe("a read policy that reads the record is refused until M10", () => {
     expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read of blog.Post: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
     // The same through a `when`.
     expect(codes(build(post("  policies\n    policy :w types=[:read] when=() => &title !== null\n      authorize-if=() => true\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    // A call to `privileged` does not read the record of a read policy (POL-21 is about a write's checks): it builds, and
-    // throws at run time while the policy is evaluated (TXN-18).
-    expect(build(post("  policies\n    policy :q types=[:read]\n      forbid-if=async () => (await privileged(Post).read({})).length > 9\n")).diagnostics).toEqual([]);
+  });
+
+  test("a read policy that calls `privileged` is MESH_READ_POLICY_PRIVILEGED at each call: a filter reads no other entity", () => {
+    const fix = "Move the condition into a write policy (scope this one to the writes with `types=` or `actions=`) or a check, or into a computed field that the filter compares";
+    const that = "async () => (await privileged(Post).read({})).length > 9";
+    const source = post(`  policies\n    policy :q types=[:read]\n      forbid-if=${that}\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);
+    const built = build(source);
+    expect(codes(built.diagnostics)).toEqual(["error:MESH_READ_POLICY_PRIVILEGED"]);
+    expect(built.diagnostics[0]).toMatchObject({
+      message: "policy :q forbid-if calls `privileged`, and the policy covers read :read of blog.Post: a read policy is a filter on the query, and reads no other entity",
+      fix,
+    });
+    expect(built.diagnostics[0]!.position.offset).toBe(source.indexOf("privileged(Post)"));
+    expect(built.document).toBeNull();
+    // A policy with no scope covers the read too; each call is reported, in a `when` as in a check.
+    const twice = post("  policies\n    policy :all when=async () => (await privileged(Post).read({})).length > 0\n      authorize-if=async () => (await privileged(Post).read({})).length + (await privileged(Post).read({})).length > 1\n");
+    const all = build(twice).diagnostics;
+    expect(codes(all)).toEqual(Array(3).fill("error:MESH_READ_POLICY_PRIVILEGED"));
+    expect(all.map((d) => d.position.offset).sort((a, b) => a - b)).toEqual([...twice.matchAll(/privileged\(Post\)/g)].map((m) => m.index));
+    expect(all.map((d) => d.message.split(" calls ")[0])).toEqual(["policy :all when", "policy :all authorize-if", "policy :all authorize-if"]);
+    // A write policy reads through `privileged` (POL-21), and Mesh's name shadowed by a parameter is not Mesh's.
+    expect(build(post(`  policies\n    policy :p types=[:update]\n      forbid-if=${that}\n    policy :rest types=[:create, :read, :destroy]\n      authorize-if=() => true\n`)).diagnostics).toEqual([]);
+    expect(codes(build(post("  policies\n    policy :q types=[:read]\n      authorize-if=({ context: privileged }) => privileged !== null\n")).diagnostics)).toEqual([]);
+    // A read policy that calls an entity's action stays MESH_POLICY_ACTS.
+    expect(codes(build(post("  policies\n    policy :q types=[:read]\n      authorize-if=async ({ context }) => (await Post.draft({ authorId: \"a\" }, context)) !== null\n")).diagnostics)).toEqual(["error:MESH_POLICY_ACTS"]);
+  });
+
+  test("a read policy that calls a helper which calls `privileged` builds: the run time refuses the call (TXN-18)", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
+    try {
+      await mkdir(resolve(root, "blog"));
+      await writeFile(resolve(root, "blog/helpers.ts"), 'import { privileged } from "#mesh";\nimport { Post } from "#mesh/domain/blog";\nexport const big = () => privileged(Post) !== null;\n');
+      const source = `import { big } from "./helpers"\n${post("  policies\n    policy :q types=[:read]\n      authorize-if=() => big()\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n")}`;
+      expect(buildModel({ root, files: [{ file: "blog/post.mesh.mx", source }] }).diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("a policy a caller's load runs (POL-17) that reads the record is refused too, with no read action to cover", () => {

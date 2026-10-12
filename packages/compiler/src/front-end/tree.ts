@@ -1,5 +1,5 @@
 import type { SpannedIr } from "@mxlang/core";
-import { rememberDemotion, translate, type ConvertContext, type Demotion } from "./expression.ts";
+import { rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
@@ -235,7 +235,7 @@ export function expression(
   const translated = convert
     ? translate(n, data.span, { ...convert, source, at })
     : {};
-  const { demotion, ...fields } = translated as { demotion?: Demotion };
+  const { demotion, privilegedCalls, ...fields } = translated as { demotion?: Demotion; privilegedCalls?: SourcePosition[] };
   const result: Expression = {
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,
@@ -245,6 +245,7 @@ export function expression(
     ...fields,
   };
   if (demotion) rememberDemotion(result, demotion);
+  if (privilegedCalls) rememberPrivilegedCalls(result, privilegedCalls);
   return result;
 }
 /** The members an assignment or update writes to or through (`&a`, `&a.b`,
