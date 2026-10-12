@@ -18,14 +18,11 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
-  "mx": {
-    "contracts": "./src/front-end/contracts.ts"
-  },
   "dependencies": {
     "@jig-lang/jig": "1.0.1",
     "@meshfw/model": "workspace:*",
     "@meshfw/runtime": "workspace:*",
-    "@mxlang/core": "0.1.0-alpha.19",
+    "@mxlang/core": "0.1.0-alpha.21",
     "prettier": "3.6.2"
   },
   "devDependencies": {

@@ -17,16 +17,9 @@ describe("v4 contracts", () => {
       expect(contract.finalize).toBeUndefined();
     }
   });
-  test("manifest exposes the same contracts through mx.contracts, and declares no target", async () => {
-    const manifest = JSON.parse(
-      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-    );
-    expect(manifest.mx).toEqual({
-      contracts: "./src/front-end/contracts.ts",
-    });
-    // No target is declared, so MX has nothing to scan with; the module the manifest names is the contracts.
-    const loaded = (await import(new URL(manifest.mx.contracts, new URL("../package.json", import.meta.url)).href)).default;
-    expect(Object.keys(loaded).sort()).toEqual(Object.keys(contracts).sort());
+  test("the package manifest has no mx key: the dialect carries the contracts", () => {
+    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    expect(manifest.mx).toBeUndefined();
   });
   test("full currently supported vocabulary parses with contracts", () =>
     expect(parse(todo).diagnostics).toEqual([]));

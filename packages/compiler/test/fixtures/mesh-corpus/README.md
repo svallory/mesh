@@ -23,8 +23,8 @@ module did.
   ones), so the golden does not move when the contracts do. `model.ts`: the two lists
   those contracts read from `@meshfw/model`.
 - `__golden__/golden.json`: the whole result of every file, lowered as `parseEntitySource`
-  parses (`MESH_DIALECT`, the contracts above, `structural: "reject"`,
-  `unknownTags: "reject"`, `imports: "pass"`), under the virtual path
+  parses (`MESH_DIALECT` with the contracts above in place of its own; its
+  `structural: "reject"`, `unknownTags: "reject"` and `imports: "pass"` stay), under the virtual path
   `/mesh-corpus/<file>`. The IR's `loc` is dropped (every `span` restates it), and each
   Babel node keeps its shape and the `mx*` marks on its `extra` but not its offsets.
 

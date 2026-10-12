@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { CORPUS, GOLDEN, corpusFiles, parseEntity } from "./mesh-corpus.ts";
 
 const FILES = corpusFiles();
@@ -105,7 +106,7 @@ describe("`async` before a `:name` method under Mesh's contracts", () => {
   });
 
   test("`async` with no method after it is a plain boolean attribute", () => {
-    const { ir, diagnostics } = lowerSource("<a async/>\n<b async x=1/>\nc async\n", "/v/y.mesh.mx", { dialect: MESH_DIALECT });
+    const { ir, diagnostics } = lowerSource("<a async/>\n<b async x=1/>\nc async\n", "/v/y.mesh.mx", { dialect: SYNTAX_DIALECT });
     expect(diagnostics).toEqual([]);
     const tags = (ir?.body ?? []).flatMap((node) => (node.kind === "DelegatedTag" ? [node.tag] : []));
     expect(tags.map((tag) => tag.attrs[0])).toMatchObject(

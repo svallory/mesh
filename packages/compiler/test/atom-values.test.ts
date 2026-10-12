@@ -1,6 +1,6 @@
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { atomOf, containsAtom, valueOf, type Attr } from "../src/front-end/tree.ts";
 import { parse } from "./helpers.ts";
 
@@ -28,7 +28,7 @@ describe("normalisation", () => {
     expect(valueOf(plain)).toBe("owner");
   });
   test("a whole-value atom lowers to the atom-marked static attribute, with `node` unset", () => {
-    const { ir, diagnostics } = lowerSource("<a inverse=:owner/>", "/v/x.mesh.mx", { dialect: MESH_DIALECT });
+    const { ir, diagnostics } = lowerSource("<a inverse=:owner/>", "/v/x.mesh.mx", { dialect: SYNTAX_DIALECT });
     expect(diagnostics).toEqual([]);
     const node = ir?.body[0];
     const attr = node?.kind === "DelegatedTag" ? node.tag.attrs[0] : undefined;

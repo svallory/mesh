@@ -1,17 +1,17 @@
-// The `&` member shapes through `lowerSource` with `MESH_DIALECT` (ported from MX's `ir-entry/member-syntax.test.ts`
+// The `&` member shapes through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/member-syntax.test.ts`
 // at MX commit 750c80ec1; Mesh owns the member row now): in an expression, after a kind, on a tagless line, and the
 // cases that must not be members. The "dialect package" loader is covered by `dialect-registration.test.ts`.
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned, SpannedIr } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
+import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 
 const FILE = "/v/entity.mesh.mx";
 
 type SpannedTag = Spanned<DelegatedTag>;
 
 function ir(source: string): SpannedIr {
-  const result = lowerSource(source, FILE, { dialect: MESH_DIALECT });
+  const result = lowerSource(source, FILE, { dialect: SYNTAX_DIALECT });
   expect(result.diagnostics).toEqual([]);
   return result.ir as SpannedIr;
 }
@@ -189,7 +189,7 @@ describe("the five Mesh cases", () => {
 
 describe("what is not a member", () => {
   const parse = (source: string) =>
-    lowerSource(source, "/v/entity.mesh.mx", { dialect: MESH_DIALECT });
+    lowerSource(source, "/v/entity.mesh.mx", { dialect: SYNTAX_DIALECT });
 
   test.each([
     ["`&&`", "rule x=(a && b)\n", "LogicalExpression"],
@@ -329,11 +329,13 @@ describe("the unknown-tag scan takes the module too (PR 450's parseMxDocument)",
   test("after a lowering error, the scan still finds an unknown tag beside members", () => {
     // The scan runs only when lowering fails (`asc=1` against a boolean).
     const result = lowerSource("sort &a asc=1\nfoo\n", "/v/entity.mesh.mx", {
-      dialect: MESH_DIALECT,
       unknownTags: "reject",
-      customTags: {
-        sort: {
-          attributes: { asc: { type: "boolean" }, member: { type: "member" } },
+      dialect: {
+        ...SYNTAX_DIALECT,
+        contracts: {
+          sort: {
+            attributes: { asc: { type: "boolean" }, member: { type: "member" } },
+          },
         },
       },
     });
@@ -346,7 +348,7 @@ describe("the unknown-tag scan takes the module too (PR 450's parseMxDocument)",
 
 describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
   const parse = (source: string, options: LowerSourceOptions = {}) =>
-    lowerSource(source, "/v/entity.mesh.mx", { dialect: MESH_DIALECT, ...options });
+    lowerSource(source, "/v/entity.mesh.mx", { dialect: SYNTAX_DIALECT, ...options });
   const codeOf = (source: string, pick: (tag: SpannedTag) => unknown) => {
     const result = parse(source);
     expect(result.diagnostics).toEqual([]);
@@ -382,10 +384,13 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
   test("M4: an `&` line beside an unrelated expression error reports only that error", () => {
     const result = parse("set\n  &title\n  rule x=(a b)\n", {
       unknownTags: "reject",
-      customTags: {
-        set: {},
-        member: { attributes: { name: { type: "string" } } },
-        rule: { attributes: { x: { type: "expression" } } },
+      dialect: {
+        ...SYNTAX_DIALECT,
+        contracts: {
+          set: {},
+          member: { attributes: { name: { type: "string" } } },
+          rule: { attributes: { x: { type: "expression" } } },
+        },
       },
     });
     const messages = result.diagnostics.map((d) => d.message);
@@ -395,7 +400,7 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
 
   const slot = (type: "member" | "atom", source: string) =>
     parse(source, {
-      customTags: { sort: { attributes: { load: { type } } } },
+      dialect: { ...SYNTAX_DIALECT, contracts: { sort: { attributes: { load: { type } } } } },
     }).diagnostics.map((d) => d.message);
 
   test("M5: a `member` slot accepts a dynamic value that is one member", () => {

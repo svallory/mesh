@@ -32,7 +32,6 @@ import {
   type SourcePosition,
   type Step,
 } from "@meshfw/model";
-import contracts from "./contracts.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
 import { demotionOf } from "./expression.ts";
@@ -786,16 +785,12 @@ function buildEntity(
 }
 
 /**
- * The compiler's one MX call (`lowerSource`) with closed contracts, Mesh's dialect (which carries
- * its tag rules) and rejection on. It never throws; every problem is a positioned diagnostic.
+ * The compiler's one MX call (`lowerSource`) with Mesh's dialect, which carries the closed
+ * contracts, the tag rules and the strictness (rejection on). It never throws; every problem is a positioned diagnostic.
  */
 export function parseEntitySource(source: string, file: string) {
   return lowerSource(source, file, {
     dialect: MESH_DIALECT,
-    customTags: contracts,
-    structural: "reject",
-    unknownTags: "reject",
-    imports: "pass",
   });
 }
 

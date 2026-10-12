@@ -5,7 +5,7 @@ description: "How Mesh reads static entity files through MX, the syntax-v4 parse
 
 # How Mesh uses MX
 
-Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.19`, whose `lowerSource` returns the IR and lowers every `&` member position and every atom (expression, attribute and value position) through Mesh's dialect, and `meshfw` registers that dialect with MX tooling, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
+Status: the loader and the closed v4 contracts are built (PR #47), MX is pinned at `0.1.0-alpha.21`, whose `lowerSource` returns the IR and lowers every `&` member position and every atom (expression, attribute and value position) through Mesh's dialect, and `meshfw` registers that dialect with MX tooling, and `verify` checks the MX import boundary and complete MX samples in the Docs pages. The composed contracts module is built in M6; the `mesh` MX host package follows MX decision 148 ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)).
 
 ::: callout info "What the code does today"
 `packages/compiler/src/front-end/contracts.ts` on `main` declares the closed contracts of entity file syntax v4 ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)), and `packages/compiler/src/front-end/dialect.ts` is Mesh's MX dialect, which the compiler passes to every parse. The Docs samples parse as authored. The mechanisms below (the call, the tree, `analyze`, the import boundary) are as built.
@@ -32,9 +32,9 @@ The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-voca
 
 ## The MX features syntax v4 depends on
 
-Measured on `@mxlang/core` `0.1.0-alpha.19` through the compiler's parse (`parseEntitySource`: the production contracts, `dialect: MESH_DIALECT`, `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
+Measured on `@mxlang/core` `0.1.0-alpha.21` through the compiler's parse (`parseEntitySource`: only `dialect: MESH_DIALECT`, which carries the production contracts and `structural: "reject"`, `unknownTags: "reject"`, `imports: "pass"`), on an Invoice with each spelling below. Every row parses with no diagnostic.
 
-| Feature | Used for | State on alpha.19 |
+| Feature | Used for | State on alpha.21 |
 |---|---|---|
 | Atoms and `kind :name` | Declarations and fixed-set/enum values | Parses; a whole-value atom (`inverse=:owner`) is claimed by the dialect's `mesh:Atom` node type and lowers to a `static` attribute with `atom: { name, span }`, exactly as on alpha.15; expression atoms have `extra.mxAtom`. `Attr.node` stays unset |
 | Comments | `// …` before the entity, at the end of a line and on their own line in a body | Parse under structural rejection |
@@ -44,7 +44,7 @@ Measured on `@mxlang/core` `0.1.0-alpha.19` through the compiler's parse (`parse
 | `&name` as a whole value | `on:load=&visible` | One marked member, which the contract type `member` accepts |
 | A tagless member line | `&dueOn` in `input`, `&status=:sent` in `set` | Lowered to a `member` child tag, marked `trigger.id === "member"` (an authored `member` tag has none), with a string `name` and, when written, a `value` of the kind written (boolean, atom, string or expression) |
 | Dialect | Mesh's `&` trigger and atoms, `tagRules: "none"` | `packages/compiler/src/front-end/dialect.ts` (built from Mesh's own rows in `src/front-end/syntax/`, ported from MX's reference module at MX commit `750c80ec1` after MX handed the syntax to Mesh; `id: "mesh"`, `name: "Mesh"`, no `#id`/`.class` rows; the `atom-value` row and the `Atom` node type are Mesh's, and the id must stay `mesh` because the row names it), passed as the `dialect` option |
-| Dialect registration | `.mesh.mx` tooling | `meshfw`'s package.json declares `mx.dialect` (`id: "mesh"`, `name: "Mesh"`, `extensions` equal to `MESH_EXTENSIONS`, `module: "./dist/dialect.js"`). A project that lists `meshfw` as a direct dependency gets its `.mesh.mx` files routed to the dialect by MX discovery. The module is built JavaScript (`bun run build` in `packages/cli` bundles `src/dialect.ts`, which re-exports `MESH_DIALECT`, with every import inlined), because MX refuses a TypeScript module from an installed package; the build fails if the extensions, the id or the module path drift. `mx.contracts` stays on `@meshfw/compiler`, the only other `mx` key in the workspace. `test/dialect-registration.test.ts` routes files in a temporary project |
+| Dialect registration | `.mesh.mx` tooling | `meshfw`'s package.json declares `mx.dialect` (`id: "mesh"`, `name: "Mesh"`, `extensions` equal to `MESH_EXTENSIONS`, `module: "./dist/dialect.js"`, plus `mxConfigTags: false`, `tagDirs: []` and `reservedTags`, which close Mesh files to the project's `mx.tags`, `mx.contracts` and `tags/` and reserve Mesh's vocabulary). A project that lists `meshfw` as a direct dependency gets its `.mesh.mx` files routed to the dialect by MX discovery. The module is built JavaScript (`bun run build` in `packages/cli` bundles `src/dialect.ts`, which re-exports `MESH_DIALECT`, with every import inlined), because MX refuses a TypeScript module from an installed package; the build fails if the extensions, the id or the module path drift. `@meshfw/compiler`'s package.json has no `mx` key: the contracts travel on the dialect. `test/dialect-registration.test.ts` routes files in a temporary project |
 
 MX does not police member semantics. It lowers `&a = 1` inside an expression to `self.a = 1` without complaint, so the compiler reports it as `MESH_MEMBER_ASSIGN`; whether a member exists is the compiler's `MESH_UNKNOWN_MEMBER`.
 
@@ -56,13 +56,16 @@ The highlighter's separate gap is `input`: alpha.2 treats it as an HTML void tag
 
 | Option | Value | Effect |
 |---|---|---|
-| `customTags` | Mesh's contracts, one `CustomTag` per tag name | Declares the allowed attributes, children and parents. |
+| `Dialect.contracts` (`@unstable` in MX) | Mesh's contracts, one `CustomTag` per tag name | Declares the allowed attributes, children and parents. Every file of the dialect is checked against it, in the compiler and in every tool. `lowerSource` is never given `customTags`. |
+| `Dialect.structural`, `unknownTags`, `imports` (`@unstable` in MX) | `"reject"`, `"reject"`, `"pass"` | The dialect states how strict Mesh files are, so the editor checks them as the CLI does. A caller's option would override them, so the compiler passes none. |
 | `structural` | `"reject"` | Mesh wants tags and attributes only; `if`, `for` and text are errors. |
 | `unknownTags` | `"reject"` | A tag at any depth with no contract is a positioned error with a did-you-mean hint (MX project notes, updates, entry of 2026-10-03 23:05). |
 | `dialect` | `MESH_DIALECT` | Mesh's `&` member trigger and atoms, lowered before anything reads the IR; it carries `tagRules: "none"`, so `input` is an ordinary tag. |
 | `imports` | `"pass"` | Top-level imports arrive in `ir.imports` instead of being rejected as structural. |
 
-Attribute tags (written `@name`) are governed by the parent's `attributeTags`, not by `unknownTags` (same entry). Mesh imports its contracts directly and passes them as `customTags` instead of letting MX scan for contract files, so a stray local tag file in a user's project cannot change the build ([roadmap](../roadmap/roadmap.md), M1; Mesh's answers to MX on `mx.contracts`, 2026-10-04, "For decision 142", item 1).
+Attribute tags (written `@name`) are governed by the parent's `attributeTags`, not by `unknownTags` (same entry). Mesh hands its contracts to MX as the dialect's `contracts` instead of letting MX scan for contract files, and its manifest sets `mxConfigTags: false` and `tagDirs: []`, so a stray local tag file or a project's `mx.tags` or `mx.contracts` entry cannot change a Mesh file (MX: `apps/docs/docs/custom-tags/dialects.md`, "Keeping the project's config out" and "The manifest fields"; `reservedTags` makes a project definition of a Mesh tag `MX_RESERVED_TAG`, which MX reports in the tools' project scan and, for a `customTags` entry, in `lowerSource`).
+
+The decision is in [roadmap](../roadmap/roadmap.md), M1, and Mesh's answers to MX on `mx.contracts`, 2026-10-04, "For decision 142", item 1.
 
 ## The tree
 
@@ -102,9 +105,9 @@ With syntax v4 the attribute types are tag names, so the attribute-type contract
 
 ## The composed contracts module
 
-Extensions add tags, but `entity.children` is closed in the contract. MX merges contract modules by whole-entry replacement and does not track imports, so MX cannot compose them. Mesh composes the contracts itself from core plus enabled extensions, and in M6 also writes one self-contained module for MX tooling ([ADR-0021](../decisions/0021-composed-contracts-module.md); Mesh's answers to MX on `mx.contracts`, 2026-10-04, Q3, Q5, Q7). The build composes in memory and passes `customTags` directly. The module is produced with Bun's bundler because it contains `analyze` functions ([roadmap](../roadmap/roadmap.md), M6).
+Extensions add tags, but `entity.children` is closed in the contract. MX merges contract modules by whole-entry replacement and does not track imports, so MX cannot compose them. Mesh composes the contracts itself from core plus enabled extensions, and in M6 also writes one self-contained module for MX tooling ([ADR-0021](../decisions/0021-composed-contracts-module.md); Mesh's answers to MX on `mx.contracts`, 2026-10-04, Q3, Q5, Q7). The build composes in memory and hands the result to MX as the dialect's `contracts`. The module is produced with Bun's bundler because it contains `analyze` functions ([roadmap](../roadmap/roadmap.md), M6).
 
-`package.json#mx.contracts` names the module; its default export is a `ContractMap` (`Record<string, CustomTag>`), declarations plus `analyze` only (MX project notes, updates, entry of 2026-10-03 19:51). Today the repository's `package.json` points it at the hand-written contracts file. Once the `mesh` host exists, the host hands the module to MX tooling and sets Mesh's `defaultTag` ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)). Tag names carry no prefix. The generated module is guarded like other generated files (M6, acceptance test 4).
+Tooling that does not load the dialect would read `package.json#mx.contracts`, which names the module; its default export is a `ContractMap` (`Record<string, CustomTag>`), declarations plus `analyze` only (MX project notes, updates, entry of 2026-10-03 19:51). Today no package.json names it: the dialect carries the hand-written contracts. Once the `mesh` host exists, the host hands the module to MX tooling and sets Mesh's `defaultTag` ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)). Tag names carry no prefix. The generated module is guarded like other generated files (M6, acceptance test 4).
 
 ## How Mesh consumes MX today
 
