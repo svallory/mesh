@@ -543,24 +543,42 @@ async function rollup(
  * A caller's `filter` or `sort` naming a computed field or rollup of the entity fails here, with the milestone
  * that brings it, because the SQL evaluator (M10) is what filters and sorts by one. A read does it before
  * it touches the database, so a wrong result is never returned.
+ *
+ * Returns the filter to hand the data layer: the caller's, less every computed field whose comparison is `undefined`,
+ * at any depth under `and` and `or`. Such a field is one left out: a generated filter type writes it as
+ * `toString?: $Comparison<string> | undefined`, and a filter literal leaves out one named like a member of the Object
+ * interface (`toString`, `valueOf`: ENT-18) only by giving it as `undefined`. The data layer has no column for it, so it
+ * never sees it. A stored column given as `undefined` stays: the data layer leaves it out (`Filter`). A filter with
+ * nothing to take out is returned as it is.
  */
-export function rejectComputedQuery(entity: string, computed: readonly string[], query: { filter?: unknown; sort?: unknown }): void {
+export function rejectComputedQuery<F>(entity: string, computed: readonly string[], query: { readonly filter?: F | undefined; readonly sort?: unknown }): F | undefined {
   const fail = (name: string, what: "filter" | "sort") => {
     throw new FrameworkError(`A ${what} by ${entity}#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`);
   };
-  const walk = (filter: unknown): void => {
-    if (filter === null || typeof filter !== "object") return;
+  const clean = (filter: unknown): unknown => {
+    if (filter === null || typeof filter !== "object" || Array.isArray(filter)) return filter;
+    const kept: [string, unknown][] = [];
+    let changed = false;
     for (const [key, value] of Object.entries(filter)) {
-      if ((key === "and" || key === "or") && Array.isArray(value)) value.forEach(walk);
-      else if (value !== undefined && computed.includes(key)) fail(key, "filter");
+      if ((key === "and" || key === "or") && Array.isArray(value)) {
+        const items = value.map(clean);
+        const inner = items.some((item, index) => item !== value[index]);
+        changed ||= inner;
+        kept.push([key, inner ? items : value]);
+      } else if (computed.includes(key)) {
+        if (value !== undefined) fail(key, "filter");
+        changed = true;
+      } else kept.push([key, value]);
     }
+    return changed ? Object.fromEntries(kept) : filter;
   };
-  walk(query.filter);
+  const filter = clean(query.filter) as F | undefined;
   if (Array.isArray(query.sort))
     for (const key of query.sort) {
       const name = typeof key === "string" && key.startsWith("-") ? key.slice(1) : key;
       if (typeof name === "string" && computed.includes(name)) fail(name, "sort");
     }
+  return filter;
 }
 
 /**

@@ -134,7 +134,8 @@ test("castInput hands the validator plain objects without a prototype, and the a
     // What the validator sees, read while it runs: no plain object in it inherits anything.
     seen.push(Object.getPrototypeOf(copy), copy.toString, Object.getPrototypeOf(filter), Object.getPrototypeOf(filter.and[0]),
       filter.and[0]!.constructor, Object.getPrototypeOf(data), Object.getPrototypeOf(data.deep), copy.at);
-    // Like Zod: the objects it builds are ordinary, and a `json` value is the copy it was given.
+    // Unlike Zod, which rebuilds every object it hands back with the ordinary prototype, this validator hands `data` back as
+    // the copy it was given: the case `ordinary` is the safety net for.
     return { value: { ...copy, filter: { and: filter.and.map((item) => ({ ...item })) } } };
   });
   const parsed = (await castInput(layer, validator, input)) as Record<string, unknown>;
@@ -150,7 +151,8 @@ test("castInput hands the validator plain objects without a prototype, and the a
   expect(Object.hasOwn(parsed, "toString")).toBe(false);
   expect(Object.getPrototypeOf(parsed.filter)).toBe(Object.prototype);
   expect(Object.getPrototypeOf((parsed.filter as { and: object[] }).and[0])).toBe(Object.prototype);
-  // A `json` value is the caller's data, ordinary again at every depth, a `__proto__` key still a key.
+  // What the validator handed back of its copy is ordinary again at every depth; `ordinary` changes prototypes, never keys.
+  // (Zod's `z.json()` itself drops a `__proto__` key, so through a generated validator that key does not reach the action.)
   const data = parsed.data as Record<string, unknown>;
   expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
   expect(Object.keys(data)).toEqual(["__proto__", "deep"]);
@@ -164,7 +166,7 @@ test("castInput hands the validator plain objects without a prototype, and the a
   expect(Object.getPrototypeOf(input.filter)).toBe(Object.prototype);
 });
 
-test("castInput gives a cyclic json value back with its cycle and ordinary prototypes", async () => {
+test("castInput gives back a cyclic value the validator kept, with its cycle and ordinary prototypes", async () => {
   const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
   const loop: Record<string, unknown> = { n: 1 };
   loop.self = loop;

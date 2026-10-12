@@ -50,11 +50,12 @@ function withoutPrototypes(value: unknown, seen = new Map<object, unknown>()): u
 }
 
 /**
- * The validator's output, given back the ordinary prototype at any depth: the action gets ordinary objects, as the caller
- * would write them (`input.hasOwnProperty(...)`, `String(input)` and `input instanceof Object` work). The objects the
- * validator builds are ordinary already; what it keeps from its input, a `json` value, has none, since the validator saw
- * the copy `withoutPrototypes` made. Those are the cast's own copies, so they are changed in place, with no copy. A
- * `__proto__` key of a `json` value stays an own key.
+ * The validator's output with the ordinary prototype at any depth: the action gets ordinary objects, as the caller would
+ * write them (`input.hasOwnProperty(...)`, `String(input)` and `input instanceof Object` work). Zod 4, which the generated
+ * validators use, already rebuilds every object it hands back with that prototype, `z.strictObject` and `z.json()` values
+ * alike, so for them this changes nothing. It is a safety net for a validator that hands back objects of the copy
+ * `withoutPrototypes` made, which have none. Those are the cast's own copies, so they are changed in place, with no copy.
+ * Only prototypes change, never keys.
  */
 function ordinary(value: unknown, seen = new Set<object>()): unknown {
   if (value === null || typeof value !== "object" || seen.has(value)) return value;

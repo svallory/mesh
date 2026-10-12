@@ -192,6 +192,9 @@ describe("a relationship and computed fields named like members of Object.protot
       computed: {
         toString: { kind: "body", needs: ["constructor"], evaluate: (s: { self: unknown }) => { const parent = field(s.self, "constructor") as Row | null; return parent ? `to ${parent.id}` : "none"; } } as never,
         hasOwnProperty: { kind: "rollup" as const, fn: "count" as const, of: ["valueOf"] },
+        // Each reads what it cannot: a path on through a computed field, and a name the entity does not have.
+        through: { kind: "body", needs: ["toString", "toString.id"], evaluate: () => null } as never,
+        astray: { kind: "body", needs: ["isPrototypeOf"], evaluate: () => null } as never,
       },
     },
   });
@@ -202,6 +205,24 @@ describe("a relationship and computed fields named like members of Object.protot
     const loaded = await loadRows(oddPlan(handle), "Odd", tx, rows, ["constructor", "toString", "valueOf", "hasOwnProperty"]);
     expect(loaded.map((row) => [(field(row, "constructor") as Row | null)?.id ?? null, field(row, "toString"), (field(row, "valueOf") as Row[]).map((r) => r.id), field(row, "hasOwnProperty")]))
       .toEqual([[null, "none", [2], 1], [1, "to 1", [], 0]]);
+  });
+
+  test("a rollup over one that the call did not load counts its rows, not the inherited member", async () => {
+    const { tx, handle, calls } = memory({ odds: [{ id: 1, constructorId: null }, { id: 2, constructorId: 1 }] });
+    const rows = (await tx.select(handle("odds"))) as Row[];
+    const loaded = await loadRows(oddPlan(handle), "Odd", tx, rows, ["hasOwnProperty"]);
+    // `valueOf` is not on the rows, so the count is asked of the data layer: never worked out from Object's `valueOf`.
+    expect(loaded.map((row) => field(row, "hasOwnProperty"))).toEqual([1, 0]);
+    expect(calls.filter((call) => call.startsWith("count"))).toEqual(["count odds.id", "count odds.id"]);
+  });
+
+  test("a path on through a computed field named like one is refused; a name the entity lacks is unknown", async () => {
+    const { tx, handle } = memory({ odds: [{ id: 1, constructorId: null }] });
+    const rows = (await tx.select(handle("odds"))) as Row[];
+    // `relations.toString` is Object's method, never a relationship: nothing is loaded through the computed field.
+    await expect(loadRows(oddPlan(handle), "Odd", tx, rows, ["through"])).rejects.toThrow("Odd#toString is a computed field, and nothing can be loaded through it (toString.id)");
+    // `computed.isPrototypeOf` is Object's method, never a computed field.
+    await expect(loadRows(oddPlan(handle), "Odd", tx, rows, ["astray"])).rejects.toThrow('Odd has no relationship or computed field "isPrototypeOf" to load');
   });
 
   test("a guard throws for them when they are not loaded, and leaves every other inherited member alone", () => {
@@ -231,6 +252,31 @@ describe("rejectComputedQuery", () => {
     expect(() => rejectComputedQuery("Doc", names, { filter: { totals: { eq: 1 } }, sort: ["-totals"] })).not.toThrow();
     expect(() => rejectComputedQuery("Doc", names, { filter: { and: [] }, sort: [] })).not.toThrow();
     expect(() => rejectComputedQuery("Doc", [], { filter: { total: { eq: 1 } } })).not.toThrow();
+  });
+  // ENT-18: a filter literal leaves out a computed field named like a member of the Object interface only by giving it as
+  // undefined, which the generated filter type allows; the data layer has no column for it, so it must not see it.
+  test("a computed field given as undefined is left out of the filter it returns, at any depth; a stored column stays", () => {
+    const odd = ["toString", "valueOf"];
+    const clean = (filter: unknown) => rejectComputedQuery<unknown>("Doc", odd, { filter });
+    expect(clean({ toString: undefined, valueOf: undefined, label: { eq: "a" } })).toEqual({ label: { eq: "a" } });
+    const cleaned = clean({ or: [{ toString: undefined, label: { eq: "a" } }, { and: [{ valueOf: undefined }, { label: { eq: "b" } }] }] });
+    expect(cleaned).toEqual({ or: [{ label: { eq: "a" } }, { and: [{}, { label: { eq: "b" } }] }] });
+    expect(Object.keys((cleaned as { or: object[] }).or[0]!)).toEqual(["label"]);
+    expect(clean({ toString: undefined })).toEqual({});
+    // A stored column given as undefined is the data layer's to leave out (`Filter`).
+    const stored = { label: undefined, toString: undefined };
+    expect(Object.keys(clean(stored) as object)).toEqual(["label"]);
+    // Nothing to take out: the caller's filter itself, never a copy, and never changed.
+    const plain = { and: [{ label: { eq: "a" } }], label: undefined };
+    expect(clean(plain)).toBe(plain);
+    expect(rejectComputedQuery("Doc", odd, {})).toBeUndefined();
+    const given = { or: [{ toString: undefined }] };
+    clean(given);
+    expect(given).toEqual({ or: [{ toString: undefined }] });
+    expect(Object.keys(given.or[0]!)).toEqual(["toString"]);
+    // A comparison of a computed field is still the SQL evaluator's, beside or under an undefined one.
+    expect(() => clean({ toString: undefined, valueOf: { eq: "v" } })).toThrow(refused("filter", "valueOf"));
+    expect(() => clean({ or: [{ toString: undefined }, { toString: { eq: "t" } }] })).toThrow(refused("filter", "toString"));
   });
 });
 
