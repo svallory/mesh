@@ -3,11 +3,20 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "../work/task.types";
+import type {
+  Task as $work$Task$Record,
+  TaskLoaded as $work$Task$Loaded,
+} from "../work/task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
-import type { Attempt, AttemptLoaded } from "./attempt.types";
+import type {
+  Attempt as $execution$Attempt$Record,
+  AttemptLoaded as $execution$Attempt$Loaded,
+} from "./attempt.types";
 
 export type Run = {
   id: string;
@@ -25,7 +34,7 @@ export type Run = {
 };
 
 export type StartRunInput = {
-  task: Task["id"];
+  task: $work$Task$Record["id"];
   inputs?: unknown | undefined;
   parentRun?: Run["id"] | null | undefined;
 };
@@ -57,11 +66,11 @@ export type ReadRunInput<N extends keyof RunLoadable = never> = {
  * returns is shown to every caller who may read a Run. Return only what each such caller may see.
  */
 export type RunLoadable = {
-  task: Task | null;
-  responsible: Collaborator | null;
-  startedBy: Collaborator | null;
+  task: $work$Task$Record | null;
+  responsible: $identity$Collaborator$Record | null;
+  startedBy: $identity$Collaborator$Record | null;
   parentRun: Run | null;
-  attempts: Attempt[];
+  attempts: $execution$Attempt$Record[];
 };
 
 /** A Run with the relationships and computed fields named in N loaded. */
@@ -69,11 +78,11 @@ export type RunWith<N extends keyof RunLoadable> = Run & Pick<RunLoadable, N>;
 
 /** What a load through `privileged` attaches to a Run: it runs no policy, so every related record the key names is there. */
 export type RunTxLoadable = {
-  task: Task;
-  responsible: Collaborator;
-  startedBy: Collaborator;
+  task: $work$Task$Record;
+  responsible: $identity$Collaborator$Record;
+  startedBy: $identity$Collaborator$Record;
   parentRun: Run | null;
-  attempts: Attempt[];
+  attempts: $execution$Attempt$Record[];
 };
 
 /** A Run loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -91,11 +100,11 @@ export type RunLoadArg<L extends readonly (keyof RunLoadable)[]> = [RunLoadNames
 
 /** A Run as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type RunLoaded = Run & {
-  task: TaskLoaded;
-  responsible: CollaboratorLoaded;
-  startedBy: CollaboratorLoaded;
+  task: $work$Task$Loaded;
+  responsible: $identity$Collaborator$Loaded;
+  startedBy: $identity$Collaborator$Loaded;
   parentRun: RunLoaded | null;
-  attempts: AttemptLoaded[];
+  attempts: $execution$Attempt$Loaded[];
 };
 
 export type RunFilter =

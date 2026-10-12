@@ -5,7 +5,7 @@
 // subfolder. `bind`, `connect`, `disconnect` and `transaction` come from "#mesh"; the other files in this folder are an
 // implementation detail.
 
-export { Attempt } from "./attempt.actions";
+export { Attempt, loadAttemptFields } from "./attempt.actions";
 export type {
   StartAttemptInput,
   FinishAttemptInput,
@@ -21,7 +21,7 @@ export type {
   AttemptTxLoadable,
   AttemptTxWith,
 } from "./attempt.types";
-export { Invocation } from "./invocation.actions";
+export { Invocation, loadInvocationFields } from "./invocation.actions";
 export type {
   RecordInvocationInput,
   CorrectInvocationInput,
@@ -35,7 +35,7 @@ export type {
   InvocationTxLoadable,
   InvocationTxWith,
 } from "./invocation.types";
-export { Machine } from "./machine.actions";
+export { Machine, loadMachineFields } from "./machine.actions";
 export type {
   RegisterMachineInput,
   ReportMachineInput,
@@ -49,7 +49,7 @@ export type {
   MachineLoadNames,
   MachineLoadArg,
 } from "./machine.types";
-export { Run } from "./run.actions";
+export { Run, loadRunFields } from "./run.actions";
 export type {
   StartRunInput,
   CancelRunInput,
@@ -64,7 +64,7 @@ export type {
   RunTxLoadable,
   RunTxWith,
 } from "./run.types";
-export { SessionReference } from "./sessionReference.actions";
+export { SessionReference, loadSessionReferenceFields } from "./sessionReference.actions";
 export type {
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
@@ -79,10 +79,3 @@ export type {
   SessionReferenceTxLoadable,
   SessionReferenceTxWith,
 } from "./sessionReference.types";
-export {
-  loadAttemptFields,
-  loadInvocationFields,
-  loadMachineFields,
-  loadRunFields,
-  loadSessionReferenceFields,
-} from "../../load";

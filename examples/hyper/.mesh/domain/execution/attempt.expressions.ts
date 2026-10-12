@@ -20,10 +20,13 @@ import {
 } from "../../../src/domain/execution/execution.helpers";
 import { heldFence, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Run as $e$Run, type $ReadOnly as $t$Run } from "./run.actions";
 import {
-  SessionReference as $e$SessionReference,
-  type $ReadOnly as $t$SessionReference,
+  Run as $execution$Run$value,
+  type $ReadOnly as $execution$Run$ReadOnly,
+} from "./run.actions";
+import {
+  SessionReference as $execution$SessionReference$value,
+  type $ReadOnly as $execution$SessionReference$ReadOnly,
 } from "./sessionReference.actions";
 import type {
   Attempt,
@@ -93,7 +96,8 @@ export const expressions = {
   // check :session that, plain (uses-privileged) (src/domain/execution/attempt.mesh.mx:57:16)
   "start.check.session.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     const privileged = $privileged;
-    const SessionReference: $t$SessionReference = $e$SessionReference;
+    const SessionReference: $execution$SessionReference$ReadOnly =
+      $execution$SessionReference$value;
     return (async ({ input }) =>
       input.session == null ||
       (await privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 }))
@@ -165,7 +169,7 @@ export const expressions = {
   // run, plain (run-step) (src/domain/execution/attempt.mesh.mx:109:28)
   "finish.step.1.run": ($s: AttemptStoredScope<FinishAttemptInput>) => {
     const privileged = $privileged;
-    const Run: $t$Run = $e$Run;
+    const Run: $execution$Run$ReadOnly = $execution$Run$value;
     return (async function ({ self, input, context }) {
       const [run] = await privileged(Run).read({ filter: { id: { eq: self.runId } } });
       if (run && settlesRun(run.state, input.result, input.error))

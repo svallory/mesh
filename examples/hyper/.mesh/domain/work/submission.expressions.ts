@@ -20,8 +20,11 @@ import {
   taskVersionOf,
 } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Claim as $e$Claim, type $ReadOnly as $t$Claim } from "./claim.actions";
-import { Task as $e$Task, type $ReadOnly as $t$Task } from "./task.actions";
+import {
+  Claim as $work$Claim$value,
+  type $ReadOnly as $work$Claim$ReadOnly,
+} from "./claim.actions";
+import { Task as $work$Task$value, type $ReadOnly as $work$Task$ReadOnly } from "./task.actions";
 import type {
   Submission,
   SubmissionLoaded,
@@ -117,8 +120,8 @@ export const expressions = {
   "submit.step.1.run": ($s: SubmissionScope<SubmitSubmissionInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim: $t$Claim = $e$Claim;
-    const Task: $t$Task = $e$Task;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       const live = claimToRelease(
         await privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }),
@@ -151,7 +154,7 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/submission.mesh.mx:86:28)
   "withdraw.step.1.run": ($s: SubmissionStoredScope<WithdrawSubmissionInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);

@@ -3,7 +3,7 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Post, PostLoaded } from "./post.types";
+import type { Post as $blog$Post$Record, PostLoaded as $blog$Post$Loaded } from "./post.types";
 
 export type Comment = {
   id: string;
@@ -26,7 +26,7 @@ export type ReadCommentInput<N extends keyof CommentLoadable = never> = {
  * returns is shown to every caller who may read a Comment. Return only what each such caller may see.
  */
 export type CommentLoadable = {
-  post: Post | null;
+  post: $blog$Post$Record | null;
 };
 
 /** A Comment with the relationships and computed fields named in N loaded. */
@@ -34,7 +34,7 @@ export type CommentWith<N extends keyof CommentLoadable> = Comment & Pick<Commen
 
 /** What a load through `privileged` attaches to a Comment: it runs no policy, so every related record the key names is there. */
 export type CommentTxLoadable = {
-  post: Post;
+  post: $blog$Post$Record;
 };
 
 /** A Comment loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -53,7 +53,7 @@ export type CommentLoadArg<L extends readonly (keyof CommentLoadable)[]> = [
 
 /** A Comment as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type CommentLoaded = Comment & {
-  post: PostLoaded;
+  post: $blog$Post$Loaded;
 };
 
 export type CommentFilter =

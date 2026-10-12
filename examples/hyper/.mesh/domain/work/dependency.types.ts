@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "./task.types";
+import type { Task as $work$Task$Record, TaskLoaded as $work$Task$Loaded } from "./task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Dependency = {
   id: string;
@@ -16,8 +19,8 @@ export type Dependency = {
 };
 
 export type AddDependencyInput = {
-  dependent: Task["id"];
-  prerequisite: Task["id"];
+  dependent: $work$Task$Record["id"];
+  prerequisite: $work$Task$Record["id"];
   expectedVersion?: number | null | undefined;
 };
 
@@ -42,9 +45,9 @@ export type ReadDependencyInput<N extends keyof DependencyLoadable = never> = {
  * returns is shown to every caller who may read a Dependency. Return only what each such caller may see.
  */
 export type DependencyLoadable = {
-  dependent: Task | null;
-  prerequisite: Task | null;
-  createdBy: Collaborator | null;
+  dependent: $work$Task$Record | null;
+  prerequisite: $work$Task$Record | null;
+  createdBy: $identity$Collaborator$Record | null;
 };
 
 /** A Dependency with the relationships and computed fields named in N loaded. */
@@ -53,9 +56,9 @@ export type DependencyWith<N extends keyof DependencyLoadable> = Dependency &
 
 /** What a load through `privileged` attaches to a Dependency: it runs no policy, so every related record the key names is there. */
 export type DependencyTxLoadable = {
-  dependent: Task;
-  prerequisite: Task;
-  createdBy: Collaborator;
+  dependent: $work$Task$Record;
+  prerequisite: $work$Task$Record;
+  createdBy: $identity$Collaborator$Record;
 };
 
 /** A Dependency loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -75,9 +78,9 @@ export type DependencyLoadArg<L extends readonly (keyof DependencyLoadable)[]> =
 
 /** A Dependency as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type DependencyLoaded = Dependency & {
-  dependent: TaskLoaded;
-  prerequisite: TaskLoaded;
-  createdBy: CollaboratorLoaded;
+  dependent: $work$Task$Loaded;
+  prerequisite: $work$Task$Loaded;
+  createdBy: $identity$Collaborator$Loaded;
 };
 
 export type DependencyFilter =

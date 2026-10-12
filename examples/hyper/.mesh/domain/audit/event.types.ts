@@ -3,7 +3,10 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "../work/task.types";
+import type {
+  Task as $work$Task$Record,
+  TaskLoaded as $work$Task$Loaded,
+} from "../work/task.types";
 
 export type Event = {
   seq: number;
@@ -36,7 +39,7 @@ export type RecordEventInput = {
   cause?: unknown | undefined;
   checks?: unknown | undefined;
   payload?: unknown | undefined;
-  task?: Task["id"] | null | undefined;
+  task?: $work$Task$Record["id"] | null | undefined;
 };
 
 export type ReadEventInput<N extends keyof EventLoadable = never> = {
@@ -54,7 +57,7 @@ export type ReadEventInput<N extends keyof EventLoadable = never> = {
  * returns is shown to every caller who may read a Event. Return only what each such caller may see.
  */
 export type EventLoadable = {
-  task: Task | null;
+  task: $work$Task$Record | null;
 };
 
 /** A Event with the relationships and computed fields named in N loaded. */
@@ -74,7 +77,7 @@ export type EventLoadArg<L extends readonly (keyof EventLoadable)[]> = [EventLoa
 
 /** A Event as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type EventLoaded = Event & {
-  task: TaskLoaded | null;
+  task: $work$Task$Loaded | null;
 };
 
 export type EventFilter =

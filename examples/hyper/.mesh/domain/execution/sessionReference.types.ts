@@ -3,9 +3,15 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Machine, MachineLoaded } from "./machine.types";
+import type {
+  Machine as $execution$Machine$Record,
+  MachineLoaded as $execution$Machine$Loaded,
+} from "./machine.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type SessionReference = {
   id: string;
@@ -25,8 +31,8 @@ export type RecordSessionReferenceInput = {
   runtimeSessionId: string;
   availability: "complete" | "partial" | "unavailable" | "redacted";
   location?: string | null | undefined;
-  machine: Machine["id"];
-  agentProfile: Collaborator["id"];
+  machine: $execution$Machine$Record["id"];
+  agentProfile: $identity$Collaborator$Record["id"];
 };
 
 export type SetAvailabilitySessionReferenceInput = {
@@ -58,9 +64,9 @@ export type ReadSessionReferenceInput<N extends keyof SessionReferenceLoadable =
  * returns is shown to every caller who may read a SessionReference. Return only what each such caller may see.
  */
 export type SessionReferenceLoadable = {
-  machine: Machine | null;
-  agentProfile: Collaborator | null;
-  recordedBy: Collaborator | null;
+  machine: $execution$Machine$Record | null;
+  agentProfile: $identity$Collaborator$Record | null;
+  recordedBy: $identity$Collaborator$Record | null;
 };
 
 /** A SessionReference with the relationships and computed fields named in N loaded. */
@@ -69,9 +75,9 @@ export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = Ses
 
 /** What a load through `privileged` attaches to a SessionReference: it runs no policy, so every related record the key names is there. */
 export type SessionReferenceTxLoadable = {
-  machine: Machine;
-  agentProfile: Collaborator;
-  recordedBy: Collaborator;
+  machine: $execution$Machine$Record;
+  agentProfile: $identity$Collaborator$Record;
+  recordedBy: $identity$Collaborator$Record;
 };
 
 /** A SessionReference loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -91,9 +97,9 @@ export type SessionReferenceLoadArg<L extends readonly (keyof SessionReferenceLo
 
 /** A SessionReference as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type SessionReferenceLoaded = SessionReference & {
-  machine: MachineLoaded;
-  agentProfile: CollaboratorLoaded;
-  recordedBy: CollaboratorLoaded;
+  machine: $execution$Machine$Loaded;
+  agentProfile: $identity$Collaborator$Loaded;
+  recordedBy: $identity$Collaborator$Loaded;
 };
 
 export type SessionReferenceFilter =

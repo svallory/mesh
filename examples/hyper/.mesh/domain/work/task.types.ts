@@ -3,19 +3,37 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
-import type { Dependency, DependencyLoaded } from "./dependency.types";
+import type {
+  Dependency as $work$Dependency$Record,
+  DependencyLoaded as $work$Dependency$Loaded,
+} from "./dependency.types";
 
-import type { Assignment, AssignmentLoaded } from "./assignment.types";
+import type {
+  Assignment as $work$Assignment$Record,
+  AssignmentLoaded as $work$Assignment$Loaded,
+} from "./assignment.types";
 
-import type { Claim, ClaimLoaded } from "./claim.types";
+import type { Claim as $work$Claim$Record, ClaimLoaded as $work$Claim$Loaded } from "./claim.types";
 
-import type { Submission, SubmissionLoaded } from "./submission.types";
+import type {
+  Submission as $work$Submission$Record,
+  SubmissionLoaded as $work$Submission$Loaded,
+} from "./submission.types";
 
-import type { Completion, CompletionLoaded } from "./completion.types";
+import type {
+  Completion as $work$Completion$Record,
+  CompletionLoaded as $work$Completion$Loaded,
+} from "./completion.types";
 
-import type { Event, EventLoaded } from "../audit/event.types";
+import type {
+  Event as $audit$Event$Record,
+  EventLoaded as $audit$Event$Loaded,
+} from "../audit/event.types";
 
 export type Task = {
   id: string;
@@ -109,15 +127,15 @@ export type ReadTaskInput<N extends keyof TaskLoadable = never> = {
  */
 export type TaskLoadable = {
   parent: Task | null;
-  creator: Collaborator | null;
+  creator: $identity$Collaborator$Record | null;
   children: Task[];
-  dependencies: Dependency[];
-  dependents: Dependency[];
-  assignments: Assignment[];
-  claims: Claim[];
-  submissions: Submission[];
-  completions: Completion[];
-  events: Event[];
+  dependencies: $work$Dependency$Record[];
+  dependents: $work$Dependency$Record[];
+  assignments: $work$Assignment$Record[];
+  claims: $work$Claim$Record[];
+  submissions: $work$Submission$Record[];
+  completions: $work$Completion$Record[];
+  events: $audit$Event$Record[];
   childrenSettled: boolean;
   claimed: boolean;
   lapsedClaim: boolean;
@@ -134,15 +152,15 @@ export type TaskWith<N extends keyof TaskLoadable> = Task & Pick<TaskLoadable, N
 /** What a load through `privileged` attaches to a Task: it runs no policy, so every related record the key names is there. */
 export type TaskTxLoadable = {
   parent: Task | null;
-  creator: Collaborator;
+  creator: $identity$Collaborator$Record;
   children: Task[];
-  dependencies: Dependency[];
-  dependents: Dependency[];
-  assignments: Assignment[];
-  claims: Claim[];
-  submissions: Submission[];
-  completions: Completion[];
-  events: Event[];
+  dependencies: $work$Dependency$Record[];
+  dependents: $work$Dependency$Record[];
+  assignments: $work$Assignment$Record[];
+  claims: $work$Claim$Record[];
+  submissions: $work$Submission$Record[];
+  completions: $work$Completion$Record[];
+  events: $audit$Event$Record[];
   childrenSettled: boolean;
   claimed: boolean;
   lapsedClaim: boolean;
@@ -171,15 +189,15 @@ export type TaskLoadArg<L extends readonly (keyof TaskLoadable)[]> = [TaskLoadNa
 /** A Task as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type TaskLoaded = Task & {
   parent: TaskLoaded | null;
-  creator: CollaboratorLoaded;
+  creator: $identity$Collaborator$Loaded;
   children: TaskLoaded[];
-  dependencies: DependencyLoaded[];
-  dependents: DependencyLoaded[];
-  assignments: AssignmentLoaded[];
-  claims: ClaimLoaded[];
-  submissions: SubmissionLoaded[];
-  completions: CompletionLoaded[];
-  events: EventLoaded[];
+  dependencies: $work$Dependency$Loaded[];
+  dependents: $work$Dependency$Loaded[];
+  assignments: $work$Assignment$Loaded[];
+  claims: $work$Claim$Loaded[];
+  submissions: $work$Submission$Loaded[];
+  completions: $work$Completion$Loaded[];
+  events: $audit$Event$Loaded[];
   childrenSettled: boolean;
   claimed: boolean;
   lapsedClaim: boolean;

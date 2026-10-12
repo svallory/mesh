@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "./task.types";
+import type { Task as $work$Task$Record, TaskLoaded as $work$Task$Loaded } from "./task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Claim = {
   id: string;
@@ -20,7 +23,7 @@ export type Claim = {
 };
 
 export type AcquireClaimInput = {
-  task: Task["id"];
+  task: $work$Task$Record["id"];
   expectedVersion?: number | null | undefined;
 };
 
@@ -69,8 +72,8 @@ export type ReadClaimInput<N extends keyof ClaimLoadable = never> = {
  * returns is shown to every caller who may read a Claim. Return only what each such caller may see.
  */
 export type ClaimLoadable = {
-  task: Task | null;
-  holder: Collaborator | null;
+  task: $work$Task$Record | null;
+  holder: $identity$Collaborator$Record | null;
   lapsed: boolean;
 };
 
@@ -79,8 +82,8 @@ export type ClaimWith<N extends keyof ClaimLoadable> = Claim & Pick<ClaimLoadabl
 
 /** What a load through `privileged` attaches to a Claim: it runs no policy, so every related record the key names is there. */
 export type ClaimTxLoadable = {
-  task: Task;
-  holder: Collaborator;
+  task: $work$Task$Record;
+  holder: $identity$Collaborator$Record;
   lapsed: boolean;
 };
 
@@ -101,8 +104,8 @@ export type ClaimLoadArg<L extends readonly (keyof ClaimLoadable)[]> = [ClaimLoa
 
 /** A Claim as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type ClaimLoaded = Claim & {
-  task: TaskLoaded;
-  holder: CollaboratorLoaded;
+  task: $work$Task$Loaded;
+  holder: $identity$Collaborator$Loaded;
   lapsed: boolean;
 };
 

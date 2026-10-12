@@ -3,7 +3,10 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Membership, MembershipLoaded } from "./membership.types";
+import type {
+  Membership as $identity$Membership$Record,
+  MembershipLoaded as $identity$Membership$Loaded,
+} from "./membership.types";
 
 export type Collaborator = {
   id: string;
@@ -46,7 +49,7 @@ export type ReadCollaboratorInput<N extends keyof CollaboratorLoadable = never> 
  * returns is shown to every caller who may read a Collaborator. Return only what each such caller may see.
  */
 export type CollaboratorLoadable = {
-  memberships: Membership[];
+  memberships: $identity$Membership$Record[];
 };
 
 /** A Collaborator with the relationships and computed fields named in N loaded. */
@@ -66,7 +69,7 @@ export type CollaboratorLoadArg<L extends readonly (keyof CollaboratorLoadable)[
 
 /** A Collaborator as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type CollaboratorLoaded = Collaborator & {
-  memberships: MembershipLoaded[];
+  memberships: $identity$Membership$Loaded[];
 };
 
 export type CollaboratorFilter =

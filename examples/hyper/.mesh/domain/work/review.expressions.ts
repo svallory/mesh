@@ -14,8 +14,11 @@ import {
   submittedVersionsOf,
   taskUnchangedSinceSubmit,
 } from "../../../src/domain/work/work.helpers";
-import { Submission as $e$Submission, type $ReadOnly as $t$Submission } from "./submission.actions";
-import { Task as $e$Task, type $ReadOnly as $t$Task } from "./task.actions";
+import {
+  Submission as $work$Submission$value,
+  type $ReadOnly as $work$Submission$ReadOnly,
+} from "./submission.actions";
+import { Task as $work$Task$value, type $ReadOnly as $work$Task$ReadOnly } from "./task.actions";
 import type { Review, ReviewLoaded, AcceptReviewInput, ReturnReviewInput } from "./review.types";
 
 /** What every expression of Review reads; `I` is the input of the action it runs in. */
@@ -89,8 +92,8 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:45:28)
   "accept.step.1.run": ($s: ReviewScope<AcceptReviewInput>) => {
-    const Submission: $t$Submission = $e$Submission;
-    const Task: $t$Task = $e$Task;
+    const Submission: $work$Submission$ReadOnly = $work$Submission$value;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       const submission = await Submission.settle(
         { id: self.submissionId, outcome: "accepted" },
@@ -136,8 +139,8 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:72:28)
   "return.step.1.run": ($s: ReviewScope<ReturnReviewInput>) => {
-    const Submission: $t$Submission = $e$Submission;
-    const Task: $t$Task = $e$Task;
+    const Submission: $work$Submission$ReadOnly = $work$Submission$value;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       const submission = await Submission.settle(
         { id: self.submissionId, outcome: "returned" },

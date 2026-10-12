@@ -3,9 +3,12 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Task, TaskLoaded } from "./task.types";
+import type { Task as $work$Task$Record, TaskLoaded as $work$Task$Loaded } from "./task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Assignment = {
   id: string;
@@ -19,8 +22,8 @@ export type Assignment = {
 };
 
 export type StartAssignmentInput = {
-  task: Task["id"];
-  assignee: Collaborator["id"];
+  task: $work$Task$Record["id"];
+  assignee: $identity$Collaborator$Record["id"];
   reviewWaived?: boolean | undefined;
 };
 
@@ -44,9 +47,9 @@ export type ReadAssignmentInput<N extends keyof AssignmentLoadable = never> = {
  * returns is shown to every caller who may read a Assignment. Return only what each such caller may see.
  */
 export type AssignmentLoadable = {
-  task: Task | null;
-  assignee: Collaborator | null;
-  delegator: Collaborator | null;
+  task: $work$Task$Record | null;
+  assignee: $identity$Collaborator$Record | null;
+  delegator: $identity$Collaborator$Record | null;
 };
 
 /** A Assignment with the relationships and computed fields named in N loaded. */
@@ -55,9 +58,9 @@ export type AssignmentWith<N extends keyof AssignmentLoadable> = Assignment &
 
 /** What a load through `privileged` attaches to a Assignment: it runs no policy, so every related record the key names is there. */
 export type AssignmentTxLoadable = {
-  task: Task;
-  assignee: Collaborator;
-  delegator: Collaborator;
+  task: $work$Task$Record;
+  assignee: $identity$Collaborator$Record;
+  delegator: $identity$Collaborator$Record;
 };
 
 /** A Assignment loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -77,9 +80,9 @@ export type AssignmentLoadArg<L extends readonly (keyof AssignmentLoadable)[]> =
 
 /** A Assignment as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type AssignmentLoaded = Assignment & {
-  task: TaskLoaded;
-  assignee: CollaboratorLoaded;
-  delegator: CollaboratorLoaded;
+  task: $work$Task$Loaded;
+  assignee: $identity$Collaborator$Loaded;
+  delegator: $identity$Collaborator$Loaded;
 };
 
 export type AssignmentFilter =

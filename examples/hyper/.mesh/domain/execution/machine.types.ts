@@ -3,9 +3,15 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
-import type { Attempt, AttemptLoaded } from "./attempt.types";
+import type {
+  Attempt as $execution$Attempt$Record,
+  AttemptLoaded as $execution$Attempt$Loaded,
+} from "./attempt.types";
 
 export type Machine = {
   id: string;
@@ -53,8 +59,8 @@ export type ReadMachineInput<N extends keyof MachineLoadable = never> = {
  * returns is shown to every caller who may read a Machine. Return only what each such caller may see.
  */
 export type MachineLoadable = {
-  firstReportedBy: Collaborator | null;
-  attempts: Attempt[];
+  firstReportedBy: $identity$Collaborator$Record | null;
+  attempts: $execution$Attempt$Record[];
 };
 
 /** A Machine with the relationships and computed fields named in N loaded. */
@@ -73,8 +79,8 @@ export type MachineLoadArg<L extends readonly (keyof MachineLoadable)[]> = [
 
 /** A Machine as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type MachineLoaded = Machine & {
-  firstReportedBy: CollaboratorLoaded | null;
-  attempts: AttemptLoaded[];
+  firstReportedBy: $identity$Collaborator$Loaded | null;
+  attempts: $execution$Attempt$Loaded[];
 };
 
 export type MachineFilter =

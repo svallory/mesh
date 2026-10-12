@@ -37,10 +37,22 @@ import {
   memberOf,
   roleIn,
 } from "../../../src/domain/identity/identity.helpers";
-import { Assignment as $e$Assignment, type $ReadOnly as $t$Assignment } from "./assignment.actions";
-import { Claim as $e$Claim, type $ReadOnly as $t$Claim } from "./claim.actions";
-import { Completion as $e$Completion, type $ReadOnly as $t$Completion } from "./completion.actions";
-import { Submission as $e$Submission, type $ReadOnly as $t$Submission } from "./submission.actions";
+import {
+  Assignment as $work$Assignment$value,
+  type $ReadOnly as $work$Assignment$ReadOnly,
+} from "./assignment.actions";
+import {
+  Claim as $work$Claim$value,
+  type $ReadOnly as $work$Claim$ReadOnly,
+} from "./claim.actions";
+import {
+  Completion as $work$Completion$value,
+  type $ReadOnly as $work$Completion$ReadOnly,
+} from "./completion.actions";
+import {
+  Submission as $work$Submission$value,
+  type $ReadOnly as $work$Submission$ReadOnly,
+} from "./submission.actions";
 import type {
   Task,
   TaskLoaded,
@@ -223,8 +235,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:180:28)
   "cancel.step.1.run": ($s: TaskStoredScope<CancelTaskInput>) => {
     const privileged = $privileged;
-    const Claim: $t$Claim = $e$Claim;
-    const Submission: $t$Submission = $e$Submission;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
+    const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     return (async function ({ self, context }) {
       for (const claim of openClaims(
         await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
@@ -340,9 +352,9 @@ export const expressions = {
   "complete.step.1.run": ($s: TaskStoredScope<CompleteTaskInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim: $t$Claim = $e$Claim;
-    const Completion: $t$Completion = $e$Completion;
-    const Submission: $t$Submission = $e$Submission;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
+    const Completion: $work$Completion$ReadOnly = $work$Completion$value;
+    const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     return (async function ({ self, before, input, actor, context }) {
       let submission: string | null = null;
       let rule: "review-accepted" | "performer-is-reviewer" | "review-waived" = "review-accepted";
@@ -423,8 +435,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:304:28)
   "assign.step.1.run": ($s: TaskStoredScope<AssignTaskInput>) => {
     const privileged = $privileged;
-    const Assignment: $t$Assignment = $e$Assignment;
-    const Claim: $t$Claim = $e$Claim;
+    const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, input, context }) {
       const current = currentAssignment(
         await privileged(Assignment).read({
@@ -472,8 +484,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:333:28)
   "unassign.step.1.run": ($s: TaskStoredScope<UnassignTaskInput>) => {
     const privileged = $privileged;
-    const Assignment: $t$Assignment = $e$Assignment;
-    const Claim: $t$Claim = $e$Claim;
+    const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, context }) {
       const current = currentAssignment(
         await privileged(Assignment).read({

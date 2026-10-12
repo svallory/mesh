@@ -9,7 +9,10 @@ import {
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Machine as $e$Machine, type $ReadOnly as $t$Machine } from "./machine.actions";
+import {
+  Machine as $execution$Machine$value,
+  type $ReadOnly as $execution$Machine$ReadOnly,
+} from "./machine.actions";
 import type {
   Machine,
   MachineLoaded,
@@ -40,7 +43,7 @@ export const expressions = {
   // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:23:16)
   "register.check.nameFree.that": ($s: MachineNewScope<RegisterMachineInput>) => {
     const privileged = $privileged;
-    const Machine: $t$Machine = $e$Machine;
+    const Machine: $execution$Machine$ReadOnly = $execution$Machine$value;
     return (async ({ input }) =>
       (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
         .length === 0)($s);
@@ -50,7 +53,7 @@ export const expressions = {
   // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:35:16)
   "report.check.nameFree.that": ($s: MachineNewScope<ReportMachineInput>) => {
     const privileged = $privileged;
-    const Machine: $t$Machine = $e$Machine;
+    const Machine: $execution$Machine$ReadOnly = $execution$Machine$value;
     return (async ({ input }) =>
       (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
         .length === 0)($s);

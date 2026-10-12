@@ -3,15 +3,27 @@
 
 import type { Comparison as $Comparison } from "@meshfw/runtime";
 
-import type { Run, RunLoaded } from "./run.types";
+import type { Run as $execution$Run$Record, RunLoaded as $execution$Run$Loaded } from "./run.types";
 
-import type { Machine, MachineLoaded } from "./machine.types";
+import type {
+  Machine as $execution$Machine$Record,
+  MachineLoaded as $execution$Machine$Loaded,
+} from "./machine.types";
 
-import type { SessionReference, SessionReferenceLoaded } from "./sessionReference.types";
+import type {
+  SessionReference as $execution$SessionReference$Record,
+  SessionReferenceLoaded as $execution$SessionReference$Loaded,
+} from "./sessionReference.types";
 
-import type { Task, TaskLoaded } from "../work/task.types";
+import type {
+  Task as $work$Task$Record,
+  TaskLoaded as $work$Task$Loaded,
+} from "../work/task.types";
 
-import type { Collaborator, CollaboratorLoaded } from "../identity/collaborator.types";
+import type {
+  Collaborator as $identity$Collaborator$Record,
+  CollaboratorLoaded as $identity$Collaborator$Loaded,
+} from "../identity/collaborator.types";
 
 export type Attempt = {
   id: string;
@@ -33,11 +45,11 @@ export type Attempt = {
 };
 
 export type StartAttemptInput = {
-  run: Run["id"];
+  run: $execution$Run$Record["id"];
   step?: string | undefined;
   runtime?: string | null | undefined;
-  machine?: Machine["id"] | null | undefined;
-  session?: SessionReference["id"] | null | undefined;
+  machine?: $execution$Machine$Record["id"] | null | undefined;
+  session?: $execution$SessionReference$Record["id"] | null | undefined;
 };
 
 export type FinishAttemptInput = {
@@ -76,12 +88,12 @@ export type ReadAttemptInput<N extends keyof AttemptLoadable = never> = {
  * returns is shown to every caller who may read a Attempt. Return only what each such caller may see.
  */
 export type AttemptLoadable = {
-  run: Run | null;
-  task: Task | null;
-  performer: Collaborator | null;
-  delegator: Collaborator | null;
-  machine: Machine | null;
-  session: SessionReference | null;
+  run: $execution$Run$Record | null;
+  task: $work$Task$Record | null;
+  performer: $identity$Collaborator$Record | null;
+  delegator: $identity$Collaborator$Record | null;
+  machine: $execution$Machine$Record | null;
+  session: $execution$SessionReference$Record | null;
 };
 
 /** A Attempt with the relationships and computed fields named in N loaded. */
@@ -89,12 +101,12 @@ export type AttemptWith<N extends keyof AttemptLoadable> = Attempt & Pick<Attemp
 
 /** What a load through `privileged` attaches to a Attempt: it runs no policy, so every related record the key names is there. */
 export type AttemptTxLoadable = {
-  run: Run;
-  task: Task;
-  performer: Collaborator;
-  delegator: Collaborator;
-  machine: Machine | null;
-  session: SessionReference | null;
+  run: $execution$Run$Record;
+  task: $work$Task$Record;
+  performer: $identity$Collaborator$Record;
+  delegator: $identity$Collaborator$Record;
+  machine: $execution$Machine$Record | null;
+  session: $execution$SessionReference$Record | null;
 };
 
 /** A Attempt loaded through `privileged`, with the relationships and computed fields named in N. */
@@ -113,12 +125,12 @@ export type AttemptLoadArg<L extends readonly (keyof AttemptLoadable)[]> = [
 
 /** A Attempt as the functions of its entity file see it: every relationship and computed field present, and each related record the same. */
 export type AttemptLoaded = Attempt & {
-  run: RunLoaded;
-  task: TaskLoaded;
-  performer: CollaboratorLoaded;
-  delegator: CollaboratorLoaded;
-  machine: MachineLoaded | null;
-  session: SessionReferenceLoaded | null;
+  run: $execution$Run$Loaded;
+  task: $work$Task$Loaded;
+  performer: $identity$Collaborator$Loaded;
+  delegator: $identity$Collaborator$Loaded;
+  machine: $execution$Machine$Loaded | null;
+  session: $execution$SessionReference$Loaded | null;
 };
 
 export type AttemptFilter =

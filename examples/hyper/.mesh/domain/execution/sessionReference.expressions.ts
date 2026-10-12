@@ -11,8 +11,8 @@ import {
 import { machineActiveOf } from "../../../src/domain/execution/execution.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
 import {
-  Collaborator as $e$Collaborator,
-  type $ReadOnly as $t$Collaborator,
+  Collaborator as $identity$Collaborator$value,
+  type $ReadOnly as $identity$Collaborator$ReadOnly,
 } from "../identity/collaborator.actions";
 import type {
   SessionReference,
@@ -69,7 +69,7 @@ export const expressions = {
   // check :agentProfile that, plain (uses-privileged) (src/domain/execution/session-reference.mesh.mx:30:16)
   "record.check.agentProfile.that": ($s: SessionReferenceNewScope<RecordSessionReferenceInput>) => {
     const privileged = $privileged;
-    const Collaborator: $t$Collaborator = $e$Collaborator;
+    const Collaborator: $identity$Collaborator$ReadOnly = $identity$Collaborator$value;
     return (async ({ input }) =>
       (
         await privileged(Collaborator).read({

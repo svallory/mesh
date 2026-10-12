@@ -20,6 +20,8 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
+  type DataOperations as $DataOperations,
+  type LoadOptions as $LoadOptions,
 } from "@meshfw/runtime";
 import type {
   Comment as $Record,
@@ -204,3 +206,21 @@ export type $ReadOnly = $EntityValue<
   },
   $PrivilegedReadOnly
 >;
+
+/**
+ * Load relationships and computed fields onto Comment rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type CommentTxWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function loadCommentFields<const N extends keyof CommentLoadable>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<CommentTxWith<N>[]> {
+  return (await $loadRows($loadPlan, "blog.Comment", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as CommentTxWith<N>[];
+}

@@ -5,7 +5,7 @@
 // subfolder. `bind`, `connect`, `disconnect` and `transaction` come from "#mesh"; the other files in this folder are an
 // implementation detail.
 
-export { Comment } from "./comment.actions";
+export { Comment, loadCommentFields } from "./comment.actions";
 export type {
   ReadCommentInput,
   CommentFilter,
@@ -17,7 +17,7 @@ export type {
   CommentTxLoadable,
   CommentTxWith,
 } from "./comment.types";
-export { Post } from "./post.actions";
+export { Post, loadPostFields } from "./post.actions";
 export type {
   CreatePostInput,
   PublishPostInput,
@@ -36,4 +36,3 @@ export type {
 } from "./post.types";
 export { User } from "./user.actions";
 export type { CreateUserInput, ReadUserInput, UserFilter, UserSort } from "./user.types";
-export { loadCommentFields, loadPostFields } from "../../load";

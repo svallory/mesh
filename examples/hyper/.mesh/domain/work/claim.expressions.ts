@@ -17,9 +17,15 @@ import {
   taskVersionOf,
 } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Assignment as $e$Assignment, type $ReadOnly as $t$Assignment } from "./assignment.actions";
-import { Claim as $e$Claim, type $ReadOnly as $t$Claim } from "./claim.actions";
-import { Task as $e$Task, type $ReadOnly as $t$Task } from "./task.actions";
+import {
+  Assignment as $work$Assignment$value,
+  type $ReadOnly as $work$Assignment$ReadOnly,
+} from "./assignment.actions";
+import {
+  Claim as $work$Claim$value,
+  type $ReadOnly as $work$Claim$ReadOnly,
+} from "./claim.actions";
+import { Task as $work$Task$value, type $ReadOnly as $work$Task$ReadOnly } from "./task.actions";
 import type {
   Claim,
   ClaimLoaded,
@@ -93,7 +99,7 @@ export const expressions = {
   "acquire.step.0.run": ($s: ClaimScope<AcquireClaimInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim: $t$Claim = $e$Claim;
+    const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ input, context }) {
       const lapsed = await privileged(Claim).read({
         filter: { taskId: { eq: input.task }, state: { eq: "active" }, expiresAt: { lte: now() } },
@@ -118,8 +124,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:49:28)
   "acquire.step.2.run": ($s: ClaimScope<AcquireClaimInput>) => {
     const privileged = $privileged;
-    const Assignment: $t$Assignment = $e$Assignment;
-    const Task: $t$Task = $e$Task;
+    const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       const open = await privileged(Assignment).read({
         filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } },
@@ -166,7 +172,7 @@ export const expressions = {
     $.pure(leaseEnd($.now($s)), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:84:28)
   "renew.step.1.run": ($s: ClaimStoredScope<RenewClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
@@ -206,7 +212,7 @@ export const expressions = {
     $.coalesce($s.input?.reason, "released"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:120:28)
   "release.step.1.run": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
@@ -234,7 +240,7 @@ export const expressions = {
   "revoke.step.0.set.endReason": ($s: ClaimStoredScope<RevokeClaimInput>) => $s.input?.reason,
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:144:28)
   "revoke.step.1.run": ($s: ClaimStoredScope<RevokeClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
@@ -249,7 +255,7 @@ export const expressions = {
     $.coalesce($s.input?.reason, "lease expired"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:161:28)
   "expire.step.1.run": ($s: ClaimStoredScope<ExpireClaimInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);

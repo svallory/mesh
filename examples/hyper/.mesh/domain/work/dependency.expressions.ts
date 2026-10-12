@@ -14,7 +14,7 @@ import {
   taskVersionOf,
 } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import { Task as $e$Task, type $ReadOnly as $t$Task } from "./task.actions";
+import { Task as $work$Task$value, type $ReadOnly as $work$Task$ReadOnly } from "./task.actions";
 import type {
   Dependency,
   DependencyLoaded,
@@ -97,7 +97,7 @@ export const expressions = {
   "add.step.0.set.createdBy": ($s: DependencyScope<AddDependencyInput>) => $s.actor?.id,
   // run, plain (run-step) (src/domain/work/dependency.mesh.mx:51:28)
   "add.step.1.run": ($s: DependencyScope<AddDependencyInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.dependentId }, { ...context, system: true });
     })($s);
@@ -118,7 +118,7 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/dependency.mesh.mx:66:28)
   "remove.step.0.run": ($s: DependencyStoredScope<RemoveDependencyInput>) => {
-    const Task: $t$Task = $e$Task;
+    const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.dependentId }, { ...context, system: true });
     })($s);

@@ -32,7 +32,9 @@ import {
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
+  type DataOperations as $DataOperations,
   type Issue as $Issue,
+  type LoadOptions as $LoadOptions,
   type Row as $Row,
 } from "@meshfw/runtime";
 import type {
@@ -671,3 +673,21 @@ export type $ReadOnly = $EntityValue<
   },
   $PrivilegedReadOnly
 >;
+
+/**
+ * Load relationships and computed fields onto Collaborator rows by name. A relationship is loaded by one more query for
+ * all the rows; a computed field loads what its body reads first. The rows you pass are not changed: the result is new
+ * rows of type CollaboratorWith<"name" | ...>. It loads as `privileged` does, running no policy, so it takes no `policies`
+ * option: every related record the key names is there.
+ */
+export async function loadCollaboratorFields<const N extends keyof CollaboratorLoadable>(
+  tx: $DataOperations,
+  rows: readonly $Record[],
+  names: readonly N[],
+  options?: Omit<$LoadOptions, "policies"> & { readonly policies?: never },
+): Promise<CollaboratorWith<N>[]> {
+  return (await $loadRows($loadPlan, "identity.Collaborator", tx, rows, names, {
+    ...options,
+    policies: false,
+  })) as CollaboratorWith<N>[];
+}
