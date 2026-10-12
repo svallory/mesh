@@ -10,8 +10,7 @@ type Call = (input?: unknown, ...context: unknown[]) => Promise<unknown>;
 export type Calls = { readonly [name: string]: any };
 
 /**
- * A generated project's entity calls under the names the `actions` handle gives them, the action followed by the
- * entity's export name (`openTask` for `Task.open`), each made inside `run()` of `binding`:
+ * A generated project's entity calls under short names, the action followed by the entity's export name (`openTask` for `Task.open`), each made inside `run()` of `binding`:
  * `callsOf(binding, domain).openTask(input, context)` is `binding.run(() => domain.Task.open(input, context))`, with
  * `domain` the project's root barrel (`.mesh/domain/index.ts`). These tests pin what an action does, not how it is
  * called (packages/compiler/test/index.test.ts, the blog and Hyper pin the call itself), so each call keeps one short

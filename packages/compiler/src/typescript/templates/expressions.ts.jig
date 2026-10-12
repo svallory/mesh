@@ -8,6 +8,9 @@ import {
   @if(usesExpr)
   expr as $,
   @end
+  @if(usesPrivileged)
+  privileged as $privileged,
+  @end
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   @if(usesSharedInput)
@@ -17,7 +20,9 @@ import {
 @each(helper in helperImports)
 import { {{ helper.names }} } from {{ helper.fromLiteral }};
 @end
-import type { ReadOnlyActions as $ReadOnlyActions, ReadOnlyReads as $ReadOnlyReads } from {{ compositionFromLiteral }};
+@each(imported in entityImports)
+import { {{ imported.names }} } from {{ imported.fromLiteral }};
+@end
 import type {
   @each(name in typeImports)
   {{ name }},

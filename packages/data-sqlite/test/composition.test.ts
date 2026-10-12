@@ -1,6 +1,7 @@
-// M5, part 2: action composition (ADR-0068). A domain whose functions call other actions through `actions`, read through
-// `tx`, run after the row is written (`run [after=:write]`) and open an application transaction, built, generated, pushed
-// to SQLite and called through the generated functions.
+// M5, part 2: action composition (ADR-0068, CMP-16, TXN-16). A domain whose functions call other actions through the
+// entity values they import, each with the context it passes, read through `privileged`, run after the row is written
+// (`run [after=:write]`) and open an application transaction, built, generated, pushed to SQLite and called through the
+// generated functions. Account and Entry import each other.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -13,7 +14,8 @@ import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
 const account = `import { Entry } from "./entry.mesh.mx"
-import { auditInTransaction, directDeposit } from "./helpers"
+import { Audit } from "./audit.mesh.mx"
+import { auditInTransaction, directDeposit, later } from "./helpers"
 entity :Account table="accounts"
   attributes
     integer :id primary-key
@@ -33,20 +35,20 @@ entity :Account table="accounts"
         run({ self, context }) {
           context.log.push(\`before the write: id \${self.id}\`);
         }
-        run [after=:write] ({ self, context, actions }) {
+        run [after=:write] ({ self, context }) {
           context.log.push(\`after the write: id \${self.id}\`);
-          await actions.logAudit({ what: \`opened \${self.id}\` });
+          await Audit.log({ what: \`opened \${self.id}\` }, context);
         }
     create :openFull
       input
         &name
         boolean :failLast
       do
-        run [after=:write] ({ self, actions }) {
-          await actions.postEntry({ account: self.id, amount: 10, note: "opening" });
+        run [after=:write] ({ self, context }) {
+          await Entry.post({ account: self.id, amount: 10, note: "opening" }, context);
         }
-        run [after=:write] ({ self, actions }) {
-          await actions.logAudit({ what: \`opened \${self.name} in full\` });
+        run [after=:write] ({ self, context }) {
+          await Audit.log({ what: \`opened \${self.name} in full\` }, context);
         }
         run [after=:write] ({ input }) {
           if (input.failLast) throw new Error("the last step failed");
@@ -56,9 +58,9 @@ entity :Account table="accounts"
         &name
         string :auditor
       do
-        run [after=:write] ({ self, input, actions, context }) {
-          await actions.logAudit({ what: \`opened \${self.name}\` });
-          await actions.logAudit({ what: \`opened \${self.name} for \${input.auditor}\` }, { actor: { id: input.auditor }, log: context.log });
+        run [after=:write] ({ self, input, context }) {
+          await Audit.log({ what: \`opened \${self.name}\` }, context);
+          await Audit.log({ what: \`opened \${self.name} for \${input.auditor}\` }, { actor: { id: input.auditor }, log: context.log });
         }
     create :openNested
       input
@@ -76,14 +78,14 @@ entity :Account table="accounts"
         string :phase
         integer :target nullable
       do
-        run({ input, actions, tx, context }) {
+        run({ input, context }) {
           try {
-            if (input.phase === "cast") await actions.depositAccount({ id: input.target ?? 0, amount: "ten" as unknown as number });
-            if (input.phase === "validate") await actions.depositAccount({ id: input.target ?? 0, amount: -1 });
-            if (input.phase === "run") await actions.failAudit({ what: "refused" });
-            if (input.phase === "missing") await actions.depositAccount({ id: 987654, amount: 1 });
-            if (input.phase === "read") await tx.readAccount({ limit: -1 });
-            if (input.phase === "deep") await actions.relayAudit({ what: "deep" });
+            if (input.phase === "cast") await Account.deposit({ id: input.target ?? 0, amount: "ten" as unknown as number }, context);
+            if (input.phase === "validate") await Account.deposit({ id: input.target ?? 0, amount: -1 }, context);
+            if (input.phase === "run") await Audit.fail({ what: "refused" }, context);
+            if (input.phase === "missing") await Account.deposit({ id: 987654, amount: 1 }, context);
+            if (input.phase === "read") await privileged(Account).read({ limit: -1 });
+            if (input.phase === "deep") await Audit.relay({ what: "deep" }, context);
           } catch (error) {
             context.log.push(\`caught \${(error as Error).constructor.name}\`);
           }
@@ -105,8 +107,8 @@ entity :Account table="accounts"
       do
         set
           &balance=({ input }) => &balance - input.amount
-        run [after=:write] ({ input, actions }) {
-          await actions.depositAccount({ id: input.to, amount: input.amount });
+        run [after=:write] ({ input, context }) {
+          await Account.deposit({ id: input.to, amount: input.amount }, context);
         }
     update :adjust
       input
@@ -141,15 +143,15 @@ entity :Account table="accounts"
       input
         string :how
       do
-        run({ input, actions, tx }) {
-          if (input.how === "tx") { const [row] = await tx.readAccount({}); (row as any).name = "changed through tx"; }
-          if (input.how === "result") { const audit = await actions.logAudit({ what: "meddled" }); (audit as any).what = "changed"; }
-          if (input.how === "other") { const [row] = await tx.readAudit({}); (row as any).what = "changed through tx"; }
+        run({ input, context }) {
+          if (input.how === "privileged") { const [row] = await privileged(Account).read({}); (row as any).name = "changed through privileged"; }
+          if (input.how === "result") { const audit = await Audit.log({ what: "meddled" }, context); (audit as any).what = "changed"; }
+          if (input.how === "other") { const [row] = await privileged(Audit).read({}); (row as any).what = "changed through privileged"; }
         }
     update :stash
       do
-        run({ actions, context }) {
-          context.stash = actions;
+        run({ context }) {
+          context.stash = later(() => Audit.log({ what: "late" }, context));
         }
     create :openDirect
       input
@@ -163,8 +165,8 @@ entity :Account table="accounts"
       input
         &name
       do
-        run [after=:write] ({ self, actions }) {
-          await actions.renameAccount({ id: self.id, name: \`\${self.name} (renamed)\` });
+        run [after=:write] ({ self, context }) {
+          await Account.rename({ id: self.id, name: \`\${self.name} (renamed)\` }, context);
         }
     update :rename
       input
@@ -173,8 +175,8 @@ entity :Account table="accounts"
       input
         string :newName
       do
-        run [after=:write] ({ self, input, actions }) {
-          await actions.renameAccount({ id: self.id, name: input.newName });
+        run [after=:write] ({ self, input, context }) {
+          await Account.rename({ id: self.id, name: input.newName }, context);
         }
     update :renameBefore
       input
@@ -183,34 +185,35 @@ entity :Account table="accounts"
       do
         set
           &balance=({}) => &balance + 1
-        run({ self, input, actions }) {
-          await actions.renameAccount({ id: input.other ?? self.id, name: input.newName });
+        run({ self, input, context }) {
+          await Account.rename({ id: input.other ?? self.id, name: input.newName }, context);
         }
     update :depositTwice
       do
-        run [after=:write] ({ self, actions }) {
-          await Promise.all([actions.depositAccount({ id: self.id, amount: 1 }), actions.depositAccount({ id: self.id, amount: 1 })]);
+        run [after=:write] ({ self, context }) {
+          await Promise.all([Account.deposit({ id: self.id, amount: 1 }, context), Account.deposit({ id: self.id, amount: 1 }, context)]);
         }
     create :failThenTally
       input
         &name
       do
-        run({ actions, context }) {
-          try { await actions.failAudit({ what: "first" }); } catch { context.log.push("caught the failure"); }
+        run({ context }) {
+          try { await Audit.fail({ what: "first" }, context); } catch { context.log.push("caught the failure"); }
           for (const call of [{ what: "after" }, { what: 5 as unknown as string }]) {
-            try { await actions.tallyAudit(call); context.log.push("not refused"); }
+            try { await Audit.tally(call, context); context.log.push("not refused"); }
             catch (error) { context.log.push(\`refused: \${(error as Error).constructor.name}, cause \${((error as Error).cause as Error | undefined)?.message}\`); }
           }
         }
     destroy :close
       do
-        run [after=:write] ({ self, tx, actions }) {
-          const left = await tx.readAccount({ filter: { id: { eq: self.id } } });
-          await actions.logAudit({ what: \`closed \${self.name} with \${self.balance}, \${left.length} left\` });
+        run [after=:write] ({ self, context }) {
+          const left = await privileged(Account).read({ filter: { id: { eq: self.id } } });
+          await Audit.log({ what: \`closed \${self.name} with \${self.balance}, \${left.length} left\` }, context);
         }
 `;
 
 const entry = `import { Account } from "./account.mesh.mx"
+import { Audit } from "./audit.mesh.mx"
 entity :Entry table="entries"
   attributes
     uuid :id primary-key
@@ -225,16 +228,20 @@ entity :Entry table="entries"
         &amount
         &note
       do
-        run [after=:write] ({ self, actions }) {
-          await actions.logAudit({ what: \`posted \${self.amount}\` });
+        run [after=:write] ({ self, context }) {
+          await Audit.log({ what: \`posted \${self.amount}\` }, context);
         }
 `;
 
-const audit = `entity :Audit table="audits"
+const audit = `import { peek } from "./peek"
+
+entity :Audit table="audits"
   attributes
     integer :id primary-key
     string :what
     string :by nullable
+  computed
+    boolean :peeked() { return peek() }
   actions auto=[:read]
     create :log
       input
@@ -242,9 +249,9 @@ const audit = `entity :Audit table="audits"
       do
         set
           &by=({ actor }) => actor?.id ?? null
-        run [after=:write] ({ self, tx, context }) {
-          const rows = await tx.readAudit({ filter: { id: { eq: self.id } } });
-          context.log?.push(\`audit "\${self.what}" by \${self.by ?? "nobody"}; tx sees \${rows.length}\`);
+        run [after=:write] ({ self, context }) {
+          const rows = await privileged(Audit).read({ filter: { id: { eq: self.id } } });
+          context.log?.push(\`audit "\${self.what}" by \${self.by ?? "nobody"}; privileged sees \${rows.length}\`);
         }
     create :fail
       input
@@ -257,8 +264,8 @@ const audit = `entity :Audit table="audits"
       input
         &what
       do
-        run({ actions, context }) {
-          try { await actions.failAudit({ what: "inner" }); } catch { context.log.push("relay caught the inner failure"); }
+        run({ context }) {
+          try { await Audit.fail({ what: "inner" }, context); } catch { context.log.push("relay caught the inner failure"); }
         }
     create :tally
       input
@@ -270,7 +277,9 @@ const audit = `entity :Audit table="audits"
 `;
 
 /** Every column type, and an `always` step that writes on every update: the S3 re-read must find each row unchanged. */
-const doc = `entity :Doc table="docs"
+const doc = `import { Audit } from "./audit.mesh.mx"
+
+entity :Doc table="docs"
   attributes
     integer :id primary-key
     uuid :ref nullable
@@ -287,8 +296,8 @@ const doc = `entity :Doc table="docs"
   actions auto=[:read]
     always types=[:update]
       do
-        run({ self, actions }) {
-          await actions.logAudit({ what: \`touching doc \${self.id}\` });
+        run({ self, context }) {
+          await Audit.log({ what: \`touching doc \${self.id}\` }, context);
         }
     create :make
       input
@@ -311,31 +320,44 @@ const doc = `entity :Doc table="docs"
       input
         integer :other
       do
-        run({ input, actions }) {
-          await actions.bumpDoc({ id: input.other });
+        run({ input, context }) {
+          await Doc.bump({ id: input.other }, context);
         }
 `;
 
 /**
- * A helper module the entity file imports, as an application's would: it calls an entity value and opens an application
- * transaction from inside a \`run\`, each on the binding in scope. Both are typed by hand and called with no context on
- * purpose, so the project still type-checks when its context declaration has a required key. Both are read inside the
- * functions: this module loads while the barrel that defines \`Account\` is still loading.
+ * A helper module the entity file imports, as an application's would: it calls entity values, reads through
+ * \`privileged\` and opens an application transaction from inside a \`run\`, each on the binding in scope. The calls are
+ * typed by hand and made with no context on purpose, so the project still type-checks when its context declaration has a
+ * required key. The entity values are read inside the functions: this module loads while the barrel that defines
+ * \`Account\` is still loading.
  */
-const helpers = `import { Account } from "../../.mesh/domain/index.ts";
-import { transaction } from "../../.mesh/index.ts";
-type Composition = { readonly actions: { logAudit(input: { what: string }): Promise<unknown> }; readonly tx: { readAudit(input: object): Promise<readonly unknown[]> } };
+const helpers = `import { Account, Audit } from "../../.mesh/domain/index.ts";
+import { privileged, transaction } from "../../.mesh/index.ts";
 type Deposit = (input: { id: number; amount: number }) => Promise<unknown>;
-type Transaction = <T>(fn: (composition: Composition) => Promise<T>) => Promise<T>;
-/** An entity value called directly, as an application imports it from \`#mesh/domain\`, not through \`actions\`. */
+type Log = (input: { what: string }) => Promise<unknown>;
+/** An entity value called directly, as an application imports it from \`#mesh/domain\`. */
 export async function directDeposit(id: number, amount: unknown): Promise<void> {
   await (Account.deposit as Deposit)({ id, amount: amount as number });
 }
+/** Run \`fn\` a little later, in the async context of the caller: a call the caller does not await. */
+export function later<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise((resolve) => setTimeout(resolve, 20)).then(fn);
+}
 export async function auditInTransaction(what: string): Promise<number> {
-  return (transaction as unknown as Transaction)(async ({ actions, tx }) => {
-    await actions.logAudit({ what });
-    return (await tx.readAudit({})).length;
+  return transaction(async () => {
+    await (Audit.log as Log)({ what });
+    return (await privileged(Audit).read({})).length;
   });
+}
+`;
+
+/** \`Audit\`'s computed field calls this: the privileged read it makes is refused while the field is evaluated (TXN-18). */
+const peek = `import { Audit } from "../../.mesh/domain/index.ts";
+import { privileged } from "../../.mesh/index.ts";
+export function peek(): boolean {
+  void privileged(Audit);
+  return true;
 }
 `;
 
@@ -349,6 +371,7 @@ async function generate(prefix: string, sources: Record<string, string>): Promis
   const dir = await mkdtemp(join(import.meta.dir, prefix));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
+  await Bun.write(join(dir, "src/domain/peek.ts"), peek);
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
@@ -378,10 +401,13 @@ async function typeCheck(dir: string, extra: string[] = []): Promise<string> {
 let dir: string;
 let app: any;
 let domain: object;
+/** The project's entity values, as the application imports them from `#mesh/domain`. */
+let Account: any, Audit: any;
 beforeAll(async () => {
   dir = await generate(".composition-", { account, entry, audit });
   app = await import(join(dir, ".mesh/index.ts"));
   domain = await import(join(dir, ".mesh/domain/index.ts"));
+  ({ Account, Audit } = domain as any);
 });
 afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true }); });
 
@@ -411,21 +437,25 @@ async function rows(world: World) {
 }
 
 describe("the generated files", () => {
-  test("type-check under the strictest flags, with `actions`, `tx` and the composition types", async () => {
+  test("type-check under the strictest flags, with the entity values an entity file imports and `privileged`", async () => {
     expect(await typeCheck(dir)).toBe("");
   }, 30_000);
 
-  test("type-check when the project's context has a required key: a nested call may still leave it out and carry the caller's", async () => {
+  test("type-check when the project's context has a required key: every call passes one, in a step and in the application's transaction", async () => {
     await Bun.write(join(dir, "context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
     await Bun.write(join(dir, "check-context.ts"), [
       'import { Account } from "./.mesh/domain/index.ts";',
-      'import { bind } from "./.mesh/index.ts";',
+      'import { bind, privileged } from "./.mesh/index.ts";',
       "const mesh = bind(null as never);",
       "export async function calls(): Promise<void> {",
       "  // @ts-expect-error a top-level call needs the context",
       '  await Account.open({ name: "x" });',
       '  await mesh.run(() => Account.open({ name: "x" }, { actor: { id: "a" }, log: [] }));',
-      '  await mesh.transaction(async ({ actions }) => { await actions.openAccount({ name: "x" }); }, { actor: { id: "a" }, log: [] });',
+      '  await mesh.transaction(async () => { await Account.open({ name: "x" }, { actor: { id: "a" }, log: [] }); });',
+      "  // @ts-expect-error inside the application's transaction too: nothing carries a context to the calls",
+      '  await mesh.transaction(async () => { await Account.open({ name: "x" }); });',
+      "  // A privileged read takes a context only for what it loads, and may leave it out.",
+      '  await mesh.transaction(async () => { await privileged(Account).read({}); });',
       "}",
       "",
     ].join("\n"));
@@ -437,15 +467,22 @@ describe("the generated files", () => {
     }
   }, 30_000);
 
-  test("`input`, related records, `before` and what `actions` and `tx` return are deep read-only; inputs are checked", async () => {
+  test("`input`, related records, `before` and what entity calls and `privileged` return in an entity file are deep read-only; inputs are checked", async () => {
     await Bun.write(join(dir, "check-types.ts"), [
       'import { cloneValue } from "@meshfw/runtime";',
       'import type { AccountStoredScope } from "./.mesh/domain/account.expressions.ts";',
       'import type { DepositAccountInput } from "./.mesh/domain/account.types.ts";',
       'import type { EntryScope } from "./.mesh/domain/entry.expressions.ts";',
       'import type { PostEntryInput } from "./.mesh/domain/entry.types.ts";',
-      'import { bind, type Actions, type Reads } from "./.mesh/index.ts";',
+      'import type { $ReadOnly as AccountView } from "./.mesh/domain/account.actions.ts";',
+      'import type { $ReadOnly as EntryView } from "./.mesh/domain/entry.actions.ts";',
+      'import { Account } from "./.mesh/domain/index.ts";',
+      'import { bind, privileged } from "./.mesh/index.ts";',
       "declare const s: AccountStoredScope<DepositAccountInput>;",
+      "// The entity values as a function of an entity file sees them.",
+      "declare const A: AccountView;",
+      "declare const E: EntryView;",
+      "const context = { actor: { id: 'a' }, log: [] };",
       "declare const e: EntryScope<PostEntryInput>;",
       "export async function checks(): Promise<void> {",
       "  // @ts-expect-error input is deep read-only",
@@ -461,41 +498,45 @@ describe("the generated files", () => {
       "  // @ts-expect-error before is read-only",
       "  s.before.balance = 1;",
       "  // @ts-expect-error a wrong input to a nested action is a type error",
-      '  await s.actions.depositAccount({ id: 1, amount: "ten" });',
+      '  await A.deposit({ id: 1, amount: "ten" }, context);',
       "  // @ts-expect-error so is a missing required field",
-      "  await s.actions.postEntry({ amount: 1 });",
+      "  await E.post({ amount: 1 }, context);",
       "  // @ts-expect-error the record a nested action returns is read-only",
-      '  (await s.actions.openAccount({ name: "a" })).name = "b";',
-      "  // @ts-expect-error a row read through tx is read-only",
-      '  (await s.tx.readAccount({}))[0]!.name = "b";',
-      "  // @ts-expect-error tx holds the reads only",
-      '  await s.tx.openAccount({ name: "a" });',
-      "  // @ts-expect-error a tx read takes the read's input",
-      '  await s.tx.readAccount({ limit: "all" });',
+      '  (await A.open({ name: "a" }, context)).name = "b";',
+      "  // @ts-expect-error a row read through privileged is read-only",
+      '  (await privileged(A).read({}))[0]!.name = "b";',
+      "  // @ts-expect-error privileged holds the reads only",
+      '  await privileged(A).open({ name: "a" });',
+      "  // @ts-expect-error a privileged read takes the read's input",
+      '  await privileged(A).read({ limit: "all" });',
+      "  // @ts-expect-error the scope holds no `actions` and no `tx` any more",
+      "  void s.actions; void s.tx;",
       "  // A copy is the function's own: cloneValue (structuredClone in an entity file) drops read-only.",
       "  const copy = cloneValue(s.self);",
       '  copy.name = "mine";',
       "  copy.entries[0]!.amount = 2;",
       "  // The application's transaction hands out plain records, typed as the entity values return them.",
       "  const mesh = bind(null as never);",
-      "  const count: number = await mesh.transaction(async ({ actions, tx }) => {",
-      '    const opened = await actions.openAccount({ name: "x" });',
+      "  const count: number = await mesh.transaction(async () => {",
+      '    const opened = await Account.open({ name: "x" }, context);',
       '    opened.name = "plain";',
-      "    return (await tx.readAccount({})).length;",
+      '    (await privileged(Account).read({}))[0]!.name = "plain";',
+      "    return (await privileged(Account).read({})).length;",
       "  });",
-      "  // @ts-expect-error the application's actions are typed too",
-      "  await mesh.transaction(async ({ actions }) => actions.openAccount({ name: 1 }));",
-      "  const typed: { readonly actions: Actions; readonly tx: Reads } | undefined = undefined;",
-      "  void count; void typed;",
+      "  // @ts-expect-error the calls are typed there too",
+      "  await mesh.transaction(async () => Account.open({ name: 1 }, context));",
+      "  // @ts-expect-error the function is handed nothing",
+      "  await mesh.transaction(async ({ actions }) => actions);",
+      "  void count;",
       "}",
       "",
     ].join("\n"));
     expect(await typeCheck(dir, ["check-types.ts"])).toBe("");
   }, 30_000);
 
-  test("a call to `actions` with a wrong input in an entity file is a type error in its generated output", async () => {
+  test("an entity call with a wrong input in an entity file is a type error in its generated output", async () => {
     const wrong = await generate(".composition-wrong-", {
-      account: account.replace("await actions.logAudit({ what: `opened ${self.id}` });", "await actions.logAudit({ what: self.id });"),
+      account: account.replace("await Audit.log({ what: `opened ${self.id}` }, context);", "await Audit.log({ what: self.id }, context);"),
       entry, audit,
     });
     try {
@@ -513,8 +554,8 @@ describe("after=:write", () => {
       const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
       expect(opened.id).toBe(1);
       expect(world.log.slice(0, 2)).toEqual(["before the write: id null", "after the write: id 1"]);
-      // The step's nested call wrote in the same transaction: the audit carries the key, and its own after-write `tx` read sees itself.
-      expect(world.log[2]).toBe('audit "opened 1" by alice; tx sees 1');
+      // The step's nested call wrote in the same transaction: the audit carries the key, and its own after-write `privileged` read sees itself.
+      expect(world.log[2]).toBe('audit "opened 1" by alice; privileged sees 1');
       expect((await rows(world)).audits).toMatchObject([{ what: "opened 1", by: "alice" }]);
     } finally { await world.db.close(); }
   });
@@ -535,7 +576,7 @@ describe("after=:write", () => {
     } finally { await world.db.close(); }
   });
 
-  test("on a destroy, self after the write is the deleted row as it was, and a read through tx no longer finds it", async () => {
+  test("on a destroy, self after the write is the deleted row as it was, and a read through privileged no longer finds it", async () => {
     const world = await fresh();
     try {
       const opened = await world.mesh.openAccount({ name: "Ada", balance: 7 }, world.ctx);
@@ -555,7 +596,7 @@ describe("a cascade", () => {
       const { accounts, entries, audits } = await rows(world);
       expect(accounts).toMatchObject([{ id: opened.id, name: "Ada" }]);
       expect(entries).toMatchObject([{ accountId: opened.id, amount: 10, note: "opening" }]);
-      // Entry.post's own after-write step logged the first audit: Account.openFull, then Entry.post, then Audit.log, with alice's context throughout.
+      // Entry.post's own after-write step logged the first audit: Account.openFull, then Entry.post, then Audit.log, each step passing alice's context on.
       expect(audits.map((row: { what: string; by: string }) => [row.what, row.by])).toEqual([["posted 10", "alice"], ["opened Ada in full", "alice"]]);
     } finally { await world.db.close(); }
   });
@@ -619,7 +660,7 @@ describe("a caught failed call fails the whole transaction", () => {
 });
 
 describe("context", () => {
-  test("a nested call carries the caller's context, and one that passes its own gets that one", async () => {
+  test("a nested call gets the context its caller passes: the step's own, or one it makes", async () => {
     const world = await fresh();
     try {
       await world.mesh.openForAccount({ name: "Ada", auditor: "carol" }, world.ctx);
@@ -629,17 +670,31 @@ describe("context", () => {
   });
 });
 
+describe("a computed field (TXN-18)", () => {
+  test("a privileged read made while it is evaluated, even from an imported function, throws and names the field", async () => {
+    const world = await fresh();
+    try {
+      await world.mesh.logAudit({ what: "x" }, world.ctx);
+      const error = await failure(world.mesh.readAudit({ load: ["peeked"] }, world.ctx));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toStartWith("privileged(Audit) was called while computed :peeked of Audit is evaluated");
+      // Not loaded, the field's body never runs.
+      expect(await world.mesh.readAudit({}, world.ctx)).toHaveLength(1);
+    } finally { await world.db.close(); }
+  });
+});
+
 describe("the application transaction", () => {
   test("returns what its function returns, which need not be a record, and commits every call together", async () => {
     const world = await fresh();
     try {
-      const result = await world.mesh.transaction(async ({ actions, tx }: any) => {
-        const a = await actions.openAccount({ name: "Ada", balance: 10 });
-        await actions.depositAccount({ id: a.id, amount: 5 });
+      const result = await world.mesh.transaction(async () => {
+        const a = await Account.open({ name: "Ada", balance: 10 }, world.ctx);
+        await Account.deposit({ id: a.id, amount: 5 }, world.ctx);
         // Records handed to the application are plain: changing one changes nothing stored.
         a.name = "changed";
-        return { count: (await tx.readAccount({})).length, label: "done" };
-      }, world.ctx);
+        return { count: (await app.privileged(Account).read({})).length, label: "done" };
+      });
       expect(result).toEqual({ count: 1, label: "done" });
       expect((await rows(world)).accounts).toMatchObject([{ name: "Ada", balance: 15 }]);
     } finally { await world.db.close(); }
@@ -648,15 +703,15 @@ describe("the application transaction", () => {
   test("nested transaction calls join one transaction: the inner sees the outer's writes, and a later throw rolls back both", async () => {
     const world = await fresh();
     try {
-      const error = await failure(world.mesh.transaction(async ({ actions }: any) => {
-        await actions.openAccount({ name: "Ada" });
-        const seen = await world.mesh.transaction(async ({ actions: inner, tx }: any) => {
-          await inner.openAccount({ name: "Bo" });
-          return (await tx.readAccount({})).length;
-        }, world.ctx);
+      const error = await failure(world.mesh.transaction(async () => {
+        await Account.open({ name: "Ada" }, world.ctx);
+        const seen = await world.mesh.transaction(async () => {
+          await Account.open({ name: "Bo" }, world.ctx);
+          return (await app.privileged(Account).read({})).length;
+        });
         expect(seen).toBe(2);
         throw new Error("after both");
-      }, world.ctx));
+      }));
       expect((error as Error).message).toBe("after both");
       expect(await rows(world)).toEqual({ accounts: [], entries: [], audits: [] });
     } finally { await world.db.close(); }
@@ -665,25 +720,26 @@ describe("the application transaction", () => {
   test("a failed call it catches fails it all the same", async () => {
     const world = await fresh();
     try {
-      const error = await failure(world.mesh.transaction(async ({ actions }: any) => {
-        const a = await actions.openAccount({ name: "Ada" });
-        try { await actions.depositAccount({ id: a.id, amount: -1 }); } catch { /* caught on purpose */ }
+      const error = await failure(world.mesh.transaction(async () => {
+        const a = await Account.open({ name: "Ada" }, world.ctx);
+        try { await Account.deposit({ id: a.id, amount: -1 }, world.ctx); } catch { /* caught on purpose */ }
         return "ignored";
-      }, world.ctx));
+      }));
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).cause).toBeInstanceOf(InvalidInputError);
       expect(await rows(world)).toEqual({ accounts: [], entries: [], audits: [] });
     } finally { await world.db.close(); }
   });
 
-  test("it carries its context to every call, unless a call passes its own", async () => {
+  test("it carries no context: each call gets the one it passes, or none (TXN-20)", async () => {
     const world = await fresh();
     try {
-      await world.mesh.transaction(async ({ actions }: any) => {
-        await actions.logAudit({ what: "app" });
-        await actions.logAudit({ what: "own" }, { actor: { id: "dave" } });
-      }, { actor: { id: "carol" }, log: world.log });
-      expect((await rows(world)).audits.map((row: { what: string; by: string }) => [row.what, row.by])).toEqual([["app", "carol"], ["own", "dave"]]);
+      await world.mesh.transaction(async () => {
+        await Audit.log({ what: "carol's" }, { actor: { id: "carol" }, log: world.log });
+        await Audit.log({ what: "own" }, { actor: { id: "dave" } });
+        await Audit.log({ what: "none" });
+      });
+      expect((await rows(world)).audits.map((row: { what: string; by: string }) => [row.what, row.by])).toEqual([["carol's", "carol"], ["own", "dave"], ["none", null]]);
     } finally { await world.db.close(); }
   });
 
@@ -692,7 +748,7 @@ describe("the application transaction", () => {
     try {
       await world.mesh.openNestedAccount({ name: "Ada", thenFail: false }, world.ctx);
       expect(world.log).toContain("the nested transaction saw 1 audit");
-      // No context was given to the nested transaction, so its call carries none.
+      // The helper's call passes no context, so it has none.
       expect((await rows(world)).audits).toMatchObject([{ what: "nested for Ada", by: null }]);
       const error = await failure(world.mesh.openNestedAccount({ name: "Bo", thenFail: true }, world.ctx));
       expect((error as Error).message).toBe("failed after the nested transaction");
@@ -702,26 +758,38 @@ describe("the application transaction", () => {
     } finally { await world.db.close(); }
   });
 
-  test("`actions` used after their transaction ended are refused, and write nothing", async () => {
+  test("a call left running once its transaction ended is refused, and writes nothing", async () => {
     const world = await fresh();
+    const ENDED = "a call was made inside a transaction that has ended: await every entity call and privileged read before the function or the transaction callback returns";
     try {
-      let kept: any;
-      await world.mesh.transaction(async (composition: any) => { kept = composition; });
-      const late = await failure(kept.actions.openAccount({ name: "late" }));
+      // The application's transaction: a call its callback did not await runs after the commit.
+      let kept!: Promise<unknown>;
+      await world.mesh.transaction(async () => {
+        kept = new Promise((resolve) => setTimeout(resolve, 20)).then(() => Account.open({ name: "late" }, world.ctx));
+      });
+      const late = await failure(kept);
       expect(late).toBeInstanceOf(FrameworkError);
-      expect((late as Error).message).toMatch(/bound to the transaction that handed them out, and it has ended/);
+      expect((late as Error).message).toBe(ENDED);
+      // An action's step: the same for a call its step did not await, and for a privileged read.
       const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
       await world.mesh.stashAccount({ id: opened.id }, world.ctx);
-      const fromRun = await failure(world.ctx.stash.logAudit({ what: "late" }));
+      const fromRun = await failure(world.ctx.stash);
       expect(fromRun).toBeInstanceOf(FrameworkError);
+      expect((fromRun as Error).message).toBe(ENDED);
+      let read!: Promise<unknown>;
+      await world.mesh.transaction(async () => {
+        read = new Promise((resolve) => setTimeout(resolve, 20)).then(() => app.privileged(Account).read({}));
+      });
+      expect(((await failure(read)) as Error).message).toBe(ENDED);
+      expect((await rows(world)).accounts.map((row: { name: string }) => row.name)).toEqual(["Ada"]);
       expect((await rows(world)).audits.map((row: { what: string }) => row.what)).toEqual(["opened 1"]);
     } finally { await world.db.close(); }
   });
 });
 
 describe("changes made in place are never persisted, through composition too (decisions log, 2026-10-11 00:20)", () => {
-  for (const how of ["tx", "other", "result"])
-    test(`a record ${how === "result" ? "a nested action returns" : how === "other" ? "of another entity read through tx" : "read through tx"} cannot be changed, and the action stores nothing`, async () => {
+  for (const how of ["privileged", "other", "result"])
+    test(`a record ${how === "result" ? "a nested action returns" : how === "other" ? "of another entity read through privileged" : "read through privileged"} cannot be changed, and the action stores nothing`, async () => {
       const world = await fresh();
       try {
         const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
@@ -747,7 +815,7 @@ describe("changes made in place are never persisted, through composition too (de
 });
 
 describe("an entity bound alone", () => {
-  test("runs the actions that never compose, and refuses `actions` in one that does, storing nothing", async () => {
+  test("runs its actions; a step's entity call runs on the binding in scope, so inside run() of a binding it writes there", async () => {
     const world = await fresh();
     try {
       const { bindAccount } = await import(join(dir, ".mesh/domain/account.actions.ts"));
@@ -755,15 +823,19 @@ describe("an entity bound alone", () => {
       const from = await world.mesh.openAccount({ name: "Ada", balance: 100 }, world.ctx);
       const to = await world.mesh.openAccount({ name: "Bo" }, world.ctx);
       expect((await alone.deposit({ id: to.id, amount: 1 }, world.ctx)).balance).toBe(1);
+      // Outside any run, and not connected, the step's call has nowhere to run: the transfer stores nothing.
       const error = await failure(alone.transfer({ id: from.id, to: to.id, amount: 10 }, world.ctx));
       expect(error).toBeInstanceOf(FrameworkError);
-      expect((error as Error).message).toBe("Account#transfer reads `actions.depositAccount`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
+      expect((error as Error).message).toStartWith("Account#deposit was called while not connected");
       expect((await rows(world)).accounts.map((row: { balance: number }) => row.balance)).toEqual([100, 1]);
+      // Inside run() of the project's binding on the same layer, it runs there.
+      await world.mesh.run(() => alone.transfer({ id: from.id, to: to.id, amount: 10 }, world.ctx));
+      expect((await rows(world)).accounts.map((row: { balance: number }) => row.balance)).toEqual([90, 11]);
     } finally { await world.db.close(); }
   });
 });
 
-describe("a generated function called directly inside a transaction fails it as an `actions` call does (decisions log, 2026-10-11 02:45, B1)", () => {
+describe("a generated function called directly inside a transaction fails it as a nested call does (decisions log, 2026-10-11 02:45, B1)", () => {
   test("inside the application transaction: a caught cast failure of a direct call rolls everything back", async () => {
     const world = await fresh();
     try {
@@ -773,7 +845,7 @@ describe("a generated function called directly inside a transaction fails it as 
         await world.mesh.openAccount({ name: "kept?" }, world.ctx);
         try { await world.mesh.depositAccount({ id: opened.id, amount: "nope" }, world.ctx); } catch { /* caught on purpose */ }
         return "ignored";
-      }, world.ctx));
+      }));
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).cause).toBeInstanceOf(InvalidInputError);
       expect(await rows(world)).toEqual(before);
@@ -786,7 +858,7 @@ describe("a generated function called directly inside a transaction fails it as 
       const error = await failure(world.mesh.transaction(async () => {
         await world.mesh.openAccount({ name: "kept?" }, world.ctx);
         try { await world.mesh.readAccount({ limit: -1 }, world.ctx); } catch { /* caught on purpose */ }
-      }, world.ctx));
+      }));
       expect(error).toBeInstanceOf(FrameworkError);
       expect((error as Error).cause).toBeInstanceOf(InvalidInputError);
       expect(await rows(world)).toEqual({ accounts: [], entries: [], audits: [] });
@@ -829,11 +901,11 @@ describe("a generated function called directly inside a transaction fails it as 
       let marked!: () => void;
       const failed = new Promise<void>((resolve) => { marked = resolve; });
       // Another request: its transaction fails on a caught call, then stays open, holding the lock.
-      const other = failure(world.mesh.transaction(async ({ actions }: any) => {
-        await actions.failAudit({ what: "the other request's failure" }).catch(() => undefined);
+      const other = failure(world.mesh.transaction(async () => {
+        await Audit.fail({ what: "the other request's failure" }, world.ctx).catch(() => undefined);
         marked();
         await gate;
-      }, world.ctx));
+      }));
       await failed;
       // A bad input outside that transaction gets its own InvalidInputError, without waiting for the lock.
       const outcome = await Promise.race([
@@ -855,13 +927,13 @@ describe("a generated function called directly inside a transaction fails it as 
 });
 
 describe("calls joined to one transaction run one at a time (decisions log, 2026-10-11 02:45, S1)", () => {
-  test("two parallel deposits through `actions` in one transaction add 2", async () => {
+  test("two parallel deposits in one transaction add 2", async () => {
     const world = await fresh();
     try {
       const opened = await world.mesh.openAccount({ name: "Ada" }, world.ctx);
-      await world.mesh.transaction(async ({ actions }: any) => {
-        await Promise.all([actions.depositAccount({ id: opened.id, amount: 1 }), actions.depositAccount({ id: opened.id, amount: 1 })]);
-      }, world.ctx);
+      await world.mesh.transaction(async () => {
+        await Promise.all([Account.deposit({ id: opened.id, amount: 1 }, world.ctx), Account.deposit({ id: opened.id, amount: 1 }, world.ctx)]);
+      });
       // The same, from an action's own step after its write.
       const twice = await world.mesh.depositTwiceAccount({ id: opened.id }, world.ctx);
       expect(twice.balance).toBe(4);
@@ -869,11 +941,11 @@ describe("calls joined to one transaction run one at a time (decisions log, 2026
     } finally { await world.db.close(); }
   });
 
-  test("Promise.all over calls that call `actions` two levels down completes, without a deadlock", async () => {
+  test("Promise.all over calls that call other entities two levels down completes, without a deadlock", async () => {
     const world = await fresh();
     try {
-      const opened = await world.mesh.transaction(async ({ actions }: any) =>
-        Promise.all(["Ada", "Bo", "Cy"].map((name) => actions.openFullAccount({ name, failLast: false }))), world.ctx);
+      const opened = await world.mesh.transaction(async () =>
+        Promise.all(["Ada", "Bo", "Cy"].map((name) => Account.openFull({ name, failLast: false }, world.ctx))));
       expect(opened.map((row: { name: string }) => row.name)).toEqual(["Ada", "Bo", "Cy"]);
       const { accounts, entries, audits } = await rows(world);
       expect(accounts).toHaveLength(3);
@@ -883,18 +955,18 @@ describe("calls joined to one transaction run one at a time (decisions log, 2026
     } finally { await world.db.close(); }
   });
 
-  test("a `tx` read in parallel with a write sees the row as the calls made before it left it", async () => {
+  test("a `privileged` read in parallel with a write sees the row as the calls made before it left it", async () => {
     const world = await fresh();
     try {
       const opened = await world.mesh.openAccount({ name: "Ada", balance: 10 }, world.ctx);
-      const seen = await world.mesh.transaction(async ({ actions, tx }: any) => {
+      const seen = await world.mesh.transaction(async () => {
         const [first, , second] = await Promise.all([
-          tx.readAccount({}),
-          actions.depositAccount({ id: opened.id, amount: 5 }),
-          tx.readAccount({}),
+          app.privileged(Account).read({}),
+          Account.deposit({ id: opened.id, amount: 5 }, world.ctx),
+          app.privileged(Account).read({}),
         ]);
         return [first[0].balance, second[0].balance];
-      }, world.ctx);
+      });
       expect(seen).toEqual([10, 15]);
       expect((await rows(world)).accounts).toMatchObject([{ balance: 15 }]);
     } finally { await world.db.close(); }
@@ -951,7 +1023,7 @@ describe("a call that joins a failed transaction is refused before it does anyth
   const refusedBy = (refusal: unknown): string | undefined =>
     refusal instanceof FrameworkError ? ((refusal as Error).cause as Error | undefined)?.message : `not refused: ${String(refusal)}`;
 
-  test("through `actions`: after a caught failure, the next calls are refused before their cast and their `run`, and nothing is stored", async () => {
+  test("from a step: after a caught failure, the next calls are refused before their cast and their `run`, and nothing is stored", async () => {
     const world = await fresh();
     try {
       const before = await rows(world);
@@ -979,8 +1051,9 @@ describe("a call that joins a failed transaction is refused before it does anyth
         refusals.push(await world.mesh.tallyAudit({ what: 5 } as never, world.ctx).catch((cause: unknown) => cause));
         refusals.push(await world.mesh.openAccount({ name: "never" }, world.ctx).catch((cause: unknown) => cause));
         refusals.push(await world.mesh.readAccount({}, world.ctx).catch((cause: unknown) => cause));
-      }, world.ctx));
-      expect(refusals.map(refusedBy)).toEqual(["audit refused", "audit refused", "audit refused", "audit refused"]);
+        refusals.push(await app.privileged(Account).read({}).catch((cause: unknown) => cause));
+      }));
+      expect(refusals.map(refusedBy)).toEqual(["audit refused", "audit refused", "audit refused", "audit refused", "audit refused"]);
       expect(world.log).not.toContain("tally ran");
       expect(error).toBeInstanceOf(FrameworkError);
       expect(((error as Error).cause as Error).message).toBe("audit refused");
@@ -994,19 +1067,19 @@ describe("a call that joins a failed transaction is refused before it does anyth
       const before = await rows(world);
       let ran = 0;
       let refusal: unknown;
-      const error = await failure(world.mesh.transaction(async ({ actions }: any) => {
-        await actions.openAccount({ name: "kept?" });
-        try { await actions.failAudit({ what: "first" }); } catch { /* caught on purpose */ }
-        refusal = await world.mesh.transaction(async ({ actions: nested }: any) => { ran++; await nested.tallyAudit({ what: "nested" }); }, world.ctx)
+      const error = await failure(world.mesh.transaction(async () => {
+        await Account.open({ name: "kept?" }, world.ctx);
+        try { await Audit.fail({ what: "first" }, world.ctx); } catch { /* caught on purpose */ }
+        refusal = await world.mesh.transaction(async () => { ran++; await Audit.tally({ what: "nested" }, world.ctx); })
           .catch((cause: unknown) => cause);
-      }, world.ctx));
+      }));
       expect(refusedBy(refusal)).toBe("audit refused");
       expect(ran).toBe(0);
       expect(error).toBeInstanceOf(FrameworkError);
       expect(await rows(world)).toEqual(before);
       // The mark belongs to that transaction: the next one runs and commits.
       world.log.length = 0;
-      await world.mesh.transaction(async ({ actions }: any) => { await actions.tallyAudit({ what: "later" }); }, world.ctx);
+      await world.mesh.transaction(async () => { await Audit.tally({ what: "later" }, world.ctx); });
       expect(world.log).toEqual(["tally ran"]);
       expect((await rows(world)).audits).toHaveLength(before.audits.length + 1);
     } finally { await world.db.close(); }
@@ -1041,11 +1114,12 @@ describe("an update that a nested write did not change passes the S3 check, what
       await mesh.bumpDoc({ id: made.id }, ctx);
       await mesh.touchDoc({ id: made.id }, ctx);
       await mesh.pokeDoc({ id: made.id, other: other.id }, ctx);
-      await mesh.transaction(async ({ actions }: any) => {
-        await actions.bumpDoc({ id: made.id });
-        await actions.touchDoc({ id: made.id });
-        await actions.pokeDoc({ id: other.id, other: made.id });
-      }, ctx);
+      const { Doc } = docDomain as any;
+      await mesh.transaction(async () => {
+        await Doc.bump({ id: made.id }, ctx);
+        await Doc.touch({ id: made.id }, ctx);
+        await Doc.poke({ id: other.id, other: made.id }, ctx);
+      });
       const stored = (await mesh.readDoc({}, ctx)) as any[];
       expect(stored.find((row) => row.id === made.id)).toEqual({ ...made, count: 3 });
       expect(stored.find((row) => row.id === other.id)).toEqual({ ...other, count: 1 });

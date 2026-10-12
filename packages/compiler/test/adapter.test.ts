@@ -36,10 +36,10 @@ test("an installed build half is loaded and its generator runs after the core on
   expect(diagnostics).toEqual([]);
   expect(build!.generators.map((generator) => generator.name)).toEqual(["fake-tables"]);
   expect(Object.keys(build!.commands ?? {})).toEqual(["db push"]);
-  expect(buildEmitters(build).map((emitter) => emitter.name)).toEqual(["model-json", "types", "validators", "expressions", "load", "actions", "composition", "binding", "module", "index", "fake-tables"]);
+  expect(buildEmitters(build).map((emitter) => emitter.name)).toEqual(["model-json", "types", "validators", "expressions", "load", "actions", "binding", "module", "index", "fake-tables"]);
   const { document } = await loadProject(config);
   const files = await generateFiles({ config, document: document! }, build);
-  expect(files.map((file) => file.path)).toEqual([".mesh/binding.ts", ".mesh/composition.ts", ".mesh/domain/index.ts", ".mesh/domain/todo.actions.ts", ".mesh/domain/todo.types.ts", ".mesh/domain/todo.validators.ts", ".mesh/fake.ts", ".mesh/index.ts", ".mesh/model.json"]);
+  expect(files.map((file) => file.path)).toEqual([".mesh/binding.ts", ".mesh/domain/index.ts", ".mesh/domain/todo.actions.ts", ".mesh/domain/todo.types.ts", ".mesh/domain/todo.validators.ts", ".mesh/fake.ts", ".mesh/index.ts", ".mesh/model.json"]);
   expect(files.find((file) => file.path === ".mesh/fake.ts")!.contents).toBe('// Written by the fake adapter.\nexport const names = ["Todo"];\n');
   // Without the adapter, the core tree is unchanged.
   expect((await generateFiles({ config, document: document! })).map((file) => file.path)).toEqual(files.filter((file) => file.path !== ".mesh/fake.ts").map((file) => file.path));

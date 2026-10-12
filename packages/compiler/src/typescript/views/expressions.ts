@@ -3,7 +3,7 @@ import type { Action, Entity, Expression, ExprNode, Policy, Step } from "@meshfw
 import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
-import { mentioned, printExpression } from "../expression-printer.ts";
+import { entityType, entityValue, mentioned, printExpression } from "../expression-printer.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
 import { effectiveActions, entityInputs, entityPath, entitySegment, typeName } from "./inputs.ts";
@@ -26,8 +26,13 @@ export interface ExpressionsView {
   readonly typesFromLiteral: string;
   /** What the file imports from the types file: the record type, its fully loaded type and the input types the scopes name. */
   readonly typeImports: readonly string[];
-  /** The module specifier of the project's `composition.ts` (the `Actions` and `Reads` types) as a quoted string literal. */
-  readonly compositionFromLiteral: string;
+  /** True when a function calls `privileged(Entity)` (TXN-16): the file imports it from `@meshfw/runtime` as `$privileged`. */
+  readonly usesPrivileged: boolean;
+  /**
+   * The entity values the functions name (CMP-16), one import per entity's actions file: the value as `$e$<local>` and its
+   * read-only type as `$t$<local>`, under the name the entity file gives it.
+   */
+  readonly entityImports: readonly { names: string; fromLiteral: string }[];
   /** True when an expression mentions `structuredClone`: the file then shadows it with `cloneValue`, which copies a read-only record. */
   readonly shadowsStructuredClone: boolean;
   /** The scope type's exported name, e.g. `InvoiceScope`; it takes the input type as its parameter. */
@@ -181,7 +186,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // `self` carries every relationship and computed field, each related record the same way (M7): the action loads what
   // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
   const selfType = hasLoader(entity) ? `${recordName}Loaded` : recordName;
-  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordName}> | null; actions: $ReadOnlyActions; tx: $ReadOnlyReads }>`;
+  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordName}> | null }>`;
   const found = collect(entity);
   // On a create, `self` is the new instance (ACT-27): the members nothing has filled yet are null there, so the scopes
   // of the functions that can run on one say so.
@@ -243,8 +248,19 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const usesExpr = entries.some((e) => e.code.includes("$."));
   // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so the file shadows it.
   const shadowsStructuredClone = found.some(({ expression }) => !expression.tree && mentioned(expression, ["structuredClone"]).length > 0);
-  let composition = relative(dirname(entityPath(entity)), "composition").replace(/\\/g, "/");
-  if (!composition.startsWith(".")) composition = `./${composition}`;
+  // The entities the functions name, each from its actions file, by the name the entity file gives it (CMP-16).
+  const named = new Set(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
+  const entityFrom = new Map<string, string[]>();
+  for (const local of [...named].sort()) {
+    const imported = entity.imports.find((entry) => !entry.helper && entry.identifiers.includes(local));
+    const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
+    const target = document.entities.find((candidate) => candidate.file === file);
+    if (!target) continue; // the front end reported the import
+    let from = relative(dirname(entityPath(entity)), `${entityPath(target)}.actions`).replace(/\\/g, "/");
+    if (!from.startsWith(".")) from = `./${from}`;
+    const exported = typeName(target.name, target.position);
+    entityFrom.set(from, [...(entityFrom.get(from) ?? []), `${exported} as ${entityValue(local)}`, `type $ReadOnly as ${entityType(local)}`]);
+  }
   return {
     entityFile: entityFileComment(entity),
     usesExpr,
@@ -252,7 +268,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     recordName,
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     typeImports: [recordName, ...(selfType === recordName ? [] : [selfType]), ...[...usedInputs].sort()],
-    compositionFromLiteral: JSON.stringify(composition),
+    usesPrivileged: found.some(({ expression }) => expression.plain?.privileged === true),
+    entityImports: [...entityFrom].map(([from, names]) => ({ names: names.join(", "), fromLiteral: JSON.stringify(from) })),
     shadowsStructuredClone,
     scopeName,
     scopeType,

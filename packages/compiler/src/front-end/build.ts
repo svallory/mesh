@@ -260,6 +260,8 @@ function buildEntity(
           );
         }
       }
+  // The entities a function in this file can name (CMP-16): its own and each one it imports, by the name the file gives it.
+  const entities = new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper).flatMap((entry) => entry.identifiers)]);
   const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", runStep = false): Expression =>
     expression(
       a,
@@ -275,6 +277,7 @@ function buildEntity(
       {
         helpers: helperImports,
         imported: new Set(importNames.keys()),
+        entities,
         report: (d) => {
           if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
         },

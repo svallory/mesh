@@ -59,15 +59,31 @@ export interface ActionsView {
   readonly loadFromLiteral: string | null;
   /** What `bind<Entity>` names its second parameter: `options`, or `_options` when no action reads it. */
   readonly optionsName: string;
-  /** What `bind<Entity>` names its third parameter, the binding's composer (ADR-0068): `compose`, or `_compose` when no function of the entity can reach `actions` or `tx`. */
-  readonly composeName: string;
+  /**
+   * What `bind<Entity>` names its third parameter, the binding's frame (`ActionFrame`): `frame`, or `_frame` when no action
+   * uses it. An action's transaction runs inside `frame.within`, so an entity call or `privileged` read made by one of its
+   * functions joins it, reads its instant and hands back read-only views (TXN-16, ACT-09); a computed field or a read
+   * policy runs marked with it (TXN-18).
+   */
+  readonly frameName: string;
+  /** What `bind<Entity>Reads` names its third parameter, the binding's frame: `frame`, or `_frame` when no body loads. */
+  readonly readsFrameName: string;
+  /**
+   * The members of `$Privileged`, what `privileged(<Entity>)` returns: one per read action, `(input, context?)`, resolving
+   * with what the read gives with no policy run (`<Entity>TxWith` when it loads). Each printed in full.
+   */
+  readonly privilegedMembers: readonly string[];
+  /** The same as a function of an entity file sees them (`$PrivilegedReadOnly`): every result deeply read-only. */
+  readonly privilegedReadOnlyMembers: readonly string[];
+  /** The entity value's methods as a function of an entity file sees them (`$ReadOnly`, ACT-09): every result deeply read-only. */
+  readonly readOnlyMembers: readonly string[];
   /** One method per effective action: declared actions in authored order, then the `auto` ones. */
   readonly methods: readonly ActionMethod[];
   /** The exported function that binds the read bodies, e.g. `bindPostReads`, or `null` when the entity has no read action. */
   readonly readsBindName: string | null;
   /** What `bind<Entity>Reads` names its second parameter, the binding's options (the clock a loaded computed field reads): `options`, or `_options` when no body loads. */
   readonly readsOptionsName: string;
-  /** One body per read action, without its policies: what `tx` calls and what the read method calls after evaluating them. */
+  /** One body per read action, without its policies: what `privileged` calls and what the read method calls after evaluating them. */
   readonly reads: readonly ReadBody[];
 }
 
@@ -93,7 +109,7 @@ export interface ReadBody {
   readonly unsupported: string | null;
   /**
    * True when the statements read the validated input, bound to `parsed`: then the body also takes `cast`, the input its
-   * read action already cast for the read's policies, and casts only when it is absent (a read through `tx`), so
+   * read action already cast for the read's policies, and casts only when it is absent (a read through `privileged`), so
    * `contextParam` ends with `, cast?: $CastOutput<typeof validator>`.
    */
   readonly usesParsed: boolean;
@@ -107,8 +123,8 @@ export interface ActionMethod {
   readonly name: string;
   /** `name` as a quoted string literal, which the entity value's method dispatches by. */
   readonly nameLiteral: string;
-  /** The action's name in `actions` and `tx`, the flat handles of an entity file: action name + entity name PascalCase, e.g. `publishPost`. */
-  readonly functionName: string;
+  /** The action's label as a quoted string literal, e.g. `"blog.Post#publish"`: what its transaction runs under in the frame. */
+  readonly labelLiteral: string;
   /** The action's input type, e.g. `PublishPostInput`, or `ReadPostInput<N>` for a read that takes `load`. */
   readonly inputType: string;
   /** The type parameter list as printed (`<const N extends keyof PostLoadable = never>` for a read that takes `load`), or the empty string. */
@@ -118,7 +134,7 @@ export interface ActionMethod {
   /** The resolved type, e.g. `Post`, `Post[]`, `void`, `PostWith<N>[]` for a read that takes `load`, or `PostWith<"comments">` when a `load` step names fields. */
   readonly returnType: string;
   /**
-   * What the same call returns through `tx`, which runs no policy (ADR-0068): for a read that takes `load`, the loaded record
+   * What the same call returns through `privileged`, which runs no policy (TXN-16): for a read that takes `load`, the loaded record
    * typed by `PostTxWith` when a `belongs-to` that is not nullable makes it differ (POL-17); `returnType` otherwise.
    */
   readonly txReturnType: string;
@@ -264,7 +280,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   const scopes = new Set<string>();
   let planUsed = false;
   let optionsUsed = false;
-  let composeUsed = false;
+  let frameUsed = false;
   let readsLoad = false;
   const readBodies: ReadBody[] = [];
   const idOf = (expression: Expression): string => {
@@ -280,7 +296,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       usesExpressions = true;
       return idOf(expression);
     });
-    return `$authorizer(${JSON.stringify(entity.fqn)}, ${JSON.stringify(action.name)}, ${specs})`;
+    // A read's policies run marked with the frame (TXN-18): a `privileged` read made while one is evaluated throws.
+    if (action.kind === "read") frameUsed = true;
+    return `$authorizer(${JSON.stringify(entity.fqn)}, ${JSON.stringify(action.name)}, ${specs}${action.kind === "read" ? ", frame" : ""})`;
   };
   /** The scope the checks before the transaction see: no record yet, only `input`, `actor` and `context`. */
   const preScope = (inputValue: string, where: string) => {
@@ -296,7 +314,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const base = {
       name,
       nameLiteral: JSON.stringify(name),
-      functionName: `${name}${recordName}`,
+      labelLiteral: JSON.stringify(`${entity.fqn}#${action.name}`),
       inputType: input.name,
       generics: "",
       validator,
@@ -311,13 +329,13 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const covering = policiesCovering(entity, action);
     const where = JSON.stringify(`${entity.fqn}#${action.name}`);
     if (action.kind === "read") {
-      // The body goes to `bind<Entity>Reads`, which `tx` calls; the method evaluates the read's policies, then calls the body.
+      // The body goes to `bind<Entity>Reads`, which `privileged` calls; the method evaluates the read's policies, then calls the body.
       // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
       const loads = takesLoad(input);
       // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
       const inputType = loads ? `Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
       const generics = loads ? loadGenerics(entity, true) : "";
-      // A caller's load runs the read policies of what it reaches (POL-17), so a `belongs-to` it may not read is null; `tx` runs none.
+      // A caller's load runs the read policies of what it reaches (POL-17), so a `belongs-to` it may not read is null; `privileged` runs none.
       const tx = txLoadTypes(entity);
       const returnType = loads ? `(L extends unknown ? ${recordName}With<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
       const txReturnType = loads ? `(L extends unknown ? ${tx.with}<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
@@ -328,7 +346,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         extraTypes.add(`${recordName}LoadArg`);
         extraTypes.add(`${recordName}Loadable`);
       }
-      // `policies` is true only from the read action below: a read through `tx` loads everything (ADR-0068).
+      // `policies` is true only from the read action below: a `privileged` read loads everything (TXN-16).
       // The read action casts the input for its policies and hands the result over as `cast` (R2-N4), so it is cast once.
       const castParam = `, cast?: $CastOutput<typeof ${validator}>`;
       const body = { name, inputType, generics,
@@ -342,7 +360,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         optionsUsed = true;
       }
       const preCheck = unsupportedRead ? [] : [
-        "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them",
+        "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them",
         "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
         "const $actor = $context.actor;",
         "const $clock = $pinClock(options.clock);",
@@ -384,10 +402,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
               `const $rows = (${select}) as ${recordName}[];`,
               `if (!parsed.load?.length) return $rows as unknown as ${txReturnType};`,
               "const $context = (context ?? {}) as unknown as Record<string, unknown>;",
-              // One instant per call: the caller's (a `tx` read inside an action carries the action's), else this read's own.
+              // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
               "const $clock = clock ?? $pinClock(options.clock);",
               // From the read action, what the rows load runs the read policies of the entity it reaches (POL-17).
-              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies })) as unknown as ${txReturnType};`,
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${txReturnType};`,
             ]
             : [`return (${select}) as ${recordName}[];`]),
         ] });
@@ -733,10 +751,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const prelude: string[] = [];
     used.options = true;
     runtime.add("pinClock");
-    // One instant per action call: the policies, the scope's `now()`, the `$now` stamps, the `load` step and every `tx` read read it.
+    // One instant per action call: the policies, the scope's `now()`, the `$now` stamps, the `load` step and every `privileged` read read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
-    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock };");
+    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame };");
     if (used.scope) {
       runtime.add("scope");
       // An update or a destroy reads a stored record, so `before` is never null for its functions.
@@ -753,10 +771,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const beforeView = action.kind === "create" ? "null"
         : loader ? `$readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.fqn)}, $before, "before"), ${where}) as unknown as ${recordName}`
           : `$readOnlyRecord($before, ${where}) as unknown as ${recordName}`;
-      // `actions` and `tx` come from the binding's composer, bound to this transaction and carrying this call's context (ADR-0068).
-      runtime.add("composed");
-      composeUsed = true;
-      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView}, ...$composed(compose, tx, context, ${where}, $clock) }, { clock: $clock }) as unknown as ${scopeAlias}<${input.name}>;`);
+      afterHead.push(`const $s = $scope({ self: $self, input: $readOnlyRecord(parsed, ${where}), actor: $actor, context: $context, before: ${beforeView} }, { clock: $clock }) as unknown as ${scopeAlias}<${input.name}>;`);
     }
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;
@@ -776,16 +791,31 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const declared = statements.findIndex((line) => line.startsWith("const $record:"));
     if (declared >= 0 && !statements.some((line, at) => at !== declared && /\$record\b/.test(line))) statements.splice(declared, 1);
     runtime.add("runAction");
+    frameUsed = true;
     return { ...base, returnType, txReturnType: returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null, preCheck };
   });
+  // What `privileged(<Entity>)` returns, and the entity value and those reads as a function of an entity file sees them,
+  // every result deeply read-only (ACT-09). Written out, not mapped, because a read is generic in the names its `load`
+  // lists and a mapped type would erase that; a read's read-only result is the read-only record intersected with the
+  // read-only loaded members, since a deep-readonly conditional type over the generic `L` cannot be related to its twin.
+  const txTypes = txLoadTypes(entity);
+  const readOnly = (method: ActionMethod, loadable: string, returnType: string) => method.isRead && method.generics
+    ? `(L extends unknown ? readonly ($DeepReadonly<${recordName}> & Pick<$DeepReadonly<${loadable}>, ${recordName}LoadNames<L>>)[] : never)`
+    : returnType === "void" ? "void" : `$DeepReadonly<${returnType}>`;
+  const reads = methods.filter((method) => method.isRead);
+  if (reads.some((method) => method.generics)) extraTypes.add(txTypes.loadable);
+  const privilegedMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): Promise<${method.txReturnType}>;`);
+  const privilegedReadOnlyMembers = reads.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, context?: $ActionContext): Promise<${readOnly(method, txTypes.loadable, method.txReturnType)}>;`);
+  const readOnlyMembers = methods.map((method) => `${method.name}${method.generics}(input: ${method.inputType}, ...context: $ContextArgument): Promise<${readOnly(method, `${recordName}Loadable`, method.returnType)}>;`);
+  if (readBodies.length) frameUsed = true;
   return {
     entityFile: entityFileComment(entity),
     hasActions: methods.length > 0,
     bindName: `bind${recordName}`,
     entityName: recordName,
     fqnLiteral: JSON.stringify(entity.fqn),
-    readsBindValue: readBodies.length ? `bind${recordName}Reads` : "null",
-    runtimeValues: [...runtime, "entity"].sort(compareCode).map(runtimeImport),
+    readsBindValue: readBodies.length ? `bind${recordName}Reads as $EntityReadsBind<$Privileged>` : "null",
+    runtimeValues: [...runtime, "entity", ...(methods.length ? ["NO_FRAME"] : [])].sort(compareCode).map(runtimeImport),
     runtimeTypes: [...runtimeTypes].sort(compareCode).map((name) => `${name} as $${name}`),
     typeImports: methods.length ? [...extraTypes, ...inputs.map((input) => input.name)] : [],
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
@@ -796,7 +826,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     scopeImports: [...scopes].sort(compareCode),
     loadFromLiteral: planUsed ? fromLiteral(entity, "load") : null,
     optionsName: optionsUsed || readBodies.length > 0 ? "options" : "_options",
-    composeName: composeUsed ? "compose" : "_compose",
+    frameName: frameUsed ? "frame" : "_frame",
+    readsFrameName: readsLoad ? "frame" : "_frame",
+    privilegedMembers,
+    privilegedReadOnlyMembers,
+    readOnlyMembers,
     methods,
     readsBindName: readBodies.length ? `bind${recordName}Reads` : null,
     readsOptionsName: readsLoad ? "options" : "_options",

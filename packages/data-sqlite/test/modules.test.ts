@@ -1,8 +1,9 @@
 // CMP-17 and CMP-18 at run time: a project whose application code imports `#mesh` for the framework and
 // `#mesh/domain/<path>` for a folder's entity values, types and subfolder namespaces, through the package.json `imports`
 // mapping Mesh documents, on SQLite. The domain has a root entity, a module two folders deep below a folder that holds
-// no entity, modules named like Mesh's top-level files, and two modules whose actions call each other through
-// `actions`. Bun runs it and tsc type-checks it, both resolving the specifiers.
+// no entity, modules named like Mesh's top-level files (and one named like the `composition.ts` it had), and two modules
+// whose entities import each other and call each other's actions through their entity values (CMP-16). Bun runs it and
+// tsc type-checks it, both resolving the specifiers.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -13,7 +14,9 @@ import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
-const order = `entity :Order table="orders"
+const order = `import { Invoice } from "../../billing/invoice.mesh.mx"
+
+entity :Order table="orders"
   attributes
     uuid :id primary-key
     string :item min=1
@@ -25,9 +28,9 @@ const order = `entity :Order table="orders"
         &item
         &amount
       do
-        run [after=:write] ({ self, actions, context }) {
+        run [after=:write] ({ self, context }) {
           context.trail?.push(\`placed \${self.item}\`);
-          await actions.issueInvoice({ ref: self.id, amount: self.amount });
+          await Invoice.issue({ ref: self.id, amount: self.amount }, context);
         }
     update :close
       do
@@ -35,7 +38,9 @@ const order = `entity :Order table="orders"
           &closed=true
 `;
 
-const invoice = `entity :Invoice table="invoices"
+const invoice = `import { Order } from "../sales/orders/order.mesh.mx"
+
+entity :Invoice table="invoices"
   attributes
     uuid :id primary-key
     string :ref
@@ -56,8 +61,8 @@ const invoice = `entity :Invoice table="invoices"
       do
         set
           &paid=true
-        run [after=:write] ({ self, actions }) {
-          await actions.closeOrder({ id: self.ref });
+        run [after=:write] ({ self, context }) {
+          await Order.close({ id: self.ref }, context);
         }
 `;
 
@@ -116,7 +121,9 @@ export { default as config } from "./mesh.config";
 export const resolveHere = (specifier: string): Promise<unknown> => import(specifier);
 `;
 /** Type-level checks: what each specifier exports and does not. */
-const CHECK = `import { bind, connect, disconnect, tables, transaction, type Actions, type Binding, type Reads } from "#mesh";
+const CHECK = `import { bind, connect, disconnect, privileged, tables, transaction, type Binding, type Privileged } from "#mesh";
+// @ts-expect-error #mesh no longer exports the handles' types
+import type { Actions, Reads } from "#mesh";
 // @ts-expect-error #mesh exports no entity value: it is its module's
 import { Order as notInMesh } from "#mesh";
 // @ts-expect-error nor $delegate
@@ -146,11 +153,14 @@ export async function main(): Promise<[Order, Invoice[], Tag, Column]> {
   // The same entity value through the namespaces of the barrels above its folder.
   const viaSales: typeof Order = sales.orders.Order;
   const viaRoot: typeof Invoice = domain.billing.Invoice;
-  const both = await transaction(async ({ actions, tx }: { actions: Actions; tx: Reads }) => {
-    const invoices = await tx.readInvoice({});
-    await actions.settleInvoice({ id: invoices[0]!.id });
+  const reads: Privileged<typeof Invoice> = privileged(Invoice);
+  const both = await transaction(async () => {
+    const invoices = await reads.read({});
+    await Invoice.settle({ id: invoices[0]!.id }, { trail: [] });
     return invoices;
-  }, { trail: [] });
+  });
+  // @ts-expect-error privileged takes an entity value
+  privileged(placed);
   const tag = await Tag.make({ label: "t" });
   const column = await Column.make({ label: "c" });
   await Promise.all([Shipment.make({ label: "s" }), Entry.make({ label: "e" }), Contract.make({ label: "k" }), Piece.make({ label: "p" }), Realm.make({ label: "r" })]);
@@ -163,6 +173,7 @@ export async function main(): Promise<[Order, Invoice[], Tag, Column]> {
   return [placed, both, tag, column];
 }
 export const unreachable = [notInMesh, $delegate, placeOrder, notInOrders];
+export type Unreachable = [Actions, Reads];
 `;
 
 let dir: string;
@@ -190,8 +201,8 @@ afterAll(async () => {
 });
 
 describe("the specifiers", () => {
-  test("#mesh exports bind, connect, disconnect, tables and transaction, and nothing else", () => {
-    expect(Object.keys(app.mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
+  test("#mesh exports bind, connect, disconnect, privileged, tables and transaction, and nothing else", () => {
+    expect(Object.keys(app.mesh).sort()).toEqual(["bind", "connect", "disconnect", "privileged", "tables", "transaction"]);
   });
 
   test("each barrel exports its own entities' values and one namespace per subfolder, and only those", () => {
@@ -241,13 +252,13 @@ describe("entity values on the connected binding", () => {
     await expect(app.domain.Realm.make({ label: "x" })).rejects.toBeInstanceOf(FrameworkError);
   });
 
-  test("two modules call each other through `actions`: placing an order invoices it, settling the invoice closes the order", async () => {
+  test("two modules whose entities import each other call each other: placing an order invoices it, settling the invoice closes the order", async () => {
     await app.mesh.connect();
     const { Order } = app.orders;
     const { Invoice } = app.billing;
     const trail: string[] = [];
     const placed = await Order.place({ item: "lamp", amount: 40 }, { trail });
-    // The nested call carries the caller's context: Order's step runs after its write, then Invoice's before its own.
+    // The step passes the caller's context to the nested call: Order's step runs after its write, then Invoice's before its own.
     expect(trail).toEqual(["placed lamp", "invoiced 40"]);
     const [issued] = await Invoice.read({ filter: { ref: { eq: placed.id } } });
     expect(issued).toMatchObject({ ref: placed.id, amount: 40, paid: false });
@@ -267,21 +278,23 @@ describe("entity values on the connected binding", () => {
     expect((await Invoice.read({})).length).toBe(invoices);
   });
 
-  test("transaction(fn, context) from #mesh composes both modules' actions, carries the context, and rolls back as one", async () => {
+  test("transaction(fn) from #mesh runs both modules' calls in one transaction, each with the context it is given, and rolls back as one", async () => {
     const { Order } = app.orders;
+    const { Invoice } = app.billing;
     const trail: string[] = [];
-    const result = await app.mesh.transaction(async ({ actions, tx }: any) => {
-      const made = await actions.placeOrder({ item: "desk", amount: 7 });
-      const [bill] = await tx.readInvoice({ filter: { ref: { eq: made.id } } });
-      await actions.settleInvoice({ id: bill.id });
+    const result = await app.mesh.transaction(async (...given: unknown[]) => {
+      expect(given).toEqual([]);
+      const made = await Order.place({ item: "desk", amount: 7 }, { trail });
+      const [bill] = await app.mesh.privileged(Invoice).read({ filter: { ref: { eq: made.id } } });
+      await Invoice.settle({ id: bill.id }, { trail });
       return made.id;
-    }, { trail });
+    });
     expect(trail).toContain("placed desk");
     expect(trail).toContain("invoiced 7");
     expect((await Order.read({ filter: { id: { eq: result } } }))[0].closed).toBe(true);
     const before = (await Order.read({})).length;
-    await expect(app.mesh.transaction(async ({ actions }: any) => {
-      await actions.placeOrder({ item: "chair", amount: 2 });
+    await expect(app.mesh.transaction(async () => {
+      await Order.place({ item: "chair", amount: 2 });
       throw new Error("changed my mind");
     })).rejects.toThrow("changed my mind");
     expect((await Order.read({})).length).toBe(before);
@@ -302,18 +315,31 @@ describe("entity values on the connected binding", () => {
       expect(labels(await Column.read({}))).not.toContain("own");
       expect(labels(await Column.read({}))).toContain("connected");
       // `transaction` from #mesh takes the binding in scope too.
-      expect(await bound.run(() => app.mesh.transaction(async ({ tx }: any) => labels(await tx.readColumn({}))))).toEqual(["own"]);
+      expect(await bound.run(() => app.mesh.transaction(async () => labels(await app.mesh.privileged(Column).read({}))))).toEqual(["own"]);
     } finally { await own.close(); }
   });
 
-  test("an entity of a nested module bound alone gets stand-ins that throw for `actions`, and stores nothing", async () => {
+  test("an entity of a nested module bound alone calls the other entity as any code does: on the binding in scope, else the connected one", async () => {
+    // With no `actions` handle there are no stand-ins to fill (CMP-16): the step's `Invoice.issue` is an entity call.
     const { bindOrder } = await import(join(dir, ".mesh/domain/sales/orders/order.actions.ts"));
     const alone = bindOrder(app.config.data);
-    const before = (await app.orders.Order.read({})).length;
-    const error = await alone.place({ item: "solo", amount: 1 }).then(() => null, (cause: unknown) => cause);
-    expect(error).toBeInstanceOf(FrameworkError);
-    expect((error as Error).message).toBe("sales.orders.Order#place reads `actions.issueInvoice`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
-    expect((await app.orders.Order.read({})).length).toBe(before);
+    const placed = await alone.place({ item: "solo", amount: 1 });
+    expect((await app.billing.Invoice.read({ filter: { ref: { eq: placed.id } } }))[0]).toMatchObject({ amount: 1 });
+    // Not connected and with no binding in scope, the step's call has nowhere to run, and nothing is stored.
+    const other = sqlite({ file: ":memory:" });
+    await createSchema(other, app.mesh.tables);
+    try {
+      await app.mesh.disconnect();
+      const error = await bindOrder(other).place({ item: "nowhere", amount: 1 }).then(() => null, (cause: unknown) => cause);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toStartWith("billing.Invoice#issue was called while not connected");
+      expect(await app.mesh.bind(other).run(() => app.orders.Order.read({}))).toEqual([]);
+    } finally {
+      await other.close();
+      // disconnect() closed the connected in-memory database: the tests after this one get a fresh one.
+      await app.mesh.connect();
+      await createSchema(app.config.data, app.mesh.tables);
+    }
   });
 
   test("disconnect waits for an entity call already in flight, then closes the layer", async () => {

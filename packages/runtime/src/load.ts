@@ -1,6 +1,7 @@
 import type { DataOperations, Filter, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
+import type { ActionFrame } from "./entity.ts";
 import { authorizer, type PolicySpec } from "./policy.ts";
 
 /**
@@ -20,8 +21,8 @@ import { authorizer, type PolicySpec } from "./policy.ts";
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
  *   reaches, with the caller's scope (POL-17): a relationship to an entity they do not admit is `[]` (has-many) or `null`
  *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
- *   so a denied name is not queried at all. What a computed field's body reads, and anything read through `tx`, runs no
- *   policy (POL-19, ADR-0068): a body is the entity's own rule, so it sees every related row.
+ *   so a denied name is not queried at all. What a computed field's body reads, and anything read through `privileged`,
+ *   runs no policy (POL-19, TXN-16): a body is the entity's own rule, so it sees every related row.
  */
 export interface BelongsToPlan {
   kind: "belongs-to";
@@ -79,9 +80,14 @@ export interface LoadOptions {
   clock?: Clock | undefined;
   /**
    * `loadRows` only: the names are what a caller asked for, so each relationship and rollup runs the read policies of the
-   * entity it reaches, with `actor` and `context` (POL-17). A read through `tx` and a computed field's own loads leave it out.
+   * entity it reaches, with `actor` and `context` (POL-17). A `privileged` read and a computed field's own loads leave it out.
    */
   policies?: boolean | undefined;
+  /**
+   * The binding's frame (TXN-18): each computed body runs marked with it, so a `privileged` read made while one is
+   * evaluated throws, and so do the read policies a load runs. Left out, nothing is marked.
+   */
+  frame?: Pick<ActionFrame, "marked"> | undefined;
   /**
    * `loadInto` only: the record is a create's new instance before the input is applied (ACT-27), so a required
    * `belongs-to` whose key the input has not filled yet is null on it instead of an error.
@@ -181,7 +187,7 @@ async function deniedNames(plan: LoadPlan, entity: string, names: readonly strin
     if (!decided.has(target)) {
       const policies = planOf(plan, target).reads ?? [];
       const roots = { input: Object.freeze({}), actor: options.actor, context: options.context ?? {} };
-      decided.set(target, await authorizer(target, "read", policies).admits(scope(roots, options.clock ? { clock: options.clock } : {})));
+      decided.set(target, await authorizer(target, "read", policies, options.frame).admits(scope(roots, options.clock ? { clock: options.clock } : {})));
     }
     return decided.get(target)!;
   };
@@ -233,7 +239,8 @@ async function ensureField(
   for (const path of computed.needs) await ensurePath(plan, entity, tx, todo, path.split("."), options, depth + 1);
   for (const row of todo) {
     const self = computed.plain ? guarded(plan, entity, row) : row;
-    const value = computed.evaluate(scope({ self, input: undefined, actor: options.actor, context: options.context ?? {}, before: null, tx }, options.clock ? { clock: options.clock } : {}) as never);
+    const fieldScope = scope({ self, input: undefined, actor: options.actor, context: options.context ?? {}, before: null }, options.clock ? { clock: options.clock } : {}) as never;
+    const value = options.frame ? options.frame.marked(`computed :${name} of ${entity}`, () => computed.evaluate(fieldScope)) : computed.evaluate(fieldScope);
     // A translated body gives unknown as null; a plain body's result is what it returned.
     row[name] = value === undefined && !computed.plain ? null : value;
   }

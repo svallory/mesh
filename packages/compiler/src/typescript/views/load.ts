@@ -101,18 +101,21 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
       }
       return local;
     };
+    // Read from the expressions file when called, never when this file loads: an expressions file imports the actions
+    // files of the entities its functions call, which import this file, so the two can be in one import cycle.
+    const lazily = (id: string) => `($s: never) => ${expressionsOf()}[${JSON.stringify(id)}]($s)`;
     const computed = entity.computed.map((field) => {
       if (field.rollup)
         return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))} }` };
       const needs = JSON.stringify(field.needs ?? []);
-      return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${expressionsOf()}[${JSON.stringify(`computed.${field.name}`)}] }` };
+      return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${lazily(`computed.${field.name}`)} }` };
     });
     const policies = loadPolicies(entity);
     const ids = policies.length ? expressionIds(entity) : undefined;
-    const reads = policies.length ? policySpecs(policies, (expression) => `${expressionsOf()}[${JSON.stringify(ids!.get(expression))}]`) : null;
+    const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!)) : null;
     let loader: LoadFunction | null = null;
     if (hasLoader(entity)) {
-      // A loader is what a `load` step and a function of an entity file call: it runs no policy, so it is typed as `tx` loads.
+      // A loader is what a `load` step and a function of an entity file call: it runs no policy, so it is typed as `privileged` loads.
       const tx = txLoadTypes(entity);
       loader = { name: loaderName(entity), record, loadable: `${record}Loadable`, with: tx.with, entityLiteral: JSON.stringify(entity.fqn) };
       typeImports.push({ names: `${record}, ${record}Loadable, ${tx.with}`, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.types`) });

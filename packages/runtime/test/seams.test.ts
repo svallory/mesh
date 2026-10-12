@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { recordWrite, composer, runAction, wantsChanges, type Change, type DataLayer, type DataOperations, type Seams } from "../src/index.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { bindDomain, recordWrite, runAction, wantsChanges, type Change, type DataLayer, type DataOperations, type Seams } from "../src/index.ts";
 
 /**
  * The seams on their own, over a layer that is told whether a call joins a running transaction. The joining rules belong
@@ -213,18 +214,19 @@ describe("afterWrite", () => {
   });
 });
 
-describe("the composer's transaction", () => {
+/** A binding of an empty domain: its `transaction` is the application's (TXN-20). */
+const bindingOn = (layer: DataLayer, seams: Seams) => bindDomain({}, layer, { seams }, new AsyncLocalStorage<unknown>());
+
+describe("the application's transaction", () => {
   test("is an outermost transaction: afterCommit runs once when it commits; a joined one leaves it to the outer", async () => {
     const calls: string[] = [];
     const seams: Seams = { afterCommit: ({ changes }) => { calls.push(`after ${changes.length}`); } };
     const outer = fake();
-    const made = composer(outer.layer, seams);
-    made.provide({}, {});
+    const made = bindingOn(outer.layer, seams);
     await made.transaction(async () => { await recordWrite(outer.ops, seams, target, null, { id: 1 }, {}, {}); });
     expect(calls).toEqual(["after 1"]);
     const inner = fake(true);
-    const joined = composer(inner.layer, seams);
-    joined.provide({}, {});
+    const joined = bindingOn(inner.layer, seams);
     await joined.transaction(async () => { await recordWrite(inner.ops, seams, target, null, { id: 1 }, {}, {}); });
     expect(calls).toEqual(["after 1"]);
   });
@@ -234,8 +236,7 @@ describe("the composer's transaction", () => {
     const seams: Seams = { afterCommit: () => { calls.push("after"); } };
     const { layer, ops } = fake();
     const throwing = { ...layer, transaction: async <T>(run: (tx: DataOperations) => Promise<T>) => run(ops) } as DataLayer;
-    const made = composer(throwing, seams);
-    made.provide({}, {});
+    const made = bindingOn(throwing, seams);
     await expect(made.transaction(async () => { await recordWrite(ops, seams, target, null, { id: 1 }, {}, {}); throw new Error("no"); })).rejects.toThrow("no");
     expect(calls).toEqual([]);
   });
@@ -267,8 +268,7 @@ describe("a layer that hands every transaction the same operations object", () =
       afterWrite: async () => { await new Promise((resolve) => setTimeout(resolve, 1)); },
       afterCommit: ({ changes }) => { reported.push(changes.map((change) => change.action).join("+")); },
     };
-    const made = composer(layer, seams);
-    made.provide({}, {});
+    const made = bindingOn(layer, seams);
     const write = (action: string) => recordWrite(ops, seams, { entity: "Thing", action }, null, { id: 1 }, {}, {});
     await Promise.all([
       runAction(layer, seams, target, {}, {}, () => write("A")),

@@ -6,7 +6,6 @@ import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtim
 import { buildModel } from "../src/front-end/build.ts";
 import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { actionsGenerator } from "../src/typescript/emitters/actions.ts";
-import { compositionView } from "../src/typescript/views/composition.ts";
 import { bindingView } from "../src/typescript/views/binding.ts";
 import { indexView } from "../src/typescript/views/index.ts";
 import { moduleViews } from "../src/typescript/views/module.ts";
@@ -39,21 +38,6 @@ function documentOf(files: Record<string, string> = { "notes/note.mesh.mx": note
   expect(built.diagnostics).toEqual([]);
   return built.document!;
 }
-
-describe("composition view", () => {
-  test("every action function typed by its input and result, the reads apart, each entity's types imported once", () => {
-    const view = compositionView({ document: documentOf(), config: configOf("/project", ".mesh") });
-    expect(view.hasActions).toBe(true);
-    expect(view.actions.map((fn) => [fn.name, fn.inputType, fn.returnType])).toEqual([
-      ["createNote", "CreateNoteInput", "Note"], ["editNote", "EditNoteInput", "Note"], ["readNote", "ReadNoteInput", "Note[]"], ["destroyNote", "DestroyNoteInput", "void"]]);
-    expect(view.reads.map((fn) => fn.name)).toEqual(["readNote"]);
-    expect(view.imports).toEqual([{ names: "Note, CreateNoteInput, EditNoteInput, ReadNoteInput, DestroyNoteInput", fromLiteral: '"./domain/notes/note.types"' }]);
-  });
-  test("a domain without actions has empty interfaces and imports nothing", () => {
-    const view = compositionView({ document: documentOf({ "tag.mesh.mx": tag }), config: configOf("/project", ".mesh") });
-    expect(view).toEqual({ hasActions: false, imports: [], actions: [], reads: [] });
-  });
-});
 
 describe("binding, module and index views", () => {
   test("the binding view names the config and the root barrel, which `bind` walks; it lists no entity or action", () => {
@@ -209,11 +193,11 @@ describe("the generated index", () => {
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
-    // With no action, the binding is still `run` and `transaction`, whose `actions` and `tx` are empty.
+    // With no action, the binding is still `run` and `transaction`, whose callback is handed nothing (TXN-20).
     const bound = mesh.bind({ transaction: async (run: (tx: object) => Promise<unknown>) => run({}), refuseIfFailed: () => false, close: async () => {} });
     expect(Object.keys(bound)).toEqual(["run", "transaction"]);
     expect(await bound.run(async () => "ran")).toBe("ran");
-    expect(await bound.transaction(async ({ actions, tx }: { actions: object; tx: object }) => [Object.keys(actions), Object.keys(tx)])).toEqual([[], []]);
+    expect(await bound.transaction(async (...args: unknown[]) => args.length)).toBe(0);
   }, 30_000);
 
   test("bind returns a frozen binding, `run` and `transaction`, over a caller's layer, and disconnect never closes it", async () => {
@@ -249,7 +233,8 @@ describe("the generated index", () => {
 
 describe("entity names never break the generated files", () => {
   // Reserved words, `bind`'s parameter, and the names of Mesh's own imports.
-  const names = ["Class", "Default", "Function", "Layer", "DataLayer", "ContextArgument", "FrameworkError", "NotFoundError", "Tables", "Flight", "Binding"];
+  // `Privileged` and `ReadOnly` spell the types each actions file declares as `$Privileged` and `$ReadOnly`.
+  const names = ["Class", "Default", "Function", "Layer", "DataLayer", "ContextArgument", "FrameworkError", "NotFoundError", "Tables", "Flight", "Binding", "Privileged", "ReadOnly"];
   // And actions whose handles in `actions` spell names the binding once used: `:in` on Flight is `inFlight`,
   // `:default` on Binding is `defaultBinding`.
   const extra: Record<string, string> = { Flight: "    read :in\n", Binding: "    read :default\n" };
@@ -271,7 +256,7 @@ describe("entity names never break the generated files", () => {
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     const domain = await import(resolve(root, ".mesh/domain/index.ts"));
-    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
+    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "privileged", "tables", "transaction"]);
     const rows: object[] = [];
     const bound = mesh.bind({ transaction: (run: (tx: object) => Promise<unknown>) => run({ insert: async (_t: object, row: object) => { rows.push(row); return row; } }), refuseIfFailed: () => false, close: async () => {} });
     for (const name of names) expect((await bound.run(() => domain[name].create({ label: name }))).label).toBe(name);
@@ -290,14 +275,6 @@ describe("entity names never break the generated files", () => {
       ["MESH_ATTRIBUTE_NAME", "toString is the name of a built-in object property. Choose another name."],
       ["MESH_ATTRIBUTE_NAME", "constructor is the name of a built-in object property. Choose another name."],
     ]);
-  });
-
-  test.each(["Actions", "Reads", "ReadOnlyActions", "ReadOnlyReads"])("an entity named %s, the type composition.ts declares for actions and tx, is MESH_EMIT_NAME", async (name) => {
-    const error = await generateFiles({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") })
-      .then(() => undefined, (cause: unknown) => cause);
-    expect(error).toBeInstanceOf(EmitError);
-    expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME",
-      message: `Entity ${name} would generate the type ${name}, which .mesh/composition.ts declares and #mesh exports for \`actions\` and \`tx\`` });
   });
 
   test.each(["Promise", "Partial", "ReturnType"])("an entity named %s, which would shadow a global type the generated code uses, is MESH_EMIT_NAME", (name) => {

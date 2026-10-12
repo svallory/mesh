@@ -7,10 +7,18 @@ import {
   @each(name in runtimeValues)
   {{ name }},
   @end
+  @if(privilegedMembers.length)
+  type ActionContext as $ActionContext,
+  @end
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  @if(readsBindName)
+  type EntityReadsBind as $EntityReadsBind,
+  @end
+  type EntityValue as $EntityValue,
   @each(name in runtimeTypes)
   type {{ name }},
   @end
@@ -41,10 +49,10 @@ import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
 
 @if(readsBindName)
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged({{ entityName }})` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $BindOptions = {}) {
+export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $BindOptions = {}, {{ readsFrameName }}: $ActionFrame = $NO_FRAME) {
   return Object.freeze({
     @each(body in reads)
     async {{ body.name }}{{ body.generics }}(input: {{ body.inputType }}{{ body.contextParam }}): Promise<{{ body.returnType }}> {
@@ -54,7 +62,7 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
       @else
       @if(body.usesParsed)~
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, {{ body.validator }}, input));
       @else~
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it
@@ -74,12 +82,12 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
 
 @end
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ composeName }}?: $Composer) {
+export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ frameName }}: $ActionFrame = $NO_FRAME) {
   @if(readsBindName)
-  const $reads = {{ readsBindName }}(layer, {{ optionsName }});
+  const $reads = {{ readsBindName }}(layer, {{ optionsName }}, frame);
   @end
   return Object.freeze({
     @each(method in methods)
@@ -107,11 +115,11 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
       @each(line in method.preCheck)
       {{ line }}
       @end
-      return $runAction(layer, {{ optionsName }}.seams, {{ method.seamTarget }}, parsed, {{ method.contextName }}, async (tx) => {
+      return $runAction(layer, {{ optionsName }}.seams, {{ method.seamTarget }}, parsed, {{ method.contextName }}, (tx) => frame.within(tx, $clock, {{ method.labelLiteral }}, async () => {
         @each(statement in method.statements)
         {{ statement }}
         @end
-      });
+      }));
       @end
       @end
     },
@@ -135,18 +143,42 @@ const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, {{ readsBindValue
 export { $entityValue as {{ entityName }} };
 /** The record type, under the entity value's name. */
 export type {{ entityName }} = $Record;
+
+/** What `privileged({{ entityName }})` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  @each(member in privilegedMembers)
+  {{ member }}
+  @end
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  @each(member in privilegedReadOnlyMembers)
+  {{ member }}
+  @end
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<{
+  @each(member in readOnlyMembers)
+  {{ member }}
+  @end
+}, $PrivilegedReadOnly>;
 @else
 import {
   @each(name in runtimeValues)
   {{ name }},
   @end
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type DataLayer as $DataLayer,
 } from "@meshfw/runtime";
 import type { {{ entityName }} as $Record } from {{ typesFromLiteral }};
 
-export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, _compose?: $Composer) {
+export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, _frame?: $ActionFrame) {
   return Object.freeze({});
 }
 
@@ -155,4 +187,6 @@ const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, null, () => ({}))
 export { $entityValue as {{ entityName }} };
 /** The record type, under the entity value's name. */
 export type {{ entityName }} = $Record;
+/** The entity value as a function of an entity file sees it: it has no method, and `privileged` of it no read. */
+export type $ReadOnly = typeof $entityValue;
 @end

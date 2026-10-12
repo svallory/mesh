@@ -30,11 +30,10 @@ export { authorizer, isSystem, type Authorizer, type PolicyCheckSpec, type Polic
 export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
 export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";
-export { castInput, checkUnchanged, composer, composed, failJoined, noteWrite, writeCount } from "./compose.ts";
+export { castInput, checkUnchanged, failJoined, noteWrite, writeCount } from "./compose.ts";
 export type { CastOutput } from "./compose.ts";
-export type { Composer, Composition } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
-export { BIND, BIND_READS, ENTITY, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, releaseBinding, settled } from "./entity.ts";
-export type { AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue } from "./entity.ts";
+export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, privileged, releaseBinding, settled } from "./entity.ts";
+export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged } from "./entity.ts";

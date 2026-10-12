@@ -239,7 +239,7 @@ test("Date type shadows are diagnosed only where the global is used", async () =
   );
   expect(
     (await generateFiles({ document, config: configOf("/project") })).length,
-  ).toBe(11); // model.json, types, validators, expressions, load, actions, composition, binding, the module's barrel, the domain root's barrel and index for one entity
+  ).toBe(10); // model.json, types, validators, expressions, load, actions, binding, the module's barrel, the domain root's barrel and index for one entity
 });
 
 test("source path line terminators are escaped in headers", async () => {

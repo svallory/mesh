@@ -221,6 +221,22 @@ describe("a read's policies are a filter", () => {
   });
 });
 
+test("TXN-18: a read policy's checks run marked, so a privileged read inside throws; a write's checks do not", async () => {
+  const marks: string[] = [];
+  const frame = { marked: <T>(what: string, fn: () => T): T => (marks.push(what), fn()) };
+  const read = authorizer("blog.Post", "read", [policy("public", [allow(true)], when(true))], frame);
+  expect(await read.filter({ refuseIfFailed: () => true, transaction: (fn: () => Promise<unknown>) => fn() } as unknown as DataLayer, {})).toBe(true);
+  expect(marks).toEqual(["policy :public of blog.Post", "policy :public of blog.Post"]);
+  marks.length = 0;
+  expect(await authorizer("blog.Post", "read", [policy("public", [allow(true)])], frame).admits({})).toBe(true);
+  expect(marks).toEqual(["policy :public of blog.Post"]);
+  marks.length = 0;
+  const write = authorizer("blog.Post", "publish", [policy("owner", [allow(true), allow(true, true)])], frame);
+  await write.before(layer, {});
+  await write.inside({});
+  expect(marks).toEqual([]);
+});
+
 test("isSystem is true only for a context whose system key is true", () => {
   expect(isSystem({ system: true })).toBe(true);
   for (const value of [{ system: false }, { system: "true" }, {}, null, undefined, true, "system"]) expect(isSystem(value)).toBe(false);

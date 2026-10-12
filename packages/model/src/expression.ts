@@ -31,8 +31,9 @@ export type PlainWhy =
   | "run-step"
   | "unsupported-construct"
   | "reads-record-in-helper"
-  | "uses-tx"
-  | "uses-actions"
+  | "uses-privileged"
+  | "calls-entity"
+  | "awaits-helper"
   | "unsupported-parameter";
 
 /** Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript (`&name` to `self.name`, `:atom` to a string). */
@@ -50,7 +51,7 @@ export interface PlainReason {
   position: SourcePosition;
   edits: SourceEdit[];
   /**
-   * The scope names (`self`, `input`, `actor`, `context`, `before`, `actions`, `tx`) the authored text reads as variables that its
+   * The scope names (`self`, `input`, `actor`, `context`, `before`) the authored text reads as variables that its
    * parameters do not bind, `self` included when `&name` stands for `self.name`; the printed function takes these from the scope.
    */
   roots: string[];
@@ -58,6 +59,17 @@ export interface PlainReason {
   clock?: ("now" | "today")[];
   /** The authored text calls `isSystem(context)`; the printed function binds it to Mesh's own. */
   isSystem?: true;
+  /** The authored text calls `privileged(Entity)` (TXN-16); the printed function binds it to Mesh's own. */
+  privileged?: true;
+  /**
+   * The entities the authored text names (CMP-16): the file's own and the ones it imports, by the name the file gives
+   * them, sorted. The printed function binds each to its entity value, typed so that what it resolves with is read-only.
+   */
+  entities?: string[];
+  /** The authored text calls a method of an entity it names (`Task.touch(...)`): it runs another action. */
+  acts?: true;
+  /** The authored text names a function it imports from a helper module (POL-21: a policy that does runs inside the transaction). */
+  helpers?: true;
   /** The authored text is a method (`(params) { body }`), so TypeScript needs `function` before it. */
   method?: true;
   /** The authored code uses an operator whose null rule differs from Mesh's (comparison, `!`, `&&`, `||`, arithmetic), so the build warns. */

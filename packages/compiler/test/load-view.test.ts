@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
-import { EmitError, generateFiles, type EmitInput } from "../src/typescript/emit.ts";
+import { generateFiles, type EmitInput } from "../src/typescript/emit.ts";
 import { loadGenerator } from "../src/typescript/emitters/load.ts";
 import { loadView } from "../src/typescript/views/load.ts";
 import { moduleViews } from "../src/typescript/views/module.ts";
@@ -88,16 +88,16 @@ describe("the load view", () => {
     expect(entry.computed).toEqual([
       { key: "postCount", plan: '{ kind: "rollup", fn: "count", of: ["posts"] }' },
       { key: "lastPostedAt", plan: '{ kind: "rollup", fn: "max", of: ["posts","postedAt"] }' },
-      { key: "prolific", plan: '{ kind: "body", needs: ["postCount"], evaluate: authorExpressions["computed.prolific"] }' },
-      { key: "tier", plan: '{ kind: "body", needs: ["postCount"], evaluate: authorExpressions["computed.tier"] }' },
-      { key: "extra", plan: '{ kind: "body", needs: [], evaluate: authorExpressions["computed.extra"] }' },
+      { key: "prolific", plan: '{ kind: "body", needs: ["postCount"], evaluate: ($s: never) => authorExpressions["computed.prolific"]($s) }' },
+      { key: "tier", plan: '{ kind: "body", needs: ["postCount"], evaluate: ($s: never) => authorExpressions["computed.tier"]($s) }' },
+      { key: "extra", plan: '{ kind: "body", needs: [], evaluate: ($s: never) => authorExpressions["computed.extra"]($s) }' },
     ]);
   });
 
   test("the expressions file is imported once, and only for an entity with a body", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
     expect(view.expressionImports).toEqual([{ local: "authorExpressions", fromLiteral: '"./domain/app/author.expressions"' }]);
-        // A loader runs no policy, so it is typed as a load through `tx`: Post's belongs-to is never null there (POL-17).
+        // A loader runs no policy, so it is typed as a load through `privileged`: Post's belongs-to is never null there (POL-17).
     expect(view.typeImports.map((entry) => entry.names)).toEqual(["Author, AuthorLoadable, AuthorWith", "Post, PostLoadable, PostTxWith"]);
     expect(view.schemaFromLiteral).toBe('"./schema"');
   });
@@ -133,13 +133,13 @@ describe("the load generator", () => {
     expect(index).not.toContain("Author");
   });
 
-  test("a loader whose name an action function already has is an error that names both", async () => {
-    // An action function is `<action><Entity>`: the action `load` of an entity called AuthorFields is `loadAuthorFields`.
+  test("a loader named like another entity's action function builds: action functions live in their entity's file", async () => {
+    // An action function is `<action><Entity>`: the action `load` of an entity called AuthorFields is `loadAuthorFields`,
+    // the name of Author's load function too. With no project-wide `actions` and `tx` (CMP-16) the two never meet.
     const fields = "entity :AuthorFields table=\"author_fields\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :load\n";
     const document = documentOf({ author, post, lonely, "author-fields": fields });
-    await expect(generateFiles(input(document))).rejects.toThrow(
-      /: the action app.AuthorFields#load \(app\/author-fields.mesh.mx:5:5\) and the load function of entity app.Author would both be named loadAuthorFields in the generated code$/);
-    await expect(generateFiles(input(document))).rejects.toBeInstanceOf(EmitError);
+    const files = await generateFiles(input(document));
+    expect(files.find((file) => file.path === "generated/load.ts")!.contents).toContain("loadAuthorFields");
   });
 
   test("the generated load.ts and the files it imports type-check under the strictest flags", async () => {
@@ -193,7 +193,7 @@ describe("the types and the read views name what is loadable", () => {
     const postView = typesView(input(document), document.entities.find((e) => e.name === "Post")!);
     // A caller's load runs the read policies of what it reaches: an author it may not read is null.
     expect(postView.loadable!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author | null"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
-    // Through `tx` no policy runs, so the key always finds its author.
+    // Through `privileged` no policy runs, so the key always finds its author.
     expect(postView.loadable!.tx).toMatchObject({ name: "PostTxLoadable", withName: "PostTxWith" });
     expect(postView.loadable!.tx!.members.map((m) => [m.name, m.type])).toEqual([["author", "Author"], ["replyTo", "Post | null"], ["replies", "Post[]"]]);
     expect(postView.loadable!.loadedMembers.map((m) => [m.name, m.type])).toEqual([["author", "AuthorLoaded"], ["replyTo", "PostLoaded | null"], ["replies", "PostLoaded[]"]]);

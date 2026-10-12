@@ -12,7 +12,7 @@ import type { ExprNode, Expression } from "@meshfw/model";
 const SCOPE = "$s";
 const local = (name: string) => `l$${name}`;
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const ROOTS = ["self", "input", "actor", "context", "before", "tx", "actions"] as const;
+const ROOTS = ["self", "input", "actor", "context", "before"] as const;
 
 function access(name: string, optional: boolean): string {
   return IDENTIFIER.test(name) ? `${optional ? "?." : "."}${name}` : `${optional ? "?." : ""}[${JSON.stringify(name)}]`;
@@ -57,9 +57,18 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // The scope names the function reads without its parameters binding them (the front end found them in the syntax tree).
   const declare = (plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "") +
     (plain.clock ?? []).map((name) => `const ${name} = () => $.${name}(${SCOPE}); `).join("") +
-    (plain.isSystem ? "const isSystem = $.isSystem; " : "");
+    (plain.isSystem ? "const isSystem = $.isSystem; " : "") +
+    (plain.privileged ? `const privileged = ${PRIVILEGED}; ` : "") +
+    // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
+    // finished loading by then) and typed so that what its actions resolve with is read-only (CMP-16).
+    (plain.entities ?? []).map((name) => `const ${name} = ${entityValue(name)} as unknown as ${entityType(name)}; `).join("");
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
+
+/** How the expressions file imports `privileged` (TXN-16) and each entity value a function names (CMP-16). */
+export const PRIVILEGED = "$privileged";
+export const entityValue = (name: string) => `$e$${name}`;
+export const entityType = (name: string) => `$t$${name}`;
 
 /** Names in `names` that a plain expression's authored text mentions. */
 export function mentioned(e: Expression, names: Iterable<string>): string[] {

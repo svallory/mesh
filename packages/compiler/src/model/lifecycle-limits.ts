@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { ActionType, Diagnostic, Entity, ModelDocument, Step } from "@meshfw/model";
 import { actionExpressions, type ActionExpression } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
-import { loadPolicies, policiesCovering, policyExpressions, readsRecord } from "./policies.ts";
+import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
 /** True when the function only ever runs in a create: an action that is one, or an `always` block that covers nothing else. */
 function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
@@ -16,13 +16,13 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
  * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
- * (M8) `before`, `actions` and, on a read or a load, reading the record, and a policy with no check.
+ * (M8) `before`, a call to an entity's action and, on a read or a load, reading the record, and a policy with no check.
  */
 export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagnostic[]): void {
   // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies (POL-17).
   const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
   // A relationship to an entity whose policies leave out the read a load runs gives every caller's load of it nothing
-  // (POL-17), with no error: say so (R2-N2 of the PR #79 review). Legal, since `tx` and a computed field's body still
+  // (POL-17), with no error: say so (R2-N2 of the PR #79 review). Legal, since `privileged` and a computed field's body still
   // read it. An entity with no policy at all is left out: it denies every caller everything (deny by default), loads
   // included, which its own actions show at once.
   const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
@@ -32,20 +32,22 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
       if (!target?.policies.length || loadPolicies(target).length) continue;
       const empty = relation.kind === "has-many" ? "[]" : "null";
       diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
-        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`tx\` and in a computed field's body it is loaded)`,
+        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`privileged\` and in a computed field's body it is loaded)`,
         relation.position,
         `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
     }
   for (const entity of document.entities) {
-    // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in.
+    // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in:
+    // it reads the record and what it loads, never through `privileged`, and runs no action (TXN-18). A helper it calls
+    // that does either throws when the field is evaluated (`ActionFrame.marked` in the runtime).
     for (const field of entity.computed) {
       const body = field.body;
       if (!body) continue;
-      const root = (["actions", "tx"] as const).find((name) => body.params.includes(name) || body.plain?.roots.includes(name) || (body.rest && new RegExp(`\\b${name}\\b`).test(body.source)));
-      if (root)
+      const reaches = body.plain?.privileged ? "calls `privileged`" : body.plain?.acts ? "calls an entity's action" : undefined;
+      if (reaches)
         diagnostics.push(error("MESH_COMPUTED_COMPOSES",
-          `computed :${field.name} of ${entity.fqn} reads \`${root}\`, which only a function that runs inside an action has: a computed field is worked out whenever a record is loaded, outside any action`,
-          body.position, "Compute it from the record, its relationships and other computed fields; work that needs other actions belongs in a `run` step"));
+          `computed :${field.name} of ${entity.fqn} ${reaches}, which only a function that runs inside an action may: a computed field is worked out whenever a record is loaded, outside any action`,
+          body.position, "Compute it from the record, its relationships and other computed fields; a read through `privileged` or a call to another action belongs in a step or a check"));
     }
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
     // `before` parameter is caught here: a create has no stored record.
@@ -81,10 +83,10 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
           diagnostics.push(error("MESH_POLICY_BEFORE",
             `${what} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``,
             expression.position, "write `&x` for the stored value and `input.x` for the caller's"));
-        if (uses("actions"))
+        if (expression.plain?.acts)
           diagnostics.push(error("MESH_POLICY_ACTS",
-            `${what} reads \`actions\`: a policy decides whether the call may run, and must not run actions itself`,
-            expression.position, "read what the decision needs through `tx`, which runs reads only"));
+            `${what} calls an entity's action: a policy decides whether the call may run, and must not run actions itself`,
+            expression.position, "read what the decision needs through `privileged(Entity)`, which runs reads only"));
       }
     // A policy with no check would pass every call it covers (POL-16): the build says so, and asks for it written out.
     for (const policy of entity.policies)
@@ -98,10 +100,10 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     for (const policy of entity.policies) {
       const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
       if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
-      const reading = covered.length ? policyExpressions(policy).find(({ expression }) => readsRecord(expression)) : undefined;
+      const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression)) : undefined;
       if (!reading) continue;
       diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-        `${reading.what} reads the record, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+        `${reading.what} ${recordReason(reading.expression)}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
         reading.expression.position,
         "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
     }

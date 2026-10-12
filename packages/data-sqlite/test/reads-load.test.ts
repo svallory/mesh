@@ -1,4 +1,4 @@
-// A read takes `load` (M7): the generated read functions, the `tx` reads of an entity file and the application
+// A read takes `load` (M7): the generated read functions, `privileged` reads in an entity file and in the application's
 // transaction all load relationships, computed fields and rollups by name, typed to exactly the names passed. The
 // domain is built, generated, pushed to SQLite, type-checked under the strictest flags and called.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -49,9 +49,9 @@ entity :Task table="tasks"
         &priority
         &project
       validate
-        check :roomInProject that=async ({ input, tx }) => ((await tx.readProject({ filter: { id: { eq: input.project } }, load: ["taskCount"] }))[0]?.taskCount ?? 0) < 3 code="project_full" message="a project holds three tasks"
-        check :projectNotBanned that=async ({ input, tx }) => (await tx.readProject({ filter: { id: { eq: input.project } }, load: ["label", "viewer"] }))[0]?.label !== "BANNED" code="banned" message="that project is banned"
-        check :viewerIsKnown that=async ({ input, tx }) => (await tx.readProject({ filter: { id: { eq: input.project } }, load: ["viewer"] }))[0]?.viewer === "alice" code="not_alice" message="only alice adds tasks"
+        check :roomInProject that=async ({ input }) => ((await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["taskCount"] }))[0]?.taskCount ?? 0) < 3 code="project_full" message="a project holds three tasks"
+        check :projectNotBanned that=async ({ input, context }) => (await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["label", "viewer"] }, context))[0]?.label !== "BANNED" code="banned" message="that project is banned"
+        check :viewerIsKnown that=async ({ input, context }) => (await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.viewer === "alice" code="not_alice" message="only alice adds tasks"
     create :addBlind
       input
         &title
@@ -118,13 +118,13 @@ async function seeded() {
 }
 
 describe("the generated files", () => {
-  test("type-check under the strictest flags, with the generic reads in `actions`, `tx` and the composition types", async () => {
+  test("type-check under the strictest flags, with the generic reads of the entity values and of `privileged`", async () => {
     expect(await typeCheck(dir)).toBe("");
   }, 30_000);
 
   test("the result of a read is typed to the names passed: a loaded field is readable, an unloaded one is a type error", async () => {
     await Bun.write(join(dir, "check-load.ts"), [
-      'import { bind } from "./.mesh/index.ts";',
+      'import { bind, privileged } from "./.mesh/index.ts";',
       'import { Project, Task, type ProjectWith, type ReadProjectInput } from "./.mesh/domain/index.ts";',
       "const mesh = bind(null as never);",
       "const context = { actor: { id: 'a' } };",
@@ -154,25 +154,25 @@ describe("the generated files", () => {
       "  const input: ReadProjectInput<'label'> = { load: ['label'], limit: 1 };",
       "  // @ts-expect-error a name the input type was not given",
       "  const wrong: ReadProjectInput<'label'> = { load: ['busy'] };",
-      "  // The application's transaction hands out the same typing, through `tx` and through `actions`.",
-      "  await mesh.transaction(async ({ tx, actions }) => {",
-      "    const [a] = await tx.readProject({ load: ['label'] });",
+      "  // The application's transaction keeps the same typing, through `privileged` and through the entity value.",
+      "  await mesh.transaction(async () => {",
+      "    const [a] = await privileged(Project).read({ load: ['label'] });",
       "    const label: string = a!.label;",
       "    // @ts-expect-error not loaded",
       "    void a!.taskCount;",
-      "    const [b] = await actions.readProject({ load: ['taskCount'] });",
+      "    const [b] = await Project.read({ load: ['taskCount'] }, context);",
       "    const count: number = b!.taskCount;",
       "    // @ts-expect-error not a loadable name",
-      "    await tx.readProject({ load: ['nope'] });",
+      "    await privileged(Project).read({ load: ['nope'] });",
       "    void label; void count;",
-      "  }, context);",
+      "  });",
       "  // An entity with a relationship and nothing else takes `load` too; Task has both.",
       "  const [t] = await Task.read({ load: ['project', 'shout'] }, context);",
-      "  // A caller's load runs Project's read policies, so the project can be null (POL-17); through tx it cannot.",
+      "  // A caller's load runs Project's read policies, so the project can be null (POL-17); through privileged it cannot.",
       "  // @ts-expect-error a caller's belongs-to can be null",
       "  void t!.project.name;",
       "  const projectName: string | undefined = t!.project?.name;",
-      "  await mesh.transaction(async ({ tx }) => { const [inside] = await tx.readTask({ load: ['project'] }); const sure: string = inside!.project.name; void sure; }, context);",
+      "  await mesh.transaction(async () => { const [inside] = await privileged(Task).read({ load: ['project'] }); const sure: string = inside!.project.name; void sure; });",
       "  void name; void tasks; void label; void count; void same; void input; void wrong; void projectName;",
       "}",
       "",
@@ -228,40 +228,43 @@ describe("the generated files", () => {
     } finally { await rm(join(dir, "check-tuple.ts")); }
   }, 30_000);
 
-  test("the read-only types keep what is loaded and what is not: `Reads` and `Actions` are assignable to them, `tx` of an entity file and a helper typed with them are checked", async () => {
+  test("the read-only types an entity file's functions see keep what is loaded and what is not; the entity values are assignable to them", async () => {
     await Bun.write(join(dir, "check-readonly.ts"), [
-      'import type { Actions, ReadOnlyActions, ReadOnlyReads, Reads } from "./.mesh/index.ts";',
-      "declare const plain: Reads;",
-      "declare const plainActions: Actions;",
-      "// A function that takes the read-only reads, as a Hyper helper does, accepts the plain ones: no cast.",
-      "const ro: ReadOnlyReads = plain;",
-      "const roa: ReadOnlyActions = plainActions;",
-      "async function helper(tx: ReadOnlyReads): Promise<number> {",
-      "  const [p] = await tx.readProject({ load: ['label'] });",
+      'import { privileged } from "./.mesh/index.ts";',
+      'import { Project, Task } from "./.mesh/domain/index.ts";',
+      'import type { $ReadOnly as ProjectView } from "./.mesh/domain/project.actions.ts";',
+      'import type { $ReadOnly as TaskView } from "./.mesh/domain/task.actions.ts";',
+      "// The entity values as a function of an entity file sees them, as the expressions file binds them: no cast.",
+      "const P: ProjectView = Project;",
+      "const T: TaskView = Task;",
+      "async function helper(): Promise<number> {",
+      "  const [p] = await privileged(P).read({ load: ['label'] });",
       "  const label: string = p!.label;",
       "  // @ts-expect-error not loaded through the read-only reads either",
       "  void p!.taskCount;",
-      "  const [bare] = await tx.readProject({});",
+      "  const [bare] = await privileged(P).read({});",
       "  // @ts-expect-error nothing loaded, nothing readable",
       "  void bare!.label;",
       "  // @ts-expect-error a record read through them is read-only",
       "  p!.name = 'x';",
       "  // @ts-expect-error and so is a loaded list",
-      "  (await tx.readProject({ load: ['tasks'] }))[0]!.tasks.push((await tx.readTask({}))[0]!);",
-      "  const [t] = await roa.readTask({ load: ['project'] });",
-      "  // A caller's belongs-to can be null; the read-only reads keep the tx typing, where it cannot.",
+      "  (await privileged(P).read({ load: ['tasks'] }))[0]!.tasks.push((await privileged(T).read({}))[0]!);",
+      "  const [t] = await T.read({ load: ['project'] }, { actor: { id: 'a' } });",
+      "  // A caller's belongs-to can be null; `privileged` keeps the policy-free typing, where it cannot.",
       "  // @ts-expect-error a caller's belongs-to can be null",
       "  void t!.project.name;",
+      "  // @ts-expect-error what an entity call returns there is read-only too",
+      "  t!.title = 'x';",
       "  const projectName: string | undefined = t!.project?.name;",
-      "  const [u] = await tx.readTask({ load: ['project'] });",
+      "  const [u] = await privileged(T).read({ load: ['project'] });",
       "  const sure: string = u!.project.name;",
       "  void sure;",
       "  // @ts-expect-error a name that is not loadable",
-      "  await tx.readProject({ load: ['nope'] });",
+      "  await privileged(P).read({ load: ['nope'] });",
       "  void label; void projectName;",
       "  return 1;",
       "}",
-      "export const run = (): Promise<number> => helper(ro);",
+      "export const run = (): Promise<number> => helper();",
       "",
     ].join("\n"));
     try {
@@ -271,8 +274,8 @@ describe("the generated files", () => {
 
   test("a check of an entity file that reads a field it did not load is a type error in the generated expressions file", async () => {
     const wrong = task.replace(
-      '(await tx.readProject({ filter: { id: { eq: input.project } }, load: ["viewer"] }))[0]?.viewer === "alice"',
-      '(await tx.readProject({ filter: { id: { eq: input.project } }, load: ["viewer"] }))[0]?.taskCount === 1',
+      '(await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.viewer === "alice"',
+      '(await privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.taskCount === 1',
     );
     expect(wrong).not.toBe(task);
     const broken = await generate(".reads-load-unloaded-", { project, task: wrong });
@@ -408,32 +411,33 @@ describe("a caller's read with load", () => {
   });
 });
 
-describe("a read through `tx` with load", () => {
-  test("the application's transaction loads through `tx` and `actions`, with the context the transaction carries", async () => {
+describe("a read through `privileged` with load", () => {
+  test("the application's transaction loads through `privileged` and the entity value, each with the context it is given", async () => {
     const { db, mesh } = await seeded();
+    const { Project } = domain as any;
     try {
-      await mesh.transaction(async ({ tx, actions }: any) => {
-        const [viaTx] = await tx.readProject({ filter: { name: { eq: "ada" } }, load: ["taskCount", "viewer"] });
-        expect(viaTx).toMatchObject({ taskCount: 3, viewer: "dora" });
-        const [viaActions] = await actions.readProject({ filter: { name: { eq: "ada" } }, load: ["label"] });
-        expect(viaActions.label).toBe("ADA");
-        const [other] = await actions.readProject({ filter: { name: { eq: "ada" } }, load: ["viewer"] }, { actor: { id: "erin" } });
+      await mesh.transaction(async () => {
+        const [viaPrivileged] = await app.privileged(Project).read({ filter: { name: { eq: "ada" } }, load: ["taskCount", "viewer"] }, { actor: { id: "dora" } });
+        expect(viaPrivileged).toMatchObject({ taskCount: 3, viewer: "dora" });
+        const [viaEntity] = await Project.read({ filter: { name: { eq: "ada" } }, load: ["label"] }, { actor: { id: "dora" } });
+        expect(viaEntity.label).toBe("ADA");
+        const [other] = await Project.read({ filter: { name: { eq: "ada" } }, load: ["viewer"] }, { actor: { id: "erin" } });
         expect(other.viewer).toBe("erin");
-      }, { actor: { id: "dora" } });
+      });
     } finally { await db.close(); }
   });
 
-  test("a create's check reads a computed field and a rollup through tx, in the action's transaction", async () => {
+  test("a create's check reads a computed field and a rollup through privileged, in the action's transaction", async () => {
     const { db, mesh } = await fresh();
     try {
       const ada = await mesh.openProject({ name: "ada" }, { actor: alice });
       for (const title of ["a", "b", "c"]) await mesh.addTask({ title, priority: 1, project: ada.id }, { actor: alice });
-      // The fourth is refused by `roomInProject`, which reads `taskCount` of the project through `tx`.
+      // The fourth is refused by `roomInProject`, which reads `taskCount` of the project through `privileged`.
       const full = await mesh.addTask({ title: "d", priority: 1, project: ada.id }, { actor: alice }).then(() => undefined, (e: unknown) => e) as InvalidInputError;
       expect(full).toBeInstanceOf(InvalidInputError);
       expect(full.issues.map((issue) => issue.code)).toEqual(["project_full"]);
       expect(await mesh.readTask({}, { actor: alice })).toHaveLength(3);
-      // The label and the viewer come through the check's own `tx`, with the call's actor.
+      // The label and the viewer come through `privileged`, with the actor of the context the check passes it.
       const banned = await mesh.openProject({ name: "banned" }, { actor: alice });
       const refused = await mesh.addTask({ title: "x", priority: 1, project: banned.id }, { actor: alice }).then(() => undefined, (e: unknown) => e) as InvalidInputError;
       expect(refused.issues.map((issue) => issue.code)).toEqual(["banned"]);
@@ -445,16 +449,16 @@ describe("a read through `tx` with load", () => {
   test("a failed load in a joined call fails the transaction like any failed read", async () => {
     const { db, mesh } = await seeded();
     try {
-      const error = await mesh.transaction(async ({ tx }: any) => {
-        try { await tx.readProject({ load: ["nope"] }); } catch { /* caught, and the transaction is failed all the same */ }
-      }, { actor: alice }).then(() => undefined, (e: unknown) => e);
+      const error = await mesh.transaction(async () => {
+        try { await app.privileged((domain as any).Project).read({ load: ["nope"] }); } catch { /* caught, and the transaction is failed all the same */ }
+      }).then(() => undefined, (e: unknown) => e);
       expect(error).toBeInstanceOf(FrameworkError);
     } finally { await db.close(); }
   });
 });
 
 describe("the clock", () => {
-  test("a computed field that reads now() reads the binding's clock, through a caller's read and through tx", async () => {
+  test("a computed field that reads now() reads the binding's clock, through a caller's read and through privileged", async () => {
     const source = {
       stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < now() }\n  actions auto=[:read]\n',
     };
@@ -470,15 +474,15 @@ describe("the clock", () => {
       const ctx = { actor: alice };
       expect((await early.readStamp({ load: ["past"] }, ctx))[0].past).toBe(false);
       expect((await late.readStamp({ load: ["past"] }, ctx))[0].past).toBe(true);
-      expect(await late.transaction(async ({ tx }: any) => (await tx.readStamp({ load: ["past"] }))[0].past, ctx)).toBe(true);
-      expect(await early.transaction(async ({ tx }: any) => (await tx.readStamp({ load: ["past"] }))[0].past, ctx)).toBe(false);
+      expect(await late.transaction(async () => (await clock.privileged(clockDomain.Stamp).read({ load: ["past"] }))[0].past)).toBe(true);
+      expect(await early.transaction(async () => (await clock.privileged(clockDomain.Stamp).read({ load: ["past"] }))[0].past)).toBe(false);
       await db.close();
     } finally { await rm(clockDir, { recursive: true, force: true }); }
   });
 
-  test("one instant per call: every row and field of a load, and a create's check and its tx read, see the same now()", async () => {
+  test("one instant per call: every row and field of a load, and a create's check and its privileged read, see the same now()", async () => {
     const source = {
-      stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < now() }\n    timestamp :seen() { return now() }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async ({ tx }) => (await tx.readStamp({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === now().getTime() && row.past === (row.at < now())) code="skewed" message="the load and the check read two instants"\n',
+      stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < now() }\n    timestamp :seen() { return now() }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async () => (await privileged(Stamp).read({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === now().getTime() && row.past === (row.at < now())) code="skewed" message="the load and the check read two instants"\n',
     };
     const clockDir = await generate(".reads-load-instant-", source);
     try {
@@ -500,9 +504,9 @@ describe("the clock", () => {
       expect(ticks).toBe(1);
       // The same through the application's transaction.
       ticks = 0;
-      const viaTx = await mesh.transaction(async ({ tx }: any) => tx.readStamp({ load: ["seen"] }), ctx);
-      expect(new Set(viaTx.map((row: any) => row.seen.getTime())).size).toBe(1);
-      // A create's check: its `now()` and the field its `tx` read loaded are one instant, so the check passes
+      const viaPrivileged = await mesh.transaction(async () => clock.privileged(clockDomain.Stamp).read({ load: ["seen"] }));
+      expect(new Set(viaPrivileged.map((row: any) => row.seen.getTime())).size).toBe(1);
+      // A create's check: its `now()` and the field its `privileged` read loaded are one instant (TXN-16), so the check passes
       // (it fails with `skewed` when the load takes a fresh reading of the clock).
       ticks = 0;
       await expect(mesh.addStamp({ at: new Date(2_500) }, ctx)).resolves.toBeDefined();

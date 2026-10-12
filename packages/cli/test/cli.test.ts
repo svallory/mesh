@@ -166,7 +166,7 @@ describe("M1 test 3: guard differences", () => {
 
 test("missing output reports every produced file in path order and writes nothing", async () => {
   const root = await project();
-  expect(run(root, "build", "--check")).toEqual({ code: 1, stdout: "", stderr: `generated/binding.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/composition.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/index.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/todos/index.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/todos/todo.actions.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\n${file}:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/todos/todo.validators.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/index.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/model.json:1:1 error Generated file is missing; run mesh build and commit the generated tree\n9 errors, 0 warnings\n` });
+  expect(run(root, "build", "--check")).toEqual({ code: 1, stdout: "", stderr: `generated/binding.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/index.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/todos/index.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/todos/todo.actions.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\n${file}:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/domain/todos/todo.validators.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/index.ts:1:1 error Generated file is missing; run mesh build and commit the generated tree\ngenerated/model.json:1:1 error Generated file is missing; run mesh build and commit the generated tree\n8 errors, 0 warnings\n` });
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 }, 30_000);
 
@@ -574,7 +574,7 @@ describe("the data adapter's build half in mesh build", () => {
 
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   const templates = join(repo, "packages/compiler/src/typescript/templates");
-  const names = ["types.ts.jig", "validators.ts.jig", "expressions.ts.jig", "load.ts.jig", "actions.ts.jig", "composition.ts.jig", "binding.ts.jig", "module.ts.jig", "index.ts.jig"];
+  const names = ["types.ts.jig", "validators.ts.jig", "expressions.ts.jig", "load.ts.jig", "actions.ts.jig", "binding.ts.jig", "module.ts.jig", "index.ts.jig"];
   const summary = "0 errors, 0 warnings\n";
 
   test("writes every template Mesh ships, then a second run is a no-op", async () => {
@@ -610,7 +610,7 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
     const root = await project();
     await mkdir(join(root, ".mesh-generators"));
     await writeFile(join(root, ".mesh-generators/types.ts.jig"), await readFile(join(templates, "types.ts.jig")));
-    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/expressions.ts.jig\nwrote .mesh-generators/load.ts.jig\nwrote .mesh-generators/actions.ts.jig\nwrote .mesh-generators/composition.ts.jig\nwrote .mesh-generators/binding.ts.jig\nwrote .mesh-generators/module.ts.jig\nwrote .mesh-generators/index.ts.jig\n" });
+    expect(run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/expressions.ts.jig\nwrote .mesh-generators/load.ts.jig\nwrote .mesh-generators/actions.ts.jig\nwrote .mesh-generators/binding.ts.jig\nwrote .mesh-generators/module.ts.jig\nwrote .mesh-generators/index.ts.jig\n" });
   }, 30_000);
 
   test("a differing template stops the export: nothing is written, the file is listed, exit 1", async () => {
@@ -683,12 +683,13 @@ test("importing meshfw loads the runtime's defineConfig and no compiler code (AD
 test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["explain", "Item", "forUser"]].map((args) => ({ args })))("MESH_EMIT_NAME exits 1 with the diagnostic on stderr: mesh $args", async ({ args }) => {
   const root = await project();
   await mkdir(join(root, "domain/other"), { recursive: true });
+  // Two entities named Item in two modules: both bind functions would be bindItem (per-barrel names are PR 5's).
   await writeFile(join(root, "domain/todos/item.mesh.mx"), "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n");
-  await writeFile(join(root, "domain/other/user-item.mesh.mx"), "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
+  await writeFile(join(root, "domain/other/item.mesh.mx"), "entity :Item table=\"other_items\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
   const result = run(root, ...args);
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toContain("domain/todos/item.mesh.mx:5:5 error the action other.UserItem#for (domain/other/user-item.mesh.mx:5:5) and the action todos.Item#forUser would both be actions.forUserItem");
+  expect(result.stderr).toContain("domain/todos/item.mesh.mx:1:1 error the bind function of entity other.Item (domain/other/item.mesh.mx:1:1) and the bind function of entity todos.Item would both be named bindItem in the generated code");
   expect(result.stderr).toEndWith("1 error, 0 warnings\n");
   expect(await Bun.file(join(root, "generated/model.json")).exists()).toBe(false);
 }, 30_000);

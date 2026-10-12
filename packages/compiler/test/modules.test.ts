@@ -29,7 +29,7 @@ function documentOf(files: Record<string, string>): ModelDocument {
 }
 
 /** Every Mesh file name at the top of `.mesh/` (and `domain`, the folder the modules live in) as a module name. */
-const TOP_LEVEL = ["schema", "load", "index", "binding", "composition", "model", "domain"];
+const TOP_LEVEL = ["schema", "load", "index", "binding", "model", "domain"];
 const pascal = (name: string) => name[0]!.toUpperCase() + name.slice(1);
 
 const domain = {
@@ -51,7 +51,6 @@ describe("the layout", () => {
     expect(paths.filter((path) => path.endsWith("/index.ts"))).toEqual([
       ".mesh/domain/billing/index.ts",
       ".mesh/domain/binding/index.ts",
-      ".mesh/domain/composition/index.ts",
       ".mesh/domain/domain/index.ts",
       ".mesh/domain/index.ts",
       ".mesh/domain/index/index.ts",
@@ -63,12 +62,12 @@ describe("the layout", () => {
       ".mesh/index.ts",
     ]);
     // Mesh's top-level files stay where they were, whatever the modules are called.
-    for (const path of [".mesh/index.ts", ".mesh/binding.ts", ".mesh/composition.ts", ".mesh/model.json"]) expect(paths).toContain(path);
+    for (const path of [".mesh/index.ts", ".mesh/binding.ts", ".mesh/model.json"]) expect(paths).toContain(path);
     // Every entity file sits in its module's folder, next to the module's barrel.
     expect(paths).toContain(".mesh/domain/tag.actions.ts");
     expect(paths).toContain(".mesh/domain/sales/orders/order.actions.ts");
     expect(paths).toContain(".mesh/domain/schema/schemaThing.types.ts");
-    expect(paths.filter((path) => !path.startsWith(".mesh/domain/")).sort()).toEqual([".mesh/binding.ts", ".mesh/composition.ts", ".mesh/index.ts", ".mesh/model.json"]);
+    expect(paths.filter((path) => !path.startsWith(".mesh/domain/")).sort()).toEqual([".mesh/binding.ts", ".mesh/index.ts", ".mesh/model.json"]);
   });
 
   test("a folder that holds only folders, not entities, has a barrel of namespaces: sales/ reaches sales/orders/", async () => {
@@ -127,11 +126,11 @@ describe("the layout", () => {
 });
 
 describe("what each barrel holds", () => {
-  test("#mesh re-exports bind, connect, disconnect, transaction, Binding, Actions, ReadOnlyActions, ReadOnlyReads, Reads and tables, and names every module in its header", async () => {
+  test("#mesh re-exports bind, connect, disconnect, transaction, Binding, privileged, Privileged and tables, and names every module in its header", async () => {
     const index = (await contentsOf(".mesh/index.ts"))!;
     expect(code(index)).toBe([
       'export { bind, connect, disconnect, transaction, type Binding } from "./binding";',
-      'export type { Actions, ReadOnlyActions, ReadOnlyReads, Reads } from "./composition";',
+      'export { privileged, type Privileged } from "@meshfw/runtime";',
       'export { tables } from "./schema";',
     ].join("\n"));
     for (const specifier of ["#mesh/domain", "#mesh/domain/billing", "#mesh/domain/sales/orders", "#mesh/domain/schema"])
@@ -164,7 +163,6 @@ describe("what each barrel holds", () => {
       'export type { CreateTagInput, ReadTagInput, TagFilter, TagSort } from "./tag.types";',
       'export * as billing from "./billing/index";',
       'export * as binding from "./binding/index";',
-      'export * as composition from "./composition/index";',
       'export * as domain from "./domain/index";',
       'export * as index from "./index/index";',
       'export * as load from "./load/index";',
@@ -269,7 +267,7 @@ describe("names in one barrel (CMP-05)", () => {
 
 describe("names across modules", () => {
   // The behaviour before CMP-17 is kept until same-named entities are allowed: a project-wide name is still
-  // project-wide, even though the barrels would not clash. `actions` and `tx` are flat records by action and entity name.
+  // project-wide (`bind<Entity>`), even though the barrels would not clash.
   test("two entities of one name in two modules build a model, then fail the build on `bind<Entity>`", async () => {
     const document = documentOf({ "a/note.mesh.mx": entity("Note"), "b/note.mesh.mx": entity("Note") });
     expect(document.entities.map((e) => `${e.module}/${e.name}`)).toEqual(["a/Note", "b/Note"]);
@@ -281,15 +279,13 @@ describe("names across modules", () => {
     });
   });
 
-  test("two action functions of one name in two modules are MESH_EMIT_NAME, though each module's index alone would hold it", async () => {
-    // `:forUser` of Item and `:for` of UserItem are both `forUserItem`.
+  test("two actions one flat name would have spelled alike, in two modules, build: an action is called on its entity (CMP-16)", async () => {
+    // `:forUser` of Item and `:for` of UserItem were both `actions.forUserItem`.
     const document = documentOf({
       "a/item.mesh.mx": entity("Item", "  actions\n    read :forUser\n"),
       "b/user-item.mesh.mx": entity("UserItem", "  actions\n    read :for\n"),
     });
-    const error = await generateFiles({ document, config: configOf("/project", ".mesh") }).then(() => undefined, (cause: unknown) => cause);
-    expect((error as EmitError).diagnostic).toMatchObject({ code: "MESH_EMIT_NAME",
-      message: "the action a.Item#forUser (a/item.mesh.mx:6:5) and the action b.UserItem#for would both be actions.forUserItem",
-      fix: "Rename one of the two: an action or an entity; `actions` and `tx` hold every action of the project by its action name followed by its entity's name" });
+    const files = await generateFiles({ document, config: configOf("/project", ".mesh") });
+    expect(files.map((file) => file.path)).toContain(".mesh/domain/b/userItem.actions.ts");
   });
 });
