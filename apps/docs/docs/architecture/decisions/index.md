@@ -50,7 +50,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 ## What changed on 2026-10-12
 
-[Record 0086](./0086-entity-values-privileged-barrels-and-fqns.md) holds the rulings on how generated code follows modules: an action is called on its entity value, `privileged` replaces the `tx` handle, each folder has a barrel, and every name Mesh writes out is the fully qualified name. It amends 0047, 0058, 0067, 0068, 0071 and 0074 and settles [finding 21](../open-questions.md#dx-findings).
+[Record 0086](./0086-entity-values-privileged-barrels-and-fqns.md) holds the rulings on how generated code follows modules: an action is called on its entity value, `privileged` replaces the `tx` handle, each folder has a barrel, and every name Mesh writes out is the fully qualified name. It amends 0047, 0058, 0067, 0068, 0071, 0074 and 0075 and settles [finding 21](../open-questions.md#dx-findings).
 
 ## Current records
 
@@ -117,8 +117,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted, amended 2026-10-12 by 0086 | operator |
 | [0072](./0072-mesh-1-0-is-the-port-gate.md) | Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite; what leaves the 1.0 line | Accepted, amended 2026-10-11: M6 builds domain events and the outbox; HA keeps `@meshfw/jsonrpc` (0077, 0079) | operator |
 | [0073](./0073-plugins-follow-the-specs-single-hook.md) | Plugins follow the spec: one `task.claim` hook, before the transaction | Accepted | operator |
-| [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `privileged` | Accepted, amended 2026-10-12 by 0086 | operator |
-| [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079) | operator |
+| [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `tx` | Accepted, amended 2026-10-12 by 0086 | operator |
+| [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079); amended 2026-10-12 by 0086 | operator |
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
 | [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape and general publish-subscribe are open | Accepted, two items open | operator |

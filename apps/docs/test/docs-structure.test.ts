@@ -86,7 +86,7 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
   expect(solidStart).not.toMatch(/return[^\n]*(?:issues|breakdown|source)/);
 });
 
-test("a page imports action functions from their module, and only the framework's names from #mesh (CMP-17)", () => {
+test("a page imports entity values from their module, and only the framework's names from #mesh (CMP-17)", () => {
   const framework = new Set(["bind", "connect", "disconnect", "transaction", "privileged", "tables", "Binding", "Privileged"]);
   const modules = new Set<string>();
   let seen = 0;

@@ -419,7 +419,7 @@
               "path": "/architecture/decisions/0073-plugins-follow-the-specs-single-hook/"
             },
             {
-              "title": "0074. A write policy may read through `privileged`",
+              "title": "0074. A write policy may read through `tx`",
               "path": "/architecture/decisions/0074-write-policies-may-read-through-tx/"
             },
             {

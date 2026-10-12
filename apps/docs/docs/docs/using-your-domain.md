@@ -28,7 +28,7 @@ import { connect, disconnect } from "#mesh";
 import { List, Todo } from "#mesh/domain/todo";
 ```
 
-Nothing in the generated code is global to the project. Two entities with the same name in two folders are two modules, and you import the one you mean (`import { Todo as BillingTodo } from "#mesh/domain/billing"` beside `import { Todo } from "#mesh/domain/todo"`); see [Project structure](./project-structure.md#generated-code). A call also goes to one place, the *binding in scope*: the one opened by `connect()`, or the one of the `run` or `transaction` you are inside ([Testing](./testing.md)).
+Nothing in the generated code is global to the project. Two entities with the same name in two folders are two modules, and you import the one you mean from its own folder (`work.List` from `#mesh/domain/work`, `school.List` from `#mesh/domain/school`); see [Project structure](./project-structure.md#generated-code). A call also goes to one place, the *binding in scope*: the one opened by `connect()`, or the one of the `run` or `transaction` you are inside ([Testing](./testing.md)).
 
 ## Connect once
 

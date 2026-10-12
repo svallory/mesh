@@ -272,7 +272,7 @@ test("a title cannot be empty", async () => {
 });
 ```
 
-`bind(dataLayer)` returns `{ run, transaction }`. Every entity call made inside `app.run(…)` goes to that data layer, with the same `(input, context)` signatures as outside it. Two tests above bind two databases in one process and neither sees the other's rows. `bun test` runs them:
+`bind(dataLayer, options)` returns `{ run, transaction }`. Every entity call made inside `app.run(…)` goes to that data layer, with the same `(input, context)` signatures as outside it. Two tests above bind two databases in one process and neither sees the other's rows. `bun test` runs them:
 
 ```bash
 bun test

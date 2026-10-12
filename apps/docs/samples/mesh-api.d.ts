@@ -69,7 +69,9 @@ declare module "@meshfw/runtime" {
 
   /**
    * Returns the read actions of `entity` without read policies. It joins the running transaction and reads the running
-   * action's `now()`. It throws `FrameworkError` while a computed field or a read policy is being evaluated.
+   * action's `now()`. It throws `FrameworkError` while a computed field or a read policy is being evaluated. Each
+   * read takes an optional `context`: it reaches only the computed fields the read loads and is never inherited from
+   * the running action (a lead decision, for operator review).
    */
   export function privileged<E extends EntityValue>(entity: E): Privileged<E>;
 
@@ -259,23 +261,14 @@ declare module "#mesh/domain/todo" {
   export type ListWith<N extends keyof ListLoadable> = List & Pick<ListLoadable, N>;
   export type ReadListInput<N extends keyof ListLoadable = never> = Omit<ReadTodoInput, "load"> & { load?: readonly N[] };
 
-  /** The read actions of `List` without read policies: `privileged(List)`. */
-  export interface ListReads {
-    read<const L extends readonly (keyof ListLoadable)[] = readonly []>(input: Omit<ReadListInput, "load"> & ListLoadArg<L>, context?: ActionContext): Promise<ListWith<ListLoadNames<L>>[]>;
-  }
-
-  /** The read actions of `Todo` without read policies: `privileged(Todo)`. */
-  export interface TodoReads {
-    read<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
-    pending<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
-  }
-
   /** The entity value of `List`: one method per action. */
   export const List: {
     create(input: { name: string }, context: ActionContext): Promise<List>;
     read<const L extends readonly (keyof ListLoadable)[] = readonly []>(input: Omit<ReadListInput, "load"> & ListLoadArg<L>, context: ActionContext): Promise<ListWith<ListLoadNames<L>>[]>;
     destroy(input: { id: string }, context: ActionContext): Promise<void>;
-  } & EntityValue<ListReads>;
+  } & EntityValue<{
+      read<const L extends readonly (keyof ListLoadable)[] = readonly []>(input: Omit<ReadListInput, "load"> & ListLoadArg<L>, context?: ActionContext): Promise<ListWith<ListLoadNames<L>>[]>;
+  }>;
 
   /** The entity value of `Todo`: one method per action, and a `can<Action>` beside each. `&list` in input takes the related id; the returned record still has listId. */
   export const Todo: {
@@ -288,7 +281,10 @@ declare module "#mesh/domain/todo" {
     canCreate(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Decision>;
     canPending(input: { load?: readonly string[] }, context: ActionContext): Promise<Decision>;
     canComplete(input: { id: string }, context: ActionContext): Promise<Decision>;
-  } & EntityValue<TodoReads>;
+  } & EntityValue<{
+      read<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
+      pending<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
+  }>;
 }
 
 declare module "#mesh/domain/billing" {
@@ -329,15 +325,12 @@ declare module "#mesh/domain/billing" {
     load?: readonly string[];
   }
 
-  /** The read actions of `Invoice` without read policies: `privileged(Invoice)`. */
-  export interface InvoiceReads {
-    forCustomer(input: ReadInvoiceInput, context?: ActionContext): Promise<Invoice[]>;
-  }
-
   /** The entity value of `Invoice`. */
   export const Invoice: {
     forCustomer(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
-  } & EntityValue<InvoiceReads>;
+  } & EntityValue<{
+      forCustomer(input: ReadInvoiceInput, context?: ActionContext): Promise<Invoice[]>;
+  }>;
 }
 
 declare module "#mesh" {

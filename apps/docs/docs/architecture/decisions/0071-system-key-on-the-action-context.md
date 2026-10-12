@@ -1,6 +1,6 @@
 ---
 title: "0071. `system` is a reserved key of the `ActionContext`; policies decide what it admits"
-description: "Decision record 0071: how an internal write (a cascade, the bootstrap, a timer) passes authorization without a `bypass`. Status: Accepted."
+description: "Decision record 0071: how an internal write (a cascade, the bootstrap, a timer) passes authorization without a `bypass`. Status: Accepted. Amended 2026-10-12 (a nested call's context)."
 ---
 
 # 0071. `system` is a reserved key of the `ActionContext`; policies decide what it admits
@@ -9,7 +9,7 @@ description: "Decision record 0071: how an internal write (a cascade, the bootst
 
 Accepted. Amends [ADR-0059](./0059-action-context.md) (a second reserved key) and complements [ADR-0055](./0055-policies-are-core.md) (no `bypass`).
 
-**Amended 2026-10-12 (operator, TXN-19).** The `actions` handle of a `run` step used to carry the caller's whole context into a nested call, `system` included. Nothing is inherited now: a nested call carries only the context it is passed ([ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md)). The rest of this record is unchanged and kept as history.
+**Amended 2026-10-12 (operator, TXN-19).** The bullet "The `actions` handle of a `run` step carries the caller's whole context into a nested call, `system` included, and the human `actor` stays on it" is replaced: the `actions` handle no longer exists, and a nested call carries only the context it is passed. A `run` step that acts for the system passes `{ ...context, system: true }`, and the human `actor` stays on it, so an event written by a cascade still names the person who caused it. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md). The rest of this record is unchanged and kept as history.
 
 ## Date
 
@@ -29,7 +29,7 @@ Hyper's bootstrap, lease sweeper and 11 nested change modules call actions with 
 
 - Mesh does not act on it. No policy is skipped: a policy admits an internal write by testing the key, with `isSystem(context)` in the project's own helper, in `authorize-if`.
 - The application sets it, for the bootstrap, a timer, or a call it makes on the system's behalf. It is never read from input. It is as trustworthy as the code that builds the context.
-- A nested call carries the context its caller passes it. A `run` step that acts for the system passes `{ ...context, system: true }`, and the human `actor` stays on it, so an event written by a cascade still names the person who caused it.
+- The `actions` handle of a `run` step carries the caller's whole context into a nested call, `system` included, and the human `actor` stays on it, so an event written by a cascade still names the person who caused it.
 - A write policy of an internal-only action (a Completion recorded by a cascade) is `authorize-if=({ actor, context }) => hasRole(actor, ["owner"]) || isSystem(context)`.
 
 ## Options considered
