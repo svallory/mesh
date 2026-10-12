@@ -33,7 +33,7 @@ entity :Fields
         &__lookupGetter__
         &__lookupSetter__
       validate
-        check :typed that=({ input }) => { return [input.constructor, input.prototype, input.hasOwnProperty, input.isPrototypeOf, input.propertyIsEnumerable, input.toLocaleString, input.toString, input.valueOf, input.__defineGetter__, input.__defineSetter__, input.__lookupGetter__, input.__lookupSetter__].every((value) => value === undefined || value === null || typeof value === "string" || typeof value === "number") } code="typed" message="An input is not a string or a number"
+        check :typed that=({ input }) => { return Object.values(input).every((value) => value === undefined || value === null || typeof value === "string" || typeof value === "number") } code="typed" message="An input is not a string or a number"
     update :edit
       input
         &constructor

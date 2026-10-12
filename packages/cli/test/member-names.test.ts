@@ -4,7 +4,8 @@
 // (`fixtures/member-names/domain/names`) has four entities:
 // - Fields: one attribute per name, a computed field reading them all, a create with a check, an update with a check
 //   per name and an update whose `set` steps write every one of them;
-// - Calls: one action per name (a create, two reads, a destroy, updates), and `_archive`, `archive_`, `__archive__`;
+// - Calls: one action per name (a create, two reads, a destroy, updates), and `_archive`, `archive_`, `__archive__`,
+//   `_1st` and `__2`;
 // - Guards: one policy per name, each denying the label that is its name;
 // - Loads: a belongs-to named `constructor` and computed fields named `toString` and `valueOf`, loaded by a read.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -28,7 +29,7 @@ const REQUIRED = { constructor: "c", toString: "t" };
 /** Calls' updates, each of which writes its own name to `last`. */
 const UPDATES = [
   "prototype", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "__defineGetter__",
-  "__defineSetter__", "__lookupGetter__", "_archive", "archive_", "__archive__",
+  "__defineSetter__", "__lookupGetter__", "_archive", "archive_", "__archive__", "_1st", "__2",
 ] as const;
 
 // The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
@@ -42,7 +43,7 @@ const PACKAGE = {
   imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
 };
 /** Type-level checks through the specifiers: each name is the member it declares, never the inherited one. */
-const CHECK = `import { Calls, Fields, Loads, type EditFieldsInput, type LoadsLoadable } from "#mesh/domain/names";
+const CHECK = `import { Calls, Fields, Loads, type EditFieldsInput, type FieldsFilter, type LoadsLoadable } from "#mesh/domain/names";
 
 export const made: Fields["constructor"] = "";
 export const text: string = null as unknown as Fields["toString"];
@@ -50,7 +51,7 @@ export const count: number | null = null as unknown as Fields["valueOf"];
 export const shout: LoadsLoadable["toString"] = "";
 export const linked: LoadsLoadable["constructor"] = null as unknown as Fields | null;
 // Each action is a method of the entity value under its name as written.
-export const methods = [Calls.constructor, Calls.toString, Calls.valueOf, Calls.__lookupSetter__, Calls.prototype, Calls._archive, Calls.archive_, Calls.__archive__, Fields.edit, Loads.read];
+export const methods = [Calls.constructor, Calls.toString, Calls.valueOf, Calls.__lookupSetter__, Calls.prototype, Calls._archive, Calls.archive_, Calls.__archive__, Calls._1st, Calls.__2, Fields.edit, Loads.read];
 // TypeScript gives every object the members of its Object interface, so an input that leaves out an optional one of them
 // is not assignable to the input type: the caller passes it, as undefined when it has no value.
 export const edit: EditFieldsInput = {
@@ -59,6 +60,22 @@ export const edit: EditFieldsInput = {
 };
 // @ts-expect-error \`constructor\`, left out, is read as the inherited Function
 export const omitted: EditFieldsInput = { id: "", toString: "t" };
+// A filter likewise: the columns named like members of the Object interface are given, as undefined when they compare
+// nothing.
+const unset = {
+  constructor: undefined, toString: undefined, toLocaleString: undefined, valueOf: undefined, hasOwnProperty: undefined,
+  isPrototypeOf: undefined, propertyIsEnumerable: undefined,
+} as const;
+export const byIdGiven: FieldsFilter = { ...unset, id: { eq: "x" } };
+// @ts-expect-error \`constructor\`, left out, is read as the inherited Function
+export const byId: FieldsFilter = { id: { eq: "x" } };
+export const reads = () => [
+  Fields.read({ filter: { ...unset, id: { eq: "x" } } }),
+  Fields.read({ filter: { ...unset, toString: { eq: "t" } }, sort: ["-toString"] }),
+  Fields.read({ filter: { or: [{ ...unset, toString: { eq: "t" } }, { ...unset, constructor: { eq: "c" } }] } }),
+  // A filter of an entity with no such column leaves out what it does not compare.
+  Calls.read({ filter: { last: { eq: "x" } } }),
+];
 `;
 
 /** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
@@ -112,19 +129,21 @@ describe("members named like members of Object.prototype or of a function (ENT-1
   test("each action is a method under its name as written, with its own input type and validator", async () => {
     const actions = await generated("domain/names/calls.actions.ts");
     for (const [method, type, validator] of [
-      ["constructor", "ConstructorCallsInput", "constructorCallsInput"],
-      ["__lookupSetter__", "__LookupSetterCallsInput", "__lookupSetterCallsInput"],
-      ["_archive", "_ArchiveCallsInput", "_archiveCallsInput"],
-      ["archive_", "ArchiveCallsInput", "archiveCallsInput"],
-      ["__archive__", "__ArchiveCallsInput", "__archiveCallsInput"],
+      ["constructor", "ConstructorCallsInput", "constructorCallsInputSchema"],
+      ["__lookupSetter__", "__LookupSetterCallsInput", "__lookupSetterCallsInputSchema"],
+      ["_archive", "_ArchiveCallsInput", "_archiveCallsInputSchema"],
+      ["archive_", "ArchiveCallsInput", "archiveCallsInputSchema"],
+      ["__archive__", "__ArchiveCallsInput", "__archiveCallsInputSchema"],
+      // A digit has no lower case: the validator differs from the type by its suffix alone.
+      ["_1st", "_1stCallsInput", "_1stCallsInputSchema"],
+      ["__2", "__2CallsInput", "__2CallsInputSchema"],
     ]) {
       expect(actions).toMatch(new RegExp(`async ${method}\\(\\s*input: ${type},`));
       expect(actions).toContain(`$castInput(layer, ${validator}, input)`);
     }
     const validators = await generated("domain/names/calls.validators.ts");
-    expect(validators).toContain("export const _archiveCallsInput = ");
-    expect(validators).toContain("export const archiveCallsInput = ");
-    expect(validators).toContain("export const __archiveCallsInput = ");
+    for (const name of ["_archiveCallsInputSchema", "archiveCallsInputSchema", "__archiveCallsInputSchema", "_1stCallsInputSchema", "__2CallsInputSchema", "callsFilterSchema", "callsSortSchema"])
+      expect(validators).toMatch(new RegExp(`export const ${name}[: ]`));
   });
 
   test("tsc type-checks the generated tree and the specifiers under the strictest flags", async () => {
@@ -170,6 +189,9 @@ describe("members named like members of Object.prototype or of a function (ENT-1
           expect(edited).toEqual(current);
         }
 
+        // An input given as undefined is one left out, whatever its name: the column keeps its value.
+        expect(await names.Fields.edit({ id: all.id, toString: undefined, constructor: undefined, valueOf: undefined }, anyone)).toEqual(current);
+
         // A `set` step writes each; `toString` and `valueOf` read the stored record's own column.
         const stamped = await names.Fields.stamp({ id: bare.id, mark: "m" }, anyone);
         expect(stamped).toEqual({ id: bare.id, ...Object.fromEntries(NAMES.map((name) => [name, "m"])), toString: "t!", valueOf: 1 });
@@ -188,6 +210,12 @@ describe("members named like members of Object.prototype or of a function (ENT-1
           expect(await ids(`-${name}`)).toEqual(ascending.toReversed());
         }
 
+        // A filter that gives a column as undefined leaves it out.
+        const byId = await names.Fields.read({ filter: { id: { eq: all.id }, toString: undefined, constructor: undefined } }, anyone);
+        expect(byId.map((row: { id: string }) => row.id)).toEqual([all.id]);
+        const either = await names.Fields.read({ filter: { or: [{ toString: { eq: current.toString } }, { constructor: { eq: stamped.constructor }, valueOf: undefined }] }, sort: ["id"] }, anyone);
+        expect(either.map((row: { id: string }) => row.id)).toEqual([all.id, bare.id].toSorted());
+
         // Validation: the attribute rules and the checks name the member.
         for (const name of STRINGS) {
           const invalid = await rejection(names.Fields.create({ ...REQUIRED, [name]: "x".repeat(21) }, anyone), InvalidInputError);
@@ -203,14 +231,18 @@ describe("members named like members of Object.prototype or of a function (ENT-1
         expect((await rejection(names.Fields.create(sentProto, anyone), InvalidInputError)).message).toContain("__proto__");
         expect((await rejection(names.Calls.constructor({ toString: "x" }, anyone), InvalidInputError)).message).toContain("toString");
 
+        // A create given an optional input as undefined fills it as one left out (a third row: after the reads above).
+        const given = await names.Fields.create({ ...REQUIRED, hasOwnProperty: undefined, valueOf: undefined }, anyone);
+        expect(given).toEqual({ id: given.id, ...Object.fromEntries(NAMES.map((name) => [name, null])), ...REQUIRED });
+
         // ---- actions -------------------------------------------------------------------------------------------
         const made = await names.Calls.constructor({}, anyone);
         expect(made).toEqual({ id: made.id, last: null });
         for (const action of UPDATES) expect(await names.Calls[action]({ id: made.id }, anyone)).toEqual({ id: made.id, last: action });
-        expect(await names.Calls.toString({}, anyone)).toEqual([{ id: made.id, last: "__archive__" }]);
-        expect(await names.Calls.valueOf({ filter: { last: { eq: "__archive__" } } }, anyone)).toEqual([{ id: made.id, last: "__archive__" }]);
-        expect(await app.privileged(names.Calls).toString({})).toEqual([{ id: made.id, last: "__archive__" }]);
-        expect(await app.privileged(names.Calls).valueOf({})).toEqual([{ id: made.id, last: "__archive__" }]);
+        expect(await names.Calls.toString({}, anyone)).toEqual([{ id: made.id, last: "__2" }]);
+        expect(await names.Calls.valueOf({ filter: { last: { eq: "__2" } } }, anyone)).toEqual([{ id: made.id, last: "__2" }]);
+        expect(await app.privileged(names.Calls).toString({})).toEqual([{ id: made.id, last: "__2" }]);
+        expect(await app.privileged(names.Calls).valueOf({})).toEqual([{ id: made.id, last: "__2" }]);
         expect(await names.Calls.__lookupSetter__({ id: made.id }, anyone)).toBeUndefined();
         expect(await names.Calls.read({}, anyone)).toEqual([]);
 
