@@ -56,12 +56,12 @@ function checkNames({ document }: EmitInput, views: readonly ActionsView[]): voi
   };
   views.forEach((view, index) => {
     const entity = entities[index]!;
-    claim(view.bindName, `Entity :${entity.name}'s binding`, entity.position);
-    if (view.readsBindName) claim(view.readsBindName, `Entity :${entity.name}'s reads binding`, entity.position);
-    if (hasLoader(entity)) claim(loaderName(entity), `Entity :${entity.name}'s load function`, entity.position);
+    claim(view.bindName, `Entity ${entity.fqn}'s binding`, entity.position);
+    if (view.readsBindName) claim(view.readsBindName, `Entity ${entity.fqn}'s reads binding`, entity.position);
+    if (hasLoader(entity)) claim(loaderName(entity), `Entity ${entity.fqn}'s load function`, entity.position);
     view.methods.forEach((method, position) => {
       const action = effectiveActions(entity)[position]!;
-      claim(method.functionName, `Action :${action.name} of :${entity.name}`, action.position);
+      claim(method.functionName, `Action :${action.name} of ${entity.fqn}`, action.position);
     });
   });
 }

@@ -36,7 +36,7 @@ export function resolveRelationships(
       );
       const names = candidates.map((candidate) => candidate.name);
       const list = names.map((name) => `:${name}`).join(", ");
-      const describe = `${relation.kind} :${relation.name} of :${entity.name}`;
+      const describe = `${relation.kind} :${relation.name} of ${entity.fqn}`;
       const authored = relation.inverse;
       if (authored !== undefined) {
         const position = inversePositions.get(relation) ?? relation.position;
@@ -45,14 +45,14 @@ export function resolveRelationships(
           const suggestion = nearestName(authored, names);
           fail(
             "MESH_INVERSE_UNKNOWN",
-            `inverse=:${authored} names no belongs-to of :${target.name}.${suggestion ? ` Did you mean inverse=:${suggestion}?` : names.length ? ` The belongs-to from :${target.name} to :${entity.name}: ${list}.` : ""}`,
+            `inverse=:${authored} names no belongs-to of ${target.fqn}.${suggestion ? ` Did you mean inverse=:${suggestion}?` : names.length ? ` The belongs-to from ${target.fqn} to ${entity.fqn}: ${list}.` : ""}`,
             position,
           );
           delete relation.inverse;
         } else if (targetOf(target, named) !== entity) {
           fail(
             "MESH_INVERSE_ENTITY",
-            `inverse=:${authored} is a belongs-to of :${target.name} that points at :${named.entity.identifier}, not at :${entity.name}.${names.length ? ` The belongs-to from :${target.name} to :${entity.name}: ${list}.` : ""}`,
+            `inverse=:${authored} is a belongs-to of ${target.fqn} that points at :${named.entity.identifier}, not at ${entity.fqn}.${names.length ? ` The belongs-to from ${target.fqn} to ${entity.fqn}: ${list}.` : ""}`,
             position,
           );
           delete relation.inverse;
@@ -69,14 +69,14 @@ export function resolveRelationships(
       else if (relation.kind === "has-many")
         fail(
           "MESH_INVERSE_REQUIRED",
-          `${describe} could follow any of ${candidates.length} belongs-to of :${target.name} back to :${entity.name} (${list})`,
+          `${describe} could follow any of ${candidates.length} belongs-to of ${target.fqn} back to ${entity.fqn} (${list})`,
           relation.position,
           `Choose one: \`inverse=:${names[0]}\``,
         );
       else
         fail(
           "MESH_INVERSE_REQUIRED",
-          `${describe} follows one belongs-to, and :${target.name} has ${candidates.length} back to :${entity.name} (${list}); a has-one takes no inverse`,
+          `${describe} follows one belongs-to, and ${target.fqn} has ${candidates.length} back to ${entity.fqn} (${list}); a has-one takes no inverse`,
           relation.position,
           `Use \`has-many\` with \`inverse=:${names[0]}\`, and read the one row you want from the list`,
         );

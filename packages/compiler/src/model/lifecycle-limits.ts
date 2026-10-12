@@ -32,9 +32,9 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
       if (!target?.policies.length || loadPolicies(target).length) continue;
       const empty = relation.kind === "has-many" ? "[]" : "null";
       diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
-        `${relation.kind} :${relation.name} of :${from.name} reaches :${target.name}, and no policy of :${target.name} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`tx\` and in a computed field's body it is loaded)`,
+        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`tx\` and in a computed field's body it is loaded)`,
         relation.position,
-        `If callers may load it, give :${target.name} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
+        `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
     }
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in.
@@ -44,7 +44,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
       const root = (["actions", "tx"] as const).find((name) => body.params.includes(name) || body.plain?.roots.includes(name) || (body.rest && new RegExp(`\\b${name}\\b`).test(body.source)));
       if (root)
         diagnostics.push(error("MESH_COMPUTED_COMPOSES",
-          `computed :${field.name} of :${entity.name} reads \`${root}\`, which only a function that runs inside an action has: a computed field is worked out whenever a record is loaded, outside any action`,
+          `computed :${field.name} of ${entity.fqn} reads \`${root}\`, which only a function that runs inside an action has: a computed field is worked out whenever a record is loaded, outside any action`,
           body.position, "Compute it from the record, its relationships and other computed fields; work that needs other actions belongs in a `run` step"));
     }
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
@@ -90,7 +90,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     for (const policy of entity.policies)
       if (!policy.authorizeIf.length && !policy.forbidIf.length)
         diagnostics.push(error("MESH_POLICY_NO_CHECKS",
-          `policy :${policy.name} of :${entity.name} has no \`authorize-if\` and no \`forbid-if\`, so it would pass every call it covers`,
+          `policy :${policy.name} of ${entity.fqn} has no \`authorize-if\` and no \`forbid-if\`, so it would pass every call it covers`,
           policy.position,
           "To let every caller through, say so: `authorize-if=() => true`. Otherwise write the check the policy stands for"));
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
@@ -101,7 +101,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
       const reading = covered.length ? policyExpressions(policy).find(({ expression }) => readsRecord(expression)) : undefined;
       if (!reading) continue;
       diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-        `${reading.what} reads the record, and the policy covers ${covered.join(", ")} of :${entity.name}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+        `${reading.what} reads the record, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
         reading.expression.position,
         "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
     }
@@ -109,7 +109,7 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
       if (action.kind !== "read") continue;
       if (action.validate.length || action.do.length)
         diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `read :${action.name} of :${entity.name} declares ${action.validate.length ? "validate" : "do"}, which a read does not run: it has no record to check or change`,
+          `read :${action.name} of ${entity.fqn} declares ${action.validate.length ? "validate" : "do"}, which a read does not run: it has no record to check or change`,
           action.position, "A read narrows its rows with `filter`; its caller narrows them further with `filter`, `sort`, `limit` and `offset`"));
     }
     // A destroy returns nothing and writes nothing: a `set` or `load` in one would be dropped, so it is refused.
@@ -122,10 +122,10 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
         else if (step.kind === "when") refuseDestroyStep(step.steps, where);
       }
     };
-    for (const action of entity.actions) if (action.kind === "destroy") refuseDestroyStep(action.do, `destroy :${action.name} of :${entity.name}`);
+    for (const action of entity.actions) if (action.kind === "destroy") refuseDestroyStep(action.do, `destroy :${action.name} of ${entity.fqn}`);
     for (const always of entity.always) {
       const covers = always.types?.includes("destroy") || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "destroy" || (ref.name === "destroy" && entity.auto.includes("destroy")));
-      if (covers) refuseDestroyStep(always.do, `an always block of :${entity.name} that covers a destroy`);
+      if (covers) refuseDestroyStep(always.do, `an always block of ${entity.fqn} that covers a destroy`);
     }
     for (const always of entity.always) {
       if (!always.validate.length && !always.do.length) continue;

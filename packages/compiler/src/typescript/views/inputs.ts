@@ -153,7 +153,7 @@ export function entityInputs(
   if (!key)
     throw emitError(
       "MESH_EMIT_KEY",
-      `Entity :${entity.name} has no primary key`,
+      `Entity ${entity.fqn} has no primary key`,
       entity.position,
     );
   return effectiveActions(entity).map((action) => {

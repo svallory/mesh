@@ -76,6 +76,7 @@ export const postDocument: ModelDocument = {
     {
       name: "Invoice",
       table: "invoices",
+      fqn: "billing.Invoice",
       file: postFile,
       module: "billing",
       position: at("entity :Invoice"),
