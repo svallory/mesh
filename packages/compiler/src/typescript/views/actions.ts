@@ -656,7 +656,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           const flag = whenFlags.get(step);
           if (flag === undefined) emit(`if (await ${call(step.condition)}) {`);
           else {
-            emit(`${flag} = Boolean(await ${call(step.condition)});`);
+            emit(`${flag} = !!(await ${call(step.condition)});`);
             if (!hasBeforeWrite(step.steps)) continue;
             emit(`if (${flag}) {`);
           }

@@ -721,7 +721,9 @@
                           "to": 37
                         }
                       ],
-                      "helpers": true,
+                      "helpers": [
+                        "nextNumber"
+                      ],
                       "position": {
                         "column": 24,
                         "file": "src/domain/execution/attempt.mesh.mx",
@@ -773,7 +775,9 @@
                           "to": 46
                         }
                       ],
-                      "helpers": true,
+                      "helpers": [
+                        "delegatorFor"
+                      ],
                       "position": {
                         "column": 27,
                         "file": "src/domain/execution/attempt.mesh.mx",
@@ -825,7 +829,9 @@
                           "to": 29
                         }
                       ],
-                      "helpers": true,
+                      "helpers": [
+                        "heldFence"
+                      ],
                       "position": {
                         "column": 37,
                         "file": "src/domain/execution/attempt.mesh.mx",
@@ -948,7 +954,9 @@
                   ],
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "claimerOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
@@ -984,7 +992,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "runRunningOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
@@ -1027,7 +1037,9 @@
                       "to": 68
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "stepIdleOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
@@ -1105,7 +1117,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "machineActiveOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -1224,7 +1238,9 @@
                     "plain": {
                       "detail": "object",
                       "edits": [],
-                      "helpers": true,
+                      "helpers": [
+                        "attemptOutcome"
+                      ],
                       "position": {
                         "column": 49,
                         "file": "src/domain/execution/attempt.mesh.mx",
@@ -1331,7 +1347,9 @@
                   "entities": [
                     "Run"
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "settlesRun"
+                  ],
                   "method": true,
                   "operators": true,
                   "position": {
@@ -1624,7 +1642,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/execution/attempt.mesh.mx",
@@ -1657,7 +1677,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -1900,7 +1922,9 @@
                     "plain": {
                       "detail": "object",
                       "edits": [],
-                      "helpers": true,
+                      "helpers": [
+                        "attemptOutcome"
+                      ],
                       "position": {
                         "column": 49,
                         "file": "src/domain/execution/attempt.mesh.mx",
@@ -2316,7 +2340,9 @@
                     "plain": {
                       "detail": "object",
                       "edits": [],
-                      "helpers": true,
+                      "helpers": [
+                        "attemptOutcome"
+                      ],
                       "position": {
                         "column": 49,
                         "file": "src/domain/execution/attempt.mesh.mx",
@@ -3056,7 +3082,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -3118,7 +3146,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -3173,7 +3203,9 @@
                 ],
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "claimerOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -3783,7 +3815,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "attemptSessionOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -5007,7 +5041,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -5078,7 +5114,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -5130,7 +5168,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "performsAttemptOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -5182,7 +5222,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "correctsInvocationOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -6638,7 +6680,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -6700,7 +6744,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -6766,7 +6812,9 @@
                     "to": 81
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -6974,7 +7022,9 @@
                           "to": 35
                         }
                       ],
-                      "helpers": true,
+                      "helpers": [
+                        "responsibleFor"
+                      ],
                       "position": {
                         "column": 38,
                         "file": "src/domain/execution/run.mesh.mx",
@@ -7069,7 +7119,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskOpenOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/run.mesh.mx",
@@ -7105,7 +7157,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "runRunningOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -8091,7 +8145,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -8162,7 +8218,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -8214,7 +8272,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "cancelsRunOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -8596,7 +8656,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "machineActiveOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/session-reference.mesh.mx",
@@ -9731,7 +9793,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -9793,7 +9857,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -9850,7 +9916,9 @@
                     "to": 81
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -10123,7 +10191,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "nameFreeOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/collaborator.mesh.mx",
@@ -10492,7 +10562,9 @@
                       "to": 62
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "nameFreeOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/collaborator.mesh.mx",
@@ -10881,7 +10953,9 @@
                       "to": 44
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "retireKeepsAnOwnerOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/collaborator.mesh.mx",
@@ -11321,7 +11395,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -11387,7 +11463,9 @@
                     "to": 81
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -11445,7 +11523,9 @@
                     "to": 111
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -11646,7 +11726,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "collaboratorActiveOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/membership.mesh.mx",
@@ -11682,7 +11764,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "noActiveMembershipOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/membership.mesh.mx",
@@ -12039,7 +12123,9 @@
                       "to": 116
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "keepsAnOwnerOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -12520,7 +12606,9 @@
                       "to": 73
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "keepsAnOwnerOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -12978,7 +13066,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -13053,7 +13143,9 @@
                     "to": 81
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -13760,7 +13852,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -13826,7 +13920,9 @@
                     "to": 81
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -14898,7 +14994,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "readinessOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/claim.mesh.mx",
@@ -14937,7 +15035,9 @@
                       "to": 66
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "derivedStateOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -14966,7 +15066,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskVersionOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/claim.mesh.mx",
@@ -14999,7 +15101,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskVersionOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -17730,7 +17834,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -17819,7 +17925,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -17871,7 +17979,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "assigneeMayClaimOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -18057,7 +18167,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "revokesClaimOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -18778,7 +18890,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "missingTasksOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/dependency.mesh.mx",
@@ -18811,7 +18925,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "missingTasksOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -18925,7 +19041,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "dependencyExistsOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -18962,7 +19080,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "prerequisiteReachesOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -18991,7 +19111,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskVersionOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/dependency.mesh.mx",
@@ -19024,7 +19146,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskVersionOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -19518,7 +19642,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -19589,7 +19715,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -20037,7 +20165,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -20099,7 +20229,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -20297,7 +20429,10 @@
                   ],
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "claimsOf",
+                    "isStale"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/late-result.mesh.mx",
@@ -20332,7 +20467,9 @@
                       "to": 84
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/late-result.mesh.mx",
@@ -20374,7 +20511,9 @@
                       "to": 73
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -20650,7 +20789,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -20712,7 +20853,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -20875,7 +21018,9 @@
                           "to": 46
                         }
                       ],
-                      "helpers": true,
+                      "helpers": [
+                        "reviewerRuleOf"
+                      ],
                       "position": {
                         "column": 23,
                         "file": "src/domain/work/review.mesh.mx",
@@ -21012,7 +21157,9 @@
                       "to": 85
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -21041,7 +21188,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/review.mesh.mx",
@@ -21074,7 +21223,10 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf",
+                    "taskUnchangedSinceSubmit"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/review.mesh.mx",
@@ -21102,7 +21254,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/review.mesh.mx",
@@ -21135,7 +21289,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -21287,7 +21443,9 @@
                           "to": 46
                         }
                       ],
-                      "helpers": true,
+                      "helpers": [
+                        "reviewerRuleOf"
+                      ],
                       "position": {
                         "column": 23,
                         "file": "src/domain/work/review.mesh.mx",
@@ -21437,7 +21595,9 @@
                       "to": 85
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -21466,7 +21626,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/review.mesh.mx",
@@ -21499,7 +21661,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "submittedVersionsOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -21812,7 +21976,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -21883,7 +22049,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -21944,7 +22112,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "reviewsSubmissionOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -22246,7 +22416,9 @@
                     "Claim",
                     "Task"
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "claimToRelease"
+                  ],
                   "method": true,
                   "position": {
                     "column": 27,
@@ -22365,7 +22537,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskOpenOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -22397,7 +22571,9 @@
                   ],
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "fenceDetailsOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -22434,7 +22610,10 @@
                   ],
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "claimsOf",
+                    "fenceIsCurrent"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -22470,7 +22649,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "inReviewOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -22506,7 +22687,9 @@
                       "to": 84
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -22548,7 +22731,9 @@
                       "to": 73
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -22579,7 +22764,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskVersionOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -22612,7 +22799,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskVersionOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -23598,7 +23787,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -23669,7 +23860,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -23721,7 +23914,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "heldAClaimOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -24123,7 +24318,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "parentOpenOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
@@ -24351,7 +24548,9 @@
                 "plain": {
                   "detail": "a call to taskChanges, which is given the record",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "taskChanges"
+                  ],
                   "position": {
                     "column": 36,
                     "file": "src/domain/work/task.mesh.mx",
@@ -25054,7 +25253,10 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "movedParent",
+                    "parentOpenOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
@@ -25096,7 +25298,9 @@
                       "to": 51
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "noContainmentCycleOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
@@ -25920,7 +26124,9 @@
                     "Claim",
                     "Submission"
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "openClaims"
+                  ],
                   "method": true,
                   "position": {
                     "column": 27,
@@ -26334,7 +26540,13 @@
                     "Completion",
                     "Submission"
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "acceptedSubmissionOf",
+                    "claimToRelease",
+                    "completionRule",
+                    "ownPending",
+                    "reviewerFor"
+                  ],
                   "method": true,
                   "operators": true,
                   "position": {
@@ -26505,7 +26717,9 @@
                       "to": 45
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "openChildren"
+                  ],
                   "position": {
                     "column": 25,
                     "file": "src/domain/work/task.mesh.mx",
@@ -26577,7 +26791,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "reviewerFor"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/task.mesh.mx",
@@ -26611,7 +26827,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "reviewNotRequiredOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
@@ -26837,7 +27055,9 @@
                       "to": 53
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "fenceDetails"
+                  ],
                   "position": {
                     "column": 40,
                     "file": "src/domain/work/task.mesh.mx",
@@ -26885,7 +27105,9 @@
                       "to": 44
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "fenceIsCurrent"
+                  ],
                   "position": {
                     "column": 37,
                     "file": "src/domain/work/task.mesh.mx",
@@ -26938,7 +27160,9 @@
                       "to": 88
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "invalidatedFences"
+                  ],
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
@@ -26998,7 +27222,9 @@
                       "to": 108
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "claimNotInvalidated"
+                  ],
                   "position": {
                     "column": 46,
                     "file": "src/domain/work/task.mesh.mx",
@@ -27298,7 +27524,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/task.mesh.mx",
@@ -27331,7 +27559,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "missingEvidenceOf"
+                  ],
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -27611,7 +27841,10 @@
                     "Assignment",
                     "Claim"
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "currentAssignment",
+                    "openClaims"
+                  ],
                   "method": true,
                   "operators": true,
                   "position": {
@@ -27769,7 +28002,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "collaboratorActiveOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
@@ -27805,7 +28040,9 @@
                 "plain": {
                   "detail": "awaits an imported function",
                   "edits": [],
-                  "helpers": true,
+                  "helpers": [
+                    "assignableOf"
+                  ],
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
@@ -27850,7 +28087,9 @@
                       "to": 45
                     }
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "assignmentChanges"
+                  ],
                   "position": {
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
@@ -28130,7 +28369,10 @@
                     "Assignment",
                     "Claim"
                   ],
-                  "helpers": true,
+                  "helpers": [
+                    "currentAssignment",
+                    "openClaims"
+                  ],
                   "method": true,
                   "operators": true,
                   "position": {
@@ -29891,7 +30133,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "memberOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -30025,7 +30269,9 @@
                     "to": 90
                   }
                 ],
-                "helpers": true,
+                "helpers": [
+                  "roleIn"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -30086,7 +30332,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "managesTaskOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -30138,7 +30386,9 @@
               "plain": {
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "managesTaskOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {
@@ -30194,7 +30444,9 @@
                 ],
                 "detail": "awaits an imported function",
                 "edits": [],
-                "helpers": true,
+                "helpers": [
+                  "noOtherHolderOf"
+                ],
                 "isSystem": true,
                 "operators": true,
                 "position": {

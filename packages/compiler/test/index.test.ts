@@ -277,13 +277,12 @@ describe("entity names never break the generated files", () => {
   });
 
   // PRJ-20: generated code reaches every global through `$globals.ts` (`$Promise`, `$Date`), so an entity may take the
-  // name of one; packages/cli/test/generated-names.test.ts builds, type-checks and runs such entities.
-  test.each(["Promise", "Partial", "ReturnType", "Date", "Object", "Pick", "Omit", "Record", "Set", "RegExp", "Map"])("an entity named %s builds: generated code names no global it could hide", async (name) => {
+  // name of one. That no generated file names a global itself is checked by the TypeScript checker
+  // (`free-globals.test.ts`, and packages/cli/test/generated-names.test.ts, which builds, type-checks and runs such entities).
+  test.each(["Promise", "Partial", "ReturnType", "Date", "Object", "Pick", "Omit", "Record", "Set", "RegExp", "Map", "Boolean"])("an entity named %s builds and is exported under its name", async (name) => {
     const generated = await generateFiles({ document: documentOf({ "x.mesh.mx": files["class.mesh.mx"]!.replace(":Class", `:${name}`) }), config: configOf("/project") });
     const actions = generated.find((file) => file.path.endsWith(".actions.ts"))!.contents;
     expect(actions).toContain(`export type ${name} = $Record;`);
     expect(actions).toMatch(/from "\.\.?\/(\.\.\/)*\$globals";/);
-    for (const file of generated.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("$globals.ts")))
-      expect(file.contents).not.toMatch(/(?<![\w$.])(Promise|Partial|Pick|Omit|Record|ReturnType)</);
   });
 });

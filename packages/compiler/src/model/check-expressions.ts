@@ -25,7 +25,7 @@ import { policyCovers } from "./policies.ts";
  */
 export interface CheckOptions {
   /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript and the scope names it reads. */
-  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: true };
+  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: string[] };
 }
 
 interface Ty {

@@ -22,8 +22,10 @@ entity :Object
         check :long that=({ input }) => input.name === null || input.name.length > 3 code="short" message="The name is too short"
     update :count
       do
-        set
-          &counted=async () => (await now.read({})).length
+        when=() => true
+          set
+            &counted=async () => (await now.read({})).length
+          run [after=:write] () { }
   policies
     policy :anyone types=[:create, :read, :update]
       authorize-if=() => true

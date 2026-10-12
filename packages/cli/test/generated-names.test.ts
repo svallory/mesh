@@ -1,27 +1,30 @@
 // PRJ-20 end to end: entities named after the globals generated code uses (`Promise`, `Partial`, `Date` with a
-// `timestamp`, `Object`, `Record`, `Pick`, `Omit`, `Set`, `RegExp`, `Map`), built by the real `mesh` command on the
-// SQLite adapter, type-checked by tsc under the strictest flags and run on SQLite in memory. The fixture
+// `timestamp`, `Object`, `Record`, `Pick`, `Omit`, `Set`, `RegExp`, `Map`, `Boolean`), built by the real `mesh` command
+// on the SQLite adapter, type-checked by tsc under the strictest flags and run on SQLite in memory. The fixture
 // (`fixtures/generated-names/domain/globals`) gives each one a create with a `match=` attribute and a belongs-to to the
 // next one in a ring, a rename with a check, a computed field and two policies; `Object` imports `Promise` as `now`,
 // `Record` imports `Date` as `structuredClone` and `Set` imports `Map` as `isSystem`, and each counts that entity's rows
 // in a `set` step. Generated code reaches the globals it needs through `.mesh/$globals.ts` under `$` names, and a
 // registered function or `structuredClone` is shadowed by an import of that name, as a JavaScript global would be.
+// `Boolean` imports `Map` as `context` and a helper named `input` (EXP-12): inside its functions the scope roots
+// shadow both, as parameters would, and its `when` step, which holds an after-write `run`, keeps its condition in a flag.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ForbiddenError, InvalidInputError } from "@meshfw/runtime";
+import { freeGlobals } from "../../compiler/test/free-globals.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/generated-names/domain");
 const projects: string[] = [];
 
 /** The ring, in the order the fixture links it: each entity belongs to the next one. */
-const RING = ["Promise", "Partial", "Date", "Object", "Record", "Pick", "Omit", "Set", "RegExp", "Map"] as const;
+const RING = ["Promise", "Partial", "Date", "Object", "Record", "Pick", "Omit", "Set", "RegExp", "Map", "Boolean"] as const;
 /** Each entity's generated files are named after it in lower camel case: `regExp.actions.ts`. */
 const FILES: Record<(typeof RING)[number], string> = {
   Promise: "promise", Partial: "partial", Date: "date", Object: "object", Record: "record",
-  Pick: "pick", Omit: "omit", Set: "set", RegExp: "regExp", Map: "map",
+  Pick: "pick", Omit: "omit", Set: "set", RegExp: "regExp", Map: "map", Boolean: "boolean",
 };
 
 // The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
@@ -34,14 +37,20 @@ const PACKAGE = {
   name: "generated-names", private: true, type: "module",
   imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
 };
+/** The program the TypeScript checker resolves the generated tree's names in (`freeGlobals`). */
+const TSCONFIG = {
+  compilerOptions: { noEmit: true, strict: true, module: "esnext", moduleResolution: "bundler", target: "es2022", skipLibCheck: true, allowImportingTsExtensions: true, types: ["bun"] },
+  include: [".mesh/**/*.ts", "mesh.config.ts"],
+};
 /** Type-level checks through the specifiers: each entity's value and record type keep their names next to the globals. */
-const CHECK = `import { Date, Object, Promise, Set, type DateLoadable, type PromiseLoadable } from "#mesh/domain/globals";
+const CHECK = `import { Boolean, Date, Object, Promise, Set, type DateLoadable, type PromiseLoadable } from "#mesh/domain/globals";
 
 export const at: globalThis.Date = null as unknown as Date["at"];
 export const next: DateLoadable["next"] = null as unknown as Object;
 export const shout: PromiseLoadable["shout"] = "";
 export const counted: Object["counted"] | Set["counted"] = null;
 export const values: [typeof Date, typeof Promise] = [Date, Promise];
+export const seen: Boolean["seen"] = null;
 // @ts-expect-error an entity's record is not the global it is named after
 export const notGlobal: Date = new globalThis.Date();
 `;
@@ -54,6 +63,7 @@ async function project(): Promise<string> {
   await writeFile(join(root, "mesh.config.ts"), CONFIG);
   await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
   await writeFile(join(root, "check.ts"), CHECK);
+  await writeFile(join(root, "tsconfig.json"), `${JSON.stringify(TSCONFIG, null, 2)}\n`);
   // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
   await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
   await mkdir(join(root, "node_modules/@types"), { recursive: true });
@@ -137,6 +147,33 @@ describe("entities named after the globals generated code uses", () => {
     expect(await generated("domain/globals/date.expressions.ts")).toContain("$.now(");
   });
 
+  test("an import named like a scope root is the root inside a function, as a parameter of that name would be (EXP-12)", async () => {
+    // Boolean imports Map as `context` and a helper named `input`: its `set` step reads both roots, binds them from the
+    // scope only, and the file imports neither Map's value nor the helper, which no function names.
+    const expressions = await generated("domain/globals/boolean.expressions.ts");
+    expect(expressions).toContain("const { input, context } = $s;\n    return (() => `${input.loud}:${context.system ?? false}`)();");
+    expect(expressions).not.toContain("const context:");
+    expect(expressions).not.toContain("$globals$Map$value");
+    expect(expressions).not.toContain("boolean.helpers");
+    // The run step's block body reads `input` from the scope too, and names Promise, which it binds.
+    expect(expressions).toContain("const { input } = $s;\n    const Promise: $globals$Promise$ReadOnly = $globals$Promise$value;");
+    // Outside the functions the alias is the entity: `belongs-to :holder entity=context` is Map.
+    expect(await generated("domain/globals/boolean.types.ts")).toMatch(/\bholder: \$globals\$Map\$/);
+  });
+
+  test("a when step that holds an after-write run keeps its condition without naming the global Boolean", async () => {
+    const actions = await generated("domain/globals/boolean.actions.ts");
+    expect(actions).toContain('$when0 = !!(await $expressions["flag.step.0.when"]($s));');
+    expect(actions).not.toMatch(/(?<![\w$.])Boolean\(/);
+  });
+
+  test("no generated file but $globals.ts reads a global by its own name: the TypeScript checker resolves every name", async () => {
+    // Object's `count` has a `when` step that holds an after-write `run`, so a flag written with the global `Boolean`
+    // would resolve to it there (in Boolean's own files the name is the entity, which the tsc run below refuses).
+    const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(root, ".mesh", name));
+    expect(await freeGlobals(join(root, "tsconfig.json"), files)).toEqual([]);
+  }, 60_000);
+
   test("tsc type-checks the generated tree and the specifiers under the strictest flags", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     const child = Bun.spawnSync([
@@ -190,7 +227,7 @@ describe("entities named after the globals generated code uses", () => {
         }
 
         // Each entity's computed field, through a read's load.
-        const computed = { Promise: ["shout", "PROMISE TWO"], Partial: ["size", 11], Date: ["past", true], Object: ["initial", "O"], Record: ["size", 10], Pick: ["named", true], Omit: ["shout", "OMIT TWO"], Set: ["size", 7], RegExp: ["matches", true], Map: ["initial", "M"] } as const;
+        const computed = { Promise: ["shout", "PROMISE TWO"], Partial: ["size", 11], Date: ["past", true], Object: ["initial", "O"], Record: ["size", 10], Pick: ["named", true], Omit: ["shout", "OMIT TWO"], Set: ["size", 7], RegExp: ["matches", true], Map: ["initial", "M"], Boolean: ["size", 11] } as const;
         for (const name of RING) {
           const [field, value] = computed[name];
           const [read] = await globals[name].read({ load: [field] }, anyone);
@@ -204,6 +241,21 @@ describe("entities named after the globals generated code uses", () => {
         expect((await globals.Object.count({ id: rows.get("Object")!.id }, anyone)).counted).toBe(1);
         expect((await globals.Record.count({ id: rows.get("Record")!.id }, anyone)).counted).toBe(2);
         expect((await globals.Set.count({ id: rows.get("Set")!.id }, anyone)).counted).toBe(3);
+
+        // Boolean's flag: the `set` step reads the roots `input` and `context` (not Map, imported as `context`), and the
+        // after-write `run` reads the root `input` (not the helper named `input`) and creates a Promise.
+        const boolean = rows.get("Boolean")!.id;
+        const flagged = async () => (await globals.Promise.read({ filter: { name: { eq: "Promise flagged" } } }, anyone)).length;
+        expect(await globals.Boolean.flag({ id: boolean, loud: false }, anyone)).toMatchObject({ seen: null });
+        expect(await flagged()).toBe(0);
+        expect(await globals.Boolean.flag({ id: boolean, loud: true }, anyone)).toMatchObject({ seen: "true:false" });
+        expect(await globals.Boolean.flag({ id: boolean, loud: true }, { ...anyone, system: true })).toMatchObject({ seen: "true:true" });
+        expect(await flagged()).toBe(2);
+        // The alias is Map outside the functions: Boolean's holder is a Map.
+        const map = rows.get("Map")!.id;
+        expect(await globals.Boolean.hold({ id: boolean, holder: map }, anyone)).toMatchObject({ holderId: map });
+        const [held] = await globals.Boolean.read({ filter: { id: { eq: boolean } }, load: ["holder"] }, anyone);
+        expect(held.holder).toEqual({ ...rows.get("Map")!, name: "Map two" });
       });
     } finally {
       await layer.close();

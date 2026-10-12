@@ -4,7 +4,7 @@ import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
-import { mentioned, printExpression, type EntityLocals } from "../expression-printer.ts";
+import { printExpression, type EntityLocals } from "../expression-printer.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
@@ -44,8 +44,9 @@ export interface ExpressionsView {
    */
   readonly entityImports: readonly { names: string; fromLiteral: string }[];
   /**
-   * True when a plain function mentions `structuredClone` and no import has that name: the file imports `cloneValue`
-   * as `$cloneValue`, and each such function binds `structuredClone` to it, since it copies a read-only record.
+   * True when a plain function calls the global `structuredClone` (no binding of the function and no import of the file
+   * has that name): the file imports `cloneValue` as `$cloneValue`, and each such function binds `structuredClone` to it,
+   * since it copies a read-only record.
    */
   readonly shadowsStructuredClone: boolean;
   /**
@@ -257,7 +258,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const used = new Set<string>();
   for (const { expression } of found) {
     if (expression.tree) helpersIn(expression.tree, used);
-    else for (const name of mentioned(expression, helperFrom.keys())) used.add(name);
+    else for (const name of expression.plain!.helpers ?? []) used.add(name);
   }
   const byModule = new Map<string, string[]>();
   for (const name of [...used].filter((n) => helperFrom.has(n)).sort()) {
@@ -288,19 +289,17 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (!hit) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
     return hit;
   };
-  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that
-  // mentions it binds it to `cloneValue`, unless the entity file imports something under that name, a helper or an
-  // entity: then the name is the import, as a JavaScript global is hidden by an import of its name.
-  const importsClone = entity.imports.some((imported) => imported.identifiers.includes("structuredClone"));
-  const clones = (expression: Expression) => !expression.tree && !importsClone && mentioned(expression, ["structuredClone"]).length > 0;
   const entries = found.map((f) => ({
       key: JSON.stringify(f.id),
       comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
         .replace(/[\r\n\u2028\u2029]/g, " "),
-      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, clones(f.expression)),
+      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals),
     }));
   const usesExpr = entries.some((e) => e.code.includes("$."));
-  const shadowsStructuredClone = found.some(({ expression }) => clones(expression));
+  // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that calls
+  // the global binds it to `cloneValue`. The front end decided which functions do: not one that binds the name itself,
+  // nor one whose file imports something under it, as a JavaScript global is hidden by either.
+  const shadowsStructuredClone = found.some(({ expression }) => expression.plain?.structuredClone === true);
   return {
     entityFile: entityFileComment(entity),
     usesExpr,

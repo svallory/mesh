@@ -32,7 +32,11 @@ export interface ConvertContext {
 }
 
 const ROOTS = new Set(["self", "input", "actor", "context", "before"]);
-/** The names of the scope a function is handed. */
+/**
+ * The names of the scope a function is handed. They behave as the function's parameters do (EXP-12): inside the function
+ * a free `input` or `context` is the root, even when the file imports something under that name (a helper, or an entity
+ * under an alias such as `import { List as context }`), which stays the import everywhere outside the function.
+ */
 const SCOPE_NAMES: ReadonlySet<string> = ROOTS;
 /** The globals a function may use. `structuredClone` is one: the expressions file binds it to `cloneValue`, which copies a read-only record. */
 const GLOBALS = new Set([
@@ -176,6 +180,8 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
   const entities = ctx.entities ?? new Set<string>();
   const known = (name: string) =>
     bound.has(name) || ctx.imported.has(name) || entities.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name) || REGISTERED_CALLS.has(name);
+  /** Whether a free `name` read in `scope` is an entity the file names: no scope binds it and it is no scope name (EXP-12). */
+  const namesEntity = (name: string, scope: ReadonlySet<string>) => entities.has(name) && !scope.has(name) && !SCOPE_NAMES.has(name);
   const walk = (value: unknown, parent: N | undefined, key: string | undefined, scope: ReadonlySet<string>): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
@@ -192,9 +198,12 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
         clock.add(n.name!);
         if (n.name === "privileged") (names.privileged ??= []).push(ctx.at(start(n)));
       }
-      if (!property && !objectKey && !label && !scope.has(n.name!)) {
+      // A scope name is the root wherever no scope of the function binds it, so an import of that name is not named here (EXP-12).
+      if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
-        if (ctx.helpers.has(n.name!)) names.helpers = true;
+        if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
+        // The global `structuredClone`, unless the file imports something under its name (PRJ-20).
+        if (n.name === "structuredClone" && !ctx.imported.has(n.name) && !entities.has(n.name)) names.structuredClone = true;
       }
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
         ctx.report({
@@ -221,7 +230,7 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
       });
     // `privileged(X)` takes an entity the file names (TXN-16): its own or an imported one, never a variable that holds one.
     const argument = args[0];
-    if (registered && callee!.name === "privileged" && argument && !(argument.type === "Identifier" && entities.has(argument.name!) && !scope.has(argument.name!)))
+    if (registered && callee!.name === "privileged" && argument && !(argument.type === "Identifier" && namesEntity(argument.name!, scope)))
       ctx.report({
         severity: "error",
         code: "MESH_PRIVILEGED_ENTITY",
@@ -231,7 +240,7 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
       });
     // `Task.touch(...)`: a call to an entity's action (CMP-16).
     const target = callee && (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") ? callee.object as N : undefined;
-    if (target?.type === "Identifier" && entities.has(target.name!) && !scope.has(target.name!)) names.acts = true;
+    if (target?.type === "Identifier" && namesEntity(target.name!, scope)) names.acts = true;
     const opened = scopeNames(n);
     const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);
@@ -243,8 +252,11 @@ function freeVariables(fn: N, ctx: ConvertContext, clock: Set<string>, names: Na
   return [...SCOPE_NAMES].filter((name) => roots.has(name));
 }
 
-/** What a function names besides its scope: the entities, whether it calls an entity's action, whether it calls a helper. */
-interface Names { entities: Set<string>; acts: boolean; helpers: boolean; privileged?: SourcePosition[] }
+/**
+ * What a function names besides its scope: the entities, whether it calls an entity's action, the helpers it names and
+ * whether it calls the global `structuredClone`.
+ */
+interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; structuredClone?: true; privileged?: SourcePosition[] }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -331,7 +343,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if (env.locals.has(name)) { env.reads.record = true; return { kind: "var", name, position }; }
       if (name === "self") { env.reads.record = true; return { kind: "var", name: "self", position }; }
       if (name === "undefined") throw new Plain("unsupported-construct", "`undefined` (Mesh has no undefined; use null)", n);
-      if (ctx.entities?.has(name)) throw new Plain("calls-entity", `the entity \`${name}\``, n);
+      if (ctx.entities?.has(name) && !SCOPE_NAMES.has(name)) throw new Plain("calls-entity", `the entity \`${name}\``, n);
       if (!ctx.imported.has(name) && !GLOBALS.has(name) && !SCOPE_NAMES.has(name)) {
         // Not bound in this expression's own scope (a quantifier parameter used outside its quantifier, say).
         ctx.report({
@@ -399,7 +411,8 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
           if (!registered.fn) throw new Plain("uses-privileged", "reads through `privileged`", n);
           return call(registered.fn, args.map((arg) => sub(arg)));
         }
-        const from = ctx.helpers.get(name);
+        // A free scope name is the root, never a helper imported under that name (EXP-12).
+        const from = SCOPE_NAMES.has(name) ? undefined : ctx.helpers.get(name);
         if (from !== undefined) {
           const before = env.reads.record;
           env.reads.record = false;
@@ -413,7 +426,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if ((callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") && !callee.computed && !callee.optional && n.type === "CallExpression") {
         const op = String(callee.property.name);
         const object = callee.object as N;
-        if (object.type === "Identifier" && ctx.entities?.has(object.name!) && !env.roots.has(object.name!) && !env.locals.has(object.name!))
+        if (object.type === "Identifier" && ctx.entities?.has(object.name!) && !SCOPE_NAMES.has(object.name!) && !env.roots.has(object.name!) && !env.locals.has(object.name!))
           throw new Plain("calls-entity", `a call to \`${object.name}.${op}\``, n);
         if (op === "some" || op === "every" || op === "find" || op === "filter") {
           const fn = args[0] as N | undefined;
@@ -469,7 +482,7 @@ function removedScopeNames(fn: N, ctx: ConvertContext): void {
 
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
 /** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
-export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: true }
+export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: string[] }
 const demotions = new WeakMap<object, Demotion>();
 export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
 export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
@@ -500,19 +513,21 @@ export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
 export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[] } {
   const f = fn as N;
   const called = new Set<string>();
-  const names: Names = { entities: new Set(), acts: false, helpers: false };
+  const names: Names = { entities: new Set(), acts: false, helpers: new Set() };
   const free = freeVariables(f, ctx, called, names);
   removedScopeNames(f, ctx);
   // `now()` and `today()` in code Mesh does not translate read the same clock as a translated expression.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
   // `isSystem(context)` in code Mesh does not translate is Mesh's own function, as in a translated expression.
   const clocked = { ...(clock.length ? { clock } : {}), ...(called.has("isSystem") ? { isSystem: true as const } : {}) };
-  // `privileged(...)`, the entities and the helpers the function names: the printed function binds the first two (CMP-16, TXN-16).
+  // `privileged(...)`, the entities, the helpers and `structuredClone` the function names: the printed function binds the
+  // first two and `structuredClone`, and its file imports the helpers (CMP-16, TXN-16, PRJ-20).
   const named = {
     ...(called.has("privileged") ? { privileged: true as const } : {}),
     ...(names.entities.size ? { entities: [...names.entities].sort() } : {}),
     ...(names.acts ? { acts: true as const } : {}),
-    ...(names.helpers ? { helpers: true as const } : {}),
+    ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}),
+    ...(names.structuredClone ? { structuredClone: true as const } : {}),
   };
   const roots = new Map<string, string>();
   /**
@@ -549,7 +564,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     if (names.entities.size || names.acts) throw new Plain("calls-entity", "names an entity", f);
     // An imported function it awaits reads what it needs (through `privileged`, say): the `await` is how it is called,
     // not something Mesh could translate, so it is no reason to warn either.
-    if (names.helpers && awaits(f.body as N)) throw new Plain("awaits-helper", "awaits an imported function", f);
+    if (names.helpers.size && awaits(f.body as N)) throw new Plain("awaits-helper", "awaits an imported function", f);
     const params = (f.params ?? []) as N[];
     if (params.length > 1) throw PARAMETER_ERROR(f);
     if (params[0]) {
@@ -571,7 +586,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       body = statements[0]!.argument as N;
     }
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
-    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...(names.helpers ? { helpers: true as const } : {}) } };
+    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}) } };
   } catch (e) {
     if (e instanceof Plain) return plain(e);
     throw e;

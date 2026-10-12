@@ -393,7 +393,7 @@ describe("type rules", () => {
     expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
     // An awaited helper (one that reads through `privileged`, say) makes the function plain, with no warning for the await.
     const awaited = build("async ({ input }) => (await big(input.n)) === true");
-    expect(awaited.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "awaits-helper", helpers: true });
+    expect(awaited.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "awaits-helper", helpers: ["big"] });
     expect(awaited.diagnostics).toEqual([]);
     // An await of anything else still warns.
     expect(build("async ({ input }) => (await Promise.resolve(input.n)) === 1").diagnostics.map((d) => d.code)).toContain("MESH_EXPR_PLAIN");
@@ -572,6 +572,108 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // `toString` is no registered function: `name in REGISTERED_CALLS` once said it was, through the prototype.
     expect(codes(entity(check("() => toString() === \"\""))).filter((code) => code.startsWith("error:"))).toEqual(["error:MESH_EXPR_FREE_VARIABLE"]);
   });
+
+  // EXP-12: a scope root (`self`, `input`, `actor`, `context`, `before`) is like a parameter of every function. Inside one
+  // it shadows an import of its name, which stays the import everywhere else in the file.
+  test.each(["self", "input", "actor", "context", "before"])("an entity imported as %s is that root inside a function, and the entity outside (EXP-12)", async (name) => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-root-alias-"));
+    roots.push(root);
+    // Before EXP-12 the function bound both, `const { context } = $s; const context: ... = $Task$value;`, which Bun
+    // refuses to load ("context" has already been declared), and a check that read `self` became plain code.
+    const source = entity(check("() => self.n > 1") + `      do\n        run () { console.log(${name}) }\n`)
+      .replace("import { Task }", `import { Task as ${name} } from "./task.mesh.mx"\nimport { Task }`)
+      .replace("    has-many :children entity=Task\n    belongs-to :parent entity=Task nullable\n",
+        `    has-many :children entity=Task inverse=:parent\n    belongs-to :parent entity=Task nullable\n    belongs-to :held entity=${name} nullable\n`);
+    const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const task = built.document!.entities[0]!;
+    // Outside the functions the alias is the entity.
+    expect(task.relationships.find((r) => r.name === "held")).toMatchObject({ entity: { identifier: name, from: "./task.mesh.mx" }, keyColumn: "heldId" });
+    const go = task.actions.find((a) => a.name === "go")!;
+    expect(go.validate[0]!.that.tree).toBeDefined();
+    const run = go.do[0]!;
+    const plain = run.kind === "run" ? run.fn.plain : undefined;
+    expect(plain).toMatchObject({ why: "run-step", roots: [name] });
+    expect(plain?.entities).toBeUndefined();
+    const config = configOf(root);
+    const files = await generateFiles({ document: built.document!, config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { task: {} };\n");
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    expect(printed).toContain(`const { ${name} } = $s;\n    return (async function () {\n      console.log(${name});\n    })();`);
+    expect(printed).not.toContain("$Task$value");
+    expect(files.find((f) => f.path.endsWith("task.types.ts"))!.contents).toContain("  parent: Task | null;\n  held: Task | null;\n");
+    const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const logs: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try {
+      await expressions["go.step.0.run"](scope({ self: { n: 2 }, input: { id: "i" }, actor: { id: "a" }, context: { system: true }, before: { n: 1 } }));
+    } finally { console.log = log; }
+    expect(logs).toEqual([[{ self: { n: 2 }, input: { id: "i" }, actor: { id: "a" }, context: { system: true }, before: { n: 1 } }[name]]]);
+  }, 30_000);
+
+  test("a function binds structuredClone to cloneValue only where it reads the global, as the front end resolves the name (PRJ-20)", async () => {
+    // PR #94 round 2: the binding was decided by a text search, so a function that declared its own `structuredClone`
+    // got a second, unused one, TS6133 under `--noUnusedLocals`.
+    const source = entity(check("() => true") + [
+      "      do",
+      "        run ({ self }) { const copy: any = structuredClone(self); copy.n = 9; console.log(copy.n, self.n) }",
+      "        run () { const structuredClone = (value: number) => value + 1; console.log(structuredClone(1)) }",
+      "        run () { console.log(\"structuredClone\", { structuredClone: 1 }.structuredClone) }",
+      "",
+    ].join("\n"));
+    const { root, files, built } = await generated(source);
+    const steps = built.document!.entities[0]!.actions.find((a) => a.name === "go")!.do;
+    expect(steps.map((step) => (step.kind === "run" ? step.fn.plain?.structuredClone : "?"))).toEqual([true, undefined, undefined]);
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    expect(printed.match(/const structuredClone = \$cloneValue;/g)).toHaveLength(1);
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const logs: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try {
+      for (const index of [0, 1, 2]) await expressions[`go.step.${index}.run`](scope({ self: { n: 5 } }));
+    } finally { console.log = log; }
+    expect(logs).toEqual([[9, 5], [2], ["structuredClone", 1]]);
+  }, 30_000);
+
+  test("a helper named like a scope root is hidden by the root in every function, and the file does not import it (EXP-12)", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-root-helpers-"));
+    roots.push(root);
+    const names = ["self", "input", "actor", "context", "before"];
+    await writeFile(resolve(root, "helpers.ts"), names.map((name) => `export const ${name} = (): string => ${JSON.stringify(name)};`).join("\n") + "\n");
+    const source = entity(check("() => self.n > 1") + "      do\n        run () { console.log(input, actor, context, before) }\n")
+      .replace("import { Task }", `import { ${names.join(", ")} } from "./helpers"\nimport { Task }`);
+    const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
+    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "gt" });
+    const run = go.do[0]!;
+    const plain = run.kind === "run" ? run.fn.plain : undefined;
+    expect(plain).toMatchObject({ roots: ["input", "actor", "context", "before"] });
+    expect(plain?.helpers).toBeUndefined();
+    const config = configOf(root);
+    const files = await generateFiles({ document: built.document!, config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { task: {} };\n");
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    // No function names a helper, so the file imports none: an unused import is TS6133 under `--noUnusedLocals`.
+    expect(printed).not.toContain("helpers");
+    const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const logs: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try {
+      await expressions["go.step.0.run"](scope({ self: { n: 2 }, input: { id: "i" }, actor: { id: "a" }, context: { system: true }, before: { n: 1 } }));
+    } finally { console.log = log; }
+    expect(logs).toEqual([[{ id: "i" }, { id: "a" }, { system: true }, { n: 1 }]]);
+  }, 30_000);
 
   test("a helper import may have any name the file used to declare: every generated module-level name is a $ local", async () => {
     // PR #92 round 1, item 2: `import { TaskLoaded } from "./helpers"` built, then tsc failed with TS2300 (duplicate

@@ -1,0 +1,42 @@
+import { Promise } from "./promise.mesh.mx"
+import { Map as context } from "./map.mesh.mx"
+import { input } from "./boolean.helpers"
+
+entity :Boolean
+  attributes
+    uuid :id primary-key
+    string :name min=1 max=40 match=/^[A-Z]/
+    string :seen nullable
+  relationships
+    belongs-to :next entity=Promise nullable
+    belongs-to :holder entity=context nullable
+  computed
+    integer :size() { return &name.length }
+  actions auto=[:read]
+    create :create
+      input
+        &name
+        &next
+    update :rename
+      input
+        &name
+      validate
+        check :long that=({ input }) => input.name === null || input.name.length > 3 code="short" message="The name is too short"
+    update :hold
+      input
+        &holder
+    update :flag
+      input
+        boolean :loud
+      do
+        when=({ input }) => input.loud
+          set
+            &seen=() => `${input.loud}:${context.system ?? false}`
+          run [after=:write] ({ context }) {
+            if (input.loud) await Promise.create({ name: "Promise flagged", next: null }, context)
+          }
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true
+    policy :keeper actions=[&rename]
+      forbid-if=({ actor }) => actor.id === "intruder"

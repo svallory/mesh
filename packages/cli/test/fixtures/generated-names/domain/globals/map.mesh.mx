@@ -1,11 +1,11 @@
-import { Promise } from "./promise.mesh.mx"
+import { Boolean } from "./boolean.mesh.mx"
 
 entity :Map
   attributes
     uuid :id primary-key
     string :name min=1 max=40 match=/^[A-Z]/
   relationships
-    belongs-to :next entity=Promise nullable
+    belongs-to :next entity=Boolean nullable
   computed
     string :initial() { return &name.slice(0, 1) }
   actions auto=[:read]
