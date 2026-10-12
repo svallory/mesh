@@ -5,7 +5,7 @@
 // This is not Mesh. Mesh does not exist as an installable runtime yet, so the file
 // states the shape the pages promise: the generated entry points (`#mesh` and the
 // `#mesh/domain/<module>` specifiers) for the entities of the pages, the run-time error
-// classes, `Mesh` (every function Mesh gives application code), the SQLite adapter and the configuration helper. If a page and this file
+// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter and the configuration helper. If a page and this file
 // disagree, the page is a bug or this file is; both are cheap to fix and the sample
 // check is what notices.
 //
@@ -77,8 +77,9 @@ declare module "@meshfw/runtime" {
   export type ActionFunction<I> = (input: I, context: ActionContext) => Promise<unknown>;
 
   /**
-   * Every function Mesh gives application code and expressions is a member of this one namespace; none is a bare
-   * name. Error classes and types (`ForbiddenError`, `ActionContext`) stay named exports.
+   * The functions that are the same in every project are members of this one namespace; none is a bare name. The
+   * functions generated for one project (`bind`, `connect`, `disconnect`, `transaction`) stay exports of its `#mesh`,
+   * and error classes and types (`ForbiddenError`, `ActionContext`) stay named exports.
    */
   export const Mesh: {
     /**
@@ -96,11 +97,9 @@ declare module "@meshfw/runtime" {
      * never inherited from the running action.
      */
     privileged<E extends EntityValue>(entity: E): Privileged<E>;
-    /** Opens a transaction on the binding in scope (else the one `connect()` opened), or joins the running one. `fn` gets nothing and the call takes no context: each call inside passes its own. */
-    transaction<T>(fn: () => Promise<T>): Promise<T>;
-    /** The instant the running action pinned. */
+    /** The instant the running action pinned. Called outside a running action it throws `FrameworkError`. */
     now(): Date;
-    /** The date part of `Mesh.now()`, at 00:00 UTC. */
+    /** The date part of `Mesh.now()`, at 00:00 UTC. Called outside a running action it throws `FrameworkError`. */
     today(): Date;
     /** True only when `context.system` is the boolean `true`. */
     isSystem(context: Readonly<ActionContext>): boolean;
@@ -208,7 +207,7 @@ declare module "@meshfw/data-postgres" {
 }
 
 declare module "meshfw" {
-  /** The namespace of every function Mesh gives application code and expressions, imported the same way in a `.mesh.mx` file and a TypeScript file. */
+  /** The namespace of the functions that are the same in every project, imported the same way in a `.mesh.mx` file and a TypeScript file. */
   export { Mesh } from "@meshfw/runtime";
   /** Re-exported for compatibility; a config imports `defineConfig` from `@meshfw/runtime`. */
   export { defineConfig, type MeshConfig } from "@meshfw/runtime";
@@ -367,6 +366,9 @@ declare module "#mesh" {
   import type { Binding } from "@meshfw/runtime";
 
   export type DataLayer = SqliteDataLayer | PostgresDataLayer;
+
+  /** Opens a transaction on the binding in scope (else the one `connect()` opened), or joins the running one. `fn` gets nothing and the call takes no context: each call inside passes its own. */
+  export function transaction<T>(fn: () => Promise<T>): Promise<T>;
 
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;

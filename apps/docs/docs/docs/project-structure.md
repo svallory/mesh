@@ -74,7 +74,7 @@ import { connect, disconnect } from "#mesh";
 import { List, Todo } from "#mesh/domain/todo";
 ```
 
-- **`#mesh`** exports `connect`, `disconnect`, `bind`, `tables` and the `Binding` and `Privileged` types. It exports no entity.
+- **`#mesh`** exports `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types. It exports no entity.
 - **`#mesh/domain/<module>`** exports the entities in that module, each as its entity value (`Todo`, whose methods are its actions) and its record type under the same name: `#mesh/domain/todo` for `src/domain/todo/`, `#mesh/domain/todo/reminders` for the submodule. It also exports one namespace for each submodule folder below it, so `import * as domain from "#mesh/domain"` reaches `domain.todo.reminders.Reminder`.
 - **`#mesh/domain`** is the same for the entities directly in `src/domain/`, the domain root, and one namespace for each folder under it.
 
@@ -86,7 +86,7 @@ What is inside, for the tutorial's two entities:
 
 | File | What it is |
 |:--|:--|
-| `.mesh/index.ts` | `#mesh`: `connect`, `disconnect`, `bind`, `tables`, `Binding` and `Privileged`, re-exported |
+| `.mesh/index.ts` | `#mesh`: `connect`, `disconnect`, `bind`, `transaction`, `tables`, `Binding` and `Privileged`, re-exported |
 | `.mesh/binding.ts` | `bind`, which binds every entity to one data layer by walking the barrels, and the binding `connect()` opens, which an entity call outside `run` and `transaction` uses |
 | `.mesh/domain/todo/index.ts` | `#mesh/domain/todo`, the module's barrel: its entities' values and types, and a namespace for each folder in it |
 | `.mesh/domain/todo/list.types.ts` | `List` and the input types of its actions |

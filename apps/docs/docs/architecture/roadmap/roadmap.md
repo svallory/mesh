@@ -455,7 +455,7 @@ The operator ruled the domain concepts study on 2026-10-10 and 2026-10-11 ([rese
 
 ### 2026-10-12 amendment (generated code follows modules)
 
-[ADR-0086](../decisions/0086-entity-values-privileged-barrels-and-fqns.md) changes how the action composition of M5 is written, not what it does: an action is called on its entity value, `Mesh.privileged` replaces the `tx` handle, and each domain folder has a barrel. The milestones and their order are unchanged. Three behaviours change: a nested call carries only the context it is passed, with nothing inherited (TXN-19, which amends [ADR-0071](../decisions/0071-system-key-on-the-action-context.md) and [ADR-0075](../decisions/0075-seams-use-the-extension-hosts-names.md)); a policy check that calls an imported function runs after the locked read (POL-21); and `Mesh.transaction` takes no context and hands its function nothing (TXN-20).
+[ADR-0086](../decisions/0086-entity-values-privileged-barrels-and-fqns.md) changes how the action composition of M5 is written, not what it does: an action is called on its entity value, `Mesh.privileged` replaces the `tx` handle, and each domain folder has a barrel. The milestones and their order are unchanged. Three behaviours change: a nested call carries only the context it is passed, with nothing inherited (TXN-19, which amends [ADR-0071](../decisions/0071-system-key-on-the-action-context.md) and [ADR-0075](../decisions/0075-seams-use-the-extension-hosts-names.md)); a policy check that calls an imported function runs after the locked read (POL-21); and `transaction` takes no context and hands its function nothing (TXN-20).
 
 ### Revision 5, 2026-10-10
 

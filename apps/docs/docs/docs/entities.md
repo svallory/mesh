@@ -140,7 +140,7 @@ Only relative, named imports of files inside `src/domain/` are allowed. An impor
 
 Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `Mesh.today()`, member reads such as `&amount`, the function's parameters, and imported pure helpers that do not read the record. String concatenation, a conditional on a string and helpers that read the record run in memory. The build tells you if one appears where the database is required. Do not add a second statement to opt out of translation: Mesh already makes that decision.
 
-Names in an expression resolve as JavaScript resolves them. Mesh's functions are members of `Mesh` (`Mesh.today()`, `Mesh.now()`, `Mesh.isSystem(context)`, imported with `import { Mesh } from "meshfw"`), so no bare name in an expression is Mesh's and an import never shadows one. The roots `self`, `input`, `actor`, `context` and `before` are like the expression's parameters: inside an expression they shadow an import of the same name, which stays usable everywhere else in the file. No name is refused.
+Names in an expression resolve as JavaScript resolves them. Mesh's own functions are members of `Mesh` (`Mesh.today()`, `Mesh.now()`, `Mesh.isSystem(context)`, imported with `import { Mesh } from "meshfw"`), so no bare name in an expression is Mesh's and an import never shadows one. The roots `self`, `input`, `actor`, `context` and `before` are like the expression's parameters: inside an expression they shadow an import of the same name, which stays usable everywhere else in the file. No name is refused.
 
 ## The entity line
 

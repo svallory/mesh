@@ -53,7 +53,7 @@ You own the data layer you pass to `bind`, so you close it. `disconnect()` never
 
 A call made outside `run` and `transaction` goes to the data layer `connect()` opened. A test never connects, so a call it makes outside `run` throws the `FrameworkError` an unconnected program gets, instead of writing to some other database.
 
-`app.transaction(fn)` is `run` with one transaction around everything inside: the calls join it, `afterCommit` runs once when it commits, and a throw rolls all of them back. Like `Mesh.transaction`, it hands `fn` nothing and takes no context.
+`app.transaction(fn)` is `run` with one transaction around everything inside: the calls join it, `afterCommit` runs once when it commits, and a throw rolls all of them back. Like `transaction`, it hands `fn` nothing and takes no context.
 
 ## What to assert
 

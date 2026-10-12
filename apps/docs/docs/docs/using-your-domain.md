@@ -21,7 +21,7 @@ const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor });
 
 ## Where the entities come from
 
-`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `tables` and the `Binding` and `Privileged` types.
+`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types.
 
 ```ts "src/main.ts (excerpt)"
 import { connect, disconnect } from "#mesh";
@@ -334,7 +334,7 @@ Actions that call other actions do it inside the entity file, by calling the oth
 
 ```ts "src/main.ts"
 import { Mesh } from "meshfw";
-import { connect, disconnect } from "#mesh";
+import { connect, disconnect, transaction } from "#mesh";
 import { List, Todo } from "#mesh/domain/todo";
 import { alice } from "./context";
 
@@ -342,7 +342,7 @@ await connect();
 
 const list = await List.create({ name: "Groceries" }, { actor: alice });
 
-const todo = await Mesh.transaction(async () => {
+const todo = await transaction(async () => {
   const open = await Mesh.privileged(Todo).read({ filter: { and: [{ listId: { eq: list.id } }, { done: { eq: false } }] } });
   if (open.length >= 20) throw new Error("this list already has 20 open todos");
   return Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
@@ -353,9 +353,9 @@ console.log(todo.id);
 await disconnect();
 ```
 
-Every call inside joins this transaction, and each still validates its input and runs its own policies. Nothing is inherited: a call carries the context you pass it and no other, so the transaction itself needs none. A function you declare elsewhere takes the context as a parameter, as Hyper's commands do (`attemptStart(input, context, binding)`), rather than finding it in scope. `Mesh.privileged(Todo)` is the reads of `Todo` without read policies: `Mesh.privileged(Todo).read(...)` and `Mesh.privileged(Todo).pending(...)` take the same `filter`, `sort`, `limit` and `load` as the entity's own reads and return what they return, but check nothing, so use it for the rule's view of stored data and never to answer a caller. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `Mesh.privileged` read or `Mesh.can`. An action that calls `Mesh.transaction` while another is running joins it rather than opening a second one.
+Every call inside joins this transaction, and each still validates its input and runs its own policies. Nothing is inherited: a call carries the context you pass it and no other, so the transaction itself needs none. A function you declare elsewhere takes the context as a parameter, as Hyper's commands do (`attemptStart(input, context, binding)`), rather than finding it in scope. `Mesh.privileged(Todo)` is the reads of `Todo` without read policies: `Mesh.privileged(Todo).read(...)` and `Mesh.privileged(Todo).pending(...)` take the same `filter`, `sort`, `limit` and `load` as the entity's own reads and return what they return, but check nothing, so use it for the rule's view of stored data and never to answer a caller. A throw rolls back every call, and so does a failed call you catch: if an action you call fails, the whole transaction fails even when your code handles the error, so decide before you call, with a `Mesh.privileged` read or `Mesh.can`. An action that calls `transaction` while another is running joins it rather than opening a second one.
 
-A test uses the `transaction` of its own binding, and `Mesh.transaction` uses the binding in scope, or the one `connect()` opened: see [Testing](./testing.md).
+A test uses the `transaction` of its own binding, and the `transaction` you import from `#mesh` uses the binding in scope, or the one `connect()` opened: see [Testing](./testing.md).
 
 ## Internal writes
 
@@ -440,7 +440,7 @@ What a throw does:
 
 The policies run before the seams that a denial would skip. A policy check that reads only the caller and the input runs before `beforeTransaction`, so a call it denies runs no seam: nothing is written. A check that reads the record runs inside the transaction, before the row is written, so a call it denies has run `beforeTransaction` and runs neither `afterWrite` nor `afterCommit`.
 
-A call that another action makes to an entity runs the seams for its own writes, with the context that call was given, so a `commandId` or `caller` you put in the context reaches every seam call as long as each nested call passes it on. Such a call joins the caller's transaction, so it has no "before the transaction": `beforeTransaction` runs only for the call that opens the transaction, a call you make at top level, and `afterCommit` runs once for the transaction as a whole, with the changes of the outer action and of every call nested in it, in the order the rows were written. `Mesh.transaction(fn)` is such a transaction too: `afterCommit` runs once when it commits, with every change made inside it, and the actions you call there are joined, so none of them runs `beforeTransaction`. If it rolls back, or writes nothing, `afterCommit` does not run. `mesh explain <entity> <action>` lists where the three seams run in an action's plan. Each binding (each `bind` call) tracks the changes made through its own seams, so a call through a second binding on the same layer, made inside the first binding's transaction, is not in the first binding's `afterCommit`. A seam receives deeply frozen copies of the input, `before` and `after` (a date in them is read-only), so it cannot change what Mesh writes or what another seam sees. The context is the application's own: a seam gets a frozen copy of its top level (it cannot swap `actor` or `commandId` for what runs next), and what it holds, such as a logger, a class instance or a buffer, is passed as the same objects, never copied and never frozen.
+A call that another action makes to an entity runs the seams for its own writes, with the context that call was given, so a `commandId` or `caller` you put in the context reaches every seam call as long as each nested call passes it on. Such a call joins the caller's transaction, so it has no "before the transaction": `beforeTransaction` runs only for the call that opens the transaction, a call you make at top level, and `afterCommit` runs once for the transaction as a whole, with the changes of the outer action and of every call nested in it, in the order the rows were written. `transaction(fn)` is such a transaction too: `afterCommit` runs once when it commits, with every change made inside it, and the actions you call there are joined, so none of them runs `beforeTransaction`. If it rolls back, or writes nothing, `afterCommit` does not run. `mesh explain <entity> <action>` lists where the three seams run in an action's plan. Each binding (each `bind` call) tracks the changes made through its own seams, so a call through a second binding on the same layer, made inside the first binding's transaction, is not in the first binding's `afterCommit`. A seam receives deeply frozen copies of the input, `before` and `after` (a date in them is read-only), so it cannot change what Mesh writes or what another seam sees. The context is the application's own: a seam gets a frozen copy of its top level (it cannot swap `actor` or `commandId` for what runs next), and what it holds, such as a logger, a class instance or a buffer, is passed as the same objects, never copied and never frozen.
 
 ## Asking instead of calling
 
