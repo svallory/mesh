@@ -59,6 +59,29 @@ function soleKey(table: Table): { name: string; column: Column } | undefined {
   return keys.length === 1 ? { name: keys[0]![0], column: keys[0]![1] } : undefined;
 }
 
+/**
+ * The row an insert hands Drizzle: every column the row leaves out is given as `undefined`, which Drizzle writes as the
+ * column's default, as it does for a left-out column. Drizzle reads `row[column]` for every column of the table, so a
+ * column named like a member of `Object.prototype` (`toString`, `constructor`: ENT-18) would otherwise read as the
+ * method every object inherits.
+ */
+function insertRow(table: Table, row: Row): Row {
+  const full: Row = { ...row };
+  for (const name of Object.keys(getTableColumns(table))) if (!Object.hasOwn(full, name)) full[name] = undefined;
+  return full;
+}
+
+/**
+ * The changes an update hands Drizzle: a column the changes leave out that is named like a member of `Object.prototype`
+ * is set to itself, which changes nothing. Drizzle reads `set[column]` for every column of the table on an ordinary
+ * object, where such a column would read as the inherited method; an `undefined` there is dropped before that read.
+ */
+function updateSet(table: Table, changes: Row): Row {
+  const set: Row = { ...changes };
+  for (const [name, column] of Object.entries(getTableColumns(table))) if (!Object.hasOwn(set, name) && name in set) set[name] = column;
+  return set;
+}
+
 /** The guard revokes operations as soon as their transaction callback settles. */
 export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>, guard: () => void): DataOperations {
   const execute = async <R>(run: () => R | Promise<R>): Promise<R> => {
@@ -92,7 +115,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
   /** The generated key of a row that lacks one: a UUIDv7 for text, highest plus one for integers. */
   const withKey = async (table: T, row: Row): Promise<Row> => {
     const key = soleKey(table);
-    if (!key || (row[key.name] !== undefined && row[key.name] !== null)) return row;
+    if (!key || (Object.hasOwn(row, key.name) && row[key.name] !== undefined && row[key.name] !== null)) return row;
     if (key.column.dataType === "string") return { ...row, [key.name]: uuidv7() };
     if (key.column.dataType === "number") {
       const highest = await commands.aggregate(table, "max", key.column);
@@ -104,7 +127,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     insert: (handle: TableHandle, row: Row) => execute(async () => {
       const table = commands.table(handle);
       checkNames(table, row);
-      return serial(table, async () => commands.insert(table, await withKey(table, row)));
+      return serial(table, async () => commands.insert(table, insertRow(table, await withKey(table, row))));
     }),
     select: (handle: TableHandle, query?: Query) => execute(() => {
       const table = commands.table(handle);
@@ -119,7 +142,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       checkNames(table, changes);
       return (await (Object.keys(changes).length === 0
         ? commands.select(table, { where: condition, orderBy: [] })
-        : commands.update(table, condition, changes)))[0];
+        : commands.update(table, condition, updateSet(table, changes))))[0];
     }),
     deleteByKey: (handle: TableHandle, key: Key) => execute(async () => {
       const table = commands.table(handle);
