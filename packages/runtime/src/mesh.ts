@@ -31,7 +31,7 @@ export interface MeshFunctions {
 }
 
 function outsideAnExpression(name: string): never {
-  throw new FrameworkError(`Mesh.${name}() was called outside an entity file's expression: application code cannot find the running action's instant yet. Call Mesh.${name}() in a function of the entity file (a step, a run body or a check) and pass the instant on, or take the time from the application's own clock`);
+  throw new FrameworkError(`Mesh.${name}() was called outside an entity file's expression: application code cannot find the running action's instant yet. In a function of the entity file (a step or a check), pass Mesh.${name}() or the file's Mesh to the helper; elsewhere, take the time from the application's own clock`);
 }
 
 export const Mesh: MeshFunctions = Object.freeze({

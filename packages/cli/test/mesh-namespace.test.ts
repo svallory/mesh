@@ -83,7 +83,7 @@ async function rejection<E>(call: Promise<unknown>, type: new (...args: never[])
   return error as E;
 }
 
-const OUTSIDE = "Mesh.now() was called outside an entity file's expression: application code cannot find the running action's instant yet. Call Mesh.now() in a function of the entity file (a step, a run body or a check) and pass the instant on, or take the time from the application's own clock";
+const OUTSIDE = "Mesh.now() was called outside an entity file's expression: application code cannot find the running action's instant yet. In a function of the entity file (a step or a check), pass Mesh.now() or the file's Mesh to the helper; elsewhere, take the time from the application's own clock";
 
 let root: string;
 beforeAll(async () => {
