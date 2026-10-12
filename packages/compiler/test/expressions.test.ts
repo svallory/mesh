@@ -801,6 +801,224 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   });
 });
 
+describe("what a function names only in a type, and aliased imports (PR #94 review)", () => {
+  /**
+   * Builds `files` (the entity files and the TypeScript modules they import) in a new project, expects no build error,
+   * writes the generated tree and returns the expressions file of `task.mesh.mx`, a strict type check of the tree and a
+   * loader for the expressions module.
+   */
+  async function project(prefix: string, files: Record<string, string>) {
+    const root = await mkdtemp(resolve(import.meta.dir, `../mesh-${prefix}-`));
+    roots.push(root);
+    for (const [path, text] of Object.entries(files)) if (!path.endsWith(".mesh.mx")) await writeFile(resolve(root, path), text);
+    const built = buildModel({ root, files: Object.entries(files).filter(([path]) => path.endsWith(".mesh.mx")).map(([file, source]) => ({ file, source })) });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const config = configOf(root);
+    const generated = await generateFiles({ document: built.document!, config });
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), `export const tables = { ${built.document!.entities.map((e) => `${e.table}: {}`).join(", ")} };\n`);
+    const paths = generated.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+    return {
+      built,
+      printed: generated.find((f) => f.path.endsWith("task.expressions.ts"))!.contents,
+      typeCheck: () => checkTypes(root, [...paths, "generated/schema.ts"]),
+      load: async (): Promise<Record<string, (s: unknown) => unknown>> => (await import(resolve(root, "generated/domain/task.expressions.ts"))).$expressions,
+    };
+  }
+  /** Runs `fn` and returns what it logged. */
+  async function logged(fn: () => Promise<unknown>): Promise<unknown[][]> {
+    const logs: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args); };
+    try { await fn(); } finally { console.log = log; }
+    return logs;
+  }
+  const values = { self: { n: 2, title: "t" }, input: { id: "i" }, actor: { id: "a" }, context: { system: true }, before: { n: 1 } };
+
+  test("item 1: a helper named like a scope root that a function reads only in `typeof` is still hidden by the root (EXP-12)", async () => {
+    // Before, `typeNames` found `input` free in `typeof input.id`, the file imported the helper as a type, and no function
+    // bound the root: the type was the helper's (here `{ id: number }`, so "x" failed TS2322; a looser helper passed tsc
+    // silently with the wrong type). A type reference is still the helper: a root is a value, as a parameter is.
+    const { printed, typeCheck, load } = await project("root-typeof", {
+      "helpers.ts": "export const input = { id: 0 };\nexport const self = (): number => 1;\nexport type actor = { kind: \"helper type\" };\n",
+      "task.mesh.mx": entity(check("() => { const n: typeof self.n = 2; return n > 1 }") + [
+        "      do",
+        "        run () { const id: typeof input.id = \"x\"; console.log(id) }",
+        "        run () { const a: actor = { kind: \"helper type\" }; console.log(a.kind) }",
+        "",
+      ].join("\n")).replace("import { Task }", 'import { input, self, actor } from "./helpers"\nimport { Task }'),
+    });
+    expect(printed).toContain('import type { actor } from "../../helpers";');
+    expect(printed).not.toMatch(/\b(input|self)\b[^\n]*from "\.\.\/\.\.\/helpers"/);
+    expect(printed).toContain("const { input } = $s;");
+    expect(printed).toContain("const { self } = $s;");
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    expect(await logged(async () => {
+      await expressions["go.step.0.run"]!(scope(values));
+      await expressions["go.step.1.run"]!(scope(values));
+    })).toEqual([["x"], ["helper type"]]);
+    expect(expressions["go.check.c.that"]!(scope(values))).toBe(true);
+  }, 30_000);
+
+  test("item 2: a scope root a function reads only in a type is bound", async () => {
+    // Before, `const n: typeof before.n` printed no `const { before } = $s`: tsc failed with TS2304 (cannot find name).
+    const { printed, typeCheck, load } = await project("root-type-only", {
+      "task.mesh.mx": entity(check("() => { const c: typeof context = {}; return c !== null }") + [
+        "      do",
+        "        run () { const id: typeof input.id = \"x\"; const n: typeof before.n = 1; console.log(id, n) }",
+        "",
+      ].join("\n")).replace("  actions auto", "  computed\n    integer :twice() { const n: typeof self.n = 2; return n * 2 }\n  actions auto"),
+    });
+    expect(printed).toContain("const { input, before } = $s;");
+    expect(printed).toContain("const { context } = $s;");
+    expect(printed).toContain("const { self } = $s;");
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    expect(await logged(async () => { await expressions["go.step.0.run"]!(scope(values)); })).toEqual([["x", 1]]);
+    expect(expressions["go.check.c.that"]!(scope(values))).toBe(true);
+    expect(expressions["computed.twice"]!(scope(values))).toBe(4);
+  }, 30_000);
+
+  test("item 3: a parameter of a signature type hides a helper of its name from `typeof` in that signature", async () => {
+    // Before, `typeof fmt` in `(fmt: string) => typeof fmt` was taken for the helper: the file imported it as a type and
+    // tsc failed under `--noUnusedLocals` (TS6133), since TypeScript resolves the name to the parameter.
+    const signatures = [
+      "type F = (fmt: string) => typeof fmt",
+      "type C = new (fmt: string) => typeof fmt",
+      "interface M { m(fmt: string): typeof fmt }",
+      "interface K { (fmt: string): typeof fmt }",
+      "interface N { new (fmt: string): typeof fmt }",
+    ];
+    const { printed, typeCheck, load } = await project("signature-params", {
+      "helpers.ts": "export const fmt = (n: number): string => `#${n}`;\n",
+      "task.mesh.mx": entity(check("() => true") + [
+        "      do",
+        `        run () { ${signatures.join("; ")}; const f: F = (s) => s; const m: M = { m: (s) => s }; const unused: [C, K, N] | null = null; console.log(f("a"), m.m("b"), unused) }`,
+        "",
+      ].join("\n")).replace("import { Task }", 'import { fmt } from "./helpers"\nimport { Task }'),
+    });
+    expect(printed).not.toContain("helpers");
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    expect(await logged(async () => { await expressions["go.step.0.run"]!(scope(values)); })).toEqual([["a", "b", null]]);
+  }, 30_000);
+
+  test("item 4: an aliased helper import keeps its alias, in the model and in the expressions file", async () => {
+    // Before, the model kept only the local name and the file imported it as the export: `import { Big, format, type
+    // Cash }` failed tsc with TS2305/TS2724 and Bun's load with "Export named 'Big' not found".
+    const { built, printed, typeCheck, load } = await project("helper-alias", {
+      "more.ts": "export const fmt = (n: number): string => `#${n}`;\nexport const big = (n: number): boolean => n > 100;\nexport type Money = number;\nexport const same = (s: string): string => s;\nexport default (n: number): number => n * 2;\n",
+      "types.ts": "export type Money = number;\n",
+      "task.mesh.mx": entity(check("() => Big(&n)") + [
+        "      do",
+        "        run () { const c: Cash = 1; console.log(format(c), same(\"s\")) }",
+        "        run () { const t: Amount = 2; console.log(t, twice(t)) }",
+        "",
+      ].join("\n")).replace("import { Task }", [
+        'import { fmt as format, big as Big, Money as Cash, same as same, default as twice } from "./more"',
+        'import { Money as Amount } from "./types"',
+        "import { Task }",
+      ].join("\n")),
+    });
+    const imports = built.document!.entities[0]!.imports;
+    expect(imports[0]).toEqual({ identifiers: ["format", "Big", "Cash", "same", "twice"], imported: ["fmt", "big", "Money", "same", "default"], from: "./more", helper: true, position: expect.anything() });
+    expect(imports[1]).toMatchObject({ identifiers: ["Amount"], imported: ["Money"] });
+    // An import that renames nothing has no `imported`, so the model of a file without aliases is what it was.
+    expect(imports[2]).toEqual({ identifiers: ["Task"], from: "./task.mesh.mx", position: expect.anything() });
+    expect(printed).toContain('import { big as Big, type Money as Cash, fmt as format, same, default as twice } from "../../more";');
+    expect(printed).toContain('import type { Money as Amount } from "../../types";');
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    expect(await logged(async () => {
+      await expressions["go.step.0.run"]!(scope(values));
+      await expressions["go.step.1.run"]!(scope(values));
+    })).toEqual([["#1", "s"], [2, 4]]);
+    expect(expressions["go.check.c.that"]!(scope({ self: { n: 101 } }))).toBe(true);
+  }, 30_000);
+
+  test("item 5: an entity a function names only in a type is bound as its record type, or as its value for `typeof`", async () => {
+    // Before, `const t: List | null` printed no binding of `List`: tsc failed with TS2304 (cannot find name). The record
+    // type comes from the entity's actions file, which exports it with the value (CMP-17), under its FQN-derived local; the
+    // file's own entity's is already imported from its types file.
+    const { printed, typeCheck, load } = await project("entity-type", {
+      "list.mesh.mx": "entity :List\n  attributes\n    uuid :id primary-key\n    string :name\n  actions auto=[:read]\n",
+      "tag.mesh.mx": "entity :Tag\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n",
+      "task.mesh.mx": entity(check("() => { const own: Task[\"n\"] = &n; return own > 0 }") + [
+        "      do",
+        "        run () { const t: Task | null = null; const l: List | null = null; const g: Label | null = null; console.log(t, l, g) }",
+        "        run () { const r: typeof List | null = null; const n: List[\"name\"] = \"n\"; console.log(r, n) }",
+        "",
+      ].join("\n")).replace("import { Task }", 'import { List } from "./list.mesh.mx"\nimport { Tag as Label } from "./tag.mesh.mx"\nimport { Task }'),
+    });
+    expect(printed).toContain('import {\n  List as $List$value,\n  type $ReadOnly as $List$ReadOnly,\n  type List as $List$Record,\n} from "./list.actions";');
+    expect(printed).toContain('import type { Tag as $Tag$Record } from "./tag.actions";');
+    expect(printed).toContain("type Task = $Task$Record;");
+    expect(printed).toContain("type List = $List$Record;");
+    expect(printed).toContain("type Label = $Tag$Record;");
+    expect(printed).toContain("const List: $List$ReadOnly = $List$value;");
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    expect(await logged(async () => {
+      await expressions["go.step.0.run"]!(scope(values));
+      await expressions["go.step.1.run"]!(scope(values));
+    })).toEqual([[null, null, null], [null, "n"]]);
+    expect(expressions["go.check.c.that"]!(scope(values))).toBe(true);
+  }, 30_000);
+
+  test("item 6: a check that reads `before` as a free name is MESH_VALIDATE_BEFORE, as a destructured one is", () => {
+    // Before, `() => before !== null` was plain (a free root) and built with no error; tsc then failed with TS2339 on the
+    // check's scope, which has no `before`.
+    for (const that of ["() => before !== null", "() => { return before !== null }", "() => before.n > 1"]) {
+      const diagnostics = build(entity(check(that))).diagnostics.filter((d) => d.severity === "error");
+      expect(diagnostics.map((d) => d.code), that).toEqual(["MESH_VALIDATE_BEFORE"]);
+    }
+  });
+
+  test("item 6 leaves a create alone: its steps read a free `before`, which is null there", async () => {
+    // The docs (entities.md, `before` and `do`) give the `do` steps and `run` `before`, `null` on a create. Only a check
+    // lost it; a free `before` in a create's `set` or `run` builds, type-checks and reads null, as it did on 8353a02.
+    const { built, printed, typeCheck, load } = await project("create-before", {
+      "task.mesh.mx": entity(check("() => true")).replace("    update :go\n      validate", [
+        "    create :make",
+        "      input",
+        "        &n",
+        "        &title",
+        "      do",
+        "        set",
+        "          &title=() => before?.title ?? input.title",
+        "        run () { console.log(\"before is\", before) }",
+        "    update :go",
+        "      validate",
+      ].join("\n")),
+    });
+    expect(built.diagnostics.filter((d) => d.code === "MESH_BEFORE_IN_CREATE")).toEqual([]);
+    expect(printed).toContain('"make.step.0.set.title"');
+    expect(printed).toContain('"make.step.1.run"');
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    const create = { ...values, input: { title: "from input" }, before: null };
+    expect(await expressions["make.step.0.set.title"]!(scope(create))).toBe("from input");
+    expect(await logged(async () => { await expressions["make.step.1.run"]!(scope(create)); })).toEqual([["before is", null]]);
+  }, 30_000);
+
+  test("item 6: a check or a policy that reads `before` only in a type is refused when the file is emitted", async () => {
+    // The front end cannot see a type (MX strips them), so the back end reports it where `typeNames` finds it, with the
+    // code the front end gives a `before` read as a value; binding it would fail tsc with TS2339 on the check's scope.
+    const that = "() => { const b: typeof before = null; return b === null }";
+    const cases = [
+      [entity(check(that)), "MESH_VALIDATE_BEFORE", "check :c that"],
+      [entity(check("() => true")).replace("  actions auto", `  policies\n    policy :p types=[:update]\n      authorize-if=${that}\n  actions auto`), "MESH_POLICY_BEFORE", "policy :p authorize-if"],
+    ] as const;
+    for (const [source, code, what] of cases) {
+      const built = build(source);
+      expect(built.diagnostics.filter((d) => d.severity === "error"), code).toEqual([]);
+      const failure = await generateFiles({ document: built.document!, config: configOf("/p") }).then(() => undefined, (error: unknown) => error);
+      expect(failure, code).toMatchObject({ name: "EmitError", diagnostic: { code, message: expect.stringContaining(`${what} reads \`before\` in a type`) } });
+    }
+  });
+});
+
 describe("the reference page", () => {
   test("apps/docs/.../expression-functions.md is generated from the tables", async () => {
     const { PAGE_PATH, renderExpressionPage } = await import("./expression-page.ts");

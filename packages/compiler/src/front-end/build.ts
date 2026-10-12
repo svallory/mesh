@@ -216,7 +216,14 @@ function buildEntity(
     fail(problem.code, problem.message, at(problem.offset));
   entity.imports = imports.imports.map(
     (i): Import => {
-      const value: Import = { identifiers: i.names, from: i.from, ...(hasMeshExtension(i.from) ? {} : { helper: true as const }), position: at(i.offset) };
+      const renames = i.bindings.some((binding) => binding.imported !== binding.local);
+      const value: Import = {
+        identifiers: i.names,
+        ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
+        from: i.from,
+        ...(hasMeshExtension(i.from) ? {} : { helper: true as const }),
+        position: at(i.offset),
+      };
       importDetails.set(value, i);
       return value;
     },

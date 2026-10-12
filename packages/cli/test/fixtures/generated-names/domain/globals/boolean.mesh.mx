@@ -1,6 +1,6 @@
 import { Promise } from "./promise.mesh.mx"
 import { Map as context } from "./map.mesh.mx"
-import { input } from "./boolean.helpers"
+import { input, shout as loudly } from "./boolean.helpers"
 import { Count, tally } from "./boolean.measure"
 
 entity :Boolean
@@ -23,6 +23,7 @@ entity :Boolean
         &name
       validate
         check :long that=({ input }) => input.name === null || input.name.length > 3 code="short" message="The name is too short"
+        check :typed that=() => { const name: typeof input.name = loudly("x"); const next: Promise | null = null; return name === "X" && next === null } code="typed" message="The types are wrong"
     update :hold
       input
         &holder

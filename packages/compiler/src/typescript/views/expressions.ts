@@ -4,7 +4,7 @@ import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
-import { printExpression, type EntityLocals } from "../expression-printer.ts";
+import { printExpression, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
 import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
@@ -42,8 +42,11 @@ export interface ExpressionsView {
    * `entityLocal(target, "value")` and its read-only type as `entityLocal(target, "ReadOnly")` (`Task as $work$Task$value,
    * type $ReadOnly as $work$Task$ReadOnly`), so that two entities with one name never share a local. A function binds
    * each under the name the entity file gives it, the alias its import wrote included (`const BList: ... = $b$List$value`).
+   * Another entity a function names as a type comes from the same file as `entityLocal(target, "Record")` (`type Task as
+   * $work$Task$Record`, the record type the actions file exports with the value), and the function binds it as a type
+   * (`type BList = $b$List$Record`); `keyword` is `import type` when that is all the file takes from it.
    */
-  readonly entityImports: readonly { names: string; fromLiteral: string }[];
+  readonly entityImports: readonly { keyword: "import" | "import type"; names: string; fromLiteral: string }[];
   /**
    * True when a plain function calls the global `structuredClone` (no binding of the function and no import of the file
    * has that name): the file imports `cloneValue` as `$cloneValue`, and each such function binds `structuredClone` to it,
@@ -80,8 +83,9 @@ export interface HelperImport {
   /** `import type` when every name is named only in a type, else `import`. */
   readonly keyword: "import" | "import type";
   /**
-   * The names as printed, sorted: `fmt, type Money`, where `type` marks a helper the functions name only in a type
-   * (`const x: Money`, `typeof fmt`), or `Money` alone when `keyword` is `import type`.
+   * The names as printed, sorted by the name the entity file gives each: `fmt, type Money`, where `type` marks a helper
+   * the functions name only in a type (`const x: Money`, `typeof fmt`), or `Money` alone when `keyword` is `import type`.
+   * A helper the entity file imports under an alias keeps it: `fmt as format`.
    */
   readonly names: string;
   /** The helper module from the expressions file, a quoted string literal, e.g. `"../../../domain/work/money"`. */
@@ -100,6 +104,11 @@ export interface ExpressionEntry {
   /** `(s: $billing$Invoice$CheckScope<$billing$Invoice$PayInvoiceInput>) => ...`. */
   readonly code: string;
 }
+
+/** The scope roots, in the order a function binds them. */
+const SCOPE_NAMES: readonly string[] = ROOTS;
+/** A name an import can print bare; any other export name is printed as a string literal (`import { "a-b" as ab }`). */
+const IDENTIFIER = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u;
 
 /**
  * Which scope an expression reads: `base` (a computed field, a step that can run on a create after the write),
@@ -264,62 +273,105 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     shared = true;
     return `$SharedInput<${locals.join(" | ")}>`;
   };
-  // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file.
-  const helperFrom = new Map<string, string>();
+  // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file, each by the name the
+  // entity file gives it and the name its module exports it under (`import { fmt as format }`).
+  const helperFrom = new Map<string, { from: string; imported: string }>();
   for (const imported of entity.imports)
-    if (imported.helper) for (const name of imported.identifiers) helperFrom.set(name, imported.from);
+    if (imported.helper)
+      imported.identifiers.forEach((name, index) => helperFrom.set(name, { from: imported.from, imported: imported.imported?.[index] ?? name }));
   const used = new Set<string>();
   for (const { expression } of found) {
     if (expression.tree) helpersIn(expression.tree, used);
     else for (const name of expression.plain!.helpers ?? []) used.add(name);
   }
-  // The entities the functions name, each from its actions file, imported under its FQN-derived locals and bound in each
-  // function under the name the entity file gives it (CMP-16).
-  const named = new Set(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
-  const entityFrom = new Map<string, Set<string>>();
-  const entityLocals = new Map<string, { value: string; type: string }>();
-  for (const local of [...named].sort()) {
+  // The entities the functions can name, each under the name the entity file gives it (CMP-16): its own and the imported
+  // ones. Each is imported from its actions file under FQN-derived locals and bound in each function under that name.
+  const targets = new Map<string, Entity>();
+  for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper).flatMap((entry) => entry.identifiers)])) {
     const imported = entity.imports.find((entry) => !entry.helper && entry.identifiers.includes(local));
     const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
     const target = document.entities.find((candidate) => candidate.file === file);
-    if (!target) continue; // the front end reported the import
-    let from = relative(dirname(entityPath(entity)), `${entityPath(target)}.actions`).replace(/\\/g, "/");
-    if (!from.startsWith(".")) from = `./${from}`;
-    const value = entityLocal(target, "value");
-    const type = entityLocal(target, "ReadOnly");
-    entityLocals.set(local, { value, type });
-    entityFrom.set(from, (entityFrom.get(from) ?? new Set()).add(`${typeName(target.name, target.position)} as ${value}`).add(`type $ReadOnly as ${type}`));
+    if (target) targets.set(local, target); // else the front end reported the import
   }
   const locals: EntityLocals = (name) => {
-    const hit = entityLocals.get(name);
-    if (!hit) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
-    return hit;
+    const target = targets.get(name);
+    if (!target) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
+    return { value: entityLocal(target, "value"), type: entityLocal(target, "ReadOnly"), record: entityLocal(target, "Record") };
   };
-  const entries = found.map((f) => ({
+  const print = (f: Found, inTypes?: NamedInTypes) =>
+    printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, inTypes);
+  // What a plain function names only in a type: the front end never sees it (MX strips the types from the node it reads),
+  // so the printed function is parsed for it (`typeNames`). A helper is imported as a type. A scope root read in a
+  // `typeof` is bound as a root read as a value is (EXP-12: a root is like a parameter, so it hides a helper of its name
+  // there), while a type reference never names a root (a root is a value) and is the helper of that name. An entity is
+  // bound to its record type where it is named as a type, and to its value where it is read in a `typeof`.
+  const unread = new Set([...helperFrom.keys()].filter((name) => !used.has(name)));
+  const typed = new Set<string>();
+  const valued = new Set<string>(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
+  const recordTypes = new Set<string>();
+  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys()]);
+  const entries = found.map((f): ExpressionEntry => {
+    let code = print(f);
+    if (f.expression.plain) {
+      const { types, values } = typeNames(code, candidates);
+      const roots = SCOPE_NAMES.filter((name) => values.has(name));
+      const inTypes: NamedInTypes = {
+        roots,
+        values: [...values].filter((name) => targets.has(name) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
+        types: [...types].filter((name) => targets.has(name) && !helperFrom.has(name)).sort(),
+      };
+      for (const name of [...types, ...[...values].filter((name) => !SCOPE_NAMES.includes(name))]) if (unread.has(name)) typed.add(name);
+      if (roots.includes("before") && (f.scope === "check" || f.scope === "new")) {
+        const policy = f.id.startsWith("policy.");
+        throw emitError(policy ? "MESH_POLICY_BEFORE" : "MESH_VALIDATE_BEFORE",
+          `${f.what} reads \`before\` in a type, which ${policy ? "a policy" : "`validate`"} does not have: it sees \`self\` before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``,
+          f.expression.position, "write `typeof self` for the record before the input, and `typeof input` for the caller's values");
+      }
+      if (inTypes.roots.length || inTypes.values.length || inTypes.types.length) {
+        inTypes.values.forEach((name) => valued.add(name));
+        inTypes.types.forEach((name) => recordTypes.add(name));
+        code = print(f, inTypes);
+      }
+    }
+    return {
       key: JSON.stringify(f.id),
       comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
         .replace(/[\r\n\u2028\u2029]/g, " "),
-      code: printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals),
-    }));
-  // A helper a plain function names only in a type: the front end never sees it (MX strips the types from the node it
-  // reads), so the printed function is parsed for it (`typeNames`), and the file imports it as a type.
-  const unread = new Set([...helperFrom.keys()].filter((name) => !used.has(name)));
-  const typed = new Set<string>();
-  found.forEach(({ expression }, index) => {
-    if (!expression.tree && unread.size) for (const name of typeNames(entries[index]!.code, unread)) typed.add(name);
+      code,
+    };
   });
+  // The entity imports: each value with its read-only type, and each record type, from the entity's actions file; its own
+  // record type is already imported from its types file.
+  const entityFrom = new Map<string, { names: Set<string>; value: boolean }>();
+  for (const name of [...new Set([...valued, ...recordTypes])].sort()) {
+    const target = targets.get(name);
+    if (!target) continue; // `locals` reported it
+    if (!valued.has(name) && target === entity) continue;
+    let from = relative(dirname(entityPath(entity)), `${entityPath(target)}.actions`).replace(/\\/g, "/");
+    if (!from.startsWith(".")) from = `./${from}`;
+    const exported = typeName(target.name, target.position);
+    const { value, type, record } = locals(name);
+    const entry = entityFrom.get(from) ?? { names: new Set<string>(), value: false };
+    if (valued.has(name)) { entry.names.add(`${exported} as ${value}`).add(`type $ReadOnly as ${type}`); entry.value = true; }
+    if (recordTypes.has(name) && target !== entity) entry.names.add(`type ${exported} as ${record}`);
+    entityFrom.set(from, entry);
+  }
   const byModule = new Map<string, string[]>();
   for (const name of [...used, ...typed].filter((n) => helperFrom.has(n)).sort()) {
-    const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!);
+    const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!.from);
     let relativePath = posix.relative(dirname(generatedPath), absolute);
     if (!relativePath.startsWith(".")) relativePath = `./${relativePath}`;
     byModule.set(relativePath, [...(byModule.get(relativePath) ?? []), name]);
   }
   const helperImports = [...byModule].map(([from, names]): HelperImport => {
     const typeOnly = names.every((name) => typed.has(name));
+    const named = (name: string) => {
+      const { imported } = helperFrom.get(name)!;
+      return imported === name ? name : `${IDENTIFIER.test(imported) ? imported : JSON.stringify(imported)} as ${name}`;
+    };
     return {
       keyword: typeOnly ? "import type" : "import",
-      names: names.map((name) => (!typeOnly && typed.has(name) ? `type ${name}` : name)).join(", "),
+      names: names.map((name) => (!typeOnly && typed.has(name) ? `type ${named(name)}` : named(name))).join(", "),
       fromLiteral: JSON.stringify(from),
     };
   });
@@ -341,7 +393,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       ...[...usedInputs].sort().map((name) => `${name} as ${entityLocal(entity, name)}`),
     ],
     usesPrivileged: found.some(({ expression }) => expression.plain?.privileged === true),
-    entityImports: [...entityFrom].map(([from, names]) => ({ names: [...names].join(", "), fromLiteral: JSON.stringify(from) })),
+    entityImports: [...entityFrom].map(([from, { names, value }]) => ({
+      keyword: value ? "import" as const : "import type" as const,
+      names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),
+      fromLiteral: JSON.stringify(from),
+    })),
     shadowsStructuredClone,
     scopeName,
     scopeType,

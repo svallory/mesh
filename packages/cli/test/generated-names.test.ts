@@ -9,6 +9,8 @@
 // `Boolean` imports `Map` as `context` and a helper named `input` (EXP-12): inside its functions the scope roots
 // shadow both, as parameters would, and its `when` step, which holds an after-write `run`, keeps its condition in a flag.
 // Its computed field names two helpers only in types (`Count`, `typeof tally`), which the expressions file imports as types.
+// Its `typed` check imports a helper under an alias (`shout as loudly`), reads the root `input` only in a type (`typeof
+// input.name`, not the helper) and names Promise only as a type (`Promise | null`, the entity's record, not the global).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -150,12 +152,12 @@ describe("entities named after the globals generated code uses", () => {
 
   test("an import named like a scope root is the root inside a function, as a parameter of that name would be (EXP-12)", async () => {
     // Boolean imports Map as `context` and a helper named `input`: its `set` step reads both roots, binds them from the
-    // scope only, and the file imports neither Map's value nor the helper, which no function names.
+    // scope only, and the file imports neither Map's value nor the helper `input`, which no function names.
     const expressions = await generated("domain/globals/boolean.expressions.ts");
     expect(expressions).toContain("const { input, context } = $s;\n    return (() => `${input.loud}:${context.system ?? false}`)();");
     expect(expressions).not.toContain("const context:");
     expect(expressions).not.toContain("$globals$Map$value");
-    expect(expressions).not.toContain("boolean.helpers");
+    expect(expressions).not.toMatch(/import [^;]*\binput\b[^;]*boolean\.helpers/);
     // The run step's block body reads `input` from the scope too, and names Promise, which it binds.
     expect(expressions).toContain("const { input } = $s;\n    const Promise: $globals$Promise$ReadOnly = $globals$Promise$value;");
     // Outside the functions the alias is the entity: `belongs-to :holder entity=context` is Map.
@@ -169,6 +171,16 @@ describe("entities named after the globals generated code uses", () => {
     expect(expressions).toContain('import type { Count, tally } from "../../../domain/globals/boolean.measure";');
     expect(expressions).toContain("const length: Count = self.name.length;");
     expect(expressions).toContain("const same: typeof tally = (n) => n;");
+  });
+
+  test("an aliased helper keeps its alias, and a root or an entity named only in a type is bound (PR #94 review)", async () => {
+    // Boolean's `typed` check. Before, the file imported `{ loudly }` (TS2305; Bun: "Export named 'loudly' not found"),
+    // took `typeof input` for the helper and left `Promise` to the global (TS2314, since it is generic; the global check
+    // below failed on it too).
+    const expressions = await generated("domain/globals/boolean.expressions.ts");
+    expect(expressions).toContain('import { shout as loudly } from "../../../domain/globals/boolean.helpers";');
+    expect(expressions).toContain("type Promise as $globals$Promise$Record,");
+    expect(expressions).toContain("const { input } = $s;\n    type Promise = $globals$Promise$Record;\n    return (() => {\n      const name: typeof input.name = loudly(\"x\");");
   });
 
   test("a when step that holds an after-write run keeps its condition without naming the global Boolean", async () => {

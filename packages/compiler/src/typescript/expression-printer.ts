@@ -12,7 +12,8 @@ import type { ExprNode, Expression } from "@meshfw/model";
 const SCOPE = "$s";
 const local = (name: string) => `l$${name}`;
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const ROOTS = ["self", "input", "actor", "context", "before"] as const;
+/** The names of the scope a function is handed, in the order a function binds them. */
+export const ROOTS = ["self", "input", "actor", "context", "before"] as const;
 
 function access(name: string, optional: boolean): string {
   return IDENTIFIER.test(name) ? `${optional ? "?." : "."}${name}` : `${optional ? "?." : ""}[${JSON.stringify(name)}]`;
@@ -44,8 +45,23 @@ export function printTree(n: ExprNode, bool = false): string {
   }
 }
 
+/**
+ * What a plain function names only in its types, which the front end does not see (MX strips the types from the node it
+ * reads), as `typeNames` found it in the function printed without it. Each is bound as the names the function reads as
+ * values are.
+ */
+export interface NamedInTypes {
+  /** Scope roots read only in a `typeof` (`typeof input.id`): bound with the roots the function reads. */
+  readonly roots: readonly string[];
+  /** Entities read only in a `typeof` (`typeof List`): bound to their value, as an entity the function reads is. */
+  readonly values: readonly string[];
+  /** Entities named as a type (`List | null`): bound to their record type, `type List = $b$List$Record`. */
+  readonly types: readonly string[];
+}
+const NOTHING: NamedInTypes = { roots: [], values: [], types: [] };
+
 /** The whole function of one expression: `(s: Scope) => ...`. */
-export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES): string {
+export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING): string {
   const withScope = (body: string) => `(${/\$s(?![A-Za-z0-9_$])/.test(body) ? SCOPE : `_${SCOPE}`}: ${scopeType}) => ${body}`;
   if (e.tree) return withScope(printTree(e.tree, boolean));
   const plain = e.plain!;
@@ -55,8 +71,10 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // A `run` body may await: it is the one plain function that is async (a returned promise is awaited by the action).
   const authored = plain.method ? `function ${text}` : text;
   const fn = async && !/^\s*async\b/.test(authored) ? `async ${authored}` : authored;
-  // The scope names the function reads without its parameters binding them (the front end found them in the syntax tree).
-  const declare = (plain.roots.length ? `const { ${plain.roots.join(", ")} } = ${SCOPE}; ` : "") +
+  // The scope names the function reads without its parameters binding them: the front end found the ones read as values
+  // in the syntax tree, `typeNames` the ones read only in a type.
+  const roots = ROOTS.filter((name) => plain.roots.includes(name) || inTypes.roots.includes(name));
+  const declare = (roots.length ? `const { ${roots.join(", ")} } = ${SCOPE}; ` : "") +
     (plain.clock ?? []).map((name) => `const ${name} = () => $.${name}(${SCOPE}); `).join("") +
     (plain.isSystem ? "const isSystem = $.isSystem; " : "") +
     (plain.privileged ? `const privileged = ${PRIVILEGED}; ` : "") +
@@ -65,10 +83,12 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
     // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
     // finished loading by then) and typed so that what its actions resolve with is read-only (CMP-16).
-    (plain.entities ?? []).map((name) => {
+    [...(plain.entities ?? []), ...inTypes.values].map((name) => {
       const { value, type } = entities(name);
       return `const ${name}: ${type} = ${value}; `;
-    }).join("");
+    }).join("") +
+    // An entity named as a type is its record type, as the barrel exports it with the value (CMP-17).
+    inTypes.types.map((name) => `type ${name} = ${entities(name).record}; `).join("");
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
 
@@ -77,10 +97,11 @@ export const PRIVILEGED = "$privileged";
 /** How the expressions file imports `cloneValue`, which a function that calls the global `structuredClone` binds under that name. */
 export const CLONE_VALUE = "$cloneValue";
 /**
- * The locals the expressions file imports an entity value and its read-only type under, by the name a function of the
- * entity file gives the entity (CMP-16): `List` (or the alias `BList`) to `{ value: "$b$List$value", type: "$b$List$ReadOnly" }`.
+ * The locals the expressions file imports an entity value, its read-only type and its record type under, by the name a
+ * function of the entity file gives the entity (CMP-16): `List` (or the alias `BList`) to `{ value: "$b$List$value",
+ * type: "$b$List$ReadOnly", record: "$b$List$Record" }`.
  */
-export type EntityLocals = (name: string) => { readonly value: string; readonly type: string };
+export type EntityLocals = (name: string) => { readonly value: string; readonly type: string; readonly record: string };
 const NO_ENTITIES: EntityLocals = (name) => {
   throw new Error(`No local for the entity ${name}`);
 };

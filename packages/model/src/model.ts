@@ -29,7 +29,13 @@ export interface EntityRef {
   from: string;
 }
 export interface Import {
+  /** The names the import binds in the entity file, in the order written: the alias where one is written. */
   identifiers: string[];
+  /**
+   * The name each of `identifiers` is exported under, in the same order; present only when the import renames one
+   * (`import { fmt as format }` gives `identifiers: ["format"]` and `imported: ["fmt"]`).
+   */
+  imported?: string[];
   from: string;
   /** Present (true) when the import is a helper module and not an entity file. */
   helper?: true;
