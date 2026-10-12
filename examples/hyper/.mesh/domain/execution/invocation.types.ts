@@ -98,7 +98,7 @@ export type InvocationLoadable = {
 export type InvocationWith<N extends keyof InvocationLoadable> = Invocation &
   Pick<InvocationLoadable, N>;
 
-/** What a load through `tx` attaches to a Invocation: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a Invocation: it runs no policy, so every related record the key names is there. */
 export type InvocationTxLoadable = {
   attempt: Attempt;
   task: Task;
@@ -107,7 +107,7 @@ export type InvocationTxLoadable = {
   recordedBy: Collaborator;
 };
 
-/** A Invocation loaded through `tx`, with the relationships and computed fields named in N. */
+/** A Invocation loaded through `privileged`, with the relationships and computed fields named in N. */
 export type InvocationTxWith<N extends keyof InvocationLoadable> = Invocation &
   Pick<InvocationTxLoadable, N>;
 

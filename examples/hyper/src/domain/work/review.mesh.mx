@@ -1,5 +1,6 @@
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Task } from "./task.mesh.mx"
 import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf, taskUnchangedSinceSubmit } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 
@@ -20,30 +21,30 @@ entity :Review table="reviews"
         integer :expectedVersion nullable
       validate
         check :pending [
-          that=async ({ input, tx }) => (await submittedVersionsOf(tx, input.submission)).state === :pending
+          that=async ({ input }) => (await submittedVersionsOf(input.submission)).state === :pending
           code="submission.pending"
           message="the submission is not pending"
         ]
         check :taskVersion [
-          that=async ({ input, tx }) => taskUnchangedSinceSubmit(await submittedVersionsOf(tx, input.submission))
+          that=async ({ input }) => taskUnchangedSinceSubmit(await submittedVersionsOf(input.submission))
           code="submission.task-version"
           message="the task changed since this was submitted; return it for rework"
-          details=async ({ input, tx }) => { const { submitted, current } = await submittedVersionsOf(tx, input.submission); return { submitted, current }; }
+          details=async ({ input }) => { const { submitted, current } = await submittedVersionsOf(input.submission); return { submitted, current }; }
         ]
         check :versionMatches [
-          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(tx, input.submission)).current
+          that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(input.submission)).current
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(tx, input.submission)).current })
+          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(input.submission)).current })
         ]
       do
         set
           &decision=:accept
           &reviewer=({ actor }) => actor.id
-          &ruleApplied=({ tx }) => reviewerRuleOf(tx, &submission.taskId)
-        run [after=:write] ({ self, context, actions }) {
-          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :accepted }, { ...context, system: true });
-          await actions.completeTask({ id: submission.taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: submission.id } });
+          &ruleApplied=async ({}) => await reviewerRuleOf(&submission.taskId)
+        run [after=:write] ({ self, context }) {
+          const submission = await Submission.settle({ id: self.submissionId, outcome: :accepted }, { ...context, system: true });
+          await Task.complete({ id: submission.taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: submission.id } });
         }
     create :return
       input
@@ -52,32 +53,32 @@ entity :Review table="reviews"
         integer :expectedVersion nullable
       validate
         check :pending [
-          that=async ({ input, tx }) => (await submittedVersionsOf(tx, input.submission)).state === :pending
+          that=async ({ input }) => (await submittedVersionsOf(input.submission)).state === :pending
           code="submission.pending"
           message="the submission is not pending"
         ]
         check :versionMatches [
-          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(tx, input.submission)).current
+          that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(input.submission)).current
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(tx, input.submission)).current })
+          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(input.submission)).current })
         ]
       do
         set
           &decision=:return
           &reasons=({ input }) => input.reasons
           &reviewer=({ actor }) => actor.id
-          &ruleApplied=({ tx }) => reviewerRuleOf(tx, &submission.taskId)
-        run [after=:write] ({ self, context, actions }) {
-          const submission = await actions.settleSubmission({ id: self.submissionId, outcome: :returned }, { ...context, system: true });
-          await actions.touchTask({ id: submission.taskId }, { ...context, system: true });
+          &ruleApplied=async ({}) => await reviewerRuleOf(&submission.taskId)
+        run [after=:write] ({ self, context }) {
+          const submission = await Submission.settle({ id: self.submissionId, outcome: :returned }, { ...context, system: true });
+          await Task.touch({ id: submission.taskId }, { ...context, system: true });
         }
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&accept, &return]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&accept, &return]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :reviewReviewer actions=[&accept, &return]
-      authorize-if=({ input, actor, context, tx }) => isSystem(context) || reviewsSubmissionOf(tx, input.submission, actor.id)
+      authorize-if=async ({ input, actor, context }) => isSystem(context) || await reviewsSubmissionOf(input.submission, actor.id)

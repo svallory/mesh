@@ -39,27 +39,27 @@ entity :Attempt table="attempts"
         // (`runs/checks/reporter.ex:35-41`) refuses a caller that holds no live claim on the run's Task, and the rule
         // (`runs/attempt/rules.ex:15-30`) still runs on a call made as `system`, which every policy admits.
         check :claimer [
-          that=({ input, actor, tx }) => claimerOf(tx, input.run, actor.id, now())
+          that=async ({ input, actor }) => await claimerOf(input.run, actor.id, now())
           code="attempt.claimer"
           message="the claim on the task is no longer the actor's; claim it again to report"
         ]
         check :runRunning [
-          that=({ input, tx }) => runRunningOf(tx, input.run)
+          that=async ({ input }) => await runRunningOf(input.run)
           code="attempt.run-running"
           message="the run is not running"
         ]
         check :stepIdle [
-          that=({ input, tx }) => stepIdleOf(tx, input.run, input.step ?? &step)
+          that=async ({ input }) => await stepIdleOf(input.run, input.step ?? &step)
           code="attempt.step-idle"
           message="an attempt of this step is already running"
         ]
         check :session [
-          that=async ({ input, tx }) => input.session == null || (await tx.readSessionReference({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0
+          that=async ({ input }) => input.session == null || (await privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0
           code="attempt.session"
           message="the session reference does not exist"
         ]
         check :machineRetired [
-          that=async ({ input, tx }) => input.machine == null || await machineActiveOf(tx, input.machine)
+          that=async ({ input }) => input.machine == null || await machineActiveOf(input.machine)
           code="machine.retired"
           message="the machine is retired; report the host by a new name"
         ]
@@ -89,10 +89,10 @@ entity :Attempt table="attempts"
           message="only a failed attempt reports an error"
         ]
         check :evidence [
-          that=async ({ input, tx }) => (await missingEvidenceOf(tx, input.evidence ?? [])).length === 0
+          that=async ({ input }) => (await missingEvidenceOf(input.evidence ?? [])).length === 0
           code="attempt.evidence"
           message="an evidence reference does not exist"
-          details=async ({ input, tx }) => ({ missing: await missingEvidenceOf(tx, input.evidence ?? []) })
+          details=async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) })
         ]
         check :versionMatches [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
@@ -106,10 +106,10 @@ entity :Attempt table="attempts"
           &endedAt=() => now()
           &outcome=({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })
           &version=() => &version + 1
-        run [after=:write] ({ self, input, context, tx, actions }) {
-          const [run] = await tx.readRun({ filter: { id: { eq: self.runId } } });
+        run [after=:write] ({ self, input, context }) {
+          const [run] = await privileged(Run).read({ filter: { id: { eq: self.runId } } });
           if (run && settlesRun(run.state, input.result, input.error))
-            await actions.settleRun({ id: run.id, result: input.result, outcome: self.outcome }, { ...context, system: true });
+            await Run.settle({ id: run.id, result: input.result, outcome: self.outcome }, { ...context, system: true });
         }
     update :reportStopped
       input
@@ -159,11 +159,11 @@ entity :Attempt table="attempts"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&start]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&start]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
     // `start`'s rule `attempt.claimer` repeats this check for a call made as `system`.
     policy :attemptClaimer actions=[&start]
-      authorize-if=({ input, actor, context, tx }) => isSystem(context) || claimerOf(tx, input.run, actor.id, now())
+      authorize-if=async ({ input, actor, context }) => isSystem(context) || await claimerOf(input.run, actor.id, now())
     policy :attemptPerformer actions=[&finish, &reportStopped, &abandon]
       authorize-if=({ self, actor, context }) => isSystem(context) || self.performerId === actor.id

@@ -3,6 +3,7 @@
 // Mesh's own imports carry a `$` so that no entity name can shadow them.
 
 import {
+  NO_FRAME as $NO_FRAME,
   authorizer as $authorizer,
   castInput as $castInput,
   entity as $entity,
@@ -13,10 +14,14 @@ import {
   recordWrite as $recordWrite,
   runAction as $runAction,
   scope as $scope,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Row as $Row,
 } from "@meshfw/runtime";
@@ -35,10 +40,14 @@ import { expressions as $expressions } from "./event.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Event)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindEventReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
       input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
@@ -48,7 +57,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
       cast?: $CastOutput<typeof readEventInput>,
     ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readEventInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.events, {
@@ -66,6 +75,7 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? EventWith<EventLoadNames<L>>[] : never;
       });
     },
@@ -73,11 +83,15 @@ export function bindEventReads(layer: $DataLayer, options: $BindOptions = {}) {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compose?: $Composer) {
-  const $reads = bindEventReads(layer, options);
+export function bindEvent(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindEventReads(layer, options, frame);
   return Object.freeze({
     async record(input: RecordEventInput, ...[context]: $ContextArgument): Promise<Event> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -117,41 +131,42 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
         { entity: "audit.Event", action: "record" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            type: parsed.type,
-            schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
-            workspaceId: parsed.workspaceId,
-            recordType: parsed.recordType,
-            recordId: parsed.recordId,
-            recordVersion: parsed.recordVersion,
-            actor: parsed.actor,
-            caller: parsed.caller,
-            occurredAt: parsed.occurredAt,
-            recordedAt: $now,
-            cause: parsed.cause === undefined ? null : parsed.cause,
-            checks: parsed.checks === undefined ? null : parsed.checks,
-            payload: parsed.payload === undefined ? null : parsed.payload,
-            taskId: parsed.task === undefined ? null : parsed.task,
-          };
-          // data layer
-          const $stored = await tx.insert(tables.events, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "audit.Event", action: "record" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Event;
-        },
+        (tx) =>
+          frame.within(tx, $clock, "audit.Event#record", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              type: parsed.type,
+              schemaVersion: parsed.schemaVersion === undefined ? 1 : parsed.schemaVersion,
+              workspaceId: parsed.workspaceId,
+              recordType: parsed.recordType,
+              recordId: parsed.recordId,
+              recordVersion: parsed.recordVersion,
+              actor: parsed.actor,
+              caller: parsed.caller,
+              occurredAt: parsed.occurredAt,
+              recordedAt: $now,
+              cause: parsed.cause === undefined ? null : parsed.cause,
+              checks: parsed.checks === undefined ? null : parsed.checks,
+              payload: parsed.payload === undefined ? null : parsed.payload,
+              taskId: parsed.task === undefined ? null : parsed.task,
+            };
+            // data layer
+            const $stored = await tx.insert(tables.events, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "audit.Event", action: "record" },
+              null,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Event;
+          }),
       );
     },
 
@@ -159,26 +174,31 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
       input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readEventInput, input);
       if (
-        !(await $authorizer("audit.Event", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "audit.Event",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -200,18 +220,62 @@ export function bindEvent(layer: $DataLayer, options: $BindOptions = {}, _compos
  * The entity value (CMP-16): `Event.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("audit.Event", bindEvent, bindEventReads, ($call) => ({
-  record(input: RecordEventInput, ...context: $ContextArgument): Promise<Event> {
-    return $call("record", input, context);
-  },
+const $entityValue = $entity(
+  "audit.Event",
+  bindEvent,
+  bindEventReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    record(input: RecordEventInput, ...context: $ContextArgument): Promise<Event> {
+      return $call("record", input, context);
+    },
 
-  read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
-    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+      input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Event };
 /** The record type, under the entity value's name. */
 export type Event = $Record;
+
+/** What `privileged(Event)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? EventWith<EventLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+    input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Event> & Pick<$DeepReadonly<EventLoadable>, EventLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    record(input: RecordEventInput, ...context: $ContextArgument): Promise<$DeepReadonly<Event>>;
+    read<const L extends readonly (keyof EventLoadable)[] = readonly []>(
+      input: Omit<ReadEventInput, "load"> & EventLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Event> & Pick<$DeepReadonly<EventLoadable>, EventLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
@@ -23,10 +23,14 @@ import {
   scope as $scope,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -38,6 +42,7 @@ import type {
   AssignmentLoadNames,
   AssignmentLoadArg,
   AssignmentLoadable,
+  AssignmentTxLoadable,
   StartAssignmentInput,
   FinishAssignmentInput,
   ReadAssignmentInput,
@@ -56,10 +61,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Assignment)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindAssignmentReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
       input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
@@ -69,7 +78,7 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
       cast?: $CastOutput<typeof readAssignmentInput>,
     ): Promise<L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readAssignmentInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.assignments, {
@@ -89,6 +98,7 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never;
       });
     },
@@ -96,11 +106,15 @@ export function bindAssignmentReads(layer: $DataLayer, options: $BindOptions = {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindAssignmentReads(layer, options);
+export function bindAssignment(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindAssignmentReads(layer, options, frame);
   return Object.freeze({
     async start(input: StartAssignmentInput, ...[context]: $ContextArgument): Promise<Assignment> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -140,75 +154,75 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.Assignment", action: "start" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            reviewWaived: false,
-            endedAt: null,
-            endReason: null,
-          };
-          const $record: $Row = {
-            ...$changes,
-            startedAt: null,
-            taskId: null,
-            assigneeId: null,
-            delegatorId: null,
-          };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Assignment", $record, "action function"),
-            "work.Assignment#start",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "work.Assignment#start", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              reviewWaived: false,
+              endedAt: null,
+              endReason: null,
+            };
+            const $record: $Row = {
+              ...$changes,
+              startedAt: null,
+              taskId: null,
+              assigneeId: null,
+              delegatorId: null,
+            };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Assignment", $record, "action function"),
+              "work.Assignment#start",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Assignment#start"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<StartAssignmentInput>;
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            if (parsed.assignee !== undefined)
+              $changes.assigneeId = $record.assigneeId = parsed.assignee;
+            if (parsed.reviewWaived !== undefined)
+              $changes.reviewWaived = $record.reviewWaived = parsed.reviewWaived;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Assignment#start"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "work.Assignment#start", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<StartAssignmentInput>;
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-          if (parsed.assignee !== undefined)
-            $changes.assigneeId = $record.assigneeId = parsed.assignee;
-          if (parsed.reviewWaived !== undefined)
-            $changes.reviewWaived = $record.reviewWaived = parsed.reviewWaived;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["start.step.0.set.delegator"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &delegator (src/domain/work/assignment.mesh.mx:23:22) produced no value, and the relationship delegator is required",
-              );
-            $changes.delegatorId = $record.delegatorId = $value;
-          }
-          {
-            const $value = await $expressions["start.step.0.set.startedAt"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &startedAt (src/domain/work/assignment.mesh.mx:24:22) produced no value, and startedAt is required",
-              );
-            $changes.startedAt = $record.startedAt = $value;
-          }
-          // data layer
-          const $stored = await tx.insert(tables.assignments, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Assignment", action: "start" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Assignment;
-        },
+              const $value = await $expressions["start.step.0.set.delegator"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &delegator (src/domain/work/assignment.mesh.mx:23:22) produced no value, and the relationship delegator is required",
+                );
+              $changes.delegatorId = $record.delegatorId = $value;
+            }
+            {
+              const $value = await $expressions["start.step.0.set.startedAt"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &startedAt (src/domain/work/assignment.mesh.mx:24:22) produced no value, and startedAt is required",
+                );
+              $changes.startedAt = $record.startedAt = $value;
+            }
+            // data layer
+            const $stored = await tx.insert(tables.assignments, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Assignment", action: "start" },
+              null,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Assignment;
+          }),
       );
     },
 
@@ -253,78 +267,78 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.Assignment", action: "finish" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.assignments, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Assignment", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Assignment", $record, "action function"),
-            "work.Assignment#finish",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "work.Assignment#finish", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.assignments, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Assignment", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Assignment", $record, "action function"),
+              "work.Assignment#finish",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Assignment#finish"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Assignment", $before, "before"),
+                  "work.Assignment#finish",
+                ) as unknown as Assignment,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<FinishAssignmentInput>;
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "current",
+              code: "assignment.current",
+              message: "the assignment has already ended",
+              source: { file: "src/domain/work/assignment.mesh.mx", line: 29, column: 9 },
+              that: $expressions["finish.check.current.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Assignment#finish"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Assignment", $before, "before"),
-                "work.Assignment#finish",
-              ) as unknown as Assignment,
-              ...$composed(compose, tx, context, "work.Assignment#finish", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<FinishAssignmentInput>;
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "current",
-            code: "assignment.current",
-            message: "the assignment has already ended",
-            source: { file: "src/domain/work/assignment.mesh.mx", line: 29, column: 9 },
-            that: $expressions["finish.check.current.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["finish.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["finish.step.0.set.endReason"]($s);
-            $changes.endReason = $record.endReason = $value === undefined ? null : $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.assignments,
-            $key,
-            $before,
-            "work.Assignment#finish",
-          );
-          const $stored = await tx.updateByKey(tables.assignments, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Assignment", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Assignment", action: "finish" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Assignment;
-        },
+              const $value = await $expressions["finish.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["finish.step.0.set.endReason"]($s);
+              $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.assignments,
+              $key,
+              $before,
+              "work.Assignment#finish",
+            );
+            const $stored = await tx.updateByKey(tables.assignments, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Assignment", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Assignment", action: "finish" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Assignment;
+          }),
       );
     },
 
@@ -332,26 +346,31 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
       input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readAssignmentInput, input);
       if (
-        !(await $authorizer("work.Assignment", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "work.Assignment",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -381,22 +400,75 @@ export function bindAssignment(layer: $DataLayer, options: $BindOptions = {}, co
  * The entity value (CMP-16): `Assignment.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("work.Assignment", bindAssignment, bindAssignmentReads, ($call) => ({
-  start(input: StartAssignmentInput, ...context: $ContextArgument): Promise<Assignment> {
-    return $call("start", input, context);
-  },
+const $entityValue = $entity(
+  "work.Assignment",
+  bindAssignment,
+  bindAssignmentReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    start(input: StartAssignmentInput, ...context: $ContextArgument): Promise<Assignment> {
+      return $call("start", input, context);
+    },
 
-  finish(input: FinishAssignmentInput, ...context: $ContextArgument): Promise<Assignment> {
-    return $call("finish", input, context);
-  },
+    finish(input: FinishAssignmentInput, ...context: $ContextArgument): Promise<Assignment> {
+      return $call("finish", input, context);
+    },
 
-  read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
-    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+      input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? AssignmentWith<AssignmentLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Assignment };
 /** The record type, under the entity value's name. */
 export type Assignment = $Record;
+
+/** What `privileged(Assignment)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+    input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Assignment> &
+          Pick<$DeepReadonly<AssignmentTxLoadable>, AssignmentLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    start(
+      input: StartAssignmentInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Assignment>>;
+    finish(
+      input: FinishAssignmentInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Assignment>>;
+    read<const L extends readonly (keyof AssignmentLoadable)[] = readonly []>(
+      input: Omit<ReadAssignmentInput, "load"> & AssignmentLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Assignment> &
+            Pick<$DeepReadonly<AssignmentLoadable>, AssignmentLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

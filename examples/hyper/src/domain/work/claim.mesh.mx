@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Assignment } from "./assignment.mesh.mx"
 import { assigneeMayClaimOf, derivedStateOf, leaseEnd, readinessOf, revokesClaimOf, taskVersionOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 
@@ -24,31 +25,31 @@ entity :Claim table="claims"
         integer :expectedVersion nullable
       validate
         check :taskReady [
-          that=async ({ input, tx }) => (await derivedStateOf(tx, input.task)) === :ready
+          that=async ({ input }) => (await derivedStateOf(input.task)) === :ready
           code="claim.task-ready"
           message="the task is not ready to claim"
-          details=({ input, tx }) => readinessOf(tx, input.task)
+          details=async ({ input }) => await readinessOf(input.task)
         ]
         check :versionMatches [
-          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(tx, input.task)
+          that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(input.task)
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(tx, input.task) })
+          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(input.task) })
         ]
       do
-        run({ input, context, tx, actions }) {
-          const lapsed = await tx.readClaim({ filter: { taskId: { eq: input.task }, state: { eq: :active }, expiresAt: { lte: now() } } });
-          for (const claim of lapsed) await actions.endClaim({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
+        run({ input, context }) {
+          const lapsed = await privileged(Claim).read({ filter: { taskId: { eq: input.task }, state: { eq: :active }, expiresAt: { lte: now() } } });
+          for (const claim of lapsed) await Claim.end({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
         }
         set
           &holder=({ actor }) => actor.id
           &fence=() => (&task.maxFence ?? 0) + 1
           &acquiredAt=() => now()
           &expiresAt=() => leaseEnd(now())
-        run [after=:write] ({ self, context, tx, actions }) {
-          const open = await tx.readAssignment({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
-          if (open.length === 0) await actions.startAssignment({ task: self.taskId, assignee: self.holderId, reviewWaived: false }, { ...context, system: true });
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          const open = await privileged(Assignment).read({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
+          if (open.length === 0) await Assignment.start({ task: self.taskId, assignee: self.holderId, reviewWaived: false }, { ...context, system: true });
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :renew
       input
@@ -80,8 +81,8 @@ entity :Claim table="claims"
       do
         set
           &expiresAt=() => leaseEnd(now())
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :release
       input
@@ -116,8 +117,8 @@ entity :Claim table="claims"
           &state=:released
           &endedAt=() => now()
           &endReason=({ input }) => input.reason ?? "released"
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :revoke
       input
@@ -140,8 +141,8 @@ entity :Claim table="claims"
           &state=:revoked
           &endedAt=() => now()
           &endReason=({ input }) => input.reason
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :expire
       input
@@ -157,8 +158,8 @@ entity :Claim table="claims"
           &state=:expired
           &endedAt=() => now()
           &endReason=({ input }) => input.reason ?? "lease expired"
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :end
       input
@@ -179,14 +180,14 @@ entity :Claim table="claims"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&acquire, &renew, &release, &revoke]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&acquire, &renew, &release, &revoke]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :claimAssignee actions=[&acquire]
-      authorize-if=({ input, actor, context, tx }) => isSystem(context) || assigneeMayClaimOf(tx, input.task, actor.id)
+      authorize-if=async ({ input, actor, context }) => isSystem(context) || await assigneeMayClaimOf(input.task, actor.id)
     policy :claimHolder actions=[&renew, &release]
       authorize-if=({ self, actor, context }) => isSystem(context) || self.holderId === actor.id
     policy :claimRevoker actions=[&revoke]
-      authorize-if=({ self, actor, context, tx }) => isSystem(context) || revokesClaimOf(tx, self.taskId, actor.id)
+      authorize-if=async ({ self, actor, context }) => isSystem(context) || await revokesClaimOf(self.taskId, actor.id)
     policy :internal actions=[&expire, &end]
       authorize-if=({ context }) => isSystem(context)

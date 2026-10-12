@@ -67,14 +67,14 @@ export type SessionReferenceLoadable = {
 export type SessionReferenceWith<N extends keyof SessionReferenceLoadable> = SessionReference &
   Pick<SessionReferenceLoadable, N>;
 
-/** What a load through `tx` attaches to a SessionReference: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a SessionReference: it runs no policy, so every related record the key names is there. */
 export type SessionReferenceTxLoadable = {
   machine: Machine;
   agentProfile: Collaborator;
   recordedBy: Collaborator;
 };
 
-/** A SessionReference loaded through `tx`, with the relationships and computed fields named in N. */
+/** A SessionReference loaded through `privileged`, with the relationships and computed fields named in N. */
 export type SessionReferenceTxWith<N extends keyof SessionReferenceLoadable> = SessionReference &
   Pick<SessionReferenceTxLoadable, N>;
 

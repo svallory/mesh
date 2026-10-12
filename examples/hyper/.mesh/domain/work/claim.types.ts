@@ -77,14 +77,14 @@ export type ClaimLoadable = {
 /** A Claim with the relationships and computed fields named in N loaded. */
 export type ClaimWith<N extends keyof ClaimLoadable> = Claim & Pick<ClaimLoadable, N>;
 
-/** What a load through `tx` attaches to a Claim: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a Claim: it runs no policy, so every related record the key names is there. */
 export type ClaimTxLoadable = {
   task: Task;
   holder: Collaborator;
   lapsed: boolean;
 };
 
-/** A Claim loaded through `tx`, with the relationships and computed fields named in N. */
+/** A Claim loaded through `privileged`, with the relationships and computed fields named in N. */
 export type ClaimTxWith<N extends keyof ClaimLoadable> = Claim & Pick<ClaimTxLoadable, N>;
 
 /** The names a `load` tuple lists; none for a list that does not say which (a widened array), so nothing reads as loaded that was not. */

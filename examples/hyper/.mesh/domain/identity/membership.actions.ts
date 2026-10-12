@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
@@ -23,10 +23,14 @@ import {
   scope as $scope,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -38,6 +42,7 @@ import type {
   MembershipLoadNames,
   MembershipLoadArg,
   MembershipLoadable,
+  MembershipTxLoadable,
   GrantMembershipInput,
   ChangeRoleMembershipInput,
   RevokeMembershipInput,
@@ -58,10 +63,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Membership)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindMembershipReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
       input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
@@ -71,7 +80,7 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
       cast?: $CastOutput<typeof readMembershipInput>,
     ): Promise<L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readMembershipInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.memberships, {
@@ -91,6 +100,7 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never;
       });
     },
@@ -98,11 +108,15 @@ export function bindMembershipReads(layer: $DataLayer, options: $BindOptions = {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindMembershipReads(layer, options);
+export function bindMembership(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindMembershipReads(layer, options, frame);
   return Object.freeze({
     async grant(input: GrantMembershipInput, ...[context]: $ContextArgument): Promise<Membership> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -118,7 +132,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -131,7 +145,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -155,94 +169,94 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "identity.Membership", action: "grant" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            state: "active",
-            revokedAt: null,
-            version: 1,
-            revokedById: null,
-          };
-          const $record: $Row = {
-            ...$changes,
-            role: null,
-            grantedAt: null,
-            collaboratorId: null,
-            grantedById: null,
-          };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "identity.Membership", $record, "action function"),
-            "identity.Membership#grant",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "identity.Membership#grant", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              state: "active",
+              revokedAt: null,
+              version: 1,
+              revokedById: null,
+            };
+            const $record: $Row = {
+              ...$changes,
+              role: null,
+              grantedAt: null,
+              collaboratorId: null,
+              grantedById: null,
+            };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "identity.Membership", $record, "action function"),
+              "identity.Membership#grant",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "identity.Membership#grant"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<GrantMembershipInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "collaboratorActive",
+              code: "collaborator.active",
+              message: "the collaborator is retired",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 22, column: 9 },
+              that: $expressions["grant.check.collaboratorActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "noneActive",
+              code: "membership.none-active",
+              message: "the collaborator already has an active membership; change its role instead",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 27, column: 9 },
+              that: $expressions["grant.check.noneActive.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.collaborator !== undefined)
+              $changes.collaboratorId = $record.collaboratorId = parsed.collaborator;
+            if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "identity.Membership#grant"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "identity.Membership#grant", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<GrantMembershipInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "collaboratorActive",
-            code: "collaborator.active",
-            message: "the collaborator is retired",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 22, column: 9 },
-            that: $expressions["grant.check.collaboratorActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "noneActive",
-            code: "membership.none-active",
-            message: "the collaborator already has an active membership; change its role instead",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 27, column: 9 },
-            that: $expressions["grant.check.noneActive.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.collaborator !== undefined)
-            $changes.collaboratorId = $record.collaboratorId = parsed.collaborator;
-          if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &grantedAt (src/domain/identity/membership.mesh.mx:34:22) produced no value, and grantedAt is required",
-              );
-            $changes.grantedAt = $record.grantedAt = $value;
-          }
-          {
-            const $value = await $expressions["grant.step.0.set.grantedBy"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &grantedBy (src/domain/identity/membership.mesh.mx:35:22) produced no value, and the relationship grantedBy is required",
-              );
-            $changes.grantedById = $record.grantedById = $value;
-          }
-          // data layer
-          const $stored = await tx.insert(tables.memberships, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "identity.Membership", action: "grant" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Membership;
-        },
+              const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &grantedAt (src/domain/identity/membership.mesh.mx:34:22) produced no value, and grantedAt is required",
+                );
+              $changes.grantedAt = $record.grantedAt = $value;
+            }
+            {
+              const $value = await $expressions["grant.step.0.set.grantedBy"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &grantedBy (src/domain/identity/membership.mesh.mx:35:22) produced no value, and the relationship grantedBy is required",
+                );
+              $changes.grantedById = $record.grantedById = $value;
+            }
+            // data layer
+            const $stored = await tx.insert(tables.memberships, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "identity.Membership", action: "grant" },
+              null,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Membership;
+          }),
       );
     },
 
@@ -263,7 +277,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -276,7 +290,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -300,104 +314,104 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "identity.Membership", action: "changeRole" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
-          if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "identity.Membership", $record, "action function"),
-            "identity.Membership#changeRole",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "identity.Membership#changeRole", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
+            if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "identity.Membership", $record, "action function"),
+              "identity.Membership#changeRole",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "identity.Membership#changeRole"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "identity.Membership", $before, "before"),
+                  "identity.Membership#changeRole",
+                ) as unknown as Membership,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<ChangeRoleMembershipInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "membershipActive",
+              code: "membership.active",
+              message: "the membership is revoked",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 41, column: 9 },
+              that: $expressions["changeRole.check.membershipActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "roleChanges",
+              code: "membership.unchanged",
+              message: "the member already has that role",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 46, column: 9 },
+              that: $expressions["changeRole.check.roleChanges.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "lastOwner",
+              code: "membership.last-owner",
+              message: "the workspace would have no owner; grant another owner first",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 51, column: 9 },
+              that: $expressions["changeRole.check.lastOwner.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 56, column: 9 },
+              that: $expressions["changeRole.check.versionMatches.that"],
+              details: $expressions["changeRole.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "identity.Membership#changeRole"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "identity.Membership", $before, "before"),
-                "identity.Membership#changeRole",
-              ) as unknown as Membership,
-              ...$composed(compose, tx, context, "identity.Membership#changeRole", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<ChangeRoleMembershipInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "membershipActive",
-            code: "membership.active",
-            message: "the membership is revoked",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 41, column: 9 },
-            that: $expressions["changeRole.check.membershipActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "roleChanges",
-            code: "membership.unchanged",
-            message: "the member already has that role",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 46, column: 9 },
-            that: $expressions["changeRole.check.roleChanges.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "lastOwner",
-            code: "membership.last-owner",
-            message: "the workspace would have no owner; grant another owner first",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 51, column: 9 },
-            that: $expressions["changeRole.check.lastOwner.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 56, column: 9 },
-            that: $expressions["changeRole.check.versionMatches.that"],
-            details: $expressions["changeRole.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.role !== undefined) $changes.role = $record.role = parsed.role;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["changeRole.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/identity/membership.mesh.mx:64:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.memberships,
-            $key,
-            $before,
-            "identity.Membership#changeRole",
-          );
-          const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "identity.Membership", action: "changeRole" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Membership;
-        },
+              const $value = await $expressions["changeRole.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/identity/membership.mesh.mx:64:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.memberships,
+              $key,
+              $before,
+              "identity.Membership#changeRole",
+            );
+            const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "identity.Membership", action: "changeRole" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Membership;
+          }),
       );
     },
 
@@ -418,7 +432,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -431,7 +445,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -455,104 +469,104 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "identity.Membership", action: "revoke" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
-          if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "identity.Membership", $record, "action function"),
-            "identity.Membership#revoke",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "identity.Membership#revoke", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.memberships, $key);
+            if ($before === undefined) throw new $NotFoundError("identity.Membership", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "identity.Membership", $record, "action function"),
+              "identity.Membership#revoke",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "identity.Membership#revoke"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "identity.Membership", $before, "before"),
+                  "identity.Membership#revoke",
+                ) as unknown as Membership,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<RevokeMembershipInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "membershipActive",
+              code: "membership.active",
+              message: "the membership is revoked",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 70, column: 9 },
+              that: $expressions["revoke.check.membershipActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "lastOwner",
+              code: "membership.last-owner",
+              message: "the workspace would have no owner; grant another owner first",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 75, column: 9 },
+              that: $expressions["revoke.check.lastOwner.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 80, column: 9 },
+              that: $expressions["revoke.check.versionMatches.that"],
+              details: $expressions["revoke.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "revoked";
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "identity.Membership#revoke"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "identity.Membership", $before, "before"),
-                "identity.Membership#revoke",
-              ) as unknown as Membership,
-              ...$composed(compose, tx, context, "identity.Membership#revoke", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<RevokeMembershipInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "membershipActive",
-            code: "membership.active",
-            message: "the membership is revoked",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 70, column: 9 },
-            that: $expressions["revoke.check.membershipActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "lastOwner",
-            code: "membership.last-owner",
-            message: "the workspace would have no owner; grant another owner first",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 75, column: 9 },
-            that: $expressions["revoke.check.lastOwner.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/identity/membership.mesh.mx", line: 80, column: 9 },
-            that: $expressions["revoke.check.versionMatches.that"],
-            details: $expressions["revoke.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "revoked";
-          {
-            const $value = await $expressions["revoke.step.0.set.revokedAt"]($s);
-            $changes.revokedAt = $record.revokedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["revoke.step.0.set.revokedBy"]($s);
-            $changes.revokedById = $record.revokedById = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["revoke.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/identity/membership.mesh.mx:91:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.memberships,
-            $key,
-            $before,
-            "identity.Membership#revoke",
-          );
-          const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "identity.Membership", action: "revoke" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Membership;
-        },
+              const $value = await $expressions["revoke.step.0.set.revokedAt"]($s);
+              $changes.revokedAt = $record.revokedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["revoke.step.0.set.revokedBy"]($s);
+              $changes.revokedById = $record.revokedById = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["revoke.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/identity/membership.mesh.mx:91:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.memberships,
+              $key,
+              $before,
+              "identity.Membership#revoke",
+            );
+            const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "identity.Membership", action: "revoke" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Membership;
+          }),
       );
     },
 
@@ -560,26 +574,31 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
       input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? MembershipWith<MembershipLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readMembershipInput, input);
       if (
-        !(await $authorizer("identity.Membership", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "identity.Membership",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -612,7 +631,7 @@ export function bindMembership(layer: $DataLayer, options: $BindOptions = {}, co
 const $entityValue = $entity(
   "identity.Membership",
   bindMembership,
-  bindMembershipReads,
+  bindMembershipReads as $EntityReadsBind<$Privileged>,
   ($call) => ({
     grant(input: GrantMembershipInput, ...context: $ContextArgument): Promise<Membership> {
       return $call("grant", input, context);
@@ -640,3 +659,55 @@ const $entityValue = $entity(
 export { $entityValue as Membership };
 /** The record type, under the entity value's name. */
 export type Membership = $Record;
+
+/** What `privileged(Membership)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+    input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+    input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Membership> &
+          Pick<$DeepReadonly<MembershipTxLoadable>, MembershipLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    grant(
+      input: GrantMembershipInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Membership>>;
+    changeRole(
+      input: ChangeRoleMembershipInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Membership>>;
+    revoke(
+      input: RevokeMembershipInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<Membership>>;
+    read<const L extends readonly (keyof MembershipLoadable)[] = readonly []>(
+      input: Omit<ReadMembershipInput, "load"> & MembershipLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Membership> &
+            Pick<$DeepReadonly<MembershipLoadable>, MembershipLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

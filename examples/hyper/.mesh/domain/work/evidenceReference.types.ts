@@ -44,12 +44,12 @@ export type EvidenceReferenceLoadable = {
 export type EvidenceReferenceWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
   Pick<EvidenceReferenceLoadable, N>;
 
-/** What a load through `tx` attaches to a EvidenceReference: it runs no policy, so every related record the key names is there. */
+/** What a load through `privileged` attaches to a EvidenceReference: it runs no policy, so every related record the key names is there. */
 export type EvidenceReferenceTxLoadable = {
   recordedBy: Collaborator;
 };
 
-/** A EvidenceReference loaded through `tx`, with the relationships and computed fields named in N. */
+/** A EvidenceReference loaded through `privileged`, with the relationships and computed fields named in N. */
 export type EvidenceReferenceTxWith<N extends keyof EvidenceReferenceLoadable> = EvidenceReference &
   Pick<EvidenceReferenceTxLoadable, N>;
 

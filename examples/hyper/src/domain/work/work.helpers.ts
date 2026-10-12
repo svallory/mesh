@@ -1,12 +1,10 @@
 // Helpers for the work entity files and the work functions. The pure ones take values (rows already read, ids, a
-// time) and never the model; the ones whose names end in `Of` read through `tx`, the reads of the running
-// transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
+// time) and never the model; the ones whose names end in `Of` read through `privileged`, which runs the entity's
+// reads with no policy inside the running transaction, and hand what they read to a pure one. Each names the Hyper rule or change it follows.
+import { privileged } from "#mesh";
+import { Assignment, Claim, Completion, Dependency, EvidenceReference, Submission, Task } from "#mesh/domain/work";
 import { FrameworkError, NotFoundError } from "@meshfw/runtime";
-import type { ReadOnlyReads } from "#mesh";
 import { roleOf } from "../identity/identity.helpers";
-
-/** The reads of the running transaction, as an entity file's `tx` or an application transaction's `tx` hands them over. */
-export type Reads = ReadOnlyReads;
 
 /** The default lease (PROTOCOL.md:33, `--lease-ms`): 10 minutes. */
 export const LEASE_MS = 600_000;
@@ -177,19 +175,19 @@ export function reviewerOf(task: { readonly creatorId: string }, parent: { reado
 }
 
 /** Reads the parent and its assignments, then applies the reviewer rule. */
-export async function reviewerFor(tx: Reads, task: { readonly parentId: string | null; readonly creatorId: string }): Promise<Reviewer> {
+export async function reviewerFor(task: { readonly parentId: string | null; readonly creatorId: string }): Promise<Reviewer> {
   if (task.parentId === null) return reviewerOf(task, null);
-  const [parent] = await tx.readTask({ filter: { id: { eq: task.parentId } } });
+  const [parent] = await privileged(Task).read({ filter: { id: { eq: task.parentId } } });
   if (!parent) return reviewerOf(task, null);
-  const assignments = await tx.readAssignment({ filter: { taskId: { eq: parent.id }, endedAt: { nil: true } } });
+  const assignments = await privileged(Assignment).read({ filter: { taskId: { eq: parent.id }, endedAt: { nil: true } } });
   return reviewerOf(task, { creatorId: parent.creatorId, assignments });
 }
 
 /** Reads the Task by id, then applies the reviewer rule. */
-export async function reviewerOfTask(tx: Reads, taskId: string): Promise<Reviewer> {
-  const [task] = await tx.readTask({ filter: { id: { eq: taskId } } });
+export async function reviewerOfTask(taskId: string): Promise<Reviewer> {
+  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } } });
   if (!task) throw new Error(`Task ${taskId} not found`);
-  return reviewerFor(tx, task);
+  return reviewerFor(task);
 }
 
 /**
@@ -202,10 +200,10 @@ export function mayCompleteWithoutReview(actorId: string, reviewer: Reviewer, as
   return actorId === reviewer.collaboratorId || (current !== undefined && current.reviewWaived && current.assigneeId === actorId);
 }
 
-/** `task.review-required` read through `tx`: the reviewer of `task` and its own current assignment. */
-export async function reviewNotRequiredOf(tx: Reads, task: { readonly id: string; readonly parentId: string | null; readonly creatorId: string }, actorId: string): Promise<boolean> {
-  const reviewer = await reviewerFor(tx, task);
-  const assignments = await tx.readAssignment({ filter: { taskId: { eq: task.id }, endedAt: { nil: true } } });
+/** `task.review-required` read through `privileged`: the reviewer of `task` and its own current assignment. */
+export async function reviewNotRequiredOf(task: { readonly id: string; readonly parentId: string | null; readonly creatorId: string }, actorId: string): Promise<boolean> {
+  const reviewer = await reviewerFor(task);
+  const assignments = await privileged(Assignment).read({ filter: { taskId: { eq: task.id }, endedAt: { nil: true } } });
   return mayCompleteWithoutReview(actorId, reviewer, assignments);
 }
 
@@ -232,9 +230,9 @@ export function ownPending<S extends SubmissionFacts>(submissions: readonly S[],
  * `review.accept` has just settled as accepted and that no completion names yet. Anything else means the context
  * was forged or misrouted, which no input can cause, so it is a `FrameworkError` and the transaction rolls back.
  */
-export async function acceptedSubmissionOf(tx: Reads, taskId: string, submissionId: string): Promise<string> {
-  const [submission] = await tx.readSubmission({ filter: { id: { eq: submissionId } } });
-  const named = await tx.readCompletion({ filter: { submissionId: { eq: submissionId } }, limit: 1 });
+export async function acceptedSubmissionOf(taskId: string, submissionId: string): Promise<string> {
+  const [submission] = await privileged(Submission).read({ filter: { id: { eq: submissionId } } });
+  const named = await privileged(Completion).read({ filter: { submissionId: { eq: submissionId } }, limit: 1 });
   if (!submission || submission.taskId !== taskId || submission.state !== "accepted" || named.length > 0)
     throw new FrameworkError(`a review-accepted completion of Task ${taskId} names submission ${submissionId}, which is not an accepted submission of that Task that no completion names yet`);
   return submission.id;
@@ -263,11 +261,11 @@ export function blockReasons(prerequisites: readonly { readonly id: string; read
     : { kind: "dependency", taskId: p.id, message: `blocked: waiting for ${p.title}` });
 }
 
-/** The block reasons of the Task `taskId`, read through `tx`, in the order the dependencies were added. */
-export async function blockReasonsOf(tx: Reads, taskId: string): Promise<BlockReason[]> {
-  const dependencies = await tx.readDependency({ filter: { dependentId: { eq: taskId } }, sort: ["createdAt", "id"] });
+/** The block reasons of the Task `taskId`, read through `privileged`, in the order the dependencies were added. */
+export async function blockReasonsOf(taskId: string): Promise<BlockReason[]> {
+  const dependencies = await privileged(Dependency).read({ filter: { dependentId: { eq: taskId } }, sort: ["createdAt", "id"] });
   if (dependencies.length === 0) return [];
-  const prerequisites = await tx.readTask({ filter: { id: { in: dependencies.map((d) => d.prerequisiteId) } } });
+  const prerequisites = await privileged(Task).read({ filter: { id: { in: dependencies.map((d) => d.prerequisiteId) } } });
   const byId = new Map(prerequisites.map((task) => [task.id, task]));
   return blockReasons(dependencies.map((d) => byId.get(d.prerequisiteId)!).filter((task) => task !== undefined));
 }
@@ -277,24 +275,24 @@ export async function blockReasonsOf(tx: Reads, taskId: string): Promise<BlockRe
  * list of ids (`schemas/protocol.ts:603`); a value that is neither null nor a list is reported whole, as text, so it
  * is never stored, and so is each item of a list that is not a string.
  */
-export async function missingEvidenceOf(tx: Reads, evidence: unknown): Promise<string[]> {
+export async function missingEvidenceOf(evidence: unknown): Promise<string[]> {
   const text = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
   if (evidence === null || evidence === undefined) return [];
   if (!Array.isArray(evidence)) return [text(evidence)];
   const ids = evidence.filter((id): id is string => typeof id === "string");
   if (ids.length !== evidence.length) return evidence.filter((id) => typeof id !== "string").map(text);
   if (ids.length === 0) return [];
-  const found = new Set((await tx.readEvidenceReference({ filter: { id: { in: ids } } })).map((row) => row.id));
+  const found = new Set((await privileged(EvidenceReference).read({ filter: { id: { in: ids } } })).map((row) => row.id));
   return ids.filter((id) => !found.has(id));
 }
 
 /** `task.no-cycle` (`tasks/task/rules.ex:31-36`, `:144-158`): the new parent is neither the Task nor one of its descendants. */
-export async function noContainmentCycleOf(tx: Reads, taskId: string, parentId: string | null | undefined): Promise<boolean> {
+export async function noContainmentCycleOf(taskId: string, parentId: string | null | undefined): Promise<boolean> {
   const seen = new Set<string>();
   for (let id = parentId ?? null; id !== null && !seen.has(id);) {
     if (id === taskId) return false;
     seen.add(id);
-    const [task] = await tx.readTask({ filter: { id: { eq: id } } });
+    const [task] = await privileged(Task).read({ filter: { id: { eq: id } } });
     id = task?.parentId ?? null;
   }
   return true;
@@ -304,58 +302,58 @@ export async function noContainmentCycleOf(tx: Reads, taskId: string, parentId: 
  * `dependency.no-cycle` (`tasks/dependency/rules.ex:28-55`): breadth-first from the prerequisite over prerequisite
  * edges; a path back to the dependent would close a cycle.
  */
-export async function prerequisiteReachesOf(tx: Reads, prerequisiteId: string, dependentId: string): Promise<boolean> {
+export async function prerequisiteReachesOf(prerequisiteId: string, dependentId: string): Promise<boolean> {
   const seen = new Set<string>();
   for (let queue = [prerequisiteId]; queue.length > 0;) {
     const id = queue.shift()!;
     if (id === dependentId) return true;
     if (seen.has(id)) continue;
     seen.add(id);
-    queue = [...queue, ...(await tx.readDependency({ filter: { dependentId: { eq: id } } })).map((d) => d.prerequisiteId)];
+    queue = [...queue, ...(await privileged(Dependency).read({ filter: { dependentId: { eq: id } } })).map((d) => d.prerequisiteId)];
   }
   return false;
 }
 
 /** `dependency.exists` (`tasks/dependency/rules.ex:10-14`): the ids among `ids` that name no Task. */
-export async function missingTasksOf(tx: Reads, ids: readonly string[]): Promise<string[]> {
-  const found = new Set((await tx.readTask({ filter: { id: { in: [...ids] } } })).map((task) => task.id));
+export async function missingTasksOf(ids: readonly string[]): Promise<string[]> {
+  const found = new Set((await privileged(Task).read({ filter: { id: { in: [...ids] } } })).map((task) => task.id));
   return ids.filter((id) => !found.has(id));
 }
 
 /** The version of the Task `taskId`, or null when there is none (`dependency.exists` reports that). */
-export async function taskVersionOf(tx: Reads, taskId: string): Promise<number | null> {
-  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1 });
+export async function taskVersionOf(taskId: string): Promise<number | null> {
+  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1 });
   return task ? task.version : null;
 }
 
 /** `dependency.duplicate` (`tasks/dependency/rules.ex:19-26`). */
-export async function dependencyExistsOf(tx: Reads, dependentId: string, prerequisiteId: string): Promise<boolean> {
-  return (await tx.readDependency({ filter: { dependentId: { eq: dependentId }, prerequisiteId: { eq: prerequisiteId } }, limit: 1 })).length > 0;
+export async function dependencyExistsOf(dependentId: string, prerequisiteId: string): Promise<boolean> {
+  return (await privileged(Dependency).read({ filter: { dependentId: { eq: dependentId }, prerequisiteId: { eq: prerequisiteId } }, limit: 1 })).length > 0;
 }
 
 /** `claim.task-ready`'s details (`tasks/claim/rules.ex:36-47`): the derived state and the block reasons behind it. */
-export async function readinessOf(tx: Reads, taskId: string): Promise<{ derivedState: DerivedState | null; reasons: BlockReason[] }> {
-  return { derivedState: await derivedStateOf(tx, taskId), reasons: await blockReasonsOf(tx, taskId) };
+export async function readinessOf(taskId: string): Promise<{ derivedState: DerivedState | null; reasons: BlockReason[] }> {
+  return { derivedState: await derivedStateOf(taskId), reasons: await blockReasonsOf(taskId) };
 }
 
 // The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied
-// (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `tx`, by the id in
-// `input` (POL-08). A read through `tx` takes `load`, so the helpers below read the Task with the computed fields and
+// (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `privileged`, by the id
+// in `input` (POL-08). A privileged read takes `load`, so the helpers below read the Task with the computed fields and
 // rollups the checks need (`derivedState`, `maxFence`, `inReview`) instead of deriving them from rows.
 
 /** The Task `taskId`, or undefined when there is none. */
-export async function taskOf(tx: Reads, taskId: string) {
-  return (await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1 }))[0];
+export async function taskOf(taskId: string) {
+  return (await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1 }))[0];
 }
 
 /** `task.open` on the Task a create names (`tasks/rules.ex:13-16`): it exists and is open. */
-export async function taskOpenOf(tx: Reads, taskId: string): Promise<boolean> {
-  return (await taskOf(tx, taskId))?.state === "open";
+export async function taskOpenOf(taskId: string): Promise<boolean> {
+  return (await taskOf(taskId))?.state === "open";
 }
 
 /** `task.parent-open` (`tasks/task/rules.ex:24-33`): no parent, or an open one. */
-export async function parentOpenOf(tx: Reads, parentId: string | null): Promise<boolean> {
-  return parentId === null || await taskOpenOf(tx, parentId);
+export async function parentOpenOf(parentId: string | null): Promise<boolean> {
+  return parentId === null || await taskOpenOf(parentId);
 }
 
 /**
@@ -378,19 +376,19 @@ export function taskChanges(stored: { readonly title: string; readonly intent: s
 }
 
 /** The claims on the Task `taskId`, every state. */
-export async function claimsOf(tx: Reads, taskId: string) {
-  return tx.readClaim({ filter: { taskId: { eq: taskId } } });
+export async function claimsOf(taskId: string) {
+  return privileged(Claim).read({ filter: { taskId: { eq: taskId } } });
 }
 
-/** `claim.current-fence`'s details for the Task `taskId`, read through `tx` (`fenceDetails`). */
-export async function fenceDetailsOf(tx: Reads, taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<{ currentFence: number | null; stale: boolean }> {
-  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["maxFence", "claims"] });
+/** `claim.current-fence`'s details for the Task `taskId`, read through `privileged` (`fenceDetails`). */
+export async function fenceDetailsOf(taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<{ currentFence: number | null; stale: boolean }> {
+  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["maxFence", "claims"] });
   return fenceDetails(task?.maxFence ?? null, task?.claims ?? [], fence, actorId, now);
 }
 
 /** The Task's `inReview`: a submission of it is pending. */
-export async function inReviewOf(tx: Reads, taskId: string): Promise<boolean> {
-  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["inReview"] });
+export async function inReviewOf(taskId: string): Promise<boolean> {
+  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["inReview"] });
   return task?.inReview ?? false;
 }
 
@@ -401,8 +399,8 @@ export type DerivedState = "ready" | "blocked" | "claimed" | "in-review" | "done
  * claimed (an active claim whose lease has not run out), then blocked (a prerequisite not done), else ready. Null when
  * the Task does not exist.
  */
-export async function derivedStateOf(tx: Reads, taskId: string): Promise<DerivedState | null> {
-  const [task] = await tx.readTask({ filter: { id: { eq: taskId } }, limit: 1, load: ["derivedState"] });
+export async function derivedStateOf(taskId: string): Promise<DerivedState | null> {
+  const [task] = await privileged(Task).read({ filter: { id: { eq: taskId } }, limit: 1, load: ["derivedState"] });
   return task?.derivedState ?? null;
 }
 
@@ -416,10 +414,10 @@ export interface SubmittedVersions {
 }
 
 /** The submission `submissionId`'s state and its Task's versions, for `review.accept` and `review.return`. */
-export async function submittedVersionsOf(tx: Reads, submissionId: string): Promise<SubmittedVersions> {
-  const [submission] = await tx.readSubmission({ filter: { id: { eq: submissionId } }, limit: 1 });
+export async function submittedVersionsOf(submissionId: string): Promise<SubmittedVersions> {
+  const [submission] = await privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
   if (!submission) return { state: null, submitted: null, current: null };
-  return { state: submission.state, submitted: submission.taskVersion, current: await taskVersionOf(tx, submission.taskId) };
+  return { state: submission.state, submitted: submission.taskVersion, current: await taskVersionOf(submission.taskId) };
 }
 
 /**
@@ -432,18 +430,18 @@ export function taskUnchangedSinceSubmit(versions: SubmittedVersions): boolean {
 }
 
 /** Which part of the reviewer rule names the reviewer of the Task `taskId` (`review.accept`'s `ruleApplied`). */
-export async function reviewerRuleOf(tx: Reads, taskId: string): Promise<ReviewerRule> {
-  return (await reviewerOfTask(tx, taskId)).rule;
+export async function reviewerRuleOf(taskId: string): Promise<ReviewerRule> {
+  return (await reviewerOfTask(taskId)).rule;
 }
 
-// The work entities' policies (M8b). Each reads through `tx` inside the transaction, so it sees the locked state, and
+// The work entities' policies (M8b). Each reads through `privileged` inside the transaction, so it sees the locked state, and
 // each is the per-command rule of one of Hyper's checks; the role gate those checks start from (`Role.gate`,
 // `checks/role.ex:46-63`) is the policies `isMember` and `ownerOrMember` beside them. Unlike Hyper's checks, these deny
 // a guest or a collaborator with no membership too (fail closed); the spec accepts the extra failure (PROTOCOL.md:114).
 
-/** The Task's current assignment, read through `tx`. */
-async function currentAssignmentOf(tx: Reads, taskId: string) {
-  return currentAssignment(await tx.readAssignment({ filter: { taskId: { eq: taskId }, endedAt: { nil: true } } }));
+/** The Task's current assignment, read through `privileged`. */
+async function currentAssignmentOf(taskId: string) {
+  return currentAssignment(await privileged(Assignment).read({ filter: { taskId: { eq: taskId }, endedAt: { nil: true } } }));
 }
 
 /**
@@ -451,11 +449,11 @@ async function currentAssignmentOf(tx: Reads, taskId: string) {
  * PROTOCOL.md:251): an owner; a member who is the current assignee or delegator; with `creator` (`cancel`, `reopen`),
  * the Task's creator while it has no current assignment.
  */
-export async function managesTaskOf(tx: Reads, task: { readonly id: string; readonly creatorId: string }, actorId: string, creator: boolean): Promise<boolean> {
-  const role = await roleOf(tx, actorId);
+export async function managesTaskOf(task: { readonly id: string; readonly creatorId: string }, actorId: string, creator: boolean): Promise<boolean> {
+  const role = await roleOf(actorId);
   if (role === "owner") return true;
   if (role !== "member") return false;
-  const current = await currentAssignmentOf(tx, task.id);
+  const current = await currentAssignmentOf(task.id);
   if (current) return current.assigneeId === actorId || current.delegatorId === actorId;
   return creator && task.creatorId === actorId;
 }
@@ -468,10 +466,10 @@ export async function managesTaskOf(tx: Reads, task: { readonly id: string; read
  * passes, and `isMember` and `ownerOrMember` refuse it: it may read no Task, so a missing Task must answer exactly as
  * an existing one (PROTOCOL.md:110, `02:42`), as Hyper's `Role` policy refuses it before any rule runs.
  */
-export async function assigneeMayClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
-  if ((await roleOf(tx, actorId)) === null) return true;
-  if (!(await taskOf(tx, taskId))) throw new NotFoundError("work.Task", taskId);
-  const current = await currentAssignmentOf(tx, taskId);
+export async function assigneeMayClaimOf(taskId: string, actorId: string): Promise<boolean> {
+  if ((await roleOf(actorId)) === null) return true;
+  if (!(await taskOf(taskId))) throw new NotFoundError("work.Task", taskId);
+  const current = await currentAssignmentOf(taskId);
   return current === undefined || current.assigneeId === actorId;
 }
 
@@ -479,12 +477,12 @@ export async function assigneeMayClaimOf(tx: Reads, taskId: string, actorId: str
  * Policy `claimRevoker`, the spec's `claim.revoker` (`tasks/claim/checks/revoker.ex:11-36`, PROTOCOL.md:250): an
  * owner, or a member who is the Task's reviewer or its current delegator.
  */
-export async function revokesClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
-  const role = await roleOf(tx, actorId);
+export async function revokesClaimOf(taskId: string, actorId: string): Promise<boolean> {
+  const role = await roleOf(actorId);
   if (role === "owner") return true;
   if (role !== "member") return false;
-  if ((await reviewerOfTask(tx, taskId)).collaboratorId === actorId) return true;
-  return (await currentAssignmentOf(tx, taskId))?.delegatorId === actorId;
+  if ((await reviewerOfTask(taskId)).collaboratorId === actorId) return true;
+  return (await currentAssignmentOf(taskId))?.delegatorId === actorId;
 }
 
 /**
@@ -492,9 +490,9 @@ export async function revokesClaimOf(tx: Reads, taskId: string, actorId: string)
  * is refused while someone else holds the Task's live claim. With a fence, the fence rules decide. Hyper's engine has
  * no such check (it answers `claim.current-fence`); the port follows the spec (decision POL-20).
  */
-export async function noOtherHolderOf(tx: Reads, taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<boolean> {
+export async function noOtherHolderOf(taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<boolean> {
   if (fence !== null && fence !== undefined) return true;
-  const live = liveClaim(await claimsOf(tx, taskId), now);
+  const live = liveClaim(await claimsOf(taskId), now);
   return live === undefined || live.holderId === actorId;
 }
 
@@ -503,9 +501,9 @@ export async function noOtherHolderOf(tx: Reads, taskId: string, fence: number |
  * who never held a claim on the Task is refused. A Task that does not exist passes, and the content checks report it
  * (`task.open`). Hyper's engine has no such check; the port follows the spec (decision POL-20).
  */
-export async function heldAClaimOf(tx: Reads, taskId: string, actorId: string): Promise<boolean> {
-  if ((await claimsOf(tx, taskId)).some((claim) => claim.holderId === actorId)) return true;
-  return (await taskOf(tx, taskId)) === undefined;
+export async function heldAClaimOf(taskId: string, actorId: string): Promise<boolean> {
+  if ((await claimsOf(taskId)).some((claim) => claim.holderId === actorId)) return true;
+  return (await taskOf(taskId)) === undefined;
 }
 
 /**
@@ -513,8 +511,8 @@ export async function heldAClaimOf(tx: Reads, taskId: string, actorId: string): 
  * only the collaborator the reviewer rule names reviews a submission; owners are not exempt. A submission that does
  * not exist passes, and the content checks report it.
  */
-export async function reviewsSubmissionOf(tx: Reads, submissionId: string, actorId: string): Promise<boolean> {
-  const [submission] = await tx.readSubmission({ filter: { id: { eq: submissionId } }, limit: 1 });
+export async function reviewsSubmissionOf(submissionId: string, actorId: string): Promise<boolean> {
+  const [submission] = await privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
   if (!submission) return true;
-  return (await reviewerOfTask(tx, submission.taskId)).collaboratorId === actorId;
+  return (await reviewerOfTask(submission.taskId)).collaboratorId === actorId;
 }

@@ -4,7 +4,7 @@
 // transaction, and `db` is the four by-key operations.
 import { describe, expect, spyOn, test } from "bun:test";
 import { FrameworkError, type AfterCommitEvent, type AfterWriteEvent, type BeforeTransactionEvent, type SeamDb, type Seams } from "@meshfw/runtime";
-import { bind, tables } from "#mesh";
+import { bind, privileged, tables } from "#mesh";
 import { Collaborator, Workspace } from "#mesh/domain/identity";
 import { Claim, Completion, Dependency, Review, Submission, Task } from "#mesh/domain/work";
 import { submissionSubmit } from "../src/domain/work/work.commands";
@@ -192,10 +192,10 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
         const untouched = await state(w);
         const rec = recorder({ afterWrite(_db, { input }) { if ((input as { title?: string }).title === "Never") throw boom; } });
         const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
-        const failure = await watched.transaction(async ({ actions }) => {
-          await actions.createTask({ title: "Kept" });
-          await actions.createTask({ title: "Never" }).catch(() => undefined);
-        }, as(w.alice)).then(() => undefined, (error: unknown) => error);
+        const failure = await watched.transaction(async () => {
+          await Task.create({ title: "Kept" }, as(w.alice));
+          await Task.create({ title: "Never" }, as(w.alice)).catch(() => undefined);
+        }).then(() => undefined, (error: unknown) => error);
         expect(failure).toBeInstanceOf(FrameworkError);
         expect((failure as FrameworkError).cause).toBe(boom);
         expect(await state(w)).toEqual(untouched);
@@ -204,7 +204,7 @@ describe("acceptance 3: a throw in afterWrite rolls back the whole outermost tra
     } finally { await w.db.close(); }
   });
 
-  test("a throw in a call a step made through actions rolls the whole review back", async () => {
+  test("a throw in a nested call a step made rolls the whole review back", async () => {
     const w = await world();
     try {
       await w.hyper.run(async () => {
@@ -259,13 +259,13 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
     try {
       await w.hyper.run(async () => {
         const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
-        const created = await watched.transaction(async ({ actions }) => {
-          const first = await actions.createTask({ title: "One" });
-          const second = await actions.createTask({ title: "Two" });
+        const created = await watched.transaction(async () => {
+          const first = await Task.create({ title: "One" }, as(w.alice));
+          const second = await Task.create({ title: "Two" }, as(w.alice));
           // Nothing has committed yet.
           expect(rec.commits).toEqual([]);
           return [first, second];
-        }, as(w.alice));
+        });
         expect(rec.commits).toHaveLength(1);
         expect(rec.commits[0]!.changes.map((change) => [shape(change), change.after!.id])).toEqual([["work.Task#create", created[0]!.id], ["work.Task#create", created[1]!.id]]);
         // The actions it called joined it: none ran beforeTransaction.
@@ -280,21 +280,21 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
     try {
       await w.hyper.run(async () => {
         const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
-        await watched.transaction(async ({ actions }) => {
-          await actions.createTask({ title: "Outer" });
-          await watched.transaction(async (inner) => { await inner.actions.createTask({ title: "Inner" }); }, as(w.alice));
+        await watched.transaction(async () => {
+          await Task.create({ title: "Outer" }, as(w.alice));
+          await watched.transaction(async () => { await Task.create({ title: "Inner" }, as(w.alice)); });
           expect(rec.commits).toEqual([]);
-        }, as(w.alice));
+        });
         expect(rec.commits).toHaveLength(1);
         expect(rec.commits[0]!.changes).toHaveLength(2);
-        await expect(watched.transaction(async ({ actions }) => { await actions.createTask({ title: "Lost" }); throw boom; }, as(w.alice))).rejects.toBe(boom);
-        await watched.transaction(async ({ tx }) => { await tx.readTask({}); }, as(w.alice));
+        await expect(watched.transaction(async () => { await Task.create({ title: "Lost" }, as(w.alice)); throw boom; })).rejects.toBe(boom);
+        await watched.transaction(async () => { await privileged(Task).read({}); });
         expect(rec.commits).toHaveLength(1);
         // A joined call that failed and was caught still rolls the whole transaction back: nothing is reported.
-        await expect(watched.transaction(async ({ actions }) => {
-          await actions.createTask({ title: "Kept?" });
-          await actions.createTask({} as never).catch(() => undefined);
-        }, as(w.alice))).rejects.toThrow();
+        await expect(watched.transaction(async () => {
+          await Task.create({ title: "Kept?" }, as(w.alice));
+          await Task.create({} as never, as(w.alice)).catch(() => undefined);
+        })).rejects.toThrow();
         expect(rec.commits).toHaveLength(1);
       });
     } finally { await w.db.close(); }
@@ -314,7 +314,7 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
         expect(errors.mock.calls[0]![1]).toBe(boom);
         // An asynchronous throw is the same, and so is one in the application's transaction.
         const later = bind(w.db, { clock: w.clock, seams: { async afterCommit() { await Promise.resolve(); throw boom; } } });
-        await later.transaction(async ({ actions }) => { await actions.createTask({ title: "Two" }); }, as(w.alice));
+        await later.transaction(async () => { await Task.create({ title: "Two" }, as(w.alice)); });
         expect(errors).toHaveBeenCalledTimes(2);
       });
     } finally { errors.mockRestore(); await w.db.close(); }
@@ -338,7 +338,7 @@ describe("acceptance 5: beforeTransaction runs for the call that opens the trans
     } finally { await w.db.close(); }
   });
 
-  test("it receives the validated input and the context, once for a top-level call; the calls it makes through actions run none", async () => {
+  test("it receives the validated input and the context, once for a top-level call; the nested calls it makes run none", async () => {
     const w = await world();
     try {
       await w.hyper.run(async () => {
@@ -359,7 +359,7 @@ describe("acceptance 5: beforeTransaction runs for the call that opens the trans
       await w.hyper.run(async () => {
         const rec = recorder();
         const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
-        await watched.transaction(async ({ actions }) => { await actions.createTask({ title: "Joined" }); }, as(w.alice));
+        await watched.transaction(async () => { await Task.create({ title: "Joined" }, as(w.alice)); });
         expect(rec.before).toEqual([]);
         // A call made after it, at top level, is a new transaction and runs it again.
         await watched.run(() => Task.create({ title: "Top" }, as(w.alice)));
@@ -398,13 +398,13 @@ describe("acceptance 6: the context of a call reaches the seams of every row it 
     } finally { await w.db.close(); }
   });
 
-  test("through the application's transaction, a call with no context of its own carries the transaction's", async () => {
+  test("through the application's transaction, which has no context of its own, a call carries the one it passes (TXN-20)", async () => {
     const w = await world();
     try {
       await w.hyper.run(async () => {
         const rec = recorder();
         const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
-        await watched.transaction(async ({ actions }) => { await actions.createTask({ title: "Ctx" }); }, { ...as(w.alice), commandId: "cmd-9" });
+        await watched.transaction(async () => { await Task.create({ title: "Ctx" }, { ...as(w.alice), commandId: "cmd-9" }); });
         expect(rec.writes[0]!.context).toMatchObject({ commandId: "cmd-9" });
       });
     } finally { await w.db.close(); }

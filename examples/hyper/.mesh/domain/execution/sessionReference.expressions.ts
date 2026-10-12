@@ -3,16 +3,17 @@
 
 import {
   expr as $,
+  privileged as $privileged,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
 import { machineActiveOf } from "../../../src/domain/execution/execution.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
+import {
+  Collaborator as $e$Collaborator,
+  type $ReadOnly as $t$Collaborator,
+} from "../identity/collaborator.actions";
 import type {
   SessionReference,
   SessionReferenceLoaded,
@@ -28,8 +29,6 @@ export type SessionReferenceScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<SessionReference> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type SessionReferenceStoredScope<I = unknown> = SessionReferenceScope<I> & {
@@ -67,17 +66,23 @@ export type SessionReferenceNewScope<I = unknown> = Omit<SessionReferenceCheckSc
 };
 
 export const expressions = {
-  // check :agentProfile that, plain (uses-tx) (src/domain/execution/session-reference.mesh.mx:30:16)
+  // check :agentProfile that, plain (uses-privileged) (src/domain/execution/session-reference.mesh.mx:30:16)
   "record.check.agentProfile.that": ($s: SessionReferenceNewScope<RecordSessionReferenceInput>) => {
-    return (async ({ input, tx }) =>
-      (await tx.readCollaborator({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length >
-      0)($s);
+    const privileged = $privileged;
+    const Collaborator = $e$Collaborator as unknown as $t$Collaborator;
+    return (async ({ input }) =>
+      (
+        await privileged(Collaborator).read({
+          filter: { id: { eq: input.agentProfile } },
+          limit: 1,
+        })
+      ).length > 0)($s);
   },
-  // check :machineRetired that, plain (uses-tx) (src/domain/execution/session-reference.mesh.mx:35:16)
+  // check :machineRetired that, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:35:16)
   "record.check.machineRetired.that": (
     $s: SessionReferenceNewScope<RecordSessionReferenceInput>,
   ) => {
-    return (({ input, tx }) => machineActiveOf(tx, input.machine))($s);
+    return (async ({ input }) => await machineActiveOf(input.machine))($s);
   },
   // set &recordedBy, translated (src/domain/execution/session-reference.mesh.mx:41:23)
   "record.step.0.set.recordedBy": ($s: SessionReferenceScope<RecordSessionReferenceInput>) =>
@@ -131,29 +136,31 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/execution/session-reference.mesh.mx:91:20)
   "policy.membersRead.authorize-if.0": ($s: SessionReferenceCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/execution/session-reference.mesh.mx:93:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:93:20)
   "policy.isMember.authorize-if.0": (
     $s: SessionReferenceNewScope<
       $SharedInput<RecordSessionReferenceInput | RedactSessionReferenceInput>
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/execution/session-reference.mesh.mx:95:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:95:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: SessionReferenceNewScope<RecordSessionReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/execution/session-reference.mesh.mx:97:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:97:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: SessionReferenceCheckScope<RedactSessionReferenceInput>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
+      $s,
+    );
   },
   // policy :sessionRecorder authorize-if, translated (src/domain/execution/session-reference.mesh.mx:99:20)
   "policy.sessionRecorder.authorize-if.0": (

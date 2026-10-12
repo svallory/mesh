@@ -15,10 +15,6 @@ import {
   roleIn,
 } from "../../../src/domain/identity/identity.helpers";
 import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
-import type {
   Membership,
   MembershipLoaded,
   ChangeRoleMembershipInput,
@@ -33,8 +29,6 @@ export type MembershipScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Membership> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type MembershipStoredScope<I = unknown> = MembershipScope<I> & {
@@ -61,13 +55,13 @@ export type MembershipNewScope<I = unknown> = Omit<MembershipCheckScope<I>, "sel
 };
 
 export const expressions = {
-  // check :collaboratorActive that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:23:16)
+  // check :collaboratorActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:23:16)
   "grant.check.collaboratorActive.that": ($s: MembershipNewScope<GrantMembershipInput>) => {
-    return (({ input, tx }) => collaboratorActiveOf(tx, input.collaborator))($s);
+    return (async ({ input }) => await collaboratorActiveOf(input.collaborator))($s);
   },
-  // check :noneActive that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:28:16)
+  // check :noneActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:28:16)
   "grant.check.noneActive.that": ($s: MembershipNewScope<GrantMembershipInput>) => {
-    return (({ input, tx }) => noActiveMembershipOf(tx, input.collaborator))($s);
+    return (async ({ input }) => await noActiveMembershipOf(input.collaborator))($s);
   },
   // set &grantedAt, translated (src/domain/identity/membership.mesh.mx:34:22)
   "grant.step.0.set.grantedAt": ($s: MembershipScope<GrantMembershipInput>) => $.now($s),
@@ -79,12 +73,11 @@ export const expressions = {
   // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:47:16)
   "changeRole.check.roleChanges.that": ($s: MembershipCheckScope<ChangeRoleMembershipInput>) =>
     $.ne($.coalesce($s.input?.role, $s.self.role), $s.self.role),
-  // check :lastOwner that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:52:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:52:16)
   "changeRole.check.lastOwner.that": ($s: MembershipCheckScope<ChangeRoleMembershipInput>) => {
     const { self } = $s;
-    return (({ input, tx }) =>
-      keepsAnOwnerOf(
-        tx,
+    return (async ({ input }) =>
+      await keepsAnOwnerOf(
         self.state === "active" && self.role === "owner" && (input.role ?? self.role) !== "owner",
       ))($s);
   },
@@ -107,10 +100,12 @@ export const expressions = {
   // check :membershipActive that, translated (src/domain/identity/membership.mesh.mx:71:16)
   "revoke.check.membershipActive.that": ($s: MembershipCheckScope<RevokeMembershipInput>) =>
     $.eq($s.self.state, "active"),
-  // check :lastOwner that, plain (uses-tx) (src/domain/identity/membership.mesh.mx:76:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:76:16)
   "revoke.check.lastOwner.that": ($s: MembershipCheckScope<RevokeMembershipInput>) => {
     const { self } = $s;
-    return (({ tx }) => keepsAnOwnerOf(tx, self.state === "active" && self.role === "owner"))($s);
+    return (async ({}) => await keepsAnOwnerOf(self.state === "active" && self.role === "owner"))(
+      $s,
+    );
   },
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:81:16)
   "revoke.check.versionMatches.that": ($s: MembershipCheckScope<RevokeMembershipInput>) =>
@@ -133,22 +128,24 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:94:20)
   "policy.membersRead.authorize-if.0": ($s: MembershipCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/identity/membership.mesh.mx:96:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:96:20)
   "policy.isMember.authorize-if.0": (
     $s: MembershipNewScope<
       $SharedInput<GrantMembershipInput | ChangeRoleMembershipInput | RevokeMembershipInput>
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/identity/membership.mesh.mx:98:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:98:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: MembershipNewScope<
       $SharedInput<GrantMembershipInput | ChangeRoleMembershipInput | RevokeMembershipInput>
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
+      $s,
+    );
   },
 } as const;

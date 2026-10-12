@@ -35,6 +35,6 @@ entity :Workspace table="workspaces"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&create, &rename]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOnly actions=[&create, &rename]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])

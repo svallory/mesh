@@ -14,10 +14,6 @@ import {
   roleIn,
 } from "../../../src/domain/identity/identity.helpers";
 import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
-import type {
   Collaborator,
   CollaboratorLoaded,
   RegisterCollaboratorInput,
@@ -32,8 +28,6 @@ export type CollaboratorScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Collaborator> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type CollaboratorStoredScope<I = unknown> = CollaboratorScope<I> & {
@@ -51,9 +45,9 @@ export type CollaboratorNewScope<I = unknown> = Omit<CollaboratorCheckScope<I>, 
 };
 
 export const expressions = {
-  // check :nameUnique that, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:20:16)
+  // check :nameUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:20:16)
   "register.check.nameUnique.that": ($s: CollaboratorNewScope<RegisterCollaboratorInput>) => {
-    return (({ input, tx }) => nameFreeOf(tx, input.name, null))($s);
+    return (async ({ input }) => await nameFreeOf(input.name, null))($s);
   },
   // check :collaboratorActive that, translated (src/domain/identity/collaborator.mesh.mx:31:16)
   "update.check.collaboratorActive.that": ($s: CollaboratorCheckScope<UpdateCollaboratorInput>) =>
@@ -61,10 +55,10 @@ export const expressions = {
   // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:36:16)
   "update.check.kindImmutable.that": ($s: CollaboratorCheckScope<UpdateCollaboratorInput>) =>
     $.or($.isNull($s.input?.kind), $.eq($s.input?.kind, $s.self.kind)),
-  // check :nameUnique that, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:41:16)
+  // check :nameUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:41:16)
   "update.check.nameUnique.that": ($s: CollaboratorCheckScope<UpdateCollaboratorInput>) => {
     const { self } = $s;
-    return (({ input, tx }) => nameFreeOf(tx, input.name ?? self.name, self.id))($s);
+    return (async ({ input }) => await nameFreeOf(input.name ?? self.name, self.id))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:46:16)
   "update.check.versionMatches.that": ($s: CollaboratorCheckScope<UpdateCollaboratorInput>) =>
@@ -83,10 +77,10 @@ export const expressions = {
   // check :collaboratorActive that, translated (src/domain/identity/collaborator.mesh.mx:60:16)
   "retire.check.collaboratorActive.that": ($s: CollaboratorCheckScope<RetireCollaboratorInput>) =>
     $.eq($s.self.state, "active"),
-  // check :lastOwner that, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:65:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:65:16)
   "retire.check.lastOwner.that": ($s: CollaboratorCheckScope<RetireCollaboratorInput>) => {
     const { self } = $s;
-    return (({ tx }) => retireKeepsAnOwnerOf(tx, self.id))($s);
+    return (async ({}) => await retireKeepsAnOwnerOf(self.id))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:70:16)
   "retire.check.versionMatches.that": ($s: CollaboratorCheckScope<RetireCollaboratorInput>) =>
@@ -105,28 +99,30 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/identity/collaborator.mesh.mx:81:20)
   "policy.membersRead.authorize-if.0": ($s: CollaboratorCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:83:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:83:20)
   "policy.isMember.authorize-if.0": (
     $s: CollaboratorNewScope<
       $SharedInput<RegisterCollaboratorInput | UpdateCollaboratorInput | RetireCollaboratorInput>
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:85:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:85:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: CollaboratorNewScope<$SharedInput<RegisterCollaboratorInput | RetireCollaboratorInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, ["owner"]))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await roleIn(actor.id, ["owner"])))(
+      $s,
+    );
   },
-  // policy :collaboratorSelfOrOwner authorize-if, plain (uses-tx) (src/domain/identity/collaborator.mesh.mx:87:20)
+  // policy :collaboratorSelfOrOwner authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:87:20)
   "policy.collaboratorSelfOrOwner.authorize-if.0": (
     $s: CollaboratorCheckScope<UpdateCollaboratorInput>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ self, actor, context, tx }) =>
-      isSystem(context) || self.id === actor.id || roleIn(tx, actor.id, ["owner"]))($s);
+    return (async ({ self, actor, context }) =>
+      isSystem(context) || self.id === actor.id || (await roleIn(actor.id, ["owner"])))($s);
   },
 } as const;

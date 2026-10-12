@@ -3,6 +3,7 @@
 
 import {
   expr as $,
+  privileged as $privileged,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -36,10 +37,10 @@ import {
   memberOf,
   roleIn,
 } from "../../../src/domain/identity/identity.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
+import { Assignment as $e$Assignment, type $ReadOnly as $t$Assignment } from "./assignment.actions";
+import { Claim as $e$Claim, type $ReadOnly as $t$Claim } from "./claim.actions";
+import { Completion as $e$Completion, type $ReadOnly as $t$Completion } from "./completion.actions";
+import { Submission as $e$Submission, type $ReadOnly as $t$Submission } from "./submission.actions";
 import type {
   Task,
   TaskLoaded,
@@ -62,8 +63,6 @@ export type TaskScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Task> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type TaskStoredScope<I = unknown> = TaskScope<I> & { before: $DeepReadonly<Task> };
@@ -116,9 +115,9 @@ export const expressions = {
         ),
       ),
     ),
-  // check :parentOpen that, plain (uses-tx) (src/domain/work/task.mesh.mx:50:16)
+  // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:50:16)
   "create.check.parentOpen.that": ($s: TaskNewScope<CreateTaskInput>) => {
-    return (({ input, tx }) => parentOpenOf(tx, input.parent ?? null))($s);
+    return (async ({ input }) => await parentOpenOf(input.parent ?? null))($s);
   },
   // set &creator, translated (src/domain/work/task.mesh.mx:56:20)
   "create.step.0.set.creator": ($s: TaskScope<CreateTaskInput>) => $s.actor?.id,
@@ -161,14 +160,14 @@ export const expressions = {
     $.add($s.self.version, 1),
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:107:16)
   "move.check.taskOpen.that": ($s: TaskCheckScope<MoveTaskInput>) => $.eq($s.self.state, "open"),
-  // check :parentOpen that, plain (uses-tx) (src/domain/work/task.mesh.mx:112:16)
+  // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:112:16)
   "move.check.parentOpen.that": ($s: TaskCheckScope<MoveTaskInput>) => {
-    return (({ self, input, tx }) => parentOpenOf(tx, movedParent(self, input.parent)))($s);
+    return (async ({ self, input }) => await parentOpenOf(movedParent(self, input.parent)))($s);
   },
-  // check :noCycle that, plain (uses-tx) (src/domain/work/task.mesh.mx:117:16)
+  // check :noCycle that, plain (awaits-helper) (src/domain/work/task.mesh.mx:117:16)
   "move.check.noCycle.that": ($s: TaskCheckScope<MoveTaskInput>) => {
     const { self } = $s;
-    return (({ input, tx }) => noContainmentCycleOf(tx, self.id, input.parent))($s);
+    return (async ({ input }) => await noContainmentCycleOf(self.id, input.parent))($s);
   },
   // check :noActiveClaim that, translated (src/domain/work/task.mesh.mx:122:16)
   "move.check.noActiveClaim.that": ($s: TaskCheckScope<MoveTaskInput>) => $.not($s.self.claimed),
@@ -223,16 +222,21 @@ export const expressions = {
   "cancel.step.0.set.version": ($s: TaskStoredScope<CancelTaskInput>) => $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:180:28)
   "cancel.step.1.run": ($s: TaskStoredScope<CancelTaskInput>) => {
-    return (async function ({ self, context, tx, actions }) {
-      for (const claim of openClaims(await tx.readClaim({ filter: { taskId: { eq: self.id } } })))
-        await actions.endClaim(
+    const privileged = $privileged;
+    const Claim = $e$Claim as unknown as $t$Claim;
+    const Submission = $e$Submission as unknown as $t$Submission;
+    return (async function ({ self, context }) {
+      for (const claim of openClaims(
+        await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+      ))
+        await Claim.end(
           { id: claim.id, outcome: "revoked", reason: "task canceled" },
           { ...context, system: true },
         );
-      for (const submission of await tx.readSubmission({
+      for (const submission of await privileged(Submission).read({
         filter: { taskId: { eq: self.id }, state: { eq: "pending" } },
       }))
-        await actions.settleSubmission(
+        await Submission.settle(
           { id: submission.id, outcome: "withdrawn" },
           { ...context, system: true },
         );
@@ -249,15 +253,13 @@ export const expressions = {
     const { self } = $s;
     return (() => ({ openChildren: openChildren(self.children) }))();
   },
-  // check :reviewRequired that, plain (uses-tx) (src/domain/work/task.mesh.mx:205:16)
+  // check :reviewRequired that, plain (awaits-helper) (src/domain/work/task.mesh.mx:205:16)
   "complete.check.reviewRequired.that": ($s: TaskCheckScope<CompleteTaskInput>) => {
-    return (({ self, actor, tx }) => reviewNotRequiredOf(tx, self, actor.id))($s);
+    return (async ({ self, actor }) => await reviewNotRequiredOf(self, actor.id))($s);
   },
-  // check :reviewRequired details, plain (uses-tx) (src/domain/work/task.mesh.mx:208:19)
+  // check :reviewRequired details, plain (awaits-helper) (src/domain/work/task.mesh.mx:208:19)
   "complete.check.reviewRequired.details": ($s: TaskCheckScope<CompleteTaskInput>) => {
-    return (async ({ self, tx }) => ({ reviewerId: (await reviewerFor(tx, self)).collaboratorId }))(
-      $s,
-    );
+    return (async ({ self }) => ({ reviewerId: (await reviewerFor(self)).collaboratorId }))($s);
   },
   // check :noForeignSubmission that, translated (src/domain/work/task.mesh.mx:211:16)
   "complete.check.noForeignSubmission.that": ($s: TaskCheckScope<CompleteTaskInput>) =>
@@ -312,16 +314,13 @@ export const expressions = {
         ),
       ),
     ),
-  // check :evidenceExists that, plain (uses-tx) (src/domain/work/task.mesh.mx:233:16)
+  // check :evidenceExists that, plain (awaits-helper) (src/domain/work/task.mesh.mx:233:16)
   "complete.check.evidenceExists.that": ($s: TaskCheckScope<CompleteTaskInput>) => {
-    return (async ({ input, tx }) =>
-      (await missingEvidenceOf(tx, input.evidence ?? [])).length === 0)($s);
+    return (async ({ input }) => (await missingEvidenceOf(input.evidence ?? [])).length === 0)($s);
   },
-  // check :evidenceExists details, plain (uses-tx) (src/domain/work/task.mesh.mx:236:19)
+  // check :evidenceExists details, plain (awaits-helper) (src/domain/work/task.mesh.mx:236:19)
   "complete.check.evidenceExists.details": ($s: TaskCheckScope<CompleteTaskInput>) => {
-    return (async ({ input, tx }) => ({
-      missing: await missingEvidenceOf(tx, input.evidence ?? []),
-    }))($s);
+    return (async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) }))($s);
   },
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:239:16)
   "complete.check.versionMatches.that": ($s: TaskCheckScope<CompleteTaskInput>) =>
@@ -340,15 +339,19 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:248:28)
   "complete.step.1.run": ($s: TaskStoredScope<CompleteTaskInput>) => {
     const now = () => $.now($s);
-    return (async function ({ self, before, input, actor, context, tx, actions }) {
+    const privileged = $privileged;
+    const Claim = $e$Claim as unknown as $t$Claim;
+    const Completion = $e$Completion as unknown as $t$Completion;
+    const Submission = $e$Submission as unknown as $t$Submission;
+    return (async function ({ self, before, input, actor, context }) {
       let submission: string | null = null;
       let rule: "review-accepted" | "performer-is-reviewer" | "review-waived" = "review-accepted";
       if (context.completion)
-        submission = await acceptedSubmissionOf(tx, self.id, context.completion.submissionId);
+        submission = await acceptedSubmissionOf(self.id, context.completion.submissionId);
       else {
-        rule = completionRule(actor.id, await reviewerFor(tx, self));
+        rule = completionRule(actor.id, await reviewerFor(self));
         if (input.summary != null || input.evidence != null) {
-          const recorded = await actions.recordAcceptedSubmission(
+          const recorded = await Submission.recordAccepted(
             {
               task: self.id,
               summary: input.summary ?? null,
@@ -361,13 +364,13 @@ export const expressions = {
           submission = recorded.id;
         } else {
           const own = ownPending(
-            await tx.readSubmission({
+            await privileged(Submission).read({
               filter: { taskId: { eq: self.id }, state: { eq: "pending" } },
             }),
             actor.id,
           );
           if (own) {
-            await actions.settleSubmission(
+            await Submission.settle(
               { id: own.id, outcome: "accepted" },
               { ...context, system: true },
             );
@@ -375,16 +378,13 @@ export const expressions = {
           }
         }
       }
-      await actions.recordCompletion(
-        { task: self.id, submission, rule },
-        { ...context, system: true },
-      );
+      await Completion.record({ task: self.id, submission, rule }, { ...context, system: true });
       const live = claimToRelease(
-        await tx.readClaim({ filter: { taskId: { eq: self.id } } }),
+        await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
         now(),
       );
       if (live)
-        await actions.endClaim(
+        await Claim.end(
           { id: live.id, outcome: "released", reason: "completed" },
           { ...context, system: true },
         );
@@ -393,13 +393,13 @@ export const expressions = {
   // check :taskOpen that, translated (src/domain/work/task.mesh.mx:276:16)
   "assign.check.taskOpen.that": ($s: TaskCheckScope<AssignTaskInput>) =>
     $.eq($s.self.state, "open"),
-  // check :assigneeActive that, plain (uses-tx) (src/domain/work/task.mesh.mx:281:16)
+  // check :assigneeActive that, plain (awaits-helper) (src/domain/work/task.mesh.mx:281:16)
   "assign.check.assigneeActive.that": ($s: TaskCheckScope<AssignTaskInput>) => {
-    return (({ input, tx }) => collaboratorActiveOf(tx, input.assignee))($s);
+    return (async ({ input }) => await collaboratorActiveOf(input.assignee))($s);
   },
-  // check :assigneeRole that, plain (uses-tx) (src/domain/work/task.mesh.mx:286:16)
+  // check :assigneeRole that, plain (awaits-helper) (src/domain/work/task.mesh.mx:286:16)
   "assign.check.assigneeRole.that": ($s: TaskCheckScope<AssignTaskInput>) => {
-    return (({ input, tx }) => assignableOf(tx, input.assignee))($s);
+    return (async ({ input }) => await assignableOf(input.assignee))($s);
   },
   // check :assignmentChanges that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:291:16)
   "assign.check.assignmentChanges.that": ($s: TaskCheckScope<AssignTaskInput>) => {
@@ -422,26 +422,31 @@ export const expressions = {
   "assign.step.0.set.version": ($s: TaskStoredScope<AssignTaskInput>) => $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:304:28)
   "assign.step.1.run": ($s: TaskStoredScope<AssignTaskInput>) => {
-    return (async function ({ self, input, context, tx, actions }) {
+    const privileged = $privileged;
+    const Assignment = $e$Assignment as unknown as $t$Assignment;
+    const Claim = $e$Claim as unknown as $t$Claim;
+    return (async function ({ self, input, context }) {
       const current = currentAssignment(
-        await tx.readAssignment({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }),
+        await privileged(Assignment).read({
+          filter: { taskId: { eq: self.id }, endedAt: { nil: true } },
+        }),
       );
       if (current) {
         if (current.assigneeId !== input.assignee)
           for (const claim of openClaims(
-            await tx.readClaim({ filter: { taskId: { eq: self.id } } }),
+            await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
             current.assigneeId,
           ))
-            await actions.endClaim(
+            await Claim.end(
               { id: claim.id, outcome: "revoked", reason: "reassigned" },
               { ...context, system: true },
             );
-        await actions.finishAssignment(
+        await Assignment.finish(
           { id: current.id, reason: "reassigned" },
           { ...context, system: true },
         );
       }
-      await actions.startAssignment(
+      await Assignment.start(
         { task: self.id, assignee: input.assignee, reviewWaived: input.waiveReview ?? false },
         { ...context, system: true },
       );
@@ -466,20 +471,25 @@ export const expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:333:28)
   "unassign.step.1.run": ($s: TaskStoredScope<UnassignTaskInput>) => {
-    return (async function ({ self, context, tx, actions }) {
+    const privileged = $privileged;
+    const Assignment = $e$Assignment as unknown as $t$Assignment;
+    const Claim = $e$Claim as unknown as $t$Claim;
+    return (async function ({ self, context }) {
       const current = currentAssignment(
-        await tx.readAssignment({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }),
+        await privileged(Assignment).read({
+          filter: { taskId: { eq: self.id }, endedAt: { nil: true } },
+        }),
       );
       if (!current) return;
       for (const claim of openClaims(
-        await tx.readClaim({ filter: { taskId: { eq: self.id } } }),
+        await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
         current.assigneeId,
       ))
-        await actions.endClaim(
+        await Claim.end(
           { id: claim.id, outcome: "revoked", reason: "unassigned" },
           { ...context, system: true },
         );
-      await actions.finishAssignment(
+      await Assignment.finish(
         { id: current.id, reason: "unassigned" },
         { ...context, system: true },
       );
@@ -488,7 +498,7 @@ export const expressions = {
   // policy :membersRead authorize-if, translated (src/domain/work/task.mesh.mx:342:20)
   "policy.membersRead.authorize-if.0": ($s: TaskCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:344:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:344:20)
   "policy.isMember.authorize-if.0": (
     $s: TaskNewScope<
       $SharedInput<
@@ -505,9 +515,9 @@ export const expressions = {
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:346:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:346:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: TaskNewScope<
       $SharedInput<
@@ -524,29 +534,29 @@ export const expressions = {
     >,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :taskManager authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:348:20)
+  // policy :taskManager authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:348:20)
   "policy.taskManager.authorize-if.0": (
     $s: TaskCheckScope<$SharedInput<ReopenTaskInput | CancelTaskInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ self, actor, context, tx }) =>
-      isSystem(context) || managesTaskOf(tx, self, actor.id, true))($s);
+    return (async ({ self, actor, context }) =>
+      isSystem(context) || (await managesTaskOf(self, actor.id, true)))($s);
   },
-  // policy :taskUnassigner authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:350:20)
+  // policy :taskUnassigner authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:350:20)
   "policy.taskUnassigner.authorize-if.0": ($s: TaskCheckScope<UnassignTaskInput>) => {
     const isSystem = $.isSystem;
-    return (({ self, actor, context, tx }) =>
-      isSystem(context) || managesTaskOf(tx, self, actor.id, false))($s);
+    return (async ({ self, actor, context }) =>
+      isSystem(context) || (await managesTaskOf(self, actor.id, false)))($s);
   },
-  // policy :claimHolder authorize-if, plain (uses-tx) (src/domain/work/task.mesh.mx:352:20)
+  // policy :claimHolder authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:352:20)
   "policy.claimHolder.authorize-if.0": ($s: TaskCheckScope<CompleteTaskInput>) => {
     const now = () => $.now($s);
     const isSystem = $.isSystem;
-    return (({ self, input, actor, context, tx }) =>
-      isSystem(context) || noOtherHolderOf(tx, self.id, input.fence, actor.id, now()))($s);
+    return (async ({ self, input, actor, context }) =>
+      isSystem(context) || (await noOtherHolderOf(self.id, input.fence, actor.id, now())))($s);
   },
   // policy :reviewCompletion forbid-if, translated (src/domain/work/task.mesh.mx:354:17)
   "policy.reviewCompletion.forbid-if.0": ($s: TaskCheckScope<CompleteTaskInput>) =>

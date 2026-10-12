@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
@@ -23,10 +23,14 @@ import {
   scope as $scope,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -38,6 +42,7 @@ import type {
   SessionReferenceLoadNames,
   SessionReferenceLoadArg,
   SessionReferenceLoadable,
+  SessionReferenceTxLoadable,
   RecordSessionReferenceInput,
   SetAvailabilitySessionReferenceInput,
   RedactSessionReferenceInput,
@@ -58,10 +63,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(SessionReference)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindSessionReferenceReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
       input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
@@ -71,7 +80,7 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
       cast?: $CastOutput<typeof readSessionReferenceInput>,
     ): Promise<L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readSessionReferenceInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.session_references, {
@@ -91,6 +100,7 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown
           ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[]
           : never;
@@ -100,15 +110,15 @@ export function bindSessionReferenceReads(layer: $DataLayer, options: $BindOptio
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
 export function bindSessionReference(
   layer: $DataLayer,
   options: $BindOptions = {},
-  compose?: $Composer,
+  frame: $ActionFrame = $NO_FRAME,
 ) {
-  const $reads = bindSessionReferenceReads(layer, options);
+  const $reads = bindSessionReferenceReads(layer, options, frame);
   return Object.freeze({
     async record(
       input: RecordSessionReferenceInput,
@@ -127,7 +137,7 @@ export function bindSessionReference(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -140,7 +150,7 @@ export function bindSessionReference(
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -164,94 +174,104 @@ export function bindSessionReference(
         { entity: "execution.SessionReference", action: "record" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            location: null,
-            version: 1,
-            recordedAt: $now,
-          };
-          const $record: $Row = {
-            ...$changes,
-            runtime: null,
-            runtimeSessionId: null,
-            availability: null,
-            machineId: null,
-            agentProfileId: null,
-            recordedById: null,
-          };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
-            "execution.SessionReference#record",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.SessionReference#record", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              location: null,
+              version: 1,
+              recordedAt: $now,
+            };
+            const $record: $Row = {
+              ...$changes,
+              runtime: null,
+              runtimeSessionId: null,
+              availability: null,
+              machineId: null,
+              agentProfileId: null,
+              recordedById: null,
+            };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
+              "execution.SessionReference#record",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.SessionReference#record"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<RecordSessionReferenceInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "agentProfile",
+              code: "session.agent-profile",
+              message: "the agent profile is not a collaborator",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 29,
+                column: 9,
+              },
+              that: $expressions["record.check.agentProfile.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "machineRetired",
+              code: "machine.retired",
+              message: "the machine is retired; report the host by a new name",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 34,
+                column: 9,
+              },
+              that: $expressions["record.check.machineRetired.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
+            if (parsed.runtimeSessionId !== undefined)
+              $changes.runtimeSessionId = $record.runtimeSessionId = parsed.runtimeSessionId;
+            if (parsed.availability !== undefined)
+              $changes.availability = $record.availability = parsed.availability;
+            if (parsed.location !== undefined)
+              $changes.location = $record.location = parsed.location;
+            if (parsed.machine !== undefined)
+              $changes.machineId = $record.machineId = parsed.machine;
+            if (parsed.agentProfile !== undefined)
+              $changes.agentProfileId = $record.agentProfileId = parsed.agentProfile;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.SessionReference#record"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "execution.SessionReference#record", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<RecordSessionReferenceInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "agentProfile",
-            code: "session.agent-profile",
-            message: "the agent profile is not a collaborator",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 29, column: 9 },
-            that: $expressions["record.check.agentProfile.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "machineRetired",
-            code: "machine.retired",
-            message: "the machine is retired; report the host by a new name",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 34, column: 9 },
-            that: $expressions["record.check.machineRetired.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.runtime !== undefined) $changes.runtime = $record.runtime = parsed.runtime;
-          if (parsed.runtimeSessionId !== undefined)
-            $changes.runtimeSessionId = $record.runtimeSessionId = parsed.runtimeSessionId;
-          if (parsed.availability !== undefined)
-            $changes.availability = $record.availability = parsed.availability;
-          if (parsed.location !== undefined) $changes.location = $record.location = parsed.location;
-          if (parsed.machine !== undefined) $changes.machineId = $record.machineId = parsed.machine;
-          if (parsed.agentProfile !== undefined)
-            $changes.agentProfileId = $record.agentProfileId = parsed.agentProfile;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["record.step.0.set.recordedBy"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &recordedBy (src/domain/execution/session-reference.mesh.mx:41:23) produced no value, and the relationship recordedBy is required",
-              );
-            $changes.recordedById = $record.recordedById = $value;
-          }
-          // data layer
-          const $stored = await tx.insert(tables.session_references, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.SessionReference", action: "record" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as SessionReference;
-        },
+              const $value = await $expressions["record.step.0.set.recordedBy"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:41:23) produced no value, and the relationship recordedBy is required",
+                );
+              $changes.recordedById = $record.recordedById = $value;
+            }
+            // data layer
+            const $stored = await tx.insert(tables.session_references, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "execution.SessionReference", action: "record" },
+              null,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as SessionReference;
+          }),
       );
     },
 
@@ -297,105 +317,112 @@ export function bindSessionReference(
         { entity: "execution.SessionReference", action: "setAvailability" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
-            "execution.SessionReference#setAvailability",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.SessionReference#setAvailability", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
+              "execution.SessionReference#setAvailability",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.SessionReference#setAvailability"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.SessionReference", $before, "before"),
+                  "execution.SessionReference#setAvailability",
+                ) as unknown as SessionReference,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "notRedacted",
+              code: "session.not-redacted",
+              message: "the session is redacted and cannot be changed",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 49,
+                column: 9,
+              },
+              that: $expressions["setAvailability.check.notRedacted.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "availabilityKept",
+              code: "session.availability",
+              message: "availability is complete, partial or unavailable; redact with redact",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 54,
+                column: 9,
+              },
+              that: $expressions["setAvailability.check.availabilityKept.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 59,
+                column: 9,
+              },
+              that: $expressions["setAvailability.check.versionMatches.that"],
+              details: $expressions["setAvailability.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.availability !== undefined)
+              $changes.availability = $record.availability = parsed.availability;
+            if (parsed.location !== undefined)
+              $changes.location = $record.location = parsed.location;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.SessionReference#setAvailability"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.SessionReference", $before, "before"),
-                "execution.SessionReference#setAvailability",
-              ) as unknown as SessionReference,
-              ...$composed(
-                compose,
-                tx,
-                context,
-                "execution.SessionReference#setAvailability",
-                $clock,
-              ),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "notRedacted",
-            code: "session.not-redacted",
-            message: "the session is redacted and cannot be changed",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 49, column: 9 },
-            that: $expressions["setAvailability.check.notRedacted.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "availabilityKept",
-            code: "session.availability",
-            message: "availability is complete, partial or unavailable; redact with redact",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 54, column: 9 },
-            that: $expressions["setAvailability.check.availabilityKept.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 59, column: 9 },
-            that: $expressions["setAvailability.check.versionMatches.that"],
-            details: $expressions["setAvailability.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.availability !== undefined)
-            $changes.availability = $record.availability = parsed.availability;
-          if (parsed.location !== undefined) $changes.location = $record.location = parsed.location;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["setAvailability.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/session-reference.mesh.mx:67:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.session_references,
-            $key,
-            $before,
-            "execution.SessionReference#setAvailability",
-          );
-          const $stored = await tx.updateByKey(tables.session_references, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.SessionReference", action: "setAvailability" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as SessionReference;
-        },
+              const $value = await $expressions["setAvailability.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/session-reference.mesh.mx:67:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.session_references,
+              $key,
+              $before,
+              "execution.SessionReference#setAvailability",
+            );
+            const $stored = await tx.updateByKey(tables.session_references, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "execution.SessionReference", action: "setAvailability" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as SessionReference;
+          }),
       );
     },
 
@@ -416,7 +443,7 @@ export function bindSessionReference(
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -429,7 +456,7 @@ export function bindSessionReference(
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])",
               record: true,
               run: $expressions["policy.ownerOnly.authorize-if.0"],
             },
@@ -453,90 +480,98 @@ export function bindSessionReference(
         { entity: "execution.SessionReference", action: "redact" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
-          if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
-            "execution.SessionReference#redact",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "execution.SessionReference#redact", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.session_references, $key);
+            if ($before === undefined) throw new $NotFoundError("execution.SessionReference", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "execution.SessionReference", $record, "action function"),
+              "execution.SessionReference#redact",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "execution.SessionReference#redact"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "execution.SessionReference", $before, "before"),
+                  "execution.SessionReference#redact",
+                ) as unknown as SessionReference,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<RedactSessionReferenceInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "notRedacted",
+              code: "session.not-redacted",
+              message: "the session is redacted and cannot be changed",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 73,
+                column: 9,
+              },
+              that: $expressions["redact.check.notRedacted.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the record is at another version; read it again and retry",
+              source: {
+                file: "src/domain/execution/session-reference.mesh.mx",
+                line: 78,
+                column: 9,
+              },
+              that: $expressions["redact.check.versionMatches.that"],
+              details: $expressions["redact.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.availability = $record.availability = "redacted";
+            $changes.location = $record.location = null;
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "execution.SessionReference#redact"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "execution.SessionReference", $before, "before"),
-                "execution.SessionReference#redact",
-              ) as unknown as SessionReference,
-              ...$composed(compose, tx, context, "execution.SessionReference#redact", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<RedactSessionReferenceInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "notRedacted",
-            code: "session.not-redacted",
-            message: "the session is redacted and cannot be changed",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 73, column: 9 },
-            that: $expressions["redact.check.notRedacted.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the record is at another version; read it again and retry",
-            source: { file: "src/domain/execution/session-reference.mesh.mx", line: 78, column: 9 },
-            that: $expressions["redact.check.versionMatches.that"],
-            details: $expressions["redact.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.availability = $record.availability = "redacted";
-          $changes.location = $record.location = null;
-          {
-            const $value = await $expressions["redact.step.0.set.version"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &version (src/domain/execution/session-reference.mesh.mx:88:20) produced no value, and version is required",
-              );
-            $changes.version = $record.version = $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(
-            tx,
-            $writes,
-            tables.session_references,
-            $key,
-            $before,
-            "execution.SessionReference#redact",
-          );
-          const $stored = await tx.updateByKey(tables.session_references, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "execution.SessionReference", action: "redact" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as SessionReference;
-        },
+              const $value = await $expressions["redact.step.0.set.version"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &version (src/domain/execution/session-reference.mesh.mx:88:20) produced no value, and version is required",
+                );
+              $changes.version = $record.version = $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(
+              tx,
+              $writes,
+              tables.session_references,
+              $key,
+              $before,
+              "execution.SessionReference#redact",
+            );
+            const $stored = await tx.updateByKey(tables.session_references, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("execution.SessionReference", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "execution.SessionReference", action: "redact" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as SessionReference;
+          }),
       );
     },
 
@@ -544,26 +579,31 @@ export function bindSessionReference(
       input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? SessionReferenceWith<SessionReferenceLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readSessionReferenceInput, input);
       if (
-        !(await $authorizer("execution.SessionReference", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "execution.SessionReference",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -598,7 +638,7 @@ export function bindSessionReference(
 const $entityValue = $entity(
   "execution.SessionReference",
   bindSessionReference,
-  bindSessionReferenceReads,
+  bindSessionReferenceReads as $EntityReadsBind<$Privileged>,
   ($call) => ({
     record(
       input: RecordSessionReferenceInput,
@@ -632,3 +672,55 @@ const $entityValue = $entity(
 export { $entityValue as SessionReference };
 /** The record type, under the entity value's name. */
 export type SessionReference = $Record;
+
+/** What `privileged(SessionReference)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
+    input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
+    input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<SessionReference> &
+          Pick<$DeepReadonly<SessionReferenceTxLoadable>, SessionReferenceLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    record(
+      input: RecordSessionReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<SessionReference>>;
+    setAvailability(
+      input: SetAvailabilitySessionReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<SessionReference>>;
+    redact(
+      input: RedactSessionReferenceInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<SessionReference>>;
+    read<const L extends readonly (keyof SessionReferenceLoadable)[] = readonly []>(
+      input: Omit<ReadSessionReferenceInput, "load"> & SessionReferenceLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<SessionReference> &
+            Pick<$DeepReadonly<SessionReferenceLoadable>, SessionReferenceLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

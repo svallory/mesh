@@ -19,10 +19,10 @@ entity :Dependency table="dependencies"
         integer :expectedVersion nullable
       validate
         check :exists [
-          that=async ({ input, tx }) => (await missingTasksOf(tx, [input.dependent, input.prerequisite])).length === 0
+          that=async ({ input }) => (await missingTasksOf([input.dependent, input.prerequisite])).length === 0
           code="dependency.exists"
           message="a task of the dependency does not exist"
-          details=async ({ input, tx }) => ({ missing: await missingTasksOf(tx, [input.dependent, input.prerequisite]) })
+          details=async ({ input }) => ({ missing: await missingTasksOf([input.dependent, input.prerequisite]) })
         ]
         check :distinct [
           that=({ input }) => input.dependent !== input.prerequisite
@@ -30,26 +30,26 @@ entity :Dependency table="dependencies"
           message="a task cannot depend on itself"
         ]
         check :duplicate [
-          that=async ({ input, tx }) => !(await dependencyExistsOf(tx, input.dependent, input.prerequisite))
+          that=async ({ input }) => !(await dependencyExistsOf(input.dependent, input.prerequisite))
           code="dependency.duplicate"
           message="the dependency already exists"
         ]
         check :noCycle [
-          that=async ({ input, tx }) => !(await prerequisiteReachesOf(tx, input.prerequisite, input.dependent))
+          that=async ({ input }) => !(await prerequisiteReachesOf(input.prerequisite, input.dependent))
           code="dependency.no-cycle"
           message="the prerequisite already waits for the dependent"
         ]
         check :versionMatches [
-          that=async ({ input, tx }) => input.expectedVersion == null || [input.expectedVersion, null].includes(await taskVersionOf(tx, input.dependent))
+          that=async ({ input }) => input.expectedVersion == null || [input.expectedVersion, null].includes(await taskVersionOf(input.dependent))
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(tx, input.dependent) })
+          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(input.dependent) })
         ]
       do
         set
           &createdBy=({ actor }) => actor.id
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.dependentId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.dependentId }, { ...context, system: true });
         }
     destroy :remove
       input
@@ -63,13 +63,13 @@ entity :Dependency table="dependencies"
           details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &dependent.version })
         ]
       do
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.dependentId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.dependentId }, { ...context, system: true });
         }
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&add, &remove]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&add, &remove]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])

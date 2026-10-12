@@ -6,10 +6,6 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
 import type { User, CreateUserInput } from "./user.types";
 
 /** What every expression of User reads; `I` is the input of the action it runs in. */
@@ -19,8 +15,6 @@ export type UserScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<User> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type UserStoredScope<I = unknown> = UserScope<I> & { before: $DeepReadonly<User> };

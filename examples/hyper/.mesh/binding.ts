@@ -18,18 +18,16 @@ import {
   type AsyncFrame as $AsyncFrame,
   type BindOptions as $BindOptions,
   type Binding as $Binding,
-  type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
   type Seams as $Seams,
 } from "@meshfw/runtime";
 import * as $domain from "./domain/index";
-import type { Actions, Reads } from "./composition";
 
 /**
  * The whole domain bound to one data layer: `run(fn)` runs `fn` with the binding in scope, so every entity call in it
- * (`Task.create(input, context)`) runs on this binding, and `transaction(fn, context)` runs `fn` in one transaction on it.
+ * (`Task.create(input, context)`) runs on this binding, and `transaction(fn)` runs `fn` in one transaction on it.
  */
-export type Binding = $Binding<Actions, Reads>;
+export type Binding = $Binding;
 
 /**
  * The async context every binding of this project keeps itself in scope with: one for the project, so a `run` nested in
@@ -43,7 +41,7 @@ const $frame: $AsyncFrame = new $AsyncLocalStorage<unknown>();
  */
 export function bind(layer: $DataLayer, options: $BindOptions = {}): Binding {
   // The walk runs here, not when this file loads, so every barrel has finished loading.
-  return $bindDomain<Actions, Reads>($domain, layer, options, $frame);
+  return $bindDomain($domain, layer, options, $frame);
 }
 
 let $defaultBinding: Binding | undefined;
@@ -117,18 +115,15 @@ export async function disconnect(): Promise<void> {
 
 /**
  * Open a transaction, or join the running one, on the binding in scope (the innermost `run` or `transaction` this call
- * is made inside), else on the connected one, and call `fn({ actions, tx })`: every action function and every read,
- * bound to it, carrying `context` unless a call passes its own. Resolves with what `fn` resolves with. A call through
- * `actions` or `tx` that fails fails the whole transaction, even when `fn` catches it.
+ * is made inside), else on the connected one, and call `fn` inside it, handing it nothing (TXN-20): every entity call and
+ * `privileged` read made in it joins the transaction, each with the context it passes. Resolves with what `fn` resolves
+ * with. A call that fails fails the whole transaction, even when `fn` catches it.
  */
-export async function transaction<T>(
-  fn: (composition: { readonly actions: Actions; readonly tx: Reads }) => Promise<T>,
-  ...context: $ContextArgument
-): Promise<T> {
+export async function transaction<T>(fn: () => Promise<T>): Promise<T> {
   const binding = ($bindingInScope($frame) as Binding | undefined) ?? $defaultBinding;
   if (!binding)
     throw new $FrameworkError(
       "transaction was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own",
     );
-  return binding.transaction(fn, ...context);
+  return binding.transaction(fn);
 }

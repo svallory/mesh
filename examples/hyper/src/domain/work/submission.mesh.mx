@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { Claim } from "./claim.mesh.mx"
 import { claimsOf, claimToRelease, fenceDetailsOf, fenceIsCurrent, heldAClaimOf, inReviewOf, missingEvidenceOf, taskOpenOf, taskVersionOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 
@@ -25,32 +26,32 @@ entity :Submission table="submissions"
         integer :expectedVersion nullable
       validate
         check :taskOpen [
-          that=({ input, tx }) => taskOpenOf(tx, input.task)
+          that=async ({ input }) => await taskOpenOf(input.task)
           code="task.open"
           message="the task is not open; reopen it first"
         ]
         check :currentFence [
-          that=async ({ input, actor, tx }) => fenceIsCurrent(await claimsOf(tx, input.task), input.fence, actor.id, now())
+          that=async ({ input, actor }) => fenceIsCurrent(await claimsOf(input.task), input.fence, actor.id, now())
           code="claim.current-fence"
           message="the fence is not your current claim; claim the task again"
-          details=({ input, actor, tx }) => fenceDetailsOf(tx, input.task, input.fence, actor.id, now())
+          details=async ({ input, actor }) => await fenceDetailsOf(input.task, input.fence, actor.id, now())
         ]
         check :nonePending [
-          that=async ({ input, tx }) => !(await inReviewOf(tx, input.task))
+          that=async ({ input }) => !(await inReviewOf(input.task))
           code="submission.none-pending"
           message="a submission is already pending; wait for its review or withdraw it"
         ]
         check :evidenceExists [
-          that=async ({ input, tx }) => (await missingEvidenceOf(tx, input.evidence ?? &evidence)).length === 0
+          that=async ({ input }) => (await missingEvidenceOf(input.evidence ?? &evidence)).length === 0
           code="evidence.exists"
           message="an evidence reference does not exist"
-          details=async ({ input, tx }) => ({ missing: await missingEvidenceOf(tx, input.evidence ?? &evidence) })
+          details=async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? &evidence) })
         ]
         check :versionMatches [
-          that=async ({ input, tx }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(tx, input.task)
+          that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(input.task)
           code="expected-version"
           message="the task is at another version; read it again and retry"
-          details=async ({ input, tx }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(tx, input.task) })
+          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(input.task) })
         ]
       do
         set
@@ -58,10 +59,10 @@ entity :Submission table="submissions"
           &fence=({ input }) => input.fence
           &summary=({ input }) => input.summary
           &taskVersion=() => &task.version
-        run [after=:write] ({ self, context, tx, actions }) {
-          const live = claimToRelease(await tx.readClaim({ filter: { taskId: { eq: self.taskId } } }), now());
-          if (live) await actions.endClaim({ id: live.id, outcome: :released, reason: "submitted" }, { ...context, system: true });
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          const live = claimToRelease(await privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }), now());
+          if (live) await Claim.end({ id: live.id, outcome: :released, reason: "submitted" }, { ...context, system: true });
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :withdraw
       input
@@ -82,8 +83,8 @@ entity :Submission table="submissions"
       do
         set
           &state=:withdrawn
-        run [after=:write] ({ self, context, actions }) {
-          await actions.touchTask({ id: self.taskId }, { ...context, system: true });
+        run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :settle
       input
@@ -112,11 +113,11 @@ entity :Submission table="submissions"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&submit, &withdraw]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&submit, &withdraw]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :claimHolder actions=[&submit]
-      authorize-if=({ input, actor, context, tx }) => isSystem(context) || heldAClaimOf(tx, input.task, actor.id)
+      authorize-if=async ({ input, actor, context }) => isSystem(context) || await heldAClaimOf(input.task, actor.id)
     policy :submissionSubmitter actions=[&withdraw]
       authorize-if=({ self, actor, context }) => isSystem(context) || self.submitterId === actor.id
     policy :internal actions=[&settle, &recordAccepted]

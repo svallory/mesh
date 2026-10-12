@@ -5,12 +5,12 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadInto as $loadInto,
@@ -27,10 +27,14 @@ import {
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
   writeCount as $writeCount,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -42,6 +46,7 @@ import type {
   ClaimLoadNames,
   ClaimLoadArg,
   ClaimLoadable,
+  ClaimTxLoadable,
   AcquireClaimInput,
   RenewClaimInput,
   ReleaseClaimInput,
@@ -68,10 +73,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(Claim)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindClaimReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
       input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
@@ -81,7 +90,7 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
       cast?: $CastOutput<typeof readClaimInput>,
     ): Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readClaimInput, input));
       return layer.transaction(async (tx) => {
         rejectComputedQuery("work.Claim", ["lapsed"], parsed);
@@ -100,6 +109,7 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never;
       });
     },
@@ -107,11 +117,15 @@ export function bindClaimReads(layer: $DataLayer, options: $BindOptions = {}) {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindClaimReads(layer, options);
+export function bindClaim(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindClaimReads(layer, options, frame);
   return Object.freeze({
     async acquire(input: AcquireClaimInput, ...[context]: $ContextArgument): Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
@@ -127,7 +141,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -140,7 +154,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -153,7 +167,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             {
               kind: "authorize-if",
               check:
-                "({ input, actor, context, tx }) => isSystem(context) || assigneeMayClaimOf(tx, input.task, actor.id)",
+                "async ({ input, actor, context }) => isSystem(context) || await assigneeMayClaimOf(input.task, actor.id)",
               record: true,
               run: $expressions["policy.claimAssignee.authorize-if.0"],
             },
@@ -177,129 +191,129 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         { entity: "work.Claim", action: "acquire" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            endedAt: null,
-            endReason: null,
-            state: "active",
-          };
-          const $record: $Row = {
-            ...$changes,
-            fence: null,
-            acquiredAt: null,
-            expiresAt: null,
-            taskId: null,
-            holderId: null,
-          };
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Claim", $record, "action function"),
-            "work.Claim#acquire",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Claim#acquire"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "work.Claim#acquire", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<AcquireClaimInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "taskReady",
-            code: "claim.task-ready",
-            message: "the task is not ready to claim",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 26, column: 9 },
-            that: $expressions["acquire.check.taskReady.that"],
-            details: $expressions["acquire.check.taskReady.details"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 32, column: 9 },
-            that: $expressions["acquire.check.versionMatches.that"],
-            details: $expressions["acquire.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          await $expressions["acquire.step.0.run"]($s);
-          {
-            const $value = await $expressions["acquire.step.1.set.holder"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &holder (src/domain/work/claim.mesh.mx:44:19) produced no value, and the relationship holder is required",
-              );
-            $changes.holderId = $record.holderId = $value;
-          }
-          await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
-          {
-            const $value = await $expressions["acquire.step.1.set.fence"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &fence (src/domain/work/claim.mesh.mx:45:18) produced no value, and fence is required",
-              );
-            $changes.fence = $record.fence = $value;
-          }
-          {
-            const $value = await $expressions["acquire.step.1.set.acquiredAt"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &acquiredAt (src/domain/work/claim.mesh.mx:46:23) produced no value, and acquiredAt is required",
-              );
-            $changes.acquiredAt = $record.acquiredAt = $value;
-          }
-          {
-            const $value = await $expressions["acquire.step.1.set.expiresAt"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &expiresAt (src/domain/work/claim.mesh.mx:47:22) produced no value, and expiresAt is required",
-              );
-            $changes.expiresAt = $record.expiresAt = $value;
-          }
-          $unloadFrom($loadPlan, "work.Claim", $record);
-          // data layer
-          const $stored = await tx.insert(tables.claims, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Claim", action: "acquire" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Claim", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Claim#acquire", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              endedAt: null,
+              endReason: null,
+              state: "active",
+            };
+            const $record: $Row = {
+              ...$changes,
+              fence: null,
+              acquiredAt: null,
+              expiresAt: null,
+              taskId: null,
+              holderId: null,
+            };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#acquire",
-            ),
-          });
-          await $expressions["acquire.step.2.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Claim#acquire: a step after the write deleted the row this action returns",
             );
-          return $result as Claim;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Claim#acquire"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<AcquireClaimInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "taskReady",
+              code: "claim.task-ready",
+              message: "the task is not ready to claim",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 27, column: 9 },
+              that: $expressions["acquire.check.taskReady.that"],
+              details: $expressions["acquire.check.taskReady.details"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the task is at another version; read it again and retry",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 33, column: 9 },
+              that: $expressions["acquire.check.versionMatches.that"],
+              details: $expressions["acquire.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            await $expressions["acquire.step.0.run"]($s);
+            {
+              const $value = await $expressions["acquire.step.1.set.holder"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &holder (src/domain/work/claim.mesh.mx:45:19) produced no value, and the relationship holder is required",
+                );
+              $changes.holderId = $record.holderId = $value;
+            }
+            await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
+            {
+              const $value = await $expressions["acquire.step.1.set.fence"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &fence (src/domain/work/claim.mesh.mx:46:18) produced no value, and fence is required",
+                );
+              $changes.fence = $record.fence = $value;
+            }
+            {
+              const $value = await $expressions["acquire.step.1.set.acquiredAt"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &acquiredAt (src/domain/work/claim.mesh.mx:47:23) produced no value, and acquiredAt is required",
+                );
+              $changes.acquiredAt = $record.acquiredAt = $value;
+            }
+            {
+              const $value = await $expressions["acquire.step.1.set.expiresAt"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:48:22) produced no value, and expiresAt is required",
+                );
+              $changes.expiresAt = $record.expiresAt = $value;
+            }
+            $unloadFrom($loadPlan, "work.Claim", $record);
+            // data layer
+            const $stored = await tx.insert(tables.claims, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Claim", action: "acquire" },
+              null,
+              $stored,
+              parsed,
+              context,
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Claim", $written, "action function"),
+                "work.Claim#acquire",
+              ),
+            });
+            await $expressions["acquire.step.2.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Claim#acquire: a step after the write deleted the row this action returns",
+              );
+            return $result as Claim;
+          }),
       );
     },
 
@@ -317,7 +331,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -330,7 +344,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -363,114 +377,114 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         { entity: "work.Claim", action: "renew" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Claim", $record, "action function"),
-            "work.Claim#renew",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Claim#renew"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Claim", $before, "before"),
-                "work.Claim#renew",
-              ) as unknown as Claim,
-              ...$composed(compose, tx, context, "work.Claim#renew", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<RenewClaimInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
-          await $runCheck($issues, $checks, {
-            label: "currentFence",
-            code: "claim.current-fence",
-            message: "the fence is not the current claim's; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 58, column: 9 },
-            that: $expressions["renew.check.currentFence.that"],
-            details: $expressions["renew.check.currentFence.details"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "claimActive",
-            code: "claim.active",
-            message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 64, column: 9 },
-            that: $expressions["renew.check.claimActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "claimNotExpired",
-            code: "claim.expired",
-            message: "the lease has expired; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 69, column: 9 },
-            that: $expressions["renew.check.claimNotExpired.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 74, column: 9 },
-            that: $expressions["renew.check.versionMatches.that"],
-            details: $expressions["renew.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["renew.step.0.set.expiresAt"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &expiresAt (src/domain/work/claim.mesh.mx:82:22) produced no value, and expiresAt is required",
-              );
-            $changes.expiresAt = $record.expiresAt = $value;
-          }
-          $unloadFrom($loadPlan, "work.Claim", $record);
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#renew");
-          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Claim", action: "renew" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Claim", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Claim#renew", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#renew",
-            ),
-          });
-          await $expressions["renew.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Claim#renew: a step after the write deleted the row this action returns",
             );
-          return $result as Claim;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Claim#renew"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Claim", $before, "before"),
+                  "work.Claim#renew",
+                ) as unknown as Claim,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<RenewClaimInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
+            await $runCheck($issues, $checks, {
+              label: "currentFence",
+              code: "claim.current-fence",
+              message: "the fence is not the current claim's; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 59, column: 9 },
+              that: $expressions["renew.check.currentFence.that"],
+              details: $expressions["renew.check.currentFence.details"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "claimActive",
+              code: "claim.active",
+              message: "the claim has ended; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 65, column: 9 },
+              that: $expressions["renew.check.claimActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "claimNotExpired",
+              code: "claim.expired",
+              message: "the lease has expired; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 70, column: 9 },
+              that: $expressions["renew.check.claimNotExpired.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the task is at another version; read it again and retry",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 75, column: 9 },
+              that: $expressions["renew.check.versionMatches.that"],
+              details: $expressions["renew.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            {
+              const $value = await $expressions["renew.step.0.set.expiresAt"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:83:22) produced no value, and expiresAt is required",
+                );
+              $changes.expiresAt = $record.expiresAt = $value;
+            }
+            $unloadFrom($loadPlan, "work.Claim", $record);
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#renew");
+            const $stored = await tx.updateByKey(tables.claims, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Claim", action: "renew" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Claim", $written, "action function"),
+                "work.Claim#renew",
+              ),
+            });
+            await $expressions["renew.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Claim#renew: a step after the write deleted the row this action returns",
+              );
+            return $result as Claim;
+          }),
       );
     },
 
@@ -488,7 +502,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -501,7 +515,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -538,115 +552,115 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         { entity: "work.Claim", action: "release" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Claim", $record, "action function"),
-            "work.Claim#release",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Claim#release"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Claim", $before, "before"),
-                "work.Claim#release",
-              ) as unknown as Claim,
-              ...$composed(compose, tx, context, "work.Claim#release", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<ReleaseClaimInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
-          await $runCheck($issues, $checks, {
-            label: "currentFence",
-            code: "claim.current-fence",
-            message: "the fence is not the current claim's; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 92, column: 9 },
-            that: $expressions["release.check.currentFence.that"],
-            details: $expressions["release.check.currentFence.details"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "claimActive",
-            code: "claim.active",
-            message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 98, column: 9 },
-            that: $expressions["release.check.claimActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "claimNotExpired",
-            code: "claim.expired",
-            message: "the lease has expired; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 103, column: 9 },
-            that: $expressions["release.check.claimNotExpired.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 108, column: 9 },
-            that: $expressions["release.check.versionMatches.that"],
-            details: $expressions["release.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "released";
-          {
-            const $value = await $expressions["release.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["release.step.0.set.endReason"]($s);
-            $changes.endReason = $record.endReason = $value === undefined ? null : $value;
-          }
-          $unloadFrom($loadPlan, "work.Claim", $record);
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#release");
-          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Claim", action: "release" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Claim", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Claim#release", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#release",
-            ),
-          });
-          await $expressions["release.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Claim#release: a step after the write deleted the row this action returns",
             );
-          return $result as Claim;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Claim#release"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Claim", $before, "before"),
+                  "work.Claim#release",
+                ) as unknown as Claim,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<ReleaseClaimInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
+            await $runCheck($issues, $checks, {
+              label: "currentFence",
+              code: "claim.current-fence",
+              message: "the fence is not the current claim's; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 93, column: 9 },
+              that: $expressions["release.check.currentFence.that"],
+              details: $expressions["release.check.currentFence.details"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "claimActive",
+              code: "claim.active",
+              message: "the claim has ended; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 99, column: 9 },
+              that: $expressions["release.check.claimActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "claimNotExpired",
+              code: "claim.expired",
+              message: "the lease has expired; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 104, column: 9 },
+              that: $expressions["release.check.claimNotExpired.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the task is at another version; read it again and retry",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 109, column: 9 },
+              that: $expressions["release.check.versionMatches.that"],
+              details: $expressions["release.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "released";
+            {
+              const $value = await $expressions["release.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["release.step.0.set.endReason"]($s);
+              $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+            }
+            $unloadFrom($loadPlan, "work.Claim", $record);
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#release");
+            const $stored = await tx.updateByKey(tables.claims, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Claim", action: "release" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Claim", $written, "action function"),
+                "work.Claim#release",
+              ),
+            });
+            await $expressions["release.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Claim#release: a step after the write deleted the row this action returns",
+              );
+            return $result as Claim;
+          }),
       );
     },
 
@@ -664,7 +678,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -677,7 +691,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -690,7 +704,7 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
             {
               kind: "authorize-if",
               check:
-                "({ self, actor, context, tx }) => isSystem(context) || revokesClaimOf(tx, self.taskId, actor.id)",
+                "async ({ self, actor, context }) => isSystem(context) || await revokesClaimOf(self.taskId, actor.id)",
               record: true,
               run: $expressions["policy.claimRevoker.authorize-if.0"],
             },
@@ -710,100 +724,100 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         { entity: "work.Claim", action: "revoke" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $load = { actor: $actor, context: $context, clock: $clock };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Claim", $record, "action function"),
-            "work.Claim#revoke",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Claim#revoke"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Claim", $before, "before"),
-                "work.Claim#revoke",
-              ) as unknown as Claim,
-              ...$composed(compose, tx, context, "work.Claim#revoke", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<RevokeClaimInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $loadInto($loadPlan, "work.Claim", tx, $record, ["task"], $load);
-          await $runCheck($issues, $checks, {
-            label: "claimActive",
-            code: "claim.active",
-            message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 127, column: 9 },
-            that: $expressions["revoke.check.claimActive.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "versionMatches",
-            code: "expected-version",
-            message: "the task is at another version; read it again and retry",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 132, column: 9 },
-            that: $expressions["revoke.check.versionMatches.that"],
-            details: $expressions["revoke.check.versionMatches.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "revoked";
-          {
-            const $value = await $expressions["revoke.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["revoke.step.0.set.endReason"]($s);
-            $changes.endReason = $record.endReason = $value === undefined ? null : $value;
-          }
-          $unloadFrom($loadPlan, "work.Claim", $record);
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#revoke");
-          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Claim", action: "revoke" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Claim", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Claim#revoke", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#revoke",
-            ),
-          });
-          await $expressions["revoke.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Claim#revoke: a step after the write deleted the row this action returns",
             );
-          return $result as Claim;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Claim#revoke"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Claim", $before, "before"),
+                  "work.Claim#revoke",
+                ) as unknown as Claim,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<RevokeClaimInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $loadInto($loadPlan, "work.Claim", tx, $record, ["task"], $load);
+            await $runCheck($issues, $checks, {
+              label: "claimActive",
+              code: "claim.active",
+              message: "the claim has ended; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 128, column: 9 },
+              that: $expressions["revoke.check.claimActive.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "versionMatches",
+              code: "expected-version",
+              message: "the task is at another version; read it again and retry",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 133, column: 9 },
+              that: $expressions["revoke.check.versionMatches.that"],
+              details: $expressions["revoke.check.versionMatches.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "revoked";
+            {
+              const $value = await $expressions["revoke.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["revoke.step.0.set.endReason"]($s);
+              $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+            }
+            $unloadFrom($loadPlan, "work.Claim", $record);
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#revoke");
+            const $stored = await tx.updateByKey(tables.claims, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Claim", action: "revoke" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Claim", $written, "action function"),
+                "work.Claim#revoke",
+              ),
+            });
+            await $expressions["revoke.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Claim#revoke: a step after the write deleted the row this action returns",
+              );
+            return $result as Claim;
+          }),
       );
     },
 
@@ -841,87 +855,87 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         { entity: "work.Claim", action: "expire" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Claim", $record, "action function"),
-            "work.Claim#expire",
-          );
-          const $s = $scope(
-            {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Claim#expire"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Claim", $before, "before"),
-                "work.Claim#expire",
-              ) as unknown as Claim,
-              ...$composed(compose, tx, context, "work.Claim#expire", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<ExpireClaimInput>;
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "claimActive",
-            code: "claim.active",
-            message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 150, column: 9 },
-            that: $expressions["expire.check.claimActive.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          $changes.state = $record.state = "expired";
-          {
-            const $value = await $expressions["expire.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["expire.step.0.set.endReason"]($s);
-            $changes.endReason = $record.endReason = $value === undefined ? null : $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#expire");
-          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Claim", action: "expire" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
-          const $written: $Row = { ...$stored };
-          const $after = $rescope($s, {
-            self: $readOnlyRecord(
-              $guarded($loadPlan, "work.Claim", $written, "action function"),
+        (tx) =>
+          frame.within(tx, $clock, "work.Claim#expire", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#expire",
-            ),
-          });
-          await $expressions["expire.step.1.run"]($after);
-          // the result: the row as the steps after the write left it, read again by key
-          const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
-          if ($result === undefined)
-            throw new $FrameworkError(
-              "work.Claim#expire: a step after the write deleted the row this action returns",
             );
-          return $result as Claim;
-        },
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Claim#expire"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Claim", $before, "before"),
+                  "work.Claim#expire",
+                ) as unknown as Claim,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<ExpireClaimInput>;
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "claimActive",
+              code: "claim.active",
+              message: "the claim has ended; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 151, column: 9 },
+              that: $expressions["expire.check.claimActive.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
+            $changes.state = $record.state = "expired";
+            {
+              const $value = await $expressions["expire.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["expire.step.0.set.endReason"]($s);
+              $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#expire");
+            const $stored = await tx.updateByKey(tables.claims, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Claim", action: "expire" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Claim", $written, "action function"),
+                "work.Claim#expire",
+              ),
+            });
+            await $expressions["expire.step.1.run"]($after);
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Claim#expire: a step after the write deleted the row this action returns",
+              );
+            return $result as Claim;
+          }),
       );
     },
 
@@ -959,79 +973,79 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
         { entity: "work.Claim", action: "end" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
-          const $key = { id: parsed.id };
-          const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
-          if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
-          const $changes: $Row = {};
-          const $record: $Row = { ...$before };
-          const $writes = $writeCount(tx);
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.Claim", $record, "action function"),
-            "work.Claim#end",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "work.Claim#end", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            const $key = { id: parsed.id };
+            const $before = await tx.selectByKeyForUpdate(tables.claims, $key);
+            if ($before === undefined) throw new $NotFoundError("work.Claim", $key);
+            const $changes: $Row = {};
+            const $record: $Row = { ...$before };
+            const $writes = $writeCount(tx);
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.Claim", $record, "action function"),
+              "work.Claim#end",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.Claim#end"),
+                actor: $actor,
+                context: $context,
+                before: $readOnlyRecord(
+                  $guarded($loadPlan, "work.Claim", $before, "before"),
+                  "work.Claim#end",
+                ) as unknown as Claim,
+              },
+              { clock: $clock },
+            ) as unknown as $StoredScope<EndClaimInput>;
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "claimActive",
+              code: "claim.active",
+              message: "the claim has ended; claim the task again",
+              source: { file: "src/domain/work/claim.mesh.mx", line: 169, column: 9 },
+              that: $expressions["end.check.claimActive.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.Claim#end"),
-              actor: $actor,
-              context: $context,
-              before: $readOnlyRecord(
-                $guarded($loadPlan, "work.Claim", $before, "before"),
-                "work.Claim#end",
-              ) as unknown as Claim,
-              ...$composed(compose, tx, context, "work.Claim#end", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $StoredScope<EndClaimInput>;
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "claimActive",
-            code: "claim.active",
-            message: "the claim has ended; claim the task again",
-            source: { file: "src/domain/work/claim.mesh.mx", line: 168, column: 9 },
-            that: $expressions["end.check.claimActive.that"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["end.step.0.set.state"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &state (src/domain/work/claim.mesh.mx:175:18) produced no value, and state is required",
-              );
-            $changes.state = $record.state = $value;
-          }
-          {
-            const $value = await $expressions["end.step.0.set.endedAt"]($s);
-            $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
-          }
-          {
-            const $value = await $expressions["end.step.0.set.endReason"]($s);
-            $changes.endReason = $record.endReason = $value === undefined ? null : $value;
-          }
-          // data layer
-          // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
-          await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#end");
-          const $stored = await tx.updateByKey(tables.claims, $key, $changes);
-          if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.Claim", action: "end" },
-            $before,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as Claim;
-        },
+              const $value = await $expressions["end.step.0.set.state"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &state (src/domain/work/claim.mesh.mx:176:18) produced no value, and state is required",
+                );
+              $changes.state = $record.state = $value;
+            }
+            {
+              const $value = await $expressions["end.step.0.set.endedAt"]($s);
+              $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
+            }
+            {
+              const $value = await $expressions["end.step.0.set.endReason"]($s);
+              $changes.endReason = $record.endReason = $value === undefined ? null : $value;
+            }
+            // data layer
+            // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
+            await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#end");
+            const $stored = await tx.updateByKey(tables.claims, $key, $changes);
+            if ($stored === undefined) throw new $NotFoundError("work.Claim", $key);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.Claim", action: "end" },
+              $before,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as Claim;
+          }),
       );
     },
 
@@ -1039,26 +1053,31 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
       input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readClaimInput, input);
       if (
-        !(await $authorizer("work.Claim", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "work.Claim",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -1086,38 +1105,87 @@ export function bindClaim(layer: $DataLayer, options: $BindOptions = {}, compose
  * The entity value (CMP-16): `Claim.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("work.Claim", bindClaim, bindClaimReads, ($call) => ({
-  acquire(input: AcquireClaimInput, ...context: $ContextArgument): Promise<Claim> {
-    return $call("acquire", input, context);
-  },
+const $entityValue = $entity(
+  "work.Claim",
+  bindClaim,
+  bindClaimReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    acquire(input: AcquireClaimInput, ...context: $ContextArgument): Promise<Claim> {
+      return $call("acquire", input, context);
+    },
 
-  renew(input: RenewClaimInput, ...context: $ContextArgument): Promise<Claim> {
-    return $call("renew", input, context);
-  },
+    renew(input: RenewClaimInput, ...context: $ContextArgument): Promise<Claim> {
+      return $call("renew", input, context);
+    },
 
-  release(input: ReleaseClaimInput, ...context: $ContextArgument): Promise<Claim> {
-    return $call("release", input, context);
-  },
+    release(input: ReleaseClaimInput, ...context: $ContextArgument): Promise<Claim> {
+      return $call("release", input, context);
+    },
 
-  revoke(input: RevokeClaimInput, ...context: $ContextArgument): Promise<Claim> {
-    return $call("revoke", input, context);
-  },
+    revoke(input: RevokeClaimInput, ...context: $ContextArgument): Promise<Claim> {
+      return $call("revoke", input, context);
+    },
 
-  expire(input: ExpireClaimInput, ...context: $ContextArgument): Promise<Claim> {
-    return $call("expire", input, context);
-  },
+    expire(input: ExpireClaimInput, ...context: $ContextArgument): Promise<Claim> {
+      return $call("expire", input, context);
+    },
 
-  end(input: EndClaimInput, ...context: $ContextArgument): Promise<Claim> {
-    return $call("end", input, context);
-  },
+    end(input: EndClaimInput, ...context: $ContextArgument): Promise<Claim> {
+      return $call("end", input, context);
+    },
 
-  read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
-    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+      input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? ClaimWith<ClaimLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as Claim };
 /** The record type, under the entity value's name. */
 export type Claim = $Record;
+
+/** What `privileged(Claim)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+    input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<Claim> & Pick<$DeepReadonly<ClaimTxLoadable>, ClaimLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    acquire(input: AcquireClaimInput, ...context: $ContextArgument): Promise<$DeepReadonly<Claim>>;
+    renew(input: RenewClaimInput, ...context: $ContextArgument): Promise<$DeepReadonly<Claim>>;
+    release(input: ReleaseClaimInput, ...context: $ContextArgument): Promise<$DeepReadonly<Claim>>;
+    revoke(input: RevokeClaimInput, ...context: $ContextArgument): Promise<$DeepReadonly<Claim>>;
+    expire(input: ExpireClaimInput, ...context: $ContextArgument): Promise<$DeepReadonly<Claim>>;
+    end(input: EndClaimInput, ...context: $ContextArgument): Promise<$DeepReadonly<Claim>>;
+    read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
+      input: Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<Claim> & Pick<$DeepReadonly<ClaimLoadable>, ClaimLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;

@@ -27,12 +27,12 @@ entity :SessionReference table="session_references"
         &agentProfile
       validate
         check :agentProfile [
-          that=async ({ input, tx }) => (await tx.readCollaborator({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length > 0
+          that=async ({ input }) => (await privileged(Collaborator).read({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length > 0
           code="session.agent-profile"
           message="the agent profile is not a collaborator"
         ]
         check :machineRetired [
-          that=({ input, tx }) => machineActiveOf(tx, input.machine)
+          that=async ({ input }) => await machineActiveOf(input.machine)
           code="machine.retired"
           message="the machine is retired; report the host by a new name"
         ]
@@ -90,10 +90,10 @@ entity :SessionReference table="session_references"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&record, &redact]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOrMember actions=[&record]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])
     policy :ownerOnly actions=[&redact]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])
     policy :sessionRecorder actions=[&setAvailability]
       authorize-if=({ self, actor, context }) => isSystem(context) || self.recordedById === actor.id

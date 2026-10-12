@@ -20,12 +20,12 @@ entity :Membership table="memberships"
         &role
       validate
         check :collaboratorActive [
-          that=({ input, tx }) => collaboratorActiveOf(tx, input.collaborator)
+          that=async ({ input }) => await collaboratorActiveOf(input.collaborator)
           code="collaborator.active"
           message="the collaborator is retired"
         ]
         check :noneActive [
-          that=({ input, tx }) => noActiveMembershipOf(tx, input.collaborator)
+          that=async ({ input }) => await noActiveMembershipOf(input.collaborator)
           code="membership.none-active"
           message="the collaborator already has an active membership; change its role instead"
         ]
@@ -49,7 +49,7 @@ entity :Membership table="memberships"
           message="the member already has that role"
         ]
         check :lastOwner [
-          that=({ input, tx }) => keepsAnOwnerOf(tx, &state === :active && &role === :owner && (input.role ?? &role) !== :owner)
+          that=async ({ input }) => await keepsAnOwnerOf(&state === :active && &role === :owner && (input.role ?? &role) !== :owner)
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
@@ -73,7 +73,7 @@ entity :Membership table="memberships"
           message="the membership is revoked"
         ]
         check :lastOwner [
-          that=({ tx }) => keepsAnOwnerOf(tx, &state === :active && &role === :owner)
+          that=async ({}) => await keepsAnOwnerOf(&state === :active && &role === :owner)
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
@@ -93,6 +93,6 @@ entity :Membership table="memberships"
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => isSystem(context) || actor.role != null
     policy :isMember actions=[&grant, &changeRole, &revoke]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)
+      authorize-if=async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)
     policy :ownerOnly actions=[&grant, &changeRole, &revoke]
-      authorize-if=({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner])
+      authorize-if=async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner])

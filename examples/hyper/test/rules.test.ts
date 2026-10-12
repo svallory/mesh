@@ -863,7 +863,7 @@ const PORT_ONLY: Record<string, Case> = {
 /**
  * Hyper's rule that is a permission check, ported as a policy (M8b): the passing case is a call the policy admits, the
  * failing one a `ForbiddenError` naming the policy. `role` re-runs the role gate under the workspace lock for six actions
- * (`memberships/rules.ex:12-17`); a policy that reads the role through `tx` runs inside the transaction, so it covers
+ * (`memberships/rules.ex:12-17`); a policy that reads the role through `privileged` runs inside the transaction, so it covers
  * the rule. (`attempt.claimer`, Hyper's other rule that denies through `Role.deny`, is both a rule and the policy
  * `attemptClaimer`, as in Hyper, and its cases are in RULES.)
  */
@@ -1003,7 +1003,7 @@ describe("what the rules leave in place", () => {
     await expect(Invocation.record({ attempt: GHOST, usageSource: "runtime" }, as(w.bot))).rejects.toThrow("which does not exist");
   }));
 
-  test("a rule that reads the record a create names reads it through tx, so an id that names no row fails the rule (ACT-27)", () => within(async (w) => {
+  test("a rule that reads the record a create names reads it through privileged, so an id that names no row fails the rule (ACT-27)", () => within(async (w) => {
     // A caller's acquire of a Task that does not exist is not_found in the permission phase (PROTOCOL.md:110, PR #70 N4):
     // policy claimAssignee throws NotFoundError before any rule runs.
     await expect(Claim.acquire({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);

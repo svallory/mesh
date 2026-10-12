@@ -14,10 +14,8 @@ import {
   submittedVersionsOf,
   taskUnchangedSinceSubmit,
 } from "../../../src/domain/work/work.helpers";
-import type {
-  ReadOnlyActions as $ReadOnlyActions,
-  ReadOnlyReads as $ReadOnlyReads,
-} from "../../composition";
+import { Submission as $e$Submission, type $ReadOnly as $t$Submission } from "./submission.actions";
+import { Task as $e$Task, type $ReadOnly as $t$Task } from "./task.actions";
 import type { Review, ReviewLoaded, AcceptReviewInput, ReturnReviewInput } from "./review.types";
 
 /** What every expression of Review reads; `I` is the input of the action it runs in. */
@@ -27,8 +25,6 @@ export type ReviewScope<I = unknown> = $Scope<{
   actor: any;
   context: any;
   before: $DeepReadonly<Review> | null;
-  actions: $ReadOnlyActions;
-  tx: $ReadOnlyReads;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
 export type ReviewStoredScope<I = unknown> = ReviewScope<I> & { before: $DeepReadonly<Review> };
@@ -53,51 +49,54 @@ export type ReviewNewScope<I = unknown> = Omit<ReviewCheckScope<I>, "self"> & {
 };
 
 export const expressions = {
-  // check :pending that, plain (uses-tx) (src/domain/work/review.mesh.mx:23:16)
+  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:24:16)
   "accept.check.pending.that": ($s: ReviewNewScope<AcceptReviewInput>) => {
-    return (async ({ input, tx }) =>
-      (await submittedVersionsOf(tx, input.submission)).state === "pending")($s);
+    return (async ({ input }) => (await submittedVersionsOf(input.submission)).state === "pending")(
+      $s,
+    );
   },
-  // check :taskVersion that, plain (uses-tx) (src/domain/work/review.mesh.mx:28:16)
+  // check :taskVersion that, plain (awaits-helper) (src/domain/work/review.mesh.mx:29:16)
   "accept.check.taskVersion.that": ($s: ReviewNewScope<AcceptReviewInput>) => {
-    return (async ({ input, tx }) =>
-      taskUnchangedSinceSubmit(await submittedVersionsOf(tx, input.submission)))($s);
+    return (async ({ input }) =>
+      taskUnchangedSinceSubmit(await submittedVersionsOf(input.submission)))($s);
   },
-  // check :taskVersion details, plain (uses-tx) (src/domain/work/review.mesh.mx:31:19)
+  // check :taskVersion details, plain (awaits-helper) (src/domain/work/review.mesh.mx:32:19)
   "accept.check.taskVersion.details": ($s: ReviewNewScope<AcceptReviewInput>) => {
-    return (async ({ input, tx }) => {
-      const { submitted, current } = await submittedVersionsOf(tx, input.submission);
+    return (async ({ input }) => {
+      const { submitted, current } = await submittedVersionsOf(input.submission);
       return { submitted, current };
     })($s);
   },
-  // check :versionMatches that, plain (uses-tx) (src/domain/work/review.mesh.mx:34:16)
+  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:35:16)
   "accept.check.versionMatches.that": ($s: ReviewNewScope<AcceptReviewInput>) => {
-    return (async ({ input, tx }) =>
+    return (async ({ input }) =>
       input.expectedVersion == null ||
-      input.expectedVersion === (await submittedVersionsOf(tx, input.submission)).current)($s);
+      input.expectedVersion === (await submittedVersionsOf(input.submission)).current)($s);
   },
-  // check :versionMatches details, plain (uses-tx) (src/domain/work/review.mesh.mx:37:19)
+  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:38:19)
   "accept.check.versionMatches.details": ($s: ReviewNewScope<AcceptReviewInput>) => {
-    return (async ({ input, tx }) => ({
+    return (async ({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: (await submittedVersionsOf(tx, input.submission)).current,
+      actualVersion: (await submittedVersionsOf(input.submission)).current,
     }))($s);
   },
-  // set &reviewer, translated (src/domain/work/review.mesh.mx:42:21)
+  // set &reviewer, translated (src/domain/work/review.mesh.mx:43:21)
   "accept.step.0.set.reviewer": ($s: ReviewScope<AcceptReviewInput>) => $s.actor?.id,
-  // set &ruleApplied, plain (uses-tx) (src/domain/work/review.mesh.mx:43:24)
+  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:44:24)
   "accept.step.0.set.ruleApplied": ($s: ReviewScope<AcceptReviewInput>) => {
     const { self } = $s;
-    return (({ tx }) => reviewerRuleOf(tx, self.submission.taskId))($s);
+    return (async ({}) => await reviewerRuleOf(self.submission.taskId))($s);
   },
-  // run, plain (run-step) (src/domain/work/review.mesh.mx:44:28)
+  // run, plain (run-step) (src/domain/work/review.mesh.mx:45:28)
   "accept.step.1.run": ($s: ReviewScope<AcceptReviewInput>) => {
-    return (async function ({ self, context, actions }) {
-      const submission = await actions.settleSubmission(
+    const Submission = $e$Submission as unknown as $t$Submission;
+    const Task = $e$Task as unknown as $t$Task;
+    return (async function ({ self, context }) {
+      const submission = await Submission.settle(
         { id: self.submissionId, outcome: "accepted" },
         { ...context, system: true },
       );
-      await actions.completeTask(
+      await Task.complete(
         { id: submission.taskId },
         {
           ...context,
@@ -107,67 +106,70 @@ export const expressions = {
       );
     })($s);
   },
-  // check :pending that, plain (uses-tx) (src/domain/work/review.mesh.mx:55:16)
+  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:56:16)
   "return.check.pending.that": ($s: ReviewNewScope<ReturnReviewInput>) => {
-    return (async ({ input, tx }) =>
-      (await submittedVersionsOf(tx, input.submission)).state === "pending")($s);
+    return (async ({ input }) => (await submittedVersionsOf(input.submission)).state === "pending")(
+      $s,
+    );
   },
-  // check :versionMatches that, plain (uses-tx) (src/domain/work/review.mesh.mx:60:16)
+  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:61:16)
   "return.check.versionMatches.that": ($s: ReviewNewScope<ReturnReviewInput>) => {
-    return (async ({ input, tx }) =>
+    return (async ({ input }) =>
       input.expectedVersion == null ||
-      input.expectedVersion === (await submittedVersionsOf(tx, input.submission)).current)($s);
+      input.expectedVersion === (await submittedVersionsOf(input.submission)).current)($s);
   },
-  // check :versionMatches details, plain (uses-tx) (src/domain/work/review.mesh.mx:63:19)
+  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:64:19)
   "return.check.versionMatches.details": ($s: ReviewNewScope<ReturnReviewInput>) => {
-    return (async ({ input, tx }) => ({
+    return (async ({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: (await submittedVersionsOf(tx, input.submission)).current,
+      actualVersion: (await submittedVersionsOf(input.submission)).current,
     }))($s);
   },
-  // set &reasons, translated (src/domain/work/review.mesh.mx:68:20)
+  // set &reasons, translated (src/domain/work/review.mesh.mx:69:20)
   "return.step.0.set.reasons": ($s: ReviewScope<ReturnReviewInput>) => $s.input?.reasons,
-  // set &reviewer, translated (src/domain/work/review.mesh.mx:69:21)
+  // set &reviewer, translated (src/domain/work/review.mesh.mx:70:21)
   "return.step.0.set.reviewer": ($s: ReviewScope<ReturnReviewInput>) => $s.actor?.id,
-  // set &ruleApplied, plain (uses-tx) (src/domain/work/review.mesh.mx:70:24)
+  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:71:24)
   "return.step.0.set.ruleApplied": ($s: ReviewScope<ReturnReviewInput>) => {
     const { self } = $s;
-    return (({ tx }) => reviewerRuleOf(tx, self.submission.taskId))($s);
+    return (async ({}) => await reviewerRuleOf(self.submission.taskId))($s);
   },
-  // run, plain (run-step) (src/domain/work/review.mesh.mx:71:28)
+  // run, plain (run-step) (src/domain/work/review.mesh.mx:72:28)
   "return.step.1.run": ($s: ReviewScope<ReturnReviewInput>) => {
-    return (async function ({ self, context, actions }) {
-      const submission = await actions.settleSubmission(
+    const Submission = $e$Submission as unknown as $t$Submission;
+    const Task = $e$Task as unknown as $t$Task;
+    return (async function ({ self, context }) {
+      const submission = await Submission.settle(
         { id: self.submissionId, outcome: "returned" },
         { ...context, system: true },
       );
-      await actions.touchTask({ id: submission.taskId }, { ...context, system: true });
+      await Task.touch({ id: submission.taskId }, { ...context, system: true });
     })($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:77:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:78:20)
   "policy.membersRead.authorize-if.0": ($s: ReviewCheckScope<unknown>) =>
     $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (uses-tx) (src/domain/work/review.mesh.mx:79:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:80:20)
   "policy.isMember.authorize-if.0": (
     $s: ReviewNewScope<$SharedInput<AcceptReviewInput | ReturnReviewInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id))($s);
+    return (async ({ actor, context }) => isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (uses-tx) (src/domain/work/review.mesh.mx:81:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:82:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: ReviewNewScope<$SharedInput<AcceptReviewInput | ReturnReviewInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ actor, context, tx }) =>
-      isSystem(context) || roleIn(tx, actor.id, ["owner", "member"]))($s);
+    return (async ({ actor, context }) =>
+      isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :reviewReviewer authorize-if, plain (uses-tx) (src/domain/work/review.mesh.mx:83:20)
+  // policy :reviewReviewer authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:84:20)
   "policy.reviewReviewer.authorize-if.0": (
     $s: ReviewNewScope<$SharedInput<AcceptReviewInput | ReturnReviewInput>>,
   ) => {
     const isSystem = $.isSystem;
-    return (({ input, actor, context, tx }) =>
-      isSystem(context) || reviewsSubmissionOf(tx, input.submission, actor.id))($s);
+    return (async ({ input, actor, context }) =>
+      isSystem(context) || (await reviewsSubmissionOf(input.submission, actor.id)))($s);
   },
 } as const;

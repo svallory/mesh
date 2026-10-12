@@ -5,10 +5,10 @@
 import {
   FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
+  NO_FRAME as $NO_FRAME,
   authorizer as $authorizer,
   castInput as $castInput,
   checkScope as $checkScope,
-  composed as $composed,
   entity as $entity,
   guarded as $guarded,
   loadRows as $loadRows,
@@ -20,10 +20,14 @@ import {
   runCheck as $runCheck,
   scope as $scope,
   uuidv7 as $uuidv7,
+  type ActionContext as $ActionContext,
+  type ActionFrame as $ActionFrame,
   type BindOptions as $BindOptions,
-  type Composer as $Composer,
   type ContextArgument as $ContextArgument,
   type DataLayer as $DataLayer,
+  type DeepReadonly as $DeepReadonly,
+  type EntityReadsBind as $EntityReadsBind,
+  type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
   type Row as $Row,
@@ -35,6 +39,7 @@ import type {
   LateResultLoadNames,
   LateResultLoadArg,
   LateResultLoadable,
+  LateResultTxLoadable,
   RecordLateResultInput,
   ReadLateResultInput,
 } from "./lateResult.types";
@@ -47,10 +52,14 @@ import {
 import { loadPlan as $loadPlan } from "../../load";
 
 /**
- * The reads of this entity without their policies: what `tx` holds in a function of an entity file (ADR-0068).
- * The read actions below evaluate the read's policies, then call these.
+ * The reads of this entity without their policies: what `privileged(LateResult)` runs (TXN-16). The read actions
+ * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
-export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {}) {
+export function bindLateResultReads(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
   return Object.freeze({
     async read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
       input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
@@ -60,7 +69,7 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
       cast?: $CastOutput<typeof readLateResultInput>,
     ): Promise<L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never> {
       // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
-      // for its policies and hands it over as `cast`; a read through `tx` casts it here.
+      // for its policies and hands it over as `cast`; a `privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readLateResultInput, input));
       return layer.transaction(async (tx) => {
         const $rows = (await tx.select(tables.late_results, {
@@ -80,6 +89,7 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
           context: $context,
           clock: $clock,
           policies,
+          frame,
         })) as unknown as L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never;
       });
     },
@@ -87,11 +97,15 @@ export function bindLateResultReads(layer: $DataLayer, options: $BindOptions = {
 }
 
 /**
- * Every action of this entity, bound to `layer`. `compose` is the binding's composer, which hands a function its
- * `actions` and `tx`; the project's `bind` in the index passes it.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
+ * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
  */
-export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, compose?: $Composer) {
-  const $reads = bindLateResultReads(layer, options);
+export function bindLateResult(
+  layer: $DataLayer,
+  options: $BindOptions = {},
+  frame: $ActionFrame = $NO_FRAME,
+) {
+  const $reads = bindLateResultReads(layer, options, frame);
   return Object.freeze({
     async record(
       input: RecordLateResultInput,
@@ -110,7 +124,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
           checks: [
             {
               kind: "authorize-if",
-              check: "({ actor, context, tx }) => isSystem(context) || memberOf(tx, actor.id)",
+              check: "async ({ actor, context }) => isSystem(context) || await memberOf(actor.id)",
               record: true,
               run: $expressions["policy.isMember.authorize-if.0"],
             },
@@ -123,7 +137,7 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
             {
               kind: "authorize-if",
               check:
-                "({ actor, context, tx }) => isSystem(context) || roleIn(tx, actor.id, [:owner, :member])",
+                "async ({ actor, context }) => isSystem(context) || await roleIn(actor.id, [:owner, :member])",
               record: true,
               run: $expressions["policy.ownerOrMember.authorize-if.0"],
             },
@@ -147,82 +161,83 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
         { entity: "work.LateResult", action: "record" },
         parsed,
         context,
-        async (tx) => {
-          // transaction: opens here; what follows commits together or not at all
-          const $now = $clock();
-          // plan: a create is one insert; nothing is read first
-          const $changes: $Row = {
-            id: $uuidv7(),
-            summary: null,
-            evidence: [],
-            recordedAt: $now,
-          };
-          const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
-          const $self = $readOnlyRecord(
-            $guarded($loadPlan, "work.LateResult", $record, "action function"),
-            "work.LateResult#record",
-          );
-          const $s = $scope(
+        (tx) =>
+          frame.within(tx, $clock, "work.LateResult#record", async () => {
+            // transaction: opens here; what follows commits together or not at all
+            const $now = $clock();
+            // plan: a create is one insert; nothing is read first
+            const $changes: $Row = {
+              id: $uuidv7(),
+              summary: null,
+              evidence: [],
+              recordedAt: $now,
+            };
+            const $record: $Row = { ...$changes, fence: null, taskId: null, submitterId: null };
+            const $self = $readOnlyRecord(
+              $guarded($loadPlan, "work.LateResult", $record, "action function"),
+              "work.LateResult#record",
+            );
+            const $s = $scope(
+              {
+                self: $self,
+                input: $readOnlyRecord(parsed, "work.LateResult#record"),
+                actor: $actor,
+                context: $context,
+                before: null,
+              },
+              { clock: $clock },
+            ) as unknown as $Scope<RecordLateResultInput>;
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "staleFence",
+              code: "claim.stale-fence",
+              message: "only a fence you held that expired or was revoked records a late result",
+              source: { file: "src/domain/work/late-result.mesh.mx", line: 24, column: 9 },
+              that: $expressions["record.check.staleFence.that"],
+            });
+            await $runCheck($issues, $checks, {
+              label: "evidenceExists",
+              code: "evidence.exists",
+              message: "an evidence reference does not exist",
+              source: { file: "src/domain/work/late-result.mesh.mx", line: 29, column: 9 },
+              that: $expressions["record.check.evidenceExists.that"],
+              details: $expressions["record.check.evidenceExists.details"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
+            if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
+            if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
+            if (parsed.evidence !== undefined)
+              $changes.evidence = $record.evidence = parsed.evidence;
+            // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              self: $self,
-              input: $readOnlyRecord(parsed, "work.LateResult#record"),
-              actor: $actor,
-              context: $context,
-              before: null,
-              ...$composed(compose, tx, context, "work.LateResult#record", $clock),
-            },
-            { clock: $clock },
-          ) as unknown as $Scope<RecordLateResultInput>;
-          // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
-          await $policies.inside($checkScope($s));
-          // validate: every check runs, and every failed check is reported together
-          const $issues: $Issue[] = [];
-          const $checks = $checkScope($s);
-          await $runCheck($issues, $checks, {
-            label: "staleFence",
-            code: "claim.stale-fence",
-            message: "only a fence you held that expired or was revoked records a late result",
-            source: { file: "src/domain/work/late-result.mesh.mx", line: 24, column: 9 },
-            that: $expressions["record.check.staleFence.that"],
-          });
-          await $runCheck($issues, $checks, {
-            label: "evidenceExists",
-            code: "evidence.exists",
-            message: "an evidence reference does not exist",
-            source: { file: "src/domain/work/late-result.mesh.mx", line: 29, column: 9 },
-            that: $expressions["record.check.evidenceExists.that"],
-            details: $expressions["record.check.evidenceExists.details"],
-          });
-          if ($issues.length > 0) throw new $InvalidInputError($issues);
-          // the input: the member inputs the caller sent, applied now that the checks have passed
-          if (parsed.task !== undefined) $changes.taskId = $record.taskId = parsed.task;
-          if (parsed.fence !== undefined) $changes.fence = $record.fence = parsed.fence;
-          if (parsed.summary !== undefined) $changes.summary = $record.summary = parsed.summary;
-          if (parsed.evidence !== undefined) $changes.evidence = $record.evidence = parsed.evidence;
-          // do: the steps run in written order, each seeing the record as the ones before it left it
-          {
-            const $value = await $expressions["record.step.0.set.submitter"]($s);
-            if ($value === undefined || $value === null)
-              throw new $FrameworkError(
-                "set &submitter (src/domain/work/late-result.mesh.mx:37:22) produced no value, and the relationship submitter is required",
-              );
-            $changes.submitterId = $record.submitterId = $value;
-          }
-          // data layer
-          const $stored = await tx.insert(tables.late_results, $changes);
-          $noteWrite(tx);
-          // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-          await $recordWrite(
-            tx,
-            options.seams,
-            { entity: "work.LateResult", action: "record" },
-            null,
-            $stored,
-            parsed,
-            context,
-          );
-          return $stored as LateResult;
-        },
+              const $value = await $expressions["record.step.0.set.submitter"]($s);
+              if ($value === undefined || $value === null)
+                throw new $FrameworkError(
+                  "set &submitter (src/domain/work/late-result.mesh.mx:37:22) produced no value, and the relationship submitter is required",
+                );
+              $changes.submitterId = $record.submitterId = $value;
+            }
+            // data layer
+            const $stored = await tx.insert(tables.late_results, $changes);
+            $noteWrite(tx);
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
+            await $recordWrite(
+              tx,
+              options.seams,
+              { entity: "work.LateResult", action: "record" },
+              null,
+              $stored,
+              parsed,
+              context,
+            );
+            return $stored as LateResult;
+          }),
       );
     },
 
@@ -230,26 +245,31 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
       input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
       ...[context]: $ContextArgument
     ): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
-      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a read through `tx` skips them
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `privileged` read skips them
       const $context = (context ?? {}) as unknown as Record<string, unknown>;
       const $actor = $context.actor;
       const $clock = $pinClock(options.clock);
       const $parsed = await $castInput(layer, readLateResultInput, input);
       if (
-        !(await $authorizer("work.LateResult", "read", [
-          {
-            name: "membersRead",
-            when: null,
-            checks: [
-              {
-                kind: "authorize-if",
-                check: "({ actor, context }) => isSystem(context) || actor.role != null",
-                record: false,
-                run: $expressions["policy.membersRead.authorize-if.0"],
-              },
-            ],
-          },
-        ]).filter(
+        !(await $authorizer(
+          "work.LateResult",
+          "read",
+          [
+            {
+              name: "membersRead",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "({ actor, context }) => isSystem(context) || actor.role != null",
+                  record: false,
+                  run: $expressions["policy.membersRead.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
           layer,
           $scope(
             {
@@ -279,18 +299,67 @@ export function bindLateResult(layer: $DataLayer, options: $BindOptions = {}, co
  * The entity value (CMP-16): `LateResult.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
-const $entityValue = $entity("work.LateResult", bindLateResult, bindLateResultReads, ($call) => ({
-  record(input: RecordLateResultInput, ...context: $ContextArgument): Promise<LateResult> {
-    return $call("record", input, context);
-  },
+const $entityValue = $entity(
+  "work.LateResult",
+  bindLateResult,
+  bindLateResultReads as $EntityReadsBind<$Privileged>,
+  ($call) => ({
+    record(input: RecordLateResultInput, ...context: $ContextArgument): Promise<LateResult> {
+      return $call("record", input, context);
+    },
 
-  read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
-    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
-    ...context: $ContextArgument
-  ): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
-    return $call("read", input, context);
-  },
-}));
+    read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+      input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<L extends unknown ? LateResultWith<LateResultLoadNames<L>>[] : never> {
+      return $call("read", input, context);
+    },
+  }),
+);
 export { $entityValue as LateResult };
 /** The record type, under the entity value's name. */
 export type LateResult = $Record;
+
+/** What `privileged(LateResult)` returns (TXN-16): one function per read action, run with no policy. */
+export interface $Privileged {
+  read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never>;
+}
+
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+export interface $PrivilegedReadOnly {
+  read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+    input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+    context?: $ActionContext,
+  ): Promise<
+    L extends unknown
+      ? readonly ($DeepReadonly<LateResult> &
+          Pick<$DeepReadonly<LateResultTxLoadable>, LateResultLoadNames<L>>)[]
+      : never
+  >;
+}
+
+/**
+ * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * and so is what `privileged` of it resolves with. The expressions files bind the entity value under this type.
+ */
+export type $ReadOnly = $EntityValue<
+  {
+    record(
+      input: RecordLateResultInput,
+      ...context: $ContextArgument
+    ): Promise<$DeepReadonly<LateResult>>;
+    read<const L extends readonly (keyof LateResultLoadable)[] = readonly []>(
+      input: Omit<ReadLateResultInput, "load"> & LateResultLoadArg<L>,
+      ...context: $ContextArgument
+    ): Promise<
+      L extends unknown
+        ? readonly ($DeepReadonly<LateResult> &
+            Pick<$DeepReadonly<LateResultLoadable>, LateResultLoadNames<L>>)[]
+        : never
+    >;
+  },
+  $PrivilegedReadOnly
+>;
