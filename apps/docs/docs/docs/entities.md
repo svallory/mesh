@@ -647,7 +647,7 @@ export async function isActiveOwner(actor: { id: string }) {
 }
 ```
 
-A helper that reads data is `async`, so the check awaits it inside an `async` arrow, as above. That check is plain code: it runs in memory inside the transaction, after the locked read (POL-21). Calling an `async` helper without `await` is a build error, because the check would then get a promise instead of a boolean.
+A helper that reads data is `async`, so the check awaits it inside an `async` arrow, as above. That check is plain code: it runs in memory inside the transaction, after the locked read (POL-21). Calling an `async` helper without `await` is a mistake: the check would get a promise instead of a boolean. Type-check the project including `.mesh/` (`tsc --noEmit`) and the compiler reports it for a typed helper, in the generated expressions file; an untyped helper fails at run time, with an error that names it.
 
 A read policy reads no other entity: it is a filter on the query, and `privileged` throws if it runs while one is evaluated. It also decides what a caller loads from another entity: a relationship or a rollup that reaches this entity runs its read policies, and a caller they do not admit gets `[]`, `null` or `0` there, never an error.
 
