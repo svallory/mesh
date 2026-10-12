@@ -428,6 +428,30 @@ function awaits(node: unknown): boolean {
 
 const PARAMETER_ERROR = (n: N) => new Plain("unsupported-parameter", "this parameter form is not translated; destructure { self, input, actor, context, before }", n);
 
+/** The names the scope of a function in an entity file no longer holds (TXN-16), each with what replaces it. */
+const REMOVED_SCOPE_NAMES: Readonly<Record<string, { message: string; fix: string }>> = {
+  tx: {
+    message: "`tx` is gone: a function in an entity file is no longer handed a transaction handle, and reads with no policy through `privileged`",
+    fix: "write `privileged(<Entity>).<read>(input)`, naming the entity (import it when it is another file's); it joins the running transaction",
+  },
+  actions: {
+    message: "`actions` is gone: a function in an entity file calls another action as a method of the entity value",
+    fix: "write `<Entity>.<action>(input, context)`, naming the entity (import it when it is another file's), and pass the context explicitly",
+  },
+};
+
+/** An error at each name the function destructures from its scope that the scope no longer holds (`({ self, tx }) => ...`). */
+function removedScopeNames(fn: N, ctx: ConvertContext): void {
+  const param = (fn.params as N[] | undefined)?.[0];
+  if (param?.type !== "ObjectPattern") return;
+  for (const property of (param.properties ?? []) as N[]) {
+    const key = property.type === "ObjectProperty" && !property.computed ? property.key as N | undefined : undefined;
+    const name = key?.type === "Identifier" ? key.name : key?.type === "StringLiteral" ? String(key.value) : undefined;
+    const removed = name !== undefined && Object.hasOwn(REMOVED_SCOPE_NAMES, name) ? REMOVED_SCOPE_NAMES[name]! : undefined;
+    if (removed) ctx.report({ severity: "error", code: "MESH_REMOVED_SCOPE_NAME", message: removed.message, position: ctx.at(start(key!)), fix: removed.fix });
+  }
+}
+
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
 /** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
 export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: true }
@@ -440,6 +464,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const called = new Set<string>();
   const names: Names = { entities: new Set(), acts: false, helpers: false };
   const free = freeVariables(f, ctx, called, names);
+  removedScopeNames(f, ctx);
   // `now()` and `today()` in code Mesh does not translate read the same clock as a translated expression.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
   // `isSystem(context)` in code Mesh does not translate is Mesh's own function, as in a translated expression.

@@ -2,7 +2,7 @@ import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
 import type { BindOptions } from "./lifecycle.ts";
-import { readOnlyRecord } from "./load.ts";
+import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
 
 /**
@@ -56,6 +56,12 @@ export interface ActionFrame {
    * `privileged` read joins it and reads `clock`, and both hand back read-only views; one made after `tx` ended is refused.
    */
   within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T>;
+  /**
+   * Run `fn`, application code an action runs inside its transaction (the `afterWrite` seam), in the action's transaction
+   * and at its instant but without its label: an entity call or a `privileged` read made in it resolves with plain
+   * values, as in the application's `transaction` (ACT-09).
+   */
+  plain<T>(fn: () => Promise<T>): Promise<T>;
   /** Run `fn` while `what` (`computed :lapsed of work.Claim`, `policy :member of work.Task`) is evaluated: `privileged` throws in it (TXN-18). */
   marked<T>(what: string, fn: () => T): T;
 }
@@ -63,6 +69,7 @@ export interface ActionFrame {
 /** The frame of an entity bound alone: its functions run as they are, and a call they make goes to the binding in scope or the connected one. */
 export const NO_FRAME: ActionFrame = Object.freeze({
   within: <T>(_tx: DataOperations, _clock: Clock, _label: string, fn: () => Promise<T>): Promise<T> => fn(),
+  plain: <T>(fn: () => Promise<T>): Promise<T> => fn(),
   marked: <T>(_what: string, fn: () => T): T => fn(),
 });
 
@@ -205,8 +212,11 @@ function inScope(frame: AsyncFrame | undefined): FrameStore | undefined {
   return store && !(store.state.released && !store.scope.live) ? store : undefined;
 }
 
-/** A new scope of `state`'s: live until it settles, or never when `disconnect()` has released the binding. */
-const live = (state: BindingState) => ({ live: !state.released });
+/**
+ * A new `run` or `transaction` scope of `state`'s: live until it settles. Once `disconnect()` released the binding, only
+ * one opened inside a live scope of the same binding is live: work in flight goes on, and so does what it calls.
+ */
+const live = (state: BindingState, frame: AsyncFrame) => ({ live: !state.released || inScope(frame)?.state === state });
 
 const ENDED = "a call was made inside a transaction that has ended: await every entity call and privileged read before the function or the transaction callback returns";
 
@@ -245,11 +255,13 @@ function bindingFor(value: object, label: string, caller: FrameStore | undefined
 async function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
   const frame = frames.get(value);
   const caller = inScope(frame);
-  if (caller?.mark !== undefined) throw marked(`${fqn}#${action}`, caller.mark);
+  const mark = caller?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
   const fn = entry.bound[action] as (input: unknown, ...context: unknown[]) => Promise<unknown>;
-  // The action runs in a frame of its own: what it calls is its own work, not its caller's.
-  return counted(state, () => forCaller(state, caller, () => scoped(frame!, { state, scope: live(state) }, () => fn(input, ...context))));
+  // The action runs in a frame of its own: what it calls is its own work, not its caller's. Its scope is live: past
+  // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected.
+  return counted(state, () => forCaller(state, caller, () => scoped(frame!, { state, scope: { live: true } }, () => fn(input, ...context))));
 }
 
 /**
@@ -264,7 +276,8 @@ export function privileged<E extends EntityValue<object, object>>(entity: E): Pr
     throw new FrameworkError(`privileged() takes an entity value, such as privileged(Task), and was given ${entity === null ? "null" : typeof entity === "object" ? "an object that is not one" : typeof entity}`);
   const fqn = entity[ENTITY];
   const caller = inScope(frames.get(entity));
-  if (caller?.mark !== undefined) throw marked(`privileged(${fqn})`, caller.mark);
+  const mark = caller?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(`privileged(${fqn})`, mark);
   return bindingFor(entity, `privileged(${fqn})`, caller).entry.reads as Privileged<E>;
 }
 
@@ -278,7 +291,8 @@ function privilegedReads(state: BindingState, frame: AsyncFrame, fqn: string, bo
   for (const [name, body] of Object.entries(bodies ?? {}))
     reads[name] = async (input: unknown, context?: unknown) => {
       const caller = inScope(frame);
-      if (caller?.mark !== undefined) throw marked(`privileged(${fqn}).${name}`, caller.mark);
+      const mark = caller?.mark ?? evaluatingNow();
+      if (mark !== undefined) throw marked(`privileged(${fqn}).${name}`, mark);
       // The action's instant, never its context (TXN-16): what the read loads reads the context this call passes.
       const clock = caller?.state === state ? caller.clock : undefined;
       return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false)));
@@ -288,10 +302,16 @@ function privilegedReads(state: BindingState, frame: AsyncFrame, fqn: string, bo
 
 /** The frame a binding hands its entities' bind functions. */
 function actionFrame(frame: AsyncFrame, state: BindingState): ActionFrame {
-  const here = (): FrameStore => inScope(frame) ?? { state, scope: live(state) };
+  const here = (): FrameStore => inScope(frame) ?? { state, scope: live(state, frame) };
   return Object.freeze({
     within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T> {
       return frame.run({ state, scope: here().scope, tx, clock, label } satisfies FrameStore, fn);
+    },
+    plain<T>(fn: () => Promise<T>): Promise<T> {
+      const store = inScope(frame);
+      if (store?.label === undefined) return fn();
+      const { label: _label, ...plain } = store;
+      return frame.run(plain satisfies FrameStore, fn);
     },
     marked<T>(what: string, fn: () => T): T {
       return frame.run({ ...here(), mark: what } satisfies FrameStore, fn);
@@ -330,12 +350,12 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
   for (const { value } of entities.values()) frames.set(value, frame);
   const binding: Binding = Object.freeze({
     run<T>(fn: () => Promise<T>): Promise<T> {
-      return scoped(frame, { state, scope: live(state) }, fn);
+      return scoped(frame, { state, scope: live(state, frame) }, fn);
     },
     transaction<T>(fn: () => Promise<T>): Promise<T> {
       // The application's `transaction` is an outermost transaction like any action's (TXN-14): `afterCommit` runs once
       // when it commits, with every change made inside it. One that joins a running transaction leaves that to the outer one.
-      const scope = live(state);
+      const scope = live(state, frame);
       const body = (tx: DataOperations) => frame.run({ state, scope, tx } satisfies FrameStore, () => fn());
       return counted(state, async () => {
         try {

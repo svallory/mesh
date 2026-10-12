@@ -54,8 +54,8 @@ export type SeamDb = Pick<DataOperations, "insert" | "selectByKey" | "updateByKe
 export interface Seams {
   /**
    * Before the transaction opens, for the call that opens it: a top-level action call. A call that joins a running
-   * transaction (through `actions`, or inside the application's `transaction`) has no "before the transaction" and runs
-   * none. Throw to refuse the call: nothing is written.
+   * transaction (an entity call from an action's own code, or one inside the application's `transaction`) has no
+   * "before the transaction" and runs none. Throw to refuse the call: nothing is written.
    */
   beforeTransaction?(event: BeforeTransactionEvent): void | Promise<void>;
   /**

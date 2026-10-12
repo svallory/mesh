@@ -173,15 +173,17 @@ export function bindWorkspace(
             // data layer
             const $stored = await tx.insert(tables.workspaces, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Workspace", action: "create" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Workspace", action: "create" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Workspace;
           }),
@@ -308,15 +310,17 @@ export function bindWorkspace(
             const $stored = await tx.updateByKey(tables.workspaces, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("identity.Workspace", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Workspace", action: "rename" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Workspace", action: "rename" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Workspace;
           }),

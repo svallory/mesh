@@ -89,8 +89,8 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:45:28)
   "accept.step.1.run": ($s: ReviewScope<AcceptReviewInput>) => {
-    const Submission = $e$Submission as unknown as $t$Submission;
-    const Task = $e$Task as unknown as $t$Task;
+    const Submission: $t$Submission = $e$Submission;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       const submission = await Submission.settle(
         { id: self.submissionId, outcome: "accepted" },
@@ -136,8 +136,8 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:72:28)
   "return.step.1.run": ($s: ReviewScope<ReturnReviewInput>) => {
-    const Submission = $e$Submission as unknown as $t$Submission;
-    const Task = $e$Task as unknown as $t$Task;
+    const Submission: $t$Submission = $e$Submission;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       const submission = await Submission.settle(
         { id: self.submissionId, outcome: "returned" },

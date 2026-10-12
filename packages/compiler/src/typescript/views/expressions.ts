@@ -165,8 +165,8 @@ export function expressionIds(entity: Entity): Map<Expression, string> {
  * every function with its source, where it runs (`record`: inside the transaction) and `ref(expression)`, how the generated
  * file reads it from the expressions file.
  */
-export function policySpecs(policies: readonly Policy[], ref: (expression: Expression) => string): string {
-  const fn = (expression: Expression) => `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression)}, run: ${ref(expression)}`;
+export function policySpecs(policies: readonly Policy[], ref: (expression: Expression) => string, on: "write" | "read"): string {
+  const fn = (expression: Expression) => `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression, on)}, run: ${ref(expression)}`;
   const specs = policies.map((policy) => {
     const checks = policyExpressions(policy).filter(({ kind }) => kind !== "when").map(({ kind, expression }) => `{ kind: ${JSON.stringify(kind)}, ${fn(expression)} }`);
     return `{ name: ${JSON.stringify(policy.name)}, when: ${policy.when ? `{ ${fn(policy.when)} }` : "null"}, checks: [${checks.join(", ")}] }`;

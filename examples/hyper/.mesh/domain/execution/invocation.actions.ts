@@ -299,15 +299,17 @@ export function bindInvocation(
             // data layer
             const $stored = await tx.insert(tables.invocations, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Invocation", action: "record" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Invocation", action: "record" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Invocation;
           }),
@@ -512,15 +514,17 @@ export function bindInvocation(
             // data layer
             const $stored = await tx.insert(tables.invocations, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Invocation", action: "correct" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Invocation", action: "correct" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Invocation;
           }),

@@ -117,8 +117,8 @@ export const expressions = {
   "submit.step.1.run": ($s: SubmissionScope<SubmitSubmissionInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim = $e$Claim as unknown as $t$Claim;
-    const Task = $e$Task as unknown as $t$Task;
+    const Claim: $t$Claim = $e$Claim;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       const live = claimToRelease(
         await privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }),
@@ -151,7 +151,7 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/submission.mesh.mx:86:28)
   "withdraw.step.1.run": ($s: SubmissionStoredScope<WithdrawSubmissionInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);

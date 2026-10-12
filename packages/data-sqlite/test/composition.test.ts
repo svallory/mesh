@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { openPolicies } from "./open-policy.ts";
-import { FrameworkError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
+import { FrameworkError, InvalidInputError, NotFoundError, type DataOperations } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -588,6 +588,36 @@ describe("after=:write", () => {
   });
 });
 
+describe("the afterWrite seam (ACT-09)", () => {
+  test("is application code: a privileged read and an entity call it makes resolve with plain values, while the action's steps still get read-only ones", async () => {
+    const db = sqlite({ file: ":memory:" });
+    await createSchema(db, app.tables);
+    const seen: string[] = [];
+    const log: string[] = [];
+    const binding = app.bind(db, {
+      seams: {
+        afterWrite: async (_db: unknown, { entity, action }: { entity: string; action: string }) => {
+          if (!entity.endsWith("Account") || action !== "open") return;
+          const rows = await app.privileged(Audit).read({});
+          rows.push({ what: "pushed" });
+          const logged = await Audit.log({ what: "from the seam" }, { actor: alice, log });
+          logged.what = "changed in place";
+          seen.push(`${rows.length} rows, ${logged.what}`);
+        },
+      },
+    });
+    try {
+      await binding.run(() => Account.open({ name: "Ada" }, { actor: alice, log }));
+      // The seam runs before the steps after the write, so no audit is there yet: the one row is the pushed one.
+      expect(seen).toEqual(["1 rows, changed in place"]);
+      // The audit's own step after its write ran as a step, and saw its row through privileged.
+      expect(log).toContain('audit "from the seam" by alice; privileged sees 1');
+      // A change made in place is never persisted.
+      expect((await binding.run(() => app.privileged(Audit).read({}))).map((row: { what: string }) => row.what).sort()).toEqual(["from the seam", "opened 1"]);
+    } finally { await db.close(); }
+  });
+});
+
 describe("a cascade", () => {
   test("writes two other entities, two calls deep, and commits every row together with the caller's", async () => {
     const world = await fresh();
@@ -680,6 +710,19 @@ describe("a computed field (TXN-18)", () => {
       expect((error as Error).message).toStartWith("privileged(Audit) was called while computed :peeked of Audit is evaluated");
       // Not loaded, the field's body never runs.
       expect(await world.mesh.readAudit({}, world.ctx)).toHaveLength(1);
+    } finally { await world.db.close(); }
+  });
+
+  test("so does one made while it is evaluated by the load function, which no binding's frame reaches", async () => {
+    const world = await fresh();
+    try {
+      await world.mesh.logAudit({ what: "x" }, world.ctx);
+      const rows = await world.mesh.readAudit({}, world.ctx);
+      const binding = app.bind(world.db);
+      const loading = binding.run(() => world.db.transaction((tx: DataOperations) => (domain as any).loadAuditFields(tx, rows, ["peeked"])));
+      const error = await failure(loading);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toStartWith("privileged(Audit) was called while computed :peeked of Audit is evaluated");
     } finally { await world.db.close(); }
   });
 });

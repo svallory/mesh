@@ -97,7 +97,7 @@ export const expressions = {
   "add.step.0.set.createdBy": ($s: DependencyScope<AddDependencyInput>) => $s.actor?.id,
   // run, plain (run-step) (src/domain/work/dependency.mesh.mx:51:28)
   "add.step.1.run": ($s: DependencyScope<AddDependencyInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.dependentId }, { ...context, system: true });
     })($s);
@@ -118,7 +118,7 @@ export const expressions = {
   },
   // run, plain (run-step) (src/domain/work/dependency.mesh.mx:66:28)
   "remove.step.0.run": ($s: DependencyStoredScope<RemoveDependencyInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.dependentId }, { ...context, system: true });
     })($s);

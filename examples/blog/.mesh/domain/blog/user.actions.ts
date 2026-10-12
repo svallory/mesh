@@ -118,15 +118,17 @@ export function bindUser(
             // data layer
             const $stored = await tx.insert(tables.users, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "blog.User", action: "create" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "blog.User", action: "create" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as User;
           }),

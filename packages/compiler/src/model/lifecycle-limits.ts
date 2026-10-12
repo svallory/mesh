@@ -100,10 +100,10 @@ export function checkLifecycleLimits(document: ModelDocument, diagnostics: Diagn
     for (const policy of entity.policies) {
       const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
       if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
-      const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression)) : undefined;
+      const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression, "read")) : undefined;
       if (!reading) continue;
       diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-        `${reading.what} ${recordReason(reading.expression)}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+        `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
         reading.expression.position,
         "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
     }

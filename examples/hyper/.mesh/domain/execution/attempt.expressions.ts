@@ -93,7 +93,7 @@ export const expressions = {
   // check :session that, plain (uses-privileged) (src/domain/execution/attempt.mesh.mx:57:16)
   "start.check.session.that": ($s: AttemptNewScope<StartAttemptInput>) => {
     const privileged = $privileged;
-    const SessionReference = $e$SessionReference as unknown as $t$SessionReference;
+    const SessionReference: $t$SessionReference = $e$SessionReference;
     return (async ({ input }) =>
       input.session == null ||
       (await privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 }))
@@ -165,7 +165,7 @@ export const expressions = {
   // run, plain (run-step) (src/domain/execution/attempt.mesh.mx:109:28)
   "finish.step.1.run": ($s: AttemptStoredScope<FinishAttemptInput>) => {
     const privileged = $privileged;
-    const Run = $e$Run as unknown as $t$Run;
+    const Run: $t$Run = $e$Run;
     return (async function ({ self, input, context }) {
       const [run] = await privileged(Run).read({ filter: { id: { eq: self.runId } } });
       if (run && settlesRun(run.state, input.result, input.error))

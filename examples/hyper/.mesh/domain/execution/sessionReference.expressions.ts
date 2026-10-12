@@ -69,7 +69,7 @@ export const expressions = {
   // check :agentProfile that, plain (uses-privileged) (src/domain/execution/session-reference.mesh.mx:30:16)
   "record.check.agentProfile.that": ($s: SessionReferenceNewScope<RecordSessionReferenceInput>) => {
     const privileged = $privileged;
-    const Collaborator = $e$Collaborator as unknown as $t$Collaborator;
+    const Collaborator: $t$Collaborator = $e$Collaborator;
     return (async ({ input }) =>
       (
         await privileged(Collaborator).read({

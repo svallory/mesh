@@ -245,15 +245,17 @@ export function bindMembership(
             // data layer
             const $stored = await tx.insert(tables.memberships, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Membership", action: "grant" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Membership", action: "grant" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Membership;
           }),
@@ -400,15 +402,17 @@ export function bindMembership(
             const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Membership", action: "changeRole" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Membership", action: "changeRole" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Membership;
           }),
@@ -555,15 +559,17 @@ export function bindMembership(
             const $stored = await tx.updateByKey(tables.memberships, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("identity.Membership", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Membership", action: "revoke" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Membership", action: "revoke" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Membership;
           }),

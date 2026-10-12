@@ -117,11 +117,11 @@ describe("a read policy that reads the record is refused until M10", () => {
     const built = build(post("  policies\n    policy :mine types=[:read, :update]\n      authorize-if=({ actor }) => &authorId === actor.id\n"));
     expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
     expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read of blog.Post: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
-    // The same through `privileged`, which the message names, and through a `when`.
-    const privileged = build(post("  policies\n    policy :q types=[:read]\n      forbid-if=async () => (await privileged(Post).read({})).length > 9\n"));
-    expect(codes(privileged.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(privileged.diagnostics[0]!.message).toStartWith("policy :q forbid-if calls `privileged`, and the policy covers read :read of blog.Post");
+    // The same through a `when`.
     expect(codes(build(post("  policies\n    policy :w types=[:read] when=() => &title !== null\n      authorize-if=() => true\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+    // A call to `privileged` does not read the record of a read policy (POL-21 is about a write's checks): it builds, and
+    // throws at run time while the policy is evaluated (TXN-18).
+    expect(build(post("  policies\n    policy :q types=[:read]\n      forbid-if=async () => (await privileged(Post).read({})).length > 9\n")).diagnostics).toEqual([]);
   });
 
   test("a policy a caller's load runs (POL-17) that reads the record is refused too, with no read action to cover", () => {
@@ -218,7 +218,7 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
     expect(checks("(scope) => scope.actor !== null")).toBe(true);
     expect(checks("({ ...scope }) => scope.actor !== null")).toBe(true);
   });
-  test("a check that calls an imported function runs inside the transaction, even when the build translates it (POL-21)", async () => {
+  test("a write's check that calls an imported function runs inside the transaction, even when the build translates it (POL-21); a read policy's builds", async () => {
     // The function may read anything through `privileged`, which reads in the running transaction.
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
     try {
@@ -231,6 +231,13 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
       expect(expression.tree).toBeDefined();
       expect(readsRecord(expression)).toBe(true);
       expect(recordReason(expression)).toBe("calls an imported function");
+      // In a read policy it is a pure call (EXP-03), not a read of the record: the policy builds, and runs before the query.
+      const reader = `import { isStaff } from "./helpers"\n${post("  policies\n    policy :staff types=[:read]\n      authorize-if=({ actor }) => isStaff(actor)\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n")}`;
+      const read = buildModel({ root, files: [{ file: "blog/post.mesh.mx", source: reader }] });
+      expect(read.diagnostics).toEqual([]);
+      const readCheck = policyExpressions(read.document!.entities[0]!.policies[0]!)[0]!.expression;
+      expect(recordReason(readCheck, "read")).toBeUndefined();
+      expect(recordReason(readCheck, "write")).toBe("calls an imported function");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

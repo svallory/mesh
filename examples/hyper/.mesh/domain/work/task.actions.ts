@@ -256,15 +256,17 @@ export function bindTask(
             // data layer
             const $stored = await tx.insert(tables.tasks, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "create" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "create" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Task;
           }),
@@ -391,15 +393,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "update" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "update" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Task;
           }),
@@ -530,15 +534,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "setPriority" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "setPriority" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Task;
           }),
@@ -682,15 +688,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "move" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "move" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Task;
           }),
@@ -825,15 +833,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "reopen" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "reopen" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Task;
           }),
@@ -916,15 +926,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "touch" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "touch" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Task;
           }),
@@ -1055,15 +1067,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "cancel" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "cancel" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -1290,15 +1304,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "complete" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "complete" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -1454,15 +1470,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "assign" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "assign" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -1614,15 +1632,17 @@ export function bindTask(
             const $stored = await tx.updateByKey(tables.tasks, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Task", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Task", action: "unassign" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Task", action: "unassign" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };

@@ -313,6 +313,32 @@ describe("type rules", () => {
     // A function that takes `privileged` as its own parameter calls that, not Mesh's.
     expect(codes(entity(check("({ context: privileged }) => privileged(1) !== null")))).not.toContain("error:MESH_PRIVILEGED_ENTITY");
   });
+  test("a function that destructures `tx` or `actions` from its scope is MESH_REMOVED_SCOPE_NAME at the name, saying what replaces it (TXN-16)", () => {
+    const tx = { message: "`tx` is gone: a function in an entity file is no longer handed a transaction handle, and reads with no policy through `privileged`", fix: "write `privileged(<Entity>).<read>(input)`, naming the entity (import it when it is another file's); it joins the running transaction" };
+    const actions = { message: "`actions` is gone: a function in an entity file calls another action as a method of the entity value", fix: "write `<Entity>.<action>(input, context)`, naming the entity (import it when it is another file's), and pass the context explicitly" };
+    const step = (fn: string) => check("() => true", `      do\n        ${fn}\n`);
+    const computed = (fn: string) => entity(check("() => true"), `  computed\n    integer :c${fn}\n`);
+    const cases: [source: string, at: string, expected: typeof tx][] = [
+      [entity(check("({ self, tx }) => self.n > 0 && tx !== null")), "tx }", tx], // a check, translated otherwise
+      [entity(check('({ "tx": t }) => t !== null')), '"tx"', tx], // a quoted key, renamed
+      [entity(check("({ actions: run }) => run !== null")), "actions:", actions],
+      [entity(step("run({ self, actions }) { void self; void actions }")), "actions }", actions], // a run step, plain by form
+      [entity(step("run({ input, tx }) { void input; void tx }")), "tx }", tx],
+      [computed("({ self, tx }) { return self.n + (tx ? 1 : 0) }"), "tx }", tx],
+    ];
+    for (const [source, at, expected] of cases) {
+      const found = build(source).diagnostics.filter((d) => d.code === "MESH_REMOVED_SCOPE_NAME");
+      expect(found, at).toHaveLength(1);
+      expect(found[0], at).toMatchObject({ severity: "error", ...expected });
+      expect(found[0]!.position.offset, at).toBe(source.indexOf(at, source.indexOf("({")));
+      expect(build(source).document, at).toBeNull();
+    }
+    // Both in one function: one error at each.
+    expect(codes(entity(step("run({ tx, actions }) { void tx; void actions }"))).filter((c) => c === "error:MESH_REMOVED_SCOPE_NAME")).toHaveLength(2);
+    // A nested function's own parameter, a property and a local of that name are the function's own business.
+    for (const that of ["() => [1].some(({ tx }) => tx > 0)", "({ context }) => context.tx !== null", "() => { const actions = 1; return actions > 0 }"])
+      expect(codes(entity(check(that))), that).not.toContain("error:MESH_REMOVED_SCOPE_NAME");
+  });
   test("a computed field that calls privileged or an entity's action is a build error: it is worked out outside any action", () => {
     const computed = (body: string) => entity(check("() => true")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`);
     for (const [body, reaches] of [["() { return privileged(Task) !== null }", "calls `privileged`"], ["() { return Task.go({}) !== null }", "calls an entity's action"], ["({ self }) { return privileged(Task).read({ filter: { id: self.id } }) }", "calls `privileged`"]] as const) {
@@ -336,7 +362,10 @@ describe("type rules", () => {
     const tree = ok.document!.entities[0]!.actions[0]!.validate[0]!.that.tree!;
     expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "isStaff", from: "./helpers" }, {}] });
     expect(ok.document!.entities[0]!.imports[0]).toMatchObject({ helper: true, identifiers: ["isStaff", "big"] });
-    expect(printTree(tree, true)).toContain("$.asBool(isStaff($s.actor))");
+    // Through `$.pure`, which refuses a promise (EXP-03): by type where the helper's type says so, at run time otherwise.
+    expect(printTree(tree, true)).toContain('$.asBool($.pure(isStaff($s.actor), "isStaff"))');
+    if (tree.kind !== "call") throw new Error("expected a call");
+    expect(printTree(tree.args[0]!, false)).toBe('$.pure(isStaff($s.actor), "isStaff")');
     const plain = build("() => big(&n)");
     expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
     // An awaited helper (one that reads through `privileged`, say) makes the function plain, with no warning for the await.
@@ -814,6 +843,7 @@ ${actions}`;
       expect(found).toHaveLength(1);
       expect(found[0]!.message).toContain("`&owner`, which is null on a create here");
       expect(found[0]!.fix).toContain("`input.owner`");
+      expect(found[0]!.fix).toMatch(/a related record through `privileged\(\w+\)\.read`/);
       expect(found[0]!.position.offset).toBe(source.indexOf("&owner.n > 0"));
       expect(codesOf(item(setsOwner(checkOf("() => &owner?.n === null"))))).toEqual([]);
       expect(codesOf(item(setsOwner("") + "      do\n        when=() => &owner.n > 0\n          set\n            &m=1\n").replace("      do\n        when", "        when"))).toEqual([]);

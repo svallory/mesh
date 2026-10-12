@@ -302,15 +302,17 @@ export function bindSubmission(
             // data layer
             const $stored = await tx.insert(tables.submissions, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Submission", action: "submit" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "submit" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -465,15 +467,17 @@ export function bindSubmission(
             const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Submission", action: "withdraw" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "withdraw" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -596,15 +600,17 @@ export function bindSubmission(
             const $stored = await tx.updateByKey(tables.submissions, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("work.Submission", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Submission", action: "settle" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "settle" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Submission;
           }),
@@ -706,15 +712,17 @@ export function bindSubmission(
             // data layer
             const $stored = await tx.insert(tables.submissions, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Submission", action: "recordAccepted" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Submission", action: "recordAccepted" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Submission;
           }),

@@ -213,15 +213,17 @@ export function bindCollaborator(
             // data layer
             const $stored = await tx.insert(tables.collaborators, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Collaborator", action: "register" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Collaborator", action: "register" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Collaborator;
           }),
@@ -368,15 +370,17 @@ export function bindCollaborator(
             const $stored = await tx.updateByKey(tables.collaborators, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("identity.Collaborator", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Collaborator", action: "update" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Collaborator", action: "update" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Collaborator;
           }),
@@ -515,15 +519,17 @@ export function bindCollaborator(
             const $stored = await tx.updateByKey(tables.collaborators, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("identity.Collaborator", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "identity.Collaborator", action: "retire" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "identity.Collaborator", action: "retire" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Collaborator;
           }),

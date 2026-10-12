@@ -93,7 +93,7 @@ export const expressions = {
   "acquire.step.0.run": ($s: ClaimScope<AcquireClaimInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim = $e$Claim as unknown as $t$Claim;
+    const Claim: $t$Claim = $e$Claim;
     return (async function ({ input, context }) {
       const lapsed = await privileged(Claim).read({
         filter: { taskId: { eq: input.task }, state: { eq: "active" }, expiresAt: { lte: now() } },
@@ -113,12 +113,13 @@ export const expressions = {
   // set &acquiredAt, translated (src/domain/work/claim.mesh.mx:47:23)
   "acquire.step.1.set.acquiredAt": ($s: ClaimScope<AcquireClaimInput>) => $.now($s),
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:48:22)
-  "acquire.step.1.set.expiresAt": ($s: ClaimScope<AcquireClaimInput>) => leaseEnd($.now($s)),
+  "acquire.step.1.set.expiresAt": ($s: ClaimScope<AcquireClaimInput>) =>
+    $.pure(leaseEnd($.now($s)), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:49:28)
   "acquire.step.2.run": ($s: ClaimScope<AcquireClaimInput>) => {
     const privileged = $privileged;
-    const Assignment = $e$Assignment as unknown as $t$Assignment;
-    const Task = $e$Task as unknown as $t$Task;
+    const Assignment: $t$Assignment = $e$Assignment;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       const open = await privileged(Assignment).read({
         filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } },
@@ -161,10 +162,11 @@ export const expressions = {
     }))($s);
   },
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:83:22)
-  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope<RenewClaimInput>) => leaseEnd($.now($s)),
+  "renew.step.0.set.expiresAt": ($s: ClaimStoredScope<RenewClaimInput>) =>
+    $.pure(leaseEnd($.now($s)), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:84:28)
   "renew.step.1.run": ($s: ClaimStoredScope<RenewClaimInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
@@ -204,7 +206,7 @@ export const expressions = {
     $.coalesce($s.input?.reason, "released"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:120:28)
   "release.step.1.run": ($s: ClaimStoredScope<ReleaseClaimInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
@@ -232,7 +234,7 @@ export const expressions = {
   "revoke.step.0.set.endReason": ($s: ClaimStoredScope<RevokeClaimInput>) => $s.input?.reason,
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:144:28)
   "revoke.step.1.run": ($s: ClaimStoredScope<RevokeClaimInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);
@@ -247,7 +249,7 @@ export const expressions = {
     $.coalesce($s.input?.reason, "lease expired"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:161:28)
   "expire.step.1.run": ($s: ClaimStoredScope<ExpireClaimInput>) => {
-    const Task = $e$Task as unknown as $t$Task;
+    const Task: $t$Task = $e$Task;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.taskId }, { ...context, system: true });
     })($s);

@@ -87,7 +87,7 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
  */
 export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ frameName }}: $ActionFrame = $NO_FRAME) {
   @if(readsBindName)
-  const $reads = {{ readsBindName }}(layer, {{ optionsName }}, frame);
+  const $reads = {{ readsBindName }}(layer, {{ optionsName }}, {{ frameName }});
   @end
   return Object.freeze({
     @each(method in methods)
@@ -115,7 +115,7 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
       @each(line in method.preCheck)
       {{ line }}
       @end
-      return $runAction(layer, {{ optionsName }}.seams, {{ method.seamTarget }}, parsed, {{ method.contextName }}, (tx) => frame.within(tx, $clock, {{ method.labelLiteral }}, async () => {
+      return $runAction(layer, {{ optionsName }}.seams, {{ method.seamTarget }}, parsed, {{ method.contextName }}, (tx) => {{ frameName }}.within(tx, $clock, {{ method.labelLiteral }}, async () => {
         @each(statement in method.statements)
         {{ statement }}
         @end

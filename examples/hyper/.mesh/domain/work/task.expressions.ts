@@ -223,8 +223,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:180:28)
   "cancel.step.1.run": ($s: TaskStoredScope<CancelTaskInput>) => {
     const privileged = $privileged;
-    const Claim = $e$Claim as unknown as $t$Claim;
-    const Submission = $e$Submission as unknown as $t$Submission;
+    const Claim: $t$Claim = $e$Claim;
+    const Submission: $t$Submission = $e$Submission;
     return (async function ({ self, context }) {
       for (const claim of openClaims(
         await privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
@@ -340,9 +340,9 @@ export const expressions = {
   "complete.step.1.run": ($s: TaskStoredScope<CompleteTaskInput>) => {
     const now = () => $.now($s);
     const privileged = $privileged;
-    const Claim = $e$Claim as unknown as $t$Claim;
-    const Completion = $e$Completion as unknown as $t$Completion;
-    const Submission = $e$Submission as unknown as $t$Submission;
+    const Claim: $t$Claim = $e$Claim;
+    const Completion: $t$Completion = $e$Completion;
+    const Submission: $t$Submission = $e$Submission;
     return (async function ({ self, before, input, actor, context }) {
       let submission: string | null = null;
       let rule: "review-accepted" | "performer-is-reviewer" | "review-waived" = "review-accepted";
@@ -423,8 +423,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:304:28)
   "assign.step.1.run": ($s: TaskStoredScope<AssignTaskInput>) => {
     const privileged = $privileged;
-    const Assignment = $e$Assignment as unknown as $t$Assignment;
-    const Claim = $e$Claim as unknown as $t$Claim;
+    const Assignment: $t$Assignment = $e$Assignment;
+    const Claim: $t$Claim = $e$Claim;
     return (async function ({ self, input, context }) {
       const current = currentAssignment(
         await privileged(Assignment).read({
@@ -472,8 +472,8 @@ export const expressions = {
   // run, plain (run-step) (src/domain/work/task.mesh.mx:333:28)
   "unassign.step.1.run": ($s: TaskStoredScope<UnassignTaskInput>) => {
     const privileged = $privileged;
-    const Assignment = $e$Assignment as unknown as $t$Assignment;
-    const Claim = $e$Claim as unknown as $t$Claim;
+    const Assignment: $t$Assignment = $e$Assignment;
+    const Claim: $t$Claim = $e$Claim;
     return (async function ({ self, context }) {
       const current = currentAssignment(
         await privileged(Assignment).read({

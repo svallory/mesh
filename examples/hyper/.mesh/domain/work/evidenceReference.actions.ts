@@ -212,15 +212,17 @@ export function bindEvidenceReference(
             // data layer
             const $stored = await tx.insert(tables.evidence_references, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.EvidenceReference", action: "record" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.EvidenceReference", action: "record" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as EvidenceReference;
           }),

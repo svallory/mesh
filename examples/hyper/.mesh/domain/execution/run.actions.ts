@@ -255,15 +255,17 @@ export function bindRun(
             // data layer
             const $stored = await tx.insert(tables.runs, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Run", action: "start" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Run", action: "start" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Run;
           }),
@@ -406,15 +408,17 @@ export function bindRun(
             const $stored = await tx.updateByKey(tables.runs, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Run", action: "cancel" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Run", action: "cancel" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Run;
           }),
@@ -515,15 +519,17 @@ export function bindRun(
             const $stored = await tx.updateByKey(tables.runs, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("execution.Run", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Run", action: "settle" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Run", action: "settle" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Run;
           }),

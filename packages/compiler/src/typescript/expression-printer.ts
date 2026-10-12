@@ -36,7 +36,8 @@ export function printTree(n: ExprNode, bool = false): string {
       return `$.${n.fn}(${args.join(", ")})`;
     }
     case "helper": {
-      const call = `${n.name}(${n.args.map((a) => printTree(a)).join(", ")})`;
+      // Through `$.pure`: an imported function a translated expression calls must not return a promise (EXP-03).
+      const call = `$.pure(${n.name}(${n.args.map((a) => printTree(a)).join(", ")}), ${JSON.stringify(n.name)})`;
       return bool ? `$.asBool(${call})` : call;
     }
     case "quantify": return `$.${n.op}(${printTree(n.source)}, (${local(n.param)}: any) => ${printTree(n.body, true)})`;
@@ -61,7 +62,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     (plain.privileged ? `const privileged = ${PRIVILEGED}; ` : "") +
     // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
     // finished loading by then) and typed so that what its actions resolve with is read-only (CMP-16).
-    (plain.entities ?? []).map((name) => `const ${name} = ${entityValue(name)} as unknown as ${entityType(name)}; `).join("");
+    (plain.entities ?? []).map((name) => `const ${name}: ${entityType(name)} = ${entityValue(name)}; `).join("");
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
 

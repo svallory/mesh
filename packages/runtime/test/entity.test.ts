@@ -348,6 +348,50 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     await expect(call).rejects.toThrow(ENDED);
   });
 
+  test("during disconnect(), an action in flight goes on two levels deep: a step of a nested action calls another action", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    connectBinding(binding);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    try {
+      const running = Account.act({
+        step: async () => {
+          await gate;
+          return (await Account.act({ step: async () => (await Account.act({})).id })).stepped;
+        },
+      });
+      releaseBinding(binding);
+      const closing = settled(binding);
+      open();
+      expect(await running).toMatchObject({ stepped: 1 });
+      await closing;
+    } finally {
+      releaseBinding(binding);
+    }
+  });
+
+  test("during disconnect(), the application's transaction in flight goes on: a step of an action it calls reads through privileged", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    connectBinding(binding);
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    try {
+      const running = binding.transaction(async () => {
+        await gate;
+        return Account.act({ step: async () => (await privileged(Account).read({}))[0]!.id });
+      });
+      releaseBinding(binding);
+      const closing = settled(binding);
+      open();
+      expect(await running).toMatchObject({ stepped: 1 });
+      await closing;
+      // Once it settled, the binding is gone.
+      await expect(binding.run(() => Account.act({}))).rejects.toThrow(/^bank\.Account#act was called while not connected/);
+    } finally {
+      releaseBinding(binding);
+    }
+  });
+
   test("privileged and an entity call throw while a computed field is evaluated, naming the field (TXN-18)", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
     const message = (what: string) => `${what} was called while computed :balance of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
@@ -360,6 +404,16 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     await expect(binding.run(() => privileged(Account).read({ computed: () => privileged(Account) }))).rejects.toThrow(FrameworkError);
     // Outside the evaluation, it reads.
     expect((await binding.run(() => Account.read({ computed: () => "plain" })))[0]!.computed).toBe("plain");
+  });
+
+  test("privileged and an entity call throw while a read policy is evaluated, naming the policy (TXN-18)", async () => {
+    const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
+    const message = (what: string) => `${what} was called while policy :mine of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
+    await expect(binding.run(() => Account.read({ policy: () => privileged(Account) }))).rejects.toThrow(new FrameworkError(message("privileged(bank.Account)")));
+    await expect(binding.run(() => Account.read({ policy: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
+    // A policy check may await: a call made after the await is still refused.
+    await expect(binding.run(() => Account.read({ policy: async () => { await Promise.resolve(); return Account.act({}); } }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
+    expect(await binding.run(() => Account.read({ policy: () => true }))).toHaveLength(1);
   });
 
   test("privileged of a value that is not an entity value is a FrameworkError; of one no binding knows, not connected", () => {

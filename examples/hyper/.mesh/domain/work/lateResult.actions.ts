@@ -226,15 +226,17 @@ export function bindLateResult(
             // data layer
             const $stored = await tx.insert(tables.late_results, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.LateResult", action: "record" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.LateResult", action: "record" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as LateResult;
           }),

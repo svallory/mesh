@@ -112,7 +112,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     });
     const policies = loadPolicies(entity);
     const ids = policies.length ? expressionIds(entity) : undefined;
-    const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!)) : null;
+    const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!), "read") : null;
     let loader: LoadFunction | null = null;
     if (hasLoader(entity)) {
       // A loader is what a `load` step and a function of an entity file call: it runs no policy, so it is typed as `privileged` loads.

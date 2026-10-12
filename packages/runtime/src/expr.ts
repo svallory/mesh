@@ -142,6 +142,20 @@ export function filter<T>(items: readonly T[] | null | undefined, p: (item: T) =
 
 /** A value used in a boolean position, from code Mesh does not control (an imported helper): booleans and null pass, anything else throws. */
 export const asBool = (v: unknown): boolean | null => bool(v, "helper");
+/**
+ * What an imported function a translated expression calls returned (EXP-03): such a call is synchronous and pure, so a
+ * promise is refused. The type checker refuses it where the function's type says it returns one (the parameter is then
+ * `never`); this refuses it at run time where its type does not (`any`, `unknown`). The promise's own outcome is dropped:
+ * the expression has already failed.
+ */
+export function pure<T>(value: T & (T extends PromiseLike<unknown> ? never : unknown), name: string): T {
+  const v = value as unknown;
+  if (v !== null && (typeof v === "object" || typeof v === "function") && typeof (v as { then?: unknown }).then === "function") {
+    (v as PromiseLike<unknown>).then(undefined, () => {});
+    throw new FrameworkError(`expression helper ${name}() returned a promise: a translated expression calls an imported function synchronously. Await it inside an async arrow (\`async (...) => ... await ${name}(...)\`), which makes the function plain code`);
+  }
+  return value;
+}
 /** A rule holds only when it is `true`: unknown fails a `check`, skips a `when`, excludes a row. */
 export const holds = (v: unknown): boolean => v === true;
 
@@ -149,5 +163,5 @@ export const holds = (v: unknown): boolean => v === true;
 export const expr = Object.freeze({
   eq, ne, isNull: isNullFn, isNotNull, lt, lte, gt, gte, and, or, not,
   add, sub, mul, div, idiv, neg, length, now, today, coalesce, cond, isSystem,
-  some, every, find, filter, asBool, holds,
+  some, every, find, filter, asBool, holds, pure,
 });

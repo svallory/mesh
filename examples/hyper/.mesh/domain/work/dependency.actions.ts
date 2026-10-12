@@ -256,15 +256,17 @@ export function bindDependency(
             // data layer
             const $stored = await tx.insert(tables.dependencies, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Dependency", action: "add" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Dependency", action: "add" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -382,15 +384,17 @@ export function bindDependency(
             if (!(await tx.deleteByKey(tables.dependencies, $key)))
               throw new $NotFoundError("work.Dependency", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "work.Dependency", action: "remove" },
-              $before,
-              null,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "work.Dependency", action: "remove" },
+                $before,
+                null,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the deleted row as it was as self
             const $after = $rescope($s, {

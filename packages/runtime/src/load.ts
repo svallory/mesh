@@ -5,6 +5,23 @@ import type { ActionFrame } from "./entity.ts";
 import { authorizer, type PolicySpec } from "./policy.ts";
 
 /**
+ * The computed field being evaluated right now, synchronously (TXN-18): a computed body is a synchronous function, so an
+ * entity call or a `privileged` read made from it, directly or through a helper, starts while this is set, with or
+ * without a binding's frame. `entity.ts` refuses such a call.
+ */
+let current: string | undefined;
+export const evaluatingNow = (): string | undefined => current;
+function evaluating<T>(what: string, fn: () => T): T {
+  const before = current;
+  current = what;
+  try {
+    return fn();
+  } finally {
+    current = before;
+  }
+}
+
+/**
  * Loading relationships and computed fields (M7). The compiler writes one `LoadPlan` for the
  * project (`<output>/load.ts`): plain data about each entity's table, key, relationships and
  * computed fields, plus the compiled body of each computed field. `loadRows` follows the plan
@@ -85,7 +102,8 @@ export interface LoadOptions {
   policies?: boolean | undefined;
   /**
    * The binding's frame (TXN-18): each computed body runs marked with it, so a `privileged` read made while one is
-   * evaluated throws, and so do the read policies a load runs. Left out, nothing is marked.
+   * evaluated throws, and so do the read policies a load runs. Left out (a `load<Entity>Fields` call), a computed body is
+   * still marked while it runs synchronously, which is all a computed body does.
    */
   frame?: Pick<ActionFrame, "marked"> | undefined;
   /**
@@ -240,7 +258,8 @@ async function ensureField(
   for (const row of todo) {
     const self = computed.plain ? guarded(plan, entity, row) : row;
     const fieldScope = scope({ self, input: undefined, actor: options.actor, context: options.context ?? {}, before: null }, options.clock ? { clock: options.clock } : {}) as never;
-    const value = options.frame ? options.frame.marked(`computed :${name} of ${entity}`, () => computed.evaluate(fieldScope)) : computed.evaluate(fieldScope);
+    const what = `computed :${name} of ${entity}`;
+    const value = evaluating(what, () => options.frame ? options.frame.marked(what, () => computed.evaluate(fieldScope)) : computed.evaluate(fieldScope));
     // A translated body gives unknown as null; a plain body's result is what it returned.
     row[name] = value === undefined && !computed.plain ? null : value;
   }

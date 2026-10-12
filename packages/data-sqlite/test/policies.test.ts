@@ -7,7 +7,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
-import { ForbiddenError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
+import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
 import build from "../src/build.ts";
 import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
@@ -138,9 +138,10 @@ const SQLITE: ResolvedConfig["data"] = {
   capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" },
 };
 
-/** Build the domain into a temporary project folder and write its generated files. */
-async function generate(prefix: string, sources: Record<string, string>): Promise<string> {
+/** Build the domain into a temporary project folder and write its generated files; `modules` are the project's own TypeScript files under `src/domain`. */
+async function generate(prefix: string, sources: Record<string, string>, modules: Record<string, string> = {}): Promise<string> {
   const dir = await mkdtemp(join(import.meta.dir, prefix));
+  for (const [name, text] of Object.entries(modules)) await Bun.write(join(dir, "src/domain", name), text);
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
@@ -692,4 +693,83 @@ export async function direct(ops: DataOperations, given: LoadOptions): Promise<s
     const files = (await readdir(join(loadsDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     expect(typeCheck(loadsDir, [...files, "use.ts"])).toBe("");
   }, 30_000);
+});
+
+/**
+ * Imported functions in policies (EXP-03; POL-21 holds for a write's checks only, lead ruling on PR #91): a read policy
+ * may call a pure one, which it calls with no record, and filters with it. A translated check calls an imported function
+ * synchronously, so one that returns a promise is refused: by the type checker where its type says so, and at run time,
+ * naming it, where its type does not.
+ */
+const shelfHelpers = `export const isReader = (id: string | undefined): boolean => id === "alice";
+export async function isOwner(id: string | undefined): Promise<boolean> {
+  return id === "alice";
+}
+/** Typed so that the type checker cannot tell it returns a promise. */
+export function vaguely(id: string | undefined): any {
+  return Promise.resolve(id === "alice");
+}
+`;
+const shelf = `import { isOwner, isReader, vaguely } from "./shelf-helpers"
+
+entity :Shelf table="shelves"
+  attributes
+    uuid :id primary-key
+    string :name
+  actions auto=[:read]
+    create :put
+      input
+        &name
+    create :typed
+      input
+        &name
+    create :vague
+      input
+        &name
+  policies
+    policy :readers types=[:read]
+      authorize-if=({ actor }) => isReader(actor.id)
+    policy :putters actions=[&put]
+      authorize-if=() => true
+    policy :owner actions=[&typed]
+      authorize-if=({ actor }) => isOwner(actor.id)
+    policy :looseOwner actions=[&vague]
+      authorize-if=({ actor }) => vaguely(actor.id)
+`;
+
+describe("imported functions in policies (EXP-03, POL-21)", () => {
+  let shelfDir: string;
+  let shelfApp: any;
+  beforeAll(async () => {
+    shelfDir = await generate(".policies-shelf-", { shelf }, { "shelf-helpers.ts": shelfHelpers });
+    shelfApp = await project(shelfDir);
+  });
+  afterAll(async () => { if (shelfDir) await rm(shelfDir, { recursive: true, force: true }); });
+
+  test("a read policy that calls a pure imported function builds, and filters by it before the query", async () => {
+    const { db, mesh } = await fresh(shelfApp);
+    try {
+      await mesh.putShelf({ name: "top" }, alice);
+      expect((await mesh.readShelf({}, alice)).map((row: { name: string }) => row.name)).toEqual(["top"]);
+      // A read policy is a filter: a caller it does not admit gets no rows.
+      expect(await mesh.readShelf({}, bob)).toEqual([]);
+    } finally { await db.close(); }
+  });
+
+  test("an imported function that returns a promise fails the type check where its type says so (TS2345), and fails at run time naming it", async () => {
+    const files = (await readdir(join(shelfDir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
+    const errors = typeCheck(shelfDir, files).split("\n").filter((line) => line.includes("error TS"));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("shelf.expressions.ts");
+    expect(errors[0]).toContain("error TS2345");
+    const { db, mesh } = await fresh(shelfApp);
+    try {
+      for (const [call, helper] of [[() => mesh.typedShelf({ name: "a" }, alice), "isOwner"], [() => mesh.vagueShelf({ name: "b" }, alice), "vaguely"]] as const) {
+        const error = await call().then(() => undefined, (cause: unknown) => cause);
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect((error as Error).message).toStartWith(`expression helper ${helper}() returned a promise: a translated expression calls an imported function synchronously. Await it inside an async arrow`);
+      }
+      expect(await mesh.readShelf({}, alice)).toEqual([]);
+    } finally { await db.close(); }
+  });
 });

@@ -150,8 +150,8 @@ describe("actions view", () => {
       "// data layer",
       "const $stored = await tx.insert(tables.articles, $changes);",
       "$noteWrite(tx);",
-      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "create" }, null, $stored, parsed, context);',
+      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values",
+      'await frame.plain(() => $recordWrite(tx, options.seams, { entity: "blog.Article", action: "create" }, null, $stored, parsed, context));',
       "return $stored as Article;",
     ]);
     expect(create.notRun).toBe("Not run in this version: on:load load");
@@ -207,7 +207,7 @@ describe("actions view", () => {
       'const $clock = clock ?? $pinClock(options.clock);',
       'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
-      // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a read through `tx` casts it in the body.
+      // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a `privileged` read casts it in the body.
       contextParam: ", context?: unknown, clock?: () => Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInput>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
@@ -235,8 +235,8 @@ describe("actions view", () => {
       "// data layer",
       'if (!(await tx.deleteByKey(tables.articles, $key))) throw new $NotFoundError("blog.Article", $key);',
       "$noteWrite(tx);",
-      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write",
-      'await $recordWrite(tx, options.seams, { entity: "blog.Article", action: "destroy" }, $before ?? null, null, parsed, context);',
+      "// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values",
+      'await frame.plain(() => $recordWrite(tx, options.seams, { entity: "blog.Article", action: "destroy" }, $before ?? null, null, parsed, context));',
     ]);
     expect(destroy.notRun).toBeNull();
   });
@@ -394,7 +394,7 @@ describe("explain", () => {
       "               when () => true",
       "                 run () { }",
       "               load &author",
-      "  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call through `actions` or inside `transaction` joins one and runs none)",
+      "  seams        beforeTransaction: before the transaction opens, for a top-level call only (a call from an action's own code or inside `transaction` joins one and runs none)",
       "               afterWrite: inside the transaction, right after the row is written, before the steps after the write",
       "               afterCommit: once, after the outermost transaction commits, with every change it made",
     ].join("\n"));

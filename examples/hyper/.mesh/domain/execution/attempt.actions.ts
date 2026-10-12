@@ -343,15 +343,17 @@ export function bindAttempt(
             // data layer
             const $stored = await tx.insert(tables.attempts, $changes);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Attempt", action: "start" },
-              null,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "start" },
+                null,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Attempt;
           }),
@@ -498,15 +500,17 @@ export function bindAttempt(
             const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Attempt", action: "finish" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "finish" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
             const $written: $Row = { ...$stored };
@@ -649,15 +653,17 @@ export function bindAttempt(
             const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Attempt", action: "reportStopped" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "reportStopped" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Attempt;
           }),
@@ -782,15 +788,17 @@ export function bindAttempt(
             const $stored = await tx.updateByKey(tables.attempts, $key, $changes);
             if ($stored === undefined) throw new $NotFoundError("execution.Attempt", $key);
             $noteWrite(tx);
-            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write
-            await $recordWrite(
-              tx,
-              options.seams,
-              { entity: "execution.Attempt", action: "abandon" },
-              $before,
-              $stored,
-              parsed,
-              context,
+            // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
+            await frame.plain(() =>
+              $recordWrite(
+                tx,
+                options.seams,
+                { entity: "execution.Attempt", action: "abandon" },
+                $before,
+                $stored,
+                parsed,
+                context,
+              ),
             );
             return $stored as Attempt;
           }),

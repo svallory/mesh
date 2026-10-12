@@ -40,7 +40,7 @@ export const expressions = {
   // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:23:16)
   "register.check.nameFree.that": ($s: MachineNewScope<RegisterMachineInput>) => {
     const privileged = $privileged;
-    const Machine = $e$Machine as unknown as $t$Machine;
+    const Machine: $t$Machine = $e$Machine;
     return (async ({ input }) =>
       (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
         .length === 0)($s);
@@ -50,7 +50,7 @@ export const expressions = {
   // check :nameFree that, plain (uses-privileged) (src/domain/execution/machine.mesh.mx:35:16)
   "report.check.nameFree.that": ($s: MachineNewScope<ReportMachineInput>) => {
     const privileged = $privileged;
-    const Machine = $e$Machine as unknown as $t$Machine;
+    const Machine: $t$Machine = $e$Machine;
     return (async ({ input }) =>
       (await privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
         .length === 0)($s);

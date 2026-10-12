@@ -74,7 +74,7 @@ export const expressions = {
   // check :notCorrected that, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:85:16)
   "correct.check.notCorrected.that": ($s: InvocationNewScope<CorrectInvocationInput>) => {
     const privileged = $privileged;
-    const Invocation = $e$Invocation as unknown as $t$Invocation;
+    const Invocation: $t$Invocation = $e$Invocation;
     return (async ({ input }) =>
       input.corrects != null &&
       (
@@ -96,7 +96,7 @@ export const expressions = {
   // set &attempt, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:101:20)
   "correct.step.0.set.attempt": ($s: InvocationScope<CorrectInvocationInput>) => {
     const privileged = $privileged;
-    const Invocation = $e$Invocation as unknown as $t$Invocation;
+    const Invocation: $t$Invocation = $e$Invocation;
     return (async ({ input }) =>
       (await privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map(
         (corrected) => corrected.attemptId,
@@ -105,7 +105,7 @@ export const expressions = {
   // set &task, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:102:17)
   "correct.step.0.set.task": ($s: InvocationScope<CorrectInvocationInput>) => {
     const privileged = $privileged;
-    const Invocation = $e$Invocation as unknown as $t$Invocation;
+    const Invocation: $t$Invocation = $e$Invocation;
     return (async ({ input }) =>
       (await privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map(
         (corrected) => corrected.taskId,

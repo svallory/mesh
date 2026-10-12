@@ -295,7 +295,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const specs = policySpecs(covering, (expression) => {
       usesExpressions = true;
       return idOf(expression);
-    });
+    }, action.kind === "read" ? "read" : "write");
     // A read's policies run marked with the frame (TXN-18): a `privileged` read made while one is evaluated throws.
     if (action.kind === "read") frameUsed = true;
     return `$authorizer(${JSON.stringify(entity.fqn)}, ${JSON.stringify(action.name)}, ${specs}${action.kind === "read" ? ", frame" : ""})`;
@@ -421,7 +421,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const writes = action.kind !== "destroy";
     const steps = stepsFor(action, blocks.flatMap((block) => block.steps));
     // ---- policies (M8): the checks that read the record run inside the transaction, before validate (POL-08) ----
-    const recordPolicies = covering.flatMap((policy) => policyExpressions(policy).map(({ expression }) => expression)).filter(readsRecord);
+    const recordPolicies = covering.flatMap((policy) => policyExpressions(policy).map(({ expression }) => expression)).filter((expression) => readsRecord(expression));
     const policyNeeds = [...new Set(recordPolicies.flatMap((expression) => expression.needs ?? []))].sort();
     // ---- end policies ------------------------------------------------------------------------------------------
 
@@ -700,8 +700,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     runtime.add("recordWrite");
     optionsUsed = true;
     const seamTarget = `{ entity: ${JSON.stringify(entity.fqn)}, action: ${JSON.stringify(action.name)} }`;
-    emit("// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write");
-    emit(`await $recordWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context);`);
+    emit("// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values");
+    emit(`await frame.plain(() => $recordWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context));`);
     let result = "$stored";
     // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
     if (hasAfterWrite(steps)) {
@@ -720,7 +720,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       } else emit(`const $after = $rescope($s, { self: $readOnlyRecord(${record}, ${where}) });`);
       emitAfterWrite(steps, record);
       if (writes) {
-        // A step after the write may have changed the row through `actions`: the result is the row as the steps left it.
+        // A step after the write may have changed the row through an entity call: the result is the row as the steps left it.
         runtime.add("FrameworkError");
         emit("// the result: the row as the steps after the write left it, read again by key");
         emit(`const $result = await tx.selectByKey(${table}, { ${propertyName(key.name)}: ${read("$stored", key.name)} });`);
