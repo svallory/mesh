@@ -39,7 +39,7 @@ const ROOTS = new Set(["self", "input", "actor", "context", "before"]);
  * a free `input` or `context` is the root, even when the file imports something under that name (a helper, or an entity
  * under an alias such as `import { List as context }`), which stays the import everywhere outside the function.
  */
-const SCOPE_NAMES: ReadonlySet<string> = ROOTS;
+export const SCOPE_NAMES: ReadonlySet<string> = ROOTS;
 /** The globals a function may use. `structuredClone` is one: the expressions file binds it to `cloneValue`, which copies a read-only record. */
 const GLOBALS = new Set([
   "Math", "Number", "String", "Boolean", "Date", "JSON", "Array", "Object", "Map", "Set", "Promise",
@@ -59,8 +59,19 @@ const MESH_FUNCTIONS: ReadonlyMap<string, { fn?: FunctionId; arity: number; args
 ]);
 /** The members every object has, which TypeScript gives `Mesh` too: reading one is no unknown Mesh function. */
 const OBJECT_MEMBERS = new Set(["constructor", "toString", "toLocaleString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable"]);
-/** `Mesh.now()` as a file that imports `Mesh` under `local` writes it. */
-const meshCall = (local: string, name: string) => `${local}.${name}(${MESH_FUNCTIONS.get(name)?.args ?? ""})`;
+/** `Mesh.now()` as a file that imports `Mesh` under `local` writes it, with the call's own arguments when it has them. */
+const meshCall = (local: string, name: string, args?: string) => `${local}.${name}(${args ?? MESH_FUNCTIONS.get(name)?.args ?? ""})`;
+/**
+ * The authored arguments of the call whose callee is the identifier the walk is at (`Eone` for `privileged(Eone)`), when
+ * their number is the arity of Mesh's function of that name: a fix that rewrites the call keeps them.
+ */
+function ownArguments(name: string, parent: N | undefined, key: string | undefined, ctx: ConvertContext): string | undefined {
+  if (!parent || key !== "callee" || (parent.type !== "CallExpression" && parent.type !== "OptionalCallExpression")) return undefined;
+  const args = (parent.arguments ?? []) as N[];
+  if (args.length !== MESH_FUNCTIONS.get(name)?.arity || args.length === 0) return undefined;
+  const end = args[args.length - 1]!.end;
+  return typeof end === "number" ? ctx.source.slice(start(args[0]!), end) : undefined;
+}
 /**
  * The member a node reads from the file's `Mesh` import (`now` for `Mesh.now`, `Mesh?.now` or `Mesh["now"]`), or undefined
  * when the node reads no named member of it. `shadowed` says whether a binding of the function in scope hides the name;
@@ -76,15 +87,52 @@ function meshMember(n: N, ctx: ConvertContext, shadowed: (name: string) => boole
 }
 const isMeshImport = (name: string, ctx: ConvertContext, shadowed: (name: string) => boolean) =>
   ctx.mesh?.has(name) === true && !shadowed(name) && !SCOPE_NAMES.has(name);
+/**
+ * The members of the file's `Mesh` import that a read of it (`n`, an identifier that is that import) names, each with the
+ * node that names it: the member it reads (`Mesh.now`, `Mesh?.now`, `Mesh["now"]`), or each fixed key of an object pattern
+ * it initialises (`const { privileged, now: clock } = Mesh`, `({ today } = Mesh)`, a parameter's default `{ now } = Mesh`).
+ * A rest element or a computed key names no member: such a read is opaque, as passing `Mesh` to a helper is.
+ */
+function meshReads(n: N, parent: N | undefined, key: string | undefined, ctx: ConvertContext, shadowed: (name: string) => boolean): { local: string; name: string; at: N }[] {
+  if (!parent) return [];
+  if (key === "object") {
+    const member = meshMember(parent, ctx, shadowed);
+    return member ? [{ ...member, at: parent.property as N }] : [];
+  }
+  const destructured = (parent.type === "VariableDeclarator" && key === "init") ? parent.id as N
+    : ((parent.type === "AssignmentExpression" || parent.type === "AssignmentPattern") && key === "right") ? parent.left as N
+    : undefined;
+  if (destructured?.type !== "ObjectPattern") return [];
+  return ((destructured.properties ?? []) as N[]).flatMap((property) => {
+    if (property.type !== "ObjectProperty") return [];
+    const at = property.key as N;
+    const name = !property.computed && at?.type === "Identifier" ? at.name : at?.type === "StringLiteral" ? String(at.value) : undefined;
+    return name === undefined ? [] : [{ local: n.name!, name, at }];
+  });
+}
 const FREE_VARIABLE = (name: string) =>
   `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, its own entity and the imported ones, and Mesh's functions through \`Mesh\`, imported from "meshfw"`;
-/** What fixes an unknown name: a Mesh function written bare is a member of `Mesh`, which the file may not import yet. */
-function freeVariableFix(name: string, ctx: ConvertContext): string {
-  const local = ctx.mesh?.values().next().value;
-  if (MESH_FUNCTIONS.has(name))
-    return local === undefined ? `write \`${meshCall("Mesh", name)}\` and import \`Mesh\` from "meshfw": \`import { Mesh } from "meshfw"\`` : `write \`${meshCall(local, name)}\``;
-  if (name === "Mesh")
-    return local === undefined ? `import it: \`import { Mesh } from "meshfw"\`` : `write \`${local}\`, the name this file imports \`Mesh\` under`;
+/**
+ * What fixes an unknown name: a Mesh function written bare is a member of `Mesh`, which the file may not import yet. The
+ * fix names the file's `Mesh` import where it can be read: an alias that a binding hides at the reference (`shadowed`), or
+ * that is a scope name (`input`, refused at the import), is not one, and the fix says so instead of naming it.
+ */
+function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
+  const locals = [...(ctx.mesh ?? [])];
+  const local = locals.find((candidate) => isMeshImport(candidate, ctx, shadowed));
+  const hidden = local === undefined ? locals.find((candidate) => !SCOPE_NAMES.has(candidate)) : undefined;
+  if (MESH_FUNCTIONS.has(name)) {
+    if (local !== undefined) return `write \`${meshCall(local, name, args)}\``;
+    if (hidden !== undefined) return `write \`${meshCall(hidden, name, args)}\`, renaming the binding that hides \`${hidden}\` here`;
+    return locals.length
+      ? `write \`${meshCall("Mesh", name, args)}\` and import \`Mesh\` under a name that is not a scope name: \`import { Mesh } from "meshfw"\``
+      : `write \`${meshCall("Mesh", name, args)}\` and import \`Mesh\` from "meshfw": \`import { Mesh } from "meshfw"\``;
+  }
+  if (name === "Mesh") {
+    if (local !== undefined) return `write \`${local}\`, the name this file imports \`Mesh\` under`;
+    if (hidden !== undefined) return `write \`${hidden}\`, the name this file imports \`Mesh\` under, renaming the binding that hides it here`;
+    return `import it: \`import { Mesh } from "meshfw"\``;
+  }
   return "import it from a helper module, or pass it in through `context`";
 }
 const BINARY: Record<string, FunctionId> = {
@@ -217,12 +265,16 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       // functions as the evaluation sees them, and a member it reads is one of them (PRJ-22).
       if (!property && !objectKey && !label && isMeshImport(n.name!, ctx, (name) => scope.has(name))) {
         names.mesh.add(n.name!);
-        const member = parent && key === "object" ? meshMember(parent, ctx, (name) => scope.has(name)) : undefined;
-        if (member && MESH_FUNCTIONS.has(member.name)) {
-          called.add(member.name);
-          if (member.name === "privileged") (names.privileged ??= []).push(ctx.at(start(n)));
-        } else if (member && !OBJECT_MEMBERS.has(member.name)) {
-          const at = parent!.property as N;
+        // A destructured member counts as a read of it, so `const { privileged } = Mesh` is still a call to `privileged`
+        // for MESH_COMPUTED_COMPOSES, MESH_READ_POLICY_PRIVILEGED and a check's timing (POL-21).
+        for (const member of meshReads(n, parent, key, ctx, (name) => scope.has(name))) {
+          if (MESH_FUNCTIONS.has(member.name)) {
+            called.add(member.name);
+            if (member.name === "privileged") (names.privileged ??= []).push(ctx.at(start(key === "object" ? n : member.at)));
+            continue;
+          }
+          if (OBJECT_MEMBERS.has(member.name)) continue;
+          const at = member.at;
           ctx.report({
             severity: "error",
             code: "MESH_UNKNOWN_MESH_FUNCTION",
@@ -245,7 +297,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           code: "MESH_EXPR_FREE_VARIABLE",
           message: FREE_VARIABLE(n.name!),
           position: ctx.at(start(n)),
-          fix: freeVariableFix(n.name!, ctx),
+          fix: freeVariableFix(n.name!, ctx, (name) => scope.has(name), ownArguments(n.name!, parent, key, ctx)),
         });
       }
       return;
@@ -387,7 +439,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
           code: "MESH_EXPR_FREE_VARIABLE",
           message: FREE_VARIABLE(name),
           position: ctx.at(start(n)),
-          fix: freeVariableFix(name, ctx),
+          fix: freeVariableFix(name, ctx, (local) => env.roots.has(local) || env.locals.has(local)),
         });
         throw new Plain("unsupported-construct", `the name \`${name}\``, n);
       }

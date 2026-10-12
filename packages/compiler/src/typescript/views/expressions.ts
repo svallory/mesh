@@ -4,7 +4,7 @@ import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
-import { MESH, printExpression, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
+import { printExpression, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
 import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
@@ -314,8 +314,13 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const recordTypes = new Set<string>();
   const meshLocals = new Set(entity.imports.filter((entry) => entry.mesh).flatMap((entry) => entry.identifiers));
   const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...meshLocals]);
+  // Whether a printed function binds the file's `Mesh` import (`const Mesh = $mesh($s);`), as the printer decides it: from
+  // the names the front end found it reading and those `typeNames` finds in a type, never from the printed text, where a
+  // string could spell `$mesh(`.
+  let usesMesh = false;
   const entries = found.map((f): ExpressionEntry => {
     let code = print(f);
+    if (f.expression.plain?.mesh?.length) usesMesh = true;
     if (f.expression.plain) {
       const { types, values } = typeNames(code, candidates);
       const roots = SCOPE_NAMES.filter((name) => values.has(name));
@@ -335,6 +340,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       if (inTypes.roots.length || inTypes.values.length || inTypes.types.length || inTypes.mesh!.length) {
         inTypes.values.forEach((name) => valued.add(name));
         inTypes.types.forEach((name) => recordTypes.add(name));
+        if (inTypes.mesh!.length) usesMesh = true;
         code = print(f, inTypes);
       }
     }
@@ -397,7 +403,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       ...(loaded ? [`${recordName}Loaded as ${selfType}`] : []),
       ...[...usedInputs].sort().map((name) => `${name} as ${entityLocal(entity, name)}`),
     ],
-    usesMesh: entries.some(({ code }) => code.includes(`${MESH}(`)),
+    usesMesh,
     entityImports: [...entityFrom].map(([from, { names, value }]) => ({
       keyword: value ? "import" as const : "import type" as const,
       names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),

@@ -34,7 +34,7 @@ import {
 } from "@meshfw/model";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
-import { asynchronyOf, demotionOf, privilegedCallsOf } from "./expression.ts";
+import { asynchronyOf, demotionOf, privilegedCallsOf, SCOPE_NAMES } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { nearestName } from "./nearest-name.ts";
@@ -87,6 +87,7 @@ interface ImportProblem {
   code: "MESH_UNKNOWN_IMPORT" | "MESH_IMPORT_FORM";
   message: string;
   offset: number;
+  fix?: string;
 }
 /** The package an entity file imports `Mesh` from (PRJ-22). */
 const MESHFW = "meshfw";
@@ -110,13 +111,25 @@ function readImports(imports: readonly IrImport[]): {
       entry.typeOnly ||
       names.some((name) => name.kind !== "named" || name.typeOnly)
     ) {
-      problems.push({
-        code: "MESH_IMPORT_FORM",
-        message: entry.typeOnly || names.some((name) => name.typeOnly)
-          ? "import the entity by name, not as a type: `import { List } from …`"
-          : "import the entity by name: `import { List } from …`",
-        offset,
-      });
+      const typeOnly = entry.typeOnly || names.some((name) => name.typeOnly);
+      // From "meshfw" the one form is a named value import of `Mesh` (PRJ-22): a default, namespace or type import gets
+      // that advice, not the entity's.
+      problems.push(from === MESHFW
+        ? {
+          code: "MESH_IMPORT_FORM",
+          message: typeOnly
+            ? "import `Mesh` as a value, not as a type: a function of the entity file calls its members"
+            : "import `Mesh` by name: \"meshfw\" gives an entity file the named export `Mesh` alone",
+          offset,
+          fix: 'write `import { Mesh } from "meshfw"`',
+        }
+        : {
+          code: "MESH_IMPORT_FORM",
+          message: typeOnly
+            ? "import the entity by name, not as a type: `import { List } from …`"
+            : "import the entity by name: `import { List } from …`",
+          offset,
+        });
       continue;
     }
     // `import { Mesh } from "meshfw"`: Mesh's own functions (PRJ-22), the one import an entity file takes from a package.
@@ -184,8 +197,8 @@ function buildEntity(
 ): Entity {
   const at = (offset: number) => positionAt(source, file, offset);
   const pos = (tag: Tag) => at(tag.nameSpan.sourceStart);
-  const fail = (code: string, message: string, tag: Tag | SourcePosition) =>
-    diagnostics.push(error(code, message, "nameSpan" in tag ? pos(tag) : tag));
+  const fail = (code: string, message: string, tag: Tag | SourcePosition, fix?: string) =>
+    diagnostics.push(error(code, message, "nameSpan" in tag ? pos(tag) : tag, fix ?? null));
   const opt = (tag: Tag, key: string) => {
     const a = attr(tag, key);
     return a ? valueOf(a) : undefined;
@@ -221,7 +234,7 @@ function buildEntity(
   }
   const imports = readImports(irImports);
   for (const problem of imports.problems)
-    fail(problem.code, problem.message, at(problem.offset));
+    fail(problem.code, problem.message, at(problem.offset), problem.fix);
   entity.imports = imports.imports.map(
     (i): Import => {
       const renames = i.bindings.some((binding) => binding.imported !== binding.local);
@@ -267,6 +280,17 @@ function buildEntity(
     for (const [index, name] of entry.identifiers.entries()) {
       if (helper) helperImports.set(name, entry.from);
       if (entry.mesh) meshImports.add(name);
+      // A scope name (`input`) is the root in every function of the file (EXP-12), and a function is the one place a
+      // file reads `Mesh`: under that name the import could never be read.
+      if (entry.mesh && SCOPE_NAMES.has(name)) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+        fail(
+          "MESH_HELPER_NAME",
+          `The Mesh import name ${name} is a scope name: in every function of the file \`${name}\` is the scope's \`${name}\`, so \`Mesh\` imported as ${name} could never be read`,
+          localOffset === undefined ? entry.position : at(localOffset),
+          `import it as \`Mesh\`, or under a name other than ${[...SCOPE_NAMES].map((root) => `\`${root}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
+        );
+      }
       // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
       // local as `l$...` (CMP-06): no name an import binds, a helper's or an entity's alias, may start with either.
       if (/^(\$|l\$)/.test(name)) {
