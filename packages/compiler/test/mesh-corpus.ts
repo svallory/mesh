@@ -3,6 +3,7 @@
 import { lowerSource, type CustomTag, type Dialect, type LowerSourceResult } from "@mxlang/core";
 import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
+import { deepFreeze } from "../src/front-end/deep-freeze.ts";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import contractsModule from "./fixtures/mesh-corpus/contracts.ts";
 
@@ -11,10 +12,10 @@ export const GOLDEN = join(CORPUS, "__golden__/golden.json");
 const contracts = contractsModule as Record<string, CustomTag>;
 
 const withContracts = new WeakMap<Dialect, Dialect>();
-/** The frozen contracts replace the live ones on the dialect; its strictness and tag rules stay the dialect's own. One object per dialect, because MX checks a frozen dialect object once and re-checks an unfrozen one on every call (46 ms against 3 ms). */
+/** The frozen contracts replace the live ones on the dialect; its strictness and tag rules stay the dialect's own. One object per dialect, deep-frozen, because MX (since alpha.22) checks a dialect once only when every plain object and array in it is frozen, and re-checks any other on every call (46 ms against 3 ms). */
 function withCorpusContracts(dialect: Dialect): Dialect {
   let found = withContracts.get(dialect);
-  if (!found) withContracts.set(dialect, (found = Object.freeze({ ...dialect, contracts })));
+  if (!found) withContracts.set(dialect, (found = deepFreeze({ ...dialect, contracts })));
   return found;
 }
 

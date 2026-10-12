@@ -25,7 +25,7 @@
  * passes the dialect to `lowerSource`; tools find it through `meshfw`'s
  * `mx.dialect` registration, whose built module re-exports this value.
  *
- * `contracts`, `structural`, `unknownTags` and `imports` are the dialect's own fields (MX 0.1.0-alpha.21), so a caller passes none
+ * `contracts`, `structural`, `unknownTags` and `imports` are the dialect's own fields (since MX 0.1.0-alpha.21), so a caller passes none
  * of them to `lowerSource` and the editor checks a Mesh file exactly as the CLI does. `meshfw`'s manifest closes the
  * file to the project's `mx.tags`, `mx.contracts` and `tags/` and reserves the vocabulary (`mx.dialect` in
  * `packages/cli/package.json`).
@@ -71,7 +71,7 @@ export const MESH_DIALECT: Dialect = deepFreeze({
   id: "mesh",
   name: "Mesh",
   tagRules: "none",
-  // Mesh's vocabulary. `Dialect.contracts` is `@unstable` in MX (alpha.21). Every file of the dialect is checked against it, in the
+  // Mesh's vocabulary. `Dialect.contracts` is `@unstable` in MX (alpha.22). Every file of the dialect is checked against it, in the
   // compiler and in every tool, so `lowerSource` is never given `customTags`.
   contracts: MESH_CONTRACTS,
   // How strict Mesh files are: the one place these are stated (a caller's option would override them).
