@@ -241,7 +241,8 @@ async function ensureField(
 ): Promise<void> {
   if (depth > MAX_DEPTH)
     throw new FrameworkError(`Loading ${entity}#${name} went more than ${MAX_DEPTH} levels deep: a computed field reads itself through rows that lead back to each other`);
-  const todo = rows.filter((row) => !(name in row));
+  // Own members only: a field may be named like a member of `Object.prototype` (`toString`, ENT-18), which every row inherits.
+  const todo = rows.filter((row) => !Object.hasOwn(row, name));
   if (todo.length === 0) return;
   const entityPlan = planOf(plan, entity);
   if (Object.hasOwn(entityPlan.relations, name)) {
@@ -309,16 +310,18 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
     return made;
   };
   const guard: Work = new Proxy(row, {
+    // A field is loaded when the row holds it as its own: a relationship or computed field named like a member of
+    // `Object.prototype` (`constructor`, `toString`: ENT-18) is not loaded because every row inherits that member.
     get(target, key, receiver) {
       if (typeof key !== "string") return Reflect.get(target, key, receiver);
-      if (!(key in target)) {
+      if (!Object.hasOwn(target, key)) {
         if (names(key)) throw unloaded(key);
-        return undefined;
+        return Reflect.get(target, key, receiver);
       }
       return wrap(key, target[key]);
     },
     has(target, key) {
-      if (typeof key === "string" && !(key in target) && names(key)) throw unloaded(key);
+      if (typeof key === "string" && !Object.hasOwn(target, key) && names(key)) throw unloaded(key);
       return Reflect.has(target, key);
     },
     getOwnPropertyDescriptor(target, key) {
@@ -522,7 +525,7 @@ async function rollup(
 ): Promise<unknown> {
   const { path, relation, target, column } = rollupShape(plan, entity, entityPlan, name, computed);
   // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
-  if (path in row) {
+  if (Object.hasOwn(row, path)) {
     const loaded = row[path];
     const related = (Array.isArray(loaded) ? loaded : loaded === null || loaded === undefined ? [] : [loaded]) as Row[];
     const values = related.map((r) => r[column]).filter((value) => value !== null && value !== undefined);

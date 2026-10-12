@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK, FrameworkError, loadRows, rejectComputedQuery, scope, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
+import { CHUNK, FrameworkError, guarded, loadRows, rejectComputedQuery, scope, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
 
 /** An in-memory data layer that understands the two filters loading uses (`eq`, `in`) and records every call. */
 function memory(tables: Record<string, Row[]>) {
@@ -173,6 +173,46 @@ describe("loadRows", () => {
       await expect(loadRows(plan(handle), "Node", tx, row, ["badRelation"])).rejects.toThrow("Node has no relationship nowhere");
       await expect(loadRows(plan(handle), "Node", tx, row, ["looseCount"])).rejects.toThrow("Badge has no belongs-to back to Node");
     });
+  });
+});
+
+// ENT-18: a field may be named like a member of Object.prototype, which every row inherits; a row holds a loaded field
+// as its own member, so an inherited one is never taken for it.
+describe("a relationship and computed fields named like members of Object.prototype", () => {
+  // TypeScript reads `row.toString` as Object's member and gives a `constructor:` key of a literal no contextual type, so
+  // the test names the fields through a variable and spells the kinds `as const`.
+  const field = (row: unknown, name: string) => (row as Row)[name];
+  const oddPlan = (handle: (name: string) => never): LoadPlan => ({
+    Odd: {
+      table: handle("odds"), key: "id",
+      relations: {
+        constructor: { kind: "belongs-to" as const, target: "Odd", column: "constructorId", nullable: true },
+        valueOf: { kind: "has-many" as const, target: "Odd", column: "constructorId" },
+      },
+      computed: {
+        toString: { kind: "body", needs: ["constructor"], evaluate: (s: { self: unknown }) => { const parent = field(s.self, "constructor") as Row | null; return parent ? `to ${parent.id}` : "none"; } } as never,
+        hasOwnProperty: { kind: "rollup" as const, fn: "count" as const, of: ["valueOf"] },
+      },
+    },
+  });
+
+  test("are loaded, not taken for the inherited members", async () => {
+    const { tx, handle } = memory({ odds: [{ id: 1, constructorId: null }, { id: 2, constructorId: 1 }] });
+    const rows = (await tx.select(handle("odds"))) as Row[];
+    const loaded = await loadRows(oddPlan(handle), "Odd", tx, rows, ["constructor", "toString", "valueOf", "hasOwnProperty"]);
+    expect(loaded.map((row) => [(field(row, "constructor") as Row | null)?.id ?? null, field(row, "toString"), (field(row, "valueOf") as Row[]).map((r) => r.id), field(row, "hasOwnProperty")]))
+      .toEqual([[null, "none", [2], 1], [1, "to 1", [], 0]]);
+  });
+
+  test("a guard throws for them when they are not loaded, and leaves every other inherited member alone", () => {
+    const { handle } = memory({});
+    const guard = guarded(oddPlan(handle), "Odd", { id: 1, constructorId: null }, "action function") as Record<string, unknown>;
+    for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(() => guard[name]).toThrow(`A plain action function read Odd#${name}, which was not loaded`);
+      expect(() => name in guard).toThrow(FrameworkError);
+    }
+    expect(guard.isPrototypeOf).toBe(Object.prototype.isPrototypeOf);
+    expect(guard.missing).toBeUndefined();
   });
 });
 

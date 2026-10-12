@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import * as runtime from "@meshfw/runtime";
-import { ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
-import type { Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
+import { castInput, ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
+import type { DataLayer, Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
 
 const cause = new Error("original");
 const issue = (path: (string | number)[], message: string): Issue => ({ path, message, label: null, code: null, source: null, details: null });
@@ -118,6 +118,44 @@ test("parseInput maps missing and empty paths to input issues for async failures
 test.each([false, true])("parseInput propagates validator exceptions unchanged (async=%s)", async (async) => {
   const validator = schema(async ? () => Promise.reject(cause) : () => { throw cause; });
   await expect(parseInput(validator, {})).rejects.toBe(cause);
+});
+
+// ENT-18: a member input may be named like a member of Object.prototype, so a key the caller left out must read
+// `undefined` to the validator and to the action, never the inherited method.
+test("castInput hands the validator plain objects without a prototype, and the action an input without one", async () => {
+  const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
+  const at = new Date(0);
+  const input = { label: "x", filter: { and: [{ toString: { eq: "t" } }] }, data: JSON.parse('{"__proto__": 1, "deep": {"n": 2}}'), at, tags: ["a"] };
+  let seen: Record<string, unknown> | undefined;
+  const validator = schema((value) => {
+    seen = value as Record<string, unknown>;
+    return { value: { ...seen } };
+  });
+  const parsed = (await castInput(layer, validator, input)) as Record<string, unknown>;
+  // The validator's copy: no plain object in it inherits anything.
+  expect(Object.getPrototypeOf(seen)).toBeNull();
+  expect(seen!.toString).toBeUndefined();
+  const filter = seen!.filter as { and: Record<string, unknown>[] };
+  expect(Object.getPrototypeOf(filter)).toBeNull();
+  expect(Object.getPrototypeOf(filter.and[0])).toBeNull();
+  expect(filter.and[0]!.constructor).toBeUndefined();
+  expect(seen!.at).toBe(at);
+  // The action's input: no prototype itself, and what it holds is ordinary again (a `json` value is the caller's data).
+  expect(Object.getPrototypeOf(parsed)).toBeNull();
+  expect(parsed.toString).toBeUndefined();
+  expect(parsed.constructor).toBeUndefined();
+  expect(Object.getPrototypeOf(parsed.filter)).toBe(Object.prototype);
+  expect(Object.getPrototypeOf((parsed.filter as { and: object[] }).and[0])).toBe(Object.prototype);
+  const data = parsed.data as Record<string, unknown>;
+  expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
+  expect(Object.keys(data)).toEqual(["__proto__", "deep"]);
+  expect(Object.getOwnPropertyDescriptor(data, "__proto__")?.value).toBe(1);
+  expect(Object.getPrototypeOf(data.deep)).toBe(Object.prototype);
+  expect(parsed.at).toBe(at);
+  expect(parsed.tags).toEqual(["a"]);
+  // The caller's input is not touched.
+  expect(Object.getPrototypeOf(input)).toBe(Object.prototype);
+  expect(Object.getPrototypeOf(input.filter)).toBe(Object.prototype);
 });
 
 test("parseInput rejects malformed failure with no issues rather than accepting input", async () => {

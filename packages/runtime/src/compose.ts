@@ -20,6 +20,66 @@ export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
   return layer.transaction(() => Promise.reject(cause)).then(rethrow, rethrow);
 }
 
+/** A plain object: one an object literal, `JSON.parse` or `Object.create(null)` makes, not an instance of a class. */
+function isPlain(value: object): boolean {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * A copy of a caller's input for the validator, in which every plain object, at any depth, has no prototype; arrays are
+ * copied around their items and anything else (a `Date`) is kept. A member input may be named like a member of
+ * `Object.prototype` (`toString`, `constructor`: ENT-18), and so may a key of a read's `filter`. On a plain object a key
+ * the caller left out reads as the inherited method, which the validator would refuse ("expected string, received
+ * function"); on the copy it reads `undefined`, as any other name does.
+ */
+function withoutPrototypes(value: unknown, seen = new Map<object, unknown>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const list: unknown[] = [];
+    seen.set(value, list);
+    for (const item of value) list.push(withoutPrototypes(item, seen));
+    return list;
+  }
+  if (!isPlain(value)) return value;
+  const copy: Record<string, unknown> = Object.create(null);
+  seen.set(value, copy);
+  for (const [key, member] of Object.entries(value)) copy[key] = withoutPrototypes(member, seen);
+  return copy;
+}
+
+/** A copy in which every plain object, at any depth, is an ordinary one again: a `json` value is the caller's data. */
+function withPrototypes(value: unknown, seen = new Map<object, unknown>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const list: unknown[] = [];
+    seen.set(value, list);
+    for (const item of value) list.push(withPrototypes(item, seen));
+    return list;
+  }
+  if (!isPlain(value)) return value;
+  const copy: Record<string, unknown> = {};
+  seen.set(value, copy);
+  // Defined, not assigned: a `__proto__` key of a `json` value stays a key.
+  for (const [key, member] of Object.entries(value))
+    Object.defineProperty(copy, key, { value: withPrototypes(member, seen), enumerable: true, writable: true, configurable: true });
+  return copy;
+}
+
+/**
+ * The validator's output as the action gets it: the input itself has no prototype, so a member input the caller left out
+ * reads `undefined` whatever its name (`parsed.toString`, `input.toString` in a function); what it holds is ordinary
+ * again (`withPrototypes`).
+ */
+function accepted(output: unknown): unknown {
+  if (output === null || typeof output !== "object" || Array.isArray(output) || !isPlain(output)) return output;
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const [key, member] of Object.entries(output)) copy[key] = withPrototypes(member);
+  return copy;
+}
+
 /**
  * Cast a generated function's input. The cast runs before the function opens or joins a transaction. First the layer
  * says whether the call runs inside a transaction, and refuses it if that transaction has already failed
@@ -27,13 +87,16 @@ export function failJoined(layer: DataLayer, cause: unknown): Promise<never> {
  * (`#mesh/domain/<module>`) or from a function of an entity file, a failed cast goes through `failJoined`: it fails that transaction like any other failed call,
  * even when the caller catches it. At top level the caller gets the cast error at once, as from `parseInput`: no
  * transaction opens and no lock is taken.
+ *
+ * The validator sees the input's own members only (`withoutPrototypes`), and the action gets an input without a
+ * prototype (`accepted`): a member input the caller left out reads `undefined` whatever its name.
  */
 export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown): Promise<T> {
   const joined = layer.refuseIfFailed();
   // An `await`, not `.catch`: the error's async stack then keeps the generated function that called this, so its first
   // frame outside Mesh's packages is still the generated action (blog acceptance 3).
   try {
-    return await parseInput(schema, input);
+    return accepted(await parseInput(schema, withoutPrototypes(input))) as T;
   } catch (cause) {
     if (!joined) throw cause;
     return failJoined(layer, cause);
