@@ -87,7 +87,7 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
 });
 
 test("a page imports entity values from their module, and only the framework's names from #mesh (CMP-17)", () => {
-  const framework = new Set(["bind", "connect", "disconnect", "transaction", "privileged", "tables", "Binding", "Privileged"]);
+  const framework = new Set(["bind", "connect", "disconnect", "tables", "Binding", "Privileged"]);
   const modules = new Set<string>();
   let seen = 0;
   for (const name of readdirSync(docs).filter((name) => name.endsWith(".md"))) {

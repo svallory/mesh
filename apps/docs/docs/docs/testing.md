@@ -15,7 +15,7 @@ This page assumes the tutorial's `todo.mesh.mx` and `list.mesh.mx`.
 
 ## Bind, do not connect
 
-Your application calls `connect()` once at start-up. A test does not: it binds its own data layer, and `bind()` returns a binding of your whole domain to that data layer. The binding has two methods, `run` and `transaction`. Inside `run(fn)`, every call to an entity you imported (`Todo.create(input, context)`) and every `privileged` read goes to that binding's data layer, so the test calls exactly what the program calls.
+Your application calls `connect()` once at start-up. A test does not: it binds its own data layer, and `bind()` returns a binding of your whole domain to that data layer. The binding has two methods, `run` and `transaction`. Inside `run(fn)`, every call to an entity you imported (`Todo.create(input, context)`) and every `Mesh.privileged` read goes to that binding's data layer, so the test calls exactly what the program calls.
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
@@ -49,11 +49,11 @@ Three lines of setup, and they are always the same three:
 | `await createSchema(db, tables)` | Creates the tables of the generated schema on **this** connection. `mesh db push` runs in another process and cannot reach a private in-memory database |
 | `bind(db)` | The binding of the domain to it. `connect()` is not used, so nothing global changes and tests can run in parallel: each `run` has its own scope, so two tests in one process never see each other's data layer |
 
-You own the data layer you pass to `bind`, so you close it. `disconnect()` never touches one. `bind` also takes a clock (`now()` in your entity files reads it) and the `seams` a test wants to watch: `bind(db, { clock, seams })`.
+You own the data layer you pass to `bind`, so you close it. `disconnect()` never touches one. `bind` also takes a clock (`Mesh.now()` in your entity files reads it) and the `seams` a test wants to watch: `bind(db, { clock, seams })`.
 
 A call made outside `run` and `transaction` goes to the data layer `connect()` opened. A test never connects, so a call it makes outside `run` throws the `FrameworkError` an unconnected program gets, instead of writing to some other database.
 
-`app.transaction(fn)` is `run` with one transaction around everything inside: the calls join it, `afterCommit` runs once when it commits, and a throw rolls all of them back. Like the `transaction` you import from `#mesh`, it hands `fn` nothing and takes no context.
+`app.transaction(fn)` is `run` with one transaction around everything inside: the calls join it, `afterCommit` runs once when it commits, and a throw rolls all of them back. Like `Mesh.transaction`, it hands `fn` nothing and takes no context.
 
 ## What to assert
 
@@ -157,11 +157,12 @@ test("another actor sees no todos and may not complete one", async () => {
 });
 ```
 
-For a write, `can` is the better thing to assert on, because it is data rather than an error class:
+For a write, `Mesh.checkPolicies` is the better thing to assert on, because it is data rather than an error class:
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
+import { Mesh } from "meshfw";
 import { bind, tables } from "#mesh";
 import { List, Todo } from "#mesh/domain/todo";
 import { alice, bob } from "../src/context";
@@ -175,9 +176,10 @@ test("another actor may not complete a todo", async () => {
     const list = await List.create({ name: "Groceries" }, { actor: alice });
     const milk = await Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
 
-    const answer = await Todo.canComplete({ id: milk.id }, { actor: bob });
+    const answer = await Mesh.checkPolicies(Todo.complete, { id: milk.id }, { actor: bob });
     expect(answer.allowed).toBe(false);
     expect(answer.breakdown[0]?.decisive).toBe(true);
+    expect(await Mesh.can(Todo.complete, { id: milk.id }, { actor: bob })).toBe(false);
   });
 
   await db.close();
@@ -196,5 +198,5 @@ Then `bun run test` is the whole check: the generated tree is what the entity fi
 
 ## Next
 
-- [Using your domain](./using-your-domain.md) — `can`, `load` and the error classes in full.
+- [Using your domain](./using-your-domain.md) — `Mesh.can`, `load` and the error classes in full.
 - [Command line](./command-line.md) — the guard and the commands.

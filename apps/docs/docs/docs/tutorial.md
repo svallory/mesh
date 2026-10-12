@@ -208,7 +208,7 @@ Four things to notice:
 
 - **`List.create` takes only `name`.** `ownerId` is not in the input type, so a call that sends it does not compile.
 - **`load: ["label"]` is what types `todo.label`.** Without it, reading the property is a type error rather than `undefined`.
-- **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `Todo.canComplete({ id }, { actor: bob })` returns `{ allowed: false, breakdown }`.
+- **Bob gets `NotFoundError`, not `ForbiddenError`.** The policy reads the stored row, so it becomes a filter on the statement, and a row he may not change does not exist as far as he is concerned. Ask first and you get the reason instead: `Mesh.checkPolicies(Todo.complete, { id }, { actor: bob })` resolves to `{ allowed: false, breakdown }`.
 - **The empty title is refused before anything is written**, with Mesh's standard code and message and the position of the line that carries the rule.
 
 ## Build and run

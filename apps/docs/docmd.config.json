@@ -467,7 +467,7 @@
               "path": "/architecture/decisions/0085-tag-discovery-for-dialect-tags/"
             },
             {
-              "title": "0086. Entity values, `privileged`, barrels and FQNs",
+              "title": "0086. Entity values, `Mesh.privileged`, barrels and FQNs",
               "path": "/architecture/decisions/0086-entity-values-privileged-barrels-and-fqns/"
             }
           ]

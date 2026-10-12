@@ -5,7 +5,7 @@
 // This is not Mesh. Mesh does not exist as an installable runtime yet, so the file
 // states the shape the pages promise: the generated entry points (`#mesh` and the
 // `#mesh/domain/<module>` specifiers) for the entities of the pages, the run-time error
-// classes, `privileged`, the SQLite adapter and the configuration helper. If a page and this file
+// classes, `Mesh` (every function Mesh gives application code), the SQLite adapter and the configuration helper. If a page and this file
 // disagree, the page is a bug or this file is; both are cheap to fix and the sample
 // check is what notices.
 //
@@ -58,22 +58,53 @@ declare module "@meshfw/runtime" {
 
   /**
    * What a module exports for an entity (`Todo` in `import { Todo } from "#mesh/domain/todo"`): an object whose
-   * methods are the entity's actions. `R` is the type of its policy-free reads, which `privileged` returns.
+   * methods are the entity's actions. `R` is the type of its policy-free reads, which `Mesh.privileged` returns.
    */
   export type EntityValue<R = unknown> = {
     readonly [reads]?: R;
   };
 
-  /** The read actions of an entity, generated and custom, with no policy: what `privileged(Entity)` returns. */
+  /** The read actions of an entity, generated and custom, with no policy: what `Mesh.privileged(Entity)` returns. */
   export type Privileged<E extends EntityValue> = E extends EntityValue<infer R> ? R : never;
 
+  /** The answer of `Mesh.checkPolicies`: whether the call would be allowed, and one entry per check that ran (ADR-0022). */
+  export type Decision = {
+    allowed: boolean;
+    breakdown: readonly PolicyCheck[];
+  };
+
+  /** An action function as the entity value exposes it: the input, then the context. */
+  export type ActionFunction<I> = (input: I, context: ActionContext) => Promise<unknown>;
+
   /**
-   * Returns the read actions of `entity` without read policies. It joins the running transaction and reads the running
-   * action's `now()`. It throws `FrameworkError` while a computed field or a read policy is being evaluated. Each
-   * read takes an optional `context`: it reaches only the computed fields the read loads and is never inherited from
-   * the running action (a lead decision, for operator review).
+   * Every function Mesh gives application code and expressions is a member of this one namespace; none is a bare
+   * name. Error classes and types (`ForbiddenError`, `ActionContext`) stay named exports.
    */
-  export function privileged<E extends EntityValue>(entity: E): Privileged<E>;
+  export const Mesh: {
+    /**
+     * Resolves to `{ allowed, breakdown }` for a call to `action` with `input` and `context`, and changes nothing. The
+     * action function comes first, then the call's own arguments; the runtime recognises the function through a
+     * module-private `WeakMap`, so nothing is added to it.
+     */
+    checkPolicies<I>(action: ActionFunction<I>, input: I, context: ActionContext): Promise<Decision>;
+    /** Resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. */
+    can<I>(action: ActionFunction<I>, input: I, context: ActionContext): Promise<boolean>;
+    /**
+     * Returns the read actions of `entity` without read policies. It joins the running transaction and reads the
+     * running action's `Mesh.now()`. It throws `FrameworkError` while a computed field or a read policy is being
+     * evaluated. Each read takes an optional `context`: it reaches only the computed fields the read loads and is
+     * never inherited from the running action.
+     */
+    privileged<E extends EntityValue>(entity: E): Privileged<E>;
+    /** Opens a transaction on the binding in scope (else the one `connect()` opened), or joins the running one. `fn` gets nothing and the call takes no context: each call inside passes its own. */
+    transaction<T>(fn: () => Promise<T>): Promise<T>;
+    /** The instant the running action pinned. */
+    now(): Date;
+    /** The date part of `Mesh.now()`, at 00:00 UTC. */
+    today(): Date;
+    /** True only when `context.system` is the boolean `true`. */
+    isSystem(context: Readonly<ActionContext>): boolean;
+  };
 
   /** What `bind` returns: the whole domain on one data layer, one seam set and one clock. */
   export type Binding = {
@@ -89,7 +120,7 @@ declare module "@meshfw/runtime" {
    * declaration a duplicate-property error.
    */
   export interface ActionContext {
-    /** Reserved: the application marks a call it makes on its own behalf. Mesh skips no policy for it; a policy admits it with `isSystem(context)`. */
+    /** Reserved: the application marks a call it makes on its own behalf. Mesh skips no policy for it; a policy admits it with `Mesh.isSystem(context)`. */
     system?: boolean;
   }
 
@@ -109,7 +140,7 @@ declare module "@meshfw/runtime" {
   }
 
   /**
-   * One check from a policy's breakdown, as `ForbiddenError` (and `can`) carry it: plain data. `result` is `null` when
+   * One check from a policy's breakdown, as `ForbiddenError` (and `Mesh.checkPolicies`) carry it: plain data. `result` is `null` when
    * the check was unknown; `kind` is `"when"` only for a policy whose `when=` was unknown, or was false when no covering
    * policy applied. Only the checks that ran are listed.
    */
@@ -177,6 +208,8 @@ declare module "@meshfw/data-postgres" {
 }
 
 declare module "meshfw" {
+  /** The namespace of every function Mesh gives application code and expressions, imported the same way in a `.mesh.mx` file and a TypeScript file. */
+  export { Mesh } from "@meshfw/runtime";
   /** Re-exported for compatibility; a config imports `defineConfig` from `@meshfw/runtime`. */
   export { defineConfig, type MeshConfig } from "@meshfw/runtime";
 }
@@ -189,7 +222,7 @@ declare module "meshfw" {
 // per-entity types the generator writes into each module.
 
 declare module "#mesh/domain/todo" {
-  import type { ActionContext, EntityValue, PolicyCheck } from "@meshfw/runtime";
+  import type { ActionContext, EntityValue } from "@meshfw/runtime";
 
   export type Condition = {
     eq?: string | number | boolean | Date | null;
@@ -222,11 +255,6 @@ declare module "#mesh/domain/todo" {
     ownerId: string;
     insertedAt: Date;
     updatedAt: Date;
-  }
-
-  export interface Decision {
-    allowed: boolean;
-    breakdown: PolicyCheck[];
   }
 
   export type TodoField = "id" | "title" | "done" | "listId" | "insertedAt" | "updatedAt";
@@ -270,7 +298,7 @@ declare module "#mesh/domain/todo" {
       read<const L extends readonly (keyof ListLoadable)[] = readonly []>(input: Omit<ReadListInput, "load"> & ListLoadArg<L>, context?: ActionContext): Promise<ListWith<ListLoadNames<L>>[]>;
   }>;
 
-  /** The entity value of `Todo`: one method per action, and a `can<Action>` beside each. `&list` in input takes the related id; the returned record still has listId. */
+  /** The entity value of `Todo`: one method per action. `&list` in input takes the related id; the returned record still has listId. */
   export const Todo: {
     create(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Todo>;
     read<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
@@ -278,9 +306,6 @@ declare module "#mesh/domain/todo" {
     complete(input: { id: string }, context: ActionContext): Promise<Todo>;
     rename(input: { id: string; title: string }, context: ActionContext): Promise<Todo>;
     destroy(input: { id: string }, context: ActionContext): Promise<void>;
-    canCreate(input: { title: string; list: List["id"] }, context: ActionContext): Promise<Decision>;
-    canPending(input: { load?: readonly string[] }, context: ActionContext): Promise<Decision>;
-    canComplete(input: { id: string }, context: ActionContext): Promise<Decision>;
   } & EntityValue<{
       read<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
       pending<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
@@ -338,13 +363,10 @@ declare module "#mesh" {
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
 
-  export { privileged, type Binding, type Privileged } from "@meshfw/runtime";
+  export type { Binding, Privileged } from "@meshfw/runtime";
   import type { Binding } from "@meshfw/runtime";
 
   export type DataLayer = SqliteDataLayer | PostgresDataLayer;
-
-  /** Opens a transaction on the binding in scope (else the one `connect()` opened), or joins the running one. `fn` gets nothing and the call takes no context: each call inside passes its own. */
-  export function transaction<T>(fn: () => Promise<T>): Promise<T>;
 
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;

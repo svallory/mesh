@@ -129,7 +129,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
 | [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is open | Accepted, one item open | operator |
 | [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders (target design) | Accepted | operator with MX |
-| [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `privileged`, barrels and fully qualified names: generated code follows modules | Accepted | operator |
+| [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted | operator |
 
 ## Superseded records
 
