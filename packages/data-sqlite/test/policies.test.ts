@@ -9,6 +9,7 @@ import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { ForbiddenError, InvalidInputError, NotFoundError, type DataLayer, type Seams } from "@meshfw/runtime";
 import build from "../src/build.ts";
+import { callsOf } from "./calls.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
 const board = `entity :Board table="boards"
@@ -174,6 +175,11 @@ function reversed(source: string): string {
   return `${source.slice(0, at)}\n  policies\n${flipped.reverse().join("\n")}\n`;
 }
 
+/** A generated project: what `#mesh` exports, and its root barrel as `domain`. */
+async function project(root: string) {
+  return { ...await import(join(root, ".mesh/index.ts")), domain: await import(join(root, ".mesh/domain/index.ts")) };
+}
+
 let dir: string;
 let flippedDir: string;
 let app: any;
@@ -181,8 +187,8 @@ let flippedApp: any;
 beforeAll(async () => {
   dir = await generate(".policies-", SOURCES);
   flippedDir = await generate(".policies-reversed-", Object.fromEntries(Object.entries(SOURCES).map(([name, source]) => [name, reversed(source)])));
-  app = await import(join(dir, ".mesh/index.ts"));
-  flippedApp = await import(join(flippedDir, ".mesh/index.ts"));
+  app = await project(dir);
+  flippedApp = await project(flippedDir);
 });
 afterAll(async () => {
   if (dir) await rm(dir, { recursive: true, force: true });
@@ -210,7 +216,7 @@ async function fresh(generated = app, seams?: Seams) {
   const db = sqlite({ file: ":memory:" });
   await createSchema(db, generated.tables);
   const { wrapped, counts } = counting(db);
-  return { db, mesh: generated.bind(wrapped, { seams }), counts };
+  return { db, mesh: callsOf(generated.bind(wrapped, { seams }), generated.domain), counts };
 }
 
 async function denial(call: Promise<unknown>): Promise<ForbiddenError> {
@@ -588,7 +594,7 @@ entity :Item table="items"
   let loads: any;
   beforeAll(async () => {
     loadsDir = await generate(".policies-loads-", { shelf, item, keeper });
-    loads = await import(join(loadsDir, ".mesh/index.ts"));
+    loads = await project(loadsDir);
   });
   afterAll(async () => {
     if (loadsDir) await rm(loadsDir, { recursive: true, force: true });
@@ -596,7 +602,7 @@ entity :Item table="items"
   async function stocked() {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, loads.tables);
-    const mesh = loads.bind(db);
+    const mesh = callsOf(loads.bind(db), loads.domain);
     const hired = await mesh.hireKeeper({ name: "Kay" }, alice);
     const made = await mesh.makeShelf({ name: "Top", keeper: hired.id }, alice);
     for (const rank of [3, 7]) await mesh.addItem({ rank, shelf: made.id }, alice);
@@ -658,14 +664,14 @@ entity :Item table="items"
   test("the types say so: a caller's belongs-to is `| null`, through tx it is not, and the generated tree type-checks", async () => {
     await Bun.write(join(loadsDir, "use.ts"), `import type { DataOperations, LoadOptions } from "@meshfw/runtime";
 import { transaction } from "./.mesh/index.ts";
-import { readShelf, showShelf } from "./.mesh/domain/index.ts";
+import { Shelf } from "./.mesh/domain/index.ts";
 import { loadShelfFields } from "./.mesh/load.ts";
 export async function use(): Promise<string[]> {
-  const [shelf] = await readShelf({ load: ["keeper", "items"] }, { actor: { id: "a" } });
+  const [shelf] = await Shelf.read({ load: ["keeper", "items"] }, { actor: { id: "a" } });
   // @ts-expect-error a caller's keeper may be one it may not read
   const name: string = shelf!.keeper.name;
   const maybe: string | undefined = shelf!.keeper?.name;
-  const shown = await showShelf({ id: "x" }, { actor: { id: "a" } });
+  const shown = await Shelf.show({ id: "x" }, { actor: { id: "a" } });
   // @ts-expect-error the same for a write's load step
   shown.keeper.name;
   const inside = await transaction(async ({ tx }) => (await tx.readShelf({ load: ["keeper"] }))[0]!.keeper.name, { actor: { id: "a" } });

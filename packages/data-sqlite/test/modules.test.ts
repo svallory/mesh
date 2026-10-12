@@ -1,7 +1,8 @@
-// CMP-17 at run time: a project whose application code imports `#mesh` for the framework and `#mesh/domain/<module>`
-// for a module's action functions and types, through the package.json `imports` mapping Mesh documents, on SQLite.
-// The domain has a root entity, a module two folders deep, modules named like Mesh's top-level files, and two modules
-// whose actions call each other through `actions`. Bun runs it and tsc type-checks it, both resolving the specifiers.
+// CMP-17 and CMP-18 at run time: a project whose application code imports `#mesh` for the framework and
+// `#mesh/domain/<path>` for a folder's entity values, types and subfolder namespaces, through the package.json `imports`
+// mapping Mesh documents, on SQLite. The domain has a root entity, a module two folders deep below a folder that holds
+// no entity, modules named like Mesh's top-level files, and two modules whose actions call each other through
+// `actions`. Bun runs it and tsc type-checks it, both resolving the specifiers.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -10,7 +11,7 @@ import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } f
 import { openPolicies } from "./open-policy.ts";
 import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
 import build from "../src/build.ts";
-import { createSchema } from "../src/index.ts";
+import { createSchema, sqlite } from "../src/index.ts";
 
 const order = `entity :Order table="orders"
   attributes
@@ -115,49 +116,53 @@ export { default as config } from "./mesh.config";
 export const resolveHere = (specifier: string): Promise<unknown> => import(specifier);
 `;
 /** Type-level checks: what each specifier exports and does not. */
-const CHECK = `import { bind, connect, disconnect, tables, transaction, type Actions, type Reads } from "#mesh";
-// @ts-expect-error #mesh exports no action function: it is its module's
-import { placeOrder as notInMesh } from "#mesh";
-// @ts-expect-error nor an entity type
-import type { Order as NotInMesh } from "#mesh";
-// @ts-expect-error nor a load function, nor $delegate
+const CHECK = `import { bind, connect, disconnect, tables, transaction, type Actions, type Binding, type Reads } from "#mesh";
+// @ts-expect-error #mesh exports no entity value: it is its module's
+import { Order as notInMesh } from "#mesh";
+// @ts-expect-error nor $delegate
 import { $delegate } from "#mesh";
-// @ts-expect-error a folder that holds only modules has no index of its own
-import * as sales from "#mesh/domain/sales";
+// @ts-expect-error a module exports no function per action: its entity value holds them
+import { placeOrder } from "#mesh/domain/sales/orders";
 // @ts-expect-error a module exports its own entities, not another module's
-import { settleInvoice as notInOrders } from "#mesh/domain/sales/orders";
-import { closeOrder, placeOrder, readOrder, type Order, type PlaceOrderInput } from "#mesh/domain/sales/orders";
-import { settleInvoice, type Invoice } from "#mesh/domain/billing";
-import { makeTag, type Tag } from "#mesh/domain";
-import { makeColumn, type Column } from "#mesh/domain/schema";
-import { makeShipment } from "#mesh/domain/load";
-import { makeEntry } from "#mesh/domain/index";
-import { makeContract } from "#mesh/domain/binding";
-import { makePiece } from "#mesh/domain/composition";
-import { makeRealm } from "#mesh/domain/domain";
+import { Invoice as notInOrders } from "#mesh/domain/sales/orders";
+import * as domain from "#mesh/domain";
+import * as sales from "#mesh/domain/sales";
+import { Order, type PlaceOrderInput } from "#mesh/domain/sales/orders";
+import { Invoice } from "#mesh/domain/billing";
+import { Tag } from "#mesh/domain";
+import { Column } from "#mesh/domain/schema";
+import { Shipment } from "#mesh/domain/load";
+import { Entry } from "#mesh/domain/index";
+import { Contract } from "#mesh/domain/binding";
+import { Piece } from "#mesh/domain/composition";
+import { Realm } from "#mesh/domain/domain";
 
 export async function main(): Promise<[Order, Invoice[], Tag, Column]> {
   await connect();
   const input: PlaceOrderInput = { item: "book", amount: 3 };
-  const placed = await placeOrder(input, { trail: [] });
-  // @ts-expect-error a module's function is typed by its input
-  await placeOrder({ item: "book" });
+  const placed = await Order.place(input, { trail: [] });
+  // @ts-expect-error an entity's method is typed by its input
+  await Order.place({ item: "book" });
+  // The same entity value through the namespaces of the barrels above its folder.
+  const viaSales: typeof Order = sales.orders.Order;
+  const viaRoot: typeof Invoice = domain.billing.Invoice;
   const both = await transaction(async ({ actions, tx }: { actions: Actions; tx: Reads }) => {
     const invoices = await tx.readInvoice({});
     await actions.settleInvoice({ id: invoices[0]!.id });
     return invoices;
   }, { trail: [] });
-  const tag = await makeTag({ label: "t" });
-  const column = await makeColumn({ label: "c" });
-  await Promise.all([makeShipment({ label: "s" }), makeEntry({ label: "e" }), makeContract({ label: "k" }), makePiece({ label: "p" }), makeRealm({ label: "r" })]);
-  await closeOrder({ id: placed.id });
-  await settleInvoice({ id: both[0]!.id });
-  void (await readOrder({}));
-  void bind; void tables; void disconnect;
+  const tag = await Tag.make({ label: "t" });
+  const column = await Column.make({ label: "c" });
+  await Promise.all([Shipment.make({ label: "s" }), Entry.make({ label: "e" }), Contract.make({ label: "k" }), Piece.make({ label: "p" }), Realm.make({ label: "r" })]);
+  await Order.close({ id: placed.id });
+  await Invoice.settle({ id: both[0]!.id });
+  // A binding of one's own: inside its run, a call keeps its type.
+  const own: Binding = bind(null as never);
+  const orders: Order[] = await own.run(() => Order.read({}));
+  void tables; void disconnect; void viaSales; void viaRoot; void orders;
   return [placed, both, tag, column];
 }
-export const unreachable = [notInMesh, $delegate, sales, notInOrders];
-export type Unreachable = NotInMesh;
+export const unreachable = [notInMesh, $delegate, placeOrder, notInOrders];
 `;
 
 let dir: string;
@@ -189,20 +194,25 @@ describe("the specifiers", () => {
     expect(Object.keys(app.mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
   });
 
-  test("each module's specifier exports its own entities' action functions, and only those", () => {
-    expect(Object.keys(app.root).sort()).toEqual(["makeTag", "readTag"]);
-    expect(Object.keys(app.orders).sort()).toEqual(["closeOrder", "placeOrder", "readOrder"]);
-    expect(Object.keys(app.billing).sort()).toEqual(["issueInvoice", "readInvoice", "settleInvoice"]);
+  test("each barrel exports its own entities' values and one namespace per subfolder, and only those", () => {
+    expect(Object.keys(app.root).sort()).toEqual(["Tag", "billing", "binding", "composition", "domain", "index", "load", "sales", "schema"]);
+    expect(Object.keys(app.orders)).toEqual(["Order"]);
+    expect(Object.keys(app.billing)).toEqual(["Invoice"]);
+    expect(Object.keys(app.orders.Order)).toEqual(["place", "close", "read"]);
   });
 
-  test.each(Object.entries(NAMED))("a module named %s resolves to its own index, not to Mesh's file of that name", (module, name) => {
-    expect(Object.keys(app[module]).sort()).toEqual([`make${name}`, `read${name}`]);
+  test.each(Object.entries(NAMED))("a module named %s resolves to its own barrel, not to Mesh's file of that name", (module, name) => {
+    expect(Object.keys(app[module])).toEqual([name]);
+    expect(app.root[module]).toBe(app[module]);
   });
 
-  test("a folder that holds only modules has no specifier: #mesh/domain/sales does not resolve", async () => {
-    await expect(app.resolveHere("#mesh/domain/sales")).rejects.toThrow();
-    // The nested module does, through the same pattern.
-    expect(await app.resolveHere("#mesh/domain/sales/orders")).toBe(app.orders);
+  test("a folder that holds only folders resolves to a barrel of their namespaces: #mesh/domain/sales holds orders", async () => {
+    const sales = await app.resolveHere("#mesh/domain/sales");
+    expect(Object.keys(sales)).toEqual(["orders"]);
+    expect(sales.orders).toBe(app.orders);
+    expect(app.root.sales).toBe(sales);
+    // One entity value, however it is reached.
+    expect(app.root.sales.orders.Order).toBe(app.orders.Order);
   });
 
   test("Mesh's own files are not module specifiers: #mesh/binding and #mesh/domain/binding are different things", async () => {
@@ -224,36 +234,41 @@ describe("the specifiers", () => {
   }, 30_000);
 });
 
-describe("a module's action functions on the default binding", () => {
-  test("before connect, a module's function throws the FrameworkError #mesh's did", async () => {
-    await expect(app.orders.placeOrder({ item: "x", amount: 1 })).rejects.toThrow(new FrameworkError(
-      "placeOrder was called while not connected: call connect() first, or use bind(db) with a data layer of your own"));
-    await expect(app.domain.makeRealm({ label: "x" })).rejects.toBeInstanceOf(FrameworkError);
+describe("entity values on the connected binding", () => {
+  test("before connect, an entity call throws a FrameworkError naming the entity by FQN and the action", async () => {
+    await expect(app.orders.Order.place({ item: "x", amount: 1 })).rejects.toThrow(new FrameworkError(
+      "sales.orders.Order.place was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    await expect(app.domain.Realm.make({ label: "x" })).rejects.toBeInstanceOf(FrameworkError);
   });
 
   test("two modules call each other through `actions`: placing an order invoices it, settling the invoice closes the order", async () => {
     await app.mesh.connect();
+    const { Order } = app.orders;
+    const { Invoice } = app.billing;
     const trail: string[] = [];
-    const placed = await app.orders.placeOrder({ item: "lamp", amount: 40 }, { trail });
+    const placed = await Order.place({ item: "lamp", amount: 40 }, { trail });
     // The nested call carries the caller's context: Order's step runs after its write, then Invoice's before its own.
     expect(trail).toEqual(["placed lamp", "invoiced 40"]);
-    const [issued] = await app.billing.readInvoice({ filter: { ref: { eq: placed.id } } });
+    const [issued] = await Invoice.read({ filter: { ref: { eq: placed.id } } });
     expect(issued).toMatchObject({ ref: placed.id, amount: 40, paid: false });
-    await app.billing.settleInvoice({ id: issued.id });
-    expect((await app.orders.readOrder({ filter: { id: { eq: placed.id } } }))[0]).toMatchObject({ item: "lamp", closed: true });
-    expect((await app.billing.readInvoice({ filter: { id: { eq: issued.id } } }))[0].paid).toBe(true);
+    await Invoice.settle({ id: issued.id });
+    expect((await Order.read({ filter: { id: { eq: placed.id } } }))[0]).toMatchObject({ item: "lamp", closed: true });
+    expect((await Invoice.read({ filter: { id: { eq: issued.id } } }))[0].paid).toBe(true);
   });
 
   test("a nested action that fails in the other module fails the whole call: no order, no invoice", async () => {
-    const orders = (await app.orders.readOrder({})).length;
-    const invoices = (await app.billing.readInvoice({})).length;
-    const error = await app.orders.placeOrder({ item: "free", amount: 0 }).then(() => null, (cause: unknown) => cause);
+    const { Order } = app.orders;
+    const { Invoice } = app.billing;
+    const orders = (await Order.read({})).length;
+    const invoices = (await Invoice.read({})).length;
+    const error = await Order.place({ item: "free", amount: 0 }).then(() => null, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(InvalidInputError);
-    expect((await app.orders.readOrder({})).length).toBe(orders);
-    expect((await app.billing.readInvoice({})).length).toBe(invoices);
+    expect((await Order.read({})).length).toBe(orders);
+    expect((await Invoice.read({})).length).toBe(invoices);
   });
 
   test("transaction(fn, context) from #mesh composes both modules' actions, carries the context, and rolls back as one", async () => {
+    const { Order } = app.orders;
     const trail: string[] = [];
     const result = await app.mesh.transaction(async ({ actions, tx }: any) => {
       const made = await actions.placeOrder({ item: "desk", amount: 7 });
@@ -263,54 +278,60 @@ describe("a module's action functions on the default binding", () => {
     }, { trail });
     expect(trail).toContain("placed desk");
     expect(trail).toContain("invoiced 7");
-    expect((await app.orders.readOrder({ filter: { id: { eq: result } } }))[0].closed).toBe(true);
-    const before = (await app.orders.readOrder({})).length;
+    expect((await Order.read({ filter: { id: { eq: result } } }))[0].closed).toBe(true);
+    const before = (await Order.read({})).length;
     await expect(app.mesh.transaction(async ({ actions }: any) => {
       await actions.placeOrder({ item: "chair", amount: 2 });
       throw new Error("changed my mind");
     })).rejects.toThrow("changed my mind");
-    expect((await app.orders.readOrder({})).length).toBe(before);
+    expect((await Order.read({})).length).toBe(before);
   });
 
-  test("a module's function and the same member of bind(layer) give the same result on the same layer", async () => {
-    const bound = app.mesh.bind(app.config.data);
-    const viaModule = await app.schema.makeColumn({ label: "same" });
-    const viaBind = await bound.makeColumn({ label: "same" });
-    expect(Object.keys(viaModule).sort()).toEqual(Object.keys(viaBind).sort());
-    expect({ ...viaModule, id: "" }).toEqual({ ...viaBind, id: "" });
-    // `bind` still binds every entity of every module, flat, by action function name.
-    expect(Object.keys(bound).sort()).toEqual([
-      "closeOrder", "issueInvoice", "makeColumn", "makeContract", "makeEntry", "makePiece", "makeRealm", "makeShipment", "makeTag",
-      "placeOrder", "readColumn", "readContract", "readEntry", "readInvoice", "readOrder", "readPiece", "readRealm", "readShipment", "readTag",
-      "settleInvoice", "transaction"]);
+  test("while connected, a call inside run() of bind(layer) runs on that binding, and one outside any run on the connected one", async () => {
+    const { Column } = app.schema;
+    const own = sqlite({ file: ":memory:" });
+    await createSchema(own, app.mesh.tables);
+    try {
+      const bound = app.mesh.bind(own);
+      expect(Object.isFrozen(bound)).toBe(true);
+      expect(Object.keys(bound)).toEqual(["run", "transaction"]);
+      await bound.run(() => Column.make({ label: "own" }));
+      await Column.make({ label: "connected" });
+      const labels = (rows: { label: string }[]) => rows.map((row) => row.label);
+      expect(labels(await bound.run(() => Column.read({})))).toEqual(["own"]);
+      expect(labels(await Column.read({}))).not.toContain("own");
+      expect(labels(await Column.read({}))).toContain("connected");
+      // `transaction` from #mesh takes the binding in scope too.
+      expect(await bound.run(() => app.mesh.transaction(async ({ tx }: any) => labels(await tx.readColumn({}))))).toEqual(["own"]);
+    } finally { await own.close(); }
   });
 
   test("an entity of a nested module bound alone gets stand-ins that throw for `actions`, and stores nothing", async () => {
     const { bindOrder } = await import(join(dir, ".mesh/domain/sales/orders/order.actions.ts"));
     const alone = bindOrder(app.config.data);
-    const before = (await app.orders.readOrder({})).length;
+    const before = (await app.orders.Order.read({})).length;
     const error = await alone.place({ item: "solo", amount: 1 }).then(() => null, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(FrameworkError);
     expect((error as Error).message).toBe("sales.orders.Order#place reads `actions.issueInvoice`, which only a binding of the whole project has: bind with bind(layer) from #mesh, not with one entity's bind function");
-    expect((await app.orders.readOrder({})).length).toBe(before);
+    expect((await app.orders.Order.read({})).length).toBe(before);
   });
 
-  test("disconnect waits for a module's call already in flight, then closes the layer", async () => {
-    // placeOrder nests issueInvoice, so the call is still running when disconnect() starts.
-    const pending = app.orders.placeOrder({ item: "inflight", amount: 5 });
+  test("disconnect waits for an entity call already in flight, then closes the layer", async () => {
+    // Order.place nests Invoice.issue, so the call is still running when disconnect() starts.
+    const pending = app.orders.Order.place({ item: "inflight", amount: 5 });
     let settled = false;
     void pending.then(() => { settled = true; }, () => { settled = true; });
     await app.mesh.disconnect();
     expect(settled).toBe(true);
     expect(await pending).toMatchObject({ item: "inflight", amount: 5 });
     // The layer is closed: a new call refuses until connect() runs again.
-    await expect(app.orders.readOrder({})).rejects.toBeInstanceOf(FrameworkError);
+    await expect(app.orders.Order.read({})).rejects.toBeInstanceOf(FrameworkError);
     await app.mesh.connect();
   });
 
-  test("after disconnect, every module's functions refuse again", async () => {
+  test("after disconnect, every module's entity values refuse again", async () => {
     await app.mesh.disconnect();
-    await expect(app.billing.readInvoice({})).rejects.toBeInstanceOf(FrameworkError);
-    await expect(app.index.makeEntry({ label: "late" })).rejects.toBeInstanceOf(FrameworkError);
+    await expect(app.billing.Invoice.read({})).rejects.toBeInstanceOf(FrameworkError);
+    await expect(app.index.Entry.make({ label: "late" })).rejects.toBeInstanceOf(FrameworkError);
   });
 });

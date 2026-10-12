@@ -9,6 +9,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
+import { callsOf } from "./calls.ts";
 import { openPolicies } from "./open-policy.ts";
 import { InvalidInputError, type Issue } from "@meshfw/runtime";
 import build from "../src/build.ts";
@@ -229,6 +230,7 @@ const SQLITE: ResolvedConfig["data"] = {
 
 let dir: string;
 let app: any;
+let domain: object;
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".validate-self-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
@@ -239,6 +241,7 @@ beforeAll(async () => {
   // `binding.ts` imports the project's config, which is not part of this fixture.
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
   app = await import(join(dir, ".mesh/index.ts"));
+  domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
 afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true }); });
 
@@ -251,7 +254,7 @@ async function fresh() {
   await createSchema(db, app.tables);
   const seen: Seen[] = [];
   const ctx = { actor: { id: "a" }, seen };
-  const mesh = app.bind(db, { clock: () => NOW });
+  const mesh = callsOf(app.bind(db, { clock: () => NOW }), domain);
   const ada = await mesh.joinPerson({ name: "Ada" }, ctx);
   const bo = await mesh.joinPerson({ name: "Bo" }, ctx);
   return { db, mesh, ctx, seen, ada, bo };
@@ -497,7 +500,7 @@ describe("one instant per action", () => {
       await createSchema(db, app.tables);
       let reads = 0;
       // Two hours later on every read: a second read would be past the deadline, and would stamp a different time.
-      const mesh = app.bind(db, { clock: () => new Date(NOW.getTime() + 2 * 3_600_000 * reads++) });
+      const mesh = callsOf(app.bind(db, { clock: () => new Date(NOW.getTime() + 2 * 3_600_000 * reads++) }), domain);
       const made = await mesh.openOffer({ closesAt: new Date(NOW.getTime() + 3_600_000) }, {});
       reads = 0;
       const accepted = await mesh.acceptOffer({ id: made.id }, {});
