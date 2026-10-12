@@ -1,6 +1,6 @@
 import { Mesh } from "meshfw"
 import { Note } from "./note.mesh.mx"
-import { appClock } from "./clock"
+import { appClock, stampOf } from "./clock"
 
 entity :Task
   attributes
@@ -29,6 +29,12 @@ entity :Task
     update :touch
       do
         run () { appClock() }
+    update :mark
+      do
+        run [after=:write] async ({ self, context }) {
+          const by = Mesh.isSystem(context) ? "the system" : "a person"
+          await Note.write({ text: `${stampOf(Mesh, self.title)} by ${by}` }, context)
+        }
   policies
     policy :anyone types=[:create, :read]
       authorize-if=() => true

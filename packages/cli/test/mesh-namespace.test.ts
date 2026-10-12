@@ -1,9 +1,9 @@
 // PRJ-22 end to end: Mesh's own functions are members of `Mesh`, which an entity file and application code import from
 // meshfw. The fixture (`fixtures/mesh-namespace/domain/work`) calls `Mesh.now()`, `Mesh.today()` and
-// `Mesh.isSystem(context)` in computed fields, a check, a set value and a policy, `Mesh.privileged(Note)` in a step's body,
-// and `Note` imports `Mesh` under an alias (`M`). The project is built by the real `mesh` command on the SQLite adapter,
-// type-checked by tsc under the strictest flags with an application module that imports `Mesh` from meshfw, and run on
-// SQLite in memory with a pinned clock.
+// `Mesh.isSystem(context)` in computed fields, a check, a set value, a policy and a step's body, `Mesh.privileged(Note)` in
+// a step's body, passes `Mesh` to an application helper (`stampOf`), and `Note` imports `Mesh` under an alias (`M`). The
+// project is built by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with an
+// application module that imports `Mesh` from meshfw, and run on SQLite in memory with a pinned clock.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -103,6 +103,7 @@ describe("Mesh's own functions through the Mesh import (PRJ-22)", () => {
     expect(task).toContain("$.isSystem($s.context)");
     expect(task).toContain("const Mesh = $mesh($s);");
     expect(task).toContain("await Mesh.privileged(Note).read({})");
+    expect(task).toContain("stampOf(Mesh, self.title)");
     expect(task).toMatch(/meshIn as \$mesh,/);
     const note = await generated("domain/work/note.expressions.ts");
     expect(note).toContain("const M = $mesh($s);");
@@ -168,6 +169,13 @@ describe("Mesh's own functions through the Mesh import (PRJ-22)", () => {
         expect((await app.transaction(() => Mesh.privileged(work.Note).read({}))).length).toBe(2);
         expect(application.internal({ system: true })).toBe(true);
         expect(application.internal({ system: "yes" })).toBe(false);
+
+        // A step's body reads Mesh.isSystem(context) and hands its Mesh to an application helper, which reads the
+        // action's instant through it.
+        await work.Task.mark({ id: soon.id }, owner);
+        await work.Task.mark({ id: late.id }, { ...anyone, system: true });
+        const marks = (await work.Note.read({}, anyone)).map((note: { text: string }) => note.text).filter((text: string) => text.includes("@")).sort();
+        expect(marks).toEqual([`Late@${instant.toISOString()} by the system`, `Soon@${instant.toISOString()} by a person`]);
 
         // Mesh.now() in application code throws, inside an action (a helper the entity file calls) as outside one.
         const inside = await rejection(work.Task.touch({ id: soon.id }, owner), FrameworkError);
