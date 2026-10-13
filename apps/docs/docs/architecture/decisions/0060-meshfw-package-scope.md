@@ -13,6 +13,8 @@ Accepted. Supersedes [ADR-0040](./0040-package-and-command-names.md).
 
 **Amended 2026-10-11, operator (PRJ-04):** the starter is **`create-meshfw`**, invoked as `bun create meshfw todo-app` (Bun resolves `bun create X` to the package `create-X`). The CLI stays `meshfw` with binary `mesh`, and the framework packages stay `@meshfw/*`. The operator still has to register `create-meshfw` on npm.
 
+**Amended 2026-10-13, PRJ-22 ([PR #98](https://github.com/svallory/mesh/pull/98)):** a project adds `meshfw` as a regular dependency (`bun add meshfw`), not a dev one, because application code imports `Mesh` from it at run time (see [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md)). `meshfw` and the other Mesh packages that use the runtime (`@meshfw/compiler`, `@meshfw/data-drizzle`, `@meshfw/data-sqlite`) take `@meshfw/runtime` as a peer dependency, so an installed project holds one copy of it: the runtime recognises an entity value by a `Symbol` and `WeakMap`s private to each copy, and a second copy makes `Mesh.privileged(Task)` refuse the project's own `Task`. The project lists `@meshfw/runtime` itself, since its generated code imports it.
+
 ## Date
 
 2026-10-04

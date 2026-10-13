@@ -19,12 +19,12 @@
   },
   "dependencies": {
     "@meshfw/data-drizzle": "workspace:*",
-    "@meshfw/runtime": "workspace:*",
     "drizzle-orm": "0.45.3"
   },
   "peerDependencies": {
     "@meshfw/compiler": "workspace:*",
     "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
     "drizzle-kit": "0.31.11"
   },
   "peerDependenciesMeta": {
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@meshfw/compiler": "workspace:*",
     "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
     "drizzle-kit": "0.31.11",
     "zod": "4.6.5"
   }

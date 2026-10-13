@@ -8,5 +8,7 @@
   "exports": { ".": "./src/index.ts" },
   "description": "Shared Drizzle operations behind Mesh's data-layer contract",
   "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@meshfw/runtime": "workspace:*", "drizzle-orm": "0.45.3" }
+  "dependencies": { "drizzle-orm": "0.45.3" },
+  "peerDependencies": { "@meshfw/runtime": "workspace:*" },
+  "devDependencies": { "@meshfw/runtime": "workspace:*" }
 }
