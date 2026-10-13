@@ -170,6 +170,27 @@ export function readMember(a: Attr | undefined, at: At): MemberRef {
   if (!ref) throw new Error("Expected a member reference (&name)");
   return ref;
 }
+/** A rollup's `of=&lines.amount`: a marked member and the plain property accesses after it, each with its position (no whitespace inside, so offsets add up). */
+export function readMemberPath(a: Attr | undefined, at: At): MemberRef[] {
+  const names: string[] = [];
+  let cursor = nodeOf(a) as (SyntaxNode & { property?: SyntaxNode }) | undefined;
+  while (cursor && !cursor.extra?.mxMember) {
+    if (cursor.type !== "MemberExpression" || cursor.computed || cursor.property?.type !== "Identifier") throw new Error("Expected a member reference (&relationship.attribute)");
+    names.unshift(cursor.property.name!);
+    cursor = cursor.object as typeof cursor;
+  }
+  const root = cursor?.extra?.mxMember;
+  if (!root) throw new Error("Expected a member reference (&relationship.attribute)");
+  let offset = root.span.sourceStart + 1 + root.name.length;
+  return [
+    { name: root.name, position: at(root.span.sourceStart) },
+    ...names.map((name) => {
+      const ref = { name, position: at(offset + 1) };
+      offset += name.length + 1;
+      return ref;
+    }),
+  ];
+}
 export function readMembers(a: Attr | undefined, at: At): MemberRef[] {
   const n = nodeOf(a);
   if (n?.type !== "ArrayExpression") throw new Error("Use a list of member references, such as [&title]");

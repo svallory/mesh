@@ -167,7 +167,7 @@ describe("loadRows", () => {
     test("sum, avg, min, a path through two relationships and a belongs-to are errors that say when", async () => {
       const { tx, handle } = memory({});
       const row = [{ id: 1, ownerId: 1 }];
-      await expect(loadRows(plan(handle), "Node", tx, row, ["sizeSum"])).rejects.toThrow('sum :sizeSum of="children.size" on Node cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it');
+      await expect(loadRows(plan(handle), "Node", tx, row, ["sizeSum"])).rejects.toThrow('sum :sizeSum of=&children.size on Node cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it');
       await expect(loadRows(plan(handle), "Node", tx, row, ["deep"])).rejects.toThrow("a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10)");
       await expect(loadRows(plan(handle), "Node", tx, row, ["ownerCount"])).rejects.toThrow("a rollup over a belongs-to needs a join");
       await expect(loadRows(plan(handle), "Node", tx, row, ["badRelation"])).rejects.toThrow("Node has no relationship nowhere");

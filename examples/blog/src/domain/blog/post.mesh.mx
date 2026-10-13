@@ -21,7 +21,7 @@ entity :Post table="posts"
     has-many :comments entity=Comment
   computed
     string :excerpt() { return (&body ?? "").slice(0, 200) }
-    count :commentCount of="comments"
+    count :commentCount of=&comments
   actions auto=[:read, :destroy] on:load=&published
     create :create
       input

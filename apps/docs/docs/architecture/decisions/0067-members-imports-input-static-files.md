@@ -39,7 +39,7 @@ An entity member — an attribute, relationship, computed field, action, check o
 
 Inside a function `&x` means `self.x`. The latter remains legal: Mesh does not make legal syntax illegal. The docs write `&x`; they show `self` only when passing the whole record to a helper. An unknown member is a positioned build error with a suggestion.
 
-Declaration names remain atoms (`entity :Invoice`, `check :invoiceIsSent`). Fixed-set and enum values remain atoms too: `auto=[:read]`, `types=[:create]`, `on=:create`, `values=[:draft, :sent]`, `default=:draft`. Text and paths remain strings, including `code="invalid_state"` and `of="lines.amount"`.
+Declaration names remain atoms (`entity :Invoice`, `check :invoiceIsSent`). Fixed-set and enum values remain atoms too: `auto=[:read]`, `types=[:create]`, `on=:create`, `values=[:draft, :sent]`, `default=:draft`. Text and paths remain strings, including `code="invalid_state"` and `of=&lines.amount`.
 
 ### 2. Other entities are imported identifiers
 

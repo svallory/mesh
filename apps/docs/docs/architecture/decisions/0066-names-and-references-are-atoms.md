@@ -42,7 +42,7 @@ An entity file writes **`:name` for a name, an atom for anything chosen from a f
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `self.status === :sent`, `:status=:paid` |
 | Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` |
-| A path through relationships | a string | `of="lines.amount"`, `of="lines"` |
+| A path through relationships | a member reference (SYN-28) | `of=&lines.amount`, `of=&lines` |
 | A pattern, a number, a boolean | as in TypeScript | `match=/^INV-\d+$/`, `min=0`, `default=false` |
 
 The rules that follow, which the user docs state where each one applies. Rules 2 and 4 rest on the lead's reading of the open question and are marked as such; the rest are the operator's.

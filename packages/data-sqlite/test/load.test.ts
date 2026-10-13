@@ -24,9 +24,9 @@ entity :Author table="authors"
     has-many :reviews entity=Post inverse=:reviewer
     has-one :profile entity=Profile
   computed
-    count :postCount of="posts"
-    max :lastPostedAt of="posts.postedAt"
-    max :topScore of="posts.score"
+    count :postCount of=&posts
+    max :lastPostedAt of=&posts.postedAt
+    max :topScore of=&posts.score
     boolean :prolific() { return &postCount > 1 }
   actions auto=[:read]
 `;
@@ -91,7 +91,7 @@ const ticket = `entity :Ticket table="tickets"
     belongs-to :duplicateOf entity=Ticket nullable
     has-many :duplicates entity=Ticket inverse=:duplicateOf
   computed
-    count :duplicateCount of="duplicates"
+    count :duplicateCount of=&duplicates
   actions auto=[:read]
 `;
 

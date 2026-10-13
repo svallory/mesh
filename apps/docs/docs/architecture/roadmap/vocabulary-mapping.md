@@ -38,7 +38,7 @@ Ash examples follow [Ash features](../research/ash-features.md), section 12; the
 | `belongs_to :author, MyApp.Accounts.User` | Import `User` by relative path, then `belongs-to :author entity=User` (`nullable` makes it optional) | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
 | `has_many :comments, Comment` | Import `Comment`, then `has-many :comments entity=Comment` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
 | `calculate :excerpt, :string, expr(...)` | `string :excerpt() { ... }` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
-| `count :comment_count, :comments` | `count :commentCount of="comments"` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
+| `count :comment_count, :comments` | `count :commentCount of=&comments` in `computed` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
 | `defaults [:read, :destroy]` | `actions auto=[:read, :destroy]` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
 | `update :publish do ... end` | `update :publish` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
 | `argument :paid_at, :utc_datetime` | `input` section: `datetime :paidAt` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
@@ -84,9 +84,9 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `attributes` | `attributes` | `attributes` | on main |
 | `authorize-if` | `authorize-if=() => true` | `authorize-if` | on main |
 | `authorize-if.value` | `authorize-if=() => true` | `authorize-if.value` | on main |
-| `avg` | `avg :total of="lines.amount"` | `avg` | on main |
-| `avg.name` | `avg :total of="lines.amount"` | `avg.name` | on main |
-| `avg.of` | `avg :total of="lines.amount"` | `avg.of` | on main |
+| `avg` | `avg :total of=&lines.amount` | `avg` | on main |
+| `avg.name` | `avg :total of=&lines.amount` | `avg.name` | on main |
+| `avg.of` | `avg :total of=&lines.amount` | `avg.of` | on main |
 | `belongs-to` | `belongs-to :related entity=Line` | `belongs-to` | on main |
 | `belongs-to.name` | `belongs-to :related entity=Line` | `belongs-to.name` | on main |
 | `belongs-to.entity` | `belongs-to :related entity=Line` | `belongs-to.entity` | on main |
@@ -105,9 +105,9 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `check.when` | `check :valid that=() => true code="invalid" message="Invalid input" when=() => true` | `check.when` | on main |
 | `check.details` | `check :valid that=() => true code="invalid" message="Invalid input" details=() => ({ reason: "none" })` | `check.details` | on main |
 | `computed` | `computed` | `computed` | on main |
-| `count` | `count :total of="lines"` | `count` | on main |
-| `count.name` | `count :total of="lines"` | `count.name` | on main |
-| `count.of` | `count :total of="lines"` | `count.of` | on main |
+| `count` | `count :total of=&lines` | `count` | on main |
+| `count.name` | `count :total of=&lines` | `count.name` | on main |
+| `count.of` | `count :total of=&lines` | `count.of` | on main |
 | `create` | `create :work` | `create` | on main |
 | `create.name` | `create :work` | `create.name` | on main |
 | `date` | `date :field` | `date` | on main |
@@ -182,12 +182,12 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `json.value` | `json :field() { return null }` | `json.value` | on main |
 | `load` | `load=[&lines]` | `load` | on main |
 | `load.value` | `load=[&lines]` | `load.value` | on main |
-| `max` | `max :total of="lines.dueOn"` | `max` | on main |
-| `max.name` | `max :total of="lines.dueOn"` | `max.name` | on main |
-| `max.of` | `max :total of="lines.dueOn"` | `max.of` | on main |
-| `min` | `min :total of="lines.amount"` | `min` | on main |
-| `min.name` | `min :total of="lines.amount"` | `min.name` | on main |
-| `min.of` | `min :total of="lines.amount"` | `min.of` | on main |
+| `max` | `max :total of=&lines.dueOn` | `max` | on main |
+| `max.name` | `max :total of=&lines.dueOn` | `max.name` | on main |
+| `max.of` | `max :total of=&lines.dueOn` | `max.of` | on main |
+| `min` | `min :total of=&lines.amount` | `min` | on main |
+| `min.name` | `min :total of=&lines.amount` | `min.name` | on main |
+| `min.of` | `min :total of=&lines.amount` | `min.of` | on main |
 | `policies` | `policies` | `policies` | on main |
 | `policy` | `policy :rule types=[:read] authorize-if=() => true` | `policy` | on main |
 | `policy.name` | `policy :rule types=[:read] authorize-if=() => true` | `policy.name` | on main |
@@ -216,9 +216,9 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `string.primary-key` | `string :field primary-key` | `string.primary-key` | on main |
 | `string.unique` | `string :field unique` | `string.unique` | on main |
 | `string.value` | `string :field() { return "hello" }` | `string.value` | on main |
-| `sum` | `sum :total of="lines.amount"` | `sum` | on main |
-| `sum.name` | `sum :total of="lines.amount"` | `sum.name` | on main |
-| `sum.of` | `sum :total of="lines.amount"` | `sum.of` | on main |
+| `sum` | `sum :total of=&lines.amount` | `sum` | on main |
+| `sum.name` | `sum :total of=&lines.amount` | `sum.name` | on main |
+| `sum.of` | `sum :total of=&lines.amount` | `sum.of` | on main |
 | `timestamp` | `timestamp :field` | `timestamp` | on main |
 | `timestamp.name` | `timestamp :field` | `timestamp.name` | on main |
 | `timestamp.nullable` | `timestamp :field nullable` | `timestamp.nullable` | on main |

@@ -22,8 +22,8 @@ entity :Author table="authors"
     has-many :posts entity=Post
     has-many :orphans entity=Orphan
   computed
-    count :postCount of="posts"
-    max :lastPostedAt of="posts.postedAt"
+    count :postCount of=&posts
+    max :lastPostedAt of=&posts.postedAt
     boolean :prolific() { return &postCount > 1 }
     enum :tier values=[:small, :large] value=() => &postCount > 5 ? :large : :small
     json :extra value=() => null

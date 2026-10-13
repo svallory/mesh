@@ -43,7 +43,7 @@ The operator's rulings of 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-
 - **Entity.** `entity #Invoice table="invoices"`.
 - **Attributes.** "The type is the tag: `uuid #id primary-key`, `string #number unique`, `enum #status values=[...] default="draft"`, `timestamp #insertedAt on="create"`. Required by default; `nullable` marks the exception." Shape rules for one field (`min`, `max`, `match`) go on its line.
 - **Relationships.** "The destination is the tag's value: `belongs-to=Customer #customer`, `has-many=InvoiceLine #lines`, `has-one=Payment #payment`."
-- **Computed fields.** "One `computed` section replaces `calculations` and `aggregates`." A calculation is a typed field with a method body, `boolean #isOverdue({ self }) { return ... }`. A rollup is `count #lineCount of="lines"` or `sum #total of="lines.amount"`; `of` is a path string checked at build time against generated path types, with a function form where a path cannot express it.
+- **Computed fields.** "One `computed` section replaces `calculations` and `aggregates`." A calculation is a typed field with a method body, `boolean #isOverdue({ self }) { return ... }`. A rollup is `count #lineCount of=&lines` or `sum #total of=&lines.amount`; `of` is a path string checked at build time against generated path types, with a function form where a path cannot express it.
 - **The record.** "Functions receive the record as `self` (fixed key), beside `actor`, `input`, `context`. Not a name derived from the entity."
 - **Sections.** `attributes`, `relationships`, `computed`, `actions`, `policies`; inside an action, `arguments`, `validate` and `do`. Sections may come in any order; only the order of lines inside a section matters.
 
@@ -95,8 +95,8 @@ entity :Invoice table="invoices"
     string :label() {
       return &number + " · " + formatMoney(&total)
     }
-    count :lineCount of="lines"
-    sum :total of="lines.amount"
+    count :lineCount of=&lines
+    sum :total of=&lines.amount
 
   actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]

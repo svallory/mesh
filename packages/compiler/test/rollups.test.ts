@@ -30,7 +30,7 @@ entity :Invoice
   relationships
     ${relationship}
   computed
-    ${fn} :value of="${path}"
+    ${fn} :value of=&${path}
 `;
   return {
     source,
@@ -91,7 +91,7 @@ test("a rollup through a belongs-to needs a join too", () => {
 });
 
 test("a rollup over a relationship that nothing points back at is the one MESH_NO_INVERSE, at the has-many line (DOM-34)", () => {
-  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :lineCount of="lines"\n`;
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :lineCount of=&lines\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
     { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n" },
@@ -103,7 +103,7 @@ test("a rollup over a relationship that nothing points back at is the one MESH_N
   })]);
   // Nothing reading it changes nothing: the error is the relationship's.
   const unused = buildModel({ root: "/project", files: [
-    { file: "billing/invoice.mesh.mx", source: source.replace('  computed\n    count :lineCount of="lines"\n', "") },
+    { file: "billing/invoice.mesh.mx", source: source.replace('  computed\n    count :lineCount of=&lines\n', "") },
     { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n" },
   ] });
   expect(unused.diagnostics.map((d) => d.code)).toEqual(["MESH_NO_INVERSE"]);
@@ -176,7 +176,7 @@ test.each([
   });
   const member = /&([A-Za-z]+)/.exec(message)![1]!;
   expect(diagnostic.position.offset).toBe(
-    source.indexOf(`of="${path}"`) + 4 + path.indexOf(member),
+    source.indexOf(`of=&${path}`) + 3 + (path.indexOf(member) === 0 ? 0 : 1 + path.indexOf(member)),
   );
 });
 
@@ -192,4 +192,55 @@ test.each([
   expect(count.document!.entities[0]!.computed[0]).toMatchObject({
     nullable: false,
   });
+});
+
+// SYN-28: `of=` is a member reference. The string form is one build error, with the fix in the message.
+test.each([
+  ["count", "lines", "of=&lines"],
+  ["max", "lines.amount", "of=&lines.amount"],
+  ["sum", "lines.amount", "of=&lines.amount"],
+] as const)("%s of the string %s is an error that says to write %s", (fn, path, fix) => {
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    ${fn} :value of="${path}"\n`;
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target },
+  ] });
+  expect(result.document).toBeNull();
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]).toMatchObject({
+    code: "MESH_ROLLUP_PATH_STRING",
+    message: expect.stringContaining(`write ${fix}`),
+    position: { file: "billing/invoice.mesh.mx", line: 8 },
+  });
+});
+
+test.each([
+  ["a computed index", "&lines[0]"],
+  ["a call", "&lines.amount()"],
+  ["a space before the dot", "&lines .amount"],
+  ["a plain name", "lines"],
+  ["an atom", ":lines"],
+] as const)("of= with %s is not a member reference", (_, written) => {
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n`;
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target },
+  ] });
+  expect(result.document).toBeNull();
+  expect(result.diagnostics.length).toBeGreaterThan(0);
+  expect(result.diagnostics.every((d) => d.position.line === 8)).toBe(true);
+});
+
+test("a rollup through a relationship the entity lacks is reported at the reference", () => {
+  const { source, result } = build("max", "linez.amount");
+  expect(result.diagnostics).toEqual([expect.objectContaining({
+    code: "MESH_UNKNOWN_MEMBER",
+    message: "&linez is not a member of billing.Invoice. Did you mean &lines?",
+    position: expect.objectContaining({ offset: source.indexOf("&linez") }),
+  })]);
+});
+
+test("a rollup keeps its path as text in the model, so generated code is unchanged", () => {
+  const { result } = build("max", "lines.amount");
+  expect(result.document!.entities[0]!.computed[0]!.rollup).toEqual({ fn: "max", of: "lines.amount" });
 });

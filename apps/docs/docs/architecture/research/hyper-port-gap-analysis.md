@@ -175,7 +175,7 @@ Source: `machines/machine.ex`, `machine/rules.ex`, `machines/changes/report_mach
 | `register` | accepts name, platform; rules `role`, `machine.name-free` `:30-38` | `create :register`; `unique` replaces the rule; `set &firstReportedBy` | [actions][e-actions] | the `set` of a relationship is rejected (D01, G30) | M5 |
 | `report` | creates a machine from a host name, as the engine `:39-44` | none | | not in the docs (G05) | none |
 | `update`, `retire` | rules `machine.active`, `machine.idle`; Version `:45-61` | `update :update`, `update :retire`; `machine.idle` is a count of running attempts | [validate][e-validate] | documented, not built (M5); the filtered count: G07 | M5, M7 |
-| rule `machine.idle` | no attempt on this machine is running (`machine/rules.ex:21-29`) | `count :runningAttempts of="attempts"` has no filter | [computed][e-comp] | not in the docs (G07) | none |
+| rule `machine.idle` | no attempt on this machine is running (`machine/rules.ex:21-29`) | `count :runningAttempts of=&attempts` has no filter | [computed][e-comp] | not in the docs (G07) | none |
 | policy | read `Member`; register `owner, member`; update, retire `owner` `:62-74` | three policies | [policies][e-policies] | documented, not built (M8) | M8 |
 
 | Custom module | What it does | Disposition |
@@ -227,7 +227,7 @@ Source: `tasks/task.ex`, `task/rules.ex`, `task/states.ex`, `task/queries.ex`, `
 | `assignments`, `claims`, `submissions`, `completions` | `has_many` `:202`, `:204-206` | four `has-many` | [relationships][e-rel] | on main (the model records them; loading is M7) | M7 |
 | `current_assignment`, `active_claim`, `pending_submission` | `has_one` with a filter `:203`, `:208-210`, `:212` | none. `has-one` takes no `filter` (P01), and [ADR-0045] forbids a `has-one` beside a `has-many` over the same key | [relationships][e-rel] | not in the docs (G07). Written as `.some(...)` over the `has-many`, which the docs mention only as `.every(...)` ([entities: static files][e-static]) | M7 (unfiltered) |
 | index on `parent_id` | custom index `:22-25` | none: Mesh emits no index but a unique one | | not in the docs (G08) | none |
-| aggregate `max_fence` | `max(:max_fence, :claims, :fence)` `:216` | `max :maxFence of="claims.fence"` | [computed][e-comp] | documented, not built (M7). The path is checked at build today | M7 |
+| aggregate `max_fence` | `max(:max_fence, :claims, :fence)` `:216` | `max :maxFence of=&claims.fence` | [computed][e-comp] | documented, not built (M7). The path is checked at build today | M7 |
 | calculations `in_review?`, `claimed?`, `assigned?`, `lapsed_claim?`, `open_prerequisite?` | `expr(exists(... , <filter>))` `:220-235` | computed fields with a one-expression body over a `has-many` | [computed][e-comp] | documented, not built (M4, M7); the filtered quantifier: G07 | M7 |
 | calculation `blocked_reasons` | a list of `{kind, taskId, message}` maps: open prerequisites, then providers' reasons (`calculations/blocked_reasons.ex:12-40`) | `boolean :blocked()` for the prerequisite part | [computed][e-comp] | the map list: not in the docs (G10, G29); the providers: G11 | none |
 | calculation `derived_state` | stored done or canceled win, then in-review, claimed, blocked, ready (`calculations/derived_state.ex:10-25`) | `string :derivedState()` with a nested conditional | [computed][e-comp] | documented, not built (M7). It "runs in memory after load" because it reads computed fields | M7 |
