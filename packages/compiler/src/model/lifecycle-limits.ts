@@ -64,23 +64,21 @@ export function checkLifecycleLimits(
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a check's
     // `before` parameter is caught here.
     for (const { expression, kind, what } of actionExpressions(entity)) {
-      const check = kind === "that" || kind === "check-when" || kind === "details";
-      // A destructured `before`, or a rest parameter that can reach it; in a check, a free one too (the root, EXP-12). In a step
-      // or `run`, `before` is legal: the stored record, null on a create (the docs' `do` steps and `run` keep it).
+      // In a step or `run`, `before` is legal: the stored record, null on a create (the docs' `do` steps and `run` keep it).
+      if (kind !== "that" && kind !== "check-when" && kind !== "details") continue;
+      // A destructured `before`, or a rest parameter that can reach it, or a free one (the root, EXP-12).
       const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source))
-        || (check && expression.plain?.roots.includes("before"));
+        || expression.plain?.roots.includes("before");
       if (!reads) continue;
       const end = expression.position.offset + expression.source.length;
       const reported = (code: string) => diagnostics.some((d) => d.code === code && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end);
       // A check runs before the input is applied, on `self` as it is (ACT-01, ACT-27): `before` would be the same record.
       // The type pass reports a `before` it reads in a translated check; this catches a plain one, read free (the root) or
       // destructured, or one only destructured.
-      if (check) {
-        if (!reported("MESH_VALIDATE_BEFORE"))
-          diagnostics.push(error("MESH_VALIDATE_BEFORE",
-            `${what} reads \`before\`, which is gone from \`validate\`: there \`self\` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are \`input.x\``,
-            expression.position, "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store"));
-      }
+      if (!reported("MESH_VALIDATE_BEFORE"))
+        diagnostics.push(error("MESH_VALIDATE_BEFORE",
+          `${what} reads \`before\`, which is gone from \`validate\`: there \`self\` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are \`input.x\``,
+          expression.position, "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store"));
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];

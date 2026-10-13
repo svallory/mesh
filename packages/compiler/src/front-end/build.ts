@@ -106,11 +106,17 @@ function readImports(imports: readonly IrImport[]): {
     // `from` and `names` are optional in MX's types and present on every authored import; a missing one is the same import-form error.
     const names = entry.names ?? [];
     const from = entry.from ?? "";
+    // A package other than "meshfw" is refused by its path below, whatever its form: the form advice is for a relative import.
+    const formed = from === MESHFW || from.startsWith("./") || from.startsWith("../");
     if (
-      !names.length ||
-      entry.typeOnly ||
-      names.some((name) => name.kind !== "named" || name.typeOnly)
+      formed && (
+        !names.length ||
+        entry.typeOnly ||
+        names.some((name) => name.kind !== "named" || name.typeOnly))
     ) {
+      // The names the import gives, as the fix writes them: `Task as T`, or the example's name when it gives none.
+      const written = (example: string) => names.filter((name) => name.kind === "named")
+        .map((name) => (name.imported === name.local ? name.local : `${name.imported} as ${name.local}`)).join(", ") || example;
       const typeOnly = entry.typeOnly || names.some((name) => name.typeOnly);
       // From "meshfw" the one form is a named value import of `Mesh` (PRJ-22): a default, namespace or type import gets
       // that advice, not the entity's.
@@ -130,7 +136,7 @@ function readImports(imports: readonly IrImport[]): {
               ? "import the entity by name, not as a type: `import { List } from …`"
               : "import the entity by name: `import { List } from …`",
             offset,
-            fix: `write \`import { List } from "${from}"\`, naming the entity the file declares`,
+            fix: `write \`import { ${written("List")} } from "${from}"\`, the entity that file declares`,
           }
           : {
             code: "MESH_IMPORT_FORM",
@@ -138,7 +144,7 @@ function readImports(imports: readonly IrImport[]): {
               ? "import a helper by name, not as a type: `import { isStaff } from …`"
               : "import a helper by name: `import { isStaff } from …`",
             offset,
-            fix: `write \`import { isStaff } from "${from}"\`, naming each helper the file exports that this one uses`,
+            fix: `write \`import { ${written("isStaff")} } from "${from}"\`, naming the functions that helper file exports and this entity file uses`,
           });
       continue;
     }

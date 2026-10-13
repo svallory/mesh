@@ -1045,7 +1045,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
         "      validate",
       ].join("\n")),
     });
-    expect(built.diagnostics.filter((d) => d.code === "MESH_BEFORE_IN_CREATE")).toEqual([]); // the code is gone
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(printed).toContain('"make.step.0.set.title"');
     expect(printed).toContain('"make.step.1.run"');
     expect(typeCheck()).toEqual({ code: 0, output: "" });
@@ -1359,12 +1359,14 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     }
     // From an entity file the advice is the entity's, as before.
     expect(problems(withImport('import { Mesh } from "meshfw"\nimport type { Task as T } from "./task.mesh.mx"')).map((p) => [p.code, p.message, p.fix]))
-      .toEqual([["MESH_IMPORT_FORM", "import the entity by name, not as a type: `import { List } from …`", 'write `import { List } from "./task.mesh.mx"`, naming the entity the file declares']]);
+      .toEqual([["MESH_IMPORT_FORM", "import the entity by name, not as a type: `import { List } from …`", 'write `import { Task as T } from "./task.mesh.mx"`, the entity that file declares']]);
     // From a helper file the advice is the helper's, not the entity's.
     const helper = (line: string) => problems(withImport(`import { Mesh } from "meshfw"\n${line}`)).map((p) => [p.code, p.message, p.fix]);
-    expect(helper('import isStaff from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name: `import { isStaff } from …`", 'write `import { isStaff } from "./task.helpers"`, naming each helper the file exports that this one uses']]);
+    expect(helper('import isStaff from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name: `import { isStaff } from …`", 'write `import { isStaff } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
+    // A package other than "meshfw" is refused by its path, not advised on its form.
+    expect(helper('import _ from "lodash"').map((p) => p[0])).toEqual(["MESH_UNKNOWN_IMPORT"]);
     expect(helper('import * as h from "./task.helpers"')[0]![1]).toBe("import a helper by name: `import { isStaff } from …`");
-    expect(helper('import type { isStaff } from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name, not as a type: `import { isStaff } from …`", 'write `import { isStaff } from "./task.helpers"`, naming each helper the file exports that this one uses']]);
+    expect(helper('import type { isStaff } from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name, not as a type: `import { isStaff } from …`", 'write `import { isStaff } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
   });
 
   test("a bare call's fix keeps the call's own arguments", () => {
