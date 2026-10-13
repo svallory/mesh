@@ -41,7 +41,7 @@ export interface MeshFunctions {
    * reading its instant) or in a transaction of its own that it rolls back; a denial's `breakdown` is the one the call's
    * `ForbiddenError` would carry. It runs no `validate`, step or seam, and writes nothing: a write action started while
    * the policies are checked, through any binding of the project, is refused before it runs, and the question throws a
-   * `FrameworkError`. Where the call would throw before its policies decide (a failed cast,
+   * `FrameworkError`; one that work they left running (a timer) starts after the answer is refused too. Where the call would throw before its policies decide (a failed cast,
    * a missing row), it throws the same error. A read answers whether it is allowed at all.
    */
   readonly checkPolicies: <A extends ActionFunction>(action: A, input: Parameters<A>[0], context: ActionContext) => Promise<Decision>;
