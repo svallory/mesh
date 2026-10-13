@@ -279,11 +279,16 @@ function bindingFor(value: object, label: string, caller: FrameStore | undefined
  * One call of an entity value's method: on the binding in scope, else the connected one, counted in flight. While a
  * computed field or a read policy is evaluated it is refused, as `privileged` is.
  */
-async function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
+function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
+  // Refused by throwing, not by rejecting, as `Mesh.privileged` and `Mesh.checkPolicies` are: a computed field whose helper
+  // returns the promise of a refused call would otherwise report "returned a promise" and lose the reason.
+  const mark = inScope(frames.get(value))?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
+  return dispatchCall(value, fqn, action, input, context);
+}
+async function dispatchCall(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
   const frame = frames.get(value);
   const caller = inScope(frame);
-  const mark = caller?.mark ?? evaluatingNow();
-  if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
   // In a store a question made (`Mesh.checkPolicies`, CMP-21), no write action starts, on any binding of the project: it
   // is refused here, before it casts its input or runs anything of its own. A read runs on the binding's probe, on the
@@ -325,7 +330,7 @@ export function privileged<E extends EntityValue<object, object>>(entity: E): Pr
 }
 
 function marked(what: string, mark: string): FrameworkError {
-  return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`);
+  return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`);
 }
 
 /**
@@ -335,19 +340,22 @@ function marked(what: string, mark: string): FrameworkError {
 function privilegedHandle(value: object, fqn: string, names: readonly string[]): object {
   const reads: Record<string, (input: unknown, context?: unknown) => Promise<unknown>> = Object.create(null);
   for (const name of names)
-    reads[name] = async (input: unknown, context?: unknown) => {
+    reads[name] = (input: unknown, context?: unknown) => {
       const label = `Mesh.privileged(${fqn}).${name}`;
       const caller = inScope(frames.get(value));
+      // Refused by throwing, as `Mesh.privileged` itself is, not by rejecting: one way for every refusal.
       const mark = caller?.mark ?? evaluatingNow();
       if (mark !== undefined) throw marked(label, mark);
-      const { state, entry } = bindingFor(value, label, caller);
-      const probe = probeOf(caller, state);
-      const body = (probe ? probeEntry(probe, value) : entry).reads[name];
-      if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
-      // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
-      // call passes.
-      const clock = caller?.state === state ? caller.clock : undefined;
-      return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false), probe?.layer));
+      return (async () => {
+        const { state, entry } = bindingFor(value, label, caller);
+        const probe = probeOf(caller, state);
+        const body = (probe ? probeEntry(probe, value) : entry).reads[name];
+        if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
+        // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
+        // call passes.
+        const clock = caller?.state === state ? caller.clock : undefined;
+        return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false), probe?.layer));
+      })();
     };
   return Object.freeze(reads);
 }
@@ -515,6 +523,8 @@ export async function settled(binding: Binding): Promise<void> {
 interface Question {
   /** The call asked about, `blog.Post#publish`. */
   readonly label: string;
+  /** The function that asked, which the errors name. */
+  readonly member: "checkPolicies" | "can";
   /** The question this one is asked inside (a policy's helper asks), if any: this one reads through its layers. */
   readonly outer: Question | undefined;
   /** The project's async frame. */
@@ -538,6 +548,12 @@ interface Question {
   readonly views: WeakMap<DataOperations, DataOperations>;
   /** The error of the first write tried while the question is answered: `Mesh.checkPolicies` throws it, whatever was decided. */
   wrote?: FrameworkError;
+  /**
+   * Set on the outermost question of a chain when a question is asked too deep (`MAX_QUESTION_DEPTH`). The error sticks to
+   * the root: every question asked under it throws it at entry, and the root throws it once it settles, whatever was
+   * decided and whatever a helper caught on the way, so a helper that catches cannot keep a cycle going.
+   */
+  tooDeep?: FrameworkError;
   /**
    * True once `Mesh.checkPolicies` has settled: a write still refused in one of its stores was started by work left
    * running. `probes` and `layers` are emptied then, so that work keeps alive only what it touches again.
@@ -604,16 +620,16 @@ function layerFor(question: Question, layer: DataLayer): DataLayer {
 
 /**
  * The error of a write tried in a store of `question`: `writer`, the write action refused, or the label of the action
- * that tried to write through the question's layer. While the question is answered, `Mesh.checkPolicies` throws the
+ * that tried to write through the question's layer. While the question is answered, `Mesh.checkPolicies` (or `Mesh.can`) throws the
  * first, whatever was decided, even when a helper caught it; once it has settled, the write was started by work left
  * running, and is refused all the same.
  */
 function refusedWrite(question: Question, writer: string | undefined): FrameworkError {
   if (question.ended)
-    return new FrameworkError(`${writer ?? "A call"} cannot write: it was started while Mesh.checkPolicies(${question.label}) was answered, `
+    return new FrameworkError(`${writer ?? "A call"} cannot write: it was started while Mesh.${question.member}(${question.label}) was answered, `
       + "by work its policies left running (a timer, a promise not awaited), and nothing started while a question is answered writes a row, "
       + "even once the question has answered. Make the policy read only");
-  return question.wrote ??= new FrameworkError(`Mesh.checkPolicies(${question.label}) cannot answer without writing: `
+  return question.wrote ??= new FrameworkError(`Mesh.${question.member}(${question.label}) cannot answer without writing: `
     + `${writer === undefined ? "a call made while its policies were checked" : `${writer}, called while its policies were checked,`} writes a row. `
     + "Checking a policy runs what the policy calls, so a policy that writes, through a helper or an action it calls, cannot be checked: make it read only");
 }
@@ -746,23 +762,49 @@ function described(value: unknown): string {
  * for a missing row a check would read, a read that cannot run in this version), it throws the same error, and inside
  * a running transaction that error does not fail the transaction. A denial resolves with `allowed: false`; it never
  * throws `ForbiddenError`. A read answers whether it is allowed at all: no policy covering it, or none admitting the
- * caller, is `allowed: false`.
+ * caller, is `allowed: false`. A question asked more than 32 deep, each inside a policy of the one before, throws a
+ * `FrameworkError`.
  */
-export async function checkPolicies(action: unknown, input: unknown, context: unknown): Promise<Decision> {
+export function checkPolicies(action: unknown, input: unknown, context: unknown): Promise<Decision> {
+  return askPolicies("checkPolicies", action, input, context);
+}
+
+/**
+ * How many questions may be open one inside another, each asked by a policy of the one before (as `MAX_DEPTH` in `load.ts`
+ * bounds a path of computed fields): a policy that asks about its own action, or two that ask each other, stop here.
+ */
+const MAX_QUESTION_DEPTH = 32;
+
+/** `Mesh.checkPolicies` and `Mesh.can` (`member` names which, in the messages): refused by throwing while marked, as `Mesh.privileged` is. */
+function askPolicies(member: "checkPolicies" | "can", action: unknown, input: unknown, context: unknown): Promise<Decision> {
   const target = typeof action === "function" ? actions.get(action) : undefined;
   if (!target)
-    throw new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${described(action)}`);
+    return Promise.reject(new FrameworkError(`Mesh.${member}() takes an action function of an entity value, such as Mesh.${member}(Todo.complete, input, context), and was given ${described(action)}`));
   const { value, fqn, name } = target;
+  const where = `Mesh.${member}(${fqn}#${name})`;
+  // While a computed field or a read policy is evaluated, as for `Mesh.privileged` and an entity's action (TXN-18): an entity
+  // file's computed field and read policy cannot call it, the build refuses them (`MESH_COMPUTED_COMPOSES`,
+  // `MESH_POLICY_ASKS`), and this refuses one a helper hides. A write policy is not marked, so a call hidden there runs, as a
+  // hidden `Mesh.privileged` read does: the build refuses a direct one in any policy, read or write (`MESH_POLICY_ASKS`).
+  const mark = inScope(frames.get(value))?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(where, mark);
+  return answer(target, member, where, input, context);
+}
+
+async function answer({ value, fqn, name }: { value: object; fqn: string; name: string }, member: "checkPolicies" | "can", where: string, input: unknown, context: unknown): Promise<Decision> {
   const label = `${fqn}#${name}`;
-  const where = `Mesh.checkPolicies(${label})`;
   const frame = frames.get(value);
   const caller = inScope(frame);
-  const mark = caller?.mark ?? evaluatingNow();
-  if (mark !== undefined) throw marked(where, mark);
   const { state } = bindingFor(value, where, caller);
   // Asked inside another question (a policy's helper asks), it reads through that question's layers.
   const outer = questionOf(caller);
-  const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
+  let depth = 0;
+  let root: Question | undefined;
+  for (let open = outer; open; open = open.outer) { depth++; root = open; }
+  if (root?.tooDeep) throw root.tooDeep;
+  if (root && depth >= MAX_QUESTION_DEPTH)
+    throw root.tooDeep = new FrameworkError(`${where} was asked ${MAX_QUESTION_DEPTH} questions deep: the policies of ${label} ask other actions' policies too deeply, probably in a cycle (a policy that asks about its own action, or policies that ask each other)`);
+  const question: Question = { label, member, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
   const probe = probeFor(question, state);
   const bound = (value as EntityValue<object>)[BIND](answeringLayer(probe.layer), { clock: state.options.clock }, probe.frame) as BoundActions;
   const fn = bound[name] as (input: unknown, context: unknown) => Promise<unknown>;
@@ -782,6 +824,7 @@ export async function checkPolicies(action: unknown, input: unknown, context: un
   question.ended = true;
   question.probes.clear();
   question.layers.clear();
+  if (question.tooDeep) throw question.tooDeep;
   if (question.wrote) throw question.wrote;
   if (!outcome.ok) {
     if (outcome.error instanceof Answer) return outcome.error.decision;
@@ -791,6 +834,6 @@ export async function checkPolicies(action: unknown, input: unknown, context: un
 }
 
 /** `Mesh.can(Todo.complete, input, context)`: true exactly when `checkPolicies` with the same arguments resolves with `allowed` true. */
-export async function can(action: unknown, input: unknown, context: unknown): Promise<boolean> {
-  return (await checkPolicies(action, input, context)).allowed === true;
+export function can(action: unknown, input: unknown, context: unknown): Promise<boolean> {
+  return askPolicies("can", action, input, context).then((decision) => decision.allowed === true);
 }

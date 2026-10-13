@@ -1,5 +1,5 @@
 import type { SpannedIr } from "@mxlang/core";
-import { asynchronyOfFunction, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
+import { asynchronyOfFunction, rememberAskCalls, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
@@ -235,7 +235,7 @@ export function expression(
   const translated = convert
     ? translate(n, data.span, { ...convert, source, at })
     : {};
-  const { demotion, privilegedCalls, ...fields } = translated as { demotion?: Demotion; privilegedCalls?: SourcePosition[] };
+  const { demotion, privilegedCalls, askCalls, ...fields } = translated as { demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] };
   const result: Expression = {
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,
@@ -246,6 +246,7 @@ export function expression(
   };
   if (demotion) rememberDemotion(result, demotion);
   if (privilegedCalls) rememberPrivilegedCalls(result, privilegedCalls);
+  if (askCalls) rememberAskCalls(result, askCalls);
   const asynchrony = asynchronyOfFunction(n);
   if (asynchrony) rememberAsynchrony(result, asynchrony);
   return result;

@@ -43,11 +43,11 @@ const NOT_ONE = "a function that is not one (a plain function, a Mesh.privileged
 
 test("Mesh.checkPolicies and Mesh.can of anything but an action function of an entity value throw, naming what they take", async () => {
   const plain = async (_input: unknown, _context: unknown) => undefined;
-  const message = (given: string) => new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${given}`);
+  const message = (given: string, member = "checkPolicies") => new FrameworkError(`Mesh.${member}() takes an action function of an entity value, such as Mesh.${member}(Todo.complete, input, context), and was given ${given}`);
   const notOne = NOT_ONE;
   for (const [value, given] of [[plain, notOne], [null, "null"], [undefined, "undefined"], [{}, "an object"], ["create", "string"]] as const) {
     await expect(Mesh.checkPolicies(value as typeof plain, {}, {})).rejects.toThrow(message(given));
-    await expect(Mesh.can(value as typeof plain, {}, {})).rejects.toThrow(message(given));
+    await expect(Mesh.can(value as typeof plain, {}, {})).rejects.toThrow(message(given, "can"));
   }
 });
 
@@ -60,7 +60,7 @@ test("an action of an entity value made by a second copy of the runtime is not o
   const value = copy.entity("work.Task", bind, null, (call) => ({ act: (input: unknown, context: unknown) => call("act", input, [context]) }));
   const message = new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${NOT_ONE}`);
   await expect(Mesh.checkPolicies(value.act, {}, {})).rejects.toThrow(message);
-  await expect(Mesh.can(value.act, {}, {})).rejects.toThrow(message);
+  await expect(Mesh.can(value.act, {}, {})).rejects.toThrow(new FrameworkError(message.message.replaceAll("checkPolicies", "can")));
   // The copy's own Mesh knows it, and asks the binding it would run on: none is connected.
   await expect(copy.checkPolicies(value.act, {}, {})).rejects.toThrow("Mesh.checkPolicies(work.Task#act) was called while not connected");
 });

@@ -1,0 +1,67 @@
+import { Mesh } from "meshfw"
+import { Receipt } from "./receipt.mesh.mx"
+import { remember } from "./probe"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    enum :status values=[:open, :paid] default=:open
+    integer :amount min=0
+
+  actions auto=[:read]
+    create :open
+      input
+        &amount
+
+    update :pay
+      do
+        run async ({ self, context }) {
+          const receipt = { invoiceId: self.id, amount: self.amount, at: new Date(0) }
+          remember({ step: "before", allowed: await Mesh.can(Receipt.record, receipt, { ...context, system: true }) })
+        }
+        set
+          &status=:paid
+        run [after=:write] async ({ self, context }) {
+          const receipt = { invoiceId: self.id, amount: self.amount, at: new Date(0) }
+          if (await Mesh.can(Receipt.record, receipt, { ...context, system: true })) await Receipt.record(receipt, { ...context, system: true })
+        }
+
+    update :payUnchecked
+      do
+        set
+          &status=:paid
+        run [after=:write] async ({ self, context }) {
+          try {
+            await Receipt.record({ invoiceId: self.id, amount: self.amount, at: new Date(0) }, { ...context, system: true })
+          } catch {
+            remember({ step: "caught" })
+          }
+        }
+
+    update :explain
+      do
+        set
+          &status=:paid
+        run [after=:write] async ({ self, context }) {
+          const receipt = { invoiceId: self.id, amount: self.amount, at: new Date(0) }
+          remember({ step: "explain", decision: await Mesh.checkPolicies(Receipt.record, receipt, { ...context, system: true }) })
+        }
+
+    update :stamp
+      do
+        set
+          &status=:paid
+        run [after=:write] async ({ self, context }) {
+          const as = { ...context, system: true }
+          const receipt = { invoiceId: self.id, amount: 1, at: %.now }
+          remember({
+            step: "stamp",
+            now: %.now,
+            level: await Mesh["can"](Receipt.record, receipt, as),
+            ahead: await Mesh.checkPolicies(Receipt.record, { ...receipt, at: new Date(%.now.getTime() + 1) }, as),
+          })
+        }
+
+  policies
+    policy :anyone
+      authorize-if=() => true

@@ -1,0 +1,65 @@
+import { Mesh as M } from "meshfw"
+import { Receipt } from "./receipt.mesh.mx"
+import { askAboutParent, askCatching, askLoudly, askQuietly, remember } from "./probe"
+
+entity :Ledger
+  attributes
+    uuid :id primary-key
+    string :name
+    uuid :invoiceId
+    uuid :parentId nullable
+
+  computed
+    boolean :covered() { return askQuietly("can", {}) }
+    boolean :viaCheck() { return askQuietly("checkPolicies", {}) }
+    boolean :viaAction() { return askQuietly("action", {}) }
+
+  actions auto=[:read]
+    create :add
+      input
+        &name
+        &invoiceId
+        &parentId
+
+    update :reparent
+      input
+        &parentId
+
+    update :settle
+      input
+        &name
+
+    update :grind
+      input
+        &name
+
+    update :rename
+      input
+        &name
+
+    update :audit
+      do
+        run async ({ self, context }) {
+          remember({ step: "audit", allowed: await M.can(Receipt.record, { invoiceId: self.invoiceId, amount: 1, at: new Date(0) }, { ...context, system: true }) })
+        }
+
+  policies
+    policy :adding types=[:create]
+      authorize-if=() => true
+    policy :looking types=[:read]
+      authorize-if=({ context }) => {
+        if (context.probe === "policy") return askQuietly("can", context)
+        return true
+      }
+    policy :renaming actions=[&rename]
+      authorize-if=async ({ self, context }) => await askLoudly("can", context, self.invoiceId)
+    policy :auditing actions=[&audit]
+      authorize-if=() => true
+    policy :reparenting actions=[&reparent]
+      authorize-if=() => true
+    policy :settling actions=[&settle]
+      authorize-if=async ({ self, context }) => await askAboutParent(context, self.parentId)
+    policy :grindingOne actions=[&grind]
+      authorize-if=async ({ self, context }) => await askCatching(context, self.id)
+    policy :grindingTwo actions=[&grind]
+      authorize-if=async ({ self, context }) => await askCatching(context, self.id)

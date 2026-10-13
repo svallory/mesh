@@ -1,0 +1,31 @@
+import { Mesh } from "meshfw"
+import { Invoice } from "./invoice.mesh.mx"
+
+entity :Receipt
+  attributes
+    uuid :id primary-key
+    uuid :invoiceId
+    integer :amount min=0
+    timestamp :at
+
+  actions auto=[:read]
+    create :record
+      input
+        &invoiceId
+        &amount
+        &at
+
+  policies
+    policy :system types=[:create]
+      authorize-if=({ context }) => Mesh.isSystem(context)
+    policy :small types=[:create]
+      forbid-if=({ input }) => input.amount > 100
+    policy :notAhead types=[:create]
+      forbid-if=({ input }) => input.at > %.now
+    policy :paid types=[:create]
+      authorize-if=async ({ input }) => {
+        const invoices = await Mesh.privileged(Invoice).read({ filter: { id: { eq: input.invoiceId } } })
+        return invoices[0]?.status === "paid"
+      }
+    policy :readers types=[:read]
+      authorize-if=() => true

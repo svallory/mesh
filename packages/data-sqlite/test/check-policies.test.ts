@@ -684,7 +684,8 @@ describe("a policy whose helper calls an entity", () => {
         const error = (asked as { error: Error }).error;
         expect(error).toBeInstanceOf(FrameworkError);
         expect(error.message).toStartWith(`Mesh.checkPolicies(Doc#${action}) cannot answer without writing: Audit#log, called while its policies were checked, writes a row.`);
-        await expect(world.binding.run(() => can(domain.Doc[action], { id: ids.plain }, alice))).rejects.toThrow(error.message);
+        // `Mesh.can` names itself in the same message.
+        await expect(world.binding.run(() => can(domain.Doc[action], { id: ids.plain }, alice))).rejects.toThrow(error.message.replace("Mesh.checkPolicies(", "Mesh.can("));
       }
       expect(await dump(world.db)).toEqual(before);
       expect(world.seams).toEqual([]);
@@ -1097,10 +1098,10 @@ describe("what the question is asked about", () => {
         [domain.Doc, "an object"],
       ];
       for (const [value, what] of values)
-        for (const ask of [checkPolicies, can]) {
+        for (const [member, ask] of [["checkPolicies", checkPolicies], ["can", can]] as const) {
           const asked = await outcome(world.binding.run(() => ask(value as never, { id: ids.plain }, alice)));
           expect(asked).toEqual({ ok: false, error: expect.any(FrameworkError) });
-          expect(((asked as { error: Error }).error).message).toBe(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${what}`);
+          expect(((asked as { error: Error }).error).message).toBe(`Mesh.${member}() takes an action function of an entity value, such as Mesh.${member}(Todo.complete, input, context), and was given ${what}`);
         }
       expect(Reflect.ownKeys(domain.Doc.edit).sort()).toEqual(["length", "name"]);
     } finally { await world.db.close(); }

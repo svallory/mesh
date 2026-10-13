@@ -394,12 +394,16 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
 
   test("privileged and an entity call throw while a computed field is evaluated, naming the field (TXN-18)", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
-    const message = (what: string) => `${what} was called while computed :balance of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
+    const message = (what: string) => `${what} was called while computed :balance of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
     await expect(binding.run(() => Account.read({ computed: () => Mesh.privileged(Account) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account)")));
     const reads = await binding.run(async () => Mesh.privileged(Account));
     await expect(binding.run(() => Account.read({ computed: () => reads.read({}) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account).read")));
     // So is an entity call.
     await expect(binding.run(() => Account.read({ computed: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
+    // All refuse by throwing, not by rejecting: a handle obtained before the mark too, and an entity call.
+    const refusesBy = (call: () => Promise<unknown>) => { try { call().catch(() => undefined); return "returned"; } catch { return "threw"; } };
+    expect((await binding.run(() => Account.read({ computed: () => refusesBy(() => reads.read({})) })))[0]!.computed).toBe("threw");
+    expect((await binding.run(() => Account.read({ computed: () => refusesBy(() => Account.act({})) })))[0]!.computed).toBe("threw");
     // A privileged read's own computed fields are evaluated under the same rule.
     await expect(binding.run(() => Mesh.privileged(Account).read({ computed: () => Mesh.privileged(Account) }))).rejects.toThrow(FrameworkError);
     // Outside the evaluation, it reads.
@@ -408,7 +412,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
 
   test("privileged and an entity call throw while a read policy is evaluated, naming the policy (TXN-18)", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
-    const message = (what: string) => `${what} was called while policy :mine of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`;
+    const message = (what: string) => `${what} was called while policy :mine of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
     await expect(binding.run(() => Account.read({ policy: () => Mesh.privileged(Account) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account)")));
     await expect(binding.run(() => Account.read({ policy: () => Account.act({}) }))).rejects.toThrow(new FrameworkError(message("bank.Account#act")));
     // A policy check may await: a call made after the await is still refused.
