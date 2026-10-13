@@ -86,6 +86,8 @@ interface Scope {
   checkPart?: "that" | "when" | "details";
   /** References (`self.x`, `before.x`, `input.x`, `before`) that the left of an enclosing `&&` or `||` has shown are not null here. */
   nonNull?: ReadonlySet<string>;
+  /** True where the expression is printed as the author's TypeScript, where tsc narrows less than Mesh does: nothing narrows. */
+  noNarrow?: boolean;
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
 }
@@ -187,10 +189,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   function infer(n: ExprNode, scope: Scope): Ty {
     const ty = inferNode(n, scope);
     const path = scope.nonNull?.size ? pathOf(n) : undefined;
-    if (path === undefined || !scope.nonNull!.has(path) || !ty.nullable) return ty;
-    const { unfilled: _, ...rest } = ty;
-    return { ...rest, nullable: false };
+    // A member a create has not filled yet is null on every create: the guard does not make it known.
+    if (path === undefined || !scope.nonNull!.has(path) || !ty.nullable || ty.unfilled !== undefined) return ty;
+    return { ...ty, nullable: false };
   }
+
+  /** The `div` nodes rewritten to `idiv` so far, so a second pass over a tree can put them back and report them again. */
+  const divided: Extract<ExprNode, { kind: "call" }>[] = [];
 
   function inferNode(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
@@ -270,8 +275,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         // The right of `a && b` knows what `a` tested not null; the right of `a || b` knows what `a` tested null.
         const proven = new Set(scope.nonNull);
         const a = n.args.map((arg) => {
-          const ty = infer(arg, n.fn === "and" || n.fn === "or" ? { ...scope, nonNull: new Set(proven) } : scope);
-          if (n.fn === "and" || n.fn === "or") provenNotNull(arg, n.fn === "and", proven);
+          const narrows = (n.fn === "and" || n.fn === "or") && !scope.noNarrow;
+          const ty = infer(arg, narrows ? { ...scope, nonNull: new Set(proven) } : scope);
+          if (narrows) provenNotNull(arg, n.fn === "and", proven);
           return ty;
         });
         // An operator over a member a create has not filled yet is unknown on every create: the check would always fail there.
@@ -323,6 +329,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
             const int = a.every((t) => t.int === true);
             if (n.fn === "div" && int) {
               n.fn = "idiv";
+              divided.push(n);
               report("warning", "MESH_EXPR_INTEGER_DIVISION",
                 "dividing two integers truncates toward zero (7 / 2 is 3, -7 / 2 is -3), as in SQL; JavaScript gives 3.5", n.position,
                 "make one operand a float or decimal for exact division");
@@ -392,7 +399,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         // An object literal whose values Mesh can translate: JavaScript's null rule differs only when an operand can be null.
         for (const part of parts) {
           try {
-            const t = infer(part, scope);
+            const t = infer(part, { ...scope, noNarrow: true });
             if (t.nullable && hasOperator(part)) warnPlain(e, "a comparison or operator that can see a null", part.position);
           } catch (x) { if (!(x instanceof Demote)) throw x; if (hasOperator(part)) warnPlain(e, x.detail, x.position); }
         }
@@ -401,8 +408,22 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     }
     if (!e.tree) return null;
     try {
-      const t = infer(e.tree, scope);
-      if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree.position, true);
+      const pass = (from: Scope): Ty => {
+        const t = infer(e.tree!, from);
+        if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree!.position, true);
+        return t;
+      };
+      let t: Ty;
+      const reported = diagnostics.length, converted = divided.length;
+      try { t = pass(scope); }
+      catch (x) {
+        if (!(x instanceof Demote)) throw x;
+        // A demoted tree is printed as the author's TypeScript, where tsc narrows less than Mesh did: check it again without
+        // narrowing, as if the guards were not there, and report what that finds.
+        diagnostics.length = reported;
+        for (const node of divided.splice(converted)) node.fn = "div";
+        t = pass({ ...scope, noNarrow: true });
+      }
       return t;
     } catch (x) {
       if (x instanceof Demote) { demote(e, x); return null; }
