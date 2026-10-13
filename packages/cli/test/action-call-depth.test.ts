@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FrameworkError } from "@meshfw/runtime";
+import { FrameworkError, NotFoundError } from "@meshfw/runtime";
 
 const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/action-call-depth/domain");
@@ -68,7 +68,7 @@ afterAll(async () => {
 interface NodeRow { id: string; name: string; touched: boolean; parentId: string | null }
 type Call = (input: Record<string, unknown>, context: object) => Promise<NodeRow>;
 interface NodeEntity {
-  add: Call; reparent: Call; climb: Call; gate: Call; spawn: Call; spawnTwice: Call; descend: Call; probed: Call; seamed: Call; named: Call; looped: Call; wrap: Call; twice: Call;
+  add: Call; reparent: Call; climb: Call; gate: Call; spawn: Call; spawnTwice: Call; descend: Call; probed: Call; seamed: Call; plainStep: Call; named: Call; looped: Call; wrap: Call; twice: Call;
   start: Call; afterFailure: Call; fail: Call; count: Call;
   read(input: object, context: object): Promise<NodeRow[]>;
 }
@@ -207,8 +207,10 @@ describe("a bound on nested action calls (TXN-21)", () => {
     await withApp(async ({ Node, probe, rows }) => {
       const row = await loop(Node);
       const error = await bounded(() => Node.twice({ id: row.id }, anyone));
-      expect(error.message).toContain(capMessage("tree.Node#twice", "tree.Node#twice"));
-      // The helper ran once per level of the first descent; every call after the cap hit threw at entry, uncaught by nothing and run by nothing.
+      // Every level updates this one row, so the root's own stale-row check fails after the helper caught the cap: that is a real
+      // failure of the root, which keeps it. The row-per-level case below is the one that rejects with the cap's error.
+      expect(error.message).toContain("decided on a stale row");
+      // The helper ran once per level of the first descent; every call after the cap hit threw at entry and ran nothing.
       expect(probe.counts.twice).toBe(CAP);
       expect((await rows()).filter((candidate) => candidate.touched)).toEqual([]);
     });
@@ -351,7 +353,7 @@ describe("a bound on nested action calls (TXN-21)", () => {
     }
   }, 30_000);
 
-  test("calls started after the one before has finished are not nested: a not-awaited chain of batches runs past 1,000", async () => {
+  test("calls started after the one before has finished are not nested: a chain of batches a timer starts runs past 1,000", async () => {
     const BATCHES = 1_500;
     let seen = 0;
     let finish: () => void = () => undefined;
@@ -374,4 +376,57 @@ describe("a bound on nested action calls (TXN-21)", () => {
       },
     }));
   }, 60_000);
+
+  test("a root that fails for its own reason keeps its error, though a beforeTransaction seam caught the cap's: a missing row is a NotFoundError", async () => {
+    const missing = "00000000-0000-4000-8000-000000000000";
+    let seen = 0;
+    await withApp(async ({ Node, rows }) => {
+      await rejection(Node.plainStep({ id: missing }, anyone), NotFoundError);
+      expect(seen).toBe(CAP);
+      expect(await rows()).toEqual([]);
+    }, ({ Node }) => ({
+      beforeTransaction: async (event: { action: string }) => {
+        if (event.action !== "plainStep") return;
+        seen++;
+        try { await Node.plainStep({ id: missing }, anyone); } catch { /* the cap's error, or this call's own */ }
+      },
+    }));
+  }, 20_000);
+
+  test("the same when the seam calls an action whose own transaction hits the cap and catches it", async () => {
+    const missing = "00000000-0000-4000-8000-000000000000";
+    await withApp(async ({ Node, target, rows }) => {
+      target.id = (await loop(Node)).id;
+      await rejection(Node.plainStep({ id: missing }, anyone), NotFoundError);
+      expect((await rows()).filter((candidate) => candidate.touched)).toEqual([]);
+    }, ({ Node, target }) => ({
+      beforeTransaction: async (event: { action: string; input: { id?: string } }) => {
+        if (event.action !== "plainStep" || event.input.id !== missing) return;
+        try { await Node.climb({ id: target.id }, anyone); } catch { /* the cap's error */ }
+      },
+    }));
+  }, 20_000);
+
+  test("a batch started with queueMicrotask while its parent still runs is nested: the chain fails at batch 1,001", async () => {
+    let seen = 0;
+    let finish: () => void = () => undefined;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    const failures: unknown[] = [];
+    await withApp(async ({ Node, target }) => {
+      const row = await Node.add({ name: "seed", parentId: null }, anyone);
+      target.id = row.id;
+      seen = 0;
+      await Node.seamed({ id: row.id }, anyone);
+      await done;
+      expect(seen).toBe(CAP);
+      expect(failures).toHaveLength(1);
+      expect((failures[0] as Error).message).toContain(capMessage("tree.Node#seamed", "tree.Node#seamed"));
+    }, ({ Node, target }) => ({
+      afterCommit: (event: { changes: readonly { action: string }[] }) => {
+        if (event.changes[0]?.action !== "seamed") return;
+        seen++;
+        queueMicrotask(() => { Node.seamed({ id: target.id }, anyone).catch((error: unknown) => { failures.push(error); finish(); }); });
+      },
+    }));
+  }, 30_000);
 });

@@ -109,6 +109,11 @@ entity :Node
         set
           &touched=true
 
+    update :plainStep
+      do
+        set
+          &touched=true
+
     update :seamed
       do
         set
@@ -131,7 +136,7 @@ entity :Node
       authorize-if=() => true
     policy :everyone types=[:read]
       authorize-if=() => true
-    policy :open actions=[&reparent, &climb, &named, &looped, &wrap, &twice, &start, &afterFailure, &seamed, &fail, &count]
+    policy :open actions=[&reparent, &climb, &named, &looped, &wrap, &twice, &start, &afterFailure, &seamed, &plainStep, &fail, &count]
       authorize-if=() => true
     policy :gating actions=[&gate]
       authorize-if=async ({ self }) => { await recurse("gate", self.id); return true }

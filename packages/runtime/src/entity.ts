@@ -166,10 +166,11 @@ interface FrameStore {
 
 /**
  * A chain of nested action calls (TXN-21): the calls an action, or its policies, steps, `set` and `validate` functions,
- * helpers or seams, start and await while it runs, and the calls those start. The async context carries it, so it follows
- * the chain through the seams that run outside the action's transaction (`beforeTransaction`, `afterCommit`) and through an
- * application's `transaction(fn)`, not only through the data layer's transaction. A call started after the one before has
- * finished (work left running: a timer, a promise not awaited) is not nested in it and starts a new chain.
+ * helpers or seams, start while it runs, and the calls those start. The async context carries it, so it follows the chain
+ * through the seams that run outside the action's transaction (`beforeTransaction`, `afterCommit`) and through an
+ * application's `transaction(fn)`, not only through the data layer's transaction. A call started while the one before is
+ * still running is nested in it, awaited or not (a `queueMicrotask`, a `.then`, a call left un-awaited), so a fan-out cycle
+ * is bounded too. Only a call started after the one before has settled (a timer that fires later) begins a new chain.
  */
 interface CallChain {
   /** This call's place in the chain: 1 for the call that began it. */
@@ -185,7 +186,10 @@ interface CallRoot {
   /**
    * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the chain: every call made under the root
    * throws it at entry, so a helper that catches it cannot keep a cycle going. Inside a transaction it also fails that
-   * transaction, like any failed nested call (TXN-01), so the root rejects with it and nothing is written.
+   * transaction, like any failed nested call (TXN-01), so the root rejects with it and that transaction writes nothing
+   * (a call that ran in no transaction, such as a seam's, keeps what it committed). The error sticks to work that outlives
+   * its root as well: a job a seam left running under it is refused with this error, naming an action it never called;
+   * the bound needs that.
    */
   tooDeep?: FrameworkError;
 }
@@ -349,9 +353,9 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}) }, question);
   const outcome = await settle(() => counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer)));
   calls.settled = true;
-  // The root rejects with the cap's error itself, the first failure of the chain, not with the rollback of a transaction a
-  // helper's catch left failed, or a stale-row check that failed after the cap did. Resolved, it stays resolved.
-  if (!outcome.ok && calls.depth === 1 && calls.root.tooDeep) throw calls.root.tooDeep;
+  // The root rejects with the cap's error itself when its own error came from the cap: the error is the cap's, or the
+  // layer's "rolled back even though caught" error whose cause it is. Any other failure of the root is its own.
+  if (!outcome.ok && calls.depth === 1 && calls.root.tooDeep && (outcome.error === calls.root.tooDeep || (outcome.error as { cause?: unknown } | null)?.cause === calls.root.tooDeep)) throw calls.root.tooDeep;
   return unwrap(outcome);
 }
 
@@ -376,7 +380,7 @@ function nested(caller: CallChain | undefined, label: string): CallChain {
   if (root.tooDeep) throw root.tooDeep;
   const depth = (parent?.depth ?? 0) + 1;
   if (depth > MAX_CALL_DEPTH)
-    throw root.tooDeep = new FrameworkError(`${label} was called more than ${MAX_CALL_DEPTH} nested calls deep, in a chain that began with ${root.label}: the calls probably form a cycle (an action that calls itself, or actions that call each other, from a step, a policy's helper or a function)`);
+    throw root.tooDeep = new FrameworkError(`${label} was called more than ${MAX_CALL_DEPTH} nested calls deep, in a chain that began with ${root.label}: the calls probably form a cycle (an action that calls itself, or actions that call each other, from a step, a policy's helper, a seam or a function)`);
   return { depth, root, settled: false };
 }
 
