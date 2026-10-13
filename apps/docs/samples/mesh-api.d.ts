@@ -69,8 +69,8 @@ declare module "@meshfw/runtime" {
 
   /** The answer of `Mesh.checkPolicies`: whether the call would be allowed, and one entry per check that ran (ADR-0022). */
   export type Decision = {
-    allowed: boolean;
-    breakdown: readonly PolicyCheck[];
+    readonly allowed: boolean;
+    readonly breakdown: readonly PolicyCheck[];
   };
 
   /** An action function as the entity value exposes it: the input, then the context. `ActionFunction` alone is any of them. */

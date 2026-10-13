@@ -41,6 +41,20 @@ type OptionalIssue = Assert<Same<Docs.Issue, Omit<Actual.Issue, "label"> & { lab
 type OptionalPolicy = Assert<Same<Docs.PolicyCheck, Omit<Actual.PolicyCheck, "decisive"> & { decisive?: boolean }>>;
 // @ts-expect-error extra required runtime members must fail parity
 type ExtraIssue = Assert<Same<Docs.Issue, Actual.Issue & { extra: string }>>;
+// CMP-21: the answer, the action function type and Mesh's members match the runtime's, readonly modifiers included,
+// which mutual assignability ignores. \`Mesh.privileged\` and \`Mesh.isSystem\` are compared by name only: the sample's
+// \`EntityValue\` is deliberately smaller, and it types \`isSystem\`'s context as an \`ActionContext\`, which the runtime takes as \`unknown\`.
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type DecisionParity = Assert<Equal<Docs.Decision, Actual.Decision>>;
+type ActionFunctionParity = Assert<Equal<Docs.ActionFunction, Actual.ActionFunction>>;
+type ActionFunctionInputParity = Assert<Equal<Docs.ActionFunction<{ id: string }>, Actual.ActionFunction<{ id: string }>>>;
+type MeshKeys = Assert<Same<keyof typeof Docs.Mesh, keyof typeof Actual.Mesh>>;
+type CheckPoliciesParity = Assert<Equal<typeof Docs.Mesh.checkPolicies, typeof Actual.Mesh.checkPolicies>>;
+type CanParity = Assert<Equal<typeof Docs.Mesh.can, typeof Actual.Mesh.can>>;
+// @ts-expect-error a Decision whose member is not readonly must fail parity
+type MutableDecision = Assert<Equal<Docs.Decision, Omit<Actual.Decision, "allowed"> & { allowed: boolean }>>;
+// @ts-expect-error a checkPolicies that takes any input must fail parity
+type LooseCheck = Assert<Equal<typeof Docs.Mesh.checkPolicies, <A extends Actual.ActionFunction>(action: A, input: unknown, context: Actual.ActionContext) => Promise<Actual.Decision>>>;
 `;
     await writeFile(join(root, "probe.ts"), probe);
     expect(compile(["--noEmit", "reference.d.ts", "probe.ts"], root)).toEqual({ code: 0, output: "" });
