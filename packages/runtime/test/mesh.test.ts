@@ -1,15 +1,18 @@
 import { expect, test } from "bun:test";
 import * as runtime from "../src/index.ts";
 import { expr, FrameworkError, Mesh } from "../src/index.ts";
-import { privileged } from "../src/entity.ts";
+import { can, checkPolicies, privileged } from "../src/entity.ts";
 
 // PRJ-22: Mesh's own functions are members of one frozen object, so no name an application chooses can collide with them.
 // SYN-29: the instant is not one of them; an entity file reads the current transaction's as `%.now` and `%.today`.
-test("Mesh is a frozen object holding privileged and isSystem, and nothing else", () => {
+// CMP-21: asking whether a call would be allowed is `Mesh.checkPolicies`, and `Mesh.can` for the yes or no.
+test("Mesh is a frozen object holding privileged, isSystem, checkPolicies and can, and nothing else", () => {
   expect(Object.isFrozen(Mesh)).toBe(true);
-  expect(Object.keys(Mesh).sort()).toEqual(["isSystem", "privileged"]);
+  expect(Object.keys(Mesh).sort()).toEqual(["can", "checkPolicies", "isSystem", "privileged"]);
   expect(Mesh.privileged).toBe(privileged);
   expect(Mesh.isSystem).toBe(expr.isSystem);
+  expect(Mesh.checkPolicies).toBe(checkPolicies);
+  expect(Mesh.can).toBe(can);
   expect(() => { (Mesh as { isSystem: unknown }).isSystem = () => true; }).toThrow(TypeError);
 });
 
@@ -23,7 +26,7 @@ test("Mesh has no now or today, at run time or in its type: application code tak
 });
 
 test("the runtime exports none of Mesh's functions bare, and no meshIn", () => {
-  for (const name of ["privileged", "now", "today", "isSystem", "meshIn"]) expect(Object.hasOwn(runtime, name)).toBe(false);
+  for (const name of ["privileged", "now", "today", "isSystem", "meshIn", "checkPolicies", "can"]) expect(Object.hasOwn(runtime, name)).toBe(false);
 });
 
 test("Mesh.isSystem is true only for a context whose system key is true", () => {
@@ -33,4 +36,14 @@ test("Mesh.isSystem is true only for a context whose system key is true", () => 
 
 test("Mesh.privileged of a value that is not an entity names Mesh.privileged in its error", () => {
   expect(() => Mesh.privileged({} as never)).toThrow(new FrameworkError("Mesh.privileged() takes an entity value, such as Mesh.privileged(Task), and was given an object that is not one"));
+});
+
+test("Mesh.checkPolicies and Mesh.can of anything but an action function of an entity value throw, naming what they take", async () => {
+  const plain = async (_input: unknown, _context: unknown) => undefined;
+  const message = (given: string) => new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${given}`);
+  const notOne = "a function that is not one (a plain function, a Mesh.privileged read or a copy made with .bind)";
+  for (const [value, given] of [[plain, notOne], [null, "null"], [undefined, "undefined"], [{}, "an object"], ["create", "string"]] as const) {
+    await expect(Mesh.checkPolicies(value as typeof plain, {}, {})).rejects.toThrow(message(given));
+    await expect(Mesh.can(value as typeof plain, {}, {})).rejects.toThrow(message(given));
+  }
 });
