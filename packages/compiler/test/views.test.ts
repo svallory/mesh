@@ -209,6 +209,7 @@ describe("validatorsView", () => {
       hasInputs: false,
       typesFromLiteral: '"./list.types"',
       schemas: [],
+      json: false,
       query: null,
       globals: null,
     });

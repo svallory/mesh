@@ -428,7 +428,10 @@ function unwrapped(value: unknown, seen: Map<object, unknown>): unknown {
   if (prototype !== Object.prototype && prototype !== null) return original;
   const object: Record<string, unknown> = {};
   seen.set(original, object);
-  for (const [key, member] of Object.entries(original)) object[key] = unwrapped(member, seen);
+  // `defineProperty`, not `object[key] = ...`: a `json` value may hold an own `__proto__` key (ENT-19), and assigning to that
+  // name on an ordinary object changes its prototype instead of making a property (and drops the key).
+  for (const [key, member] of Object.entries(original))
+    Object.defineProperty(object, key, { value: unwrapped(member, seen), writable: true, enumerable: true, configurable: true });
   return object;
 }
 

@@ -3,6 +3,9 @@
 
 @if(hasInputs)
 import { z } from "zod";
+@if(json)
+import { jsonValue as $jsonValue } from "@meshfw/runtime";
+@end
 
 import type {
   @each(schema in schemas)

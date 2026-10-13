@@ -129,7 +129,7 @@ describe("a create and a json", () => {
     for (const extra of [null, {}, [1], "s", 0, false]) expect(bareNoteInputSchema.safeParse({ title: "t", extra }).success).toBe(true);
     expect(bareNoteInputSchema.safeParse({ title: "t" }).success).toBe(true);
     for (const extra of [Number.NaN, 1n, () => 1, new Date()]) expect(bareNoteInputSchema.safeParse({ title: "t", extra }).success).toBe(false);
-    // A cyclic object: pinned as before ENT-03 (the schema is Zod's `z.json()`; it is the data layer that cannot store it).
+    // A cyclic object: pinned as before ENT-03 (the schema is the runtime's `jsonValue`, which accepts what Zod's `z.json()` did; it is the data layer that cannot store it).
     const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
     let outcome: boolean | "threw";
     try { outcome = createNoteInputSchema.safeParse({ title: "t", payload: cyclic }).success; } catch { outcome = "threw"; }

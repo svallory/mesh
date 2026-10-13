@@ -17,6 +17,7 @@ export type ContextArgument = {} extends ActionContext ? [context?: ActionContex
 export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError } from "./errors.ts";
 export type { DenialReason, Issue, IssueSource, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
+export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
 export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer } from "./data-layer.ts";
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";

@@ -113,7 +113,9 @@ function readOnly(value: unknown): unknown {
   }
   if (Object.isFrozen(value)) return value;
   const record = value as Record<string, unknown>;
-  for (const key of Object.keys(record)) record[key] = readOnly(record[key]);
+  // `defineProperty`, not `record[key] = ...`: see `unwrapped` in load.ts (an own `__proto__` key of a `json` value, ENT-19). The properties are the copy's own and writable, so the definition replaces each in place.
+  for (const key of Object.keys(record))
+    Object.defineProperty(record, key, { value: readOnly(record[key]), writable: true, enumerable: true, configurable: true });
   return Object.freeze(record);
 }
 
