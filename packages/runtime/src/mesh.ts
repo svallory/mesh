@@ -39,8 +39,9 @@ export interface MeshFunctions {
    * function through a registry of its own, so nothing is added to it; any other function is a `FrameworkError`. It runs
    * the call's checks in the call's order, on the binding the call would use, joining a running transaction of it (and
    * reading its instant) or in a transaction of its own that it rolls back; a denial's `breakdown` is the one the call's
-   * `ForbiddenError` would carry. It runs no `validate`, step or seam, and writes nothing: a write tried while the
-   * policies are checked throws a `FrameworkError`. Where the call would throw before its policies decide (a failed cast,
+   * `ForbiddenError` would carry. It runs no `validate`, step or seam, and writes nothing: a write action started while
+   * the policies are checked, through any binding of the project, is refused before it runs, and the question throws a
+   * `FrameworkError`. Where the call would throw before its policies decide (a failed cast,
    * a missing row), it throws the same error. A read answers whether it is allowed at all.
    */
   readonly checkPolicies: <A extends ActionFunction>(action: A, input: Parameters<A>[0], context: ActionContext) => Promise<Decision>;
