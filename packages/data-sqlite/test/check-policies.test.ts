@@ -684,7 +684,8 @@ describe("a policy whose helper calls an entity", () => {
         const error = (asked as { error: Error }).error;
         expect(error).toBeInstanceOf(FrameworkError);
         expect(error.message).toStartWith(`Mesh.checkPolicies(Doc#${action}) cannot answer without writing: Audit#log, called while its policies were checked, writes a row.`);
-        await expect(world.binding.run(() => can(domain.Doc[action], { id: ids.plain }, alice))).rejects.toThrow(error.message);
+        // `Mesh.can` names itself in the same message.
+        await expect(world.binding.run(() => can(domain.Doc[action], { id: ids.plain }, alice))).rejects.toThrow(error.message.replace("Mesh.checkPolicies(", "Mesh.can("));
       }
       expect(await dump(world.db)).toEqual(before);
       expect(world.seams).toEqual([]);

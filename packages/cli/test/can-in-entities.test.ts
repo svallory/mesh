@@ -14,6 +14,9 @@ import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type 
 const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/can-in-entities/domain");
 const projects: string[] = [];
+// How many times the catching helper asks while a cyclic ledger is ground, with the error that sticks to the outermost question.
+const GRIND_ACTION = 130;
+const GRIND_OUTSIDE = 64;
 
 // The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
 // stricter flags; the generated code reads only `data` and its `name`.
@@ -218,8 +221,8 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
   test("a call hidden in a helper: refused, by throwing, while a computed field or a read policy is evaluated, and run in a write policy", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
     const { billing } = await import(join(root, ".mesh/domain/index.ts"));
-    const { seen, asker } = await import(join(root, "domain/billing/probe.ts")) as {
-      seen: unknown[]; asker: { current: ((kind: string, context: { system?: boolean }, id: string) => Promise<unknown>) | undefined };
+    const { seen, asker, catching } = await import(join(root, "domain/billing/probe.ts")) as {
+      seen: unknown[]; catching: { count: number }; asker: { current: ((kind: string, context: { system?: boolean }, id: string) => Promise<unknown>) | undefined };
     };
     const { Mesh } = await import(Bun.resolveSync("meshfw", root));
     const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
@@ -306,21 +309,26 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
         let ticked = false;
         const timer = new Promise<void>((done) => setTimeout(() => { ticked = true; done(); }, 20));
         const grindBegan = performance.now();
+        catching.count = 0;
         // The action itself is denied (its own helper catches what the outermost question throws too, and answers false: fail
         // closed); it is not a question, so the cap's error does not reach it.
         await rejection(billing.Ledger.grind({ id: grind.id, name: "never" }, anyone), ForbiddenError);
         await timer;
         expect(performance.now() - grindBegan).toBeLessThan(5_000);
         expect(ticked).toBe(true);
+        // The count, not the time: two checks ask at every level, 32 levels deep, and the sticky error ends the rest.
+        expect(catching.count).toBe(GRIND_ACTION);
         const grindRows = await billing.Ledger.read({}, anyone) as { id: string; name: string }[];
         expect(grindRows.find((row) => row.id === grind.id)?.name).toBe("grind");
         // The same asked from outside, with a timer beside it: the outermost question throws the cap's error whatever its helpers caught.
+        catching.count = 0;
         let outside = false;
         const beside = new Promise<void>((done) => setTimeout(() => { outside = true; done(); }, 20));
         const outsideError = await rejection(Mesh.can(billing.Ledger.grind, { id: grind.id, name: "never" }, anyone), FrameworkError);
         expect(outsideError.message).toContain("ask other actions' policies too deeply, probably in a cycle");
         await beside;
         expect(outside).toBe(true);
+        expect(catching.count).toBe(GRIND_OUTSIDE);
       });
     } finally {
       await layer.close();

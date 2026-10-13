@@ -40,7 +40,10 @@ export async function askAboutParent(context: { system?: boolean }, parentId: st
 }
 
 /** A fail-closed helper: it asks the ledger's own `grind` and answers false when the question throws, whatever it throws. */
+/** How many times `askCatching` asked: the test reads and resets it. */
+export const catching = { count: 0 };
 export async function askCatching(context: { system?: boolean }, id: string): Promise<boolean> {
+  catching.count++;
   try {
     return await askLoudly("grind", context, id);
   } catch {

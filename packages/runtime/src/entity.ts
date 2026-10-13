@@ -523,6 +523,8 @@ export async function settled(binding: Binding): Promise<void> {
 interface Question {
   /** The call asked about, `blog.Post#publish`. */
   readonly label: string;
+  /** The function that asked, which the errors name. */
+  readonly member: "checkPolicies" | "can";
   /** The question this one is asked inside (a policy's helper asks), if any: this one reads through its layers. */
   readonly outer: Question | undefined;
   /** The project's async frame. */
@@ -618,16 +620,16 @@ function layerFor(question: Question, layer: DataLayer): DataLayer {
 
 /**
  * The error of a write tried in a store of `question`: `writer`, the write action refused, or the label of the action
- * that tried to write through the question's layer. While the question is answered, `Mesh.checkPolicies` throws the
+ * that tried to write through the question's layer. While the question is answered, `Mesh.checkPolicies` (or `Mesh.can`) throws the
  * first, whatever was decided, even when a helper caught it; once it has settled, the write was started by work left
  * running, and is refused all the same.
  */
 function refusedWrite(question: Question, writer: string | undefined): FrameworkError {
   if (question.ended)
-    return new FrameworkError(`${writer ?? "A call"} cannot write: it was started while Mesh.checkPolicies(${question.label}) was answered, `
+    return new FrameworkError(`${writer ?? "A call"} cannot write: it was started while Mesh.${question.member}(${question.label}) was answered, `
       + "by work its policies left running (a timer, a promise not awaited), and nothing started while a question is answered writes a row, "
       + "even once the question has answered. Make the policy read only");
-  return question.wrote ??= new FrameworkError(`Mesh.checkPolicies(${question.label}) cannot answer without writing: `
+  return question.wrote ??= new FrameworkError(`Mesh.${question.member}(${question.label}) cannot answer without writing: `
     + `${writer === undefined ? "a call made while its policies were checked" : `${writer}, called while its policies were checked,`} writes a row. `
     + "Checking a policy runs what the policy calls, so a policy that writes, through a helper or an action it calls, cannot be checked: make it read only");
 }
@@ -760,7 +762,8 @@ function described(value: unknown): string {
  * for a missing row a check would read, a read that cannot run in this version), it throws the same error, and inside
  * a running transaction that error does not fail the transaction. A denial resolves with `allowed: false`; it never
  * throws `ForbiddenError`. A read answers whether it is allowed at all: no policy covering it, or none admitting the
- * caller, is `allowed: false`.
+ * caller, is `allowed: false`. A question asked more than 32 deep, each inside a policy of the one before, throws a
+ * `FrameworkError`.
  */
 export function checkPolicies(action: unknown, input: unknown, context: unknown): Promise<Decision> {
   return askPolicies("checkPolicies", action, input, context);
@@ -785,10 +788,10 @@ function askPolicies(member: "checkPolicies" | "can", action: unknown, input: un
   // hidden `Mesh.privileged` read does: the build refuses a direct one in any policy, read or write (`MESH_POLICY_ASKS`).
   const mark = inScope(frames.get(value))?.mark ?? evaluatingNow();
   if (mark !== undefined) throw marked(where, mark);
-  return answer(target, where, input, context);
+  return answer(target, member, where, input, context);
 }
 
-async function answer({ value, fqn, name }: { value: object; fqn: string; name: string }, where: string, input: unknown, context: unknown): Promise<Decision> {
+async function answer({ value, fqn, name }: { value: object; fqn: string; name: string }, member: "checkPolicies" | "can", where: string, input: unknown, context: unknown): Promise<Decision> {
   const label = `${fqn}#${name}`;
   const frame = frames.get(value);
   const caller = inScope(frame);
@@ -801,7 +804,7 @@ async function answer({ value, fqn, name }: { value: object; fqn: string; name: 
   if (root?.tooDeep) throw root.tooDeep;
   if (root && depth >= MAX_QUESTION_DEPTH)
     throw root.tooDeep = new FrameworkError(`${where} was asked ${MAX_QUESTION_DEPTH} questions deep: the policies of ${label} ask other actions' policies too deeply, probably in a cycle (a policy that asks about its own action, or policies that ask each other)`);
-  const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
+  const question: Question = { label, member, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
   const probe = probeFor(question, state);
   const bound = (value as EntityValue<object>)[BIND](answeringLayer(probe.layer), { clock: state.options.clock }, probe.frame) as BoundActions;
   const fn = bound[name] as (input: unknown, context: unknown) => Promise<unknown>;
