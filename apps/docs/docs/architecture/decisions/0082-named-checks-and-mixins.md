@@ -1,9 +1,11 @@
 ---
 title: "0082. Named checks live in a `checks` section; reusable blocks are `mixin` files; step files are dropped"
-description: "Decision record 0082: the entity-level `checks` section and bare `check :name`, `mixin` files included with `use`, Mesh's `:timestamps` and `:versioned` mixins, and the end of step files and reusable steps. Status: Accepted (DOM-04, DOM-28, DOM-33); DOM-33's tie-break is the lead's reading."
+description: "Decision record 0082: the entity-level `checks` section and bare `check :name`, `mixin` files included with `use`, Mesh's `:timestamps` and `:versioned` mixins, and the end of step files and reusable steps. Status: Accepted (DOM-04, DOM-28, DOM-33); DOM-33's tie-break is the lead's reading. Amended 2026-10-12 (DOM-28: a check is referenced with `&name`)."
 ---
 
 # 0082. Named checks live in a `checks` section; reusable blocks are `mixin` files; step files are dropped
+
+> **Amendment, 2026-10-12 (DOM-28, SYN-19).** `check :name` declares a check; a reference to it is `&name`, as SYN-19 says for every member ([ADR-0067](./0067-members-imports-input-static-files.md)), so item 1 below no longer holds for the reference: it is not a bare `check :name`. The operator amended DOM-28 on 2026-10-12. The reference line in `validate` is `check &name`, following SYN-19's "after a kind (`asc &dueOn`)"; that line is the lead's reading, for operator review. In the example, `validate` reads `check &dueAfterIssue`. The body below is kept as history.
 
 ## Status
 
