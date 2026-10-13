@@ -21,11 +21,14 @@
   "dependencies": {
     "@jig-lang/jig": "1.0.1",
     "@meshfw/model": "workspace:*",
-    "@meshfw/runtime": "workspace:*",
     "@mxlang/core": "0.1.0-alpha.24",
     "prettier": "3.6.2"
   },
+  "peerDependencies": {
+    "@meshfw/runtime": "workspace:*"
+  },
   "devDependencies": {
+    "@meshfw/runtime": "workspace:*",
     "zod": "4.6.5"
   }
 }

@@ -70,12 +70,15 @@
       "dependencies": {
         "@jig-lang/jig": "1.0.1",
         "@meshfw/model": "workspace:*",
-        "@meshfw/runtime": "workspace:*",
         "@mxlang/core": "0.1.0-alpha.24",
         "prettier": "3.6.2",
       },
       "devDependencies": {
+        "@meshfw/runtime": "workspace:*",
         "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@meshfw/runtime": "workspace:*",
       },
     },
     "packages/create-meshfw": {
@@ -89,8 +92,13 @@
       "name": "@meshfw/data-drizzle",
       "version": "0.0.0",
       "dependencies": {
-        "@meshfw/runtime": "workspace:*",
         "drizzle-orm": "0.45.3",
+      },
+      "devDependencies": {
+        "@meshfw/runtime": "workspace:*",
+      },
+      "peerDependencies": {
+        "@meshfw/runtime": "workspace:*",
       },
     },
     "packages/data-sqlite": {
@@ -98,18 +106,19 @@
       "version": "0.0.0",
       "dependencies": {
         "@meshfw/data-drizzle": "workspace:*",
-        "@meshfw/runtime": "workspace:*",
         "drizzle-orm": "0.45.3",
       },
       "devDependencies": {
         "@meshfw/compiler": "workspace:*",
         "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
         "drizzle-kit": "0.31.11",
         "zod": "4.6.5",
       },
       "peerDependencies": {
         "@meshfw/compiler": "workspace:*",
         "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
         "drizzle-kit": "0.31.11",
       },
       "optionalPeers": [
