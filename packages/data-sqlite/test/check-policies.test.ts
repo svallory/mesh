@@ -1,9 +1,10 @@
 // CMP-21: `Mesh.checkPolicies(action, input, context)` resolves to the decision the call would reach, `{ allowed,
 // breakdown }`, and changes nothing; `Mesh.can` is its `allowed === true`. A domain with every kind of check (`authorize-if`,
 // `forbid-if`, `when`; reading only the caller and the input, or reading the record), unknown results, policies that
-// call helpers which read or write through an entity, a step and an application transaction that ask, reads covered and
-// not, built, generated, pushed to SQLite and asked through the generated entity values. Every answer is held against the
-// call itself: a denial's breakdown deep-equals the `ForbiddenError`'s.
+// call helpers which read or write through an entity (directly, or through a binding's `run` or `transaction`, the
+// question's own or a second one), a step and an application transaction that ask, reads covered and not, built,
+// generated, pushed to SQLite and asked through the generated entity values. Every answer is held against the call
+// itself: a denial's breakdown deep-equals the `ForbiddenError`'s.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -14,7 +15,7 @@ import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 
 const doc = `import { Audit } from "./audit.mesh.mx"
-import { askInStep, logs, ownsAny, quietlyLogs, sawAt, seen } from "./doc-helpers"
+import { askInStep, escapes, logs, ownsAny, quietlyLogs, sawAt, seen } from "./doc-helpers"
 
 entity :Doc table="docs"
   attributes
@@ -65,6 +66,7 @@ entity :Doc table="docs"
     update :timed
     update :orphan
     update :crash
+    update :nudge
     destroy :remove
     read :everything
   policies
@@ -99,6 +101,8 @@ entity :Doc table="docs"
       authorize-if=async ({ actor }) => await quietlyLogs(actor.id)
     policy :clocked actions=[&timed]
       authorize-if=async () => sawAt(%.now)
+    policy :viaEscape actions=[&nudge]
+      authorize-if=async () => await escapes()
     policy :crashy actions=[&crash]
       authorize-if=() => &level > 0
       forbid-if=({ actor }) => actor.id.length > 10
@@ -109,6 +113,8 @@ entity :Doc table="docs"
 `;
 
 const audit = `import { Mesh } from "meshfw"
+import { seen } from "./doc-helpers"
+
 entity :Audit table="audits"
   attributes
     uuid :id primary-key
@@ -117,6 +123,15 @@ entity :Audit table="audits"
     create :log
       input
         &what
+      validate
+        check :said that=({ input }) => seen("Audit validate") && input.what.length > 0 code="said" message="say what happened"
+      do
+        run() {
+          seen("Audit step")
+        }
+        run [after=:write] () {
+          seen("Audit after write")
+        }
   policies
     policy :internal actions=[&log]
       authorize-if=({ context }) => Mesh.isSystem(context)
@@ -137,8 +152,10 @@ const loose = `entity :Loose table="loose"
 
 /**
  * The helpers the policies, checks and steps call. `seen` logs what ran, so a test can tell that no check of `validate`
- * and no step ran; `ownsAny` reads through an entity value, `logs` writes through one (and `quietlyLogs` swallows what
- * that throws), `sawAt` keeps the instant a policy read, and `askInStep`, called by a step after the write, asks.
+ * and no step ran (Doc's or Audit's); `ownsAny` reads through an entity value, `logs` writes through one (and
+ * `quietlyLogs` swallows what that throws), `sawAt` keeps the instant a policy read, `askInStep`, called by a step after
+ * the write, asks, and `escapes` runs what a test puts in `hooks.escape` (a call through a binding's `run` or
+ * `transaction`), keeping what it gave and catching what it threw.
  */
 const helpers = `import { Mesh, type Decision } from "@meshfw/runtime";
 import { Audit, Doc } from "../../.mesh/domain/index.ts";
@@ -167,6 +184,15 @@ export async function quietlyLogs(id: string | undefined): Promise<boolean> {
 export const instants: Date[] = [];
 export function sawAt(at: Date): boolean {
   instants.push(at);
+  return true;
+}
+export const hooks: { escape: () => Promise<unknown>; results: unknown[]; caught: unknown[] } = { escape: async () => undefined, results: [], caught: [] };
+export async function escapes(): Promise<boolean> {
+  try {
+    hooks.results.push(await hooks.escape());
+  } catch (error) {
+    hooks.caught.push(error);
+  }
   return true;
 }
 export const answers: Decision[] = [];
@@ -262,12 +288,16 @@ const ids = {
   missing: "00000000-0000-4000-8000-0000000000ff",
 };
 
-/** What every seam was called with, and how many transactions were opened on the layer. */
+/**
+ * What every seam was called with, how many transactions were opened on the layer, and what each transaction callback
+ * handed the layer: what it resolved with, or rejected with.
+ */
 interface World {
   db: ReturnType<typeof sqlite>;
   binding: any;
   seams: string[];
   counts: { transactions: number };
+  handed: unknown[];
 }
 
 /**
@@ -285,21 +315,42 @@ async function fresh(clock?: () => Date): Promise<World> {
     await tx.insert(app.tables.docs, { id: ids.bobs, ownerId: "bob", title: "bob's", level: 2, locked: false, insertedAt: at });
   });
   const counts = { transactions: 0 };
+  const handed: unknown[] = [];
   const counted: DataLayer = {
-    transaction: (run) => { counts.transactions += 1; return db.transaction(run); },
+    transaction: (run) => {
+      counts.transactions += 1;
+      return db.transaction(async (tx) => {
+        try {
+          const value = await run(tx);
+          handed.push(value);
+          return value;
+        } catch (error) {
+          handed.push(error);
+          throw error;
+        }
+      });
+    },
     refuseIfFailed: () => db.refuseIfFailed(),
     close: () => db.close(),
   };
   const seams: string[] = [];
-  const binding = app.bind(counted, {
-    ...(clock ? { clock } : {}),
-    seams: {
-      beforeTransaction: (event: { action: string }) => { seams.push(`beforeTransaction ${event.action}`); },
-      afterWrite: (_db: unknown, event: { action: string }) => { seams.push(`afterWrite ${event.action}`); },
-      afterCommit: (event: { changes: unknown[] }) => { seams.push(`afterCommit ${event.changes.length}`); },
-    },
-  });
-  return { db, binding, seams, counts };
+  const binding = app.bind(counted, { ...(clock ? { clock } : {}), seams: spies(seams) });
+  return { db, binding, seams, counts, handed };
+}
+
+/** Seams that write down each call in `seams`. */
+function spies(seams: string[]) {
+  return {
+    beforeTransaction: (event: { action: string }) => { seams.push(`beforeTransaction ${event.action}`); },
+    afterWrite: (_db: unknown, event: { action: string }) => { seams.push(`afterWrite ${event.action}`); },
+    afterCommit: (event: { changes: unknown[] }) => { seams.push(`afterCommit ${event.changes.length}`); },
+  };
+}
+
+/** A second binding of the project over the same database, with seams of its own: what `app.bind(layer, { seams })` gives. */
+function secondOf(world: World): { binding: any; seams: string[] } {
+  const seams: string[] = [];
+  return { binding: app.bind(world.db, { seams: spies(seams) }), seams };
 }
 
 /** Every row of every table, read on the database itself. */
@@ -637,6 +688,8 @@ describe("a policy whose helper calls an entity", () => {
       }
       expect(await dump(world.db)).toEqual(before);
       expect(world.seams).toEqual([]);
+      // The write is refused before it starts: Audit#log casts nothing, and runs neither its check nor its steps.
+      expect(helperModule.log).toEqual([]);
       // Inside a transaction the question throws too, and the transaction goes on and commits what it wrote.
       await world.binding.transaction(async () => {
         await expect(checkPolicies(domain.Doc.poke, { id: ids.plain }, alice)).rejects.toBeInstanceOf(FrameworkError);
@@ -644,9 +697,174 @@ describe("a policy whose helper calls an entity", () => {
       });
       expect((await dump(world.db) as { docs: unknown[]; audits: unknown[] }).docs).toHaveLength(5);
       expect((await dump(world.db) as { audits: unknown[] }).audits).toHaveLength(0);
-      // The call itself writes through its policy, as it always has.
+      expect(helperModule.log).toEqual([]);
+      // The call itself writes through its policy, as it always has, and runs what Audit#log runs.
       await world.binding.run(() => domain.Doc.poke({ id: ids.plain }, alice));
       expect((await dump(world.db) as { audits: unknown[] }).audits).toHaveLength(1);
+      expect(helperModule.log).toEqual(["Audit validate", "Audit step", "Audit after write"]);
+    } finally { await world.db.close(); }
+  });
+});
+
+/**
+ * Each way a policy's helper can reach a write besides calling it in place: through `run` or `transaction` of the
+ * question's own binding, or of a second binding of the project (`app.bind(layer, { seams })`), which puts a scope of its
+ * own in the project's async frame.
+ */
+const ROUTES: [string, (world: World, second: { binding: any }, call: () => Promise<unknown>) => Promise<unknown>][] = [
+  ["the question's binding's run", (world, _second, call) => world.binding.run(call)],
+  ["the question's binding's transaction", (world, _second, call) => world.binding.transaction(call)],
+  ["a second binding's run", (_world, second, call) => second.binding.run(call)],
+  ["a second binding's transaction", (_world, second, call) => second.binding.transaction(call)],
+];
+
+describe("while a question is answered no write action starts, through any binding of the project", () => {
+  const log = () => domain.Audit.log({ what: "escaped" }, { system: true });
+  const nudge = (context: unknown) => checkPolicies(domain.Doc.nudge, { id: ids.plain }, context);
+  const refusal = "Mesh.checkPolicies(Doc#nudge) cannot answer without writing: Audit#log, called while its policies were checked, writes a row.";
+
+  for (const [route, through] of ROUTES)
+    test(`a helper that writes through ${route}: refused before it starts, outside and inside transaction(fn); the call writes`, async () => {
+      const world = await fresh();
+      const second = secondOf(world);
+      const { hooks } = helperModule;
+      try {
+        const before = await dump(world.db);
+        hooks.escape = () => through(world, second, log);
+        hooks.caught.length = 0;
+        helperModule.log.length = 0;
+        // Outside any transaction: the helper catches the refusal, and the question throws it all the same.
+        const asked = await outcome(world.binding.run(() => nudge(alice)));
+        expect(asked).toEqual({ ok: false, error: expect.any(FrameworkError) });
+        const error = (asked as { error: Error }).error;
+        expect(error.message).toStartWith(refusal);
+        expect(hooks.caught).toEqual([error]);
+        expect(await dump(world.db)).toEqual(before);
+        expect(helperModule.log).toEqual([]);
+        expect(world.seams).toEqual([]);
+        expect(second.seams).toEqual([]);
+        // Inside the application's transaction: the refusal fails nothing, and the application's next call commits.
+        hooks.caught.length = 0;
+        await world.binding.transaction(async () => {
+          await expect(nudge(alice)).rejects.toThrow(refusal);
+          await domain.Doc.sketch({ ownerId: "alice", title: "after" }, alice);
+        });
+        expect(hooks.caught).toHaveLength(1);
+        const after = await dump(world.db) as { docs: unknown[]; audits: unknown[] };
+        expect(after.docs).toHaveLength(5);
+        expect(after.audits).toEqual([]);
+        expect(helperModule.log).toEqual([]);
+        expect(world.seams).toEqual(["afterWrite sketch", "afterCommit 1"]);
+        expect(second.seams).toEqual([]);
+        // The call itself writes through the same route, as it always has: the route is real.
+        world.seams.length = 0;
+        await world.binding.run(() => domain.Doc.nudge({ id: ids.plain }, alice));
+        expect((await dump(world.db) as { audits: unknown[] }).audits).toHaveLength(1);
+        expect(helperModule.log).toEqual(["Audit validate", "Audit step", "Audit after write"]);
+      } finally {
+        hooks.escape = async () => undefined;
+        await world.db.close();
+      }
+    });
+
+  test("a read through the question's binding's run reads on the question's transaction; one through a second binding runs as it would", async () => {
+    const world = await fresh();
+    const second = secondOf(world);
+    const { hooks } = helperModule;
+    const carols = () => domain.Doc.read({ filter: { ownerId: { eq: "carol" } } }, carol);
+    try {
+      for (const [index, [route, through]] of ROUTES.entries()) {
+        hooks.escape = () => through(world, second, carols);
+        hooks.results.length = 0;
+        hooks.caught.length = 0;
+        const decisions = await world.binding.transaction(async () => {
+          await domain.Doc.draft({ ownerId: "carol", title: "uncommitted", level: 1 }, carol);
+          return [await nudge(carol), await can(domain.Doc.nudge, { id: ids.plain }, carol)];
+        });
+        expect([route, hooks.caught]).toEqual([route, []]);
+        // Each read, the question's and can's, sees the row the transaction has not committed, and those committed before it.
+        expect([route, hooks.results.map((rows: unknown) => (rows as unknown[]).length)]).toEqual([route, [index + 1, index + 1]]);
+        expect(decisions).toEqual([allowed(entry("viaEscape", "authorize-if", "async () => await escapes()", true, true)), true]);
+        expect(second.seams).toEqual([]);
+      }
+    } finally {
+      hooks.escape = async () => undefined;
+      await world.db.close();
+    }
+  });
+});
+
+describe("questions and calls at once, and a layer that fails", () => {
+  const edit = (title: string) => ({ id: ids.plain, title });
+  const ALICE_EDITS = allowed(entry("owner", "authorize-if", OWNER, true, true), entry("blocklist", "forbid-if", BLOCKLIST, false, true), entry("frozen", "forbid-if", "() => &locked", false, true));
+  const BOB_EDITS = denied(entry("owner", "authorize-if", OWNER, false, true), entry("blocklist", "forbid-if", BLOCKLIST, false, false), entry("frozen", "forbid-if", "() => &locked", false, false));
+
+  test("two questions, one whose policy writes, and a real call, in parallel on one binding: each gets its own answer, and only the call writes", async () => {
+    const world = await fresh();
+    try {
+      helperModule.log.length = 0;
+      const [mine, theirs, poked, edited] = await world.binding.run(() => Promise.all([
+        checkPolicies(domain.Doc.edit, edit("asked"), alice),
+        checkPolicies(domain.Doc.edit, edit("asked"), bob),
+        outcome(checkPolicies(domain.Doc.poke, { id: ids.plain }, alice)),
+        domain.Doc.edit(edit("parallel"), alice),
+      ]));
+      expect(mine).toEqual(ALICE_EDITS);
+      expect(theirs).toEqual(BOB_EDITS);
+      expect(poked).toEqual({ ok: false, error: expect.any(FrameworkError) });
+      expect(edited.title).toBe("parallel");
+      const after = await dump(world.db) as { docs: { id: string; title: string }[]; audits: unknown[] };
+      expect(after.docs.find((doc) => doc.id === ids.plain)?.title).toBe("parallel");
+      expect(after.audits).toEqual([]);
+      // Only the call ran its check, its step and its seams; the refused write ran nothing.
+      expect(helperModule.log).toEqual(["validate", "step"]);
+      expect(world.seams).toEqual(["beforeTransaction edit", "afterWrite edit", "afterCommit 1"]);
+    } finally { await world.db.close(); }
+  });
+
+  test("the same inside transaction(fn): the questions join it one at a time, and the refused write fails nothing", async () => {
+    const world = await fresh();
+    try {
+      helperModule.log.length = 0;
+      const [mine, theirs, poked, edited] = await world.binding.transaction(() => Promise.all([
+        checkPolicies(domain.Doc.edit, edit("asked"), alice),
+        checkPolicies(domain.Doc.edit, edit("asked"), bob),
+        outcome(checkPolicies(domain.Doc.poke, { id: ids.plain }, alice)),
+        domain.Doc.edit(edit("parallel"), alice),
+      ]));
+      expect(mine).toEqual(ALICE_EDITS);
+      expect(theirs).toEqual(BOB_EDITS);
+      expect(poked).toEqual({ ok: false, error: expect.any(FrameworkError) });
+      expect(edited.title).toBe("parallel");
+      const after = await dump(world.db) as { docs: { id: string; title: string }[]; audits: unknown[] };
+      expect(after.docs.find((doc) => doc.id === ids.plain)?.title).toBe("parallel");
+      expect(after.audits).toEqual([]);
+      expect(helperModule.log).toEqual(["validate", "step"]);
+      expect(world.seams).toEqual(["afterWrite edit", "afterCommit 1"]);
+      // A question joined to the transaction hands the layer nothing: no answer, no outcome, and nothing it rejected with.
+      expect(world.handed.filter((value) => value instanceof Error || (typeof value === "object" && value !== null && ("ok" in value || "decision" in value)))).toEqual([]);
+    } finally { await world.db.close(); }
+  });
+
+  test("a rollback that fails is not swallowed: the question throws what the layer threw", async () => {
+    const world = await fresh();
+    try {
+      // A layer that rolls the transaction back, then rejects with an error of its own instead of what the callback threw.
+      const failing: DataLayer = {
+        transaction: async (run) => {
+          try { return await world.db.transaction(run); }
+          catch (cause) { throw new Error("the rollback failed", { cause }); }
+        },
+        refuseIfFailed: () => world.db.refuseIfFailed(),
+        close: () => world.db.close(),
+      };
+      const binding = app.bind(failing, {});
+      // A question its policies decide on the row opens a transaction of its own, and that transaction's end fails.
+      const asked = await outcome(binding.run(() => checkPolicies(domain.Doc.edit, edit("x"), alice)));
+      expect(asked).toEqual({ ok: false, error: expect.any(Error) });
+      expect(((asked as { error: Error }).error).message).toBe("the rollback failed");
+      // One its policies decide on the caller alone opens none, and answers.
+      expect(await binding.run(() => can(domain.Doc.draft, { ownerId: "alice", title: "new", level: null }, alice))).toBe(true);
     } finally { await world.db.close(); }
   });
 });
@@ -655,7 +873,8 @@ describe("what the question is asked about", () => {
   test("anything but an action function of an entity value throws a FrameworkError saying so, and nothing is added to the function", async () => {
     const world = await fresh();
     try {
-      const given = "a function that is not one (a plain function, a Mesh.privileged read or a copy made with .bind)";
+      const given = "a function that is not one (a plain function, a Mesh.privileged read, a copy made with .bind, or an action of an entity value made by a "
+        + "second copy of @meshfw/runtime in the install, which meshfw avoids by taking @meshfw/runtime as a peer dependency)";
       const values: [unknown, string][] = [
         [async (_input: unknown, _context: unknown) => undefined, given],
         [(Mesh.privileged(domain.Doc as never) as { read: unknown }).read, given],
