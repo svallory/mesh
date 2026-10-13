@@ -1,21 +1,33 @@
 import { Mesh as M } from "meshfw"
 import { Receipt } from "./receipt.mesh.mx"
-import { askLoudly, askQuietly, remember } from "./probe"
+import { askAboutParent, askLoudly, askQuietly, remember } from "./probe"
 
 entity :Ledger
   attributes
     uuid :id primary-key
     string :name
     uuid :invoiceId
+    uuid :parentId nullable
 
   computed
-    boolean :covered() { return askQuietly({}) }
+    boolean :covered() { return askQuietly("can", {}) }
+    boolean :viaCheck() { return askQuietly("checkPolicies", {}) }
+    boolean :viaAction() { return askQuietly("action", {}) }
 
   actions auto=[:read]
     create :add
       input
         &name
         &invoiceId
+        &parentId
+
+    update :reparent
+      input
+        &parentId
+
+    update :settle
+      input
+        &name
 
     update :rename
       input
@@ -31,8 +43,15 @@ entity :Ledger
     policy :adding types=[:create]
       authorize-if=() => true
     policy :looking types=[:read]
-      authorize-if=({ context }) => askQuietly(context)
+      authorize-if=({ context }) => {
+        if (context.probe === "policy") return askQuietly("can", context)
+        return true
+      }
     policy :renaming actions=[&rename]
-      authorize-if=async ({ self, context }) => await askLoudly(context, self.invoiceId)
+      authorize-if=async ({ self, context }) => await askLoudly("can", context, self.invoiceId)
     policy :auditing actions=[&audit]
       authorize-if=() => true
+    policy :reparenting actions=[&reparent]
+      authorize-if=() => true
+    policy :settling actions=[&settle]
+      authorize-if=async ({ self, context }) => await askAboutParent(context, self.parentId)

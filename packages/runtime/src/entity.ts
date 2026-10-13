@@ -279,11 +279,16 @@ function bindingFor(value: object, label: string, caller: FrameStore | undefined
  * One call of an entity value's method: on the binding in scope, else the connected one, counted in flight. While a
  * computed field or a read policy is evaluated it is refused, as `privileged` is.
  */
-async function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
+function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
+  // Refused by throwing, not by rejecting, as `Mesh.privileged` and `Mesh.checkPolicies` are: a computed field whose helper
+  // returns the promise of a refused call would otherwise report "returned a promise" and lose the reason.
+  const mark = inScope(frames.get(value))?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
+  return dispatchCall(value, fqn, action, input, context);
+}
+async function dispatchCall(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
   const frame = frames.get(value);
   const caller = inScope(frame);
-  const mark = caller?.mark ?? evaluatingNow();
-  if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
   // In a store a question made (`Mesh.checkPolicies`, CMP-21), no write action starts, on any binding of the project: it
   // is refused here, before it casts its input or runs anything of its own. A read runs on the binding's probe, on the
@@ -325,7 +330,7 @@ export function privileged<E extends EntityValue<object, object>>(entity: E): Pr
 }
 
 function marked(what: string, mark: string): FrameworkError {
-  return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action and no privileged read. Load what it needs instead, or do it in a step or a check`);
+  return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`);
 }
 
 /**
@@ -748,24 +753,43 @@ function described(value: unknown): string {
  * throws `ForbiddenError`. A read answers whether it is allowed at all: no policy covering it, or none admitting the
  * caller, is `allowed: false`.
  */
-export async function checkPolicies(action: unknown, input: unknown, context: unknown): Promise<Decision> {
+export function checkPolicies(action: unknown, input: unknown, context: unknown): Promise<Decision> {
+  return askPolicies("checkPolicies", action, input, context);
+}
+
+/**
+ * How many questions may be open one inside another, each asked by a policy of the one before (as `MAX_DEPTH` in `load.ts`
+ * bounds a path of computed fields): a policy that asks about its own action, or two that ask each other, stop here.
+ */
+const MAX_QUESTION_DEPTH = 32;
+
+/** `Mesh.checkPolicies` and `Mesh.can` (`member` names which, in the messages): refused by throwing while marked, as `Mesh.privileged` is. */
+function askPolicies(member: "checkPolicies" | "can", action: unknown, input: unknown, context: unknown): Promise<Decision> {
   const target = typeof action === "function" ? actions.get(action) : undefined;
   if (!target)
-    throw new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${described(action)}`);
+    return Promise.reject(new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${described(action)}`));
   const { value, fqn, name } = target;
-  const label = `${fqn}#${name}`;
-  const where = `Mesh.checkPolicies(${label})`;
-  const frame = frames.get(value);
-  const caller = inScope(frame);
+  const where = `Mesh.${member}(${fqn}#${name})`;
   // While a computed field or a read policy is evaluated, as for `Mesh.privileged` and an entity's action (TXN-18): an entity
   // file's computed field and read policy cannot call it, the build refuses them (`MESH_COMPUTED_COMPOSES`,
   // `MESH_POLICY_ASKS`), and this refuses one a helper hides. A write policy is not marked, so a call hidden there runs, as a
   // hidden `Mesh.privileged` read does: the build refuses a direct one in any policy, read or write (`MESH_POLICY_ASKS`).
-  const mark = caller?.mark ?? evaluatingNow();
+  const mark = inScope(frames.get(value))?.mark ?? evaluatingNow();
   if (mark !== undefined) throw marked(where, mark);
+  return answer(target, where, input, context);
+}
+
+async function answer({ value, fqn, name }: { value: object; fqn: string; name: string }, where: string, input: unknown, context: unknown): Promise<Decision> {
+  const label = `${fqn}#${name}`;
+  const frame = frames.get(value);
+  const caller = inScope(frame);
   const { state } = bindingFor(value, where, caller);
   // Asked inside another question (a policy's helper asks), it reads through that question's layers.
   const outer = questionOf(caller);
+  let depth = 0;
+  for (let open = outer; open; open = open.outer) depth++;
+  if (depth >= MAX_QUESTION_DEPTH)
+    throw new FrameworkError(`${where} was asked ${MAX_QUESTION_DEPTH} questions deep: the policies of ${label} ask other actions' policies too deeply, probably in a cycle (a policy that asks about its own action, or policies that ask each other)`);
   const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
   const probe = probeFor(question, state);
   const bound = (value as EntityValue<object>)[BIND](answeringLayer(probe.layer), { clock: state.options.clock }, probe.frame) as BoundActions;
@@ -795,6 +819,6 @@ export async function checkPolicies(action: unknown, input: unknown, context: un
 }
 
 /** `Mesh.can(Todo.complete, input, context)`: true exactly when `checkPolicies` with the same arguments resolves with `allowed` true. */
-export async function can(action: unknown, input: unknown, context: unknown): Promise<boolean> {
-  return (await checkPolicies(action, input, context)).allowed === true;
+export function can(action: unknown, input: unknown, context: unknown): Promise<boolean> {
+  return askPolicies("can", action, input, context).then((decision) => decision.allowed === true);
 }

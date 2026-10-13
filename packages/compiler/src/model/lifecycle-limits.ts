@@ -98,6 +98,8 @@ export function checkLifecycleLimits(
         `${what} reads \`before\`, the stored record, and a create has none, so it is always null`, expression.position,
         "Remove it. Compare with `self` or `input`, or move the rule to an update"));
     }
+    const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
+    const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
     // A policy decides; it does not act, and it sees no `before` (it runs before `validate`, POL-08). A read policy that
     // reads the record is a filter on the query, which the SQL evaluator folds in M10 (RDM-10).
     for (const policy of entity.policies)
@@ -115,11 +117,14 @@ export function checkLifecycleLimits(
             expression.position, "read what the decision needs through `Mesh.privileged(Entity)`, which runs reads only"));
         // Nor does it ask: a policy that asks another action's policies can be asked back, and nothing bounds that. Allowing it
         // later is not a breaking change; refusing it later would be.
+        const asks = expression.plain?.asks ? options.askCallsOf?.(expression) : undefined;
         if (expression.plain?.asks)
-          for (const position of options.askCallsOf?.(expression)?.length ? options.askCallsOf(expression) : [expression.position])
+          for (const position of asks?.length ? asks : [expression.position])
             diagnostics.push(error("MESH_POLICY_ASKS",
               `${what} asks another action's policies (\`Mesh.can\` or \`Mesh.checkPolicies\`): a policy may not ask, since the policy it asks could ask back and nothing bounds that`,
-              position, "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a check"));
+              position, !reads.some((action) => policiesCovering(entity, action).includes(policy)) && !loads.includes(policy)
+                ? "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a `validate` check"
+                : "decide in the policy from the record and what it loads, and ask in a step or a `validate` check of a write action"));
       }
     // A policy with no check would pass every call it covers (POL-16): the build says so, and asks for it written out.
     for (const policy of entity.policies)
@@ -128,8 +133,6 @@ export function checkLifecycleLimits(
           `policy :${policy.name} of ${entity.fqn} has no \`authorize-if\` and no \`forbid-if\`, so it would pass every call it covers`,
           policy.position,
           "To let every caller through, say so: `authorize-if=() => true`. Otherwise write the check the policy stands for"));
-    const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
-    const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
     for (const policy of entity.policies) {
       const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
       if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");

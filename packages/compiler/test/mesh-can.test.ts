@@ -99,6 +99,23 @@ describe("name resolution: every rule `Mesh` already follows holds", () => {
     expect(errors(inPolicy('await Mesh["can"](Task.go, input, context)')).map((e) => e.code)).toEqual(["MESH_POLICY_ASKS"]);
   });
 
+  test("a template literal with no substitution is a fixed key, as a string is", () => {
+    for (const call of ["Mesh[`can`](Task.go, input, context)", "Mesh?.[`checkPolicies`](Task.go, input, context)"])
+      expect(errors(inPolicy(`await ${call}`)).map((e) => e.code), call).toEqual(["MESH_POLICY_ASKS"]);
+    // `privileged` was missed the same way: in a computed field it is refused.
+    const computed = entity(check("() => true"), "  computed\n    boolean :c() { return Mesh[`privileged`](Task) !== null }\n");
+    expect(errors(computed).map((e) => e.code)).toEqual(["MESH_COMPUTED_COMPOSES"]);
+    expect(asks(entity(run("await Mesh[`can`](Task.go, input, context)")))).toBe(true);
+    expect(errors(inPolicy("await Mesh[`can`](Task.go, input, context)")).map((e) => e.code)).toEqual(["MESH_POLICY_ASKS"]);
+    for (const body of ["const { [`can`]: ask } = Mesh; await ask(Task.go, input, context)", "let ask; ({ [`checkPolicies`]: ask } = Mesh); await ask(Task.go, input, context)"]) {
+      expect(errors(entity(run(body))), body).toEqual([]);
+      expect(asks(entity(run(body))), body).toBe(true);
+    }
+    // An unknown function written that way is unknown, and one with a substitution names no member.
+    expect(errors(entity(run("await Mesh[`nope`](input)"))).map((e) => e.code)).toEqual(["MESH_UNKNOWN_MESH_FUNCTION"]);
+    expect(errors(entity(run("const k = 'can'; await Mesh[`${k}`](input)")))).toEqual([]);
+  });
+
   test("a member destructured from Mesh counts as a read of it", () => {
     for (const body of [
       "const { can } = Mesh; await can(Task.go, input, context)",
@@ -178,7 +195,9 @@ describe("a computed field may not ask (MESH_COMPUTED_COMPOSES)", () => {
 describe("a policy may not ask (MESH_POLICY_ASKS)", () => {
   const policy = (header: string, ...lines: string[]) =>
     entity(check("() => true"), policies(header, ...lines.map((line) => `  ${line}`), "policy :rest types=[:read, :create, :destroy]", "  authorize-if=() => true"));
-  const FIX = "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a check";
+  const FIX = "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a `validate` check";
+  // A read policy may not read through `Mesh.privileged` (MESH_READ_POLICY_PRIVILEGED), so its fix does not offer it.
+  const READ_FIX = "decide in the policy from the record and what it loads, and ask in a step or a `validate` check of a write action";
 
   test("a write policy's check is refused at the call, naming the policy and the check", () => {
     const source = policy("policy :p types=[:update]", `forbid-if=${ASK}`);
@@ -193,6 +212,9 @@ describe("a policy may not ask (MESH_POLICY_ASKS)", () => {
 
   test("a read policy is refused too, and so is a `when=` and an authorize-if", () => {
     expect(codes(policy("policy :p types=[:read]", `authorize-if=${ASK}`))).toEqual(["error:MESH_POLICY_ASKS"]);
+    expect(errors(policy("policy :p types=[:read]", `authorize-if=${ASK}`)).map((e) => e.fix)).toEqual([READ_FIX]);
+    // A policy that covers a read and a write is a read policy too.
+    expect(errors(policy("policy :p", `authorize-if=${ASK}`)).map((e) => e.fix)).toEqual([READ_FIX]);
     const when = policy(`policy :p types=[:update] when=${ASK}`, "authorize-if=() => true");
     expect(errors(when).map((e) => [e.code, e.message.split(" asks ")[0]])).toEqual([["MESH_POLICY_ASKS", "policy :p when"]]);
     // A policy that covers every action.
@@ -217,6 +239,12 @@ describe("a policy may not ask (MESH_POLICY_ASKS)", () => {
     // Reading privileged in a read policy keeps its own code; asking in the same check adds this one.
     const both = policy("policy :p types=[:read]", "authorize-if=async ({ input, context }) => (await Mesh.privileged(Task).read({})).length > 0 && (await Mesh.can(Task.go, input, context))");
     expect(codes(both).sort()).toEqual(["error:MESH_POLICY_ASKS", "error:MESH_READ_POLICY_PRIVILEGED"]);
+  });
+
+  test("Mesh read whole is no call the build sees: it adds no error (the run time refuses it where a hidden call is refused)", () => {
+    for (const call of ["(0, Mesh).can(Task.go, input, context)", "Mesh[input.k](Task.go, input, context)"])
+      expect(errors(policy("policy :p types=[:update]", `authorize-if=async ({ input, context }) => await ${call}`)), call).toEqual([]);
+    expect(errors(policy("policy :p types=[:update]", "authorize-if=({ context }) => { const M = Mesh; return M.isSystem(context) }"))).toEqual([]);
   });
 
   test("a policy whose Mesh is a parameter is not asking", () => {

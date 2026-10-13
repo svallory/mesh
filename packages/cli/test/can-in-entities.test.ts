@@ -98,7 +98,7 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
   test("on SQLite: asked before the call, a denied receipt is skipped and the outer action commits; unasked, the denied call fails the outer action even when caught", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
     const { billing } = await import(join(root, ".mesh/domain/index.ts"));
-    const { seen, hidden } = await import(join(root, "domain/billing/probe.ts")) as { seen: Record<string, unknown>[]; hidden: Promise<boolean>[] };
+    const { seen } = await import(join(root, "domain/billing/probe.ts")) as { seen: Record<string, unknown>[] };
     const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
     const layer = sqlite({ file: ":memory:" });
     await createSchema(layer, app.tables);
@@ -160,26 +160,33 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
         expect(stamp).toMatchObject({ level: true, ahead: { allowed: false } });
         expect(stamp!.now).toBeInstanceOf(Date);
         expect(stamp!.ahead.breakdown.find((check) => check.decisive)).toMatchObject({ policy: "notAhead", kind: "forbid-if", result: true });
-        expect(hidden).toHaveLength(0);
       });
     } finally {
       await layer.close();
     }
   }, 30_000);
 
-  test("a call hidden in a helper: refused while a computed field or a read policy is evaluated, and run in a write policy", async () => {
+  test("a call hidden in a helper: refused, by throwing, while a computed field or a read policy is evaluated, and run in a write policy", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
     const { billing } = await import(join(root, ".mesh/domain/index.ts"));
-    const { hidden, seen, asker } = await import(join(root, "domain/billing/probe.ts")) as {
-      hidden: Promise<boolean>[]; seen: unknown[]; asker: { current: ((context: { system?: boolean }, invoiceId: string) => Promise<boolean>) | undefined };
+    const { seen, asker } = await import(join(root, "domain/billing/probe.ts")) as {
+      seen: unknown[]; asker: { current: ((kind: string, context: { system?: boolean }, id: string) => Promise<unknown>) | undefined };
     };
     const { Mesh } = await import(Bun.resolveSync("meshfw", root));
     const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
     const layer = sqlite({ file: ":memory:" });
     await createSchema(layer, app.tables);
-    // What the helpers ask: the receipt of the invoice, for the system, as the call's context otherwise.
-    asker.current = (context, invoiceId) => Mesh.can(billing.Receipt.record, { invoiceId, amount: 1, at: new Date(0) }, { ...context, system: true });
+    // What the helpers ask: the receipt of an invoice, for the system, as the call's context otherwise; or a ledger's `settle`.
+    const receipt = (id: string) => ({ invoiceId: id, amount: 1, at: new Date(0) });
+    asker.current = (kind, context, id) => {
+      const system = { ...context, system: true };
+      if (kind === "can") return Mesh.can(billing.Receipt.record, receipt(id), system);
+      if (kind === "checkPolicies") return Mesh.checkPolicies(billing.Receipt.record, receipt(id), system);
+      if (kind === "settle") return Mesh.can(billing.Ledger.settle, { id, name: "settled" }, context);
+      return billing.Receipt.record(receipt(id), system);
+    };
     const anyone = {};
+    const message = (what: string, where: string) => `${what} was called while ${where} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
     try {
       await app.bind(layer).run(async () => {
         const paid = await billing.Invoice.open({ amount: 1 }, anyone);
@@ -187,16 +194,18 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
         const open = await billing.Invoice.open({ amount: 1 }, anyone);
         const covered = await billing.Ledger.add({ name: "covered", invoiceId: paid.id }, anyone);
         const uncovered = await billing.Ledger.add({ name: "uncovered", invoiceId: open.id }, anyone);
-        hidden.splice(0);
 
-        // The read policy asks first (one question), then each row's computed field loads (two rows, two questions).
-        const rows = await billing.Ledger.read({ load: ["covered"] }, anyone) as { covered: boolean }[];
-        expect(rows.map((row) => row.covered)).toEqual([true, true]);
-        const refusals = await Promise.all(hidden.map((asked) => asked.then(() => undefined, (error: unknown) => error)));
-        expect(refusals).toHaveLength(3);
-        for (const error of refusals) expect(error).toBeInstanceOf(FrameworkError);
-        expect((refusals[0] as Error).message).toStartWith("Mesh.checkPolicies(billing.Receipt#record) was called while policy :looking of billing.Ledger is evaluated");
-        for (const error of refusals.slice(1)) expect((error as Error).message).toStartWith("Mesh.checkPolicies(billing.Receipt#record) was called while computed :covered of billing.Ledger is evaluated");
+        // The read policy asks: the call throws (it does not reject), so the policy fails with the reason.
+        const byPolicy = await rejection(billing.Ledger.read({}, { probe: "policy" }), FrameworkError);
+        expect(byPolicy.message).toBe(message("Mesh.can(billing.Receipt#record)", "policy :looking of billing.Ledger"));
+        // A computed field whose helper calls each of the three gets the precise error, and each names its own call.
+        const names = [["covered", "Mesh.can(billing.Receipt#record)"], ["viaCheck", "Mesh.checkPolicies(billing.Receipt#record)"], ["viaAction", "billing.Receipt#record"]] as const;
+        for (const [field, what] of names) {
+          const error = await rejection(billing.Ledger.read({ load: [field] }, anyone), FrameworkError);
+          expect(error.message).toBe(message(what, "computed :" + field + " of billing.Ledger"));
+        }
+        // Without the field or the policy asking, the read goes on.
+        expect(await billing.Ledger.read({}, anyone)).toHaveLength(2);
 
         // A write policy is not marked (as a hidden `Mesh.privileged` read is not): the hidden call runs, and answers. The
         // receipt's `paid` policy says yes for the paid invoice and no for the open one.
@@ -208,6 +217,27 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
         await billing.Ledger.audit({ id: covered.id }, anyone);
         await billing.Ledger.audit({ id: uncovered.id }, anyone);
         expect(seen.splice(0)).toEqual([{ step: "audit", allowed: true }, { step: "audit", allowed: false }]);
+
+        // A recursion that ends answers: a ledger's policy asks about its parent's, up to the root, which has none.
+        const root1 = await billing.Ledger.add({ name: "root", invoiceId: paid.id, parentId: null }, anyone);
+        let parent = root1;
+        for (let level = 0; level < 5; level++) parent = await billing.Ledger.add({ name: `level ${level}`, invoiceId: paid.id, parentId: parent.id }, anyone);
+        expect(await billing.Ledger.settle({ id: parent.id, name: "settled" }, anyone)).toMatchObject({ name: "settled" });
+        expect(await Mesh.can(billing.Ledger.settle, { id: parent.id, name: "x" }, anyone)).toBe(true);
+
+        // A recursion that does not end (a ledger that is its own parent) stops at the cap, quickly, naming the action,
+        // and nothing is written.
+        const loop = await billing.Ledger.add({ name: "loop", invoiceId: paid.id }, anyone);
+        await billing.Ledger.reparent({ id: loop.id, parentId: loop.id }, anyone);
+        const began = performance.now();
+        const deep = await rejection(billing.Ledger.settle({ id: loop.id, name: "never" }, anyone), FrameworkError);
+        expect(deep.message).toContain("billing.Ledger#settle");
+        expect(deep.message).toContain("ask other actions' policies too deeply, probably in a cycle");
+        expect(performance.now() - began).toBeLessThan(5_000);
+        const rows = await billing.Ledger.read({}, anyone) as { id: string; name: string }[];
+        expect(rows.find((row) => row.id === loop.id)?.name).toBe("loop");
+        // Asked from outside, the same cap.
+        await rejection(Mesh.can(billing.Ledger.settle, { id: loop.id, name: "never" }, anyone), FrameworkError);
       });
     } finally {
       await layer.close();

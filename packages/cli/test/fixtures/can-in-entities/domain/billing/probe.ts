@@ -11,24 +11,30 @@ export function remember(value: unknown): void {
   seen.push(value);
 }
 
-/** Asks `Mesh.can(Receipt.record, ...)` for the invoice, as the context of the call but the system. Set by the test. */
-export const asker: { current: ((context: { system?: boolean }, invoiceId: string) => Promise<boolean>) | undefined } = { current: undefined };
-const ask = (context: { system?: boolean }, invoiceId: string): Promise<boolean> => {
+/** What a helper asks: the receipt's policies with `Mesh.can` or `Mesh.checkPolicies`, or the receipt itself (an entity's action), or a ledger's `settle`. Set by the test. */
+export type Kind = "can" | "checkPolicies" | "action" | "settle";
+export const asker: { current: ((kind: Kind, context: { system?: boolean }, id: string) => Promise<unknown>) | undefined } = { current: undefined };
+const ask = (kind: Kind, context: { system?: boolean }, id: string): Promise<unknown> => {
   if (!asker.current) throw new Error("the test sets asker.current");
-  return asker.current(context, invoiceId);
+  return asker.current(kind, context, id);
 };
 
-/** The promises of the questions a helper asked while a computed field or a policy was evaluated; each is expected to reject. */
-export const hidden: Promise<boolean>[] = [];
-/** Asks and keeps the promise. Returns a plain value, as a computed field or a read policy needs. */
-export function askQuietly(context: { system?: boolean }): boolean {
-  const asked = ask(context, "00000000-0000-4000-8000-000000000000");
-  asked.catch(() => undefined);
-  hidden.push(asked);
+/**
+ * Asks and drops the promise, answering a plain value, as a computed field or a read policy needs. While one is evaluated
+ * the call is refused by throwing, so it throws out of the field or the policy; the rejection of a promise nobody awaits
+ * would end the process, so a promise that does come back is caught.
+ */
+export function askQuietly(kind: Kind, context: { system?: boolean }): boolean {
+  ask(kind, context, "00000000-0000-4000-8000-000000000000").catch(() => undefined);
   return true;
 }
 
 /** The same question, awaited and answered: from a write policy (a helper hides the call from the build), where it runs. */
-export async function askLoudly(context: { system?: boolean }, invoiceId: string): Promise<boolean> {
-  return ask(context, invoiceId);
+export async function askLoudly(kind: Kind, context: { system?: boolean }, id: string): Promise<boolean> {
+  return (await ask(kind, context, id)) === true;
+}
+
+/** A ledger's policy asks whether its parent may be settled, up to the root, which has none: a recursion that ends. */
+export async function askAboutParent(context: { system?: boolean }, parentId: string | null): Promise<boolean> {
+  return parentId === null || await askLoudly("settle", context, parentId);
 }

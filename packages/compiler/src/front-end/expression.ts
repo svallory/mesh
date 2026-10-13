@@ -136,8 +136,18 @@ function meshMember(n: N, ctx: ConvertContext, shadowed: (name: string) => boole
   const object = n.object as N;
   if (object?.type !== "Identifier" || !isMeshImport(object.name!, ctx, shadowed)) return undefined;
   const property = n.property as N;
-  const name = !n.computed && property?.type === "Identifier" ? property.name : n.computed && property?.type === "StringLiteral" ? String(property.value) : undefined;
+  const name = fixedKey(property, n.computed);
   return name === undefined ? undefined : { local: object.name!, name };
+}
+/** The fixed key a member name or an object pattern key writes: an identifier, a string, or a template literal with no `${}` (its cooked text). */
+function fixedKey(key: N | undefined, computed: boolean | undefined): string | undefined {
+  if (key?.type === "Identifier") return computed ? undefined : key.name;
+  if (key?.type === "StringLiteral") return String(key.value);
+  if (key?.type === "TemplateLiteral" && ((key.expressions ?? []) as N[]).length === 0) {
+    const cooked = ((key.quasis ?? []) as N[])[0]?.value as { cooked?: string | null } | undefined;
+    return cooked?.cooked ?? undefined;
+  }
+  return undefined;
 }
 const isMeshImport = (name: string, ctx: ConvertContext, shadowed: (name: string) => boolean) =>
   ctx.mesh?.has(name) === true && !shadowed(name) && !SCOPE_NAMES.has(name);
@@ -145,7 +155,10 @@ const isMeshImport = (name: string, ctx: ConvertContext, shadowed: (name: string
  * The members of the file's `Mesh` import that a read of it (`n`, an identifier that is that import) names, each with the
  * node that names it: the member it reads (`Mesh.isSystem`, `Mesh?.isSystem`, `Mesh["isSystem"]`), or each fixed key of an object pattern
  * it initialises (`const { privileged, now: clock } = Mesh`, `({ today } = Mesh)`, a parameter's default `{ now } = Mesh`).
- * A rest element or a computed key names no member: such a read is opaque, as passing `Mesh` to a helper is.
+ * A rest element or a computed key names no member: such a read is opaque, as passing `Mesh` to a helper is. So is any read of
+ * `Mesh` whole (`const M = Mesh; M.can(...)`, `(0, Mesh).can`, `Mesh[k]`, `[Mesh].map(...)`): the build sees no call in it and
+ * adds no error for it, since `const M = Mesh; M.isSystem(context)` is legal in a policy. It hides a call as a helper does:
+ * refused at run time where a hidden call is refused (a computed field, a read policy), and run in a write policy.
  */
 function meshReads(n: N, parent: N | undefined, key: string | undefined, ctx: ConvertContext, shadowed: (name: string) => boolean): { local: string; name: string; at: N }[] {
   if (!parent) return [];
@@ -160,7 +173,7 @@ function meshReads(n: N, parent: N | undefined, key: string | undefined, ctx: Co
   return ((destructured.properties ?? []) as N[]).flatMap((property) => {
     if (property.type !== "ObjectProperty") return [];
     const at = property.key as N;
-    const name = !property.computed && at?.type === "Identifier" ? at.name : at?.type === "StringLiteral" ? String(at.value) : undefined;
+    const name = at?.type === "StringLiteral" ? String(at.value) : fixedKey(at, property.computed);
     return name === undefined ? [] : [{ local: n.name!, name, at }];
   });
 }
