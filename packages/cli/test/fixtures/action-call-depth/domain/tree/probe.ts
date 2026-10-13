@@ -8,7 +8,7 @@
 /** What a helper calls an action with: set by the test, which knows the entity value and the binding. */
 export const hooks: { call: ((kind: string, id: string | undefined) => Promise<unknown>) | undefined } = { call: undefined };
 /** How many times `twiceCatching` ran, and how many times `ping` did. The test reads and resets them. */
-export const counts = { twice: 0, ping: 0 };
+export const counts = { twice: 0, ping: 0, catching: 0, level: 0 };
 
 export async function recurse(kind: string, id?: string): Promise<void> {
   if (!hooks.call) throw new Error("the test sets hooks.call");
@@ -37,4 +37,31 @@ export async function twiceCatching(id: string): Promise<void> {
 
 export function ping(): void {
   counts.ping++;
+}
+
+/** A fail-closed helper of a step that creates a row: it calls the create action `times` times and catches whatever the call throws. */
+export async function spawnCatching(kind: string, times: number): Promise<void> {
+  counts.catching++;
+  for (let call = 0; call < times; call++) {
+    try {
+      await recurse(kind);
+    } catch {
+      // swallowed: the cap's error fails the transaction all the same
+    }
+  }
+}
+
+/** Recurses through creates until the 1,000th level, which asks a question whose policy's helper reads. */
+export async function descend(): Promise<void> {
+  counts.level++;
+  await recurse(counts.level < 1_000 ? "descend" : "ask");
+}
+
+/** A policy's helper: a read, which a question allows, and catches what it throws. */
+export async function readCatching(): Promise<void> {
+  try {
+    await recurse("read");
+  } catch {
+    // swallowed: the cap's error fails the transaction all the same
+  }
 }

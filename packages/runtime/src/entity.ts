@@ -1,5 +1,6 @@
 import { Answer, answeringLayer, type Decision } from "./answer.ts";
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
+import { failJoined } from "./compose.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, type Clock } from "./expr.ts";
 import type { BindOptions } from "./lifecycle.ts";
@@ -164,23 +165,27 @@ interface FrameStore {
 }
 
 /**
- * A chain of nested action calls (TXN-21): the calls an action, or its policies, steps, `set` and `validate` functions or
- * helpers, start while it runs, and the calls those start. The async context carries it, so it follows the chain through a
- * pre-check, which runs before the action's transaction opens, and through an application's `transaction(fn)`.
+ * A chain of nested action calls (TXN-21): the calls an action, or its policies, steps, `set` and `validate` functions,
+ * helpers or seams, start and await while it runs, and the calls those start. The async context carries it, so it follows
+ * the chain through the seams that run outside the action's transaction (`beforeTransaction`, `afterCommit`) and through an
+ * application's `transaction(fn)`, not only through the data layer's transaction. A call started after the one before has
+ * finished (work left running: a timer, a promise not awaited) is not nested in it and starts a new chain.
  */
 interface CallChain {
   /** This call's place in the chain: 1 for the call that began it. */
   readonly depth: number;
   readonly root: CallRoot;
+  /** True once the call has settled: a call started under it from then on begins a new chain. */
+  settled: boolean;
 }
 
 /** What the calls of one chain share: the action at its root, and the error once the chain went too deep. */
 interface CallRoot {
   readonly label: string;
   /**
-   * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the root call: every call made under it
-   * throws it at entry, and the root call rejects with it once it settles, whatever a helper or a step caught on the way,
-   * so a helper that catches cannot keep a cycle going.
+   * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the chain: every call made under the root
+   * throws it at entry, so a helper that catches it cannot keep a cycle going. Inside a transaction it also fails that
+   * transaction, like any failed nested call (TXN-01), so the root rejects with it and nothing is written.
    */
   tooDeep?: FrameworkError;
 }
@@ -333,23 +338,46 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected. A call that joins its
   // caller's transaction carries that transaction's instant, which the action reads (`ActionFrame.clock`, ACT-29).
   const joined = caller?.state === state && caller.tx !== undefined ? caller.clock : undefined;
-  // The chain it is nested in, if any (TXN-21): a call made past the cap throws at entry, before it runs anything.
-  const calls = nested(caller?.calls, `${fqn}#${action}`);
+  // The chain it is nested in, if any (TXN-21): a call made past the cap throws at entry, before it runs anything, and
+  // fails the running transaction like any failed nested call.
+  let calls: CallChain;
+  try {
+    calls = nested(caller?.calls, `${fqn}#${action}`);
+  } catch (error) {
+    return failNested(state.layer, error);
+  }
   const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}) }, question);
   const outcome = await settle(() => counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer)));
-  // The root call rejects with the cap's error whatever a step or a helper caught on its way.
-  if (calls.depth === 1 && calls.root.tooDeep) throw calls.root.tooDeep;
+  calls.settled = true;
+  // The root rejects with the cap's error itself, the first failure of the chain, not with the rollback of a transaction a
+  // helper's catch left failed, or a stale-row check that failed after the cap did. Resolved, it stays resolved.
+  if (!outcome.ok && calls.depth === 1 && calls.root.tooDeep) throw calls.root.tooDeep;
   return unwrap(outcome);
 }
 
+/**
+ * Reject with `error`, failing the binding's running transaction first when there is one (TXN-01), as `reject` in
+ * `policy.ts` does: what a helper catches does not keep the transaction from rolling back. A cap thrown inside a question
+ * fails the real transaction too, not the question's layer: it aborts the whole chain.
+ */
+async function failNested(layer: DataLayer, error: unknown): Promise<never> {
+  try {
+    if (layer.refuseIfFailed()) await failJoined(layer, error);
+  } catch {
+    // an earlier failure already marked the transaction
+  }
+  throw error;
+}
+
 /** The place in its chain of a call to `label` made inside `parent`, or the start of a chain; throws once the chain is too deep. */
-function nested(parent: CallChain | undefined, label: string): CallChain {
+function nested(caller: CallChain | undefined, label: string): CallChain {
+  const parent = caller?.settled ? undefined : caller;
   const root = parent?.root ?? { label };
   if (root.tooDeep) throw root.tooDeep;
   const depth = (parent?.depth ?? 0) + 1;
   if (depth > MAX_CALL_DEPTH)
     throw root.tooDeep = new FrameworkError(`${label} was called more than ${MAX_CALL_DEPTH} nested calls deep, in a chain that began with ${root.label}: the calls probably form a cycle (an action that calls itself, or actions that call each other, from a step, a policy's helper or a function)`);
-  return { depth, root };
+  return { depth, root, settled: false };
 }
 
 /**

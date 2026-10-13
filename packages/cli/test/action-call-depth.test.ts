@@ -68,7 +68,7 @@ afterAll(async () => {
 interface NodeRow { id: string; name: string; touched: boolean; parentId: string | null }
 type Call = (input: Record<string, unknown>, context: object) => Promise<NodeRow>;
 interface NodeEntity {
-  add: Call; reparent: Call; climb: Call; gate: Call; pre: Call; named: Call; looped: Call; wrap: Call; twice: Call;
+  add: Call; reparent: Call; climb: Call; gate: Call; spawn: Call; spawnTwice: Call; descend: Call; probed: Call; seamed: Call; named: Call; looped: Call; wrap: Call; twice: Call;
   start: Call; afterFailure: Call; fail: Call; count: Call;
   read(input: object, context: object): Promise<NodeRow[]>;
 }
@@ -78,28 +78,35 @@ interface Binding {
 }
 interface Probe {
   hooks: { call: ((kind: string, id: string | undefined) => Promise<unknown>) | undefined };
-  counts: { twice: number; ping: number };
+  counts: { twice: number; ping: number; catching: number; level: number };
 }
 
 const anyone = {};
 
 /** Run `body` on a fresh SQLite database with the helpers wired to the entity's actions; `target` is the row a hook acts on. */
-async function withApp(body: (api: { Node: NodeEntity; bound: Binding; probe: Probe; target: { id: string }; rows(): Promise<NodeRow[]> }) => Promise<void>): Promise<void> {
+type Seams = Record<string, (...args: never[]) => unknown>;
+
+async function withApp(body: (api: { Node: NodeEntity; bound: Binding; probe: Probe; target: { id: string }; rows(): Promise<NodeRow[]> }) => Promise<void>, seams?: (api: { Node: NodeEntity; target: { id: string } }) => Seams): Promise<void> {
   const app = await import(join(root, ".mesh/index.ts"));
   const { tree } = await import(join(root, ".mesh/domain/index.ts")) as { tree: { Node: NodeEntity } };
   const probe = await import(join(root, "domain/tree/probe.ts")) as Probe;
   const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
   const layer = sqlite({ file: ":memory:" });
   await createSchema(layer, app.tables);
-  const bound = app.bind(layer) as Binding;
+  const { Mesh } = await import(Bun.resolveSync("meshfw", root)) as { Mesh: { can(action: unknown, input: unknown, context: object): Promise<boolean> } };
   const { Node } = tree;
   const target = { id: "" };
+  const bound = app.bind(layer, seams ? { seams: seams({ Node, target }) } : {}) as Binding;
   probe.hooks.call = (kind, id) => {
     const at = id ?? target.id;
     switch (kind) {
       case "climb": return Node.climb({ id: at }, anyone);
       case "gate": return Node.gate({ id: at }, anyone);
-      case "pre": return Node.pre({ id: at }, anyone);
+      case "spawn": return Node.spawn({ name: "spawned", parentId: null }, anyone);
+      case "spawnTwice": return Node.spawnTwice({ name: "spawned", parentId: null }, anyone);
+      case "descend": return Node.descend({ name: "descended", parentId: null }, anyone);
+      case "ask": return Mesh.can(Node.probed, { id: at }, anyone);
+      case "read": return Node.read({}, anyone);
       case "named": return Node.named({ id: at, name: "x" }, anyone);
       case "looped": return Node.looped({ id: at }, anyone);
       case "wrap": return bound.transaction(() => Node.wrap({ id: at }, anyone));
@@ -111,6 +118,8 @@ async function withApp(body: (api: { Node: NodeEntity; bound: Binding; probe: Pr
   };
   probe.counts.twice = 0;
   probe.counts.ping = 0;
+  probe.counts.catching = 0;
+  probe.counts.level = 0;
   try {
     await bound.run(() => body({ Node, bound, probe, target, rows: () => Node.read({}, anyone) }));
   } finally {
@@ -161,10 +170,9 @@ describe("a bound on nested action calls (TXN-21)", () => {
     expect(child.exitCode).toBe(0);
   }, 60_000);
 
-  const routes: readonly (readonly [string, "climb" | "gate" | "pre" | "named" | "looped" | "wrap"])[] = [
+  const routes: readonly (readonly [string, "climb" | "gate" | "named" | "looped" | "wrap"])[] = [
     ["a step", "climb"],
     ["a write policy's helper, in a check that reads the record", "gate"],
-    ["a pre-check helper, before the action's transaction opens", "pre"],
     ["a set function", "named"],
     ["a validate check", "looped"],
     ["an application transaction whose call nests", "wrap"],
@@ -175,9 +183,8 @@ describe("a bound on nested action calls (TXN-21)", () => {
         const row = await loop(Node);
         target.id = row.id;
         const error = await bounded(() => Node[action]({ id: row.id, ...(action === "named" ? { name: "x" } : {}) }, anyone));
-        // A function of an entity file may wrap what it throws; the cap's message is the error's own or its cause's.
-        const text = [error.message, error.cause instanceof Error ? error.cause.message : ""].join("\n");
-        expect(text).toContain(capMessage(`tree.Node#${action}`, `tree.Node#${action}`));
+        expect(error.message).toContain(capMessage(`tree.Node#${action}`, `tree.Node#${action}`));
+        expect(error.cause).toBeUndefined();
         expect((await rows()).filter((candidate) => candidate.touched)).toEqual([]);
         // The loop is the same row, left as it was.
         expect((await rows()).map((candidate) => candidate.name)).toEqual(["loop"]);
@@ -190,6 +197,7 @@ describe("a bound on nested action calls (TXN-21)", () => {
       const row = await loop(Node);
       const error = await bounded(() => Node.start({ id: row.id }, anyone));
       expect(error.message).toContain(capMessage("tree.Node#climb", "tree.Node#start"));
+      expect(error.cause).toBeUndefined();
       expect(error.message).toContain("probably form a cycle");
       expect((await rows()).filter((candidate) => candidate.touched)).toEqual([]);
     });
@@ -261,4 +269,109 @@ describe("a bound on nested action calls (TXN-21)", () => {
       expect(probe.counts.ping).toBe(0);
     });
   });
+
+  const seeded = (rows: NodeRow[]) => rows.filter((candidate) => candidate.name !== "seed");
+
+  test("each level creates its own row and a catching helper swallows the cap's error: the root rejects with it and nothing is written", async () => {
+    await withApp(async ({ Node, probe, rows }) => {
+      const error = await bounded(() => Node.spawn({ name: "root", parentId: null }, anyone));
+      expect(error.message).toContain(capMessage("tree.Node#spawn", "tree.Node#spawn"));
+      expect(error.cause).toBeUndefined();
+      expect(probe.counts.catching).toBe(CAP);
+      expect(await rows()).toEqual([]);
+    });
+  }, 20_000);
+
+  test("the twice case with a row per level: bounded, the root rejects with the cap's error, nothing is written", async () => {
+    await withApp(async ({ Node, probe, rows }) => {
+      const error = await bounded(() => Node.spawnTwice({ name: "root", parentId: null }, anyone));
+      expect(error.message).toContain(capMessage("tree.Node#spawnTwice", "tree.Node#spawnTwice"));
+      expect(error.cause).toBeUndefined();
+      expect(probe.counts.catching).toBe(CAP);
+      expect(await rows()).toEqual([]);
+    });
+  }, 20_000);
+
+  test("a chain that reaches Mesh.can, whose policy's helper catches the cap's error: the root rejects with it and nothing is written", async () => {
+    await withApp(async ({ Node, target, rows }) => {
+      target.id = (await Node.add({ name: "seed", parentId: null }, anyone)).id;
+      const error = await bounded(() => Node.descend({ name: "root", parentId: null }, anyone));
+      expect(error.message).toContain(capMessage("tree.Node#read", "tree.Node#descend"));
+      expect(error.cause).toBeUndefined();
+      expect(seeded(await rows())).toEqual([]);
+      expect((await rows()).filter((candidate) => candidate.touched)).toEqual([]);
+    });
+  }, 20_000);
+
+  test("a beforeTransaction seam, which runs with no transaction open, that calls an action in a cycle: capped, plain cap error, nothing written", async () => {
+    let seen = 0;
+    await withApp(async ({ Node, target, rows }) => {
+      const row = await Node.add({ name: "seed", parentId: null }, anyone);
+      target.id = row.id;
+      seen = 0;
+      const error = await bounded(() => Node.seamed({ id: row.id }, anyone));
+      expect(error.message).toContain(capMessage("tree.Node#seamed", "tree.Node#seamed"));
+      expect(error.cause).toBeUndefined();
+      expect(seen).toBe(CAP);
+      expect((await rows()).filter((candidate) => candidate.touched)).toEqual([]);
+    }, ({ Node, target }) => ({
+      beforeTransaction: async (event: { action: string }) => {
+        if (event.action !== "seamed") return;
+        seen++;
+        await Node.seamed({ id: target.id }, anyone);
+      },
+    }));
+  }, 20_000);
+
+  test("an afterCommit seam that calls an action in a cycle is bounded, the call resolves, and the seam's error is logged (TXN-12)", async () => {
+    let seen = 0;
+    const logged: unknown[][] = [];
+    const log = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args); };
+    try {
+      await withApp(async ({ Node, target, rows }) => {
+        const row = await Node.add({ name: "seed", parentId: null }, anyone);
+        target.id = row.id;
+        seen = 0;
+        await Node.seamed({ id: row.id }, anyone);
+        expect(seen).toBe(CAP);
+        expect(logged.length).toBeGreaterThan(0);
+        expect(String(logged[0]?.[0])).toContain("The afterCommit seam threw");
+        expect(String((logged[0]?.[1] as Error).message)).toContain(capMessage("tree.Node#seamed", "tree.Node#seamed"));
+        expect((await rows()).filter((candidate) => candidate.touched)).toHaveLength(1);
+      }, ({ Node, target }) => ({
+        afterCommit: async (event: { changes: readonly { action: string }[] }) => {
+          if (event.changes[0]?.action !== "seamed") return;
+          seen++;
+          await Node.seamed({ id: target.id }, anyone);
+        },
+      }));
+    } finally {
+      console.error = log;
+    }
+  }, 30_000);
+
+  test("calls started after the one before has finished are not nested: a not-awaited chain of batches runs past 1,000", async () => {
+    const BATCHES = 1_500;
+    let seen = 0;
+    let finish: () => void = () => undefined;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    const failures: unknown[] = [];
+    await withApp(async ({ Node, target, rows }) => {
+      const row = await Node.add({ name: "seed", parentId: null }, anyone);
+      target.id = row.id;
+      seen = 0;
+      await Node.seamed({ id: row.id }, anyone);
+      await done;
+      expect(failures).toEqual([]);
+      expect(seen).toBe(BATCHES);
+      expect((await rows()).filter((candidate) => candidate.touched)).toHaveLength(1);
+    }, ({ Node, target }) => ({
+      afterCommit: (event: { changes: readonly { action: string }[] }) => {
+        if (event.changes[0]?.action !== "seamed") return;
+        if (++seen >= BATCHES) return finish();
+        setTimeout(() => { Node.seamed({ id: target.id }, anyone).catch((error: unknown) => { failures.push(error); finish(); }); }, 0);
+      },
+    }));
+  }, 60_000);
 });
