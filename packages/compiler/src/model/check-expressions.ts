@@ -84,8 +84,32 @@ interface Scope {
   pending?: ReadonlySet<string>;
   /** Which part of a check this is: an unknown `that` fails the check, an unknown `when` skips it. */
   checkPart?: "that" | "when" | "details";
+  /** References (`self.x`, `before.x`, `input.x`, `before`) that the left of an enclosing `&&` or `||` has shown are not null here. */
+  nonNull?: ReadonlySet<string>;
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
+}
+
+/** The path of `self.x`, `before.x.y`, `input.x` or `before`, or undefined for anything else (a `?.` chain, a local, a call). */
+function pathOf(n: ExprNode): string | undefined {
+  if (n.kind === "var") return n.name === "self" || n.name === "before" || n.name === "input" ? n.name : undefined;
+  if (n.kind !== "member" || n.optional) return undefined;
+  const object = pathOf(n.object);
+  return object === undefined ? undefined : `${object}.${n.name}`;
+}
+
+/**
+ * The references a boolean expression proves not null: when it is true (`when: true`, the right of `&&`), those it tests
+ * with `!== null` or `!= null`; when it is false (the right of `||`), those it tests with `=== null` or `== null`. An `&&`
+ * proves both sides when true, and an `||` both sides when false. Nothing else narrows (no `typeof`, no truthiness).
+ */
+function provenNotNull(n: ExprNode, when: boolean, into: Set<string> = new Set()): Set<string> {
+  if (n.kind !== "call") return into;
+  if ((n.fn === "isNotNull" && when) || (n.fn === "isNull" && !when)) {
+    const path = n.args[0] ? pathOf(n.args[0]) : undefined;
+    if (path !== undefined) into.add(path);
+  } else if ((n.fn === "and" && when) || (n.fn === "or" && !when)) n.args.forEach((arg) => provenNotNull(arg, when, into));
+  return into;
 }
 
 export function checkExpressions(document: ModelDocument, diagnostics: Diagnostic[], options: CheckOptions): void {
@@ -161,6 +185,14 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
+    const ty = inferNode(n, scope);
+    const path = scope.nonNull?.size ? pathOf(n) : undefined;
+    if (path === undefined || !scope.nonNull!.has(path) || !ty.nullable) return ty;
+    const { unfilled: _, ...rest } = ty;
+    return { ...rest, nullable: false };
+  }
+
+  function inferNode(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
     switch (n.kind) {
       case "literal":
@@ -235,7 +267,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         if (n.fn === "coalesce" && left?.kind === "member" && right?.kind === "member" && left.name === right.name
           && left.object.kind === "var" && left.object.name === "input" && right.object.kind === "var" && right.object.name === "self")
           storedFallback.add(right);
-        const a = n.args.map((arg) => infer(arg, scope));
+        // The right of `a && b` knows what `a` tested not null; the right of `a || b` knows what `a` tested null.
+        const proven = new Set(scope.nonNull);
+        const a = n.args.map((arg) => {
+          const ty = infer(arg, n.fn === "and" || n.fn === "or" ? { ...scope, nonNull: new Set(proven) } : scope);
+          if (n.fn === "and" || n.fn === "or") provenNotNull(arg, n.fn === "and", proven);
+          return ty;
+        });
         // An operator over a member a create has not filled yet is unknown on every create: the check would always fail there.
         if (scope.validate && n.fn !== "isNull" && n.fn !== "isNotNull" && n.fn !== "coalesce")
           a.forEach((t, i) => { if (t.unfilled !== undefined && (n.fn !== "cond" || i === 0)) unfilled(t.unfilled, n.args[i]!.position, scope.checkPart); });
