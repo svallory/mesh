@@ -130,10 +130,10 @@ export const $expressions = {
   "remove.check.versionMatches.details": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.dependent.version,
+      actualVersion: $self.dependent.version,
     }))($s);
   },
   // run, plain (run-step) (src/domain/work/dependency.mesh.mx:67:28)

@@ -2,6 +2,7 @@ import type {
   Diagnostic,
   ExprNode,
   FunctionId,
+  InternalNames,
   PlainReason,
   PlainWhy,
   SourceEdit,
@@ -84,6 +85,24 @@ function writtenTransaction(target: N | undefined): N[] {
     return ((target.properties ?? []) as N[]).flatMap((p) => writtenTransaction((p.value ?? p.argument) as N | undefined));
   if (target.type === "RestElement" || target.type === "AssignmentPattern") return writtenTransaction((target.argument ?? target.left) as N | undefined);
   return [];
+}
+/**
+ * The `%.name` reads a call's callee or a tagged template's tag can be the value of, so that the call calls it: the read
+ * itself (`%.now()`), through parentheses and type assertions, a sequence's last expression (`(0, %.now)()`), a
+ * conditional's branches, and the operands of `||` and `??` and the right one of `&&`.
+ */
+function calledTransaction(callee: N | undefined): N[] {
+  if (!callee) return [];
+  if (transactionMark(callee)) return [callee];
+  switch (callee.type) {
+    case "ParenthesizedExpression": case "TSAsExpression": case "TSSatisfiesExpression": case "TSNonNullExpression": case "TSTypeAssertion": case "TypeCastExpression":
+      return calledTransaction(callee.expression as N | undefined);
+    case "SequenceExpression": return calledTransaction(((callee.expressions ?? []) as N[]).at(-1));
+    case "ConditionalExpression": return [...calledTransaction(callee.consequent as N), ...calledTransaction(callee.alternate as N)];
+    case "LogicalExpression":
+      return callee.operator === "&&" ? calledTransaction(callee.right as N) : [...calledTransaction(callee.left as N), ...calledTransaction(callee.right as N)];
+    default: return [];
+  }
 }
 /** The members every object has, which TypeScript gives `Mesh` too: reading one is no unknown Mesh function. */
 const OBJECT_MEMBERS = new Set(["constructor", "toString", "toLocaleString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable"]);
@@ -263,8 +282,8 @@ function bindings(root: N): Set<string> {
 
 /**
  * Free-variable errors for one function, at the identifier. Returns the scope names the function reads as variables
- * that no scope of the function binds (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
- * function takes from the scope. Each reference is resolved against its own enclosing scopes, as the `Mesh` import is: a
+ * that no scope of the function binds, in a fixed order: what the printed function takes from the scope. `&name` reads
+ * none of them: it is the record's member whatever the function names a local, so it sets `names.record` instead. Each reference is resolved against its own enclosing scopes, as the `Mesh` import is: a
  * loop variable, a nested parameter or a `catch` parameter called `input` shadows the root only where it is in scope,
  * and a read of `input` elsewhere in the function is still the root.
  * Adds to `called` each of Mesh's functions (`isSystem`, `privileged`) the function reads as a member of the file's `Mesh`
@@ -299,17 +318,28 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           position: ctx.at(mark.span.sourceStart),
           fix: `write \`%.now\` for ${TRANSACTION_MEMBERS.get("now")!.what}, or \`%.today\` for ${TRANSACTION_MEMBERS.get("today")!.what}`,
         });
-      else {
-        called.add(member.fn);
-        if (key === "callee" && parent && (parent.type === "CallExpression" || parent.type === "OptionalCallExpression" || parent.type === "NewExpression"))
-          ctx.report({
-            severity: "error",
-            code: "MESH_TRANSACTION_CALL",
-            message: `\`%.${mark.name}\` is a value, not a function: it is ${member.what}`,
-            position: ctx.at(mark.span.sourceStart),
-            fix: `write \`%.${mark.name}\`, without \`()\``,
-          });
-      }
+      else called.add(member.fn);
+      return;
+    }
+    // `%.now()`, `new %.now`, `%.now\`x\``, `(0, %.now)()`: a call of the transaction's value, which is no function.
+    const calledValue = n.type === "CallExpression" || n.type === "OptionalCallExpression" || n.type === "NewExpression" ? n.callee as N
+      : n.type === "TaggedTemplateExpression" ? n.tag as N
+      : undefined;
+    for (const target of calledTransaction(calledValue)) {
+      const mark = transactionMark(target)!;
+      const member = TRANSACTION_MEMBERS.get(mark.name);
+      if (member)
+        ctx.report({
+          severity: "error",
+          code: "MESH_TRANSACTION_CALL",
+          message: `\`%.${mark.name}\` is a value, not a function: it is ${member.what}`,
+          position: ctx.at(mark.span.sourceStart),
+          fix: `write \`%.${mark.name}\`, without ${n.type === "TaggedTemplateExpression" ? "the template after it" : n.type === "NewExpression" ? "\`new\`" : "\`()\`"}`,
+        });
+    }
+    // `&name`: the record's member, whatever the function names a local (`self`): its stand-in `self` is no variable.
+    if ((n.extra as { mxMember?: unknown } | undefined)?.mxMember && (n.type === "MemberExpression" || n.type === "OptionalMemberExpression")) {
+      names.record = true;
       return;
     }
     // Writing to `%.now`, or through it, is refused: the transaction pins its instant.
@@ -424,10 +454,11 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
 
 /**
  * What a function names besides its scope: the entities, whether it calls an entity's action, the helpers it reads as
- * values and whether it calls the global `structuredClone`. The node has no types (MX strips them), so a helper named only
- * in a type is left to the TypeScript back end (`typeNames` in `typescript/type-names.ts`).
+ * values, whether it calls the global `structuredClone` and whether it reads the record through `&name` (`record`). The
+ * node has no types (MX strips them), so a helper named only in a type is left to the TypeScript back end (`typeNames` in
+ * `typescript/type-names.ts`).
  */
-interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[] }
+interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; record?: true }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -447,12 +478,45 @@ function hasDifferingOperator(root: unknown): boolean {
 }
 
 /**
- * The edits that turn the authored text into TypeScript: `&name` to `self.name`, `:atom` to a string, and `%.now` and
- * `%.today` to the run-time functions a translated expression calls, `$.now($s)` and `$.today($s)`, over the scope the
- * printed function is handed, so plain and translated code read one instant (SYN-29). A `%.` name Mesh does not know is
- * reported by `freeVariables` and left as written.
+ * Every identifier the authored text spells, in its code, its types, its strings and its comments alike, with `\u`
+ * escapes decoded (`$\u006eow` spells `$now`): more than the names it binds, which is never wrong for `internalNames`.
  */
-function editsFor(fn: N, base: number): SourceEdit[] {
+function spelled(text: string): Set<string> {
+  const decoded = text.replace(/\\u\{([0-9a-fA-F]+)\}|\\u([0-9a-fA-F]{4})/g, (escape, braced?: string, plain?: string) => {
+    const code = parseInt(braced ?? plain!, 16);
+    return code <= 0x10ffff ? String.fromCodePoint(code) : escape;
+  });
+  return new Set(decoded.match(/[\p{ID_Start}$_][\p{ID_Continue}$\u200c\u200d]*/gu) ?? []);
+}
+
+/**
+ * The names the printed function binds what Mesh's own edits read under (`InternalNames`): `$self` for the record when
+ * the function reads `&name`, `$now` and `$today` for the transaction's `%.now` and `%.today`, each with the first number
+ * that makes it a name the authored text does not spell (`$now1`). An author's local or parameter (`self`, `$`, `$s`)
+ * cannot hide one, so `&n` is the record's member and `%.now` the transaction's instant wherever they are written.
+ */
+function internalNames(text: string, record: boolean, clock: readonly ("now" | "today")[]): InternalNames {
+  const taken = spelled(text);
+  const fresh = (base: string) => {
+    let name = base;
+    for (let n = 1; taken.has(name); n++) name = `${base}${n}`;
+    return name;
+  };
+  return {
+    ...(record ? { self: fresh("$self") } : {}),
+    ...(clock.includes("now") ? { now: fresh("$now") } : {}),
+    ...(clock.includes("today") ? { today: fresh("$today") } : {}),
+  };
+}
+
+/**
+ * The edits that turn the authored text into TypeScript: `&name` to the record's member (`$self.name`), `:atom` to a
+ * string, and `%.now` and `%.today` to calls of the printed function's own `$now()` and `$today()`, which call the
+ * run-time functions a translated expression calls over the scope the printed function is handed, so plain and
+ * translated code read one instant (SYN-29), a fresh `Date` each read. The names are `internal`'s, which the authored text
+ * does not spell. A `%.` name Mesh does not know is reported by `freeVariables` and left as written.
+ */
+function editsFor(fn: N, base: number, internal: InternalNames): SourceEdit[] {
   const edits: SourceEdit[] = [];
   // The `&x` of an `input.x ?? &x`.
   const fallbacks = new Set<unknown>();
@@ -468,12 +532,12 @@ function editsFor(fn: N, base: number): SourceEdit[] {
       if (left?.type === "MemberExpression" && (left.object as N)?.type === "Identifier" && (left.object as N).name === "input"
         && !left.computed && (left.property as N)?.name === name && name !== undefined) fallbacks.add(right);
     }
-    if (n.type === "MemberExpression" && member)
-      edits.push({ from: member.span.sourceStart - base, to: member.span.sourceEnd - base, text: `self.${member.name}`, ...(fallbacks.has(n) ? { fallback: true as const } : {}) });
+    if ((n.type === "MemberExpression" || n.type === "OptionalMemberExpression") && member)
+      edits.push({ from: member.span.sourceStart - base, to: member.span.sourceEnd - base, text: `${internal.self}.${member.name}`, member: member.name, ...(fallbacks.has(n) ? { fallback: true as const } : {}) });
     const instant = transactionMark(n);
     if (instant) {
       const known = TRANSACTION_MEMBERS.get(instant.name);
-      if (known) edits.push({ from: instant.span.sourceStart - base, to: instant.span.sourceEnd - base, text: `$.${known.fn}($s)` });
+      if (known) edits.push({ from: instant.span.sourceStart - base, to: instant.span.sourceEnd - base, text: `${internal[known.fn]}()` });
       return;
     }
     const atom = extra?.mxAtom;
@@ -673,7 +737,7 @@ function removedScopeNames(fn: N, ctx: ConvertContext): void {
 
 /** Translate one function (`fn` is its Babel node, `span` its authored extent). */
 /** What printing a translated expression as plain code needs, for the checker if it later demotes one: its edits and the scope names it reads. */
-export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: string[]; mesh?: string[] }
+export interface Demotion { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; internal?: InternalNames; isSystem?: true; helpers?: string[]; mesh?: string[]; method?: true }
 const demotions = new WeakMap<object, Demotion>();
 export const demotionOf = (expression: object): Demotion => demotions.get(expression) ?? { edits: [], roots: [] };
 export const rememberDemotion = (expression: object, demotion: Demotion): void => { demotions.set(expression, demotion); };
@@ -709,10 +773,14 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   removedScopeNames(f, ctx);
   // `%.now` and `%.today` in code Mesh does not translate read the same instant as a translated expression (SYN-29), and
   // `Mesh.isSystem(context)` is the same function: the expressions file imports `Mesh` under each name the file gives it
-  // that a function reads (PRJ-22). The demotion keeps them for a tree the checker demotes.
+  // that a function reads (PRJ-22). The demotion keeps them for a tree the checker demotes. The record `&name` reads and
+  // the instant are bound under names the authored text does not spell, which the edits read.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
+  const internal = internalNames(ctx.source.slice(span.sourceStart, span.sourceEnd), names.record === true, clock);
+  const edits = editsFor(f, span.sourceStart, internal);
   const clocked = {
     ...(clock.length ? { clock } : {}),
+    ...(Object.keys(internal).length ? { internal } : {}),
     ...(called.has("isSystem") ? { isSystem: true as const } : {}),
     ...(names.mesh.size ? { mesh: [...names.mesh].sort() } : {}),
   };
@@ -747,7 +815,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
     const object = e.why === "unsupported-parameter" ? undefined : objectParts();
     return {
-      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...named, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
+      plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits, roots: free, ...clocked, ...named, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
       // A function that names `privileged` is always plain (`uses-privileged`), so only a plain one carries the calls.
       ...(names.privileged ? { privilegedCalls: names.privileged } : {}),
     };
@@ -782,7 +850,8 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       body = statements[0]!.argument as N;
     }
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
-    return { tree, demotion: { edits: editsFor(f, span.sourceStart), roots: free, ...clocked, ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}) } };
+    // A method (`() { return ... }`) printed as plain code needs `function` before it, whatever arrows its body holds.
+    return { tree, demotion: { edits, roots: free, ...clocked, ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) } };
   } catch (e) {
     if (e instanceof Plain) return plain(e);
     throw e;

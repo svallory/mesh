@@ -95,10 +95,12 @@ export const $expressions = {
   "changeRole.check.lastOwner.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (async ({ input }) =>
       await keepsAnOwnerOf(
-        self.state === "active" && self.role === "owner" && (input.role ?? self.role) !== "owner",
+        $self.state === "active" &&
+          $self.role === "owner" &&
+          (input.role ?? $self.role) !== "owner",
       ))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:58:16)
@@ -109,10 +111,10 @@ export const $expressions = {
   "changeRole.check.versionMatches.details": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/membership.mesh.mx:65:20)
@@ -127,8 +129,8 @@ export const $expressions = {
   "revoke.check.lastOwner.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => {
-    const { self } = $s;
-    return (async ({}) => await keepsAnOwnerOf(self.state === "active" && self.role === "owner"))(
+    const $self = $s.self;
+    return (async ({}) => await keepsAnOwnerOf($self.state === "active" && $self.role === "owner"))(
       $s,
     );
   },
@@ -140,10 +142,10 @@ export const $expressions = {
   "revoke.check.versionMatches.details": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &revokedAt, translated (src/domain/identity/membership.mesh.mx:90:22)

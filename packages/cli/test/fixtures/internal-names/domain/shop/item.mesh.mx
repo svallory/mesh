@@ -1,0 +1,16 @@
+import { Box } from "./box.mesh.mx"
+
+entity :Item
+  attributes
+    uuid :id primary-key
+    timestamp :dueAt nullable
+  relationships
+    belongs-to :box entity=Box
+  actions auto=[:read]
+    create :add
+      input
+        &box
+        &dueAt
+  policies
+    policy :anyone
+      authorize-if=() => true

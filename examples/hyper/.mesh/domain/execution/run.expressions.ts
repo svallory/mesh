@@ -68,8 +68,8 @@ export const $expressions = {
     $s.actor?.id,
   // set &responsible, plain (reads-record-in-helper) (src/domain/execution/run.mesh.mx:45:24)
   "start.step.0.set.responsible": ($s: $execution$Run$Scope<$execution$Run$StartRunInput>) => {
-    const { self } = $s;
-    return (({ actor }) => responsibleFor(self.task.assignments, actor.id))($s);
+    const $self = $s.self;
+    return (({ actor }) => responsibleFor($self.task.assignments, actor.id))($s);
   },
   // check :cancelable that, translated (src/domain/execution/run.mesh.mx:52:16)
   "cancel.check.cancelable.that": ($s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>) =>
@@ -82,10 +82,10 @@ export const $expressions = {
   "cancel.check.versionMatches.details": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &endedAt, translated (src/domain/execution/run.mesh.mx:65:20)

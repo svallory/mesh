@@ -101,15 +101,15 @@ describe("Mesh's own functions through the Mesh import (PRJ-22), the instant thr
     const task = await generated("domain/work/task.expressions.ts");
     expect(task).toContain("$.lt($s.self.dueAt, $.now($s))");
     expect(task).toContain("$.isSystem($s.context)");
-    expect(task).toContain("(due.getTime() - $.today($s).getTime())");
+    expect(task).toContain("(due.getTime() - $today().getTime())");
     expect(task).toContain("$.pure(dueIn($.today($s), 30), \"dueIn\")");
     expect(task).toContain("await Mesh.privileged(Note).read({ load: [\"stamp\"] })");
-    expect(task).toContain("stampOf($.now($s), self.title)");
+    expect(task).toContain("stampOf($now(), self.title)");
     expect(task).toMatch(/import \{[^}]*\bMesh,[^}]*\} from "@meshfw\/runtime";/);
     expect(task).not.toMatch(/%\.|const Mesh|meshIn|\$mesh/);
     const note = await generated("domain/work/note.expressions.ts");
     expect(note).toMatch(/import \{[^}]*\bMesh as M,[^}]*\} from "@meshfw\/runtime";/);
-    expect(note).toContain("const at = $.now($s);");
+    expect(note).toContain("const at = $now();");
     expect(note).not.toMatch(/const M\b|const Mesh\b/);
     // #mesh holds no Mesh function: the application imports Mesh from meshfw.
     const index = await generated("index.ts");

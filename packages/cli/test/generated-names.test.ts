@@ -170,7 +170,7 @@ describe("entities named after the globals generated code uses", () => {
     // the node the front end reads, so the back end finds both in the printed function (the tsc run below checks it).
     const expressions = await generated("domain/globals/boolean.expressions.ts");
     expect(expressions).toContain('import type { Count, tally } from "../../../domain/globals/boolean.measure";');
-    expect(expressions).toContain("const length: Count = self.name.length;");
+    expect(expressions).toContain("const length: Count = $self.name.length;");
     expect(expressions).toContain("const same: typeof tally = (n) => n;");
   });
 

@@ -91,10 +91,10 @@ export const $expressions = {
   "update.check.versionMatches.details": (
     $s: $execution$Machine$CheckScope<$execution$Machine$UpdateMachineInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/machine.mesh.mx:61:20)
@@ -117,10 +117,10 @@ export const $expressions = {
   "retire.check.versionMatches.details": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/machine.mesh.mx:86:20)

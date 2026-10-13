@@ -287,7 +287,7 @@ describe("type rules", () => {
   });
   test("a function that calls Mesh.privileged or an entity's action builds as plain code, and records what it names", () => {
     expect(codes(entity(check("() => Mesh.privileged(Task) !== null && &n > 0")))).toEqual([]);
-    expect(exprOf(entity(check("() => Mesh.privileged(Task) !== null && &n > 0"))).plain).toMatchObject({ why: "uses-privileged", roots: ["self"], privileged: true, entities: ["Task"], mesh: ["Mesh"] });
+    expect(exprOf(entity(check("() => Mesh.privileged(Task) !== null && &n > 0"))).plain).toMatchObject({ why: "uses-privileged", roots: [], internal: { self: "$self" }, privileged: true, entities: ["Task"], mesh: ["Mesh"] });
     const acting = exprOf(entity(check("({ context }) => Task.go({ id: input.id }, context) !== null")));
     expect(acting.plain).toMatchObject({ why: "calls-entity", roots: ["input"], entities: ["Task"], acts: true });
     expect(acting.plain!.privileged).toBeUndefined();
@@ -474,10 +474,13 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => c.body?.plain?.clock)).toEqual([["now"], ["today"], undefined]);
     expect(computed.map((c) => c.body?.plain?.mesh)).toEqual([undefined, undefined, undefined]);
-    // `%.now` is the scope's instant, the function a translated expression calls; the file binds and imports no `Mesh`.
+    // `%.now` is the scope's instant, the function a translated expression calls, bound under a name the authored text
+    // does not spell; the file binds and imports no `Mesh`.
     const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
-    expect(printed).toContain("Math.floor($.now($s).getTime() / 1000)");
-    expect(printed).toContain("[$.today($s)].some(");
+    expect(printed).toContain("const $now = () => $.now($s);");
+    expect(printed).toContain("Math.floor($now().getTime() / 1000) === $self.n");
+    expect(printed).toContain("const $today = () => $.today($s);");
+    expect(printed).toContain("[$today()].some(");
     expect(printed).not.toMatch(/\bMesh,|Mesh as|meshIn|\$mesh/);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
@@ -486,6 +489,34 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.stamped"](scope({ self: { n: 1 } }, at))).toBe(false);
     expect(expressions["computed.daily"](scope({ self: { n: 86_400_000 * 2 } }, at))).toBe(true);
     expect(expressions["computed.own"](scope({ self: { n: 7 } }, at))).toBe(true);
+  }, 30_000);
+
+  test("&name, %.now and %.today are bound under names the authored text does not spell, so no local hides them (PR #100 review)", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", [
+      "  computed",
+      // Each name is spelled: in code, in a string, in a comment and through an escape (`$today` is `$today`).
+      "    boolean :spelled() { const $now = 1, $self = 2, $\\u0074oday = 3; /* $now1 */ return String(\"$self1\").length > 0 && %.now.getTime() + %.today.getTime() + &n + $now + $self + $today > 0 }",
+      // A translated quantifier the type pass demotes (`:open` against a string) keeps its parameter `$`, its authored name.
+      "    boolean :demoted() { return &children.some(($) => $.title === :open && $.dueAt !== null && $.dueAt < %.now) }",
+      "  actions auto",
+    ].join("\n"));
+    const { root, built, files } = await generated(plain);
+    const [spelled, demoted] = built.document!.entities[0]!.computed;
+    expect(spelled!.body!.plain).toMatchObject({ clock: ["now", "today"], internal: { self: "$self2", now: "$now2", today: "$today1" } });
+    expect(demoted!.body!.plain).toMatchObject({ internal: { self: "$self", now: "$now" } });
+    expect(demoted!.body!.plain!.edits.map((edit) => edit.text)).toEqual(["$self.children", "\"open\"", "$now()"]);
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    expect(printed).toContain("const $self2 = $s.self;");
+    expect(printed).toContain("const $now2 = () => $.now($s);");
+    expect(printed).toContain("const $today1 = () => $.today($s);");
+    expect(printed).toContain("$now2().getTime() + $today1().getTime() + $self2.n + $now + $self + $today > 0");
+    expect(printed).toContain("$self.children.some(($) => $.title === \"open\" && $.dueAt !== null && $.dueAt < $now())");
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
+    expect(expressions["computed.spelled"](scope({ self: { n: 1 } }, at))).toBe(true);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000) }] } }, at))).toBe(true);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000 * 3) }] } }, at))).toBe(false);
   }, 30_000);
 
   test("each Mesh.isSystem resolves against its own enclosing scopes: a parameter named Mesh shadows the import only inside its function; %.now has no binding to hide", async () => {
@@ -1092,7 +1123,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     // Translated code calls the run-time functions, and so does `%.now` in plain code; the file imports `Mesh`, as it
     // imports a helper, for the plain body's `Mesh.isSystem`, and binds it nowhere.
     expect(printed).toMatch(/import \{\s+expr as \$,\s+Mesh,[^}]*\} from "@meshfw\/runtime";/);
-    expect(printed).toContain("console.log($.now($s).getTime(), $.today($s).getTime(), Mesh.isSystem(context))");
+    expect(printed).toContain("console.log($now().getTime(), $today().getTime(), Mesh.isSystem(context))");
     expect(printed).toContain("$.today($s)");
     expect(printed).not.toMatch(/const Mesh|meshIn|\$mesh/);
     expect(typeCheck()).toEqual({ code: 0, output: "" });
@@ -1382,8 +1413,8 @@ describe("%.now and %.today are the current transaction's instant and date (SYN-
     await writeGeneratedFiles(files, config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { task: {} };\n");
     const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
-    expect(printed).toContain("console.log($.now($s).getTime(), $.today($s).getTime())");
-    expect(printed).toContain("return $.now($s).getTime()");
+    expect(printed).toContain("console.log($now().getTime(), $today().getTime())");
+    expect(printed).toContain("return $now().getTime()");
     expect(printed).not.toMatch(/%\.|\bMesh\b/);
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
     expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
@@ -1439,6 +1470,28 @@ describe("%.now and %.today are the current transaction's instant and date (SYN-
       expect(problems(entity(check("() => true") + `      do\n        ${body}\n`)).map((p) => p.code), body).toEqual(["MESH_TRANSACTION_CALL"]);
     // A method of the instant is a call on the value, not on `%.now`.
     expect(problems(entity(check("() => %.now.getTime() > 0")))).toEqual([]);
+  });
+
+  test("a tagged template and a callee that evaluates to one call it too: MESH_TRANSACTION_CALL at the `%` (PR #100 review)", () => {
+    const run = (body: string) => entity(check("() => true") + `      do\n        run () { ${body} }\n`);
+    // The review's two cases: each built with no error, then failed tsc (TS2349).
+    for (const [body, at, without] of [["console.log(%.now`x`)", "%.now`", "the template after it"], ["console.log((0, %.now)())", "%.now)", "`()`"]] as const) {
+      const source = run(body);
+      expect(problems(source), body).toEqual([{
+        code: "MESH_TRANSACTION_CALL",
+        message: "`%.now` is a value, not a function: it is the current transaction's instant",
+        fix: `write \`%.now\`, without ${without}`,
+        offset: source.indexOf(at),
+      }]);
+    }
+    expect(problems(run("console.log(new %.today())")).map((p) => p.fix)).toEqual(["write `%.today`, without `new`"]);
+    // Through parentheses, a longer sequence, a conditional's branch and `||`/`??`; in a translated position too.
+    for (const body of ["console.log((%.today)())", "console.log((1, 2, %.today)`x`)", "console.log((Math.random() > 0.5 ? %.now : Date)())", "console.log((null ?? %.now)())", "console.log((%.now || Date)())", "console.log(new (0, %.today)())"])
+      expect(problems(run(body)).map((p) => p.code), body).toEqual(["MESH_TRANSACTION_CALL"]);
+    expect(problems(entity(check("() => (0, %.now)() !== null"))).map((p) => p.code)).toEqual(["MESH_TRANSACTION_CALL"]);
+    // A value that only passes through is not called: a sequence's first expression, `&&`'s left operand, a template's expression.
+    for (const body of ["console.log((%.now, Date)())", "console.log((%.now && Date)())", "console.log(String.raw`${%.now}`)"])
+      expect(problems(run(body)), body).toEqual([]);
   });
 
   test("writing to one, or through it, is MESH_TRANSACTION_ASSIGN at the write", () => {

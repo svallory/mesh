@@ -7,6 +7,7 @@ import type {
   Entity,
   ExprNode,
   Expression,
+  InternalNames,
   ModelDocument,
   SourceEdit,
   SourcePosition,
@@ -24,8 +25,8 @@ import { policyCovers } from "./policies.ts";
  * registry cannot define (D4, D3): the expression keeps JavaScript's meaning and warns.
  */
 export interface CheckOptions {
-  /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript and the scope names it reads. */
-  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; isSystem?: true; helpers?: string[]; mesh?: string[] };
+  /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript, the scope names it reads, the names its edits read (`internal`) and whether it is a method. */
+  demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; internal?: InternalNames; isSystem?: true; helpers?: string[]; mesh?: string[]; method?: true };
 }
 
 interface Ty {
@@ -142,7 +143,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   /** The same for a check Mesh runs as plain code: each `&x` the authored text reads, found through its edits. */
   const plainNotApplied = (e: Expression, pending: ReadonlySet<string>, policy?: string) => {
     for (const edit of e.plain?.edits ?? []) {
-      const name = /^self\.(\w+)$/.exec(edit.text)?.[1];
+      const name = edit.member;
       if (name === undefined || edit.fallback || !pending.has(name)) continue;
       const before = e.source.slice(0, edit.from);
       const lines = before.split("\n");
@@ -345,7 +346,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   function demote(e: Expression, d: Demote): void {
     const tree = e.tree!;
     delete e.tree;
-    e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, ...options.demotionOf(e), ...(/^\s*\(.*\)\s*\{/s.test(e.source) && !e.source.includes("=>") ? { method: true as const } : {}) };
+    e.plain = { why: "unsupported-construct", detail: d.detail, position: d.position, ...options.demotionOf(e) };
     if ((d.always || hasOperator(tree))) warnPlain(e, d.detail, d.position);
   }
 

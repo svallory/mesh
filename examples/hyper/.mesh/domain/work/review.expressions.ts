@@ -103,8 +103,8 @@ export const $expressions = {
     $s.actor?.id,
   // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:45:24)
   "accept.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
-    const { self } = $s;
-    return (async ({}) => await reviewerRuleOf(self.submission.taskId))($s);
+    const $self = $s.self;
+    return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:46:28)
   "accept.step.1.run": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
@@ -156,8 +156,8 @@ export const $expressions = {
     $s.actor?.id,
   // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:72:24)
   "return.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
-    const { self } = $s;
-    return (async ({}) => await reviewerRuleOf(self.submission.taskId))($s);
+    const $self = $s.self;
+    return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:73:28)
   "return.step.1.run": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {

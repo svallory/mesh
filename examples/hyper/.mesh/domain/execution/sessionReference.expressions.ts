@@ -113,10 +113,10 @@ export const $expressions = {
   "setAvailability.check.versionMatches.details": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:68:20)
@@ -135,10 +135,10 @@ export const $expressions = {
   "redact.check.versionMatches.details": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/execution/session-reference.mesh.mx:89:20)

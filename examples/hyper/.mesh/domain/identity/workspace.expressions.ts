@@ -47,10 +47,10 @@ export const $expressions = {
   "rename.check.versionMatches.details": (
     $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/workspace.mesh.mx:34:20)

@@ -650,10 +650,14 @@
               "edits": [
                 {
                   "from": 13,
-                  "text": "self.body",
+                  "member": "body",
+                  "text": "$self.body",
                   "to": 18
                 }
               ],
+              "internal": {
+                "self": "$self"
+              },
               "method": true,
               "position": {
                 "column": 31,
@@ -661,9 +665,7 @@
                 "line": 23,
                 "offset": 696
               },
-              "roots": [
-                "self"
-              ],
+              "roots": [],
               "why": "unsupported-construct"
             },
             "position": {

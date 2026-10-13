@@ -104,14 +104,11 @@ export const $expressions = {
   },
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:41:12)
   "acquire.step.0.run": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) => {
+    const $now = () => $.now($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ input, context }) {
       const lapsed = await Mesh.privileged(Claim).read({
-        filter: {
-          taskId: { eq: input.task },
-          state: { eq: "active" },
-          expiresAt: { lte: $.now($s) },
-        },
+        filter: { taskId: { eq: input.task }, state: { eq: "active" }, expiresAt: { lte: $now() } },
       });
       for (const claim of lapsed)
         await Claim.end(
@@ -154,8 +151,8 @@ export const $expressions = {
     $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:64:19)
   "renew.check.currentFence.details": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) => {
-    const { self } = $s;
-    return (() => ({ currentFence: self.task.maxFence, stale: false }))();
+    const $self = $s.self;
+    return (() => ({ currentFence: $self.task.maxFence, stale: false }))();
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:67:16)
   "renew.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
@@ -173,10 +170,10 @@ export const $expressions = {
   "renew.check.versionMatches.details": (
     $s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.task.version,
+      actualVersion: $self.task.version,
     }))($s);
   },
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:84:22)
@@ -196,8 +193,8 @@ export const $expressions = {
   "release.check.currentFence.details": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
   ) => {
-    const { self } = $s;
-    return (() => ({ currentFence: self.task.maxFence, stale: false }))();
+    const $self = $s.self;
+    return (() => ({ currentFence: $self.task.maxFence, stale: false }))();
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:101:16)
   "release.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>) =>
@@ -218,10 +215,10 @@ export const $expressions = {
   "release.check.versionMatches.details": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.task.version,
+      actualVersion: $self.task.version,
     }))($s);
   },
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:119:20)
@@ -250,10 +247,10 @@ export const $expressions = {
   "revoke.check.versionMatches.details": (
     $s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.task.version,
+      actualVersion: $self.task.version,
     }))($s);
   },
   // set &endedAt, translated (src/domain/work/claim.mesh.mx:143:20)

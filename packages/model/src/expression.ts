@@ -36,13 +36,31 @@ export type PlainWhy =
   | "awaits-helper"
   | "unsupported-parameter";
 
-/** Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript (`&name` to `self.name`, `:atom` to a string). */
+/**
+ * Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript: `&name` to `$self.name`,
+ * `%.now` to `$now()`, `:atom` to a string. The names an edit reads are the printed function's own (`PlainReason.internal`).
+ */
 export interface SourceEdit {
   from: number;
   to: number;
   text: string;
-  /** For `&x` to `self.x`: it is the right side of `input.x ?? &x`, read only when the caller did not send `x`. */
+  /** For `&name`: the member it reads, `name`. */
+  member?: string;
+  /** For `&x`: it is the right side of `input.x ?? &x`, read only when the caller did not send `x`. */
   fallback?: true;
+}
+
+/**
+ * The names the printed function binds what the edits read under (`SourceEdit`): `self` for the record `&name` reads,
+ * `now` and `today` for the current transaction's `%.now` and `%.today` (SYN-29). Each is `$self`, `$now` or `$today`, or
+ * that name with a number (`$now1`) when the authored text already spells it, in its code, types, strings or comments: no
+ * binding of the author's can hide it, so `&name` is the record's member and `%.now` the transaction's whatever the author
+ * names a local (`self`, `$`, `$s`). A name the author writes (`self.title`, `input.id`) keeps JavaScript's scoping (EXP-12).
+ */
+export interface InternalNames {
+  self?: string;
+  now?: string;
+  today?: string;
 }
 
 export interface PlainReason {
@@ -52,11 +70,14 @@ export interface PlainReason {
   edits: SourceEdit[];
   /**
    * The scope names (`self`, `input`, `actor`, `context`, `before`) the authored text reads as variables that its
-   * parameters do not bind, `self` included when `&name` stands for `self.name`; the printed function takes these from the scope.
+   * parameters do not bind; the printed function takes these from the scope. `&name` reads none of them: it reads the
+   * record through `internal.self`.
    */
   roots: string[];
   /** The members of the current transaction the authored text reads (`%.now`, `%.today`; SYN-29): `now` and `today`. */
   clock?: ("now" | "today")[];
+  /** The names the printed function binds the record `&name` reads and the transaction's `%.now` and `%.today` under. */
+  internal?: InternalNames;
   /** The authored text reads `Mesh.isSystem` (`Mesh.isSystem(context)`). */
   isSystem?: true;
   /** The authored text reads `Mesh.privileged` (`Mesh.privileged(Entity)`, TXN-16). */

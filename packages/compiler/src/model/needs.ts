@@ -12,8 +12,8 @@ import { error } from "./diagnostics.ts";
  * A translated body is walked as a tree: every access that starts at `self` (directly, or through
  * the parameter of a quantifier over a list reached from `self`) names a path, and every
  * relationship or computed field on that path is a need. A plain body has no tree, so the
- * only names known are the `&name` it reads on `self` (the edits that turn `&name` into
- * `self.name`) and the chain of `.name` / `?.name` written right after it. A read the text does not
+ * only names known are the `&name` it reads on `self` (the edits that turn `&name` into the
+ * record's member, `SourceEdit.member`) and the chain of `.name` / `?.name` written right after it. A read the text does not
  * show (through a variable) cannot be known here; `loadRows` guards a plain body at run time, so
  * it throws instead of reading an unloaded value as null.
  */
@@ -74,8 +74,8 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
     if (body.tree) visit(body.tree, new Map());
     else if (body.plain)
       for (const edit of body.plain.edits) {
-        const name = /^self\.(.+)$/.exec(edit.text)?.[1];
-        if (!name) continue;
+        const name = edit.member;
+        if (name === undefined) continue;
         // Follow the chain written right after `&name`: `&parent?.parent?.leaf` reads parent, parent.parent and parent.parent.leaf.
         // A read through a variable (`const p = &parent; p.leaf`) cannot be followed here; the loader guards plain bodies at run time.
         const path = [name];

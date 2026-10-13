@@ -49,24 +49,25 @@ export const $expressions = {
   "record.check.staleFence.that": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
+    const $now = () => $.now($s);
     return (async ({ input, actor }) =>
-      isStale(await claimsOf(input.task), input.fence, actor.id, $.now($s)))($s);
+      isStale(await claimsOf(input.task), input.fence, actor.id, $now()))($s);
   },
   // check :evidenceExists that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:31:16)
   "record.check.evidenceExists.that": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (async ({ input }) =>
-      (await missingEvidenceOf(input.evidence ?? self.evidence)).length === 0)($s);
+      (await missingEvidenceOf(input.evidence ?? $self.evidence)).length === 0)($s);
   },
   // check :evidenceExists details, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:34:19)
   "record.check.evidenceExists.details": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (async ({ input }) => ({
-      missing: await missingEvidenceOf(input.evidence ?? self.evidence),
+      missing: await missingEvidenceOf(input.evidence ?? $self.evidence),
     }))($s);
   },
   // set &submitter, translated (src/domain/work/late-result.mesh.mx:38:22)

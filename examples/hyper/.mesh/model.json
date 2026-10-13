@@ -725,27 +725,30 @@
                       "edits": [
                         {
                           "from": 17,
-                          "text": "self.run",
+                          "member": "run",
+                          "text": "$self.run",
                           "to": 21
                         },
                         {
                           "from": 32,
-                          "text": "self.step",
+                          "member": "step",
+                          "text": "$self.step",
                           "to": 37
                         }
                       ],
                       "helpers": [
                         "nextNumber"
                       ],
+                      "internal": {
+                        "self": "$self"
+                      },
                       "position": {
                         "column": 24,
                         "file": "src/domain/execution/attempt.mesh.mx",
                         "line": 71,
                         "offset": 3034
                       },
-                      "roots": [
-                        "self"
-                      ],
+                      "roots": [],
                       "why": "reads-record-in-helper"
                     },
                     "position": {
@@ -779,27 +782,30 @@
                       "edits": [
                         {
                           "from": 19,
-                          "text": "self.run",
+                          "member": "run",
+                          "text": "$self.run",
                           "to": 23
                         },
                         {
                           "from": 42,
-                          "text": "self.run",
+                          "member": "run",
+                          "text": "$self.run",
                           "to": 46
                         }
                       ],
                       "helpers": [
                         "delegatorFor"
                       ],
+                      "internal": {
+                        "self": "$self"
+                      },
                       "position": {
                         "column": 27,
                         "file": "src/domain/execution/attempt.mesh.mx",
                         "line": 72,
                         "offset": 3094
                       },
-                      "roots": [
-                        "self"
-                      ],
+                      "roots": [],
                       "why": "reads-record-in-helper"
                     },
                     "position": {
@@ -838,27 +844,30 @@
                       "edits": [
                         {
                           "from": 25,
-                          "text": "self.run",
+                          "member": "run",
+                          "text": "$self.run",
                           "to": 29
                         },
                         {
                           "from": 53,
-                          "text": "$.now($s)",
+                          "text": "$now()",
                           "to": 58
                         }
                       ],
                       "helpers": [
                         "heldFence"
                       ],
+                      "internal": {
+                        "now": "$now",
+                        "self": "$self"
+                      },
                       "position": {
                         "column": 37,
                         "file": "src/domain/execution/attempt.mesh.mx",
                         "line": 73,
                         "offset": 3185
                       },
-                      "roots": [
-                        "self"
-                      ],
+                      "roots": [],
                       "why": "reads-record-in-helper"
                     },
                     "position": {
@@ -974,13 +983,16 @@
                   "edits": [
                     {
                       "from": 65,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 70
                     }
                   ],
                   "helpers": [
                     "claimerOf"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
@@ -1057,22 +1069,24 @@
                     {
                       "fallback": true,
                       "from": 63,
-                      "text": "self.step",
+                      "member": "step",
+                      "text": "$self.step",
                       "to": 68
                     }
                   ],
                   "helpers": [
                     "stepIdleOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/execution/attempt.mesh.mx",
                     "line": 53,
                     "offset": 2188
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -1740,19 +1754,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/attempt.mesh.mx",
                     "line": 102,
                     "offset": 4385
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -2158,19 +2174,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/attempt.mesh.mx",
                     "line": 129,
                     "offset": 5628
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -2575,19 +2593,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/attempt.mesh.mx",
                     "line": 151,
                     "offset": 6444
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -3254,13 +3274,16 @@
                 "edits": [
                   {
                     "from": 100,
-                    "text": "$.now($s)",
+                    "text": "$now()",
                     "to": 105
                   }
                 ],
                 "helpers": [
                   "claimerOf"
                 ],
+                "internal": {
+                  "now": "$now"
+                },
                 "isSystem": true,
                 "mesh": [
                   "Mesh"
@@ -5896,19 +5919,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/machine.mesh.mx",
                     "line": 57,
                     "offset": 1941
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -6355,19 +6380,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/machine.mesh.mx",
                     "line": 81,
                     "offset": 2830
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -7138,22 +7165,24 @@
                       "edits": [
                         {
                           "from": 30,
-                          "text": "self.task",
+                          "member": "task",
+                          "text": "$self.task",
                           "to": 35
                         }
                       ],
                       "helpers": [
                         "responsibleFor"
                       ],
+                      "internal": {
+                        "self": "$self"
+                      },
                       "position": {
                         "column": 38,
                         "file": "src/domain/execution/run.mesh.mx",
                         "line": 45,
                         "offset": 1551
                       },
-                      "roots": [
-                        "self"
-                      ],
+                      "roots": [],
                       "why": "reads-record-in-helper"
                     },
                     "position": {
@@ -7580,19 +7609,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/run.mesh.mx",
                     "line": 60,
                     "offset": 2142
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -9135,19 +9166,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/session-reference.mesh.mx",
                     "line": 64,
                     "offset": 2379
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -9495,19 +9528,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/execution/session-reference.mesh.mx",
                     "line": 83,
                     "offset": 3102
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -10720,27 +10755,30 @@
                     {
                       "fallback": true,
                       "from": 52,
-                      "text": "self.name",
+                      "member": "name",
+                      "text": "$self.name",
                       "to": 57
                     },
                     {
                       "from": 59,
-                      "text": "self.id",
+                      "member": "id",
+                      "text": "$self.id",
                       "to": 62
                     }
                   ],
                   "helpers": [
                     "nameFreeOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/collaborator.mesh.mx",
                     "line": 42,
                     "offset": 1345
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -10763,19 +10801,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/identity/collaborator.mesh.mx",
                     "line": 50,
                     "offset": 1799
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -11116,22 +11156,24 @@
                   "edits": [
                     {
                       "from": 41,
-                      "text": "self.id",
+                      "member": "id",
+                      "text": "$self.id",
                       "to": 44
                     }
                   ],
                   "helpers": [
                     "retireKeepsAnOwnerOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/identity/collaborator.mesh.mx",
                     "line": 66,
                     "offset": 2270
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -11155,19 +11197,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/identity/collaborator.mesh.mx",
                     "line": 74,
                     "offset": 2722
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -12282,7 +12326,8 @@
                   "edits": [
                     {
                       "from": 42,
-                      "text": "self.state",
+                      "member": "state",
+                      "text": "$self.state",
                       "to": 48
                     },
                     {
@@ -12292,7 +12337,8 @@
                     },
                     {
                       "from": 64,
-                      "text": "self.role",
+                      "member": "role",
+                      "text": "$self.role",
                       "to": 69
                     },
                     {
@@ -12303,7 +12349,8 @@
                     {
                       "fallback": true,
                       "from": 99,
-                      "text": "self.role",
+                      "member": "role",
+                      "text": "$self.role",
                       "to": 104
                     },
                     {
@@ -12315,6 +12362,9 @@
                   "helpers": [
                     "keepsAnOwnerOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -12322,9 +12372,7 @@
                     "line": 53,
                     "offset": 1817
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -12347,19 +12395,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/identity/membership.mesh.mx",
                     "line": 61,
                     "offset": 2341
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -12776,7 +12826,8 @@
                   "edits": [
                     {
                       "from": 35,
-                      "text": "self.state",
+                      "member": "state",
+                      "text": "$self.state",
                       "to": 41
                     },
                     {
@@ -12786,7 +12837,8 @@
                     },
                     {
                       "from": 57,
-                      "text": "self.role",
+                      "member": "role",
+                      "text": "$self.role",
                       "to": 62
                     },
                     {
@@ -12798,6 +12850,9 @@
                   "helpers": [
                     "keepsAnOwnerOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -12805,9 +12860,7 @@
                     "line": 77,
                     "offset": 2806
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -12831,19 +12884,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/identity/membership.mesh.mx",
                     "line": 85,
                     "offset": 3287
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -13673,19 +13728,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/identity/workspace.mesh.mx",
                     "line": 30,
                     "offset": 987
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -14879,7 +14936,7 @@
                     },
                     {
                       "from": 164,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 169
                     },
                     {
@@ -14891,6 +14948,9 @@
                   "entities": [
                     "Claim"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "mesh": [
                     "Mesh"
                   ],
@@ -15523,19 +15583,21 @@
                   "edits": [
                     {
                       "from": 23,
-                      "text": "self.task",
+                      "member": "task",
+                      "text": "$self.task",
                       "to": 28
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 25,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 64,
                     "offset": 2976
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -15845,19 +15907,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.task",
+                      "member": "task",
+                      "text": "$self.task",
                       "to": 78
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 80,
                     "offset": 3662
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -16230,19 +16294,21 @@
                   "edits": [
                     {
                       "from": 23,
-                      "text": "self.task",
+                      "member": "task",
+                      "text": "$self.task",
                       "to": 28
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 25,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 98,
                     "offset": 4350
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -16552,19 +16618,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.task",
+                      "member": "task",
+                      "text": "$self.task",
                       "to": 78
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 114,
                     "offset": 5036
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -16969,19 +17037,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.task",
+                      "member": "task",
+                      "text": "$self.task",
                       "to": 78
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 138,
                     "offset": 5967
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -19551,19 +19621,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.dependent",
+                      "member": "dependent",
+                      "text": "$self.dependent",
                       "to": 83
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/dependency.mesh.mx",
                     "line": 64,
                     "offset": 2774
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -20758,7 +20830,7 @@
                   "edits": [
                     {
                       "from": 87,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 92
                     }
                   ],
@@ -20766,6 +20838,9 @@
                     "claimsOf",
                     "isStale"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/late-result.mesh.mx",
@@ -20796,22 +20871,24 @@
                     {
                       "fallback": true,
                       "from": 75,
-                      "text": "self.evidence",
+                      "member": "evidence",
+                      "text": "$self.evidence",
                       "to": 84
                     }
                   ],
                   "helpers": [
                     "missingEvidenceOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/late-result.mesh.mx",
                     "line": 34,
                     "offset": 1212
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -20840,13 +20917,17 @@
                     {
                       "fallback": true,
                       "from": 64,
-                      "text": "self.evidence",
+                      "member": "evidence",
+                      "text": "$self.evidence",
                       "to": 73
                     }
                   ],
                   "helpers": [
                     "missingEvidenceOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -20854,9 +20935,7 @@
                     "line": 31,
                     "offset": 1015
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -21366,22 +21445,24 @@
                       "edits": [
                         {
                           "from": 35,
-                          "text": "self.submission",
+                          "member": "submission",
+                          "text": "$self.submission",
                           "to": 46
                         }
                       ],
                       "helpers": [
                         "reviewerRuleOf"
                       ],
+                      "internal": {
+                        "self": "$self"
+                      },
                       "position": {
                         "column": 23,
                         "file": "src/domain/work/review.mesh.mx",
                         "line": 45,
                         "offset": 2072
                       },
-                      "roots": [
-                        "self"
-                      ],
+                      "roots": [],
                       "why": "awaits-helper"
                     },
                     "position": {
@@ -21791,22 +21872,24 @@
                       "edits": [
                         {
                           "from": 35,
-                          "text": "self.submission",
+                          "member": "submission",
+                          "text": "$self.submission",
                           "to": 46
                         }
                       ],
                       "helpers": [
                         "reviewerRuleOf"
                       ],
+                      "internal": {
+                        "self": "$self"
+                      },
                       "position": {
                         "column": 23,
                         "file": "src/domain/work/review.mesh.mx",
                         "line": 72,
                         "offset": 3454
                       },
-                      "roots": [
-                        "self"
-                      ],
+                      "roots": [],
                       "why": "awaits-helper"
                     },
                     "position": {
@@ -22782,7 +22865,7 @@
                   "edits": [
                     {
                       "from": 140,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 145
                     },
                     {
@@ -22798,6 +22881,9 @@
                   "helpers": [
                     "claimToRelease"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "mesh": [
                     "Mesh"
                   ],
@@ -22955,13 +23041,16 @@
                   "edits": [
                     {
                       "from": 84,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 89
                     }
                   ],
                   "helpers": [
                     "fenceDetailsOf"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -23000,7 +23089,7 @@
                   "edits": [
                     {
                       "from": 94,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 99
                     }
                   ],
@@ -23008,6 +23097,9 @@
                     "claimsOf",
                     "fenceIsCurrent"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/submission.mesh.mx",
@@ -23077,22 +23169,24 @@
                     {
                       "fallback": true,
                       "from": 75,
-                      "text": "self.evidence",
+                      "member": "evidence",
+                      "text": "$self.evidence",
                       "to": 84
                     }
                   ],
                   "helpers": [
                     "missingEvidenceOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 18,
                     "file": "src/domain/work/submission.mesh.mx",
                     "line": 49,
                     "offset": 2060
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -23121,13 +23215,17 @@
                     {
                       "fallback": true,
                       "from": 64,
-                      "text": "self.evidence",
+                      "member": "evidence",
+                      "text": "$self.evidence",
                       "to": 73
                     }
                   ],
                   "helpers": [
                     "missingEvidenceOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "operators": true,
                   "position": {
                     "column": 15,
@@ -23135,9 +23233,7 @@
                     "line": 46,
                     "offset": 1863
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -23398,19 +23494,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.task",
+                      "member": "task",
+                      "text": "$self.task",
                       "to": 78
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/submission.mesh.mx",
                     "line": 82,
                     "offset": 3723
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -24996,19 +25094,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 78,
                     "offset": 3616
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -25329,19 +25429,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 97,
                     "offset": 4300
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -25710,22 +25812,24 @@
                   "edits": [
                     {
                       "from": 48,
-                      "text": "self.id",
+                      "member": "id",
+                      "text": "$self.id",
                       "to": 51
                     }
                   ],
                   "helpers": [
                     "noContainmentCycleOf"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 118,
                     "offset": 4953
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "awaits-helper"
                 },
                 "position": {
@@ -25805,19 +25909,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 131,
                     "offset": 5582
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -26184,19 +26290,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 150,
                     "offset": 6259
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -26685,19 +26793,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 175,
                     "offset": 7083
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -26950,7 +27060,7 @@
                     },
                     {
                       "from": 1342,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 1347
                     },
                     {
@@ -26971,6 +27081,9 @@
                     "ownPending",
                     "reviewerFor"
                   ],
+                  "internal": {
+                    "now": "$now"
+                  },
                   "mesh": [
                     "Mesh"
                   ],
@@ -27140,22 +27253,24 @@
                   "edits": [
                     {
                       "from": 36,
-                      "text": "self.children",
+                      "member": "children",
+                      "text": "$self.children",
                       "to": 45
                     }
                   ],
                   "helpers": [
                     "openChildren"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 25,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 203,
                     "offset": 8339
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -27473,32 +27588,36 @@
                   "edits": [
                     {
                       "from": 35,
-                      "text": "self.maxFence",
+                      "member": "maxFence",
+                      "text": "$self.maxFence",
                       "to": 44
                     },
                     {
                       "from": 46,
-                      "text": "self.claims",
+                      "member": "claims",
+                      "text": "$self.claims",
                       "to": 53
                     },
                     {
                       "from": 78,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 83
                     }
                   ],
                   "helpers": [
                     "fenceDetails"
                   ],
+                  "internal": {
+                    "now": "$now",
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 40,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 220,
                     "offset": 9285
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "reads-record-in-helper"
                 },
                 "position": {
@@ -27533,27 +27652,30 @@
                   "edits": [
                     {
                       "from": 37,
-                      "text": "self.claims",
+                      "member": "claims",
+                      "text": "$self.claims",
                       "to": 44
                     },
                     {
                       "from": 69,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 74
                     }
                   ],
                   "helpers": [
                     "fenceIsCurrent"
                   ],
+                  "internal": {
+                    "now": "$now",
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 37,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 217,
                     "offset": 9076
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "reads-record-in-helper"
                 },
                 "position": {
@@ -27583,37 +27705,42 @@
                   "edits": [
                     {
                       "from": 44,
-                      "text": "self.claims",
+                      "member": "claims",
+                      "text": "$self.claims",
                       "to": 51
                     },
                     {
                       "from": 63,
-                      "text": "self.completions",
+                      "member": "completions",
+                      "text": "$self.completions",
                       "to": 75
                     },
                     {
                       "from": 77,
-                      "text": "self.reopenedAt",
+                      "member": "reopenedAt",
+                      "text": "$self.reopenedAt",
                       "to": 88
                     },
                     {
                       "from": 90,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 95
                     }
                   ],
                   "helpers": [
                     "invalidatedFences"
                   ],
+                  "internal": {
+                    "now": "$now",
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 226,
                     "offset": 9724
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -27650,37 +27777,42 @@
                   "edits": [
                     {
                       "from": 51,
-                      "text": "self.claims",
+                      "member": "claims",
+                      "text": "$self.claims",
                       "to": 58
                     },
                     {
                       "from": 83,
-                      "text": "self.completions",
+                      "member": "completions",
+                      "text": "$self.completions",
                       "to": 95
                     },
                     {
                       "from": 97,
-                      "text": "self.reopenedAt",
+                      "member": "reopenedAt",
+                      "text": "$self.reopenedAt",
                       "to": 108
                     },
                     {
                       "from": 110,
-                      "text": "$.now($s)",
+                      "text": "$now()",
                       "to": 115
                     }
                   ],
                   "helpers": [
                     "claimNotInvalidated"
                   ],
+                  "internal": {
+                    "now": "$now",
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 46,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 223,
                     "offset": 9441
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "reads-record-in-helper"
                 },
                 "position": {
@@ -28039,19 +28171,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 243,
                     "offset": 10748
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -28533,22 +28667,24 @@
                   "edits": [
                     {
                       "from": 33,
-                      "text": "self.assignments",
+                      "member": "assignments",
+                      "text": "$self.assignments",
                       "to": 45
                     }
                   ],
                   "helpers": [
                     "assignmentChanges"
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 292,
                     "offset": 13213
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "reads-record-in-helper"
                 },
                 "position": {
@@ -28571,19 +28707,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 300,
                     "offset": 13674
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -28946,19 +29084,21 @@
                   "edits": [
                     {
                       "from": 73,
-                      "text": "self.version",
+                      "member": "version",
+                      "text": "$self.version",
                       "to": 81
                     }
                   ],
+                  "internal": {
+                    "self": "$self"
+                  },
                   "position": {
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 329,
                     "offset": 15208
                   },
-                  "roots": [
-                    "self"
-                  ],
+                  "roots": [],
                   "why": "unsupported-construct"
                 },
                 "position": {
@@ -30924,13 +31064,16 @@
                 "edits": [
                   {
                     "from": 123,
-                    "text": "$.now($s)",
+                    "text": "$now()",
                     "to": 128
                   }
                 ],
                 "helpers": [
                   "noOtherHolderOf"
                 ],
+                "internal": {
+                  "now": "$now"
+                },
                 "isSystem": true,
                 "mesh": [
                   "Mesh"
