@@ -6,6 +6,7 @@
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
+import { TRANSACTION } from "../src/front-end/syntax/transaction.ts";
 import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 
 const BASE: LowerSourceOptions = { structural: "reject", imports: "pass" };
@@ -160,7 +161,48 @@ describe("what Mesh's dialect does not read", () => {
   test("`#` and `.` are no trigger rows", () => {
     const rows = SYNTAX_DIALECT.table.attributeTriggers ?? [];
     expect(rows.map((row) => row.id)).toEqual(["name", "member"]);
-    expect((SYNTAX_DIALECT.table.expressionTriggers ?? []).map((row) => row.id)).toEqual(["atom", "member"]);
+    expect((SYNTAX_DIALECT.table.expressionTriggers ?? []).map((row) => row.id)).toEqual(["atom", "member", "transaction"]);
     expect((SYNTAX_DIALECT.table.lineTriggers ?? []).map((row) => row.id)).toEqual(["member"]);
+  });
+});
+
+describe("the transaction row (SYN-29)", () => {
+  test("`%.name` is an expression row only: the row the MX lead gave, an identifier stand-in of the same length", () => {
+    expect(TRANSACTION).toEqual({
+      id: "transaction",
+      chars: "%",
+      match: "%\\.[\\p{L}\\p{Nl}_$][\\p{L}\\p{Nl}\\p{Mn}\\p{Mc}\\p{Nd}\\p{Pc}_$]*",
+      standIn: "identifier",
+      node: { call: "transaction" },
+    });
+    expect(Object.isFrozen(TRANSACTION)).toBe(true);
+    for (const list of [SYNTAX_DIALECT.table.attributeTriggers, SYNTAX_DIALECT.table.lineTriggers])
+      expect((list ?? []).some((row) => row.id === "transaction")).toBe(false);
+    const lower = (body: string) =>
+      lowerSource(`entity :T\n  attributes\n    uuid :id primary-key\n  computed\n    boolean :c() { ${body} }\n`, "t.mesh.mx", { ...BASE, dialect: SYNTAX_DIALECT }).diagnostics.map((d) => d.code);
+    expect(lower("return %.now.getTime() > %.today.getTime()")).toEqual([]);
+    // The lowered node: a member read of `now` on an identifier `%` that no JavaScript name can be, marked with where the
+    // authored `%.now` is and its name; the front end reads the mark, never the identifier.
+    const source = "entity :T\n  computed\n    boolean :c() { return %.now.getTime() > 0 }\n";
+    const { ir } = lowerSource(source, "t.mesh.mx", { ...BASE, dialect: SYNTAX_DIALECT });
+    const marked: unknown[] = [];
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(walk);
+      if (value === null || typeof value !== "object") return;
+      if ((value as { extra?: { mxTransaction?: unknown } }).extra?.mxTransaction) marked.push(value);
+      for (const child of Object.values(value)) walk(child);
+    };
+    walk(attr(find(ir!.body, "boolean"), "value"));
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toMatchObject({
+      type: "MemberExpression",
+      object: { type: "Identifier", name: "%" },
+      property: { type: "Identifier", name: "now" },
+      computed: false,
+      extra: { mxTransaction: { name: "now", span: { sourceStart: source.indexOf("%.now"), sourceEnd: source.indexOf("%.now") + 5 } } },
+    });
+    expect(lower("return %.now !== null")).toEqual([]);
+    // An operand only: never a modulo, and `%` or `%name` alone is no row.
+    for (const body of ["return 1 %.now", "return %now", "return %"]) expect(lower(body), body).toEqual(["MX_PARSE_EXPRESSION"]);
   });
 });

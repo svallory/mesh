@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -93,7 +93,6 @@ export const $expressions = {
   "correct.check.notCorrected.that": (
     $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
   ) => {
-    const Mesh = $mesh($s);
     const Invocation: $execution$Invocation$ReadOnly = $execution$Invocation$value;
     return (async ({ input }) =>
       input.corrects != null &&
@@ -120,7 +119,6 @@ export const $expressions = {
   "correct.step.0.set.attempt": (
     $s: $execution$Invocation$Scope<$execution$Invocation$CorrectInvocationInput>,
   ) => {
-    const Mesh = $mesh($s);
     const Invocation: $execution$Invocation$ReadOnly = $execution$Invocation$value;
     return (async ({ input }) =>
       (
@@ -131,7 +129,6 @@ export const $expressions = {
   "correct.step.0.set.task": (
     $s: $execution$Invocation$Scope<$execution$Invocation$CorrectInvocationInput>,
   ) => {
-    const Mesh = $mesh($s);
     const Invocation: $execution$Invocation$ReadOnly = $execution$Invocation$value;
     return (async ({ input }) =>
       (
@@ -153,7 +150,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:111:20)
@@ -164,7 +160,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -172,7 +167,6 @@ export const $expressions = {
   "policy.attemptPerformer.authorize-if.0": (
     $s: $execution$Invocation$NewScope<$execution$Invocation$RecordInvocationInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ input, actor, context }) =>
       Mesh.isSystem(context) || (await performsAttemptOf(input.attempt, actor.id)))($s);
   },
@@ -180,7 +174,6 @@ export const $expressions = {
   "policy.invocationRecorder.authorize-if.0": (
     $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ input, actor, context }) =>
       Mesh.isSystem(context) || (await correctsInvocationOf(input.corrects, actor.id)))($s);
   },

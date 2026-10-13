@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -116,7 +116,6 @@ export const $expressions = {
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:83:20)
@@ -125,7 +124,6 @@ export const $expressions = {
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -133,7 +131,6 @@ export const $expressions = {
   "policy.runCanceler.authorize-if.0": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || (await cancelsRunOf(self, actor.id)))($s);
   },

@@ -55,7 +55,7 @@ export interface PlainReason {
    * parameters do not bind, `self` included when `&name` stands for `self.name`; the printed function takes these from the scope.
    */
   roots: string[];
-  /** The clock functions the authored text reads as members of the file's `Mesh` import (`Mesh.now`, `Mesh.today`), called or not. */
+  /** The members of the current transaction the authored text reads (`%.now`, `%.today`; SYN-29): `now` and `today`. */
   clock?: ("now" | "today")[];
   /** The authored text reads `Mesh.isSystem` (`Mesh.isSystem(context)`). */
   isSystem?: true;
@@ -63,8 +63,7 @@ export interface PlainReason {
   privileged?: true;
   /**
    * The names the file imports `Mesh` under (`import { Mesh } from "meshfw"`, PRJ-22) that the authored text reads, where
-   * no binding of the function hides them, sorted. The printed function binds each to Mesh's functions as its evaluation
-   * sees them: `now` and `today` read the instant of the action or load that runs it.
+   * no binding of the function hides them, sorted. The expressions file imports `Mesh` under each, as it imports a helper.
    */
   mesh?: string[];
   /**
@@ -136,8 +135,8 @@ export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
   { id: "idiv", spelling: "a / b (both integers)", arity: 2, signature: "(integer, integer) -> integer", nulls: "truncates toward zero; any operand null, or a zero divisor: null", nullResult: "propagates" },
   { id: "neg", spelling: "-a", arity: 1, signature: "(number) -> number", nulls: "null: null", nullResult: "propagates" },
   { id: "length", spelling: "a.length", arity: 1, signature: "(string | list) -> number", nulls: "null string: null; a list is never null", nullResult: "propagates" },
-  { id: "now", spelling: "Mesh.now()", arity: 0, signature: "() -> date", nulls: "never null; one instant per scope", nullResult: "never" },
-  { id: "today", spelling: "Mesh.today()", arity: 0, signature: "() -> date", nulls: "never null; Mesh.now() at 00:00 UTC", nullResult: "never" },
+  { id: "now", spelling: "%.now", arity: 0, signature: "date", nulls: "never null; the current transaction's instant, one per transaction", nullResult: "never" },
+  { id: "today", spelling: "%.today", arity: 0, signature: "date", nulls: "never null; %.now at 00:00 UTC", nullResult: "never" },
   { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b", nullResult: "all-operands" },
   { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch", nullResult: "branches" },
   { id: "isSystem", spelling: "Mesh.isSystem(context)", arity: 1, signature: "(any) -> boolean", nulls: "never unknown: true only when the value is an object whose `system` is `true`", nullResult: "never" },

@@ -8,8 +8,8 @@ import {
   @if(usesExpr)
   expr as $,
   @end
-  @if(usesMesh)
-  meshIn as $mesh,
+  @each(name in meshImports)
+  {{ name }},
   @end
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,

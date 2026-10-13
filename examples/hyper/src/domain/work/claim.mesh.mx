@@ -18,7 +18,7 @@ entity :Claim table="claims"
     belongs-to :task entity=Task
     belongs-to :holder entity=Collaborator
   computed
-    boolean :lapsed() { return &state === :active && &expiresAt <= Mesh.now() }
+    boolean :lapsed() { return &state === :active && &expiresAt <= %.now }
   actions auto=[:read]
     create :acquire
       input
@@ -39,14 +39,14 @@ entity :Claim table="claims"
         ]
       do
         run({ input, context }) {
-          const lapsed = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.task }, state: { eq: :active }, expiresAt: { lte: Mesh.now() } } });
+          const lapsed = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.task }, state: { eq: :active }, expiresAt: { lte: %.now } } });
           for (const claim of lapsed) await Claim.end({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
         }
         set
           &holder=({ actor }) => actor.id
           &fence=() => (&task.maxFence ?? 0) + 1
-          &acquiredAt=() => Mesh.now()
-          &expiresAt=() => leaseEnd(Mesh.now())
+          &acquiredAt=() => %.now
+          &expiresAt=() => leaseEnd(%.now)
         run [after=:write] ({ self, context }) {
           const open = await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
           if (open.length === 0) await Assignment.start({ task: self.taskId, assignee: self.holderId, reviewWaived: false }, { ...context, system: true });
@@ -69,7 +69,7 @@ entity :Claim table="claims"
           message="the claim has ended; claim the task again"
         ]
         check :claimNotExpired [
-          that=() => &expiresAt > Mesh.now()
+          that=() => &expiresAt > %.now
           code="claim.expired"
           message="the lease has expired; claim the task again"
         ]
@@ -81,7 +81,7 @@ entity :Claim table="claims"
         ]
       do
         set
-          &expiresAt=() => leaseEnd(Mesh.now())
+          &expiresAt=() => leaseEnd(%.now)
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
@@ -103,7 +103,7 @@ entity :Claim table="claims"
           message="the claim has ended; claim the task again"
         ]
         check :claimNotExpired [
-          that=() => &expiresAt > Mesh.now()
+          that=() => &expiresAt > %.now
           code="claim.expired"
           message="the lease has expired; claim the task again"
         ]
@@ -116,7 +116,7 @@ entity :Claim table="claims"
       do
         set
           &state=:released
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &endReason=({ input }) => input.reason ?? "released"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
@@ -140,7 +140,7 @@ entity :Claim table="claims"
       do
         set
           &state=:revoked
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &endReason=({ input }) => input.reason
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
@@ -157,7 +157,7 @@ entity :Claim table="claims"
       do
         set
           &state=:expired
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &endReason=({ input }) => input.reason ?? "lease expired"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
@@ -175,7 +175,7 @@ entity :Claim table="claims"
       do
         set
           &state=({ input }) => input.outcome
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &endReason=({ input }) => input.reason
   policies
     policy :membersRead types=[:read]

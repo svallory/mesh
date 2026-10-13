@@ -50,16 +50,44 @@ const GLOBALS = new Set([
  * Mesh's own functions (PRJ-22), which a function in an entity file reads as members of `Mesh`, imported from "meshfw"
  * (`import { Mesh } from "meshfw"`, or under an alias). `privileged` (TXN-16) has no `fn`: a function that calls it is
  * plain code, since what it reads is not an expression over the record. `args` is what a call passes, for the examples.
+ * The instant is not one of them (SYN-29): it is the current transaction's, `%.now` (`TRANSACTION_MEMBERS`).
  */
 const MESH_FUNCTIONS: ReadonlyMap<string, { fn?: FunctionId; arity: number; args: string }> = new Map([
-  ["now", { fn: "now", arity: 0, args: "" }],
-  ["today", { fn: "today", arity: 0, args: "" }],
   ["isSystem", { fn: "isSystem", arity: 1, args: "context" }],
   ["privileged", { arity: 1, args: "Task" }],
 ]);
+/**
+ * What `%.` reads (SYN-29): `%` is the current transaction, and these are its properties, values and not calls: `%.now`,
+ * its instant, and `%.today`, that instant at 00:00 UTC: the registry's `now` and `today`, one instant per transaction
+ * (ACT-29), read by translated and plain code alike.
+ */
+const TRANSACTION_MEMBERS: ReadonlyMap<string, { fn: "now" | "today"; what: string }> = new Map([
+  ["now", { fn: "now", what: "the current transaction's instant" }],
+  ["today", { fn: "today", what: "the current transaction's date, its instant at 00:00 UTC" }],
+]);
+const TRANSACTION_LIST = [...TRANSACTION_MEMBERS.keys()].map((name) => `\`%.${name}\``).join(" and ");
+/** The `%.name` mark MX's transaction row leaves on the node it lowers `%.name` to (`syntax/transaction.ts`). */
+const transactionMark = (n: N | undefined): { name: string; span: { sourceStart: number; sourceEnd: number } } | undefined =>
+  (n?.extra as { mxTransaction?: { name: string; span: { sourceStart: number; sourceEnd: number } } } | undefined)?.mxTransaction;
+/**
+ * The `%.name` reads an assignment, an update, a `for...in`/`for...of` head or a `delete` writes to or through (`%.now`,
+ * `%.now.x`, `[%.now] = ...`), from the marks only: the target's member-access root is marked, as `&name` is.
+ */
+function writtenTransaction(target: N | undefined): N[] {
+  if (!target) return [];
+  let root = target;
+  while (!transactionMark(root) && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression") && root.object)
+    root = root.object as N;
+  if (transactionMark(root)) return [root];
+  if (target.type === "ArrayPattern") return ((target.elements ?? []) as (N | null)[]).flatMap((e) => writtenTransaction(e ?? undefined));
+  if (target.type === "ObjectPattern")
+    return ((target.properties ?? []) as N[]).flatMap((p) => writtenTransaction((p.value ?? p.argument) as N | undefined));
+  if (target.type === "RestElement" || target.type === "AssignmentPattern") return writtenTransaction((target.argument ?? target.left) as N | undefined);
+  return [];
+}
 /** The members every object has, which TypeScript gives `Mesh` too: reading one is no unknown Mesh function. */
 const OBJECT_MEMBERS = new Set(["constructor", "toString", "toLocaleString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable"]);
-/** `Mesh.now()` as a file that imports `Mesh` under `local` writes it, with the call's own arguments when it has them. */
+/** `Mesh.isSystem(context)` as a file that imports `Mesh` under `local` writes it, with the call's own arguments when it has them. */
 const meshCall = (local: string, name: string, args?: string) => `${local}.${name}(${args ?? MESH_FUNCTIONS.get(name)?.args ?? ""})`;
 /**
  * The authored arguments of the call whose callee is the identifier the walk is at (`Eone` for `privileged(Eone)`), when
@@ -73,7 +101,7 @@ function ownArguments(name: string, parent: N | undefined, key: string | undefin
   return typeof end === "number" ? ctx.source.slice(start(args[0]!), end) : undefined;
 }
 /**
- * The member a node reads from the file's `Mesh` import (`now` for `Mesh.now`, `Mesh?.now` or `Mesh["now"]`), or undefined
+ * The member a node reads from the file's `Mesh` import (`isSystem` for `Mesh.isSystem`, `Mesh?.isSystem` or `Mesh["isSystem"]`), or undefined
  * when the node reads no named member of it. `shadowed` says whether a binding of the function in scope hides the name;
  * a scope name (`input`) is always the root (EXP-12), never an import of that name.
  */
@@ -89,7 +117,7 @@ const isMeshImport = (name: string, ctx: ConvertContext, shadowed: (name: string
   ctx.mesh?.has(name) === true && !shadowed(name) && !SCOPE_NAMES.has(name);
 /**
  * The members of the file's `Mesh` import that a read of it (`n`, an identifier that is that import) names, each with the
- * node that names it: the member it reads (`Mesh.now`, `Mesh?.now`, `Mesh["now"]`), or each fixed key of an object pattern
+ * node that names it: the member it reads (`Mesh.isSystem`, `Mesh?.isSystem`, `Mesh["isSystem"]`), or each fixed key of an object pattern
  * it initialises (`const { privileged, now: clock } = Mesh`, `({ today } = Mesh)`, a parameter's default `{ now } = Mesh`).
  * A rest element or a computed key names no member: such a read is opaque, as passing `Mesh` to a helper is.
  */
@@ -111,13 +139,15 @@ function meshReads(n: N, parent: N | undefined, key: string | undefined, ctx: Co
   });
 }
 const FREE_VARIABLE = (name: string) =>
-  `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, its own entity and the imported ones, and Mesh's functions through \`Mesh\`, imported from "meshfw"`;
+  `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, its own entity and the imported ones, the transaction's ${TRANSACTION_LIST}, and Mesh's functions through \`Mesh\`, imported from "meshfw"`;
 /**
  * What fixes an unknown name: a Mesh function written bare is a member of `Mesh`, which the file may not import yet. The
  * fix names the file's `Mesh` import where it can be read: an alias that a binding hides at the reference (`shadowed`), or
  * that is a scope name (`input`, refused at the import), is not one, and the fix says so instead of naming it.
  */
 function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
+  // A bare `now` or `today` is the transaction's (SYN-29).
+  if (TRANSACTION_MEMBERS.has(name)) return `write \`%.${name}\`, ${TRANSACTION_MEMBERS.get(name)!.what}, with no \`()\``;
   const locals = [...(ctx.mesh ?? [])];
   const local = locals.find((candidate) => isMeshImport(candidate, ctx, shadowed));
   const hidden = local === undefined ? locals.find((candidate) => !SCOPE_NAMES.has(candidate)) : undefined;
@@ -183,7 +213,7 @@ function lexicalNames(statements: readonly N[], names: Set<string>): void {
  * own name (an expression's) and its `var`s; a block's lexical declarations; a loop head's; a catch clause's parameter;
  * a class expression's name. A reference resolves to the nearest of these that has its name.
  *
- * A function's `var`s share the scope of its parameters, so `function f(at = Mesh.now()) { var Mesh = 0 }` binds no
+ * A function's `var`s share the scope of its parameters, so `function f(at = Mesh.isSystem(c)) { var Mesh = 0 }` binds no
  * `Mesh`. JavaScript gives that default the outer `Mesh`, but Bun's engine does not when the outer binding is two or more
  * functions up, which a printed function's `Mesh` always is: it throws `ReferenceError: Mesh is not defined` (Bun 1.3.14
  * and 1.4.2; Node gives the outer one). Binding none keeps the failure at the type check (TS2304) instead of at run time.
@@ -234,13 +264,14 @@ function bindings(root: N): Set<string> {
 /**
  * Free-variable errors for one function, at the identifier. Returns the scope names the function reads as variables
  * that no scope of the function binds (`&name` is `self.name`, so it reads `self`), in a fixed order: what the printed
- * function takes from the scope. Each reference is resolved against its own enclosing scopes, as the clock names are: a
+ * function takes from the scope. Each reference is resolved against its own enclosing scopes, as the `Mesh` import is: a
  * loop variable, a nested parameter or a `catch` parameter called `input` shadows the root only where it is in scope,
  * and a read of `input` elsewhere in the function is still the root.
- * Adds to `called` each of Mesh's functions (`now`, `today`, `isSystem`, `privileged`) the function reads as a member of the
- * file's `Mesh` import, called or not, and to `names.mesh` each name of that import it reads, where no enclosing scope
- * binds the name: each reference is resolved against its own scopes, so `[1].some((Mesh) => Mesh === 1) && Mesh.now()`
- * reads the clock (a function's `var`s count for its parameters: `scopeNames`).
+ * Adds to `called` each of Mesh's functions (`isSystem`, `privileged`) the function reads as a member of the file's `Mesh`
+ * import, called or not, and each member of the transaction it reads (`now` for `%.now`, `today` for `%.today`), reports
+ * a `%.` name, call or write it refuses, and adds to `names.mesh` each name of the `Mesh` import it reads, where no enclosing scope
+ * binds the name: each reference is resolved against its own scopes, so `[1].some((Mesh) => Mesh === 1) && Mesh.isSystem(c)`
+ * reads the import (a function's `var`s count for its parameters: `scopeNames`).
  */
 function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: Names): string[] {
   const bound = bindings(fn);
@@ -256,13 +287,53 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     const n = value as N;
     if (typeof n.type === "string" && n.type.startsWith("TS")) return;
     if (n.type === "PrivateName") return; // `#x` names a class member, never a variable
+    // `%.now`: the current transaction's (SYN-29). It is read as a value, never called; its object, `%`, is no variable.
+    const mark = transactionMark(n);
+    if (mark) {
+      const member = TRANSACTION_MEMBERS.get(mark.name);
+      if (!member)
+        ctx.report({
+          severity: "error",
+          code: "MESH_UNKNOWN_TRANSACTION_MEMBER",
+          message: `\`%.${mark.name}\` is not a member of the transaction: \`%\` is the current transaction, and holds ${TRANSACTION_LIST}`,
+          position: ctx.at(mark.span.sourceStart),
+          fix: `write \`%.now\` for ${TRANSACTION_MEMBERS.get("now")!.what}, or \`%.today\` for ${TRANSACTION_MEMBERS.get("today")!.what}`,
+        });
+      else {
+        called.add(member.fn);
+        if (key === "callee" && parent && (parent.type === "CallExpression" || parent.type === "OptionalCallExpression" || parent.type === "NewExpression"))
+          ctx.report({
+            severity: "error",
+            code: "MESH_TRANSACTION_CALL",
+            message: `\`%.${mark.name}\` is a value, not a function: it is ${member.what}`,
+            position: ctx.at(mark.span.sourceStart),
+            fix: `write \`%.${mark.name}\`, without \`()\``,
+          });
+      }
+      return;
+    }
+    // Writing to `%.now`, or through it, is refused: the transaction pins its instant.
+    const written = n.type === "AssignmentExpression" ? n.left as N
+      : n.type === "UpdateExpression" || (n.type === "UnaryExpression" && n.operator === "delete") ? n.argument as N
+      : n.type === "ForInStatement" || n.type === "ForOfStatement" ? n.left as N
+      : undefined;
+    for (const target of writtenTransaction(written)) {
+      const name = transactionMark(target)!.name;
+      ctx.report({
+        severity: "error",
+        code: "MESH_TRANSACTION_ASSIGN",
+        message: `\`%.${name}\` cannot be written: \`%\` is the current transaction, and ${TRANSACTION_MEMBERS.get(name)?.what ?? `\`%.${name}\``} is read only`,
+        position: ctx.at(start(n)),
+        fix: `read it into a local of the function and change that: \`let at = %.${TRANSACTION_MEMBERS.has(name) ? name : "now"}\``,
+      });
+    }
     if (n.type === "Identifier") {
       const property = parent && (parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") && key === "property" && !parent.computed;
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
-      // The file's `Mesh` import, where no binding of the function hides it: the printed function binds it to Mesh's own
-      // functions as the evaluation sees them, and a member it reads is one of them (PRJ-22).
+      // The file's `Mesh` import, where no binding of the function hides it: the expressions file imports `Mesh` under
+      // that name, as it imports a helper, and a member it reads is one of Mesh's functions (PRJ-22).
       if (!property && !objectKey && !label && isMeshImport(n.name!, ctx, (name) => scope.has(name))) {
         names.mesh.add(n.name!);
         // A destructured member counts as a read of it, so `const { privileged } = Mesh` is still a call to `privileged`
@@ -275,6 +346,18 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           }
           if (OBJECT_MEMBERS.has(member.name)) continue;
           const at = member.at;
+          // `Mesh.now()` and `Mesh.today()` are gone (SYN-29): the instant is the current transaction's.
+          const instant = TRANSACTION_MEMBERS.get(member.name);
+          if (instant) {
+            ctx.report({
+              severity: "error",
+              code: "MESH_UNKNOWN_MESH_FUNCTION",
+              message: `\`${member.local}.${member.name}\` is not one of Mesh's functions: ${instant.what} is \`%.${member.name}\`, a property of \`%\`, the current transaction`,
+              position: ctx.at(start(at)),
+              fix: `write \`%.${member.name}\`, with no \`()\``,
+            });
+            continue;
+          }
           ctx.report({
             severity: "error",
             code: "MESH_UNKNOWN_MESH_FUNCTION",
@@ -363,7 +446,12 @@ function hasDifferingOperator(root: unknown): boolean {
   return walk(root);
 }
 
-/** The edits that turn the authored text into TypeScript: `&name` to `self.name`, `:atom` to a string. */
+/**
+ * The edits that turn the authored text into TypeScript: `&name` to `self.name`, `:atom` to a string, and `%.now` and
+ * `%.today` to the run-time functions a translated expression calls, `$.now($s)` and `$.today($s)`, over the scope the
+ * printed function is handed, so plain and translated code read one instant (SYN-29). A `%.` name Mesh does not know is
+ * reported by `freeVariables` and left as written.
+ */
 function editsFor(fn: N, base: number): SourceEdit[] {
   const edits: SourceEdit[] = [];
   // The `&x` of an `input.x ?? &x`.
@@ -382,6 +470,12 @@ function editsFor(fn: N, base: number): SourceEdit[] {
     }
     if (n.type === "MemberExpression" && member)
       edits.push({ from: member.span.sourceStart - base, to: member.span.sourceEnd - base, text: `self.${member.name}`, ...(fallbacks.has(n) ? { fallback: true as const } : {}) });
+    const instant = transactionMark(n);
+    if (instant) {
+      const known = TRANSACTION_MEMBERS.get(instant.name);
+      if (known) edits.push({ from: instant.span.sourceStart - base, to: instant.span.sourceEnd - base, text: `$.${known.fn}($s)` });
+      return;
+    }
     const atom = extra?.mxAtom;
     if (n.type === "StringLiteral" && atom)
       edits.push({ from: atom.span.sourceStart - base, to: atom.span.sourceEnd - base, text: JSON.stringify(String(n.value)) });
@@ -446,6 +540,13 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       throw new Plain("unsupported-construct", `the name \`${name}\``, n);
     }
     case "MemberExpression": case "OptionalMemberExpression": {
+      // `%.now`: the transaction's instant, the function `now` of the scope (SYN-29). An unknown name was reported.
+      const instant = transactionMark(n);
+      if (instant) {
+        const known = TRANSACTION_MEMBERS.get(instant.name);
+        if (!known) throw new Plain("unsupported-construct", `\`%.${instant.name}\``, n);
+        return { kind: "call", fn: known.fn, args: [], position: ctx.at(instant.span.sourceStart) };
+      }
       if (n.computed) throw new Plain("unsupported-construct", "computed member access", n);
       const name = String(n.property.name);
       const mark = (n.extra as any)?.mxMember as { name: string; span: { sourceStart: number } } | undefined;
@@ -490,7 +591,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
     case "CallExpression": {
       const callee = n.callee as N;
       const args = (n.arguments ?? []) as N[];
-      // `Mesh.now()`: one of Mesh's functions, through the file's `Mesh` import that no parameter hides (PRJ-22).
+      // `Mesh.isSystem(context)`: one of Mesh's functions, through the file's `Mesh` import that no parameter hides (PRJ-22).
       const member = meshMember(callee, ctx, (local) => env.roots.has(local) || env.locals.has(local));
       const spec = member && n.type === "CallExpression" ? MESH_FUNCTIONS.get(member.name) : undefined;
       if (member && spec) {
@@ -606,9 +707,9 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const names: Names = { entities: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
   const free = freeVariables(f, ctx, called, names);
   removedScopeNames(f, ctx);
-  // `Mesh.now()` and `Mesh.today()` in code Mesh does not translate read the same clock as a translated expression, and
-  // `Mesh.isSystem(context)` is the same function: the printed function binds each name of the file's `Mesh` import it
-  // reads to Mesh's functions as the evaluation sees them (PRJ-22). The demotion keeps them for a tree the checker demotes.
+  // `%.now` and `%.today` in code Mesh does not translate read the same instant as a translated expression (SYN-29), and
+  // `Mesh.isSystem(context)` is the same function: the expressions file imports `Mesh` under each name the file gives it
+  // that a function reads (PRJ-22). The demotion keeps them for a tree the checker demotes.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
   const clocked = {
     ...(clock.length ? { clock } : {}),

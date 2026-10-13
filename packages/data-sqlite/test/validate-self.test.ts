@@ -210,8 +210,7 @@ entity :Card table="cards"
 `;
 
 // A check against a deadline and a step that stamps the time: both read the action's one instant.
-const offer = `import { Mesh } from "meshfw"
-entity :Offer table="offers"
+const offer = `entity :Offer table="offers"
   attributes
     uuid :id primary-key
     timestamp :closesAt
@@ -222,10 +221,10 @@ entity :Offer table="offers"
         &closesAt
     update :accept
       validate
-        check :stillOpen that=() => Mesh.now() < &closesAt code="offer.closed" message="the offer is closed"
+        check :stillOpen that=() => %.now < &closesAt code="offer.closed" message="the offer is closed"
       do
         set
-          &acceptedAt=() => Mesh.now()
+          &acceptedAt=() => %.now
 `;
 
 const SQLITE: ResolvedConfig["data"] = {
@@ -499,7 +498,7 @@ describe("a relationship a check loads", () => {
 });
 
 describe("one instant per action", () => {
-  test("a check and a step read the same Mesh.now(), even with a clock that moves on every read", async () => {
+  test("a check and a step read the same %.now, even with a clock that moves on every read", async () => {
     const db = sqlite({ file: ":memory:" });
     try {
       await createSchema(db, app.tables);

@@ -3,7 +3,6 @@ import { Customer } from "./customer.mesh.mx"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { Payment } from "./payment.mesh.mx"
 import { formatMoney, isStaff } from "./invoice.helpers"
-import { Mesh } from "meshfw"
 
 entity :Invoice table="invoices"
   attributes
@@ -27,7 +26,7 @@ entity :Invoice table="invoices"
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < Mesh.today()
+      return &status === :sent && &dueOn < %.today
     }
     string :label() {
       return &number + " · " + formatMoney(&total)

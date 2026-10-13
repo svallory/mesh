@@ -291,7 +291,7 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
 
 describe("Mesh.isSystem(context)", () => {
   const source = (check: string) => MESH + post(`  policies\n    policy :internal types=[:create, :update, :destroy]\n      authorize-if=${check}\n    policy :readers types=[:read]\n      authorize-if=() => true\n`);
-  test("translated, it is Mesh's function; in plain code it is a member of the bound Mesh; its expressions file calls the runtime's", async () => {
+  test("translated, it is Mesh's function; in plain code it is a member of the imported Mesh; its expressions file calls the runtime's", async () => {
     const translated = build(source("({ context }) => Mesh.isSystem(context)"));
     expect(translated.diagnostics).toEqual([]);
     expect(translated.document!.entities[0]!.policies[0]!.authorizeIf[0]!.tree).toMatchObject({ kind: "call", fn: "isSystem" });
@@ -300,7 +300,9 @@ describe("Mesh.isSystem(context)", () => {
     for (const document of [translated.document!, plain.document!]) {
       const files = await generateFiles({ document, config: configOf("/project") });
       const expressions = files.find((file) => file.path.endsWith("post.expressions.ts"))!.contents;
-      expect(expressions).toMatch(/\$\.isSystem\(|const Mesh = \$mesh\(\$s\);/);
+      expect(expressions).toMatch(/\$\.isSystem\(|return Mesh\.isSystem\(context\)/);
+      // The file's `Mesh` is the runtime's, imported as a helper is: no per-evaluation `Mesh` is bound (SYN-29 removed it).
+      expect(expressions).not.toMatch(/\$mesh|meshIn/);
       expect(expressions).toContain('"policy.internal.authorize-if.0"');
     }
   });
@@ -311,7 +313,8 @@ describe("Mesh.isSystem(context)", () => {
     expect(built.diagnostics[0]!.position).toMatchObject({ line: 16, column: 36 });
     expect(codes(build(source("() => Mesh.isSystem()")).diagnostics)).toEqual(["error:MESH_EXPR_ARITY"]);
     expect(codes(build(source("({ context }) => { return Mesh.isSystem(context, 1) }")).diagnostics)).toEqual(["error:MESH_EXPR_ARITY"]);
-    expect(build(source("() => Mesh.now(1) !== null")).diagnostics[0]!.message).toBe("`Mesh.now()` takes no arguments, and this call passes 1");
+    // `%.now` is a value of the transaction, never a call: `%.now(1)` is refused as a call, not counted (SYN-29).
+    expect(codes(build(source("() => %.now(1) !== null")).diagnostics)).toEqual(["error:MESH_TRANSACTION_CALL"]);
     // A parameter named `Mesh` is the author's own, with its own arity.
     expect(build(source("() => [1].some((Mesh) => Mesh.isSystem(1, 2) === 1)")).diagnostics.filter((d) => d.code === "MESH_EXPR_ARITY")).toEqual([]);
   });

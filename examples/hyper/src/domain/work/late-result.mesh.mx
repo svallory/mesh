@@ -23,7 +23,7 @@ entity :LateResult table="late_results"
         &evidence
       validate
         check :staleFence [
-          that=async ({ input, actor }) => isStale(await claimsOf(input.task), input.fence, actor.id, Mesh.now())
+          that=async ({ input, actor }) => isStale(await claimsOf(input.task), input.fence, actor.id, %.now)
           code="claim.stale-fence"
           message="only a fence you held that expired or was revoked records a late result"
         ]

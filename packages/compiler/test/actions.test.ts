@@ -163,7 +163,7 @@ describe("actions view", () => {
       expect.stringMatching(/^\/\/ pre-check: /),
       "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       "const $actor = $context.actor;",
-      "const $clock = $pinClock(options.clock);",
+      "const $clock = frame.clock(options.clock);",
       'const $policies = $authorizer("blog.Article", "create", [{ name: "everyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: $expressions["policy.everyone.authorize-if.0"] }] }]);',
       'await $policies.before(layer, $scope({ input: $readOnlyRecord(parsed, "blog.Article#create"), actor: $actor, context: $context }, { clock: $clock }));',
     ]);

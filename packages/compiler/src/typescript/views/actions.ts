@@ -403,15 +403,13 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // ---- policies (M8): a read's policies are a filter on the read (ADR-0022, lead ruling 2 of M8a) --------------
       // A read the SQL evaluator must run (M10) fails in its body whatever the policies say, so they are not evaluated.
       const unsupportedRead = Boolean(action.filter || action.sort);
-      if (!unsupportedRead) {
-        runtime.add("pinClock");
-        optionsUsed = true;
-      }
+      if (!unsupportedRead) optionsUsed = true;
       const preCheck = unsupportedRead ? [] : [
         "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them",
         "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
         "const $actor = $context.actor;",
-        "const $clock = $pinClock(options.clock);",
+        // ACT-29: the instant of the transaction the read joins, else its own, pinned on its first read.
+        "const $clock = frame.clock(options.clock);",
         // The checks see the input as the action does, cast; an invalid input is reported as one, denied or not.
         `const $parsed = await $castInput(layer, ${validator}, input);`,
         `if (!(await ${authorizerCall(action, covering)}.filter(layer, ${preScope("$parsed as never", where)}))) return [] as unknown as ${returnType};`,
@@ -801,8 +799,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // the transaction opens, so they are declared there, and the transaction's functions read the same instant.
     const prelude: string[] = [];
     used.options = true;
-    runtime.add("pinClock");
-    // One instant per action call: the policies, the scope's `Mesh.now()`, the `$now` stamps, the `load` step and every `Mesh.privileged` read read it.
+    // One instant per transaction (ACT-29): the policies, the scope's `%.now`, the `$now` stamps, the `load` step, every
+    // `Mesh.privileged` read and every action the call makes inside its transaction read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
     if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame };");
@@ -833,7 +831,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       "// pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam",
       "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       "const $actor = $context.actor;",
-      "const $clock = $pinClock(options.clock);",
+      // ACT-29: the instant of the transaction the call joins, else its own, pinned on its first read.
+      "const $clock = frame.clock(options.clock);",
       `const $policies = ${authorizerCall(action, covering)};`,
       `await $policies.before(layer, ${preScope("parsed", where)});`,
     ];

@@ -14,9 +14,9 @@ describe("v4 model", () => {
     const entity = postDocument.entities[0]!;
     expect(entity.name).toBe("Invoice");
     expect(entity.module).toBe("billing");
-    expect(entity.imports).toHaveLength(5);
-    // The fifth is Mesh's own functions (PRJ-22), marked as no file of the project.
-    expect(entity.imports.filter((i) => i.mesh)).toEqual([expect.objectContaining({ identifiers: ["Mesh"], from: "meshfw", mesh: true })]);
+    expect(entity.imports).toHaveLength(4);
+    // The file reads `%.today`, the current transaction's date (SYN-29), which needs no import of Mesh's functions.
+    expect(entity.imports.filter((i) => i.mesh)).toEqual([]);
     expect(entity.attributes).toHaveLength(12);
     expect(entity.relationships.map((r) => r.kind)).toEqual([
       "belongs-to",

@@ -57,8 +57,6 @@ export interface NamedInTypes {
   readonly values: readonly string[];
   /** Entities named as a type (`List | null`): bound to their record type, `type List = $b$List$Record`. */
   readonly types: readonly string[];
-  /** Names of the file's `Mesh` import read only in a `typeof` (`ReturnType<typeof Mesh.now>`): bound as a `Mesh` read as a value is. */
-  readonly mesh?: readonly string[];
 }
 const NOTHING: NamedInTypes = { roots: [], values: [], types: [] };
 
@@ -76,11 +74,9 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // The scope names the function reads without its parameters binding them: the front end found the ones read as values
   // in the syntax tree, `typeNames` the ones read only in a type.
   const roots = ROOTS.filter((name) => plain.roots.includes(name) || inTypes.roots.includes(name));
-  // Each name the file imports `Mesh` under: Mesh's functions as this evaluation sees them, `now` and `today` reading the
-  // scope's instant, so a plain function and a translated one read one instant (PRJ-22).
-  const mesh = [...new Set([...(plain.mesh ?? []), ...(inTypes.mesh ?? [])])].sort();
+  // `%.now` and `%.today` were edited to `$.now($s)` and `$.today($s)`, the functions a translated expression calls, so a
+  // plain function and a translated one read one instant (SYN-29). `Mesh` is the file's import, as a helper is (PRJ-22).
   const declare = (roots.length ? `const { ${roots.join(", ")} } = ${SCOPE}; ` : "") +
-    mesh.map((name) => `const ${name} = ${MESH}(${SCOPE}); `).join("") +
     // `structuredClone` cannot copy the read-only views a function is handed (they are proxies); `cloneValue` can. It is
     // bound here, not at module level, so the file declares no name an entity file's helper import could also have.
     (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
@@ -95,8 +91,6 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
 
-/** How the expressions file imports `meshIn`, which gives `Mesh` as one evaluation sees it (PRJ-22). */
-export const MESH = "$mesh";
 /** How the expressions file imports `cloneValue`, which a function that calls the global `structuredClone` binds under that name. */
 export const CLONE_VALUE = "$cloneValue";
 /**

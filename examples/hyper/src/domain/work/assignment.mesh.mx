@@ -22,7 +22,7 @@ entity :Assignment table="assignments"
       do
         set
           &delegator=({ actor }) => actor.id
-          &startedAt=() => Mesh.now()
+          &startedAt=() => %.now
     update :finish
       input
         enum :reason values=[:reassigned, :unassigned]
@@ -34,7 +34,7 @@ entity :Assignment table="assignments"
         ]
       do
         set
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &endReason=({ input }) => input.reason
   policies
     policy :membersRead types=[:read]

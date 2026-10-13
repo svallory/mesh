@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -104,14 +104,13 @@ export const $expressions = {
   },
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:41:12)
   "acquire.step.0.run": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) => {
-    const Mesh = $mesh($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ input, context }) {
       const lapsed = await Mesh.privileged(Claim).read({
         filter: {
           taskId: { eq: input.task },
           state: { eq: "active" },
-          expiresAt: { lte: Mesh.now() },
+          expiresAt: { lte: $.now($s) },
         },
       });
       for (const claim of lapsed)
@@ -135,7 +134,6 @@ export const $expressions = {
     $.pure(leaseEnd($.now($s)), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:50:28)
   "acquire.step.2.run": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) => {
-    const Mesh = $mesh($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
@@ -312,7 +310,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:186:20)
@@ -326,7 +323,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -334,7 +330,6 @@ export const $expressions = {
   "policy.claimAssignee.authorize-if.0": (
     $s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ input, actor, context }) =>
       Mesh.isSystem(context) || (await assigneeMayClaimOf(input.task, actor.id)))($s);
   },
@@ -348,7 +343,6 @@ export const $expressions = {
   "policy.claimRevoker.authorize-if.0": (
     $s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || (await revokesClaimOf(self.taskId, actor.id)))($s);
   },

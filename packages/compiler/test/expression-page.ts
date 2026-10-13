@@ -36,7 +36,7 @@ export function renderExpressionPage(): string {
     "",
     "Anything not listed here (string ordering, truthiness, `==`, string concatenation, string methods) is not translated: it stays plain TypeScript with JavaScript's rules, and the build warns.",
     "",
-    "`Mesh.now()`, `Mesh.today()` and `Mesh.isSystem(context)` are Mesh's own functions, members of `Mesh`, which an entity file imports from `meshfw`: `import { Mesh } from \"meshfw\"` (or under an alias, `import { Mesh as M } from \"meshfw\"`, then `M.now()`).",
+    "`%.now` and `%.today` are properties of `%`, the current transaction: its instant and its date, values and not calls, written with no import. One transaction has one instant: every action and read that joins it reads the instant of the call or `transaction` that opened it. `Mesh.isSystem(context)` is one of Mesh's own functions, members of `Mesh`, which an entity file imports from `meshfw`: `import { Mesh } from \"meshfw\"` (or under an alias, `import { Mesh as M } from \"meshfw\"`, then `M.isSystem(context)`).",
     "",
   ];
   for (const spec of FUNCTIONS) {

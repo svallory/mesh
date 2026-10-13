@@ -36,10 +36,12 @@ export interface ExpressionsView {
    */
   readonly typeImports: readonly string[];
   /**
-   * True when a function reads the entity file's `Mesh` import (PRJ-22): the file imports `meshIn` from `@meshfw/runtime`
-   * as `$mesh`, and the function binds `Mesh` (or its alias) to `$mesh($s)`.
+   * The entity file's `Mesh` import (PRJ-22) as the file imports it from `@meshfw/runtime`, one entry per name the entity
+   * file gives it that a function reads, as printed inside the runtime import's braces: `Mesh`, `Mesh as M`, or `type Mesh`
+   * when the functions name it only in a type (`typeof Mesh.isSystem`). Empty when no function reads it. It is a constant,
+   * the same object application code imports from `meshfw`, so the functions read it as they read a helper.
    */
-  readonly usesMesh: boolean;
+  readonly meshImports: readonly string[];
   /**
    * The entity values the functions name (CMP-16), one import per entity's actions file: the value as
    * `entityLocal(target, "value")` and its read-only type as `entityLocal(target, "ReadOnly")` (`Task as $work$Task$value,
@@ -314,13 +316,12 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const recordTypes = new Set<string>();
   const meshLocals = new Set(entity.imports.filter((entry) => entry.mesh).flatMap((entry) => entry.identifiers));
   const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...meshLocals]);
-  // Whether a printed function binds the file's `Mesh` import (`const Mesh = $mesh($s);`), as the printer decides it: from
-  // the names the front end found it reading and those `typeNames` finds in a type, never from the printed text, where a
-  // string could spell `$mesh(`.
-  let usesMesh = false;
+  // The names of the file's `Mesh` import the functions read as values, as the front end found them, and those `typeNames`
+  // finds only in a type, never from the printed text, where a string could spell `Mesh`: the file imports each.
+  const meshValues = new Set<string>(found.flatMap(({ expression }) => expression.plain?.mesh ?? []));
+  const meshTypes = new Set<string>();
   const entries = found.map((f): ExpressionEntry => {
     let code = print(f);
-    if (f.expression.plain?.mesh?.length) usesMesh = true;
     if (f.expression.plain) {
       const { types, values } = typeNames(code, candidates);
       const roots = SCOPE_NAMES.filter((name) => values.has(name));
@@ -328,8 +329,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
         roots,
         values: [...values].filter((name) => targets.has(name) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
         types: [...types].filter((name) => targets.has(name) && !helperFrom.has(name)).sort(),
-        mesh: [...values].filter((name) => meshLocals.has(name) && !SCOPE_NAMES.includes(name) && !(f.expression.plain!.mesh ?? []).includes(name)).sort(),
       };
+      for (const name of values) if (meshLocals.has(name) && !SCOPE_NAMES.includes(name)) meshTypes.add(name);
       for (const name of [...types, ...[...values].filter((name) => !SCOPE_NAMES.includes(name))]) if (unread.has(name)) typed.add(name);
       if (roots.includes("before") && (f.scope === "check" || f.scope === "new")) {
         const policy = f.id.startsWith("policy.");
@@ -337,10 +338,9 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
           `${f.what} reads \`before\` in a type, which ${policy ? "a policy" : "`validate`"} does not have: it sees \`self\` before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``,
           f.expression.position, "write `typeof self` for the record before the input, and `typeof input` for the caller's values");
       }
-      if (inTypes.roots.length || inTypes.values.length || inTypes.types.length || inTypes.mesh!.length) {
+      if (inTypes.roots.length || inTypes.values.length || inTypes.types.length) {
         inTypes.values.forEach((name) => valued.add(name));
         inTypes.types.forEach((name) => recordTypes.add(name));
-        if (inTypes.mesh!.length) usesMesh = true;
         code = print(f, inTypes);
       }
     }
@@ -403,7 +403,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       ...(loaded ? [`${recordName}Loaded as ${selfType}`] : []),
       ...[...usedInputs].sort().map((name) => `${name} as ${entityLocal(entity, name)}`),
     ],
-    usesMesh,
+    meshImports: [...new Set([...meshValues, ...meshTypes])].sort()
+      .map((name) => `${meshValues.has(name) ? "" : "type "}Mesh${name === "Mesh" ? "" : ` as ${name}`}`),
     entityImports: [...entityFrom].map(([from, { names, value }]) => ({
       keyword: value ? "import" as const : "import type" as const,
       names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),

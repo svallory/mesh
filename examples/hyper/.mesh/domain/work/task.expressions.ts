@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -254,7 +254,6 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:181:28)
   "cancel.step.1.run": ($s: $work$Task$StoredScope<$work$Task$CancelTaskInput>) => {
-    const Mesh = $mesh($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     return (async function ({ self, context }) {
@@ -312,8 +311,7 @@ export const $expressions = {
   // check :currentFence that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:217:16)
   "complete.check.currentFence.that": ($s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>) => {
     const { self } = $s;
-    const Mesh = $mesh($s);
-    return (({ input, actor }) => fenceIsCurrent(self.claims, input.fence, actor.id, Mesh.now()))(
+    return (({ input, actor }) => fenceIsCurrent(self.claims, input.fence, actor.id, $.now($s)))(
       $s,
     );
   },
@@ -322,16 +320,14 @@ export const $expressions = {
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
-    const Mesh = $mesh($s);
     return (({ input, actor }) =>
-      fenceDetails(self.maxFence, self.claims, input.fence, actor.id, Mesh.now()))($s);
+      fenceDetails(self.maxFence, self.claims, input.fence, actor.id, $.now($s)))($s);
   },
   // check :claimNotInvalidated that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:223:16)
   "complete.check.claimNotInvalidated.that": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
-    const Mesh = $mesh($s);
     return (({ input, actor, context }) =>
       claimNotInvalidated(
         self.claims,
@@ -339,7 +335,7 @@ export const $expressions = {
         actor.id,
         self.completions,
         self.reopenedAt,
-        Mesh.now(),
+        $.now($s),
         context.completion,
       ))($s);
   },
@@ -348,14 +344,13 @@ export const $expressions = {
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
     const { self } = $s;
-    const Mesh = $mesh($s);
     return (({ actor }) => ({
       fences: invalidatedFences(
         self.claims,
         actor.id,
         self.completions,
         self.reopenedAt,
-        Mesh.now(),
+        $.now($s),
       ),
     }))($s);
   },
@@ -401,7 +396,6 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:249:28)
   "complete.step.1.run": ($s: $work$Task$StoredScope<$work$Task$CompleteTaskInput>) => {
-    const Mesh = $mesh($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     const Completion: $work$Completion$ReadOnly = $work$Completion$value;
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
@@ -443,7 +437,7 @@ export const $expressions = {
       await Completion.record({ task: self.id, submission, rule }, { ...context, system: true });
       const live = claimToRelease(
         await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
-        Mesh.now(),
+        $.now($s),
       );
       if (live)
         await Claim.end(
@@ -489,7 +483,6 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:305:28)
   "assign.step.1.run": ($s: $work$Task$StoredScope<$work$Task$AssignTaskInput>) => {
-    const Mesh = $mesh($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, input, context }) {
@@ -541,7 +534,6 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:334:28)
   "unassign.step.1.run": ($s: $work$Task$StoredScope<$work$Task$UnassignTaskInput>) => {
-    const Mesh = $mesh($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, context }) {
@@ -584,7 +576,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:347:20)
@@ -603,7 +594,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -613,7 +603,6 @@ export const $expressions = {
       $SharedInput<$work$Task$ReopenTaskInput | $work$Task$CancelTaskInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || (await managesTaskOf(self, actor.id, true)))($s);
   },
@@ -621,7 +610,6 @@ export const $expressions = {
   "policy.taskUnassigner.authorize-if.0": (
     $s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || (await managesTaskOf(self, actor.id, false)))($s);
   },
@@ -629,10 +617,10 @@ export const $expressions = {
   "policy.claimHolder.authorize-if.0": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, input, actor, context }) =>
-      Mesh.isSystem(context) ||
-      (await noOtherHolderOf(self.id, input.fence, actor.id, Mesh.now())))($s);
+      Mesh.isSystem(context) || (await noOtherHolderOf(self.id, input.fence, actor.id, $.now($s))))(
+      $s,
+    );
   },
   // policy :reviewCompletion forbid-if, translated (src/domain/work/task.mesh.mx:355:17)
   "policy.reviewCompletion.forbid-if.0": (

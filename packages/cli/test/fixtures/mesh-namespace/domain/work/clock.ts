@@ -1,11 +1,12 @@
-import { Mesh, type MeshFunctions } from "meshfw";
-
-/** Application code an entity file calls: it cannot read the running action's instant yet, so this throws (PRJ-22). */
-export function appClock(): Date {
-  return Mesh.now();
+/**
+ * Application code an entity file calls takes the instant as a parameter (SYN-29): the entity file passes the current
+ * transaction's `%.now` or `%.today`, since application code has no transaction of its own to read it from.
+ */
+export function stampOf(at: Date, label: string): string {
+  return `${label}@${at.toISOString()}`;
 }
 
-/** Application code handed the entity file's `Mesh`: it reads the running action's instant through it. */
-export function stampOf(mesh: MeshFunctions, label: string): string {
-  return `${label}@${mesh.now().toISOString()}`;
+/** The date `days` after `today`; the entity file passes `%.today`. */
+export function dueIn(today: Date, days: number): Date {
+  return new Date(today.getTime() + days * 86_400_000);
 }

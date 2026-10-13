@@ -338,7 +338,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     if (diagnostics.some((d) => d.severity === "error" && d.position.file === position.file && d.position.offset >= e.position.offset && d.position.offset <= e.position.offset + e.source.length)) return;
     report("warning", "MESH_EXPR_PLAIN",
       `this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of ${detail}`, position,
-      "rewrite it with comparisons, `&&`, `||`, `!`, `??`, `?.`, `Mesh.now()`, `Mesh.today()` and the list methods some, every, find and filter to have Mesh translate it");
+      "rewrite it with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it");
     void e;
   }
 

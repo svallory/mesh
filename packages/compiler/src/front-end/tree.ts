@@ -38,7 +38,7 @@ export interface SyntaxNode {
   pattern?: string;
   flags?: string;
   computed?: boolean;
-  extra?: { mxAtom?: unknown; mxMember?: { name: string; span: Span } };
+  extra?: { mxAtom?: unknown; mxMember?: { name: string; span: Span }; mxTransaction?: { name: string; span: Span } };
   loc?: { start: { index: number } };
   start?: number;
   end?: number;

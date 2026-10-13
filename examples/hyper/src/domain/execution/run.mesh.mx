@@ -62,7 +62,7 @@ entity :Run table="runs"
       do
         set
           &state=:canceled
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &cancelReason=({ input }) => input.reason
           &version=() => &version + 1
     update :settle
@@ -72,7 +72,7 @@ entity :Run table="runs"
       do
         set
           &state=({ input }) => input.result
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &version=() => &version + 1
   policies
     policy :membersRead types=[:read]

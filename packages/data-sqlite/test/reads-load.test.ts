@@ -463,9 +463,9 @@ describe("a read through `privileged` with load", () => {
 });
 
 describe("the clock", () => {
-  test("a computed field that reads Mesh.now() reads the binding's clock, through a caller's read and through privileged", async () => {
+  test("a computed field that reads %.now reads the binding's clock, through a caller's read and through privileged", async () => {
     const source = {
-      stamp: 'import { Mesh } from "meshfw"\nentity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < Mesh.now() }\n  actions auto=[:read]\n',
+      stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < %.now }\n  actions auto=[:read]\n',
     };
     const clockDir = await generate(".reads-load-clock-", source);
     try {
@@ -485,9 +485,9 @@ describe("the clock", () => {
     } finally { await rm(clockDir, { recursive: true, force: true }); }
   });
 
-  test("one instant per call: every row and field of a load, and a create's check and its privileged read, see the same Mesh.now()", async () => {
+  test("one instant per call: every row and field of a load, and a create's check and its privileged read, see the same %.now", async () => {
     const source = {
-      stamp: 'import { Mesh } from "meshfw"\nentity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < Mesh.now() }\n    timestamp :seen() { return Mesh.now() }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async () => (await Mesh.privileged(Stamp).read({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === Mesh.now().getTime() && row.past === (row.at < Mesh.now())) code="skewed" message="the load and the check read two instants"\n',
+      stamp: 'import { Mesh } from "meshfw"\nentity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < %.now }\n    timestamp :seen() { return %.now }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async () => (await Mesh.privileged(Stamp).read({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === %.now.getTime() && row.past === (row.at < %.now)) code="skewed" message="the load and the check read two instants"\n',
     };
     const clockDir = await generate(".reads-load-instant-", source);
     try {
@@ -511,7 +511,7 @@ describe("the clock", () => {
       ticks = 0;
       const viaPrivileged = await mesh.transaction(async () => privilegedOf(clockDomain.Stamp).read({ load: ["seen"] }));
       expect(new Set(viaPrivileged.map((row: any) => row.seen.getTime())).size).toBe(1);
-      // A create's check: its `Mesh.now()` and the field its `privileged` read loaded are one instant (TXN-16), so the check passes
+      // A create's check: its `%.now` and the field its `privileged` read loaded are one instant (TXN-16), so the check passes
       // (it fails with `skewed` when the load takes a fresh reading of the clock).
       ticks = 0;
       await expect(mesh.addStamp({ at: new Date(2_500) }, ctx)).resolves.toBeDefined();

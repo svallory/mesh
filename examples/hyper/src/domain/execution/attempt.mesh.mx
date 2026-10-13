@@ -40,7 +40,7 @@ entity :Attempt table="attempts"
         // (`runs/checks/reporter.ex:35-41`) refuses a caller that holds no live claim on the run's Task, and the rule
         // (`runs/attempt/rules.ex:15-30`) still runs on a call made as `system`, which every policy admits.
         check :claimer [
-          that=async ({ input, actor }) => await claimerOf(input.run, actor.id, Mesh.now())
+          that=async ({ input, actor }) => await claimerOf(input.run, actor.id, %.now)
           code="attempt.claimer"
           message="the claim on the task is no longer the actor's; claim it again to report"
         ]
@@ -70,7 +70,7 @@ entity :Attempt table="attempts"
           &task=() => &run.taskId
           &number=() => nextNumber(&run.attempts, &step)
           &delegator=() => delegatorFor(&run.task.assignments, &run.startedById)
-          &claimFence=({ actor }) => heldFence(&run.task.claims, actor.id, Mesh.now())
+          &claimFence=({ actor }) => heldFence(&run.task.claims, actor.id, %.now)
     update :finish
       input
         enum :result values=[:succeeded, :failed]
@@ -104,7 +104,7 @@ entity :Attempt table="attempts"
       do
         set
           &state=({ input }) => input.result
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &outcome=({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })
           &version=() => &version + 1
         run [after=:write] ({ self, input, context }) {
@@ -131,7 +131,7 @@ entity :Attempt table="attempts"
       do
         set
           &state=:stopped
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &outcome=({ input }) => attemptOutcome({ reason: input.reason })
           &version=() => &version + 1
     update :abandon
@@ -153,7 +153,7 @@ entity :Attempt table="attempts"
       do
         set
           &state=:abandoned
-          &endedAt=() => Mesh.now()
+          &endedAt=() => %.now
           &outcome=({ input }) => attemptOutcome({ note: input.note })
           &version=() => &version + 1
   policies
@@ -165,6 +165,6 @@ entity :Attempt table="attempts"
       authorize-if=async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])
     // `start`'s rule `attempt.claimer` repeats this check for a call made as `system`.
     policy :attemptClaimer actions=[&start]
-      authorize-if=async ({ input, actor, context }) => Mesh.isSystem(context) || await claimerOf(input.run, actor.id, Mesh.now())
+      authorize-if=async ({ input, actor, context }) => Mesh.isSystem(context) || await claimerOf(input.run, actor.id, %.now)
     policy :attemptPerformer actions=[&finish, &reportStopped, &abandon]
       authorize-if=({ self, actor, context }) => Mesh.isSystem(context) || self.performerId === actor.id

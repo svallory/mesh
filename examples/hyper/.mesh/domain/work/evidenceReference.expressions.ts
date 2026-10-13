@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
@@ -58,14 +58,12 @@ export const $expressions = {
   "policy.isMember.authorize-if.0": (
     $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:31:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },

@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -78,7 +78,6 @@ export const $expressions = {
   "record.check.agentProfile.that": (
     $s: $execution$SessionReference$NewScope<$execution$SessionReference$RecordSessionReferenceInput>,
   ) => {
-    const Mesh = $mesh($s);
     const Collaborator: $identity$Collaborator$ReadOnly = $identity$Collaborator$value;
     return (async ({ input }) =>
       (
@@ -158,14 +157,12 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:96:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $execution$SessionReference$NewScope<$execution$SessionReference$RecordSessionReferenceInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -173,7 +170,6 @@ export const $expressions = {
   "policy.ownerOnly.authorize-if.0": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },

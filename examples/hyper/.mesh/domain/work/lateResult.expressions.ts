@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
@@ -49,9 +49,8 @@ export const $expressions = {
   "record.check.staleFence.that": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ input, actor }) =>
-      isStale(await claimsOf(input.task), input.fence, actor.id, Mesh.now()))($s);
+      isStale(await claimsOf(input.task), input.fence, actor.id, $.now($s)))($s);
   },
   // check :evidenceExists that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:31:16)
   "record.check.evidenceExists.that": (
@@ -81,14 +80,12 @@ export const $expressions = {
   "policy.isMember.authorize-if.0": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:45:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },

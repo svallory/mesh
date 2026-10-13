@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -134,7 +134,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:86:20)
@@ -146,7 +145,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },
@@ -154,7 +152,6 @@ export const $expressions = {
   "policy.collaboratorSelfOrOwner.authorize-if.0": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || self.id === actor.id || (await roleIn(actor.id, ["owner"])))($s);
   },

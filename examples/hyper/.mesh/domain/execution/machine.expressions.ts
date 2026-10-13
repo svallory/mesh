@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -57,7 +57,6 @@ export const $expressions = {
   "register.check.nameFree.that": (
     $s: $execution$Machine$NewScope<$execution$Machine$RegisterMachineInput>,
   ) => {
-    const Mesh = $mesh($s);
     const Machine: $execution$Machine$ReadOnly = $execution$Machine$value;
     return (async ({ input }) =>
       (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
@@ -71,7 +70,6 @@ export const $expressions = {
   "report.check.nameFree.that": (
     $s: $execution$Machine$NewScope<$execution$Machine$ReportMachineInput>,
   ) => {
-    const Mesh = $mesh($s);
     const Machine: $execution$Machine$ReadOnly = $execution$Machine$value;
     return (async ({ input }) =>
       (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 }))
@@ -142,14 +140,12 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:93:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $execution$Machine$NewScope<$execution$Machine$RegisterMachineInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -159,7 +155,6 @@ export const $expressions = {
       $SharedInput<$execution$Machine$UpdateMachineInput | $execution$Machine$RetireMachineInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },

@@ -1,14 +1,16 @@
-// PRJ-22 end to end: Mesh's own functions are members of `Mesh`, which an entity file and application code import from
-// meshfw. The fixture (`fixtures/mesh-namespace/domain/work`) calls `Mesh.now()`, `Mesh.today()` and
-// `Mesh.isSystem(context)` in computed fields, a check, a set value, a policy and a step's body, `Mesh.privileged(Note)` in
-// a step's body, passes `Mesh` to an application helper (`stampOf`), and `Note` imports `Mesh` under an alias (`M`). The
-// project is built by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with an
-// application module that imports `Mesh` from meshfw, and run on SQLite in memory with a pinned clock.
+// PRJ-22 and SYN-29 end to end: Mesh's own functions are members of `Mesh`, which an entity file and application code
+// import from meshfw, and the instant is the current transaction's, `%.now` and `%.today`, which needs no import. The
+// fixture (`fixtures/mesh-namespace/domain/work`) reads `%.now`, `%.today` and `Mesh.isSystem(context)` in computed fields,
+// a check, a set value, a policy and a step's body, calls `Mesh.privileged(Note)` in a step's body, passes `%.now` and
+// `%.today` to application helpers (`stampOf`, `dueIn`), and `Note` imports `Mesh` under an alias (`M`) for a plain check.
+// The project is built by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with
+// an application module that imports `Mesh` from meshfw, and run on SQLite in memory with a clock that advances on every
+// read, so each test of one instant (ACT-29) sees two reads differ unless they share a transaction.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { ForbiddenError, FrameworkError, InvalidInputError } from "@meshfw/runtime";
+import { ForbiddenError, InvalidInputError } from "@meshfw/runtime";
 
 const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/mesh-namespace/domain");
@@ -33,10 +35,6 @@ import { Task } from "#mesh/domain/work";
 export async function overdue(): Promise<number> {
   return transaction(async () => (await Mesh.privileged(Task).read({ load: ["overdue"] })).filter((task) => task.overdue === true).length);
 }
-/** The running action's instant is not reachable from application code yet: this throws. */
-export function appNow(): Date {
-  return Mesh.now();
-}
 export const internal = (context: unknown): boolean => Mesh.isSystem(context);
 /** What the types refuse; never called. */
 export function refused(): void {
@@ -44,6 +42,10 @@ export function refused(): void {
   Mesh.tomorrow();
   // @ts-expect-error Mesh.privileged takes an entity value
   Mesh.privileged({});
+  // @ts-expect-error the instant is not Mesh's (SYN-29): an entity file reads \`%.now\` and passes it as a parameter
+  Mesh.now();
+  // @ts-expect-error the date is not Mesh's either: an entity file reads \`%.today\`
+  Mesh.today();
 }
 `;
 
@@ -83,8 +85,6 @@ async function rejection<E>(call: Promise<unknown>, type: new (...args: never[])
   return error as E;
 }
 
-const OUTSIDE = "Mesh.now() was called outside an entity file's expression: application code cannot find the running action's instant yet. In a function of the entity file (a step or a check), pass Mesh.now() or the file's Mesh to the helper; elsewhere, take the time from the application's own clock";
-
 let root: string;
 beforeAll(async () => {
   root = await project();
@@ -96,18 +96,21 @@ afterAll(async () => {
 
 const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 
-describe("Mesh's own functions through the Mesh import (PRJ-22)", () => {
-  test("translated code calls the run-time functions; a plain body binds the evaluation's Mesh under the file's name for it", async () => {
+describe("Mesh's own functions through the Mesh import (PRJ-22), the instant through %.now (SYN-29)", () => {
+  test("translated code calls the run-time functions, %.now in plain code included; a plain body reads Mesh as the file imports it", async () => {
     const task = await generated("domain/work/task.expressions.ts");
     expect(task).toContain("$.lt($s.self.dueAt, $.now($s))");
     expect(task).toContain("$.isSystem($s.context)");
-    expect(task).toContain("const Mesh = $mesh($s);");
-    expect(task).toContain("await Mesh.privileged(Note).read({})");
-    expect(task).toContain("stampOf(Mesh, self.title)");
-    expect(task).toMatch(/meshIn as \$mesh,/);
+    expect(task).toContain("(due.getTime() - $.today($s).getTime())");
+    expect(task).toContain("$.pure(dueIn($.today($s), 30), \"dueIn\")");
+    expect(task).toContain("await Mesh.privileged(Note).read({ load: [\"stamp\"] })");
+    expect(task).toContain("stampOf($.now($s), self.title)");
+    expect(task).toMatch(/import \{[^}]*\bMesh,[^}]*\} from "@meshfw\/runtime";/);
+    expect(task).not.toMatch(/%\.|const Mesh|meshIn|\$mesh/);
     const note = await generated("domain/work/note.expressions.ts");
-    expect(note).toContain("const M = $mesh($s);");
-    expect(note).not.toMatch(/const Mesh\b/);
+    expect(note).toMatch(/import \{[^}]*\bMesh as M,[^}]*\} from "@meshfw\/runtime";/);
+    expect(note).toContain("const at = $.now($s);");
+    expect(note).not.toMatch(/const M\b|const Mesh\b/);
     // #mesh holds no Mesh function: the application imports Mesh from meshfw.
     const index = await generated("index.ts");
     expect(index).toContain('export type { Privileged } from "@meshfw/runtime";');
@@ -126,7 +129,7 @@ describe("Mesh's own functions through the Mesh import (PRJ-22)", () => {
     expect(child.exitCode).toBe(0);
   }, 60_000);
 
-  test("on SQLite every function reads the action's one instant, and application code reads with Mesh.privileged", async () => {
+  test("on SQLite every function reads the transaction's one instant, nested actions and privileged reads included (ACT-29), and application code reads with Mesh.privileged", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
     const { work } = await import(join(root, ".mesh/domain/index.ts"));
     const application = await import(join(root, "app.ts"));
@@ -135,53 +138,80 @@ describe("Mesh's own functions through the Mesh import (PRJ-22)", () => {
     const layer = sqlite({ file: ":memory:" });
     await createSchema(layer, app.tables);
     const DAY = 86_400_000;
-    const instant = new Date(DAY * 400 + 3_600_000);
+    // Every read of the clock is a second later than the last, all on day 400: two calls that pinned their own instants
+    // never agree, and `%.today` is day 400 whichever second it reads.
+    const start = DAY * 400 + 3_600_000;
+    let reads = 0;
+    const clock = () => new Date(start + 1_000 * ++reads);
     const anyone = { actor: { id: "someone" } };
     const owner = { actor: { id: "owner" } };
+    const iso = (date: Date) => date.toISOString();
     try {
-      await app.bind(layer, { clock: () => new Date(instant) }).run(async () => {
-        // The check reads Mesh.today() and Mesh.isSystem(context).
+      await app.bind(layer, { clock }).run(async () => {
+        // The check reads %.today and Mesh.isSystem(context).
         const past = new Date(DAY * 399);
         const refused = await rejection(work.Task.open({ title: "Late", dueAt: past }, anyone), InvalidInputError);
         expect(refused.issues.map((issue) => issue.code)).toEqual(["past"]);
         const late = await work.Task.open({ title: "Late", dueAt: past }, { ...anyone, system: true });
         const soon = await work.Task.open({ title: "Soon", dueAt: new Date(DAY * 402) }, anyone);
 
-        // The computed fields read Mesh.now() (translated) and Mesh.today() (plain code).
+        // The computed fields read %.now (translated) and %.today (plain code).
         const read = await work.Task.read({ load: ["overdue", "daysLeft"] }, anyone);
         expect(read.map((task: { title: string; overdue: boolean; daysLeft: number }) => [task.title, task.overdue, task.daysLeft]).sort())
           .toEqual([["Late", true, -1], ["Soon", false, 2]]);
         expect(await application.overdue()).toBe(1);
 
-        // The policy reads Mesh.isSystem(context); the set value and the step's body read the same instant as Mesh.now().
+        // The policy reads Mesh.isSystem(context). The set value and the step's body read the action's instant, and so do
+        // the action the step calls (`Note.write`, whose `at` is its own `%.now`) and the privileged read the step makes
+        // (the notes' computed `stamp`, `%.now` again): one transaction, one instant (ACT-29).
         await rejection(work.Task.close({ id: soon.id }, anyone), ForbiddenError);
-        await work.Task.close({ id: late.id }, { ...anyone, system: true });
-        expect(await work.Task.close({ id: soon.id }, owner)).toMatchObject({ closedAt: instant });
+        const lateClosed = await work.Task.close({ id: late.id }, { ...anyone, system: true });
+        const soonClosed = await work.Task.close({ id: soon.id }, owner);
+        // Two top-level calls pin two instants.
+        expect(lateClosed.closedAt.getTime()).not.toBe(soonClosed.closedAt.getTime());
         const notes = await work.Note.read({ load: ["stamp"] }, anyone);
-        expect(notes.map((note: { text: string }) => note.text).sort()).toEqual([
-          `Late closed at ${instant.toISOString()} after 0 notes`,
-          `Soon closed at ${instant.toISOString()} after 1 notes`,
+        const byText = (text: string) => notes.find((note: { text: string }) => note.text.startsWith(text));
+        expect(byText("Late")).toMatchObject({ text: `Late closed at ${iso(lateClosed.closedAt)} after 0 notes stamped `, at: lateClosed.closedAt });
+        expect(byText("Soon")).toMatchObject({ text: `Soon closed at ${iso(soonClosed.closedAt)} after 1 notes stamped ${iso(soonClosed.closedAt)}`, at: soonClosed.closedAt });
+        // A top-level read pins its own instant: one for all its rows, and none an earlier call pinned.
+        const stamps = new Set(notes.map((note: { stamp: string }) => note.stamp));
+        expect(stamps.size).toBe(1);
+        expect([iso(lateClosed.closedAt), iso(soonClosed.closedAt)]).not.toContain([...stamps][0]);
+
+        // Two actions and a privileged read inside one application transaction share its instant.
+        const [first, second, privileged] = await app.transaction(async () => [
+          await work.Note.write({ text: "first" }, anyone),
+          await work.Note.write({ text: "second" }, anyone),
+          await Mesh.privileged(work.Note).read({ load: ["stamp"] }),
         ]);
-        // `Note` imports Mesh as M: its set value and its plain computed field read the same instant.
-        for (const note of notes) expect(note).toMatchObject({ at: instant, stamp: instant.toISOString() });
+        expect(second.at.getTime()).toBe(first.at.getTime());
+        expect(new Set(privileged.map((note: { stamp: string }) => note.stamp))).toEqual(new Set([iso(first.at)]));
+        // Outside it, two calls do not.
+        const third = await work.Note.write({ text: "third" }, anyone);
+        const fourth = await work.Note.write({ text: "fourth" }, anyone);
+        expect(fourth.at.getTime()).toBeGreaterThan(third.at.getTime());
+        expect(third.at.getTime()).toBeGreaterThan(second.at.getTime());
+
+        // `Note` imports Mesh as M for a plain check.
+        await rejection(work.Note.write({ text: "system: by hand" }, anyone), InvalidInputError);
+        expect(await work.Note.write({ text: "system: rotated" }, { ...anyone, system: true })).toMatchObject({ text: "system: rotated" });
 
         // Application code reads Mesh.privileged and Mesh.isSystem as an entity file does.
-        expect((await app.transaction(() => Mesh.privileged(work.Note).read({}))).length).toBe(2);
+        expect((await app.transaction(() => Mesh.privileged(work.Note).read({}))).length).toBe(7);
         expect(application.internal({ system: true })).toBe(true);
         expect(application.internal({ system: "yes" })).toBe(false);
 
-        // A step's body reads Mesh.isSystem(context) and hands its Mesh to an application helper, which reads the
-        // action's instant through it.
+        // A step's body reads Mesh.isSystem(context) and hands `%.now` to an application helper.
         await work.Task.mark({ id: soon.id }, owner);
         await work.Task.mark({ id: late.id }, { ...anyone, system: true });
         const marks = (await work.Note.read({}, anyone)).map((note: { text: string }) => note.text).filter((text: string) => text.includes("@")).sort();
-        expect(marks).toEqual([`Late@${instant.toISOString()} by the system`, `Soon@${instant.toISOString()} by a person`]);
+        expect(marks).toEqual([expect.stringMatching(/^Late@\d{4}-\d\d-\d\dT[\d:.]+Z by the system$/), expect.stringMatching(/^Soon@\d{4}-\d\d-\d\dT[\d:.]+Z by a person$/)]);
+        const marked = (await work.Note.read({}, anyone)).filter((note: { text: string }) => note.text.includes("@"));
+        for (const note of marked) expect(note.text).toContain(`@${iso(note.at)} by`);
 
-        // Mesh.now() in application code throws, inside an action (a helper the entity file calls) as outside one.
-        const inside = await rejection(work.Task.touch({ id: soon.id }, owner), FrameworkError);
-        expect(inside.message).toBe(OUTSIDE);
+        // A set value hands `%.today` to an application helper: day 400 and 30 more.
+        expect(await work.Task.touch({ id: soon.id }, owner)).toMatchObject({ dueAt: new Date(DAY * 430) });
       });
-      expect(() => application.appNow()).toThrow(new FrameworkError(OUTSIDE));
     } finally {
       await layer.close();
     }

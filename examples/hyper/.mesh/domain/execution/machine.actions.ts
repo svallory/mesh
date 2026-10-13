@@ -117,8 +117,9 @@ export function bindMachineReads(
 }
 
 /**
- * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
- * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): an action reads
+ * the instant of the transaction it joins from it, and its own transaction runs inside it, so what its functions call
+ * joins that transaction and reads its instant (ACT-29).
  */
 export function bindMachine(
   layer: $DataLayer,
@@ -133,7 +134,7 @@ export function bindMachine(
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
-      const $clock = $pinClock(options.clock);
+      const $clock = frame.clock(options.clock);
       const $policies = $authorizer("execution.Machine", "register", [
         {
           name: "isMember",
@@ -260,7 +261,7 @@ export function bindMachine(
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
-      const $clock = $pinClock(options.clock);
+      const $clock = frame.clock(options.clock);
       const $policies = $authorizer("execution.Machine", "report", [
         {
           name: "internal",
@@ -369,7 +370,7 @@ export function bindMachine(
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
-      const $clock = $pinClock(options.clock);
+      const $clock = frame.clock(options.clock);
       const $policies = $authorizer("execution.Machine", "update", [
         {
           name: "isMember",
@@ -513,7 +514,7 @@ export function bindMachine(
       // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
-      const $clock = $pinClock(options.clock);
+      const $clock = frame.clock(options.clock);
       const $policies = $authorizer("execution.Machine", "retire", [
         {
           name: "isMember",
@@ -666,7 +667,7 @@ export function bindMachine(
       // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
-      const $clock = $pinClock(options.clock);
+      const $clock = frame.clock(options.clock);
       const $parsed = await $castInput(layer, readMachineInputSchema, input);
       if (
         !(await $authorizer(
