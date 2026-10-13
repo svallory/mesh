@@ -1,5 +1,6 @@
 import { Answer, answeringLayer, type Decision } from "./answer.ts";
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
+import { failJoined } from "./compose.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, type Clock } from "./expr.ts";
 import type { BindOptions } from "./lifecycle.ts";
@@ -159,7 +160,46 @@ interface FrameStore {
   readonly clock?: Clock;
   readonly label?: string;
   readonly mark?: string;
+  /** Where the action call this belongs to stands in its chain of nested calls (TXN-21): carried by every store made inside it. */
+  readonly calls?: CallChain;
 }
+
+/**
+ * A chain of nested action calls (TXN-21): the calls an action, or its policies, steps, `set` and `validate` functions,
+ * helpers or seams, start while it runs, and the calls those start. The async context carries it, so it follows the chain
+ * through the seams that run outside the action's transaction (`beforeTransaction`, `afterCommit`) and through an
+ * application's `transaction(fn)`, not only through the data layer's transaction. A call started while the one before is
+ * still running is nested in it, awaited or not (a `queueMicrotask`, a `.then`, a call left un-awaited), so a fan-out cycle
+ * is bounded too. Only a call started after the one before has settled (a timer that fires later) begins a new chain.
+ */
+interface CallChain {
+  /** This call's place in the chain: 1 for the call that began it. */
+  readonly depth: number;
+  readonly root: CallRoot;
+  /** True once the call has settled: a call started under it from then on begins a new chain. */
+  settled: boolean;
+}
+
+/** What the calls of one chain share: the action at its root, and the error once the chain went too deep. */
+interface CallRoot {
+  readonly label: string;
+  /**
+   * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the chain: every call made under the root
+   * throws it at entry, so a helper that catches it cannot keep a cycle going. Inside a transaction it also fails that
+   * transaction, like any failed nested call (TXN-01), so the root rejects with it and that transaction writes nothing
+   * (a call that ran in no transaction, such as a seam's, keeps what it committed). The error sticks to work that outlives
+   * its root as well: a job a seam left running under it is refused with this error, naming an action it never called;
+   * the bound needs that.
+   */
+  tooDeep?: FrameworkError;
+}
+
+/**
+ * How many action calls may be nested one inside another (TXN-21). A legitimate recursion over data (a comment thread, an
+ * org chart, a category tree) can run deeper than the 32 of `MAX_QUESTION_DEPTH`, but not near this: a cycle in the data or
+ * in the code would otherwise recurse until memory runs out.
+ */
+const MAX_CALL_DEPTH = 1_000;
 
 /** Each binding's state, by the binding object. */
 const states = new WeakMap<object, BindingState>();
@@ -302,8 +342,46 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected. A call that joins its
   // caller's transaction carries that transaction's instant, which the action reads (`ActionFrame.clock`, ACT-29).
   const joined = caller?.state === state && caller.tx !== undefined ? caller.clock : undefined;
-  const store = kept({ state, scope: { live: true }, ...(joined ? { clock: joined } : {}) }, question);
-  return counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer));
+  // The chain it is nested in, if any (TXN-21): a call made past the cap throws at entry, before it runs anything, and
+  // fails the running transaction like any failed nested call.
+  let calls: CallChain;
+  try {
+    calls = nested(caller?.calls, `${fqn}#${action}`);
+  } catch (error) {
+    return failNested(state.layer, error);
+  }
+  const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}) }, question);
+  const outcome = await settle(() => counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer)));
+  calls.settled = true;
+  // The root rejects with the cap's error itself when its own error came from the cap: the error is the cap's, or the
+  // layer's "rolled back even though caught" error whose cause it is. Any other failure of the root is its own.
+  if (!outcome.ok && calls.depth === 1 && calls.root.tooDeep && (outcome.error === calls.root.tooDeep || (outcome.error as { cause?: unknown } | null)?.cause === calls.root.tooDeep)) throw calls.root.tooDeep;
+  return unwrap(outcome);
+}
+
+/**
+ * Reject with `error`, failing the binding's running transaction first when there is one (TXN-01), as `reject` in
+ * `policy.ts` does: what a helper catches does not keep the transaction from rolling back. A cap thrown inside a question
+ * fails the real transaction too, not the question's layer: it aborts the whole chain.
+ */
+async function failNested(layer: DataLayer, error: unknown): Promise<never> {
+  try {
+    if (layer.refuseIfFailed()) await failJoined(layer, error);
+  } catch {
+    // an earlier failure already marked the transaction
+  }
+  throw error;
+}
+
+/** The place in its chain of a call to `label` made inside `parent`, or the start of a chain; throws once the chain is too deep. */
+function nested(caller: CallChain | undefined, label: string): CallChain {
+  const parent = caller?.settled ? undefined : caller;
+  const root = parent?.root ?? { label };
+  if (root.tooDeep) throw root.tooDeep;
+  const depth = (parent?.depth ?? 0) + 1;
+  if (depth > MAX_CALL_DEPTH)
+    throw root.tooDeep = new FrameworkError(`${label} was called more than ${MAX_CALL_DEPTH} nested calls deep, in a chain that began with ${root.label}: the calls probably form a cycle (an action that calls itself, or actions that call each other, from a step, a policy's helper, a seam or a function)`);
+  return { depth, root, settled: false };
 }
 
 /**
@@ -376,7 +454,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
     },
     within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T> {
       const store = here();
-      return frame.run(kept({ state, scope: store.scope, tx, clock, label }, asking(store)), fn);
+      return frame.run(kept({ state, scope: store.scope, tx, clock, label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
     },
     plain<T>(fn: () => Promise<T>): Promise<T> {
       const store = inScope(frame);
@@ -426,7 +504,7 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
       // Inside a question (a policy's helper calls it), the scope belongs to the question: a write is refused, and a read
       // runs on the binding's probe, so it reads what the call would read (CMP-21).
       const outer = inScope(frame);
-      return scoped(frame, kept({ state, scope: live(state, frame) }, questionOf(outer)), fn);
+      return scoped(frame, kept({ state, scope: live(state, frame), ...(outer?.calls ? { calls: outer.calls } : {}) }, questionOf(outer)), fn);
     },
     transaction<T>(fn: () => Promise<T>): Promise<T> {
       // The application's `transaction` is an outermost transaction like any action's (TXN-14): `afterCommit` runs once
@@ -441,7 +519,7 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
       // helper catches) does not fail it (CMP-21).
       const question = questionOf(outer);
       const on = question ? probeFor(question, state).layer : layer;
-      const body = (tx: DataOperations) => frame.run(kept({ state, scope, tx, clock }, question), () => fn());
+      const body = (tx: DataOperations) => frame.run(kept({ state, scope, tx, clock, ...(outer?.calls ? { calls: outer.calls } : {}) }, question), () => fn());
       return counted(state, async () => {
         try {
           if (!on.refuseIfFailed()) return await outermost(on, question ? undefined : options.seams, body);
@@ -810,7 +888,7 @@ async function answer({ value, fqn, name }: { value: object; fqn: string; name: 
   const fn = bound[name] as (input: unknown, context: unknown) => Promise<unknown>;
   // As `dispatch` does: a frame of its own, carrying the instant of the transaction it joins.
   const joined = caller?.state === state && caller.tx !== undefined ? caller : undefined;
-  const store = kept({ state, scope: { live: true }, ...(joined?.clock ? { clock: joined.clock } : {}) }, question);
+  const store = kept({ state, scope: { live: true }, ...(caller?.calls ? { calls: caller.calls } : {}), ...(joined?.clock ? { clock: joined.clock } : {}) }, question);
   const ask = () => scoped(frame!, store, () => fn(input, context));
   // Inside a transaction of the binding the question joins it as the call would, and is refused once it has ended; what
   // the call rejects with is taken inside the join, so the running transaction is not failed by it.
