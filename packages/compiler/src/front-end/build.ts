@@ -114,9 +114,10 @@ function readImports(imports: readonly IrImport[]): {
         entry.typeOnly ||
         names.some((name) => name.kind !== "named" || name.typeOnly))
     ) {
-      // The names the import gives, as the fix writes them: `Task as T`, or the example's name when it gives none.
-      const written = (example: string) => names.filter((name) => name.kind === "named")
-        .map((name) => (name.imported === name.local ? name.local : `${name.imported} as ${name.local}`)).join(", ") || example;
+      // The names the import gives, as the fix writes them: every binding the file uses, a default one as a named one
+      // (`Task as T`), or the example's name when it gives none. A namespace binding has no name to import.
+      const written = (example: string) => names.filter((name) => name.kind !== "namespace")
+        .map((name) => (name.kind !== "named" || name.imported === name.local ? name.local : `${name.imported} as ${name.local}`)).join(", ") || example;
       const typeOnly = entry.typeOnly || names.some((name) => name.typeOnly);
       // From "meshfw" the one form is a named value import of `Mesh` (PRJ-22): a default, namespace or type import gets
       // that advice, not the entity's.

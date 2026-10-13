@@ -48,9 +48,9 @@ test.each([
   expect(found(checks)).toContain("error:MESH_EXPR_NULLABLE_ACCESS");
 });
 
-test("a demoted tree reports MESH_EXPR_INTEGER_DIVISION once", () => {
+test("a demoted tree prints JavaScript division, so it has no MESH_EXPR_INTEGER_DIVISION; a translated tree has one", () => {
   const diagnostics = found(check("          that=() => true\n          when=() => &n / 2 > 0 && &title"));
-  expect(diagnostics.filter((d) => d === "warning:MESH_EXPR_INTEGER_DIVISION")).toHaveLength(1);
+  expect(diagnostics.filter((d) => d === "warning:MESH_EXPR_INTEGER_DIVISION")).toHaveLength(0);
   const translated = found(check("          that=() => &parent !== null && &n / 2 > 0"));
   expect(translated.filter((d) => d === "warning:MESH_EXPR_INTEGER_DIVISION")).toHaveLength(1);
 });
@@ -60,5 +60,5 @@ test("a guard does not make known a member that a create leaves null", () => {
   // `label` is required and a step fills it, so every create's check sees null.
   const filled = (fn: string) => found("", `${create}${check(`          that=${fn}`)}\n      do\n        set\n          &label="x"\n`);
   expect(filled('() => &label !== null && &label !== "x"')).toEqual(expect.arrayContaining(["warning:MESH_VALIDATE_UNFILLED", "warning:MESH_EXPR_NEGATED_UNKNOWN"]));
-  expect(filled("() => &owner !== null && &owner.n > 0").some((d) => d.startsWith("error:"))).toBe(true);
+  expect(filled("() => &owner !== null && &owner.n > 0").filter((d) => d === "error:MESH_EXPR_NULLABLE_ACCESS")).toHaveLength(1);
 });

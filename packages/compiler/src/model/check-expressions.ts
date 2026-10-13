@@ -88,6 +88,8 @@ interface Scope {
   nonNull?: ReadonlySet<string>;
   /** True where the expression is printed as the author's TypeScript, where tsc narrows less than Mesh does: nothing narrows. */
   noNarrow?: boolean;
+  /** True in the second pass over a demoted tree, which is printed as JavaScript: `/` gives 3.5 there, so it is not rewritten to `idiv`. */
+  printedAsJavaScript?: boolean;
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
 }
@@ -327,7 +329,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           case "add": case "sub": case "mul": case "div": case "idiv": case "neg": {
             if (!a.every((t) => bothClass(t, "number"))) return fail("arithmetic on values that are not numbers");
             const int = a.every((t) => t.int === true);
-            if (n.fn === "div" && int) {
+            if (n.fn === "div" && int && !scope.printedAsJavaScript) {
               n.fn = "idiv";
               divided.push(n);
               report("warning", "MESH_EXPR_INTEGER_DIVISION",
@@ -422,7 +424,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         // narrowing, as if the guards were not there, and report what that finds.
         diagnostics.length = reported;
         for (const node of divided.splice(converted)) node.fn = "div";
-        t = pass({ ...scope, noNarrow: true });
+        t = pass({ ...scope, noNarrow: true, printedAsJavaScript: true });
       }
       return t;
     } catch (x) {
