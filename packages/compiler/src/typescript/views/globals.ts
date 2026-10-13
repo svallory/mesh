@@ -72,12 +72,21 @@ export interface GlobalsImport {
 const ALIAS = new RegExp(`(?<![A-Za-z0-9_$.])\\$(${GLOBAL_ALIASES.map((entry) => entry.global).join("|")})(?![A-Za-z0-9_$]|\\??:)`, "g");
 /** A double-quoted string literal, as `JSON.stringify` prints one: an authored message is never a reference. */
 const STRING = /"(?:[^"\\]|\\.)*"/g;
+/** A printed statement without its string literals, which hold the author's text; the names left are the generator's own (an authored name cannot spell `$`). */
+export const withoutStrings = (code: string): string => code.replace(STRING, '""');
 
-/** Every string in `value`, at any depth: what a view prints. */
+/**
+ * The properties of a view that a template prints inside a `//` comment: the entity file's path (`entityFile`) and what an
+ * expression is and where it was written (`comment`). They hold the author's names and file names, never code, so a file
+ * named `$Date` does not make a file import `$Date` it never reads.
+ */
+const COMMENTS: ReadonlySet<string> = new Set(["entityFile", "comment"]);
+
+/** Every string in `value`, at any depth, except the ones a template prints as a comment: what a view prints as code. */
 function stringsOf(value: unknown, into: string[]): string[] {
   if (typeof value === "string") into.push(value);
   else if (Array.isArray(value)) for (const item of value) stringsOf(item, into);
-  else if (value && typeof value === "object") for (const item of Object.values(value)) stringsOf(item, into);
+  else if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) if (!COMMENTS.has(key)) stringsOf(item, into);
   return into;
 }
 
@@ -89,7 +98,7 @@ function stringsOf(value: unknown, into: string[]): string[] {
  */
 export function globalsImport(file: string, view: unknown, fixed: readonly GlobalName[] = [], types = false): GlobalsImport | null {
   const used = new Set<string>(fixed);
-  for (const text of stringsOf(view, [])) for (const match of text.replace(STRING, '""').matchAll(ALIAS)) used.add(match[1]!);
+  for (const text of stringsOf(view, [])) for (const match of withoutStrings(text).matchAll(ALIAS)) used.add(match[1]!);
   const entries = GLOBAL_ALIASES.filter((entry) => used.has(entry.global));
   if (entries.length === 0) return null;
   const typeOnly = types || entries.every((entry) => !entry.value);

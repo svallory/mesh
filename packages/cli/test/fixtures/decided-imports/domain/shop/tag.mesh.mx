@@ -1,0 +1,24 @@
+entity :Tag
+  attributes
+    uuid :id primary-key
+    string :text
+  actions auto=[:read]
+    create :add
+      input
+        &text
+      validate
+        check :strings that=() => "$." !== "$s" code="strings" message="$record $Date $Promise \"$Set\""
+    update :rename
+      input
+        &text
+      validate
+        check :named that=() => "$record" !== "$context" code="named" message="$record $context $actor"
+    update :touch
+      validate
+        check :touched that=() => true code="$record" message="$record"
+    destroy :remove
+      validate
+        check :removable that=() => true code="$record" message="$record"
+  policies
+    policy :anyone
+      authorize-if=() => "$s" !== "$."

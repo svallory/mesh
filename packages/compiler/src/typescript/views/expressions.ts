@@ -4,7 +4,7 @@ import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
-import { printExpression, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
+import { emittedNothing, printExpression, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
 import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
@@ -303,8 +303,14 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (!target) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
     return { value: entityLocal(target, "value"), type: entityLocal(target, "ReadOnly"), record: entityLocal(target, "Record") };
   };
-  const print = (f: Found, inTypes?: NamedInTypes) =>
-    printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, inTypes);
+  // Each function is printed again when it names something only in a type; `emitted` is the last print's record of what
+  // the printer wrote (the runtime's `expr`), which the file's import follows from, never a search of the text.
+  let emitted = emittedNothing();
+  const print = (f: Found, inTypes?: NamedInTypes) => {
+    emitted = emittedNothing();
+    return printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, inTypes, emitted);
+  };
+  let usesExpr = false;
   // What a plain function names only in a type: the front end never sees it (MX strips the types from the node it reads),
   // so the printed function is parsed for it (`typeNames`). A helper is imported as a type. A scope root read in a
   // `typeof` is bound as a root read as a value is (EXP-12: a root is like a parameter, so it hides a helper of its name
@@ -344,6 +350,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
         code = print(f, inTypes);
       }
     }
+    usesExpr ||= emitted.expr;
     return {
       key: JSON.stringify(f.id),
       comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
@@ -386,7 +393,6 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       fromLiteral: JSON.stringify(from),
     };
   });
-  const usesExpr = entries.some((e) => e.code.includes("$."));
   // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that calls
   // the global binds it to `cloneValue`. The front end decided which functions do: not one that binds the name itself,
   // nor one whose file imports something under it, as a JavaScript global is hidden by either.
