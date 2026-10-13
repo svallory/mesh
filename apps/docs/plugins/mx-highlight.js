@@ -66,10 +66,14 @@ export function withV4InputLines(source) {
  * lexer finds operand and line-start members by token position, not test code.
  * Literal text (including templates), regexes and comments are opaque. A member
  * starts an operand or a bare/sort line; infix & and && are never members.
+ * A value of the current transaction, `%.now` or `%.today` (SYN-29), gets the
+ * same colour where it starts an operand only (a bare or sort line is never
+ * one), and never after a value, where `%` is the modulo operator. That widens
+ * the overlay by that one form, as the brief for SYN-29 asked.
  * Offsets refer to authored text; neither the grammar nor source is changed.
  */
 export function memberSpans(source) {
-  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\n\\[])+\/[a-z]*|&[A-Za-z_]\w*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
+  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\n\\[])+\/[a-z]*|&[A-Za-z_]\w*|%\.[A-Za-z_$][\w$]*|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|===|!==|=>|&&|\|\||==|!=|<=|>=|\S/g;
   const spans = [];
   let previous = '';
   for (let match; (match = tokens.exec(source));) {
@@ -85,6 +89,7 @@ export function memberSpans(source) {
     const prefix = source.slice(source.lastIndexOf('\n', match.index - 1) + 1, match.index);
     const lineReference = /^[\t ]*(?:(?:asc|desc)[\t ]+)?$/.test(prefix);
     if (/^&\w/.test(token) && (lineReference || operand)) spans.push([match.index, match.index + token.length]);
+    if (/^%\./.test(token) && operand) spans.push([match.index, match.index + token.length]);
     previous = token;
   }
   return spans;

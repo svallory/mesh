@@ -32,7 +32,7 @@ do
 ```mx
 computed
   boolean :isOverdue() {
-    return &status === :sent && &dueOn < Mesh.today()
+    return &status === :sent && &dueOn < %.today
   }
   string :label() {
     return &number + " · " + formatMoney(&total)
@@ -70,7 +70,7 @@ An earlier design classified each function by its content: *translatable* if eve
 
 ## What a translated expression may reference
 
-A translated expression may reference its parameters, the functions of `Mesh` (`Mesh.now()`, `Mesh.today()`, `Mesh.isSystem(context)`; no bare name in an expression is Mesh's, so an import never shadows one), and calls to imported pure functions that do not read `self`; such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error. ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). A database cannot see a captured value, so a free variable is an error; a call to an imported pure function that does not read `self` is computed once and sent as a parameter, which is how `isStaff(actor)` appears in a policy and `Mesh.today()` in `:isOverdue`. This is why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
+A translated expression may reference its parameters, the functions of `Mesh` (`Mesh.isSystem(context)`), the current transaction's values `%.now` and `%.today` (properties of `%`, the current transaction; no bare name in an expression is Mesh's, so an import never shadows one), and calls to imported pure functions that do not read `self`; such a call is evaluated once in memory before the query and bound as a parameter. A bare captured value (a variable from the file) is a build error. ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md)). A database cannot see a captured value, so a free variable is an error; a call to an imported pure function that does not read `self` is computed once and sent as a parameter, which is how `isStaff(actor)` appears in a policy and `%.today` in `:isOverdue`. This is why an imported function must be pure. The research on expression languages recommends the same rule ("parameters, never closures") and the same treatment of the current date ([expression language](../research/expression-language.md), section 6).
 
 ## The tree and its forms
 

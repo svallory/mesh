@@ -21,6 +21,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 |:--|:--|:--|
 | A declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `check :invoiceIsSent` |
 | A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]`, `on:load=&visible` |
+| A value of the current transaction | `%.name`, in a function | `&dueOn < %.today`, `stamp(%.now)` |
 | Another entity | an imported identifier | `import { Customer } from "./customer.mesh.mx"`, then `belongs-to :customer entity=Customer` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `&status === :sent`, `&status=:paid` |
@@ -113,6 +114,8 @@ entity :Todo table="todos"
 
 **Functions receive four things.** `self` is the whole record, `input` is what the caller sent, `actor` is who is calling and `context` is the rest of the call. Use `&name` to read a member; a function that reads only members takes no parameters. Destructure `input`, `actor` or `context` when you use them. Destructure `self` when you pass the whole record to a helper, such as `isOwner(self, actor)`. [What `self` holds](#what-self-holds) depends on where the function runs.
 
+**`%` is the current transaction.** In a function, `%.now` is its instant (a `Date`) and `%.today` its date (a `Date` at 00:00 UTC). They are properties, not calls, and they hold one value for the whole transaction: every action call joined to it, and every read made inside it, sees the `%.now` of the call that opened it. Only these values are exposed, never the transaction itself, so `%` alone, `%now` and `%.now()` are errors.
+
 **Hand-written code is imported.** A helper sits beside the entity and is an ordinary TypeScript module:
 
 ```ts "src/domain/billing/invoice.helpers.ts"
@@ -138,9 +141,9 @@ Only relative, named imports of files inside `src/domain/` are allowed. An impor
 
 ### What a translated arrow may use
 
-Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `Mesh.today()`, member reads such as `&amount`, the function's parameters, and imported pure helpers that do not read the record. String concatenation, a conditional on a string and helpers that read the record run in memory. The build tells you if one appears where the database is required. Do not add a second statement to opt out of translation: Mesh already makes that decision.
+Comparisons, `&&`, `||`, `!`, numeric `+ - * /`, `.length`, `%.now` and `%.today`, member reads such as `&amount`, the function's parameters, and imported pure helpers that do not read the record. String concatenation, a conditional on a string and helpers that read the record run in memory. The build tells you if one appears where the database is required. Do not add a second statement to opt out of translation: Mesh already makes that decision.
 
-Names in an expression resolve as JavaScript resolves them. Mesh's own functions are members of `Mesh` (`Mesh.today()`, `Mesh.now()`, `Mesh.isSystem(context)`, imported with `import { Mesh } from "meshfw"`), so no bare name in an expression is Mesh's and an import never shadows one. The roots `self`, `input`, `actor`, `context` and `before` are like the expression's parameters: inside an expression they shadow an import of the same name, which stays usable everywhere else in the file. No name is refused.
+Names in an expression resolve as JavaScript resolves them. Mesh's own functions are members of `Mesh` (`Mesh.isSystem(context)`, `Mesh.privileged(User)`, imported with `import { Mesh } from "meshfw"`), and the current transaction's values are `%.` names: `%` is the current transaction, `%.now` its instant and `%.today` its date (a `Date` at 00:00 UTC). They are properties, not calls (`%.now`, never `%.now()`), they need no import, and they are the same everywhere in one transaction. So no bare name in an expression is Mesh's and an import never shadows one. Code outside an entity file that needs the instant takes it as a parameter: `dueIn(%.today, 30)`. The roots `self`, `input`, `actor`, `context` and `before` are like the expression's parameters: inside an expression they shadow an import of the same name, which stays usable everywhere else in the file. No name is refused.
 
 ## The entity line
 
@@ -256,7 +259,6 @@ Two entity files may import each other: `todo.mesh.mx` imports `List` while `lis
 Values Mesh derives rather than stores. Two kinds of line, one section:
 
 ```mx "src/domain/billing/invoice.mesh.mx"
-import { Mesh } from "meshfw"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { formatMoney } from "./invoice.helpers"
 
@@ -273,7 +275,7 @@ entity :Invoice
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < Mesh.today()
+      return &status === :sent && &dueOn < %.today
     }
     string :label() {
       return &number + " · " + formatMoney(&amount)
@@ -562,7 +564,7 @@ Use another entity's value for the root writing its own parts. An effect across 
 
 A call to another entity's action is an ordinary call with three differences. It joins the running transaction, so a throw anywhere rolls back the payment and the receipt together. That includes a call that fails inside a `try`: the whole action fails even if your code catches the error, so decide before you call, with a `Mesh.privileged` read or `Mesh.can(Receipt.record, input, context)`. Its results are read-only, like `self`. And it carries only the context you pass it: nothing is inherited from the calling action, so write `{ ...context, system: true }` to act for the system, with the human `actor` still on it, and `context` alone to act as the caller. Where your project declares a required context key, a call without a context does not compile. The call is checked like any other: the action it names runs its own validation, policies and steps, so a cascade can never do what its target forbids. A reason to keep `Receipt.record` for internal use is a policy that says so; see [internal writes](./using-your-domain.md#internal-writes).
 
-`Mesh.privileged` reads the stored rows as they are inside the transaction, at the instant the running action pinned, so `Mesh.now()` means the same in the rule and in what it reads. It does not run read policies: it is the rule's own view of the data. Its results are read-only too. A computed field may not call it: that is the build error `MESH_COMPUTED_COMPOSES`, because a computed field is the entity's own rule over the record. A computed body may not be `async` or use `await` either (`MESH_COMPUTED_ASYNC`); one that returns a promise anyway is refused at run time, naming the field. A read policy that calls `Mesh.privileged` directly is the build error `MESH_READ_POLICY_PRIVILEGED`, at the call. A helper hides the call from the build, so `Mesh.privileged`, and an entity's action too, also throw a `FrameworkError` naming the field or policy when they run while a computed field or a read policy is being evaluated. A leftover `tx` or `actions` parameter in an entity file is the build error `MESH_REMOVED_SCOPE_NAME`, which names what replaces it: `Mesh.privileged` and a call on the entity value.
+`Mesh.privileged` reads the stored rows as they are inside the transaction, at the transaction's instant, so `%.now` means the same in the rule and in what it reads. A nested call reads that instant too: every action call joined to one transaction, and every read inside it, sees the `%.now` of the call that opened the transaction. It does not run read policies: it is the rule's own view of the data. Its results are read-only too. A computed field may not call it: that is the build error `MESH_COMPUTED_COMPOSES`, because a computed field is the entity's own rule over the record. A computed body may not be `async` or use `await` either (`MESH_COMPUTED_ASYNC`); one that returns a promise anyway is refused at run time, naming the field. A read policy that calls `Mesh.privileged` directly is the build error `MESH_READ_POLICY_PRIVILEGED`, at the call. A helper hides the call from the build, so `Mesh.privileged`, and an entity's action too, also throw a `FrameworkError` naming the field or policy when they run while a computed field or a read policy is being evaluated. A leftover `tx` or `actions` parameter in an entity file is the build error `MESH_REMOVED_SCOPE_NAME`, which names what replaces it: `Mesh.privileged` and a call on the entity value.
 
 Steps run in written order, before the action's own row is written. A `run` step with `after=:write` runs after that row is written, still inside the transaction, and sees the stored record as `self`. Use it when what you call must see the result, or when the records it writes must follow the action's own:
 
@@ -706,7 +708,6 @@ One file that puts most of the above together. It is here to check your understa
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 // src/domain/billing/invoice.mesh.mx
-import { Mesh } from "meshfw"
 import { Customer } from "./customer.mesh.mx"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { Payment } from "./payment.mesh.mx"
@@ -734,7 +735,7 @@ entity :Invoice table="invoices"
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < Mesh.today()
+      return &status === :sent && &dueOn < %.today
     }
     string :label() {
       return &number + " · " + formatMoney(&total)

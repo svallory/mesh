@@ -64,6 +64,26 @@ test('member lexer leaves strings, templates, regexes, comments and infix operat
   expect(textOf(html)).toBe(literal.trimEnd());
 });
 
+test('a value of the current transaction (%.now, SYN-29) is coloured as a member where it starts an operand, never as modulo', () => {
+  const source = [
+    'filter=() => &dueOn < %.today',
+    'filter=() => %.now.getTime() > 0 && !%.today',
+    '&closedAt=() => stamp(%.now, %.today)',
+    'filter=() => a %.now',
+    'filter=() => a % b',
+    'string :note default="%.now"',
+    '// %.now',
+    '%.now',
+    'asc %.now',
+  ].join('\n');
+  expect(memberSpans(source).map(([a, b]) => source.slice(a, b)))
+    .toEqual(['&dueOn', '%.today', '%.now', '%.today', '&closedAt', '%.now', '%.today']);
+  const fence = 'entity :Invoice\n  attributes\n    date :dueOn\n  computed\n    boolean :isOverdue() {\n      return &dueOn < %.today\n    }\n';
+  const html = highlightMx(fence);
+  expect(textOf(html)).toBe(fence.trimEnd());
+  expect(html).toContain('<span class="ts-member">%.today</span>');
+});
+
 test('v4 allowance does not hide other grammar failures or broaden to root input', () => {
   expect(withV4InputLines('input\n  &title\n')).toBe('input\n  &title\n');
   expect(withV4InputLines('entity :Todo\n  &title\n')).toBe('entity :Todo\n  &title\n');

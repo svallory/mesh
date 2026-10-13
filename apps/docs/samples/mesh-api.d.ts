@@ -79,7 +79,9 @@ declare module "@meshfw/runtime" {
   /**
    * The functions that are the same in every project are members of this one namespace; none is a bare name. The
    * functions generated for one project (`bind`, `connect`, `disconnect`, `transaction`) stay exports of its `#mesh`,
-   * and error classes and types (`ForbiddenError`, `ActionContext`) stay named exports.
+   * and error classes and types (`ForbiddenError`, `ActionContext`) stay named exports. The current transaction's
+   * instant is not a member: an entity file reads it as `%.now` (and its date as `%.today`), and application code that
+   * needs it takes it as a parameter, which the entity file passes (`dueIn(%.today, 30)`).
    */
   export const Mesh: {
     /**
@@ -91,16 +93,12 @@ declare module "@meshfw/runtime" {
     /** Resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. */
     can<I>(action: ActionFunction<I>, input: I, context: ActionContext): Promise<boolean>;
     /**
-     * Returns the read actions of `entity` without read policies. It joins the running transaction and reads the
-     * running action's `Mesh.now()`. It throws `FrameworkError` while a computed field or a read policy is being
-     * evaluated. Each read takes an optional `context`: it reaches only the computed fields the read loads and is
-     * never inherited from the running action.
+     * Returns the read actions of `entity` without read policies. It joins the running transaction and reads its
+     * instant, the `%.now` of the call that opened it. It throws `FrameworkError` while a computed field or a read
+     * policy is being evaluated. Each read takes an optional `context`: it reaches only the computed fields the read
+     * loads and is never inherited from the running action.
      */
     privileged<E extends EntityValue>(entity: E): Privileged<E>;
-    /** The instant the running action pinned. Called outside a running action it throws `FrameworkError`. */
-    now(): Date;
-    /** The date part of `Mesh.now()`, at 00:00 UTC. Called outside a running action it throws `FrameworkError`. */
-    today(): Date;
     /** True only when `context.system` is the boolean `true`. */
     isSystem(context: Readonly<ActionContext>): boolean;
   };

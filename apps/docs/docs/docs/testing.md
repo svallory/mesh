@@ -49,7 +49,7 @@ Three lines of setup, and they are always the same three:
 | `await createSchema(db, tables)` | Creates the tables of the generated schema on **this** connection. `mesh db push` runs in another process and cannot reach a private in-memory database |
 | `bind(db)` | The binding of the domain to it. `connect()` is not used, so nothing global changes and tests can run in parallel: each `run` has its own scope, so two tests in one process never see each other's data layer |
 
-You own the data layer you pass to `bind`, so you close it. `disconnect()` never touches one. `bind` also takes a clock (`Mesh.now()` in your entity files reads it) and the `seams` a test wants to watch: `bind(db, { clock, seams })`.
+You own the data layer you pass to `bind`, so you close it. `disconnect()` never touches one. `bind` also takes a clock (`%.now` in your entity files reads it, once per transaction) and the `seams` a test wants to watch: `bind(db, { clock, seams })`.
 
 A call made outside `run` and `transaction` goes to the data layer `connect()` opened. A test never connects, so a call it makes outside `run` throws the `FrameworkError` an unconnected program gets, instead of writing to some other database.
 

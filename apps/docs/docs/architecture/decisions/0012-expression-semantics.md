@@ -1,9 +1,11 @@
 ---
 title: "0012. Which semantics a Mesh expression has"
-description: "Decision record 0012: Which semantics a Mesh expression has. Status: Accepted (lead ruling, pending operator review): option A."
+description: "Decision record 0012: Which semantics a Mesh expression has. Status: Accepted (lead ruling, pending operator review): option A. Amended 2026-10-13 (ACT-29)."
 ---
 
 # 0012. Which semantics a Mesh expression has
+
+> **Amendment, 2026-10-13 (ACT-29, SYN-29).** One transaction, one time. The clock is read once per transaction, not once per scope: action calls joined to one transaction share the instant of the call that opened it, so a nested action called from a step, and a read or `Mesh.privileged` read inside it, read that instant, and the actions an application's `transaction(fn)` (from `#mesh`) calls share one instant too. A call or read made outside any transaction pins its own. The instant is written `%.now`, and its date `%.today` ([ADR-0050](./0050-entity-file-syntax.md), amended the same day), where the summary below says `now()`. Found in the PR #77 review (note N8): in Hyper, `claim.acquire` set the lapsed claim's `endedAt` after the new claim's `acquiredAt`, because each call pinned its own instant, which "once per scope" allowed; the two are now equal. PostgreSQL's `now()` is likewise the start of the current transaction for every statement in it. The cost: a long batch in one `transaction(fn)` stamps every row with one time, and code that needs the real time uses `new Date()`. The body below is kept as history.
 
 ## Status
 

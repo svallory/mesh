@@ -1,9 +1,11 @@
 ---
 title: "0050. Entity file syntax: `kind #name options` (amended by ADR-0066)"
-description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted. Amended 2026-10-11 (DOM-04, DOM-25, DOM-28)."
+description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted. Amended 2026-10-11 (DOM-04, DOM-25, DOM-28). Amended 2026-10-13 (SYN-29)."
 ---
 
 # 0050. Entity file syntax: `kind #name options`
+
+> **Amendment, 2026-10-13 (SYN-29).** An expression reads a value of the current transaction as `%.` and a name: `%.now` is its instant (a `Date`) and `%.today` its date (a `Date` at 00:00 UTC). `%` stands for the current transaction, not the running action, and only values are exposed, never the transaction or its clock. They are properties, not calls, because the value is fixed for the transaction ([ADR-0012](./0012-expression-semantics.md), amended the same day: one instant per transaction). They replace `Mesh.now()` and `Mesh.today()` ([ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md), amended the same day), which threw when application TypeScript called them. A row of Mesh's dialect lowers `%.name` in an expression, as one lowers `&name`; `%` where a value is expected is a TypeScript syntax error, so the row changes no legal code, and after a value (`a %.now`) it stays the syntax error it is, never a modulo by `now`. `%`, `%now` and `%.` with no name stay errors. Anything of this kind Mesh adds later is another `%.` name. The reference file reads `%.today` and no longer imports `Mesh`; rule 6 says where `%.` is read.
 
 > **Amendment, 2026-10-11 (DOM-04, DOM-25, DOM-28).** The list of planned or rejected words changes: reusable steps (`step :slugify`) and `after-commit` are dropped, reuse is a `mixin` with `use` and named checks are a `checks` section ([ADR-0082](./0082-named-checks-and-mixins.md), [ADR-0079](./0079-commands-events-and-the-outbox.md)). `lock` and `relate` are unchanged.
 
@@ -61,7 +63,6 @@ This is the worked reference the user docs and the code follow. It uses every v1
 
 ```mx
 // src/domain/billing/invoice.mesh.mx
-import { Mesh } from "meshfw"
 import { Customer } from "./customer.mesh.mx"
 import { InvoiceLine } from "./invoice-line.mesh.mx"
 import { Payment } from "./payment.mesh.mx"
@@ -89,7 +90,7 @@ entity :Invoice table="invoices"
 
   computed
     boolean :isOverdue() {
-      return &status === :sent && &dueOn < Mesh.today()
+      return &status === :sent && &dueOn < %.today
     }
     string :label() {
       return &number + " · " + formatMoney(&total)
@@ -187,7 +188,7 @@ Written in syntax v4 ([ADR-0067](./0067-members-imports-input-static-files.md)).
 3. An attribute's type is its tag. Attributes are required unless marked `nullable`. Rules about one field (`min`, `max`, `match`) go on its line, never in a `check`.
 4. A relationship is `has-many :lines entity=InvoiceLine`, with `InvoiceLine` imported by relative path. Members of this entity are referenced with `&name`; declaration names and fixed-set values remain atoms.
 5. A computed field is either a typed field with a body, or a rollup (`count`, `sum`, `avg`, `min`, `max`) with `of=` a path.
-6. Functions receive `{ self, input, actor, context }`. A function whose body is one expression (an arrow, or a method body that is a single `return`) is translated when Mesh can translate it, and then also runs in SQL; anything else runs in memory. Where SQL is required (a filter, a sort, a policy), an expression that cannot be translated is a build error.
+6. Functions receive `{ self, input, actor, context }`. A function whose body is one expression (an arrow, or a method body that is a single `return`) is translated when Mesh can translate it, and then also runs in SQL; anything else runs in memory. Where SQL is required (a filter, a sort, a policy), an expression that cannot be translated is a build error. In a function, `%` is the current transaction: `%.now` reads its instant and `%.today` its date, properties and not calls, the same for every action call joined to one transaction (SYN-29, ACT-29).
 7. `actions auto=[...]` generates the plain actions of those types, named after the type. Every written action is `type :name`. `on:load=&name` says which read Mesh uses when it loads this entity through a relationship; without it, the auto read.
 8. One `input` section takes declared members (`&number`, `&customer`) or declares typed arguments (`decimal :percent`). Member lines take no options; duplicate input names fail. `validate` runs first, on the record before the input is applied (the stored record; on a create, the new record with its defaults), with the caller's values in `input`: `check :label [ that code message ]` covers cross-field or stored-state rules. The member inputs are applied next, and `do` runs, top to bottom: `set` with `&field=value` lines, `when=cond` with nested steps, `load=[&customer]`, and `run(...) { }` for plain code.
 9. `always` under `actions` takes an action body and applies it to every action in its scope.
