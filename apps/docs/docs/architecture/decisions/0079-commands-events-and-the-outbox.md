@@ -1,9 +1,11 @@
 ---
 title: "0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it"
-description: "Decision record 0079: `command` and `event` files, `handles=`, `publish` and the outbox in core, no `after-commit` step, `apply` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25)."
+description: "Decision record 0079: `command` and `event` files, `handles=`, `publish` and the outbox in core, no `after-commit` step, `apply` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows) and 2026-10-12 (DOM-43: how long it keeps them is configured by the application)."
 ---
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
+
+> **Amendment, 2026-10-12 (DOM-43).** How long the outbox keeps its rows is configured by the application. The amendment of 2026-10-11 below argued from Hyper that a row is never deleted once delivered; keeping every row is now one setting, the one Hyper chooses because `events.read` reads the whole log back, not the rule for every application. The delivery adapter honours the setting, and whether an adapter can prune rows is one of its capabilities. Still open: the default, and where the setting lives (`mesh.config.ts`, per event, or both). The operator ruled this on 2026-10-12. The body below, and the amendment of 2026-10-11, are kept as history.
 
 > **Amendment, 2026-10-11 (the outbox is a permanent log).** In item 4 below, the outbox is core, and it is a permanent, ordered log of the events, not the table the transactional-outbox pattern usually describes, which is emptied after delivery. It replaces Hyper's event table (DOM-06, DOM-18), and Hyper reads the whole log back, in order, from any cursor (`events.read`, `PROTOCOL.md` section 8, in the Hyper specification repository, branch `feat/protocol-phases`, commit `ccc00f9`), so a row is never deleted once delivered. The decisions below do not change.
 
@@ -11,7 +13,7 @@ description: "Decision record 0079: `command` and `event` files, `handles=`, `pu
 
 Accepted. Amends [ADR-0023](./0023-workflows-and-jobs-deferred.md) (the outbox is not after 1.0), [ADR-0053](./0053-validate-then-do.md) (no `after-commit` step), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (M6 builds domain events and the outbox) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) (the `afterCommit` seam is not the route for after-commit effects).
 
-Rows: DOM-17, DOM-18, DOM-19, DOM-02 (the `publish` half; `publishes` is in [ADR-0077](./0077-surfaces-and-file-kinds.md)), DOM-05, DOM-06, DOM-25. None is open.
+Rows: DOM-17, DOM-18, DOM-19, DOM-02 (the `publish` half; `publishes` is in [ADR-0077](./0077-surfaces-and-file-kinds.md)), DOM-05, DOM-06, DOM-25, and DOM-43 (the amendment of 2026-10-12; its default and where the setting lives are open).
 
 ## Date
 
