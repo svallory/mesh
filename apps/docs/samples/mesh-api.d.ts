@@ -73,8 +73,8 @@ declare module "@meshfw/runtime" {
     breakdown: readonly PolicyCheck[];
   };
 
-  /** An action function as the entity value exposes it: the input, then the context. */
-  export type ActionFunction<I> = (input: I, context: ActionContext) => Promise<unknown>;
+  /** An action function as the entity value exposes it: the input, then the context. `ActionFunction` alone is any of them. */
+  export type ActionFunction<I = never> = (input: I, context: ActionContext) => Promise<unknown>;
 
   /**
    * The functions that are the same in every project are members of this one namespace; none is a bare name. The
@@ -87,11 +87,12 @@ declare module "@meshfw/runtime" {
     /**
      * Resolves to `{ allowed, breakdown }` for a call to `action` with `input` and `context`, and changes nothing. The
      * action function comes first, then the call's own arguments; the runtime recognises the function through a
-     * module-private `WeakMap`, so nothing is added to it.
+     * module-private `WeakMap`, so nothing is added to it. The input is typed as the action's own (`Parameters<A>[0]`),
+     * so a generic read takes any `load` its call takes.
      */
-    checkPolicies<I>(action: ActionFunction<I>, input: I, context: ActionContext): Promise<Decision>;
+    checkPolicies<A extends ActionFunction>(action: A, input: Parameters<A>[0], context: ActionContext): Promise<Decision>;
     /** Resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. */
-    can<I>(action: ActionFunction<I>, input: I, context: ActionContext): Promise<boolean>;
+    can<A extends ActionFunction>(action: A, input: Parameters<A>[0], context: ActionContext): Promise<boolean>;
     /**
      * Returns the read actions of `entity` without read policies. It joins the running transaction and reads its
      * instant, the `%.now` of the call that opened it. It throws `FrameworkError` while a computed field or a read
