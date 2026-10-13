@@ -1,0 +1,107 @@
+import { ping, recurse, recurseName, recurseOk, twiceCatching } from "./probe"
+
+entity :Node
+  attributes
+    uuid :id primary-key
+    string :name
+    boolean :touched default=false
+    uuid :parentId nullable
+
+  actions auto=[:read]
+    create :add
+      input
+        &name
+        &parentId
+
+    update :reparent
+      input
+        &parentId
+
+    update :climb
+      do
+        set
+          &touched=true
+        run async ({ self }) {
+          if (self.parentId !== null) await recurse("climb", self.parentId)
+        }
+
+    update :gate
+      do
+        set
+          &touched=true
+
+    update :pre
+      do
+        set
+          &touched=true
+
+    update :named
+      input
+        &name
+      do
+        set
+          &name=async () => await recurseName("named")
+
+    update :looped
+      validate
+        check :loop that=async () => await recurseOk("looped") code="loop" message="loops"
+      do
+        set
+          &touched=true
+
+    update :wrap
+      do
+        set
+          &touched=true
+        run async () {
+          await recurse("wrap")
+        }
+
+    update :twice
+      do
+        set
+          &touched=true
+        run async ({ self }) {
+          await twiceCatching(self.id)
+        }
+
+    update :start
+      do
+        run async ({ self }) {
+          await recurse("climb", self.id)
+        }
+
+    update :afterFailure
+      do
+        run async () {
+          try {
+            await recurse("fail")
+          } catch {
+            // the transaction is failed all the same (TXN-01)
+          }
+          await recurse("count")
+        }
+
+    update :fail
+      do
+        run async () {
+          throw new Error("fails on purpose")
+        }
+
+    update :count
+      do
+        run async () {
+          ping()
+        }
+
+  policies
+    policy :adding types=[:create]
+      authorize-if=() => true
+    policy :everyone types=[:read]
+      authorize-if=() => true
+    policy :open actions=[&reparent, &climb, &named, &looped, &wrap, &twice, &start, &afterFailure, &fail, &count]
+      authorize-if=() => true
+    policy :gating actions=[&gate]
+      authorize-if=async ({ self }) => { await recurse("gate", self.id); return true }
+    policy :checking actions=[&pre]
+      authorize-if=async () => { await recurse("pre"); return true }
