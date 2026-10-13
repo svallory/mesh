@@ -123,13 +123,23 @@ function readImports(imports: readonly IrImport[]): {
           offset,
           fix: 'write `import { Mesh } from "meshfw"`',
         }
-        : {
-          code: "MESH_IMPORT_FORM",
-          message: typeOnly
-            ? "import the entity by name, not as a type: `import { List } from …`"
-            : "import the entity by name: `import { List } from …`",
-          offset,
-        });
+        : hasMeshExtension(from)
+          ? {
+            code: "MESH_IMPORT_FORM",
+            message: typeOnly
+              ? "import the entity by name, not as a type: `import { List } from …`"
+              : "import the entity by name: `import { List } from …`",
+            offset,
+            fix: `write \`import { List } from "${from}"\`, naming the entity the file declares`,
+          }
+          : {
+            code: "MESH_IMPORT_FORM",
+            message: typeOnly
+              ? "import a helper by name, not as a type: `import { isStaff } from …`"
+              : "import a helper by name: `import { isStaff } from …`",
+            offset,
+            fix: `write \`import { isStaff } from "${from}"\`, naming each helper the file exports that this one uses`,
+          });
       continue;
     }
     // `import { Mesh } from "meshfw"`: Mesh's own functions (PRJ-22), the one import an entity file takes from a package.
