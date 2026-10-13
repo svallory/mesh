@@ -152,7 +152,7 @@ test("castInput hands the validator plain objects without a prototype, and the a
   expect(Object.getPrototypeOf(parsed.filter)).toBe(Object.prototype);
   expect(Object.getPrototypeOf((parsed.filter as { and: object[] }).and[0])).toBe(Object.prototype);
   // What the validator handed back of its copy is ordinary again at every depth; `ordinary` changes prototypes, never keys.
-  // (Zod's `z.json()` itself drops a `__proto__` key, so through a generated validator that key does not reach the action.)
+  // (A generated `json` validator, `jsonValue`, keeps a `__proto__` key too: packages/data-sqlite/test/json-proto.test.ts.)
   const data = parsed.data as Record<string, unknown>;
   expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
   expect(Object.keys(data)).toEqual(["__proto__", "deep"]);

@@ -23,6 +23,8 @@ export interface ValidatorsView {
   readonly query: QuerySchema | null;
   /** The globals the file names (`$RegExp`, `$Object`), from `$globals.ts`; null when it names none. */
   readonly globals: GlobalsImport | null;
+  /** True when an input has a `json` field: the file then imports `jsonValue` from `@meshfw/runtime` as `$jsonValue`. */
+  readonly json: boolean;
 }
 
 /** The filter and sort schemas a read input uses. */
@@ -79,7 +81,9 @@ export const VALIDATOR_TYPES = {
   enum: "z.string()",
   // Any JSON value, no shape; the cast gives the input type `unknown` (ADR-0069). `null` is JSON, and the model
   // marks every json attribute and argument nullable (ENT-03), so the field adds `.nullable()` and `.optional()`.
-  json: "(z.json() as z.ZodType<unknown>)",
+  // `jsonValue` (the runtime's) accepts what `z.json()` accepted and keeps every key, `__proto__` included (ENT-19),
+  // which `z.json()` drops; the file imports it as `$jsonValue` (`ValidatorsView.json`).
+  json: "(z.unknown().transform($jsonValue) as z.ZodType<unknown>)",
 } as const satisfies Record<AttributeType, string>;
 
 /** The validators view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */
@@ -103,7 +107,8 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
     query: hasRead(entity) ? queryView(entity) : null,
   };
   // The template prints `$Object.keys` in the comparison schema a read's filter uses; a file with no input imports nothing.
-  return { ...view, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
+  const json = inputs.some((input) => input.fields.some(({ attribute, query }) => !query && attribute.type === "json"));
+  return { ...view, json, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
 }
 
 const filterConst = (entity: Entity) => schemaName(filterTypeName(entity));

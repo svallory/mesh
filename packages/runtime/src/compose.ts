@@ -45,17 +45,22 @@ function withoutPrototypes(value: unknown, seen = new Map<object, unknown>()): u
   if (!isPlain(value)) return value;
   const copy: Record<string, unknown> = Object.create(null);
   seen.set(value, copy);
-  for (const [key, member] of Object.entries(value)) copy[key] = withoutPrototypes(member, seen);
+  // `defineProperty`, not `copy[key] = ...`: a `json` value may hold an own `__proto__` key (ENT-19), and on an object that
+  // has a prototype an assignment to that name would change the prototype instead of making a property. This copy has
+  // none, so the assignment would be safe here today; the definition stays safe whatever the copy becomes.
+  for (const [key, member] of Object.entries(value))
+    Object.defineProperty(copy, key, { value: withoutPrototypes(member, seen), writable: true, enumerable: true, configurable: true });
   return copy;
 }
 
 /**
  * The validator's output with the ordinary prototype at any depth: the action gets ordinary objects, as the caller would
  * write them (`input.hasOwnProperty(...)`, `String(input)` and `input instanceof Object` work). Zod 4, which the generated
- * validators use, already rebuilds every object it hands back with that prototype, `z.strictObject` and `z.json()` values
- * alike, so for them this changes nothing. It is a safety net for a validator that hands back objects of the copy
+ * validators use, already rebuilds every object it hands back with that prototype, `z.strictObject` and a `json` value
+ * (`jsonValue`) alike, so for them this changes nothing. It is a safety net for a validator that hands back objects of the copy
  * `withoutPrototypes` made, which have none. Those are the cast's own copies, so they are changed in place, with no copy.
- * Only prototypes change, never keys.
+ * Only prototypes change, never keys; an own `__proto__` key of a `json` value (ENT-19) stays the data property it is, and
+ * `Object.setPrototypeOf` sets the object's prototype, never that key.
  */
 function ordinary(value: unknown, seen = new Set<object>()): unknown {
   if (value === null || typeof value !== "object" || seen.has(value)) return value;
