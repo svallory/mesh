@@ -153,3 +153,10 @@ test("a ternary does not make known a member that a create leaves null", () => {
   expect(filled('() => &label !== null ? &label !== "x" : false')).toEqual(expect.arrayContaining(["warning:MESH_VALIDATE_UNFILLED", "warning:MESH_EXPR_NEGATED_UNKNOWN"]));
   expect(filled("() => &owner !== null ? &owner.n > 0 : false").filter((d) => d === ONE)).toHaveLength(1);
 });
+
+// A `details` part is printed as the author's TypeScript, where `/` gives 3.5: it is neither rewritten to `idiv` nor warned about.
+test("a details part has no MESH_EXPR_INTEGER_DIVISION; the same / in that does", () => {
+  const division = (parts: string) => found(check(parts)).filter((d) => d === "warning:MESH_EXPR_INTEGER_DIVISION").length;
+  expect(division("          that=() => &n > 0\n          details=() => ({ half: &n / 2 })")).toBe(0);
+  expect(division("          that=() => &n / 2 > 0\n          details=() => ({ half: &n / 2 })")).toBe(1);
+});

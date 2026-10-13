@@ -405,7 +405,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         // An object literal whose values Mesh can translate: JavaScript's null rule differs only when an operand can be null.
         for (const part of parts) {
           try {
-            const t = infer(part, { ...scope, noNarrow: true });
+            const t = infer(part, { ...scope, noNarrow: true, printedAsJavaScript: true });
             if (t.nullable && hasOperator(part)) warnPlain(e, "a comparison or operator that can see a null", part.position);
           } catch (x) { if (!(x instanceof Demote)) throw x; if (hasOperator(part)) warnPlain(e, x.detail, x.position); }
         }
