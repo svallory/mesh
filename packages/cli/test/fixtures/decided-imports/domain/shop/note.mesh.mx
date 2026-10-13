@@ -1,0 +1,17 @@
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :text
+  computed
+    string :dollar() { const x = "$."; return x }
+    string :scope() { const x = "$s"; return x }
+    string :comment() { const c = "c"; /* $. and $s */ return c }
+    string :template() { return `$.${"t"} $s` }
+    string :single() { return '$s $.' }
+  actions auto=[:read]
+    create :add
+      input
+        &text
+  policies
+    policy :anyone
+      authorize-if=() => true

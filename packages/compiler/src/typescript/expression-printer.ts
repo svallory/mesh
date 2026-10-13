@@ -21,29 +21,51 @@ function access(name: string, optional: boolean): string {
   return IDENTIFIER.test(name) ? `${optional ? "?." : "."}${name}` : `${optional ? "?." : ""}[${JSON.stringify(name)}]`;
 }
 
+/**
+ * What the printer itself wrote into a function, recorded as it writes, so the file's imports and the function's
+ * parameter name follow from what was printed and never from a search of the text, where an author's string or comment
+ * could spell `$.` or `$s`.
+ */
+export interface Emitted {
+  /** The printer wrote a call on the runtime's `expr` namespace (`$.`), so the file imports it. */
+  expr: boolean;
+  /** The printer wrote a read of the scope (`$s`), so the function's parameter is named. */
+  scope: boolean;
+}
+export const emittedNothing = (): Emitted => ({ expr: false, scope: false });
+
 /** A tree as one TypeScript expression of the scope `$s`. `bool` says the value sits where a boolean is required. */
-export function printTree(n: ExprNode, bool = false): string {
+export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedNothing()): string {
   switch (n.kind) {
     case "literal": return JSON.stringify(n.value);
     case "atom": return JSON.stringify(n.value);
-    case "var": return ROOTS.includes(n.name as (typeof ROOTS)[number]) ? `${SCOPE}.${n.name}` : local(n.name);
+    case "var": {
+      if (!ROOTS.includes(n.name as (typeof ROOTS)[number])) return local(n.name);
+      emitted.scope = true;
+      return `${SCOPE}.${n.name}`;
+    }
     case "member": {
       // Every access is `?.` except on the roots that are never null: a null anywhere in a chain gives null, as a left join does.
       const safe = n.object.kind === "var" && (n.object.name === "self" || !ROOTS.includes(n.object.name as (typeof ROOTS)[number]));
-      return `${printTree(n.object)}${access(n.name, n.optional || !safe)}`;
+      return `${printTree(n.object, false, emitted)}${access(n.name, n.optional || !safe)}`;
     }
     case "call": {
-      if (n.fn === "now" || n.fn === "today") return `$.${n.fn}(${SCOPE})`;
+      emitted.expr = true;
+      if (n.fn === "now" || n.fn === "today") {
+        emitted.scope = true;
+        return `$.${n.fn}(${SCOPE})`;
+      }
       const booleanArgs = n.fn === "and" || n.fn === "or" || n.fn === "not";
-      const args = n.args.map((a, i) => printTree(a, booleanArgs || (n.fn === "cond" && i === 0)));
+      const args = n.args.map((a, i) => printTree(a, booleanArgs || (n.fn === "cond" && i === 0), emitted));
       return `$.${n.fn}(${args.join(", ")})`;
     }
     case "helper": {
+      emitted.expr = true;
       // Through `$.pure`: an imported function a translated expression calls must not return a promise (EXP-03).
-      const call = `$.pure(${n.name}(${n.args.map((a) => printTree(a)).join(", ")}), ${JSON.stringify(n.name)})`;
+      const call = `$.pure(${n.name}(${n.args.map((a) => printTree(a, false, emitted)).join(", ")}), ${JSON.stringify(n.name)})`;
       return bool ? `$.asBool(${call})` : call;
     }
-    case "quantify": return `$.${n.op}(${printTree(n.source)}, (${local(n.param)}: any) => ${printTree(n.body, true)})`;
+    case "quantify": emitted.expr = true; return `$.${n.op}(${printTree(n.source, false, emitted)}, (${local(n.param)}: any) => ${printTree(n.body, true, emitted)})`;
   }
 }
 
@@ -63,9 +85,10 @@ export interface NamedInTypes {
 const NOTHING: NamedInTypes = { roots: [], values: [], types: [] };
 
 /** The whole function of one expression: `(s: Scope) => ...`. */
-export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING): string {
-  const withScope = (body: string) => `(${/\$s(?![A-Za-z0-9_$])/.test(body) ? SCOPE : `_${SCOPE}`}: ${scopeType}) => ${body}`;
-  if (e.tree) return withScope(printTree(e.tree, boolean));
+export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING, emitted: Emitted = emittedNothing()): string {
+  // The parameter is `_$s` unless the printed body reads it: an unused parameter fails `noUnusedParameters`.
+  const withScope = (body: string) => `(${emitted.scope ? SCOPE : `_${SCOPE}`}: ${scopeType}) => ${body}`;
+  if (e.tree) return withScope(printTree(e.tree, boolean, emitted));
   const plain = e.plain!;
   let text = e.source;
   for (const edit of [...plain.edits].sort((a, b) => b.from - a.from))
@@ -81,6 +104,8 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // a translated expression calls (`$now()`), so a plain function and a translated one read one instant (SYN-29), a fresh
   // `Date` each read. `Mesh` is the file's import, as a helper is (PRJ-22).
   const internal = plain.internal ?? {};
+  if (roots.length || internal.self || internal.now || internal.today || e.takesScope || e.params.length) emitted.scope = true;
+  if (internal.now || internal.today) emitted.expr = true;
   const declare = (roots.length ? `const { ${roots.join(", ")} } = ${SCOPE}; ` : "") +
     (internal.self ? `const ${internal.self} = ${SCOPE}.self; ` : "") +
     (internal.now ? `const ${internal.now} = () => $.now(${SCOPE}); ` : "") +

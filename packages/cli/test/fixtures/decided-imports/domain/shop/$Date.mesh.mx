@@ -1,0 +1,13 @@
+entity :Dated
+  attributes
+    uuid :id primary-key
+    string :text
+  actions auto=[:read]
+    create :add
+      input
+        &text
+      validate
+        check :strings that=() => "$." !== "$s" code="strings" message="$record $Date $Promise \"$Set\""
+  policies
+    policy :anyone
+      authorize-if=() => "$s" !== "$."

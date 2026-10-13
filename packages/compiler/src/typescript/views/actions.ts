@@ -5,7 +5,7 @@ import { policiesCovering, policyExpressions, readsRecord } from "../../model/po
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
-import { globalAlias, globalsImport, type GlobalsImport } from "./globals.ts";
+import { globalAlias, globalsImport, withoutStrings, type GlobalsImport } from "./globals.ts";
 import { hasLoader, loaderName } from "./load.ts";
 import { computedColumns, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
@@ -839,7 +839,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // ---- end policies ------------------------------------------------------------------------------------------
     // The working copy of the record is declared only when something reads it.
     const declared = statements.findIndex((line) => line.startsWith("const $record:"));
-    if (declared >= 0 && !statements.some((line, at) => at !== declared && /\$record\b/.test(line))) statements.splice(declared, 1);
+    if (declared >= 0 && !statements.some((line, at) => at !== declared && /\$record\b/.test(withoutStrings(line)))) statements.splice(declared, 1);
     runtime.add("runAction");
     frameUsed = true;
     return { ...base, returnType, txReturnType: returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null, preCheck };
