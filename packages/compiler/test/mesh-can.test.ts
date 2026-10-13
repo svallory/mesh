@@ -1,7 +1,7 @@
 // CMP-21 at build time: `Mesh.checkPolicies` and `Mesh.can` in an entity file. They run another action's policies, so
 // they follow `Mesh.privileged`'s rules: allowed wherever a function runs inside an action (a step, a check, a set value,
 // a helper those call), refused in a computed field (MESH_COMPUTED_COMPOSES), and refused in every policy, read or write
-// (MESH_POLICY_ASKS: a policy that asks can be asked back, and nothing bounds that). The run-time side, and the real
+// (MESH_POLICY_ASKS: a policy that asks can be asked back, and the build cannot see where that ends). The run-time side, and the real
 // project built and run, is `packages/cli/test/can-in-entities.test.ts`.
 import { describe, expect, test } from "bun:test";
 import { buildModel } from "../src/front-end/build.ts";
@@ -203,7 +203,7 @@ describe("a policy may not ask (MESH_POLICY_ASKS)", () => {
     const source = policy("policy :p types=[:update]", `forbid-if=${ASK}`);
     expect(errors(source)).toEqual([{
       code: "MESH_POLICY_ASKS",
-      message: "policy :p forbid-if asks another action's policies (`Mesh.can` or `Mesh.checkPolicies`): a policy may not ask, since the policy it asks could ask back and nothing bounds that",
+      message: "policy :p forbid-if asks another action's policies (`Mesh.can` or `Mesh.checkPolicies`): a policy may not ask, since the policy it asks could ask back, and the build cannot see where that ends",
       fix: FIX,
       offset: source.indexOf("Mesh.can"),
     }]);

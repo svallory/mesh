@@ -330,7 +330,7 @@ export function privileged<E extends EntityValue<object, object>>(entity: E): Pr
 }
 
 function marked(what: string, mark: string): FrameworkError {
-  return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`);
+  return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`);
 }
 
 /**
@@ -340,19 +340,22 @@ function marked(what: string, mark: string): FrameworkError {
 function privilegedHandle(value: object, fqn: string, names: readonly string[]): object {
   const reads: Record<string, (input: unknown, context?: unknown) => Promise<unknown>> = Object.create(null);
   for (const name of names)
-    reads[name] = async (input: unknown, context?: unknown) => {
+    reads[name] = (input: unknown, context?: unknown) => {
       const label = `Mesh.privileged(${fqn}).${name}`;
       const caller = inScope(frames.get(value));
+      // Refused by throwing, as `Mesh.privileged` itself is, not by rejecting: one way for every refusal.
       const mark = caller?.mark ?? evaluatingNow();
       if (mark !== undefined) throw marked(label, mark);
-      const { state, entry } = bindingFor(value, label, caller);
-      const probe = probeOf(caller, state);
-      const body = (probe ? probeEntry(probe, value) : entry).reads[name];
-      if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
-      // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
-      // call passes.
-      const clock = caller?.state === state ? caller.clock : undefined;
-      return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false), probe?.layer));
+      return (async () => {
+        const { state, entry } = bindingFor(value, label, caller);
+        const probe = probeOf(caller, state);
+        const body = (probe ? probeEntry(probe, value) : entry).reads[name];
+        if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
+        // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
+        // call passes.
+        const clock = caller?.state === state ? caller.clock : undefined;
+        return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false), probe?.layer));
+      })();
     };
   return Object.freeze(reads);
 }
@@ -543,6 +546,12 @@ interface Question {
   readonly views: WeakMap<DataOperations, DataOperations>;
   /** The error of the first write tried while the question is answered: `Mesh.checkPolicies` throws it, whatever was decided. */
   wrote?: FrameworkError;
+  /**
+   * Set on the outermost question of a chain when a question is asked too deep (`MAX_QUESTION_DEPTH`). The error sticks to
+   * the root: every question asked under it throws it at entry, and the root throws it once it settles, whatever was
+   * decided and whatever a helper caught on the way, so a helper that catches cannot keep a cycle going.
+   */
+  tooDeep?: FrameworkError;
   /**
    * True once `Mesh.checkPolicies` has settled: a write still refused in one of its stores was started by work left
    * running. `probes` and `layers` are emptied then, so that work keeps alive only what it touches again.
@@ -767,7 +776,7 @@ const MAX_QUESTION_DEPTH = 32;
 function askPolicies(member: "checkPolicies" | "can", action: unknown, input: unknown, context: unknown): Promise<Decision> {
   const target = typeof action === "function" ? actions.get(action) : undefined;
   if (!target)
-    return Promise.reject(new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${described(action)}`));
+    return Promise.reject(new FrameworkError(`Mesh.${member}() takes an action function of an entity value, such as Mesh.${member}(Todo.complete, input, context), and was given ${described(action)}`));
   const { value, fqn, name } = target;
   const where = `Mesh.${member}(${fqn}#${name})`;
   // While a computed field or a read policy is evaluated, as for `Mesh.privileged` and an entity's action (TXN-18): an entity
@@ -787,9 +796,11 @@ async function answer({ value, fqn, name }: { value: object; fqn: string; name: 
   // Asked inside another question (a policy's helper asks), it reads through that question's layers.
   const outer = questionOf(caller);
   let depth = 0;
-  for (let open = outer; open; open = open.outer) depth++;
-  if (depth >= MAX_QUESTION_DEPTH)
-    throw new FrameworkError(`${where} was asked ${MAX_QUESTION_DEPTH} questions deep: the policies of ${label} ask other actions' policies too deeply, probably in a cycle (a policy that asks about its own action, or policies that ask each other)`);
+  let root: Question | undefined;
+  for (let open = outer; open; open = open.outer) { depth++; root = open; }
+  if (root?.tooDeep) throw root.tooDeep;
+  if (root && depth >= MAX_QUESTION_DEPTH)
+    throw root.tooDeep = new FrameworkError(`${where} was asked ${MAX_QUESTION_DEPTH} questions deep: the policies of ${label} ask other actions' policies too deeply, probably in a cycle (a policy that asks about its own action, or policies that ask each other)`);
   const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
   const probe = probeFor(question, state);
   const bound = (value as EntityValue<object>)[BIND](answeringLayer(probe.layer), { clock: state.options.clock }, probe.frame) as BoundActions;
@@ -810,6 +821,7 @@ async function answer({ value, fqn, name }: { value: object; fqn: string; name: 
   question.ended = true;
   question.probes.clear();
   question.layers.clear();
+  if (question.tooDeep) throw question.tooDeep;
   if (question.wrote) throw question.wrote;
   if (!outcome.ok) {
     if (outcome.error instanceof Answer) return outcome.error.decision;

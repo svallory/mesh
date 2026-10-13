@@ -12,7 +12,7 @@ export function remember(value: unknown): void {
 }
 
 /** What a helper asks: the receipt's policies with `Mesh.can` or `Mesh.checkPolicies`, or the receipt itself (an entity's action), or a ledger's `settle`. Set by the test. */
-export type Kind = "can" | "checkPolicies" | "action" | "settle";
+export type Kind = "can" | "checkPolicies" | "action" | "settle" | "grind";
 export const asker: { current: ((kind: Kind, context: { system?: boolean }, id: string) => Promise<unknown>) | undefined } = { current: undefined };
 const ask = (kind: Kind, context: { system?: boolean }, id: string): Promise<unknown> => {
   if (!asker.current) throw new Error("the test sets asker.current");
@@ -37,4 +37,13 @@ export async function askLoudly(kind: Kind, context: { system?: boolean }, id: s
 /** A ledger's policy asks whether its parent may be settled, up to the root, which has none: a recursion that ends. */
 export async function askAboutParent(context: { system?: boolean }, parentId: string | null): Promise<boolean> {
   return parentId === null || await askLoudly("settle", context, parentId);
+}
+
+/** A fail-closed helper: it asks the ledger's own `grind` and answers false when the question throws, whatever it throws. */
+export async function askCatching(context: { system?: boolean }, id: string): Promise<boolean> {
+  try {
+    return await askLoudly("grind", context, id);
+  } catch {
+    return false;
+  }
 }

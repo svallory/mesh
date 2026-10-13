@@ -1,6 +1,6 @@
 import { Mesh as M } from "meshfw"
 import { Receipt } from "./receipt.mesh.mx"
-import { askAboutParent, askLoudly, askQuietly, remember } from "./probe"
+import { askAboutParent, askCatching, askLoudly, askQuietly, remember } from "./probe"
 
 entity :Ledger
   attributes
@@ -26,6 +26,10 @@ entity :Ledger
         &parentId
 
     update :settle
+      input
+        &name
+
+    update :grind
       input
         &name
 
@@ -55,3 +59,7 @@ entity :Ledger
       authorize-if=() => true
     policy :settling actions=[&settle]
       authorize-if=async ({ self, context }) => await askAboutParent(context, self.parentId)
+    policy :grindingOne actions=[&grind]
+      authorize-if=async ({ self, context }) => await askCatching(context, self.id)
+    policy :grindingTwo actions=[&grind]
+      authorize-if=async ({ self, context }) => await askCatching(context, self.id)

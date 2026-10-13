@@ -115,13 +115,13 @@ export function checkLifecycleLimits(
           diagnostics.push(error("MESH_POLICY_ACTS",
             `${what} calls an entity's action: a policy decides whether the call may run, and must not run actions itself`,
             expression.position, "read what the decision needs through `Mesh.privileged(Entity)`, which runs reads only"));
-        // Nor does it ask: a policy that asks another action's policies can be asked back, and nothing bounds that. Allowing it
+        // Nor does it ask: a policy that asks another action's policies can be asked back, and the build cannot see where that ends. Allowing it
         // later is not a breaking change; refusing it later would be.
         const asks = expression.plain?.asks ? options.askCallsOf?.(expression) : undefined;
         if (expression.plain?.asks)
           for (const position of asks?.length ? asks : [expression.position])
             diagnostics.push(error("MESH_POLICY_ASKS",
-              `${what} asks another action's policies (\`Mesh.can\` or \`Mesh.checkPolicies\`): a policy may not ask, since the policy it asks could ask back and nothing bounds that`,
+              `${what} asks another action's policies (\`Mesh.can\` or \`Mesh.checkPolicies\`): a policy may not ask, since the policy it asks could ask back, and the build cannot see where that ends`,
               position, !reads.some((action) => policiesCovering(entity, action).includes(policy)) && !loads.includes(policy)
                 ? "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a `validate` check"
                 : "decide in the policy from the record and what it loads, and ask in a step or a `validate` check of a write action"));

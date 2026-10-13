@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { ForbiddenError, FrameworkError, type Decision } from "@meshfw/runtime";
+import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type Decision } from "@meshfw/runtime";
 
 const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/can-in-entities/domain");
@@ -166,6 +166,55 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
     }
   }, 30_000);
 
+  test("outside a computed field or a read policy, an action, Mesh.can and Mesh.checkPolicies report every failure as a rejected promise, never a synchronous throw", async () => {
+    const app = await import(join(root, ".mesh/index.ts"));
+    const { billing } = await import(join(root, ".mesh/domain/index.ts"));
+    const { Mesh } = await import(Bun.resolveSync("meshfw", root));
+    const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    const layer = sqlite({ file: ":memory:" });
+    await createSchema(layer, app.tables);
+    const system = { system: true };
+    const missing = "00000000-0000-4000-8000-0000000000aa";
+    const calls: Record<string, [string, () => Promise<unknown>][]> = {
+      "an input error": [
+        ["action", () => billing.Receipt.record({}, system)],
+        ["can", () => Mesh.can(billing.Receipt.record, {}, system)],
+        ["checkPolicies", () => Mesh.checkPolicies(billing.Receipt.record, {}, system)],
+      ],
+      "a missing row": [
+        ["action", () => billing.Ledger.settle({ id: missing, name: "x" }, system)],
+        ["can", () => Mesh.can(billing.Ledger.settle, { id: missing, name: "x" }, system)],
+        ["checkPolicies", () => Mesh.checkPolicies(billing.Ledger.settle, { id: missing, name: "x" }, system)],
+      ],
+    };
+    const expected: Record<string, new (...args: never[]) => Error> = { "an input error": InvalidInputError, "a missing row": NotFoundError };
+    try {
+      await app.bind(layer).run(async () => {
+        for (const [what, list] of Object.entries(calls))
+          for (const [which, call] of list) {
+            expect(() => { call().catch(() => undefined); }, `${which}: ${what}`).not.toThrow();
+            await rejection(call(), expected[what]!);
+          }
+        // A non-action argument: the two questions only.
+        for (const ask of [Mesh.can, Mesh.checkPolicies]) {
+          expect(() => { ask(42, {}, {}).catch(() => undefined); }).not.toThrow();
+          await rejection(ask(42, {}, {}), FrameworkError);
+        }
+      });
+    } finally {
+      await layer.close();
+    }
+    // A missing binding: nothing is connected, and none is in scope.
+    for (const [which, call] of [
+      ["action", () => billing.Receipt.record({}, system)],
+      ["can", () => Mesh.can(billing.Receipt.record, {}, system)],
+      ["checkPolicies", () => Mesh.checkPolicies(billing.Receipt.record, {}, system)],
+    ] as const) {
+      expect(() => { call().catch(() => undefined); }, which).not.toThrow();
+      expect((await rejection(call(), FrameworkError)).message, which).toContain("not connected");
+    }
+  }, 30_000);
+
   test("a call hidden in a helper: refused, by throwing, while a computed field or a read policy is evaluated, and run in a write policy", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
     const { billing } = await import(join(root, ".mesh/domain/index.ts"));
@@ -183,10 +232,11 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
       if (kind === "can") return Mesh.can(billing.Receipt.record, receipt(id), system);
       if (kind === "checkPolicies") return Mesh.checkPolicies(billing.Receipt.record, receipt(id), system);
       if (kind === "settle") return Mesh.can(billing.Ledger.settle, { id, name: "settled" }, context);
+      if (kind === "grind") return Mesh.can(billing.Ledger.grind, { id, name: "ground" }, context);
       return billing.Receipt.record(receipt(id), system);
     };
     const anyone = {};
-    const message = (what: string, where: string) => `${what} was called while ${where} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
+    const message = (what: string, where: string) => `${what} was called while ${where} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
     try {
       await app.bind(layer).run(async () => {
         const paid = await billing.Invoice.open({ amount: 1 }, anyone);
@@ -238,6 +288,39 @@ describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
         expect(rows.find((row) => row.id === loop.id)?.name).toBe("loop");
         // Asked from outside, the same cap.
         await rejection(Mesh.can(billing.Ledger.settle, { id: loop.id, name: "never" }, anyone), FrameworkError);
+
+        // The boundary: a chain of 32 questions answers, the 33rd throws.
+        const chain = async (ancestors: number) => {
+          let last = await billing.Ledger.add({ name: "top", invoiceId: paid.id }, anyone);
+          for (let level = 0; level < ancestors; level++) last = await billing.Ledger.add({ name: `a${level}`, invoiceId: paid.id, parentId: last.id }, anyone);
+          return last;
+        };
+        expect(await billing.Ledger.settle({ id: (await chain(32)).id, name: "ok" }, anyone)).toMatchObject({ name: "ok" });
+        const tooDeep = await rejection(billing.Ledger.settle({ id: (await chain(33)).id, name: "no" }, anyone), FrameworkError);
+        expect(tooDeep.message).toContain("32 questions deep");
+
+        // A fail-closed helper that catches the cap's error does not keep a cycle going: the error sticks to the outermost
+        // question, which throws it whatever was decided. Two checks that both ask a cyclic row (each question asks twice, so
+        // 2^33 questions without the stick) end at once, write nothing, and leave the event loop free.
+        const grind = await billing.Ledger.add({ name: "grind", invoiceId: paid.id }, anyone);
+        let ticked = false;
+        const timer = new Promise<void>((done) => setTimeout(() => { ticked = true; done(); }, 20));
+        const grindBegan = performance.now();
+        // The action itself is denied (its own helper catches what the outermost question throws too, and answers false: fail
+        // closed); it is not a question, so the cap's error does not reach it.
+        await rejection(billing.Ledger.grind({ id: grind.id, name: "never" }, anyone), ForbiddenError);
+        await timer;
+        expect(performance.now() - grindBegan).toBeLessThan(5_000);
+        expect(ticked).toBe(true);
+        const grindRows = await billing.Ledger.read({}, anyone) as { id: string; name: string }[];
+        expect(grindRows.find((row) => row.id === grind.id)?.name).toBe("grind");
+        // The same asked from outside, with a timer beside it: the outermost question throws the cap's error whatever its helpers caught.
+        let outside = false;
+        const beside = new Promise<void>((done) => setTimeout(() => { outside = true; done(); }, 20));
+        const outsideError = await rejection(Mesh.can(billing.Ledger.grind, { id: grind.id, name: "never" }, anyone), FrameworkError);
+        expect(outsideError.message).toContain("ask other actions' policies too deeply, probably in a cycle");
+        await beside;
+        expect(outside).toBe(true);
       });
     } finally {
       await layer.close();
