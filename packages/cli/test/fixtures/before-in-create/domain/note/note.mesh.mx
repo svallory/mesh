@@ -6,6 +6,8 @@ entity :Note
     string :title
     boolean :translatedInSet default=false
     boolean :plainInSet default=false
+    integer :count default=7
+    integer :copied default=-1
 
   actions auto=[:read]
     create :make
@@ -15,6 +17,7 @@ entity :Note
         set
           &translatedInSet=({ before }) => before === null
           &plainInSet=({ before }) => { return before === null }
+          &copied=({ before }) => before !== null ? before.count : 0
         run () { seen.free.push(before) }
         run ({ before }) { seen.destructured.push(before) }
 
@@ -22,6 +25,8 @@ entity :Note
       input
         &title
       do
+        set
+          &copied=({ before }) => before !== null ? before.count : 0
         run ({ before }) { seen.updated.push(before === null ? null : before.title) }
 
   policies

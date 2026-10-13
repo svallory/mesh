@@ -274,12 +274,16 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         if (n.fn === "coalesce" && left?.kind === "member" && right?.kind === "member" && left.name === right.name
           && left.object.kind === "var" && left.object.name === "input" && right.object.kind === "var" && right.object.name === "self")
           storedFallback.add(right);
-        // The right of `a && b` knows what `a` tested not null; the right of `a || b` knows what `a` tested null.
+        // The right of `a && b` knows what `a` tested not null; the right of `a || b` knows what `a` tested null; in `c ? a : b`,
+        // `a` knows what `c` proved when true and `b` what `c` proved when false.
         const proven = new Set(scope.nonNull);
-        const a = n.args.map((arg) => {
-          const narrows = (n.fn === "and" || n.fn === "or") && !scope.noNarrow;
-          const ty = infer(arg, narrows ? { ...scope, nonNull: new Set(proven) } : scope);
-          if (narrows) provenNotNull(arg, n.fn === "and", proven);
+        const a = n.args.map((arg, i) => {
+          const sequential = n.fn === "and" || n.fn === "or";
+          const branch = n.fn === "cond" && i > 0;
+          const narrows = (sequential || branch) && !scope.noNarrow;
+          const known = branch && narrows ? new Set([...proven, ...provenNotNull(n.args[0]!, i === 1)]) : proven;
+          const ty = infer(arg, narrows ? { ...scope, nonNull: new Set(known) } : scope);
+          if (sequential && narrows) provenNotNull(arg, n.fn === "and", proven);
           return ty;
         });
         // An operator over a member a create has not filled yet is unknown on every create: the check would always fail there.
