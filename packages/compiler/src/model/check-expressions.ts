@@ -70,8 +70,6 @@ interface Scope {
   entity: Entity;
   /** Nullability of `before`: false for update and destroy. */
   beforeNullable: boolean;
-  /** True when every action the function runs for is a create: there is no stored record, so `before` is always null. */
-  noBefore?: boolean;
   /** Names of the action's typed arguments: one that shares a member's name is not the member input. */
   args?: Set<string>;
   /** Inside `validate`: `self` is the record before the input is applied, and there is no `before` (ACT-01, ACT-27). */
@@ -86,8 +84,36 @@ interface Scope {
   pending?: ReadonlySet<string>;
   /** Which part of a check this is: an unknown `that` fails the check, an unknown `when` skips it. */
   checkPart?: "that" | "when" | "details";
+  /** References (`self.x`, `before.x`, `input.x`, `before`) that the left of an enclosing `&&` or `||` has shown are not null here. */
+  nonNull?: ReadonlySet<string>;
+  /** True where the expression is printed as the author's TypeScript, where tsc narrows less than Mesh does: nothing narrows. */
+  noNarrow?: boolean;
+  /** True in the second pass over a demoted tree, which is printed as JavaScript: `/` gives 3.5 there, so it is not rewritten to `idiv`. */
+  printedAsJavaScript?: boolean;
   inputs: Map<string, Ty> | null;
   locals: Map<string, Ty>;
+}
+
+/** The path of `self.x`, `before.x.y`, `input.x` or `before`, or undefined for anything else (a `?.` chain, a local, a call). */
+function pathOf(n: ExprNode): string | undefined {
+  if (n.kind === "var") return n.name === "self" || n.name === "before" || n.name === "input" ? n.name : undefined;
+  if (n.kind !== "member" || n.optional) return undefined;
+  const object = pathOf(n.object);
+  return object === undefined ? undefined : `${object}.${n.name}`;
+}
+
+/**
+ * The references a boolean expression proves not null: when it is true (`when: true`, the right of `&&`), those it tests
+ * with `!== null` or `!= null`; when it is false (the right of `||`), those it tests with `=== null` or `== null`. An `&&`
+ * proves both sides when true, and an `||` both sides when false. Nothing else narrows (no `typeof`, no truthiness).
+ */
+function provenNotNull(n: ExprNode, when: boolean, into: Set<string> = new Set()): Set<string> {
+  if (n.kind !== "call") return into;
+  if ((n.fn === "isNotNull" && when) || (n.fn === "isNull" && !when)) {
+    const path = n.args[0] ? pathOf(n.args[0]) : undefined;
+    if (path !== undefined) into.add(path);
+  } else if ((n.fn === "and" && when) || (n.fn === "or" && !when)) n.args.forEach((arg) => provenNotNull(arg, when, into));
+  return into;
 }
 
 export function checkExpressions(document: ModelDocument, diagnostics: Diagnostic[], options: CheckOptions): void {
@@ -163,6 +189,17 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
+    const ty = inferNode(n, scope);
+    const path = scope.nonNull?.size ? pathOf(n) : undefined;
+    // A member a create has not filled yet is null on every create: the guard does not make it known.
+    if (path === undefined || !scope.nonNull!.has(path) || !ty.nullable || ty.unfilled !== undefined) return ty;
+    return { ...ty, nullable: false };
+  }
+
+  /** The `div` nodes rewritten to `idiv` so far, so a second pass over a tree can put them back and report them again. */
+  const divided: Extract<ExprNode, { kind: "call" }>[] = [];
+
+  function inferNode(n: ExprNode, scope: Scope): Ty {
     const fail = (detail: string): never => { throw new Demote(detail, n.position); };
     switch (n.kind) {
       case "literal":
@@ -181,11 +218,6 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_POLICY_BEFORE",
             `${scope.policy} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``, n.position,
             "write `&x` for the stored value and `input.x` for the caller's");
-          return { c: "any", nullable: false };
-        }
-        if (n.name === "before" && scope.noBefore) {
-          report("error", "MESH_BEFORE_IN_CREATE", "`before` is the stored record, and a create has none, so it is always null here", n.position,
-            "Remove it. Compare with `self` or `input`, or move the rule to an update");
           return { c: "any", nullable: false };
         }
         if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity, stored: true };
@@ -242,7 +274,14 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         if (n.fn === "coalesce" && left?.kind === "member" && right?.kind === "member" && left.name === right.name
           && left.object.kind === "var" && left.object.name === "input" && right.object.kind === "var" && right.object.name === "self")
           storedFallback.add(right);
-        const a = n.args.map((arg) => infer(arg, scope));
+        // The right of `a && b` knows what `a` tested not null; the right of `a || b` knows what `a` tested null.
+        const proven = new Set(scope.nonNull);
+        const a = n.args.map((arg) => {
+          const narrows = (n.fn === "and" || n.fn === "or") && !scope.noNarrow;
+          const ty = infer(arg, narrows ? { ...scope, nonNull: new Set(proven) } : scope);
+          if (narrows) provenNotNull(arg, n.fn === "and", proven);
+          return ty;
+        });
         // An operator over a member a create has not filled yet is unknown on every create: the check would always fail there.
         if (scope.validate && n.fn !== "isNull" && n.fn !== "isNotNull" && n.fn !== "coalesce")
           a.forEach((t, i) => { if (t.unfilled !== undefined && (n.fn !== "cond" || i === 0)) unfilled(t.unfilled, n.args[i]!.position, scope.checkPart); });
@@ -290,8 +329,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           case "add": case "sub": case "mul": case "div": case "idiv": case "neg": {
             if (!a.every((t) => bothClass(t, "number"))) return fail("arithmetic on values that are not numbers");
             const int = a.every((t) => t.int === true);
-            if (n.fn === "div" && int) {
+            if (n.fn === "div" && int && !scope.printedAsJavaScript) {
               n.fn = "idiv";
+              divided.push(n);
               report("warning", "MESH_EXPR_INTEGER_DIVISION",
                 "dividing two integers truncates toward zero (7 / 2 is 3, -7 / 2 is -3), as in SQL; JavaScript gives 3.5", n.position,
                 "make one operand a float or decimal for exact division");
@@ -361,7 +401,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         // An object literal whose values Mesh can translate: JavaScript's null rule differs only when an operand can be null.
         for (const part of parts) {
           try {
-            const t = infer(part, scope);
+            const t = infer(part, { ...scope, noNarrow: true });
             if (t.nullable && hasOperator(part)) warnPlain(e, "a comparison or operator that can see a null", part.position);
           } catch (x) { if (!(x instanceof Demote)) throw x; if (hasOperator(part)) warnPlain(e, x.detail, x.position); }
         }
@@ -370,8 +410,22 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     }
     if (!e.tree) return null;
     try {
-      const t = infer(e.tree, scope);
-      if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree.position, true);
+      const pass = (from: Scope): Ty => {
+        const t = infer(e.tree!, from);
+        if (boolean && t.c !== "boolean" && t.c !== "any") throw new Demote("a result that is not a boolean (truthiness)", e.tree!.position, true);
+        return t;
+      };
+      let t: Ty;
+      const reported = diagnostics.length, converted = divided.length;
+      try { t = pass(scope); }
+      catch (x) {
+        if (!(x instanceof Demote)) throw x;
+        // A demoted tree is printed as the author's TypeScript, where tsc narrows less than Mesh did: check it again without
+        // narrowing, as if the guards were not there, and report what that finds.
+        diagnostics.length = reported;
+        for (const node of divided.splice(converted)) node.fn = "div";
+        t = pass({ ...scope, noNarrow: true, printedAsJavaScript: true });
+      }
       return t;
     } catch (x) {
       if (x instanceof Demote) { demote(e, x); return null; }
@@ -456,7 +510,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       computed.nullable = t ? t.nullable : false;
     }
     for (const action of entity.actions) {
-      const scope: Scope = { ...base, beforeNullable: action.kind === "create", noBefore: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
+      const scope: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
       if (action.filter) visit(action.filter, scope, true);
       blocks(entity, action.validate, action.do, scope, action.kind === "create" ? [action] : []);
     }
@@ -467,7 +521,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
       const creates = every.filter((action) => action.kind === "create"
         && ((!block.types && !block.actions) || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name)));
-      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null }, creates);
+      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null }, creates);
     }
     for (const policy of entity.policies) {
       // A policy sees `self` as `validate` does (POL-08): on a create it covers, `&x` of a member the create takes is the new

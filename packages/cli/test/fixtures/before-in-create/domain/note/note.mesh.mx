@@ -1,0 +1,29 @@
+import { seen } from "./probe"
+
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :title
+    boolean :translatedInSet default=false
+    boolean :plainInSet default=false
+
+  actions auto=[:read]
+    create :make
+      input
+        &title
+      do
+        set
+          &translatedInSet=({ before }) => before === null
+          &plainInSet=({ before }) => { return before === null }
+        run () { seen.free.push(before) }
+        run ({ before }) { seen.destructured.push(before) }
+
+    update :rename
+      input
+        &title
+      do
+        run ({ before }) { seen.updated.push(before === null ? null : before.title) }
+
+  policies
+    policy :open types=[:create, :read, :update]
+      authorize-if=() => true
