@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -47,10 +47,10 @@ export const $expressions = {
   "rename.check.versionMatches.details": (
     $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/workspace.mesh.mx:34:20)
@@ -68,7 +68,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:41:20)
@@ -79,7 +78,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },

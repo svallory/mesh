@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -68,8 +68,8 @@ export const $expressions = {
     $s.actor?.id,
   // set &responsible, plain (reads-record-in-helper) (src/domain/execution/run.mesh.mx:45:24)
   "start.step.0.set.responsible": ($s: $execution$Run$Scope<$execution$Run$StartRunInput>) => {
-    const { self } = $s;
-    return (({ actor }) => responsibleFor(self.task.assignments, actor.id))($s);
+    const $self = $s.self;
+    return (({ actor }) => responsibleFor($self.task.assignments, actor.id))($s);
   },
   // check :cancelable that, translated (src/domain/execution/run.mesh.mx:52:16)
   "cancel.check.cancelable.that": ($s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>) =>
@@ -82,10 +82,10 @@ export const $expressions = {
   "cancel.check.versionMatches.details": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &endedAt, translated (src/domain/execution/run.mesh.mx:65:20)
@@ -116,7 +116,6 @@ export const $expressions = {
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:83:20)
@@ -125,7 +124,6 @@ export const $expressions = {
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -133,7 +131,6 @@ export const $expressions = {
   "policy.runCanceler.authorize-if.0": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || (await cancelsRunOf(self, actor.id)))($s);
   },

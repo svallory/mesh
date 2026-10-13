@@ -32,7 +32,7 @@ entity :Membership table="memberships"
         ]
       do
         set
-          &grantedAt=() => Mesh.now()
+          &grantedAt=() => %.now
           &grantedBy=({ actor }) => actor.id
     update :changeRole
       input
@@ -87,7 +87,7 @@ entity :Membership table="memberships"
       do
         set
           &state=:revoked
-          &revokedAt=() => Mesh.now()
+          &revokedAt=() => %.now
           &revokedBy=({ actor }) => actor.id
           &version=() => &version + 1
   policies

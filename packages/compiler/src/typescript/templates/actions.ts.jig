@@ -85,8 +85,9 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
 
 @end
 /**
- * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): each action's
- * transaction runs inside it, so what its functions call joins that transaction and reads its instant.
+ * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): an action reads
+ * the instant of the transaction it joins from it, and its own transaction runs inside it, so what its functions call
+ * joins that transaction and reads its instant (ACT-29).
  */
 export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ frameName }}: $ActionFrame = $NO_FRAME) {
   @if(readsBindName)

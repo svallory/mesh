@@ -36,13 +36,31 @@ export type PlainWhy =
   | "awaits-helper"
   | "unsupported-parameter";
 
-/** Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript (`&name` to `self.name`, `:atom` to a string). */
+/**
+ * Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript: `&name` to `$self.name`,
+ * `%.now` to `$now()`, `:atom` to a string. The names an edit reads are the printed function's own (`PlainReason.internal`).
+ */
 export interface SourceEdit {
   from: number;
   to: number;
   text: string;
-  /** For `&x` to `self.x`: it is the right side of `input.x ?? &x`, read only when the caller did not send `x`. */
+  /** For `&name`: the member it reads, `name`. */
+  member?: string;
+  /** For `&x`: it is the right side of `input.x ?? &x`, read only when the caller did not send `x`. */
   fallback?: true;
+}
+
+/**
+ * The names the printed function binds what the edits read under (`SourceEdit`): `self` for the record `&name` reads,
+ * `now` and `today` for the current transaction's `%.now` and `%.today` (SYN-29). Each is `$self`, `$now` or `$today`, or
+ * that name with a number (`$now1`) when the authored text already spells it, in its code, types, strings or comments: no
+ * binding of the author's can hide it, so `&name` is the record's member and `%.now` the transaction's whatever the author
+ * names a local (`self`, `$`, `$s`). A name the author writes (`self.title`, `input.id`) keeps JavaScript's scoping (EXP-12).
+ */
+export interface InternalNames {
+  self?: string;
+  now?: string;
+  today?: string;
 }
 
 export interface PlainReason {
@@ -52,19 +70,21 @@ export interface PlainReason {
   edits: SourceEdit[];
   /**
    * The scope names (`self`, `input`, `actor`, `context`, `before`) the authored text reads as variables that its
-   * parameters do not bind, `self` included when `&name` stands for `self.name`; the printed function takes these from the scope.
+   * parameters do not bind; the printed function takes these from the scope. `&name` reads none of them: it reads the
+   * record through `internal.self`.
    */
   roots: string[];
-  /** The clock functions the authored text reads as members of the file's `Mesh` import (`Mesh.now`, `Mesh.today`), called or not. */
+  /** The members of the current transaction the authored text reads (`%.now`, `%.today`; SYN-29): `now` and `today`. */
   clock?: ("now" | "today")[];
+  /** The names the printed function binds the record `&name` reads and the transaction's `%.now` and `%.today` under. */
+  internal?: InternalNames;
   /** The authored text reads `Mesh.isSystem` (`Mesh.isSystem(context)`). */
   isSystem?: true;
   /** The authored text reads `Mesh.privileged` (`Mesh.privileged(Entity)`, TXN-16). */
   privileged?: true;
   /**
    * The names the file imports `Mesh` under (`import { Mesh } from "meshfw"`, PRJ-22) that the authored text reads, where
-   * no binding of the function hides them, sorted. The printed function binds each to Mesh's functions as its evaluation
-   * sees them: `now` and `today` read the instant of the action or load that runs it.
+   * no binding of the function hides them, sorted. The expressions file imports `Mesh` under each, as it imports a helper.
    */
   mesh?: string[];
   /**
@@ -136,8 +156,8 @@ export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
   { id: "idiv", spelling: "a / b (both integers)", arity: 2, signature: "(integer, integer) -> integer", nulls: "truncates toward zero; any operand null, or a zero divisor: null", nullResult: "propagates" },
   { id: "neg", spelling: "-a", arity: 1, signature: "(number) -> number", nulls: "null: null", nullResult: "propagates" },
   { id: "length", spelling: "a.length", arity: 1, signature: "(string | list) -> number", nulls: "null string: null; a list is never null", nullResult: "propagates" },
-  { id: "now", spelling: "Mesh.now()", arity: 0, signature: "() -> date", nulls: "never null; one instant per scope", nullResult: "never" },
-  { id: "today", spelling: "Mesh.today()", arity: 0, signature: "() -> date", nulls: "never null; Mesh.now() at 00:00 UTC", nullResult: "never" },
+  { id: "now", spelling: "%.now", arity: 0, signature: "date", nulls: "never null; the current transaction's instant, one per transaction", nullResult: "never" },
+  { id: "today", spelling: "%.today", arity: 0, signature: "date", nulls: "never null; %.now at 00:00 UTC", nullResult: "never" },
   { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b", nullResult: "all-operands" },
   { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch", nullResult: "branches" },
   { id: "isSystem", spelling: "Mesh.isSystem(context)", arity: 1, signature: "(any) -> boolean", nulls: "never unknown: true only when the value is an object whose `system` is `true`", nullResult: "never" },

@@ -79,7 +79,7 @@ entity :Task table="tasks"
         ]
       do
         set
-          &openedAt=() => Mesh.now()
+          &openedAt=() => %.now
           &creator=({ actor }) => actor.id
     create :openAs
       input
@@ -87,7 +87,7 @@ entity :Task table="tasks"
         &owner
       do
         set
-          &openedAt=() => Mesh.now()
+          &openedAt=() => %.now
           &reviewer=({ actor }) => actor.id
     update :rename
       input
@@ -165,7 +165,7 @@ entity :Task table="tasks"
           &state=:done
         when=() => &priority >= 5
           set
-            &doneAt=() => Mesh.now()
+            &doneAt=() => %.now
           when=() => &priority >= 9
             set
               &note="critical"
@@ -205,7 +205,7 @@ entity :Task table="tasks"
         string :what
       do
         set
-          &openedAt=() => Mesh.now()
+          &openedAt=() => %.now
         run({ self, input }) {
           const target: any = self;
           if (input.what === "json" && target.meta) target.meta.injected = true;
@@ -247,7 +247,7 @@ entity :Task table="tasks"
         ]
       do
         set
-          &openedAt=() => Mesh.now()
+          &openedAt=() => %.now
         when=({ input }) => { if (input.site === "when") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return false }
           set
             &note="never"
@@ -285,7 +285,7 @@ entity :Task table="tasks"
         &rank
       do
         set
-          &openedAt=() => Mesh.now()
+          &openedAt=() => %.now
     create :rankQuick
       input
         &title
@@ -293,7 +293,7 @@ entity :Task table="tasks"
         &reviewer
       do
         set
-          &openedAt=() => Mesh.now()
+          &openedAt=() => %.now
     update :peek
       do
         run({ before, context }) {

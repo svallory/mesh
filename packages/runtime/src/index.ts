@@ -35,7 +35,7 @@ export { castInput, checkUnchanged, failJoined, noteWrite, writeCount } from "./
 export type { CastOutput } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
-export { Mesh, meshIn, type MeshFunctions } from "./mesh.ts";
+export { Mesh, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
 export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, releaseBinding, settled } from "./entity.ts";
 export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged } from "./entity.ts";

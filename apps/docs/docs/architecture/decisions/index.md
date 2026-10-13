@@ -62,7 +62,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0004](./0004-no-measurement-gate.md) | Mesh is built regardless; measuring the agent benefit is not a gate | Accepted | operator |
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
 | [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056, 0072 | operator; roadmap author |
-| [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Accepted (lead ruling, pending operator review) | lead |
+| [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Accepted (lead ruling, pending operator review), amended 2026-10-13: one instant per transaction (ACT-29) | lead |
 | [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted | operator |
 | [0014](./0014-sql-adapters-on-drizzle.md) | SQL adapters are built on Drizzle and drizzle-kit | Accepted | operator's position, lead's choice of tool |
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
@@ -93,7 +93,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer: `bind` and `connect` | Accepted, amended by 0059, 0086 | operator |
 | [0048](./0048-schema-inside-the-process-for-tests.md) | Schema inside the process for tests; the stable Drizzle pin | Accepted | lead |
 | [0049](./0049-vocabulary-is-meshs-own.md) | The vocabulary is Mesh's own; `resource` becomes `entity` | Accepted | operator |
-| [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted, amended 2026-10-11: reusable steps and `after-commit` dropped (0082) | operator |
+| [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted, amended 2026-10-11: reusable steps and `after-commit` dropped (0082); amended 2026-10-13: `%.now` and `%.today` (SYN-29) | operator |
 | [0051](./0051-mesh-mx-files-and-the-mesh-host.md) | Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh` | Accepted, amended 2026-10-11: the root tag decides a file's kind (0077) | operator; lead, delegated |
 | [0052](./0052-actions-auto-and-on-load.md) | Actions are always named; `auto`; `on:load`; `arguments` | Accepted, amended by 0067, 0072 | operator |
 | [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068, and 2026-10-11: a check sees `self` before the input; `before` leaves `validate`; step files and `after-commit` dropped (0082, 0079) | operator; lead, delegated |
@@ -129,7 +129,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
 | [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is open | Accepted, one item open | operator |
 | [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders (target design) | Accepted | operator with MX |
-| [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted | operator |
+| [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted, amended 2026-10-13: `Mesh` without `now` and `today` (PRJ-22, SYN-29) | operator |
 
 ## Superseded records
 

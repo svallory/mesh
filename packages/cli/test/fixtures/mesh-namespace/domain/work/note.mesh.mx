@@ -6,14 +6,16 @@ entity :Note
     string :text
     timestamp :at
   computed
-    string :stamp() { const at = M.now(); return at.toISOString() }
+    string :stamp() { const at = %.now; return at.toISOString() }
   actions auto=[:read]
     create :write
       input
         &text
+      validate
+        check :system that=({ input, context }) => { return M.isSystem(context) || !input.text.startsWith("system:") } code="system" message="Only the system writes a system note"
       do
         set
-          &at=() => M.now()
+          &at=() => %.now
   policies
     policy :anyone
       authorize-if=() => true

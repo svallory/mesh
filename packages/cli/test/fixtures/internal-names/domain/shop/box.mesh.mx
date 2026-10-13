@@ -1,0 +1,28 @@
+import { Item } from "./item.mesh.mx"
+
+entity :Box
+  attributes
+    uuid :id primary-key
+    integer :n
+  relationships
+    has-many :items entity=Item
+  computed
+    integer :mapped() { return [1].map(($) => %.now.getTime() + $)[0] ?? 0 }
+    integer :scoped() { const f = ($s: any) => %.today.getTime() + ($s === 1 ? 1 : 0); return f(1) }
+    integer :selfish() { return [1].map((self) => &n + self)[0] ?? 0 }
+  actions auto=[:read]
+    create :open
+      input
+        &n
+    update :stamp
+      validate
+        check :fresh that=() => !&items.map(($) => $.dueAt !== null && $.dueAt < %.now).includes(true) code="late" message="An item is overdue"
+      do
+        run () { const $ = 5; console.log("dollar", %.now.getTime(), $) }
+        run () { const $s = 5; console.log("scope", %.today.getTime(), $s) }
+        run () { const f = ($: any) => %.now.getTime() + ($ === null ? 1 : 0); console.log("any", f({ now: () => new Date(0) })) }
+        run () { const g = ($s: any) => %.now.getTime() + ($s === null ? 1 : 0); console.log("anyScope", g({ clock: () => new Date(0) })) }
+        run () { const self = { n: 99 }; console.log("self", &n, self.n) }
+  policies
+    policy :anyone
+      authorize-if=() => true

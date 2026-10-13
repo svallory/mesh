@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -71,8 +71,8 @@ export const $expressions = {
   "update.check.nameUnique.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => {
-    const { self } = $s;
-    return (async ({ input }) => await nameFreeOf(input.name ?? self.name, self.id))($s);
+    const $self = $s.self;
+    return (async ({ input }) => await nameFreeOf(input.name ?? $self.name, $self.id))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:47:16)
   "update.check.versionMatches.that": (
@@ -82,10 +82,10 @@ export const $expressions = {
   "update.check.versionMatches.details": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/collaborator.mesh.mx:54:20)
@@ -100,8 +100,8 @@ export const $expressions = {
   "retire.check.lastOwner.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
   ) => {
-    const { self } = $s;
-    return (async ({}) => await retireKeepsAnOwnerOf(self.id))($s);
+    const $self = $s.self;
+    return (async ({}) => await retireKeepsAnOwnerOf($self.id))($s);
   },
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:71:16)
   "retire.check.versionMatches.that": (
@@ -111,10 +111,10 @@ export const $expressions = {
   "retire.check.versionMatches.details": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.version,
+      actualVersion: $self.version,
     }))($s);
   },
   // set &version, translated (src/domain/identity/collaborator.mesh.mx:79:20)
@@ -134,7 +134,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:86:20)
@@ -146,7 +145,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },
@@ -154,7 +152,6 @@ export const $expressions = {
   "policy.collaboratorSelfOrOwner.authorize-if.0": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || self.id === actor.id || (await roleIn(actor.id, ["owner"])))($s);
   },

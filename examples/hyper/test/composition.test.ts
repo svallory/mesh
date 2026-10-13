@@ -240,6 +240,24 @@ describe("acceptance 3: claim.acquire assigns an unassigned task; two concurrent
     expect(second.fence).toBe(2);
     expect(await one(Claim.read({ filter: { id: { eq: first.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endReason: "lease expired", endedAt: minutes(11) });
   }));
+
+  test("the lapsed claim ends at the instant the new claim is acquired: the nested claim.end reads acquire's %.now (ACT-29, PR #77 review N8)", () => within(async (w) => {
+    const first = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    w.advance(11);
+    // From here every read of the clock is a second later than the last, so a nested call that pinned an instant of its
+    // own would end the lapsed claim at another instant than the one the new claim is acquired at.
+    let reads = 0;
+    const from = w.time.now;
+    Object.defineProperty(w.time, "now", { get: () => new Date(from.getTime() + 1_000 * ++reads), configurable: true });
+    const second = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const lapsed = await one(Claim.read({ filter: { id: { eq: first.id } } }, as(w.alice)));
+    expect(lapsed).toMatchObject({ state: "expired", endReason: "lease expired" });
+    expect(lapsed.endedAt).toEqual(second.acquiredAt);
+    // The lease runs from that same instant.
+    expect(second.expiresAt.getTime() - second.acquiredAt.getTime()).toBe(10 * 60_000);
+    // One read for the whole acquire: the claim it ended, the assignment it started and the task it touched read none.
+    expect(reads).toBe(1);
+  }));
 });
 
 describe("acceptance 6: a step after the write sees the stored row", () => {

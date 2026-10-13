@@ -12,10 +12,14 @@ import { FrameworkError } from "./errors.ts";
 export type Clock = () => Date;
 export const systemClock: Clock = () => new Date();
 
-/** The roots an expression reads (`self`, `input`, ...) and the clock `now()` reads. */
+/** The roots an expression reads (`self`, `input`, ...) and the clock `%.now` and `%.today` read. */
 export type Scope<T extends object = Record<string, unknown>> = T & { readonly clock: Clock };
 
-/** A clock that reads `clock` on its first call and gives that same instant (a fresh `Date` each time) after: one instant per action call or load. */
+/**
+ * A clock that reads `clock` on its first call and gives that same instant (a fresh `Date` each time) after: one instant
+ * per transaction. `ActionFrame.clock` keeps the pinned clock in the frame's store, so every call and read joined to the
+ * transaction shares it; a call or read outside any transaction pins its own.
+ */
 export function pinClock(clock: Clock = systemClock): Clock {
   let at: number | undefined;
   return () => new Date(at ??= clock().getTime());

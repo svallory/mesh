@@ -32,10 +32,10 @@ entity :Submission table="submissions"
           message="the task is not open; reopen it first"
         ]
         check :currentFence [
-          that=async ({ input, actor }) => fenceIsCurrent(await claimsOf(input.task), input.fence, actor.id, Mesh.now())
+          that=async ({ input, actor }) => fenceIsCurrent(await claimsOf(input.task), input.fence, actor.id, %.now)
           code="claim.current-fence"
           message="the fence is not your current claim; claim the task again"
-          details=async ({ input, actor }) => await fenceDetailsOf(input.task, input.fence, actor.id, Mesh.now())
+          details=async ({ input, actor }) => await fenceDetailsOf(input.task, input.fence, actor.id, %.now)
         ]
         check :nonePending [
           that=async ({ input }) => !(await inReviewOf(input.task))
@@ -61,7 +61,7 @@ entity :Submission table="submissions"
           &summary=({ input }) => input.summary
           &taskVersion=() => &task.version
         run [after=:write] ({ self, context }) {
-          const live = claimToRelease(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }), Mesh.now());
+          const live = claimToRelease(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }), %.now);
           if (live) await Claim.end({ id: live.id, outcome: :released, reason: "submitted" }, { ...context, system: true });
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }

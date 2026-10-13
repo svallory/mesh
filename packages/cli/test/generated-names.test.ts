@@ -147,7 +147,7 @@ describe("entities named after the globals generated code uses", () => {
     const set = await generated("domain/globals/set.expressions.ts");
     expect(set).toContain("const isSystem: $globals$Map$ReadOnly = $globals$Map$value;");
     expect(set).not.toContain("$.isSystem");
-    // Date imports Mesh, so its computed field's `Mesh.now()` is the clock.
+    // Date's computed field reads `%.now`, the transaction's instant: the clock, as in a file that imports a helper `now`.
     expect(await generated("domain/globals/date.expressions.ts")).toContain("$.now(");
   });
 
@@ -170,7 +170,7 @@ describe("entities named after the globals generated code uses", () => {
     // the node the front end reads, so the back end finds both in the printed function (the tsc run below checks it).
     const expressions = await generated("domain/globals/boolean.expressions.ts");
     expect(expressions).toContain('import type { Count, tally } from "../../../domain/globals/boolean.measure";');
-    expect(expressions).toContain("const length: Count = self.name.length;");
+    expect(expressions).toContain("const length: Count = $self.name.length;");
     expect(expressions).toContain("const same: typeof tally = (n) => n;");
   });
 

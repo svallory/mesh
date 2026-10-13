@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -130,10 +130,10 @@ export const $expressions = {
   "remove.check.versionMatches.details": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.dependent.version,
+      actualVersion: $self.dependent.version,
     }))($s);
   },
   // run, plain (run-step) (src/domain/work/dependency.mesh.mx:67:28)
@@ -154,7 +154,6 @@ export const $expressions = {
       $SharedInput<$work$Dependency$AddDependencyInput | $work$Dependency$RemoveDependencyInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:76:20)
@@ -163,7 +162,6 @@ export const $expressions = {
       $SharedInput<$work$Dependency$AddDependencyInput | $work$Dependency$RemoveDependencyInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },

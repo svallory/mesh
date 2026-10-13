@@ -3,8 +3,9 @@ import { now, type Clock, type Scope } from "./expr.ts";
 import type { Seams } from "./seams.ts";
 
 /**
- * What `bind(layer, options)` takes. The clock is what `Mesh.now()` reads in a function of an entity file (ADR-0012, M4 D6);
- * `seams` are the lifecycle seams of every action (ADR-0075).
+ * What `bind(layer, options)` takes. The clock is what `%.now` reads in a function of an entity file (ADR-0012, M4 D6):
+ * read once per transaction (ACT-29), by the action call, read or application `transaction` that opens it. `seams` are
+ * the lifecycle seams of every action (ADR-0075).
  */
 export interface BindOptions {
   clock?: Clock | undefined;

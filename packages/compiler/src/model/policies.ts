@@ -62,7 +62,7 @@ export function recordReason(expression: Expression, on: "write" | "read" = "wri
   if (expression.tree) return readsVar(expression.tree, RECORD_ROOTS) ? reads : write && callsHelper(expression.tree) ? "calls an imported function" : undefined;
   const plain = expression.plain;
   if (!plain) return reads;
-  if (plain.edits.some((edit) => edit.text.startsWith("self")) || plain.roots.some((name) => RECORD_ROOTS.includes(name))) return reads;
+  if (plain.internal?.self !== undefined || plain.roots.some((name) => RECORD_ROOTS.includes(name))) return reads;
   if (!write) return undefined;
   if (plain.privileged) return "calls `Mesh.privileged`";
   if (plain.helpers) return "calls an imported function";

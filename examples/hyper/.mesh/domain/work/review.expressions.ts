@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -103,8 +103,8 @@ export const $expressions = {
     $s.actor?.id,
   // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:45:24)
   "accept.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
-    const { self } = $s;
-    return (async ({}) => await reviewerRuleOf(self.submission.taskId))($s);
+    const $self = $s.self;
+    return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:46:28)
   "accept.step.1.run": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
@@ -156,8 +156,8 @@ export const $expressions = {
     $s.actor?.id,
   // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:72:24)
   "return.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
-    const { self } = $s;
-    return (async ({}) => await reviewerRuleOf(self.submission.taskId))($s);
+    const $self = $s.self;
+    return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:73:28)
   "return.step.1.run": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
@@ -180,7 +180,6 @@ export const $expressions = {
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:83:20)
@@ -189,7 +188,6 @@ export const $expressions = {
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -199,7 +197,6 @@ export const $expressions = {
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ input, actor, context }) =>
       Mesh.isSystem(context) || (await reviewsSubmissionOf(input.submission, actor.id)))($s);
   },

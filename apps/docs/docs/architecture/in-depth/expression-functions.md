@@ -11,7 +11,7 @@ This page is generated from the test data (`EXPRESSION_TABLES` and `QUANTIFIER_T
 
 Anything not listed here (string ordering, truthiness, `==`, string concatenation, string methods) is not translated: it stays plain TypeScript with JavaScript's rules, and the build warns.
 
-`Mesh.now()`, `Mesh.today()` and `Mesh.isSystem(context)` are Mesh's own functions, members of `Mesh`, which an entity file imports from `meshfw`: `import { Mesh } from "meshfw"` (or under an alias, `import { Mesh as M } from "meshfw"`, then `M.now()`).
+`%.now` and `%.today` are properties of `%`, the current transaction: its instant and its date, values and not calls, written with no import. One transaction has one instant: every action and read that joins it reads the instant of the call or `transaction` that opened it. `Mesh.isSystem(context)` is one of Mesh's own functions, members of `Mesh`, which an entity file imports from `meshfw`: `import { Mesh } from "meshfw"` (or under an alias, `import { Mesh as M } from "meshfw"`, then `M.isSystem(context)`).
 
 ## `a === b` (eq)
 
@@ -287,17 +287,17 @@ Signature: `(string | list) -> number`. Null behaviour: null string: null; a lis
 | `[]` | `0` |
 | `[{}, {}]` | `2` |
 
-## `Mesh.now()` (now)
+## `%.now` (now)
 
-Signature: `() -> date`. Null behaviour: never null; one instant per scope.
+Signature: `date`. Null behaviour: never null; the current transaction's instant, one per transaction.
 
 | Clock | Result |
 |:--|:--|
 | `D(1700000123456)` | `D(1700000123456)` |
 
-## `Mesh.today()` (today)
+## `%.today` (today)
 
-Signature: `() -> date`. Null behaviour: never null; Mesh.now() at 00:00 UTC.
+Signature: `date`. Null behaviour: never null; %.now at 00:00 UTC.
 
 | Clock | Result |
 |:--|:--|

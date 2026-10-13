@@ -1,6 +1,6 @@
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
-import type { Clock } from "./expr.ts";
+import { pinClock, type Clock } from "./expr.ts";
 import type { BindOptions } from "./lifecycle.ts";
 import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
@@ -51,9 +51,17 @@ type ReadBody = (input: unknown, context?: unknown, clock?: Clock, policies?: bo
  */
 export interface ActionFrame {
   /**
+   * The instant an action call or a read reads (ACT-29: one transaction, one time): when the call joins a transaction of
+   * this binding (an action calls it from a step, or the application calls it inside its `transaction(fn)`), the clock of
+   * that transaction, pinned once by the call or the `transaction` that opened it; else `clock`, the binding's, pinned on
+   * its first read (`pinClock`), so a call that opens its own transaction reads its own instant.
+   */
+  clock(clock: Clock | undefined): Clock;
+  /**
    * Run `fn`, the work of the action `label` (`work.Claim#acquire`: its policies, checks, steps and `set` values) inside
-   * `tx`, the action's transaction, at `clock`, the action's instant. An entity call made in it joins `tx`, a
-   * `privileged` read joins it and reads `clock`, and both hand back read-only views; one made after `tx` ended is refused.
+   * `tx`, the action's transaction, at `clock`, the transaction's instant. An entity call made in it joins `tx` and reads
+   * `clock`, a `privileged` read joins it and reads `clock`, and both hand back read-only views; one made after `tx` ended
+   * is refused.
    */
   within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T>;
   /**
@@ -68,6 +76,7 @@ export interface ActionFrame {
 
 /** The frame of an entity bound alone: its functions run as they are, and a call they make goes to the binding in scope or the connected one. */
 export const NO_FRAME: ActionFrame = Object.freeze({
+  clock: (clock: Clock | undefined): Clock => pinClock(clock),
   within: <T>(_tx: DataOperations, _clock: Clock, _label: string, fn: () => Promise<T>): Promise<T> => fn(),
   plain: <T>(fn: () => Promise<T>): Promise<T> => fn(),
   marked: <T>(_what: string, fn: () => T): T => fn(),
@@ -135,9 +144,10 @@ interface BindingState {
 
 /**
  * What a binding keeps in the project's async frame: the binding, and the `run`, `transaction` or entity call this
- * belongs to (`scope`, live until it settles); inside an action's transaction, that transaction, the action's instant and
- * its label; inside an application's `transaction`, the transaction; while a computed field or a read policy is
- * evaluated, which one (`mark`).
+ * belongs to (`scope`, live until it settles); inside an action's transaction, that transaction, its instant (`clock`,
+ * ACT-29: the one the outermost call or `transaction` pinned) and the action's label; inside an application's
+ * `transaction`, the transaction and its instant; in an entity call that joins a transaction, before the call runs its
+ * own work, that transaction's instant; while a computed field or a read policy is evaluated, which one (`mark`).
  */
 interface FrameStore {
   readonly state: BindingState;
@@ -264,17 +274,21 @@ async function dispatch(value: object, fqn: string, action: string, input: unkno
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
   const fn = entry.bound[action] as (input: unknown, ...context: unknown[]) => Promise<unknown>;
   // The action runs in a frame of its own: what it calls is its own work, not its caller's. Its scope is live: past
-  // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected.
-  return counted(state, () => forCaller(state, caller, () => scoped(frame!, { state, scope: { live: true } }, () => fn(input, ...context))));
+  // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected. A call that joins its
+  // caller's transaction carries that transaction's instant, which the action reads (`ActionFrame.clock`, ACT-29).
+  const joined = caller?.state === state && caller.tx !== undefined ? caller.clock : undefined;
+  const store: FrameStore = { state, scope: { live: true }, ...(joined ? { clock: joined } : {}) };
+  return counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context))));
 }
 
 /**
  * The reads of `value` with no policy run (TXN-16, TXN-17): `Mesh.privileged(Task).read(input, context?)` runs the read
  * action's body. `Mesh.privileged(Task)` only names the entity: each read finds its binding when it is called, the one in scope, else the
  * connected one, else it rejects as not connected, so a handle kept past `disconnect()` or carried into another binding's
- * `run` reads only through the binding where it is used. Inside an action it joins the action's transaction and reads the
- * action's instant (`Mesh.now()` in what it loads), and hands back read-only views; it never takes the action's context: what
- * it loads reads only the context the call passes. While a computed field or a read policy is evaluated it throws (TXN-18):
+ * `run` reads only through the binding where it is used. Inside an action, or an application's `transaction`, it joins
+ * the transaction and reads its instant (`%.now` in what it loads, ACT-29), and inside an action it hands back read-only
+ * views; it never takes the action's context: what it loads reads only the context the call passes. While a computed
+ * field or a read policy is evaluated it throws (TXN-18):
  * those read only the record and what it loads. A value that is not an entity value is a `FrameworkError`, and so is
  * one no binding has bound: nothing could run its reads.
  */
@@ -309,7 +323,8 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
       const { state, entry } = bindingFor(value, label, caller);
       const body = entry.reads[name];
       if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
-      // The action's instant, never its context (TXN-16): what the read loads reads the context this call passes.
+      // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
+      // call passes.
       const clock = caller?.state === state ? caller.clock : undefined;
       return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false)));
     };
@@ -320,6 +335,10 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
 function actionFrame(frame: AsyncFrame, state: BindingState): ActionFrame {
   const here = (): FrameStore => inScope(frame) ?? { state, scope: live(state, frame) };
   return Object.freeze({
+    clock(clock: Clock | undefined): Clock {
+      const store = inScope(frame);
+      return store?.state === state && store.clock !== undefined ? store.clock : pinClock(clock);
+    },
     within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T> {
       return frame.run({ state, scope: here().scope, tx, clock, label } satisfies FrameStore, fn);
     },
@@ -372,8 +391,12 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
     transaction<T>(fn: () => Promise<T>): Promise<T> {
       // The application's `transaction` is an outermost transaction like any action's (TXN-14): `afterCommit` runs once
       // when it commits, with every change made inside it. One that joins a running transaction leaves that to the outer one.
+      // It has one instant (ACT-29): the binding's clock, read once, which every action and read made inside it reads; one
+      // that joins a running transaction of this binding reads that transaction's.
       const scope = live(state, frame);
-      const body = (tx: DataOperations) => frame.run({ state, scope, tx } satisfies FrameStore, () => fn());
+      const outer = inScope(frame);
+      const clock = outer?.state === state && outer.tx !== undefined && outer.clock !== undefined ? outer.clock : pinClock(options.clock);
+      const body = (tx: DataOperations) => frame.run({ state, scope, tx, clock } satisfies FrameStore, () => fn());
       return counted(state, async () => {
         try {
           return await (layer.refuseIfFailed() ? layer.transaction(body) : outermost(layer, options.seams, body));

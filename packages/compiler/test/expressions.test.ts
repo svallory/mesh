@@ -90,7 +90,7 @@ describe("conversion", () => {
     expect(exprOf(entity(check("() => (&m ?? 0) > 1"))).tree).toMatchObject({ fn: "gt", args: [{ fn: "coalesce" }, {}] });
     expect(exprOf(entity(check("() => &parent?.n > 1"))).tree).toMatchObject({ fn: "gt", args: [{ kind: "member", name: "n", optional: true }, {}] });
     expect(exprOf(entity(check("() => &title.length > 0"))).tree).toMatchObject({ args: [{ fn: "length" }, {}] });
-    expect(exprOf(entity(check("() => &dueAt < Mesh.now()"))).tree).toMatchObject({ fn: "lt", args: [{}, { fn: "now", args: [] }] });
+    expect(exprOf(entity(check("() => &dueAt < %.now"))).tree).toMatchObject({ fn: "lt", args: [{}, { fn: "now", args: [] }] });
   });
   test("quantifiers over a has-many", () => {
     const e = exprOf(entity(check("() => &children.every((c) => c.state !== :open)")));
@@ -115,7 +115,7 @@ describe("conversion", () => {
     expect(result.document!.entities[0]!.computed[0]!.body!.plain).toMatchObject({ why: "block-body" });
   });
   test("a single-return method body is translated", () => {
-    const source = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < Mesh.today() }\n  actions auto");
+    const source = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < %.today }\n  actions auto");
     const e = build(source).document!.entities[0]!.computed[0]!;
     expect(e.body!.tree).toMatchObject({ fn: "lt" });
     expect(e.nullable).toBe(true);
@@ -136,8 +136,9 @@ describe("free variables (acceptance test 2)", () => {
     expect(codes(base + "      do\n        run({ self }) { audit(self) }\n")).toContain("error:MESH_EXPR_FREE_VARIABLE");
     expect(codes(entity(check("() => &children.some((c) => c.n > nope)")))).toContain("error:MESH_EXPR_FREE_VARIABLE");
   });
-  test("parameters, quantifier parameters, locals, globals and the Mesh import are not free", () => {
-    expect(codes(entity(check("({ input }) => &children.some((c) => c.n > 1) && Mesh.now() > input.x")))).not.toContain("error:MESH_EXPR_FREE_VARIABLE");
+  test("parameters, quantifier parameters, locals, globals, the transaction's %.now and the Mesh import are not free", () => {
+    const read = codes(entity(check("({ input, context }) => &children.some((c) => c.n > 1) && %.now > input.x && !Mesh.isSystem(context)")));
+    expect(read.filter((code) => code.startsWith("error:"))).toEqual([]);
     const base = entity("").replace("      validate\n", "");
     expect(codes(base + "      do\n        run({ self }) { const t = Math.max(self.n, 1); console.log(t) }\n")).toEqual([]);
   });
@@ -196,7 +197,7 @@ describe("type rules", () => {
   test("quantifier parameters named like the generated internals cannot capture them (R1)", async () => {
     for (const name of ["s", "$", "$s", "scope", "clock", "self", "actor", "_s", "expr"]) {
       if (["self", "actor"].includes(name)) continue; // a scope name as a parameter is a build-time shadow, not an internal clash
-      const that = `({ actor }) => &children.some((${name}) => ${name}.dueAt < Mesh.now() && ${name}.id === actor.id)`;
+      const that = `({ actor }) => &children.some((${name}) => ${name}.dueAt < %.now && ${name}.id === actor.id)`;
       const e = exprOf(entity(check(that)));
       expect(e.tree, name).toBeDefined();
       const code = printTree(e.tree!, true).replaceAll(": any", "");
@@ -286,7 +287,7 @@ describe("type rules", () => {
   });
   test("a function that calls Mesh.privileged or an entity's action builds as plain code, and records what it names", () => {
     expect(codes(entity(check("() => Mesh.privileged(Task) !== null && &n > 0")))).toEqual([]);
-    expect(exprOf(entity(check("() => Mesh.privileged(Task) !== null && &n > 0"))).plain).toMatchObject({ why: "uses-privileged", roots: ["self"], privileged: true, entities: ["Task"], mesh: ["Mesh"] });
+    expect(exprOf(entity(check("() => Mesh.privileged(Task) !== null && &n > 0"))).plain).toMatchObject({ why: "uses-privileged", roots: [], internal: { self: "$self" }, privileged: true, entities: ["Task"], mesh: ["Mesh"] });
     const acting = exprOf(entity(check("({ context }) => Task.go({ id: input.id }, context) !== null")));
     expect(acting.plain).toMatchObject({ why: "calls-entity", roots: ["input"], entities: ["Task"], acts: true });
     expect(acting.plain!.privileged).toBeUndefined();
@@ -422,9 +423,9 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   }
   const source = entity(
     check("() => &children.every((c) => c.state !== :open) && &children.some((c) => c.n > 1)") +
-    "        check :late [\n          that=() => &dueAt < Mesh.now()\n          code=\"late\"\n          message=\"m\"\n        ]\n",
+    "        check :late [\n          that=() => &dueAt < %.now\n          code=\"late\"\n          message=\"m\"\n        ]\n",
     "",
-  ).replace("  actions auto", "  computed\n    boolean :overdue() { return &dueAt < Mesh.today() }\n    string :label({ self }) { return `${self.n}:${self.title}` }\n  actions auto");
+  ).replace("  actions auto", "  computed\n    boolean :overdue() { return &dueAt < %.today }\n    string :label({ self }) { return `${self.n}:${self.title}` }\n  actions auto");
 
   test("the generated file type-checks under the strict flags", async () => {
     const { root, files } = await generated(source);
@@ -444,7 +445,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(() => run(undefined)).toThrow("not loaded");
   });
 
-  test("Mesh.now() is the injected clock (test 4)", async () => {
+  test("%.now is the injected clock (test 4)", async () => {
     const { root } = await generated(source);
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const late = expressions["go.check.late.that"] as (s: unknown) => unknown;
@@ -466,12 +467,21 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   }, 30_000);
 
-  test("Mesh.now() and Mesh.today() in plain code read the injected clock, as in a translated expression; a local named Mesh is the author's", async () => {
-    const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :stamped() { return Math.floor(Mesh.now().getTime() / 1000) === &n }\n    boolean :daily() { return [Mesh.today()].some((d) => d.getTime() === &n) }\n    boolean :own() { const Mesh = { now: () => 7 }; return Mesh.now() === &n }\n  actions auto");
-    const { root, built } = await generated(plain);
+  test("%.now and %.today in plain code read the injected clock, as in a translated expression, with no Mesh import; a local Mesh's now is the author's", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :stamped() { return Math.floor(%.now.getTime() / 1000) === &n }\n    boolean :daily() { return [%.today].some((d) => d.getTime() === &n) }\n    boolean :own() { const Mesh = { now: () => 7 }; return Mesh.now() === &n }\n  actions auto");
+    const { root, built, files } = await generated(plain);
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => c.body?.plain?.clock)).toEqual([["now"], ["today"], undefined]);
-    expect(computed.map((c) => c.body?.plain?.mesh)).toEqual([["Mesh"], ["Mesh"], undefined]);
+    expect(computed.map((c) => c.body?.plain?.mesh)).toEqual([undefined, undefined, undefined]);
+    // `%.now` is the scope's instant, the function a translated expression calls, bound under a name the authored text
+    // does not spell; the file binds and imports no `Mesh`.
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    expect(printed).toContain("const $now = () => $.now($s);");
+    expect(printed).toContain("Math.floor($now().getTime() / 1000) === $self.n");
+    expect(printed).toContain("const $today = () => $.today($s);");
+    expect(printed).toContain("[$today()].some(");
+    expect(printed).not.toMatch(/\bMesh,|Mesh as|meshIn|\$mesh/);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
@@ -481,47 +491,80 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["computed.own"](scope({ self: { n: 7 } }, at))).toBe(true);
   }, 30_000);
 
-  test("each Mesh.now() and Mesh.today() resolves against its own enclosing scopes: a parameter named Mesh shadows the import only inside its function", async () => {
+  test("&name, %.now and %.today are bound under names the authored text does not spell, so no local hides them (PR #100 review)", async () => {
+    const plain = entity(check("() => true")).replace("  actions auto", [
+      "  computed",
+      // Each name is spelled: in code, in a string, in a comment and through an escape (`$today` is `$today`).
+      "    boolean :spelled() { const $now = 1, $self = 2, $\\u0074oday = 3; /* $now1 */ return String(\"$self1\").length > 0 && %.now.getTime() + %.today.getTime() + &n + $now + $self + $today > 0 }",
+      // A translated quantifier the type pass demotes (`:open` against a string) keeps its parameter `$`, its authored name.
+      "    boolean :demoted() { return &children.some(($) => $.title === :open && $.dueAt !== null && $.dueAt < %.now) }",
+      "  actions auto",
+    ].join("\n"));
+    const { root, built, files } = await generated(plain);
+    const [spelled, demoted] = built.document!.entities[0]!.computed;
+    expect(spelled!.body!.plain).toMatchObject({ clock: ["now", "today"], internal: { self: "$self2", now: "$now2", today: "$today1" } });
+    expect(demoted!.body!.plain).toMatchObject({ internal: { self: "$self", now: "$now" } });
+    expect(demoted!.body!.plain!.edits.map((edit) => edit.text)).toEqual(["$self.children", "\"open\"", "$now()"]);
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    expect(printed).toContain("const $self2 = $s.self;");
+    expect(printed).toContain("const $now2 = () => $.now($s);");
+    expect(printed).toContain("const $today1 = () => $.today($s);");
+    expect(printed).toContain("$now2().getTime() + $today1().getTime() + $self2.n + $now + $self + $today > 0");
+    expect(printed).toContain("$self.children.some(($) => $.title === \"open\" && $.dueAt !== null && $.dueAt < $now())");
+    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
+    expect(expressions["computed.spelled"](scope({ self: { n: 1 } }, at))).toBe(true);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000) }] } }, at))).toBe(true);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000 * 3) }] } }, at))).toBe(false);
+  }, 30_000);
+
+  test("each Mesh.isSystem resolves against its own enclosing scopes: a parameter named Mesh shadows the import only inside its function; %.now has no binding to hide", async () => {
     const plain = entity(check("() => true")).replace("  actions auto", [
       "  computed",
       // The review's case (PR #65, N7): the callback's parameter shadows `Mesh` inside the callback only.
-      "    boolean :outer() { return [1].some((Mesh) => Mesh === 1) && Mesh.now().getTime() === &n }",
-      // Only shadowed uses: no clock, and no `Mesh` bound.
-      "    boolean :inner() { if ([&n].some((Mesh) => Mesh === 7)) { const Mesh = { today: () => 7 }; return Mesh.today() === &n } return false }",
-      // Uses inside nested functions that bind no such name read the clock; a nested parameter of that name does not.
-      "    boolean :nested() { const stamp = () => Mesh.now().getTime(); function day() { return Mesh.today().getTime() } return [1].map((Mesh) => Mesh + 1)[0] === 2 && stamp() === &n && day() <= &n }",
-      "    boolean :cast() { return (Mesh.now() as Date).getTime() === &n }",
+      "    boolean :outer({ context }) { return [1].some((Mesh) => Mesh === 1) && Mesh.isSystem(context) && %.now.getTime() === &n }",
+      // Only shadowed uses: no `Mesh` imported.
+      "    boolean :inner() { if ([&n].some((Mesh) => Mesh === 7)) { const Mesh = { isSystem: () => 7 }; return Mesh.isSystem() === &n } return false }",
+      // Uses inside nested functions that bind no such name read the import; a nested parameter of that name does not.
+      // A parameter or local named `Mesh`, `now` or `today` never changes what `%.now` and `%.today` are.
+      "    boolean :nested({ context }) { const stamp = (now: number) => %.now.getTime() + now; function day(Mesh: number) { const today = 0; return %.today.getTime() + Mesh + today } return [1].map((Mesh) => Mesh + 1)[0] === 2 && Mesh.isSystem(context) && stamp(0) === &n && day(0) <= &n }",
+      "    boolean :cast() { return (%.now as Date).getTime() === &n }",
       "  actions auto",
     ].join("\n"));
     const { root, built } = await generated(plain);
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const computed = built.document!.entities[0]!.computed;
     expect(computed.map((c) => [c.name, c.body?.plain?.clock])).toEqual([["outer", ["now"]], ["inner", undefined], ["nested", ["now", "today"]], ["cast", ["now"]]]);
-    expect(computed.map((c) => [c.name, c.body?.plain?.mesh])).toEqual([["outer", ["Mesh"]], ["inner", undefined], ["nested", ["Mesh"]], ["cast", ["Mesh"]]]);
+    expect(computed.map((c) => [c.name, c.body?.plain?.mesh])).toEqual([["outer", ["Mesh"]], ["inner", undefined], ["nested", ["Mesh"]], ["cast", undefined]]);
+    expect(computed.map((c) => [c.name, c.body?.plain?.isSystem])).toEqual([["outer", true], ["inner", undefined], ["nested", true], ["cast", undefined]]);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
-    expect(expressions["computed.outer"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
-    expect(expressions["computed.outer"](scope({ self: { n: 1 } }, at))).toBe(false);
+    const system = { system: true };
+    expect(expressions["computed.outer"](scope({ self: { n: 86_400_000 * 2 + 5_000 }, context: system }, at))).toBe(true);
+    expect(expressions["computed.outer"](scope({ self: { n: 86_400_000 * 2 + 5_000 }, context: {} }, at))).toBe(false);
+    expect(expressions["computed.outer"](scope({ self: { n: 1 }, context: system }, at))).toBe(false);
     expect(expressions["computed.inner"](scope({ self: { n: 7 } }, at))).toBe(true);
-    expect(expressions["computed.nested"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
+    expect(expressions["computed.nested"](scope({ self: { n: 86_400_000 * 2 + 5_000 }, context: system }, at))).toBe(true);
+    expect(expressions["computed.cast"](scope({ self: { n: 86_400_000 * 2 + 5_000 } }, at))).toBe(true);
   }, 30_000);
 
   test("a parameter default beside a body `var` of the same name binds no Mesh, so the type check refuses it", () => {
-    // PR #65 round 2, N4. JavaScript gives `at = Mesh.now()` the outer `Mesh`, but Bun 1.3.14 and 1.4.2 throw "Mesh is not
-    // defined" whenever that binding is two or more functions up, as a printed function's `Mesh` always is. Binding none
-    // keeps the failure at the type check (TS2304) instead of at run time; see `scopeNames`.
+    // PR #65 round 2, N4. JavaScript gives `at = Mesh.isSystem(context)` the outer `Mesh`, but Bun 1.3.14 and 1.4.2 throw
+    // "Mesh is not defined" whenever that binding is two or more functions up, as a printed function's `Mesh` always is.
+    // Importing none keeps the failure at the type check (TS2304) instead of at run time; see `scopeNames`.
     const source = entity(check("() => true")).replace("  actions auto",
-      "  computed\n    boolean :defaultVar() { function f(at = Mesh.now()) { var Mesh = 0; return [at, Mesh] as const } return f()[0].getTime() > 0 }\n  actions auto");
+      "  computed\n    boolean :defaultVar({ context }) { function f(at = Mesh.isSystem(context)) { var Mesh = 0; return [at, Mesh] as const } return f()[0] }\n  actions auto");
     const built = build(source);
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-    expect(built.document!.entities[0]!.computed[0]!.body?.plain?.clock).toBeUndefined();
+    expect(built.document!.entities[0]!.computed[0]!.body?.plain?.isSystem).toBeUndefined();
     expect(built.document!.entities[0]!.computed[0]!.body?.plain?.mesh).toBeUndefined();
   });
 
   test("a helper imported as now, called bare, is the helper in plain and translated code alike (PRJ-22)", async () => {
     // PR #65 round 2, F2: plain code bound the clock over the import while translated code called the import. Since
-    // PRJ-22 a bare `now` is never Mesh's: Mesh's clock is `Mesh.now()`.
+    // PRJ-22 a bare `now` is never Mesh's: the clock is the transaction's `%.now` (SYN-29).
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-clock-import-"));
     roots.push(root);
     await writeFile(resolve(root, "clock.ts"), "export const now = (): Date => new Date(0);\n");
@@ -537,7 +580,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = {};\n");
     const printed = await Bun.file(resolve(root, "generated/domain/task.expressions.ts")).text();
     expect(printed).toContain('import { now } from "../../clock"');
-    expect(printed).not.toMatch(/const now = |\$mesh|\$\.now\(/);
+    expect(printed).not.toMatch(/const now = |\$\.now\(/);
     expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     // The bound clock says two days in; the import says the epoch. Both paths answer as the import does.
@@ -568,7 +611,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // One binding of the name in the printed function: the entity's.
     expect(printed).toContain(`const ${alias}: $Task$ReadOnly = $Task$value;`);
     expect(printed).not.toMatch(new RegExp(`const ${alias} = `));
-    expect(printed).not.toMatch(/\$cloneValue|\$mesh/);
+    expect(printed).not.toMatch(/\$cloneValue|\bMesh\b/);
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
     expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
@@ -576,7 +619,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   test("an entity imported as now is no clock to the arity check, and a name only Object.prototype has is a free variable", () => {
     const aliased = entity(check("() => true") + "      do\n        run () { console.log(now(1)) }\n")
       .replace("import { Task }", 'import { Task as now } from "./task.mesh.mx"\nimport { Task }');
-    // `now(1)` calls the entity value, which the type check refuses; it is not Mesh's `now()` with one argument too many.
+    // `now(1)` calls the entity value, which the type check refuses; it is not the transaction's `%.now` called.
     expect(codes(aliased).filter((code) => code.startsWith("error:"))).toEqual([]);
     // `toString` is no Mesh function, and no member of `Mesh` either: only `Mesh.toString`, which every object has, is.
     expect(codes(entity(check("() => toString() === \"\""))).filter((code) => code.startsWith("error:"))).toEqual(["error:MESH_EXPR_FREE_VARIABLE"]);
@@ -1062,10 +1105,10 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
   const DAY = 86_400_000;
   const clock = { clock: () => new Date(DAY * 3 + 5_000) };
 
-  test("Mesh.now(), Mesh.today() and Mesh.isSystem(context) translate in a computed field, a check, a set value and a policy; a plain body reads the same instant through the bound Mesh", async () => {
-    const source = entity(check("({ context }) => Mesh.isSystem(context) || &dueAt === null || &dueAt >= Mesh.today()") +
-      "      do\n        set\n          &dueAt=() => Mesh.now()\n        run ({ context }) { console.log(Mesh.now().getTime(), Mesh.today().getTime(), Mesh.isSystem(context)) }\n")
-      .replace("  actions auto", "  computed\n    boolean :overdue() { return &dueAt < Mesh.now() }\n  actions auto") +
+  test("%.now, %.today and Mesh.isSystem(context) translate in a computed field, a check, a set value and a policy; a plain body reads the same instant and imports Mesh", async () => {
+    const source = entity(check("({ context }) => Mesh.isSystem(context) || &dueAt === null || &dueAt >= %.today") +
+      "      do\n        set\n          &dueAt=() => %.now\n        run ({ context }) { console.log(%.now.getTime(), %.today.getTime(), Mesh.isSystem(context)) }\n")
+      .replace("  actions auto", "  computed\n    boolean :overdue() { return &dueAt < %.now }\n  actions auto") +
       "  policies\n    policy :internal types=[:update]\n      authorize-if=({ context }) => Mesh.isSystem(context)\n    policy :readers types=[:read]\n      authorize-if=() => true\n";
     const { built, printed, typeCheck, load } = await emitted(source);
     expect(built.diagnostics).toEqual([]);
@@ -1077,11 +1120,12 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     expect(set!.kind === "set" ? (set!.assignments[0]!.value as Expression).tree : undefined).toMatchObject({ kind: "call", fn: "now", args: [] });
     expect(run!.kind === "run" ? run!.fn.plain : undefined).toMatchObject({ why: "run-step", clock: ["now", "today"], isSystem: true, mesh: ["Mesh"] });
     expect(task.policies[0]!.authorizeIf[0]!.tree).toMatchObject({ kind: "call", fn: "isSystem" });
-    // Translated code calls the run-time functions; only the plain body binds `Mesh`, once, from the scope.
-    expect(printed).toMatch(/import \{\s+expr as \$,\s+meshIn as \$mesh,[^}]*\} from "@meshfw\/runtime";/);
-    expect(printed).toContain("$.now($s)");
+    // Translated code calls the run-time functions, and so does `%.now` in plain code; the file imports `Mesh`, as it
+    // imports a helper, for the plain body's `Mesh.isSystem`, and binds it nowhere.
+    expect(printed).toMatch(/import \{\s+expr as \$,\s+Mesh,[^}]*\} from "@meshfw\/runtime";/);
+    expect(printed).toContain("console.log($now().getTime(), $today().getTime(), Mesh.isSystem(context))");
     expect(printed).toContain("$.today($s)");
-    expect(printed.match(/const Mesh = \$mesh\(\$s\);/g)).toHaveLength(1);
+    expect(printed).not.toMatch(/const Mesh|meshIn|\$mesh/);
     expect(typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logs(() => expressions["go.step.1.run"]!(scope({ context: { system: true } }, clock)))).toEqual([[DAY * 3 + 5_000, DAY * 3, true]]);
@@ -1091,37 +1135,37 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     expect(expressions["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY * 3 - 1) }, context: { system: true } }, clock))).toBe(true);
   }, 30_000);
 
-  test("Mesh.privileged(Task) in a function body makes it plain code that binds Mesh; the tree type-checks", async () => {
+  test("Mesh.privileged(Task) in a function body makes it plain code whose file imports Mesh; the tree type-checks", async () => {
     const source = entity(check("() => true") + "      do\n        run async () { const rows = await Mesh.privileged(Task).read({}); console.log(rows.length) }\n");
     const { built, printed, typeCheck } = await emitted(source);
     const run = built.document!.entities[0]!.actions.find((a) => a.name === "go")!.do[0]!;
     expect(run.kind === "run" ? run.fn.plain : undefined).toMatchObject({ privileged: true, mesh: ["Mesh"], entities: ["Task"] });
-    expect(printed).toContain("const Mesh = $mesh($s);");
+    expect(printed).toMatch(/import \{[^}]*\bMesh,[^}]*\} from "@meshfw\/runtime";/);
     expect(printed).toContain("await Mesh.privileged(Task).read({})");
     expect(typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("an aliased import works under its alias, and the fixes name the alias", async () => {
     const aliased = (source: string) => source.replace('import { Mesh } from "meshfw"', 'import { Mesh as M } from "meshfw"');
-    const source = aliased(entity(check("() => &dueAt === null || &dueAt < M.now()") +
-      "      do\n        run async () { const rows = await M.privileged(Task).read({}); console.log(rows.length, M.today().getTime()) }\n"));
+    const source = aliased(entity(check("({ context }) => M.isSystem(context) || &dueAt === null || &dueAt < %.now") +
+      "      do\n        run async () { const rows = await M.privileged(Task).read({}); console.log(rows.length, %.today.getTime()) }\n"));
     const { built, printed, typeCheck, load } = await emitted(source);
     const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
-    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { fn: "lt", args: [{}, { kind: "call", fn: "now" }] }] });
+    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{ fn: "or", args: [{ kind: "call", fn: "isSystem" }, {}] }, { fn: "lt", args: [{}, { kind: "call", fn: "now" }] }] });
     expect(go.do[0]!.kind === "run" ? go.do[0]!.fn.plain : undefined).toMatchObject({ privileged: true, clock: ["today"], mesh: ["M"] });
-    expect(printed).toContain("const M = $mesh($s);");
-    expect(printed).not.toContain("const Mesh");
+    expect(printed).toMatch(/import \{[^}]*\bMesh as M,[^}]*\} from "@meshfw\/runtime";/);
+    expect(printed).not.toMatch(/\bMesh,|const M\b|const Mesh/);
     expect(typeCheck()).toEqual({ code: 0, output: "" });
-    expect((await load())["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY) } }, clock))).toBe(true);
+    expect((await load())["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY) }, context: {} }, clock))).toBe(true);
     // `Mesh` itself is not bound in that file, and a bare Mesh function is not either: each fix names the alias.
-    const plainMesh = aliased(entity(check("() => Mesh.now() !== null")));
-    expect(problems(plainMesh)).toEqual([{ code: "MESH_EXPR_FREE_VARIABLE", message: expect.stringContaining("`Mesh` is not defined here"), fix: "write `M`, the name this file imports `Mesh` under", offset: plainMesh.indexOf("Mesh.now()") }]);
-    expect(problems(aliased(entity(check("() => now() !== null"))))).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: "write `M.now()`" }]);
+    const plainMesh = aliased(entity(check("({ context }) => Mesh.isSystem(context)")));
+    expect(problems(plainMesh)).toEqual([{ code: "MESH_EXPR_FREE_VARIABLE", message: expect.stringContaining("`Mesh` is not defined here"), fix: "write `M`, the name this file imports `Mesh` under", offset: plainMesh.indexOf("Mesh.isSystem") }]);
+    expect(problems(aliased(entity(check("({ context }) => isSystem(context)"))))).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: "write `M.isSystem(context)`" }]);
   }, 30_000);
 
   test("without the import, a bare Mesh function or Mesh itself is a free variable whose fix adds the import", () => {
     const IMPORT = '`import { Mesh } from "meshfw"`';
-    for (const [that, call] of [["() => &dueAt < now()", "Mesh.now()"], ["() => &dueAt < today()", "Mesh.today()"], ["({ context }) => isSystem(context)", "Mesh.isSystem(context)"], ["async () => (await privileged(Task).read({})).length > 0", "Mesh.privileged(Task)"]] as const) {
+    for (const [that, call] of [["({ context }) => isSystem(context)", "Mesh.isSystem(context)"], ["async () => (await privileged(Task).read({})).length > 0", "Mesh.privileged(Task)"]] as const) {
       const source = unimported(entity(check(that)));
       const name = call.slice(5, call.indexOf("("));
       expect(problems(source)).toEqual([{
@@ -1133,24 +1177,26 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
       // With the import, the bare name is still no Mesh function: the fix says how to write it.
       expect(problems(entity(check(that)))).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: `write \`${call}\`` }]);
     }
-    const source = unimported(entity(check("() => &dueAt < Mesh.now()")));
-    expect(problems(source)).toEqual([{ code: "MESH_EXPR_FREE_VARIABLE", message: expect.stringContaining("`Mesh` is not defined here"), fix: `import it: ${IMPORT}`, offset: source.indexOf("Mesh.now()") }]);
+    const source = unimported(entity(check("({ context }) => Mesh.isSystem(context)")));
+    expect(problems(source)).toEqual([{ code: "MESH_EXPR_FREE_VARIABLE", message: expect.stringContaining("`Mesh` is not defined here"), fix: `import it: ${IMPORT}`, offset: source.indexOf("Mesh.isSystem") }]);
     // Plain code is held to the same rule.
-    expect(problems(unimported(entity(check("() => true") + "      do\n        run () { console.log(Mesh.today()) }\n")))).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: `import it: ${IMPORT}` }]);
+    expect(problems(unimported(entity(check("() => true") + "      do\n        run ({ context }) { console.log(Mesh.isSystem(context)) }\n")))).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: `import it: ${IMPORT}` }]);
+    // `%.now` and `%.today` need no import: `%` is the current transaction, in every function of every entity file.
+    expect(problems(unimported(entity(check("() => &dueAt === null || &dueAt < %.now") + "      do\n        run () { console.log(%.today) }\n")))).toEqual([]);
   });
 
   test("a member Mesh does not have is MESH_UNKNOWN_MESH_FUNCTION at the member; a member every object has is not", () => {
     const source = entity(check("() => Mesh.tomorrow() !== null"));
     expect(problems(source)).toEqual([{
       code: "MESH_UNKNOWN_MESH_FUNCTION",
-      message: "`Mesh.tomorrow` is not one of Mesh's functions: `Mesh` holds `Mesh.now()`, `Mesh.today()`, `Mesh.isSystem(context)` and `Mesh.privileged(Task)`",
+      message: "`Mesh.tomorrow` is not one of Mesh's functions: `Mesh` holds `Mesh.isSystem(context)` and `Mesh.privileged(Task)`",
       fix: "call one of them, or import a function of your own from a helper module",
       offset: source.indexOf("tomorrow"),
     }]);
     // In plain code, read without a call, and under an alias.
     expect(problems(entity(check("() => true") + "      do\n        run () { console.log(Mesh.clock) }\n")).map((p) => p.code)).toEqual(["MESH_UNKNOWN_MESH_FUNCTION"]);
     expect(problems(entity(check("() => M.later === null")).replace('import { Mesh } from "meshfw"', 'import { Mesh as M } from "meshfw"')).map((p) => p.message))
-      .toEqual(["`M.later` is not one of Mesh's functions: `M` holds `M.now()`, `M.today()`, `M.isSystem(context)` and `M.privileged(Task)`"]);
+      .toEqual(["`M.later` is not one of Mesh's functions: `M` holds `M.isSystem(context)` and `M.privileged(Task)`"]);
     expect(problems(entity(check("() => true") + "      do\n        run () { console.log(Mesh.toString(), Mesh.hasOwnProperty(\"now\")) }\n"))).toEqual([]);
   });
 
@@ -1158,7 +1204,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     expect(problems(entity(check("() => true") + "      do\n        run () { console.log(Mesh.privileged()) }\n"))).toMatchObject([{
       code: "MESH_EXPR_ARITY", message: "`Mesh.privileged()` takes 1 argument, and this call passes 0", fix: "write `Mesh.privileged(Task)`",
     }]);
-    expect(problems(entity(check("() => &dueAt < Mesh.today(1)")))).toMatchObject([{ code: "MESH_EXPR_ARITY", message: "`Mesh.today()` takes no arguments, and this call passes 1" }]);
+    expect(problems(entity(check("() => Mesh.isSystem()")))).toMatchObject([{ code: "MESH_EXPR_ARITY", message: "`Mesh.isSystem()` takes 1 argument, and this call passes 0" }]);
   });
 
   test("an entity file takes Mesh alone from meshfw, under a name no other import, its entity or Mesh's own names take", () => {
@@ -1184,27 +1230,35 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
   });
 
   test("an entity named Mesh imports Mesh's functions under another name", () => {
-    const named = (line: string) => entity(check("() => &dueAt === null || &dueAt < M.now()")).replace('import { Mesh } from "meshfw"', line).replace("import { Task } from \"./task.mesh.mx\"\n", "").replace("entity :Task", "entity :Mesh").replaceAll("entity=Task", "entity=Mesh");
+    const named = (line: string) => entity(check("({ context }) => &dueAt === null || M.isSystem(context)")).replace('import { Mesh } from "meshfw"', line).replace("import { Task } from \"./task.mesh.mx\"\n", "").replace("entity :Task", "entity :Mesh").replaceAll("entity=Task", "entity=Mesh");
     expect(problems(named('import { Mesh } from "meshfw"')).map((p) => [p.code, p.message])).toContainEqual(["MESH_DUPLICATE_IMPORT", "Duplicate import identifier Mesh: the entity is named Mesh too"]);
     expect(problems(named('import { Mesh as M } from "meshfw"'))).toEqual([]);
   });
 
-  test("Mesh read only in a type is bound for the type, and a destructured member reads the evaluation's instant", async () => {
+  test("Mesh read only in a type is imported for the type, and a destructured member is Mesh's function", async () => {
     const source = entity(check("() => true") + [
       "      do",
-      "        run () { const clock: typeof Mesh.now = () => new Date(0); console.log(clock().getTime()) }",
-      "        run () { const { now, today } = Mesh; console.log(now().getTime(), today().getTime()) }",
+      "        run () { const is: typeof Mesh.isSystem = () => false; console.log(is({})) }",
+      "        run ({ context }) { const { isSystem } = Mesh; console.log(isSystem(context)) }",
       "",
     ].join("\n"));
     const { built, printed, typeCheck, load } = await emitted(source);
     const steps = built.document!.entities[0]!.actions.find((a) => a.name === "go")!.do;
     // MX strips the type, so the front end sees no `Mesh` in the first; the back end finds it in the printed function.
     expect(steps.map((step) => (step.kind === "run" ? step.fn.plain?.mesh : "?"))).toEqual([undefined, ["Mesh"]]);
-    expect(printed.match(/const Mesh = \$mesh\(\$s\);/g)).toHaveLength(2);
+    expect(printed.match(/\bMesh,/g)).toHaveLength(1);
     expect(typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
-    expect(await logs(() => expressions["go.step.0.run"]!(scope({}, clock)))).toEqual([[0]]);
-    expect(await logs(() => expressions["go.step.1.run"]!(scope({}, clock)))).toEqual([[DAY * 3 + 5_000, DAY * 3]]);
+    expect(await logs(() => expressions["go.step.0.run"]!(scope({}, clock)))).toEqual([[false]]);
+    expect(await logs(() => expressions["go.step.1.run"]!(scope({ context: { system: true } }, clock)))).toEqual([[true]]);
+  }, 30_000);
+
+  test("a type-only use of an aliased Mesh imports it as a type under the alias", async () => {
+    const source = entity(check("() => true") + "      do\n        run () { const is: typeof M.isSystem = () => false; console.log(is({})) }\n")
+      .replace('import { Mesh } from "meshfw"', 'import { Mesh as M } from "meshfw"');
+    const { printed, typeCheck } = await emitted(source);
+    expect(printed).toMatch(/import \{[^}]*\btype Mesh as M,[^}]*\} from "@meshfw\/runtime";/);
+    expect(typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("a member destructured from Mesh counts as a read of it: privileged so read is still MESH_COMPUTED_COMPOSES and MESH_READ_POLICY_PRIVILEGED", () => {
@@ -1216,7 +1270,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
       ['() { const { "privileged": p } = Mesh; return p(Task) !== null }', undefined],
       ["() { let p; ({ privileged: p } = Mesh); return p(Task) !== null }", undefined],
       ["() { function f({ privileged } = Mesh) { return privileged(Task) } return f() !== null }", undefined],
-      ["() { const { now, privileged } = M; return privileged(Task) !== null && now() !== null }", 'import { Mesh as M } from "meshfw"'],
+      ["() { const { isSystem, privileged } = M; return privileged(Task) !== null && isSystem({}) }", 'import { Mesh as M } from "meshfw"'],
     ] as const) {
       const source = computed(body, line);
       const d = build(source).diagnostics.filter((x) => x.severity === "error");
@@ -1235,7 +1289,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     // A key Mesh does not have is named at the key; a rest element or a computed key names no member, as passing Mesh does not.
     const later = computed("() { const { later } = Mesh; return later !== null }");
     expect(problems(later)).toMatchObject([{ code: "MESH_UNKNOWN_MESH_FUNCTION", offset: later.indexOf("later }") }]);
-    for (const body of ["() { const { ...all } = Mesh; return all.now() !== null }", '() { const key = "now"; const { [key]: f } = Mesh; return f !== null }']) {
+    for (const body of ["() { const { ...all } = Mesh; return all.isSystem({}) }", '() { const key = "isSystem"; const { [key]: f } = Mesh; return f !== null }']) {
       const source = computed(body);
       expect(problems(source), body).toEqual([]);
       expect(build(source).document!.entities[0]!.computed[0]!.body!.plain).toMatchObject({ mesh: ["Mesh"] });
@@ -1243,32 +1297,30 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     }
   });
 
-  test("Mesh?.now() and Mesh[\"now\"]() read the evaluation's instant, translated and plain", async () => {
-    const source = entity(check('() => &dueAt === null || &dueAt < Mesh["now"]()') + [
+  test("Mesh?.isSystem() and Mesh[\"isSystem\"]() are Mesh's function, translated and plain", async () => {
+    const source = entity(check('({ context }) => &dueAt === null || Mesh["isSystem"](context)') + [
       "      do",
-      "        run () { console.log(Mesh?.now().getTime(), Mesh[\"today\"]().getTime(), Mesh?.[\"now\"]().getTime()) }",
+      "        run ({ context }) { console.log(Mesh?.isSystem(context), Mesh[\"isSystem\"](context), Mesh?.[\"isSystem\"](context)) }",
       "",
-    ].join("\n")).replace("  actions auto", "  computed\n    boolean :late() { return &dueAt !== null && &dueAt < Mesh?.now() }\n  actions auto");
+    ].join("\n"));
     const { built, printed, typeCheck, load } = await emitted(source);
     const task = built.document!.entities[0]!;
-    expect(task.actions.find((a) => a.name === "go")!.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { fn: "lt", args: [{}, { kind: "call", fn: "now" }] }] });
-    expect(task.computed[0]!.body!.plain ?? task.computed[0]!.body!.tree).toBeDefined();
+    expect(task.actions.find((a) => a.name === "go")!.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { kind: "call", fn: "isSystem" }] });
     const run = task.actions.find((a) => a.name === "go")!.do[0]!;
-    expect(run.kind === "run" ? run.fn.plain : undefined).toMatchObject({ clock: ["now", "today"], mesh: ["Mesh"] });
-    expect(printed).toContain("$.now($s)");
+    expect(run.kind === "run" ? run.fn.plain : undefined).toMatchObject({ isSystem: true, mesh: ["Mesh"] });
     expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(printed).toContain("$.isSystem($s.context)");
     const expressions = await load();
-    expect(expressions["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY * 3) } }, clock))).toBe(true);
-    expect(expressions["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY * 4) } }, clock))).toBe(false);
-    expect(expressions["computed.late"]!(scope({ self: { dueAt: new Date(DAY * 3) } }, clock))).toBe(true);
-    expect(await logs(() => expressions["go.step.0.run"]!(scope({}, clock)))).toEqual([[DAY * 3 + 5_000, DAY * 3, DAY * 3 + 5_000]]);
+    expect(expressions["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY) }, context: { system: true } }, clock))).toBe(true);
+    expect(expressions["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY) }, context: {} }, clock))).toBe(false);
+    expect(await logs(() => expressions["go.step.0.run"]!(scope({ context: { system: true } }, clock)))).toEqual([[true, true, true]]);
   }, 30_000);
 
-  test("the file imports meshIn only for a function that binds Mesh: a string that spells $mesh( imports nothing", async () => {
-    const source = unimported(entity(check("() => true")).replace("  actions auto", '  computed\n    string :s() { const x = "$mesh("; return x }\n  actions auto'));
+  test("the file imports Mesh only for a function that reads it: a string that spells Mesh imports nothing", async () => {
+    const source = unimported(entity(check("() => true")).replace("  actions auto", '  computed\n    string :s() { const x = "Mesh.isSystem(%.now)"; return x }\n  actions auto'));
     const { printed, typeCheck } = await emitted(source);
-    expect(printed).toContain('"$mesh("');
-    expect(printed).not.toContain("meshIn");
+    expect(printed).toContain('"Mesh.isSystem(%.now)"');
+    expect(printed).not.toMatch(/\bMesh,|\$\.now\(/);
     expect(typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
@@ -1281,15 +1333,15 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
       fix: "import it as `Mesh`, or under a name other than `self`, `input`, `actor`, `context` and `before`",
       offset: source.indexOf("input }"),
     }]);
-    // A bare `now()` there: the fix does not say `input.now()`.
-    expect(problems(withImport('import { Mesh as input } from "meshfw"', "() => &dueAt === null || &dueAt < now()")).map((p) => p.fix)).toEqual([
+    // A bare `isSystem()` there: the fix does not say `input.isSystem()`.
+    expect(problems(withImport('import { Mesh as input } from "meshfw"', "({ context }) => isSystem(context)")).map((p) => p.fix)).toEqual([
       "import it as `Mesh`, or under a name other than `self`, `input`, `actor`, `context` and `before`",
-      'write `Mesh.now()` and import `Mesh` under a name that is not a scope name: `import { Mesh } from "meshfw"`',
+      'write `Mesh.isSystem(context)` and import `Mesh` under a name that is not a scope name: `import { Mesh } from "meshfw"`',
     ]);
     // An alias a binding hides where the bare name is read: the fix names it and says to rename the binding.
-    expect(problems(withImport('import { Mesh as M } from "meshfw"', "({ context }) => [context].some((M) => M !== null && now() !== null)")).map((p) => p.fix))
-      .toEqual(["write `M.now()`, renaming the binding that hides `M` here"]);
-    expect(problems(withImport('import { Mesh as M } from "meshfw"', "() => [1].some((M) => M === 1 && Mesh.now() !== null)")).map((p) => p.fix))
+    expect(problems(withImport('import { Mesh as M } from "meshfw"', "({ context }) => [context].some((M) => M !== null && isSystem(context))")).map((p) => p.fix))
+      .toEqual(["write `M.isSystem(context)`, renaming the binding that hides `M` here"]);
+    expect(problems(withImport('import { Mesh as M } from "meshfw"', "({ context }) => [1].some((M) => M === 1 && Mesh.isSystem(context))")).map((p) => p.fix))
       .toEqual(["write `M`, the name this file imports `Mesh` under, renaming the binding that hides it here"]);
   });
 
@@ -1319,6 +1371,174 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
   });
 });
 
+describe("%.now and %.today are the current transaction's instant and date (SYN-29)", () => {
+  const problems = (source: string) =>
+    build(source).diagnostics.filter((d) => d.severity === "error").map((d) => ({ code: d.code, message: d.message, fix: d.fix, offset: d.position.offset }));
+  const DAY = 86_400_000;
+  const clock = { clock: () => new Date(DAY * 3 + 5_000) };
+  /** `source` with the Mesh import removed: `%` needs none. */
+  const bare = (source: string) => source.replace('import { Mesh } from "meshfw"\n', "");
+
+  test("every expression position reads them with no import: a check, its when=, a computed field, a set value, a when= step, a run body and a policy", async () => {
+    const source = bare(entity(
+      "        check :c [\n          that=() => &dueAt === null || &dueAt < %.now\n          when=() => %.today !== null\n          code=\"c\"\n          message=\"m\"\n        ]\n" +
+      "      do\n        set\n          &dueAt=() => %.now\n        when=() => &dueAt !== null && &dueAt >= %.today\n          set\n            &m=1\n" +
+      "        run () { console.log(%.now.getTime(), %.today.getTime()) }\n",
+    ).replace("  actions auto", "  computed\n    boolean :late() { return &dueAt !== null && &dueAt < %.today }\n    integer :at() { return %.now.getTime() }\n  actions auto") +
+      "  policies\n    policy :w types=[:update]\n      authorize-if=() => %.now !== null\n      forbid-if=() => &dueAt !== null && &dueAt > %.now\n    policy :r types=[:read]\n      authorize-if=() => true\n");
+    const built = build(source);
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const task = built.document!.entities[0]!;
+    const go = task.actions.find((a) => a.name === "go")!;
+    const call = (fn: string) => ({ kind: "call", fn, args: [] });
+    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { fn: "lt", args: [{}, call("now")] }] });
+    expect(go.validate[0]!.when!.tree).toMatchObject({ fn: "isNotNull", args: [call("today")] });
+    expect(task.computed[0]!.body!.tree).toMatchObject({ fn: "and", args: [{}, { fn: "lt", args: [{}, call("today")] }] });
+    // `%.now.getTime()`: a method of the instant, which Mesh does not translate; the body is plain and reads the clock.
+    expect(task.computed[1]!.body!.plain).toMatchObject({ clock: ["now"] });
+    expect(task.computed[1]!.body!.plain!.mesh).toBeUndefined();
+    const [set, when, run] = go.do;
+    expect(set!.kind === "set" ? (set!.assignments[0]!.value as Expression).tree : undefined).toMatchObject(call("now"));
+    expect(when!.kind === "when" ? when!.condition.tree : undefined).toMatchObject({ fn: "and", args: [{}, { fn: "gte", args: [{}, call("today")] }] });
+    expect(run!.kind === "run" ? run!.fn.plain : undefined).toMatchObject({ why: "run-step", clock: ["now", "today"] });
+    expect(task.policies[0]!.authorizeIf[0]!.tree).toMatchObject({ fn: "isNotNull", args: [call("now")] });
+    expect(task.policies[0]!.forbidIf[0]!.tree).toMatchObject({ fn: "and", args: [{}, { fn: "gt", args: [{}, call("now")] }] });
+    // Positions are the authored `%.now`.
+    expect(go.validate[0]!.that.tree).toMatchObject({ args: [{}, { args: [{}, { position: { offset: source.indexOf("< %.now\n") + 2 } }] }] });
+
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-transaction-"));
+    roots.push(root);
+    const config = configOf(root);
+    const files = await generateFiles({ document: built.document!, config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { task: {} };\n");
+    const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
+    expect(printed).toContain("console.log($now().getTime(), $today().getTime())");
+    expect(printed).toContain("return $now().getTime()");
+    expect(printed).not.toMatch(/%\.|\bMesh\b/);
+    const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
+    expect(expressions["computed.at"](scope({ self: {} }, clock))).toBe(DAY * 3 + 5_000);
+    expect(expressions["computed.late"](scope({ self: { dueAt: new Date(DAY * 3 - 1) } }, clock))).toBe(true);
+    expect(expressions["computed.late"](scope({ self: { dueAt: new Date(DAY * 3) } }, clock))).toBe(false);
+    expect(expressions["go.step.0.set.dueAt"](scope({}, clock))).toEqual(new Date(DAY * 3 + 5_000));
+    // One scope, one instant: every read of `%.now` in it gives the same instant, and `%.today` is its date.
+    let ticks = 0;
+    const advancing = scope({}, { clock: () => new Date(DAY * 3 + 1_000 * ++ticks) });
+    const seen: unknown[][] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => { seen.push(args); };
+    try { expressions["go.step.2.run"](advancing); expressions["go.step.2.run"](advancing); } finally { console.log = log; }
+    expect(seen).toEqual([[DAY * 3 + 1_000, DAY * 3], [DAY * 3 + 1_000, DAY * 3]]);
+    expect(expressions["computed.at"](advancing)).toBe(DAY * 3 + 1_000);
+  }, 30_000);
+
+  test("%.now and %.today are no attribute values: a default is a literal, and `x %.now` is no expression", () => {
+    const attribute = (line: string) => entity(check("() => true")).replace("    json :meta\n", `    json :meta\n    ${line}\n`);
+    expect(build(attribute("timestamp :at default=%.now")).diagnostics.map((d) => d.code)).toEqual(["MX_INVALID_ATTRIBUTE_VALUE"]);
+    expect(build(attribute("date :on default=%.today")).diagnostics.map((d) => d.code)).toEqual(["MX_INVALID_ATTRIBUTE_VALUE"]);
+    expect(build(attribute("timestamp :at default=x %.now")).diagnostics.map((d) => d.code)).toEqual(["MX_PARSE_EXPRESSION"]);
+    // In a function too: `%.now` is an operand, never a modulo, and `%now` or `%` alone is no name.
+    for (const that of ["() => 1 %.now", "() => %now !== null", "() => % !== null"])
+      expect(build(entity(check(that))).diagnostics.map((d) => d.code), that).toEqual(["MX_PARSE_EXPRESSION"]);
+  });
+
+  test("a name the transaction does not hold is MESH_UNKNOWN_TRANSACTION_MEMBER at the `%`, in translated and plain code", () => {
+    const source = entity(check("() => &dueAt < %.tomorrow"));
+    expect(problems(source)).toEqual([{
+      code: "MESH_UNKNOWN_TRANSACTION_MEMBER",
+      message: "`%.tomorrow` is not a member of the transaction: `%` is the current transaction, and holds `%.now` and `%.today`",
+      fix: "write `%.now` for the current transaction's instant, or `%.today` for the current transaction's date, its instant at 00:00 UTC",
+      offset: source.indexOf("%.tomorrow"),
+    }]);
+    // A name every object has is no member either; plain code is held to the same rule.
+    expect(problems(entity(check("() => %.toString !== null"))).map((p) => p.code)).toEqual(["MESH_UNKNOWN_TRANSACTION_MEMBER"]);
+    expect(problems(entity(check("() => true") + "      do\n        run () { console.log(%.instant) }\n")).map((p) => p.code)).toEqual(["MESH_UNKNOWN_TRANSACTION_MEMBER"]);
+  });
+
+  test("calling one is MESH_TRANSACTION_CALL: it is a value, and the fix drops the ()", () => {
+    const source = entity(check("() => &dueAt < %.now()"));
+    expect(problems(source)).toEqual([{
+      code: "MESH_TRANSACTION_CALL",
+      message: "`%.now` is a value, not a function: it is the current transaction's instant",
+      fix: "write `%.now`, without `()`",
+      offset: source.indexOf("%.now"),
+    }]);
+    expect(problems(entity(check("() => %.today() !== null")))).toMatchObject([{ code: "MESH_TRANSACTION_CALL", message: "`%.today` is a value, not a function: it is the current transaction's date, its instant at 00:00 UTC", fix: "write `%.today`, without `()`" }]);
+    for (const body of ["run () { console.log(%.now?.()) }", "run () { console.log(new %.today()) }", "run () { const f = () => %.now(); console.log(f()) }"])
+      expect(problems(entity(check("() => true") + `      do\n        ${body}\n`)).map((p) => p.code), body).toEqual(["MESH_TRANSACTION_CALL"]);
+    // A method of the instant is a call on the value, not on `%.now`.
+    expect(problems(entity(check("() => %.now.getTime() > 0")))).toEqual([]);
+  });
+
+  test("a tagged template and a callee that evaluates to one call it too: MESH_TRANSACTION_CALL at the `%` (PR #100 review)", () => {
+    const run = (body: string) => entity(check("() => true") + `      do\n        run () { ${body} }\n`);
+    // The review's two cases: each built with no error, then failed tsc (TS2349).
+    for (const [body, at, without] of [["console.log(%.now`x`)", "%.now`", "the template after it"], ["console.log((0, %.now)())", "%.now)", "`()`"]] as const) {
+      const source = run(body);
+      expect(problems(source), body).toEqual([{
+        code: "MESH_TRANSACTION_CALL",
+        message: "`%.now` is a value, not a function: it is the current transaction's instant",
+        fix: `write \`%.now\`, without ${without}`,
+        offset: source.indexOf(at),
+      }]);
+    }
+    expect(problems(run("console.log(new %.today())")).map((p) => p.fix)).toEqual(["write `%.today`, without `new`"]);
+    // Through parentheses, a longer sequence, a conditional's branch and `||`/`??`; in a translated position too.
+    for (const body of ["console.log((%.today)())", "console.log((1, 2, %.today)`x`)", "console.log((Math.random() > 0.5 ? %.now : Date)())", "console.log((null ?? %.now)())", "console.log((%.now || Date)())", "console.log(new (0, %.today)())"])
+      expect(problems(run(body)).map((p) => p.code), body).toEqual(["MESH_TRANSACTION_CALL"]);
+    expect(problems(entity(check("() => (0, %.now)() !== null"))).map((p) => p.code)).toEqual(["MESH_TRANSACTION_CALL"]);
+    // A value that only passes through is not called: a sequence's first expression, `&&`'s left operand, a template's expression.
+    for (const body of ["console.log((%.now, Date)())", "console.log((%.now && Date)())", "console.log(String.raw`${%.now}`)"])
+      expect(problems(run(body)), body).toEqual([]);
+  });
+
+  test("writing to one, or through it, is MESH_TRANSACTION_ASSIGN at the write", () => {
+    const write = (body: string) => entity(check("() => true") + `      do\n        run () { ${body} }\n`);
+    const source = write("%.now = new Date(0)");
+    expect(problems(source)).toEqual([{
+      code: "MESH_TRANSACTION_ASSIGN",
+      message: "`%.now` cannot be written: `%` is the current transaction, and the current transaction's instant is read only",
+      fix: "read it into a local of the function and change that: `let at = %.now`",
+      offset: source.indexOf("%.now ="),
+    }]);
+    for (const body of ["%.today = %.now", "%.now.x = 1", "%.now += 1", "%.now++", "%.today--", "[%.now] = [new Date(0)]", "({ a: %.today } = { a: new Date(0) })", "delete %.now.x", "for (%.now of [new Date(0)]) {}", "for (%.today.x in {}) {}"])
+      expect(problems(write(body)).map((p) => p.code), body).toEqual(["MESH_TRANSACTION_ASSIGN"]);
+    // Reading it into a local and changing that is fine.
+    expect(problems(write("let at = %.now; at = new Date(at.getTime() + 1); console.log(at)"))).toEqual([]);
+  });
+
+  test("Mesh.now and Mesh.today are gone: MESH_UNKNOWN_MESH_FUNCTION whose fix is %.now; a bare now() is a free variable whose fix is %.now", () => {
+    const source = entity(check("() => &dueAt < Mesh.now()"));
+    expect(problems(source)).toEqual([{
+      code: "MESH_UNKNOWN_MESH_FUNCTION",
+      message: "`Mesh.now` is not one of Mesh's functions: the current transaction's instant is `%.now`, a property of `%`, the current transaction",
+      fix: "write `%.now`, with no `()`",
+      offset: source.indexOf("now()"),
+    }]);
+    expect(problems(entity(check("() => Mesh.today() !== null")))).toMatchObject([{ code: "MESH_UNKNOWN_MESH_FUNCTION", fix: "write `%.today`, with no `()`" }]);
+    // Under an alias, read without a call, destructured, in plain code.
+    const aliased = entity(check("() => M.today !== null")).replace('import { Mesh } from "meshfw"', 'import { Mesh as M } from "meshfw"');
+    expect(problems(aliased)).toMatchObject([{ code: "MESH_UNKNOWN_MESH_FUNCTION", message: expect.stringContaining("`M.today` is not one of Mesh's functions"), fix: "write `%.today`, with no `()`" }]);
+    const destructured = entity(check("() => true") + "      do\n        run () { const { now } = Mesh; console.log(now()) }\n");
+    expect(problems(destructured)).toMatchObject([{ code: "MESH_UNKNOWN_MESH_FUNCTION", fix: "write `%.now`, with no `()`", offset: destructured.indexOf("now }") }]);
+    // A bare `now()` or `today()`, imported or not.
+    for (const [that, name] of [["() => &dueAt < now()", "now"], ["() => &dueAt < today()", "today"]] as const) {
+      for (const text of [entity(check(that)), bare(entity(check(that)))]) {
+        expect(problems(text)).toEqual([{
+          code: "MESH_EXPR_FREE_VARIABLE",
+          message: expect.stringContaining(`\`${name}\` is not defined here`),
+          fix: expect.stringMatching(new RegExp(`^write \`%\\.${name}\`, the current transaction's .*, with no \`\\(\\)\`$`)),
+          offset: text.indexOf(`${name}()`),
+        }]);
+      }
+    }
+    // A local `Mesh` with a `now` of its own is the author's.
+    expect(problems(entity(check("() => { const Mesh = { now: () => 1 }; return Mesh.now() === 1 }")))).toEqual([]);
+  });
+});
+
 describe("the reference page", () => {
   test("apps/docs/.../expression-functions.md is generated from the tables", async () => {
     const { PAGE_PATH, renderExpressionPage } = await import("./expression-page.ts");
@@ -1337,7 +1557,7 @@ describe("review fixes (PR #63, round 1)", () => {
       expect(found[0]!.message).toContain("before.parent");
       expect(found[0]!.fix).toContain("&parent");
     }
-    const computed = steps("        when=({ before }) => before.late\n          set\n            &m=1\n").replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < Mesh.today() }\n  actions auto");
+    const computed = steps("        when=({ before }) => before.late\n          set\n            &m=1\n").replace("  actions auto", "  computed\n    boolean :late() { return &dueAt < %.today }\n  actions auto");
     expect(codes(computed)).toContain("error:MESH_BEFORE_NOT_LOADED");
     expect(codes(steps("        when=({ before }) => before.n > 1\n          set\n            &m=1\n"))).toEqual([]);
   });

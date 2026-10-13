@@ -3,7 +3,7 @@
 
 import {
   expr as $,
-  meshIn as $mesh,
+  Mesh,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -77,17 +77,17 @@ export const $expressions = {
   "submit.check.currentFence.that": (
     $s: $work$Submission$NewScope<$work$Submission$SubmitSubmissionInput>,
   ) => {
-    const Mesh = $mesh($s);
+    const $now = () => $.now($s);
     return (async ({ input, actor }) =>
-      fenceIsCurrent(await claimsOf(input.task), input.fence, actor.id, Mesh.now()))($s);
+      fenceIsCurrent(await claimsOf(input.task), input.fence, actor.id, $now()))($s);
   },
   // check :currentFence details, plain (awaits-helper) (src/domain/work/submission.mesh.mx:38:19)
   "submit.check.currentFence.details": (
     $s: $work$Submission$NewScope<$work$Submission$SubmitSubmissionInput>,
   ) => {
-    const Mesh = $mesh($s);
+    const $now = () => $.now($s);
     return (async ({ input, actor }) =>
-      await fenceDetailsOf(input.task, input.fence, actor.id, Mesh.now()))($s);
+      await fenceDetailsOf(input.task, input.fence, actor.id, $now()))($s);
   },
   // check :nonePending that, plain (awaits-helper) (src/domain/work/submission.mesh.mx:41:16)
   "submit.check.nonePending.that": (
@@ -99,17 +99,17 @@ export const $expressions = {
   "submit.check.evidenceExists.that": (
     $s: $work$Submission$NewScope<$work$Submission$SubmitSubmissionInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (async ({ input }) =>
-      (await missingEvidenceOf(input.evidence ?? self.evidence)).length === 0)($s);
+      (await missingEvidenceOf(input.evidence ?? $self.evidence)).length === 0)($s);
   },
   // check :evidenceExists details, plain (awaits-helper) (src/domain/work/submission.mesh.mx:49:19)
   "submit.check.evidenceExists.details": (
     $s: $work$Submission$NewScope<$work$Submission$SubmitSubmissionInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (async ({ input }) => ({
-      missing: await missingEvidenceOf(input.evidence ?? self.evidence),
+      missing: await missingEvidenceOf(input.evidence ?? $self.evidence),
     }))($s);
   },
   // check :versionMatches that, plain (awaits-helper) (src/domain/work/submission.mesh.mx:52:16)
@@ -147,13 +147,13 @@ export const $expressions = {
   ) => $s.self.task?.version,
   // run, plain (run-step) (src/domain/work/submission.mesh.mx:63:28)
   "submit.step.1.run": ($s: $work$Submission$Scope<$work$Submission$SubmitSubmissionInput>) => {
-    const Mesh = $mesh($s);
+    const $now = () => $.now($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       const live = claimToRelease(
         await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }),
-        Mesh.now(),
+        $now(),
       );
       if (live)
         await Claim.end(
@@ -179,10 +179,10 @@ export const $expressions = {
   "withdraw.check.versionMatches.details": (
     $s: $work$Submission$CheckScope<$work$Submission$WithdrawSubmissionInput>,
   ) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (({ input }) => ({
       expectedVersion: input.expectedVersion,
-      actualVersion: self.task.version,
+      actualVersion: $self.task.version,
     }))($s);
   },
   // run, plain (run-step) (src/domain/work/submission.mesh.mx:87:28)
@@ -217,7 +217,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
   // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:119:20)
@@ -228,7 +227,6 @@ export const $expressions = {
       >
     >,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
@@ -236,7 +234,6 @@ export const $expressions = {
   "policy.claimHolder.authorize-if.0": (
     $s: $work$Submission$NewScope<$work$Submission$SubmitSubmissionInput>,
   ) => {
-    const Mesh = $mesh($s);
     return (async ({ input, actor, context }) =>
       Mesh.isSystem(context) || (await heldAClaimOf(input.task, actor.id)))($s);
   },

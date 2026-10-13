@@ -22,7 +22,7 @@ test("MESH_DIALECT is frozen and is Mesh's: id, name, tag rules and no #id or .c
   expect(MESH_DIALECT).toMatchObject({ id: "mesh", name: "Mesh", tagRules: "none" });
   const rows = (list: readonly { id: string }[] | undefined) => (list ?? []).map((row) => row.id).sort();
   expect(rows(MESH_DIALECT.table.attributeTriggers)).toEqual(["member", "name"]);
-  expect(rows(MESH_DIALECT.table.expressionTriggers)).toEqual(["atom", "member"]);
+  expect(rows(MESH_DIALECT.table.expressionTriggers)).toEqual(["atom", "member", "transaction"]);
   expect(rows(MESH_DIALECT.table.lineTriggers)).toEqual(["member"]);
 });
 

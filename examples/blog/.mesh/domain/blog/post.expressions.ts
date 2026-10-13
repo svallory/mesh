@@ -44,9 +44,9 @@ export type $blog$Post$NewScope<I = unknown> = $Omit<$blog$Post$CheckScope<I>, "
 export const $expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
   "computed.excerpt": ($s: $blog$Post$Scope<unknown>) => {
-    const { self } = $s;
+    const $self = $s.self;
     return (function () {
-      return (self.body ?? "").slice(0, 200);
+      return ($self.body ?? "").slice(0, 200);
     })();
   },
   // check :titlePresent that, translated (src/domain/blog/post.mesh.mx:34:34)

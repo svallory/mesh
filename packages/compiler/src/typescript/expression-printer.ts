@@ -7,7 +7,9 @@ import type { ExprNode, Expression } from "@meshfw/model";
  */
 /**
  * Internal names are `$` (the functions) and `$s` (the scope). An authored name can be anything,
- * so every authored local is printed with the prefix `l$`, which neither internal name has.
+ * so every authored local is printed with the prefix `l$`, which neither internal name has. A plain
+ * function keeps its authored names, so it reads neither: its edits read the names `internal` gives
+ * the record and the instant (`$self`, `$now`, `$today`), which its text does not spell.
  */
 const SCOPE = "$s";
 const local = (name: string) => `l$${name}`;
@@ -57,8 +59,6 @@ export interface NamedInTypes {
   readonly values: readonly string[];
   /** Entities named as a type (`List | null`): bound to their record type, `type List = $b$List$Record`. */
   readonly types: readonly string[];
-  /** Names of the file's `Mesh` import read only in a `typeof` (`ReturnType<typeof Mesh.now>`): bound as a `Mesh` read as a value is. */
-  readonly mesh?: readonly string[];
 }
 const NOTHING: NamedInTypes = { roots: [], values: [], types: [] };
 
@@ -76,11 +76,15 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   // The scope names the function reads without its parameters binding them: the front end found the ones read as values
   // in the syntax tree, `typeNames` the ones read only in a type.
   const roots = ROOTS.filter((name) => plain.roots.includes(name) || inTypes.roots.includes(name));
-  // Each name the file imports `Mesh` under: Mesh's functions as this evaluation sees them, `now` and `today` reading the
-  // scope's instant, so a plain function and a translated one read one instant (PRJ-22).
-  const mesh = [...new Set([...(plain.mesh ?? []), ...(inTypes.mesh ?? [])])].sort();
+  // What Mesh's own edits read, under names the authored text does not spell, so no local or parameter of the author's
+  // (`self`, `$`, `$s`) hides them: `&name` reads the record (`$self.name`), and `%.now` and `%.today` call the functions
+  // a translated expression calls (`$now()`), so a plain function and a translated one read one instant (SYN-29), a fresh
+  // `Date` each read. `Mesh` is the file's import, as a helper is (PRJ-22).
+  const internal = plain.internal ?? {};
   const declare = (roots.length ? `const { ${roots.join(", ")} } = ${SCOPE}; ` : "") +
-    mesh.map((name) => `const ${name} = ${MESH}(${SCOPE}); `).join("") +
+    (internal.self ? `const ${internal.self} = ${SCOPE}.self; ` : "") +
+    (internal.now ? `const ${internal.now} = () => $.now(${SCOPE}); ` : "") +
+    (internal.today ? `const ${internal.today} = () => $.today(${SCOPE}); ` : "") +
     // `structuredClone` cannot copy the read-only views a function is handed (they are proxies); `cloneValue` can. It is
     // bound here, not at module level, so the file declares no name an entity file's helper import could also have.
     (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
@@ -95,8 +99,6 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
 
-/** How the expressions file imports `meshIn`, which gives `Mesh` as one evaluation sees it (PRJ-22). */
-export const MESH = "$mesh";
 /** How the expressions file imports `cloneValue`, which a function that calls the global `structuredClone` binds under that name. */
 export const CLONE_VALUE = "$cloneValue";
 /**
