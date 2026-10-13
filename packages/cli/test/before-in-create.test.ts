@@ -59,7 +59,7 @@ afterAll(async () => {
   for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-interface NoteRow { id: string; title: string; translatedInSet: boolean; plainInSet: boolean }
+interface NoteRow { id: string; title: string; translatedInSet: boolean; plainInSet: boolean; count: number; copied: number }
 type Call = (input: Record<string, unknown>, context: object) => Promise<NoteRow>;
 
 describe("before in a create's steps", () => {
@@ -88,10 +88,12 @@ describe("before in a create's steps", () => {
     try {
       await binding.run(async () => {
         const made = await Note.make({ title: "first" }, anyone);
-        expect(made).toMatchObject({ title: "first", translatedInSet: true, plainInSet: true });
+        expect(made).toMatchObject({ title: "first", translatedInSet: true, plainInSet: true, count: 7, copied: 0 });
         expect(seen.free).toEqual([null]);
         expect(seen.destructured).toEqual([null]);
-        await Note.rename({ id: made.id, title: "second" }, anyone);
+        // `before !== null ? before.count : 0` on a create is 0; the same read on an update (the same expression) is the stored 7.
+        const renamed = await Note.rename({ id: made.id, title: "second" }, anyone);
+        expect(renamed).toMatchObject({ title: "second", count: 7, copied: 7 });
         expect(seen.updated).toEqual(["first"]);
       });
     } finally {
