@@ -70,8 +70,6 @@ interface Scope {
   entity: Entity;
   /** Nullability of `before`: false for update and destroy. */
   beforeNullable: boolean;
-  /** True when every action the function runs for is a create: there is no stored record, so `before` is always null. */
-  noBefore?: boolean;
   /** Names of the action's typed arguments: one that shares a member's name is not the member input. */
   args?: Set<string>;
   /** Inside `validate`: `self` is the record before the input is applied, and there is no `before` (ACT-01, ACT-27). */
@@ -181,11 +179,6 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_POLICY_BEFORE",
             `${scope.policy} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``, n.position,
             "write `&x` for the stored value and `input.x` for the caller's");
-          return { c: "any", nullable: false };
-        }
-        if (n.name === "before" && scope.noBefore) {
-          report("error", "MESH_BEFORE_IN_CREATE", "`before` is the stored record, and a create has none, so it is always null here", n.position,
-            "Remove it. Compare with `self` or `input`, or move the rule to an update");
           return { c: "any", nullable: false };
         }
         if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity, stored: true };
@@ -456,7 +449,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       computed.nullable = t ? t.nullable : false;
     }
     for (const action of entity.actions) {
-      const scope: Scope = { ...base, beforeNullable: action.kind === "create", noBefore: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
+      const scope: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
       if (action.filter) visit(action.filter, scope, true);
       blocks(entity, action.validate, action.do, scope, action.kind === "create" ? [action] : []);
     }
@@ -467,7 +460,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
       const creates = every.filter((action) => action.kind === "create"
         && ((!block.types && !block.actions) || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name)));
-      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), noBefore: (block.types !== undefined || named !== undefined) && covers.every((kind) => kind === "create"), inputs: null }, creates);
+      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null }, creates);
     }
     for (const policy of entity.policies) {
       // A policy sees `self` as `validate` does (POL-08): on a create it covers, `&x` of a member the create takes is the new

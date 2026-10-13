@@ -1,20 +1,11 @@
 import { dirname, resolve } from "node:path";
 import type { ActionType, Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
-import { actionExpressions, type ActionExpression } from "./action-expressions.ts";
+import { actionExpressions } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
-/** True when the function only ever runs in a create: an action that is one, or an `always` block that covers nothing else. */
-function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
-  if ("action" in owner) return owner.action.kind === "create";
-  const { always } = owner;
-  const named = always.actions?.map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind ?? (ref.name === "create" ? "create" : undefined));
-  const covers = always.types ?? named;
-  return covers !== undefined && covers.length > 0 && covers.every((kind) => kind === "create");
-}
-
 /**
- * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or a create,
+ * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check,
  * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
@@ -70,12 +61,12 @@ export function checkLifecycleLimits(
           `computed :${field.name} of ${entity.fqn} ${asynchrony === "async" ? "is `async`" : "uses `await`"}: a computed field is synchronous, and reads only its record and what it loads`,
           body.position, "Compute it from the record, its relationships and other computed fields; a read through `Mesh.privileged` or anything else that awaits belongs in a step or a check"));
     }
-    // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a create's
-    // `before` parameter is caught here: a create has no stored record.
-    for (const { expression, kind, what, owner } of actionExpressions(entity)) {
+    // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a check's
+    // `before` parameter is caught here.
+    for (const { expression, kind, what } of actionExpressions(entity)) {
       const check = kind === "that" || kind === "check-when" || kind === "details";
-      // A destructured `before`, or a rest parameter that can reach it; in a check, a free one too (the root, EXP-12). A free
-      // `before` in a create's step is legal and null there (the docs' `do` steps and `run` keep it).
+      // A destructured `before`, or a rest parameter that can reach it; in a check, a free one too (the root, EXP-12). In a step
+      // or `run`, `before` is legal: the stored record, null on a create (the docs' `do` steps and `run` keep it).
       const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source))
         || (check && expression.plain?.roots.includes("before"));
       if (!reads) continue;
@@ -89,14 +80,7 @@ export function checkLifecycleLimits(
           diagnostics.push(error("MESH_VALIDATE_BEFORE",
             `${what} reads \`before\`, which is gone from \`validate\`: there \`self\` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are \`input.x\``,
             expression.position, "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store"));
-        continue;
       }
-      if (!expression.plain || !createOnly(entity, owner)) continue;
-      // The type pass already reported a `before` it found inside this function.
-      if (reported("MESH_BEFORE_IN_CREATE")) continue;
-      diagnostics.push(error("MESH_BEFORE_IN_CREATE",
-        `${what} reads \`before\`, the stored record, and a create has none, so it is always null`, expression.position,
-        "Remove it. Compare with `self` or `input`, or move the rule to an update"));
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
