@@ -519,13 +519,29 @@ interface Question {
   readonly outer: Question | undefined;
   /** The project's async frame. */
   readonly frame: AsyncFrame;
-  /** The question's layer over each data layer it reached, by that layer: the bindings of one layer share it. */
+  /**
+   * The question's layer over each data layer it reached, by that layer object (`layerFor`): the bindings of one layer
+   * object share it, and with it the failed state it emulates. Two layer objects over one database (a wrapper and the
+   * layer it wraps), joined in one transaction, keep separate failed states: after a call joined through one fails, a
+   * call joined through the other runs inside the question, so the question can answer where the call itself would be
+   * refused ("an earlier joined call failed"). The question never fails the running transaction either way. The key stays
+   * the layer object: the data-layer contract does not promise that two layer objects hand out one operations object.
+   */
   readonly layers: Map<DataLayer, DataLayer>;
   /** Each binding the question reached, by its state: made when the question first reaches the binding. */
   readonly probes: Map<BindingState, Probe>;
+  /**
+   * The read-only view of each transaction's operations (`readOnlyOperations`), by those operations: shared by the
+   * question's layers, and kept when they are dropped, so a layer made again after the end hands a call the view its
+   * store already holds, and the call joins the transaction it was made in while that transaction runs.
+   */
+  readonly views: WeakMap<DataOperations, DataOperations>;
   /** The error of the first write tried while the question is answered: `Mesh.checkPolicies` throws it, whatever was decided. */
   wrote?: FrameworkError;
-  /** True once `Mesh.checkPolicies` has settled: a write still refused in one of its stores was started by work left running. */
+  /**
+   * True once `Mesh.checkPolicies` has settled: a write still refused in one of its stores was started by work left
+   * running. `probes` and `layers` are emptied then, so that work keeps alive only what it touches again.
+   */
   ended: boolean;
 }
 
@@ -577,7 +593,8 @@ function probeFor(question: Question, state: BindingState): Probe {
 
 /**
  * The layer a call over `layer` runs on inside `question`, made the first time the question reaches `layer`: over
- * `layer` itself, or, for a question asked inside another one, over that one's layer.
+ * `layer` itself, or, for a question asked inside another one, over that one's layer. Kept by layer object, so two
+ * layer objects over one database keep separate failed states (see `Question.layers`).
  */
 function layerFor(question: Question, layer: DataLayer): DataLayer {
   let probe = question.layers.get(layer);
@@ -652,10 +669,9 @@ const ROLLBACK: unique symbol = Symbol("mesh.checkPolicies.rollback");
  * refuse every write (`readOnlyOperations`).
  */
 function probeLayer(base: DataLayer, question: Question): DataLayer {
-  const views = new WeakMap<DataOperations, DataOperations>();
   const view = (tx: DataOperations): DataOperations => {
-    let readOnly = views.get(tx);
-    if (!readOnly) views.set(tx, readOnly = readOnlyOperations(tx, question));
+    let readOnly = question.views.get(tx);
+    if (!readOnly) question.views.set(tx, readOnly = readOnlyOperations(tx, question));
     return readOnly;
   };
   let failed: { readonly error: unknown } | undefined;
@@ -746,7 +762,7 @@ export async function checkPolicies(action: unknown, input: unknown, context: un
   const { state } = bindingFor(value, where, caller);
   // Asked inside another question (a policy's helper asks), it reads through that question's layers.
   const outer = questionOf(caller);
-  const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), ended: false };
+  const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
   const probe = probeFor(question, state);
   const bound = (value as EntityValue<object>)[BIND](answeringLayer(probe.layer), { clock: state.options.clock }, probe.frame) as BoundActions;
   const fn = bound[name] as (input: unknown, context: unknown) => Promise<unknown>;
@@ -762,7 +778,10 @@ export async function checkPolicies(action: unknown, input: unknown, context: un
     : ask;
   const outcome = await counted(state, () => settle(run));
   // Work its policies left running is still marked (`Question`): what it writes from now on is refused as started here.
+  // It no longer keeps every binding the question reached alive: a call it makes later makes again what it touches.
   question.ended = true;
+  question.probes.clear();
+  question.layers.clear();
   if (question.wrote) throw question.wrote;
   if (!outcome.ok) {
     if (outcome.error instanceof Answer) return outcome.error.decision;
