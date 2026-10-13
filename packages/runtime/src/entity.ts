@@ -1,3 +1,4 @@
+import { Answer, answeringLayer, type Decision } from "./answer.ts";
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, type Clock } from "./expr.ts";
@@ -133,6 +134,8 @@ export interface Binding {
 interface BindingState {
   binding: Binding;
   readonly layer: DataLayer;
+  /** What `bind(layer, options)` was given: `Mesh.checkPolicies` binds the entity it asks about with the same clock. */
+  readonly options: BindOptions;
   /** Each entity's value, bound actions and read bodies (what its `privileged` reads run on this binding), by FQN. */
   readonly entities: Map<string, { readonly value: object; readonly bound: BoundActions; readonly reads: Readonly<Record<string, ReadBody>> }>;
   /** Calls on this binding that have not settled; `settled` waits for them. */
@@ -166,6 +169,12 @@ const frames = new WeakMap<object, AsyncFrame>();
 const connected = new WeakMap<object, BindingState>();
 /** What `Mesh.privileged(value)` returns, by entity value: made when a binding first binds it, and tied to no binding. */
 const handles = new WeakMap<object, object>();
+/**
+ * Each method of each entity value, by the function itself: its entity value, FQN and action name. `entity` fills it, so
+ * `Mesh.checkPolicies(Todo.complete, ...)` knows the action from the function alone, and nothing is added to the function
+ * (CMP-21). No other function is in it: a copy made with `.bind`, a `privileged` read or a plain function.
+ */
+const actions = new WeakMap<object, { readonly value: object; readonly fqn: string; readonly name: string }>();
 
 /**
  * Define an entity value. `members` receives the call each method makes and returns the methods, one per action, each
@@ -175,7 +184,10 @@ const handles = new WeakMap<object, object>();
 export function entity<M extends object, P extends object = {}>(fqn: string, bind: EntityBind, bindReads: EntityReadsBind<P> | null, members: (call: EntityCall) => M): EntityValue<M, P> {
   const value = Object.create(null) as object;
   const call: EntityCall = (action, input, context) => dispatch(value, fqn, action, input, context) as Promise<never>;
-  Object.defineProperties(value, Object.getOwnPropertyDescriptors(members(call)));
+  const methods = Object.getOwnPropertyDescriptors(members(call));
+  Object.defineProperties(value, methods);
+  for (const [name, { value: method }] of Object.entries(methods))
+    if (typeof method === "function") actions.set(method, { value, fqn, name });
   Object.defineProperties(value, {
     [ENTITY]: { value: fqn },
     [BIND]: { value: bind },
@@ -235,13 +247,14 @@ const ENDED = "a call was made inside a transaction that has ended: await every 
 /**
  * Run `call` for a caller whose frame is `caller` on the binding `state`. Inside a transaction of that binding (an
  * action's or an application's), the call joins it and is refused once it has ended, since it would open a new one;
- * inside an action's function, what it resolves with is a read-only view (ACT-09).
+ * inside an action's function, what it resolves with is a read-only view (ACT-09). `layer` is the one the call joins
+ * through: the binding's, or inside a `Mesh.checkPolicies` the binding's probe's.
  */
-async function forCaller(state: BindingState, caller: FrameStore | undefined, call: () => Promise<unknown>): Promise<unknown> {
+async function forCaller(state: BindingState, caller: FrameStore | undefined, call: () => Promise<unknown>, layer = state.layer): Promise<unknown> {
   const own = caller?.state === state ? caller : undefined;
   const tx = own?.tx;
   const result = tx
-    ? await state.layer.transaction(async (current) => {
+    ? await layer.transaction(async (current) => {
       if (current !== tx) throw new FrameworkError(ENDED);
       return call();
     })
@@ -272,13 +285,20 @@ async function dispatch(value: object, fqn: string, action: string, input: unkno
   const mark = caller?.mark ?? evaluatingNow();
   if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
-  const fn = entry.bound[action] as (input: unknown, ...context: unknown[]) => Promise<unknown>;
+  // In a store a question made (`Mesh.checkPolicies`, CMP-21), no write action starts, on any binding of the project: it
+  // is refused here, before it casts its input or runs anything of its own. A read runs on the binding's probe, on the
+  // question's layer over the binding's own, so it reads what it would read and what it rejects with fails no running
+  // transaction. What stays out of reach is listed at `Question`.
+  const question = questionOf(caller);
+  if (question && !Object.hasOwn(entry.reads, action)) throw refusedWrite(question, `${fqn}#${action}`);
+  const probe = question && probeFor(question, state);
+  const fn = (probe ? probeEntry(probe, value) : entry).bound[action] as (input: unknown, ...context: unknown[]) => Promise<unknown>;
   // The action runs in a frame of its own: what it calls is its own work, not its caller's. Its scope is live: past
   // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected. A call that joins its
   // caller's transaction carries that transaction's instant, which the action reads (`ActionFrame.clock`, ACT-29).
   const joined = caller?.state === state && caller.tx !== undefined ? caller.clock : undefined;
-  const store: FrameStore = { state, scope: { live: true }, ...(joined ? { clock: joined } : {}) };
-  return counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context))));
+  const store = kept({ state, scope: { live: true }, ...(joined ? { clock: joined } : {}) }, question);
+  return counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer));
 }
 
 /**
@@ -321,35 +341,44 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
       const mark = caller?.mark ?? evaluatingNow();
       if (mark !== undefined) throw marked(label, mark);
       const { state, entry } = bindingFor(value, label, caller);
-      const body = entry.reads[name];
+      const probe = probeOf(caller, state);
+      const body = (probe ? probeEntry(probe, value) : entry).reads[name];
       if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
       // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
       // call passes.
       const clock = caller?.state === state ? caller.clock : undefined;
-      return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false)));
+      return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false), probe?.layer));
     };
   return Object.freeze(reads);
 }
 
-/** The frame a binding hands its entities' bind functions. */
-function actionFrame(frame: AsyncFrame, state: BindingState): ActionFrame {
-  const here = (): FrameStore => inScope(frame) ?? { state, scope: live(state, frame) };
+/**
+ * The frame a binding hands its entities' bind functions. `question` is set for the frame of a binding's probe inside
+ * one `Mesh.checkPolicies` (CMP-21): every store it puts in scope belongs to that question, so what runs there runs on
+ * the question's probes. Any other frame's store belongs to the question in scope, if any, so a question's mark is
+ * never lost (`questionOf`).
+ */
+function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question): ActionFrame {
+  const asking = (store: FrameStore | undefined) => question ?? questionOf(store);
+  const here = (): FrameStore => inScope(frame) ?? kept({ state, scope: live(state, frame) }, question);
   return Object.freeze({
     clock(clock: Clock | undefined): Clock {
       const store = inScope(frame);
       return store?.state === state && store.clock !== undefined ? store.clock : pinClock(clock);
     },
     within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T> {
-      return frame.run({ state, scope: here().scope, tx, clock, label } satisfies FrameStore, fn);
+      const store = here();
+      return frame.run(kept({ state, scope: store.scope, tx, clock, label }, asking(store)), fn);
     },
     plain<T>(fn: () => Promise<T>): Promise<T> {
       const store = inScope(frame);
       if (store?.label === undefined) return fn();
       const { label: _label, ...plain } = store;
-      return frame.run(plain satisfies FrameStore, fn);
+      return frame.run(kept(plain, asking(store)), fn);
     },
     marked<T>(what: string, fn: () => T): T {
-      return frame.run({ ...here(), mark: what } satisfies FrameStore, fn);
+      const store = here();
+      return frame.run(kept({ ...store, mark: what }, asking(store)), fn);
     },
   });
 }
@@ -363,7 +392,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState): ActionFrame {
  */
 export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding {
   const entities: BindingState["entities"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, entities, inFlight: 0, idle: [], released: false };
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, inFlight: 0, idle: [], released: false };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -386,7 +415,10 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
   for (const { value } of entities.values()) frames.set(value, frame);
   const binding: Binding = Object.freeze({
     run<T>(fn: () => Promise<T>): Promise<T> {
-      return scoped(frame, { state, scope: live(state, frame) }, fn);
+      // Inside a question (a policy's helper calls it), the scope belongs to the question: a write is refused, and a read
+      // runs on the binding's probe, so it reads what the call would read (CMP-21).
+      const outer = inScope(frame);
+      return scoped(frame, kept({ state, scope: live(state, frame) }, questionOf(outer)), fn);
     },
     transaction<T>(fn: () => Promise<T>): Promise<T> {
       // The application's `transaction` is an outermost transaction like any action's (TXN-14): `afterCommit` runs once
@@ -396,10 +428,16 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
       const scope = live(state, frame);
       const outer = inScope(frame);
       const clock = outer?.state === state && outer.tx !== undefined && outer.clock !== undefined ? outer.clock : pinClock(options.clock);
-      const body = (tx: DataOperations) => frame.run({ state, scope, tx, clock } satisfies FrameStore, () => fn());
+      // Inside a question (`Mesh.checkPolicies`: a policy's helper calls it), no seam runs and no write action starts, and
+      // it runs on the binding's probe: where it joins a running transaction, what `fn` rejects with (a refused write the
+      // helper catches) does not fail it (CMP-21).
+      const question = questionOf(outer);
+      const on = question ? probeFor(question, state).layer : layer;
+      const body = (tx: DataOperations) => frame.run(kept({ state, scope, tx, clock }, question), () => fn());
       return counted(state, async () => {
         try {
-          return await (layer.refuseIfFailed() ? layer.transaction(body) : outermost(layer, options.seams, body));
+          if (!on.refuseIfFailed()) return await outermost(on, question ? undefined : options.seams, body);
+          return await on.transaction(body);
         } finally {
           scope.live = false;
         }
@@ -446,4 +484,313 @@ export function releaseBinding(binding: Binding): void {
 export async function settled(binding: Binding): Promise<void> {
   const state = stateOf(binding);
   while (state.inFlight > 0) await new Promise<void>((resolve) => state.idle.push(resolve));
+}
+
+// ---- Mesh.checkPolicies (CMP-21) -------------------------------------------------------------------------------------
+
+/**
+ * One `Mesh.checkPolicies`, a question: the call it asks about runs as itself, on the binding the call would use, with
+ * the same input, context and instant, on a layer of the question's (`probeLayer`) through which it reads what the call
+ * would read and can write nothing. The authorizer of that call answers instead of deciding (`answer.ts`), so the call
+ * stops where its policies decide, before any `validate`, step, write or seam. A call its policies make (a helper that
+ * reads through an entity) runs the same way, on whichever binding of the project it is made: on that binding's probe
+ * (`probeFor`), whose layer is the question's over the binding's own, so it reads what it would read, and what it
+ * rejects with inside a running transaction is kept by the question's layer and never fails that transaction.
+ *
+ * Every frame store made in the question's async context belongs to the question (`kept`, `questionOf`): the call's
+ * own, the stores of what it calls, and those of a `run` or `transaction` a helper opens there, on this binding or
+ * another one sharing the project's async frame. In such a store no write action starts (`dispatch` refuses one before
+ * it runs anything, `refusedWrite`), no seam runs (`Binding.transaction`) and every call runs on its binding's probe.
+ * The mark outlives the answer: work a helper leaves running (a timer, a promise it does not await) keeps it after the
+ * question has settled (`ended`), and its writes are refused still. A call made beside the question (another call of a
+ * `Promise.all`, a request served meanwhile) is in a store the question did not make: it is not marked, and runs as it
+ * would.
+ *
+ * Three routes stay out of the question's reach, and write what they write, with their seams, checks and steps: a
+ * helper that writes through a data layer it holds itself, never through an entity; a binding of another project,
+ * whose stores live in another async frame; and work handed to code whose async context was made outside the question
+ * (the consumer of a queue, or a promise, started before the question, which a helper feeds or resolves), which runs in
+ * that context, unmarked.
+ */
+interface Question {
+  /** The call asked about, `blog.Post#publish`. */
+  readonly label: string;
+  /** The question this one is asked inside (a policy's helper asks), if any: this one reads through its layers. */
+  readonly outer: Question | undefined;
+  /** The project's async frame. */
+  readonly frame: AsyncFrame;
+  /**
+   * The question's layer over each data layer it reached, by that layer object (`layerFor`): the bindings of one layer
+   * object share it, and with it the failed state it emulates. Two layer objects over one database (a wrapper and the
+   * layer it wraps), joined in one transaction, keep separate failed states: after a call joined through one fails, a
+   * call joined through the other runs inside the question, so the question can answer where the call itself would be
+   * refused ("an earlier joined call failed"). The question never fails the running transaction either way. The key stays
+   * the layer object: the data-layer contract does not promise that two layer objects hand out one operations object.
+   */
+  readonly layers: Map<DataLayer, DataLayer>;
+  /** Each binding the question reached, by its state: made when the question first reaches the binding. */
+  readonly probes: Map<BindingState, Probe>;
+  /**
+   * The read-only view of each transaction's operations (`readOnlyOperations`), by those operations: shared by the
+   * question's layers, and kept when they are dropped, so a layer made again after the end hands a call the view its
+   * store already holds, and the call joins the transaction it was made in while that transaction runs.
+   */
+  readonly views: WeakMap<DataOperations, DataOperations>;
+  /** The error of the first write tried while the question is answered: `Mesh.checkPolicies` throws it, whatever was decided. */
+  wrote?: FrameworkError;
+  /**
+   * True once `Mesh.checkPolicies` has settled: a write still refused in one of its stores was started by work left
+   * running. `probes` and `layers` are emptied then, so that work keeps alive only what it touches again.
+   */
+  ended: boolean;
+}
+
+/** What one binding's calls run on inside a question. */
+interface Probe {
+  /** The binding. */
+  readonly state: BindingState;
+  /** The question's layer over the binding's (`layerFor`): reads pass through, writes throw. */
+  readonly layer: DataLayer;
+  /** The frame the binding's entities get inside the question: every store it puts in scope belongs to the question. */
+  readonly frame: ActionFrame;
+  /** Each entity's actions and read bodies bound to `layer`, by FQN: bound when the question first reaches the entity. */
+  readonly entities: Map<string, { readonly bound: BoundActions; readonly reads: Readonly<Record<string, ReadBody>> }>;
+}
+
+/**
+ * The question each frame store belongs to: only stores made in the async context of a `Mesh.checkPolicies` are in it.
+ * Module-private, as `Answer` is: no code outside this file can mark a store or read the mark, so nothing can leave a
+ * question's scope by forging one (CMP-21).
+ */
+const questions = new WeakMap<FrameStore, Question>();
+
+/** `store`, recorded as `question`'s when there is one. */
+function kept(store: FrameStore, question: Question | undefined): FrameStore {
+  if (question) questions.set(store, question);
+  return store;
+}
+
+/** The question a caller's store belongs to, whatever binding put it in scope. */
+function questionOf(caller: FrameStore | undefined): Question | undefined {
+  return caller === undefined ? undefined : questions.get(caller);
+}
+
+/** The probe a call of the binding `state` runs on: the binding's, in the question the caller belongs to, if any. */
+function probeOf(caller: FrameStore | undefined, state: BindingState): Probe | undefined {
+  const question = questionOf(caller);
+  return question && probeFor(question, state);
+}
+
+/** What the binding `state` runs on inside `question`, made the first time the question reaches the binding. */
+function probeFor(question: Question, state: BindingState): Probe {
+  let probe = question.probes.get(state);
+  if (!probe) {
+    probe = { state, layer: layerFor(question, state.layer), frame: actionFrame(question.frame, state, question), entities: new Map() };
+    question.probes.set(state, probe);
+  }
+  return probe;
+}
+
+/**
+ * The layer a call over `layer` runs on inside `question`, made the first time the question reaches `layer`: over
+ * `layer` itself, or, for a question asked inside another one, over that one's layer. Kept by layer object, so two
+ * layer objects over one database keep separate failed states (see `Question.layers`).
+ */
+function layerFor(question: Question, layer: DataLayer): DataLayer {
+  let probe = question.layers.get(layer);
+  if (!probe) question.layers.set(layer, probe = probeLayer(question.outer ? layerFor(question.outer, layer) : layer, question));
+  return probe;
+}
+
+/**
+ * The error of a write tried in a store of `question`: `writer`, the write action refused, or the label of the action
+ * that tried to write through the question's layer. While the question is answered, `Mesh.checkPolicies` throws the
+ * first, whatever was decided, even when a helper caught it; once it has settled, the write was started by work left
+ * running, and is refused all the same.
+ */
+function refusedWrite(question: Question, writer: string | undefined): FrameworkError {
+  if (question.ended)
+    return new FrameworkError(`${writer ?? "A call"} cannot write: it was started while Mesh.checkPolicies(${question.label}) was answered, `
+      + "by work its policies left running (a timer, a promise not awaited), and nothing started while a question is answered writes a row, "
+      + "even once the question has answered. Make the policy read only");
+  return question.wrote ??= new FrameworkError(`Mesh.checkPolicies(${question.label}) cannot answer without writing: `
+    + `${writer === undefined ? "a call made while its policies were checked" : `${writer}, called while its policies were checked,`} writes a row. `
+    + "Checking a policy runs what the policy calls, so a policy that writes, through a helper or an action it calls, cannot be checked: make it read only");
+}
+
+/**
+ * What `value`'s actions and reads are on `probe`'s layer, bound the first time with the options of the probe's binding:
+ * its clock, and no seam, since none runs in a question.
+ */
+function probeEntry(probe: Probe, value: object) {
+  const fqn = (value as EntityValue<object>)[ENTITY];
+  let entry = probe.entities.get(fqn);
+  if (!entry) {
+    const options: BindOptions = { clock: probe.state.options.clock };
+    const bound = (value as EntityValue<object>)[BIND](probe.layer, options, probe.frame) as BoundActions;
+    const reads = ((value as EntityValue<object>)[BIND_READS]?.(probe.layer, options, probe.frame) ?? {}) as Readonly<Record<string, ReadBody>>;
+    probe.entities.set(fqn, entry = { bound, reads });
+  }
+  return entry;
+}
+
+type Settled<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: unknown };
+
+/** What `work` resolves or rejects with, as a value: a callback that returns it never rejects. */
+async function settle<T>(work: () => Promise<T>): Promise<Settled<T>> {
+  try { return { ok: true, value: await work() }; } catch (error) { return { ok: false, error }; }
+}
+
+function unwrap<T>(outcome: Settled<T>): T {
+  if (outcome.ok) return outcome.value;
+  throw outcome.error;
+}
+
+/**
+ * Run `work` in a transaction of `layer` (joining the running one, or opening one) and hand back, outside it, what it
+ * resolved or rejected with. The layer's callback resolves with nothing, so the layer, and any wrapper of it, never sees
+ * what `work` gave (an `Answer`, a probe's outcome), and a rejection never fails the running transaction.
+ */
+async function apart<T>(layer: DataLayer, work: (tx: DataOperations) => Promise<T>): Promise<Settled<T>> {
+  let outcome: Settled<T> | undefined;
+  await layer.transaction(async (tx) => { outcome = await settle(() => work(tx)); });
+  return outcome!;
+}
+
+/** What a probe's own transaction is rolled back with; never seen outside `probeLayer`. */
+const ROLLBACK: unique symbol = Symbol("mesh.checkPolicies.rollback");
+
+/**
+ * The layer of one `Mesh.checkPolicies` over `base` (a binding's layer, or the layer of the question this one is asked
+ * inside, over it). Inside a running transaction a call joins it, as on `base`, but what the call rejects with is taken
+ * inside the join and thrown outside it, so the running transaction is never failed by the question; the layer keeps
+ * the first such failure and refuses a call joined after it, as `base` would (rollback-only). Anywhere else a call opens
+ * a transaction of its own on `base`, which is always rolled back. Either way its operations read as `base`'s do and
+ * refuse every write (`readOnlyOperations`).
+ */
+function probeLayer(base: DataLayer, question: Question): DataLayer {
+  const view = (tx: DataOperations): DataOperations => {
+    let readOnly = question.views.get(tx);
+    if (!readOnly) question.views.set(tx, readOnly = readOnlyOperations(tx, question));
+    return readOnly;
+  };
+  let failed: { readonly error: unknown } | undefined;
+  const refusal = () => new FrameworkError("A call joined a transaction that an earlier joined call failed, so it was refused before it ran: the transaction rolls back", { cause: failed?.error });
+  return Object.freeze({
+    refuseIfFailed(): boolean {
+      const joined = base.refuseIfFailed();
+      if (joined && failed) throw refusal();
+      return joined;
+    },
+    async transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T> {
+      if (base.refuseIfFailed()) {
+        if (failed) throw refusal();
+        const outcome = await apart(base, (tx) => run(view(tx)));
+        if (!outcome.ok && !(outcome.error instanceof Answer)) failed ??= { error: outcome.error };
+        return unwrap(outcome);
+      }
+      let outcome: Settled<T> | undefined;
+      try {
+        await base.transaction(async (tx) => {
+          outcome = await settle(() => run(view(tx)));
+          throw ROLLBACK;
+        });
+      } catch (error) {
+        // Only the rollback the probe asked for is swallowed: a layer that fails to roll back, or fails otherwise, is heard.
+        if (outcome === undefined || error !== ROLLBACK) throw error;
+      }
+      return unwrap(outcome!);
+    },
+    close(): Promise<void> {
+      return Promise.reject(new FrameworkError("The layer of Mesh.checkPolicies is not closed: close the binding's own layer"));
+    },
+  });
+}
+
+/**
+ * `tx`'s reads; each write throws a `FrameworkError` naming the action asked about and the action that tried to write.
+ * No write action reaches it (`dispatch` refuses one first): it holds should generated code write anyway.
+ */
+function readOnlyOperations(tx: DataOperations, question: Question): DataOperations {
+  const refuse = async (): Promise<never> => {
+    throw refusedWrite(question, inScope(question.frame)?.label);
+  };
+  return Object.freeze({
+    insert: refuse,
+    updateByKey: refuse,
+    deleteByKey: refuse,
+    selectByKey: (table, key) => tx.selectByKey(table, key),
+    selectByKeyForUpdate: (table, key) => tx.selectByKeyForUpdate(table, key),
+    select: (table, query) => tx.select(table, query),
+    max: (table, attribute, filter) => tx.max(table, attribute, filter),
+    count: (table, attribute, filter) => tx.count(table, attribute, filter),
+  } satisfies DataOperations);
+}
+
+/** What a value passed as the action is, for the message. */
+function described(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "function")
+    return "a function that is not one (a plain function, a Mesh.privileged read, a copy made with .bind, or an action of an entity value made by a "
+      + "second copy of @meshfw/runtime in the install, which meshfw avoids by taking @meshfw/runtime as a peer dependency)";
+  return typeof value === "object" ? "an object" : typeof value;
+}
+
+/**
+ * `Mesh.checkPolicies(Todo.complete, input, context)` (CMP-21, ADR-0022): the decision the call
+ * `Todo.complete(input, context)` would reach, made the same way: on the binding the call would use, joining the
+ * transaction it would join (and reading its instant, ACT-29) or in a transaction of its own that is rolled back, with
+ * the same checks in the same order, so a denial's `breakdown` is the one its `ForbiddenError` would carry. It changes
+ * nothing: it runs no `validate`, no step and no seam, and a write action a policy starts, through any binding of the
+ * project, is refused before it runs, and the question throws a `FrameworkError` (see `Question`). Where the call throws before its policies decide (`InvalidInputError` from the cast, `NotFoundError`
+ * for a missing row a check would read, a read that cannot run in this version), it throws the same error, and inside
+ * a running transaction that error does not fail the transaction. A denial resolves with `allowed: false`; it never
+ * throws `ForbiddenError`. A read answers whether it is allowed at all: no policy covering it, or none admitting the
+ * caller, is `allowed: false`.
+ */
+export async function checkPolicies(action: unknown, input: unknown, context: unknown): Promise<Decision> {
+  const target = typeof action === "function" ? actions.get(action) : undefined;
+  if (!target)
+    throw new FrameworkError(`Mesh.checkPolicies() takes an action function of an entity value, such as Mesh.checkPolicies(Todo.complete, input, context), and was given ${described(action)}`);
+  const { value, fqn, name } = target;
+  const label = `${fqn}#${name}`;
+  const where = `Mesh.checkPolicies(${label})`;
+  const frame = frames.get(value);
+  const caller = inScope(frame);
+  const mark = caller?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(where, mark);
+  const { state } = bindingFor(value, where, caller);
+  // Asked inside another question (a policy's helper asks), it reads through that question's layers.
+  const outer = questionOf(caller);
+  const question: Question = { label, outer, frame: frame!, layers: new Map(), probes: new Map(), views: new WeakMap(), ended: false };
+  const probe = probeFor(question, state);
+  const bound = (value as EntityValue<object>)[BIND](answeringLayer(probe.layer), { clock: state.options.clock }, probe.frame) as BoundActions;
+  const fn = bound[name] as (input: unknown, context: unknown) => Promise<unknown>;
+  // As `dispatch` does: a frame of its own, carrying the instant of the transaction it joins.
+  const joined = caller?.state === state && caller.tx !== undefined ? caller : undefined;
+  const store = kept({ state, scope: { live: true }, ...(joined?.clock ? { clock: joined.clock } : {}) }, question);
+  const ask = () => scoped(frame!, store, () => fn(input, context));
+  // Inside a transaction of the binding the question joins it as the call would, and is refused once it has ended; what
+  // the call rejects with is taken inside the join, so the running transaction is not failed by it.
+  const base = outer ? layerFor(outer, state.layer) : state.layer;
+  const run = joined
+    ? () => apart(base, (current) => current === joined.tx ? ask() : Promise.reject(new FrameworkError(ENDED))).then(unwrap)
+    : ask;
+  const outcome = await counted(state, () => settle(run));
+  // Work its policies left running is still marked (`Question`): what it writes from now on is refused as started here.
+  // It no longer keeps every binding the question reached alive: a call it makes later makes again what it touches.
+  question.ended = true;
+  question.probes.clear();
+  question.layers.clear();
+  if (question.wrote) throw question.wrote;
+  if (!outcome.ok) {
+    if (outcome.error instanceof Answer) return outcome.error.decision;
+    throw outcome.error;
+  }
+  throw new FrameworkError(`${where} ran the call without reaching its policies: rebuild the project with mesh build`);
+}
+
+/** `Mesh.can(Todo.complete, input, context)`: true exactly when `checkPolicies` with the same arguments resolves with `allowed` true. */
+export async function can(action: unknown, input: unknown, context: unknown): Promise<boolean> {
+  return (await checkPolicies(action, input, context)).allowed === true;
 }

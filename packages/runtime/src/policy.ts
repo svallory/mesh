@@ -1,3 +1,4 @@
+import { Answer, answers } from "./answer.ts";
 import { failJoined } from "./compose.ts";
 import type { DataLayer } from "./data-layer.ts";
 import type { ActionFrame } from "./entity.ts";
@@ -18,6 +19,10 @@ import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
  * (`types=`/`actions=`), at build time: `policies` holds the covering ones, and when it is empty no policy covers the
  * action. A covering policy whose `when=` is false does not apply to the call; when none applies, a write is forbidden
  * and a read gives no rows (S1 of the PR #79 review).
+ *
+ * `Mesh.checkPolicies` (CMP-21) runs the call itself on a layer that answers (`answer.ts`): `before` and `filter` see it,
+ * and once the policies have decided they throw an `Answer` with the decision, which `inside` then does too, instead of
+ * resolving, rejecting with `ForbiddenError` or failing a running transaction. The checks run exactly as for the call.
  */
 
 /** A function of the entity's expressions file: it takes the scope. */
@@ -77,6 +82,8 @@ const outcome = (value: unknown): Result => (value === true ? true : value === f
 export function authorizer(entity: string, action: string, policies: readonly PolicySpec[], frame?: Pick<ActionFrame, "marked">): Authorizer {
   const results = new Map<Spec | PolicyCheckSpec, Result>();
   let reading = false;
+  /** True when the call runs for `Mesh.checkPolicies`: set by `before` or `filter` from the layer the call runs on. */
+  let answering = false;
   const run = async (policy: PolicySpec, spec: Spec | PolicyCheckSpec, scope: object) => {
     if (results.has(spec)) return;
     const value = reading && frame ? frame.marked(`policy :${policy.name} of ${entity}`, () => spec.run(scope as never)) : spec.run(scope as never);
@@ -103,7 +110,12 @@ export function authorizer(entity: string, action: string, policies: readonly Po
     if (authorizes.length && authorizes.every((check) => results.has(check)) && !authorizes.some((check) => results.get(check) === true)) return true;
     return policy.checks.every((check) => results.has(check)) ? false : undefined;
   };
-  const breakdown = (): PolicyCheck[] => {
+  /**
+   * One entry per check that ran. On a denial, `decisive` marks what denied the call; on an allowed call (`allowed`, for
+   * `Mesh.checkPolicies`), what allowed it: in each policy that applies, the `authorize-if` checks that held, or, in one
+   * with no `authorize-if`, its `forbid-if` checks, all false.
+   */
+  const breakdown = (allowed = false): PolicyCheck[] => {
     const out: PolicyCheck[] = [];
     for (const policy of policies) {
       // A `when` that did not apply is listed only when no policy applied: it is then what decided.
@@ -117,7 +129,9 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       const forbidding = ran.filter((check) => check.kind === "forbid-if" && results.get(check) !== false);
       for (const check of ran) {
         const result = results.get(check)!;
-        const decisive = failed && !unknownWhen && (forbidding.length ? forbidding.includes(check) : check.kind === "authorize-if");
+        const decisive = allowed
+          ? (policy.checks.some((each) => each.kind === "authorize-if") ? check.kind === "authorize-if" && result === true : check.kind === "forbid-if")
+          : failed && !unknownWhen && (forbidding.length ? forbidding.includes(check) : check.kind === "authorize-if");
         out.push({ policy: policy.name, kind: check.kind, check: check.check, result, decisive });
       }
     }
@@ -133,6 +147,15 @@ export function authorizer(entity: string, action: string, policies: readonly Po
     if (covering.length === 0) return denial(policies, "not-applied");
     const failed = covering.filter((policy) => fails(policy) === true);
     return failed.length ? denial(failed) : undefined;
+  };
+  /**
+   * For `Mesh.checkPolicies`: stop the call with the decision, `error` being what `decide` gave. A denial carries the
+   * `ForbiddenError`'s own breakdown, so the two are equal; an allowed call's is frozen the same way.
+   */
+  const answer = (error: ForbiddenError | undefined): never => {
+    throw new Answer(Object.freeze(error
+      ? { allowed: false, breakdown: error.breakdown }
+      : { allowed: true, breakdown: Object.freeze(breakdown(true).map((check) => Object.freeze(check))) }));
   };
   /** A read policy that reads the record is a filter on the query, which M10 folds; the build refuses it, and this is the guard behind it. */
   const readsTheRecord = (): FrameworkError | undefined => {
@@ -152,28 +175,34 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   };
   return Object.freeze({
     async before(layer: DataLayer, scope: object): Promise<void> {
+      answering = answers(layer);
       await guarded(layer, scope, (record) => !record);
       const known = policies.filter((policy) => covers(policy) === "yes" && fails(policy) === true);
-      if (known.length) return reject(layer, denial(known));
+      if (known.length) return answering ? answer(denial(known)) : reject(layer, denial(known));
       // Nothing left for the transaction: this is the whole decision (no covering policy included).
       if (policies.every((policy) => covers(policy) === "no" || (covers(policy) === "yes" && fails(policy) !== undefined))) {
         const error = decide();
+        if (answering) answer(error);
         if (error) return reject(layer, error);
       }
     },
     async inside(scope: object): Promise<void> {
       await evaluate(scope, () => true);
       const error = decide();
+      if (answering) answer(error);
       if (error) throw error;
     },
     async filter(layer: DataLayer, scope: object): Promise<boolean> {
+      answering = answers(layer);
       // No policy covers the read, by its scope: forbidden. One that applies to no caller is a different case (below).
-      if (policies.length === 0) return reject(layer, decide()!);
+      if (policies.length === 0) return answering ? answer(decide()) : reject(layer, decide()!);
       const reads = readsTheRecord();
       if (reads) return reject(layer, reads);
       reading = true;
       await guarded(layer, scope, () => true);
-      return decide() === undefined;
+      const error = decide();
+      if (answering) answer(error);
+      return error === undefined;
     },
     async admits(scope: object): Promise<boolean> {
       if (policies.length === 0) return false;
