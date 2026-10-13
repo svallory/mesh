@@ -757,6 +757,10 @@ export async function checkPolicies(action: unknown, input: unknown, context: un
   const where = `Mesh.checkPolicies(${label})`;
   const frame = frames.get(value);
   const caller = inScope(frame);
+  // While a computed field or a read policy is evaluated, as for `Mesh.privileged` and an entity's action (TXN-18): an entity
+  // file's computed field and read policy cannot call it, the build refuses them (`MESH_COMPUTED_COMPOSES`,
+  // `MESH_POLICY_ASKS`), and this refuses one a helper hides. A write policy is not marked, so a call hidden there runs, as a
+  // hidden `Mesh.privileged` read does: the build refuses a direct one in any policy, read or write (`MESH_POLICY_ASKS`).
   const mark = caller?.mark ?? evaluatingNow();
   if (mark !== undefined) throw marked(where, mark);
   const { state } = bindingFor(value, where, caller);

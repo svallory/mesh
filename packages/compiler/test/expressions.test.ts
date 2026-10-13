@@ -1189,14 +1189,14 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     const source = entity(check("() => Mesh.tomorrow() !== null"));
     expect(problems(source)).toEqual([{
       code: "MESH_UNKNOWN_MESH_FUNCTION",
-      message: "`Mesh.tomorrow` is not one of Mesh's functions: `Mesh` holds `Mesh.isSystem(context)` and `Mesh.privileged(Task)`",
+      message: "`Mesh.tomorrow` is not one of Mesh's functions: `Mesh` holds `Mesh.isSystem(context)`, `Mesh.privileged(Task)`, `Mesh.checkPolicies(Task.complete, input, context)` and `Mesh.can(Task.complete, input, context)`",
       fix: "call one of them, or import a function of your own from a helper module",
       offset: source.indexOf("tomorrow"),
     }]);
     // In plain code, read without a call, and under an alias.
     expect(problems(entity(check("() => true") + "      do\n        run () { console.log(Mesh.clock) }\n")).map((p) => p.code)).toEqual(["MESH_UNKNOWN_MESH_FUNCTION"]);
     expect(problems(entity(check("() => M.later === null")).replace('import { Mesh } from "meshfw"', 'import { Mesh as M } from "meshfw"')).map((p) => p.message))
-      .toEqual(["`M.later` is not one of Mesh's functions: `M` holds `M.isSystem(context)` and `M.privileged(Task)`"]);
+      .toEqual(["`M.later` is not one of Mesh's functions: `M` holds `M.isSystem(context)`, `M.privileged(Task)`, `M.checkPolicies(Task.complete, input, context)` and `M.can(Task.complete, input, context)`"]);
     expect(problems(entity(check("() => true") + "      do\n        run () { console.log(Mesh.toString(), Mesh.hasOwnProperty(\"now\")) }\n"))).toEqual([]);
   });
 

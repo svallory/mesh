@@ -32,6 +32,7 @@ export type PlainWhy =
   | "unsupported-construct"
   | "reads-record-in-helper"
   | "uses-privileged"
+  | "asks-policies"
   | "calls-entity"
   | "awaits-helper"
   | "unsupported-parameter";
@@ -82,6 +83,8 @@ export interface PlainReason {
   isSystem?: true;
   /** The authored text reads `Mesh.privileged` (`Mesh.privileged(Entity)`, TXN-16). */
   privileged?: true;
+  /** The authored text reads `Mesh.checkPolicies` or `Mesh.can` (CMP-21): it asks another action's policies. */
+  asks?: true;
   /**
    * The names the file imports `Mesh` under (`import { Mesh } from "meshfw"`, PRJ-22) that the authored text reads, where
    * no binding of the function hides them, sorted. The expressions file imports `Mesh` under each, as it imports a helper.

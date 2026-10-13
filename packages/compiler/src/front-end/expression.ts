@@ -49,14 +49,19 @@ const GLOBALS = new Set([
 ]);
 /**
  * Mesh's own functions (PRJ-22), which a function in an entity file reads as members of `Mesh`, imported from "meshfw"
- * (`import { Mesh } from "meshfw"`, or under an alias). `privileged` (TXN-16) has no `fn`: a function that calls it is
- * plain code, since what it reads is not an expression over the record. `args` is what a call passes, for the examples.
+ * (`import { Mesh } from "meshfw"`, or under an alias). `privileged` (TXN-16) and `checkPolicies` and `can` (CMP-21) have no
+ * `fn`: a function that calls one is plain code, since what it reads is not an expression over the record. `args` is what a call passes, for the examples.
  * The instant is not one of them (SYN-29): it is the current transaction's, `%.now` (`TRANSACTION_MEMBERS`).
  */
 const MESH_FUNCTIONS: ReadonlyMap<string, { fn?: FunctionId; arity: number; args: string }> = new Map([
   ["isSystem", { fn: "isSystem", arity: 1, args: "context" }],
   ["privileged", { arity: 1, args: "Task" }],
+  // CMP-21: ask another action's policies. Plain code too: what they read is not an expression over the record.
+  ["checkPolicies", { arity: 3, args: "Task.complete, input, context" }],
+  ["can", { arity: 3, args: "Task.complete, input, context" }],
 ]);
+/** The functions of `MESH_FUNCTIONS` that ask another action's policies (`Mesh.checkPolicies`, `Mesh.can`; CMP-21). */
+const ASKING = new Set(["checkPolicies", "can"]);
 /**
  * What `%.` reads (SYN-29): `%` is the current transaction, and these are its properties, values and not calls: `%.now`,
  * its instant, and `%.today`, that instant at 00:00 UTC: the registry's `now` and `today`, one instant per transaction
@@ -106,6 +111,8 @@ function calledTransaction(callee: N | undefined): N[] {
 }
 /** The members every object has, which TypeScript gives `Mesh` too: reading one is no unknown Mesh function. */
 const OBJECT_MEMBERS = new Set(["constructor", "toString", "toLocaleString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable"]);
+/** `a`, `a and b`, `a, b and c`: the last item joined with "and" (an item may hold commas). */
+const listed = (items: readonly string[]): string => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 /** `Mesh.isSystem(context)` as a file that imports `Mesh` under `local` writes it, with the call's own arguments when it has them. */
 const meshCall = (local: string, name: string, args?: string) => `${local}.${name}(${args ?? MESH_FUNCTIONS.get(name)?.args ?? ""})`;
 /**
@@ -372,6 +379,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           if (MESH_FUNCTIONS.has(member.name)) {
             called.add(member.name);
             if (member.name === "privileged") (names.privileged ??= []).push(ctx.at(start(key === "object" ? n : member.at)));
+            if (ASKING.has(member.name)) (names.asks ??= []).push(ctx.at(start(key === "object" ? n : member.at)));
             continue;
           }
           if (OBJECT_MEMBERS.has(member.name)) continue;
@@ -391,7 +399,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           ctx.report({
             severity: "error",
             code: "MESH_UNKNOWN_MESH_FUNCTION",
-            message: `\`${member.local}.${member.name}\` is not one of Mesh's functions: \`${member.local}\` holds ${[...MESH_FUNCTIONS.keys()].map((name) => `\`${meshCall(member.local, name)}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
+            message: `\`${member.local}.${member.name}\` is not one of Mesh's functions: \`${member.local}\` holds ${listed([...MESH_FUNCTIONS.keys()].map((name) => `\`${meshCall(member.local, name)}\``))}`,
             position: ctx.at(start(at)),
             fix: `call one of them, or import a function of your own from a helper module`,
           });
@@ -458,7 +466,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
  * node has no types (MX strips them), so a helper named only in a type is left to the TypeScript back end (`typeNames` in
  * `typescript/type-names.ts`).
  */
-interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; record?: true }
+interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -661,7 +669,8 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if (member && spec) {
         if (args.length !== spec.arity)
           throw new Plain("unsupported-construct", spec.arity === 0 ? `\`${member.local}.${member.name}()\` takes no arguments` : `\`${member.local}.${member.name}()\` takes ${spec.arity} argument`, n);
-        if (!spec.fn) throw new Plain("uses-privileged", `reads through \`${member.local}.privileged\``, n);
+        if (!spec.fn)
+          throw ASKING.has(member.name) ? new Plain("asks-policies", `asks through \`${member.local}.${member.name}\``, n) : new Plain("uses-privileged", `reads through \`${member.local}.privileged\``, n);
         return call(spec.fn, args.map((arg) => sub(arg)));
       }
       if (callee.type === "Identifier") {
@@ -745,6 +754,10 @@ export const rememberDemotion = (expression: object, demotion: Demotion): void =
 const privilegedCalls = new WeakMap<object, readonly SourcePosition[]>();
 export const privilegedCallsOf = (expression: object): readonly SourcePosition[] => privilegedCalls.get(expression) ?? [];
 export const rememberPrivilegedCalls = (expression: object, calls: readonly SourcePosition[]): void => { privilegedCalls.set(expression, calls); };
+/** Where a function names `Mesh.checkPolicies` or `Mesh.can`, each at its callee: a policy must not ask (MESH_POLICY_ASKS). */
+const askCalls = new WeakMap<object, readonly SourcePosition[]>();
+export const askCallsOf = (expression: object): readonly SourcePosition[] => askCalls.get(expression) ?? [];
+export const rememberAskCalls = (expression: object, calls: readonly SourcePosition[]): void => { askCalls.set(expression, calls); };
 /** How a function is asynchronous, if it is: written `async`, or using `await` in its own body: a computed field must not be (MESH_COMPUTED_ASYNC). */
 export type Asynchrony = "async" | "await";
 const asynchronous = new WeakMap<object, Asynchrony>();
@@ -765,7 +778,7 @@ export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
   return own((fn as N).body) ? "await" : undefined;
 }
 
-export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[] } {
+export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] } {
   const f = fn as N;
   const called = new Set<string>();
   const names: Names = { entities: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
@@ -788,6 +801,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   // the entities and `structuredClone`, and its file imports the helpers (CMP-16, TXN-16, PRJ-20).
   const named = {
     ...(called.has("privileged") ? { privileged: true as const } : {}),
+    ...(called.has("checkPolicies") || called.has("can") ? { asks: true as const } : {}),
     ...(names.entities.size ? { entities: [...names.entities].sort() } : {}),
     ...(names.acts ? { acts: true as const } : {}),
     ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}),
@@ -811,13 +825,14 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     }
     return { parts, rest };
   };
-  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[] } => {
+  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] } => {
     // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
     const object = e.why === "unsupported-parameter" ? undefined : objectParts();
     return {
       plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits, roots: free, ...clocked, ...named, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
       // A function that names `privileged` is always plain (`uses-privileged`), so only a plain one carries the calls.
       ...(names.privileged ? { privilegedCalls: names.privileged } : {}),
+      ...(names.asks ? { askCalls: names.asks } : {}),
     };
   };
   try {
@@ -825,6 +840,8 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     // A function that reads through `Mesh.privileged` or names an entity is plain code as a whole, whatever else it does: what
     // it reads is not an expression over the record, so its `await` or its comparisons are no reason to warn.
     if (called.has("privileged")) throw new Plain("uses-privileged", "reads through `Mesh.privileged`", f);
+    // `Mesh.checkPolicies` and `Mesh.can` run another action's policies, which read what they read: plain code as well.
+    if (called.has("checkPolicies") || called.has("can")) throw new Plain("asks-policies", "asks another action's policies", f);
     if (names.entities.size || names.acts) throw new Plain("calls-entity", "names an entity", f);
     // An imported function it awaits reads what it needs (through `Mesh.privileged`, say): the `await` is how it is called,
     // not something Mesh could translate, so it is no reason to warn either.

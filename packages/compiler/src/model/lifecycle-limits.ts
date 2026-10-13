@@ -18,13 +18,14 @@ function createOnly(entity: Entity, owner: ActionExpression["owner"]): boolean {
  * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
- * `privileged`, and `asynchronyOf` whether it is `async` or awaits, both kept by the front end.
+ * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, and `asynchronyOf` whether it is `async` or awaits, both kept by the front end.
  */
 export function checkLifecycleLimits(
   document: ModelDocument,
   diagnostics: Diagnostic[],
   options: {
     privilegedCallsOf?: (expression: Expression) => readonly SourcePosition[];
+    askCallsOf?: (expression: Expression) => readonly SourcePosition[];
     asynchronyOf?: (expression: Expression) => "async" | "await" | undefined;
   } = {},
 ): void {
@@ -52,11 +53,15 @@ export function checkLifecycleLimits(
     for (const field of entity.computed) {
       const body = field.body;
       if (!body) continue;
-      const reaches = body.plain?.privileged ? "calls `Mesh.privileged`" : body.plain?.acts ? "calls an entity's action" : undefined;
+      const reaches = [
+        body.plain?.privileged ? "calls `Mesh.privileged`" : undefined,
+        body.plain?.asks ? "calls `Mesh.can` or `Mesh.checkPolicies`" : undefined,
+        body.plain?.acts ? "calls an entity's action" : undefined,
+      ].filter((what) => what !== undefined).join(" and ") || undefined;
       if (reaches)
         diagnostics.push(error("MESH_COMPUTED_COMPOSES",
           `computed :${field.name} of ${entity.fqn} ${reaches}, which only a function that runs inside an action may: a computed field is worked out whenever a record is loaded, outside any action`,
-          body.position, "Compute it from the record, its relationships and other computed fields; a read through `Mesh.privileged` or a call to another action belongs in a step or a check"));
+          body.position, "Compute it from the record, its relationships and other computed fields; a read through `Mesh.privileged`, a question to `Mesh.can` or a call to another action belongs in a step or a check"));
       // A load evaluates a computed body synchronously: a promise it returned would be the field's value, and what it awaits
       // would run after the load, outside any frame. The runtime refuses a promise result too (`ensureField` in `load.ts`).
       const asynchrony = options.asynchronyOf?.(body);
@@ -108,6 +113,13 @@ export function checkLifecycleLimits(
           diagnostics.push(error("MESH_POLICY_ACTS",
             `${what} calls an entity's action: a policy decides whether the call may run, and must not run actions itself`,
             expression.position, "read what the decision needs through `Mesh.privileged(Entity)`, which runs reads only"));
+        // Nor does it ask: a policy that asks another action's policies can be asked back, and nothing bounds that. Allowing it
+        // later is not a breaking change; refusing it later would be.
+        if (expression.plain?.asks)
+          for (const position of options.askCallsOf?.(expression)?.length ? options.askCallsOf(expression) : [expression.position])
+            diagnostics.push(error("MESH_POLICY_ASKS",
+              `${what} asks another action's policies (\`Mesh.can\` or \`Mesh.checkPolicies\`): a policy may not ask, since the policy it asks could ask back and nothing bounds that`,
+              position, "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a check"));
       }
     // A policy with no check would pass every call it covers (POL-16): the build says so, and asks for it written out.
     for (const policy of entity.policies)

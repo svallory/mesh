@@ -34,7 +34,7 @@ import {
 } from "@meshfw/model";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
-import { asynchronyOf, demotionOf, privilegedCallsOf, SCOPE_NAMES } from "./expression.ts";
+import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf, SCOPE_NAMES } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { nearestName } from "./nearest-name.ts";
@@ -1004,7 +1004,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf });
   computeNeeds(document, diagnostics);
-  checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, asynchronyOf });
+  checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, askCallsOf, asynchronyOf });
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(
