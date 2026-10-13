@@ -792,6 +792,77 @@ describe("while a question is answered no write action starts, through any bindi
       await world.db.close();
     }
   });
+
+  test("a read that fails inside transaction(fn), through any binding, fails nothing: the question answers and the application's next call commits", async () => {
+    const world = await fresh();
+    const second = secondOf(world);
+    const { hooks } = helperModule;
+    // A filter on an attribute Doc does not have: the read's cast fails with InvalidInputError.
+    const bogus = { filter: { bogus: { eq: 1 } } };
+    const reads: [string, () => Promise<unknown>][] = [
+      ["the question's binding's run", () => world.binding.run(() => domain.Doc.read(bogus, carol))],
+      ["a second binding's run", () => second.binding.run(() => domain.Doc.read(bogus, carol))],
+      ["a second binding's transaction", () => second.binding.transaction(() => domain.Doc.read(bogus, carol))],
+      ["a privileged read through a second binding", () => second.binding.run(() => (Mesh.privileged(domain.Doc as never) as { read: (input: unknown) => Promise<unknown> }).read(bogus))],
+    ];
+    try {
+      for (const [index, [route, read]] of reads.entries()) {
+        hooks.escape = read;
+        hooks.caught.length = 0;
+        world.seams.length = 0;
+        const decision = await world.binding.transaction(async () => {
+          await domain.Doc.draft({ ownerId: "carol", title: "uncommitted", level: 1 }, carol);
+          const decision = await nudge(carol);
+          await domain.Doc.sketch({ ownerId: "carol", title: "after" }, carol);
+          return decision;
+        });
+        // The helper caught what the read threw, and the question answered what the policy decided.
+        expect([route, hooks.caught]).toEqual([route, [expect.any(InvalidInputError)]]);
+        expect([route, decision]).toEqual([route, allowed(entry("viaEscape", "authorize-if", "async () => await escapes()", true, true))]);
+        // The transaction committed both rows, and its seams ran for both.
+        expect([route, (await dump(world.db) as { docs: unknown[] }).docs.length]).toEqual([route, 4 + 2 * (index + 1)]);
+        expect([route, world.seams]).toEqual([route, ["afterWrite draft", "afterWrite sketch", "afterCommit 2"]]);
+        expect(second.seams).toEqual([]);
+      }
+    } finally {
+      hooks.escape = async () => undefined;
+      await world.db.close();
+    }
+  });
+
+  test("the question's mark outlives its answer: a write a helper's timer starts after the question resolved is refused, and a call made at the same time is not", async () => {
+    const world = await fresh();
+    const { hooks } = helperModule;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let late: Promise<Outcome> | undefined;
+    try {
+      // The helper starts a timer that waits for the question to have answered, then writes.
+      hooks.escape = async () => {
+        late = new Promise((resolve) => setTimeout(async () => { await gate; resolve(await outcome(log())); }, 0));
+      };
+      hooks.caught.length = 0;
+      helperModule.log.length = 0;
+      const decision = await world.binding.run(() => nudge(alice));
+      expect(decision).toEqual(allowed(entry("viaEscape", "authorize-if", "async () => await escapes()", true, true)));
+      expect(hooks.caught).toEqual([]);
+      // The question has answered; the timer's write and an application call start together.
+      const real = world.binding.run(() => domain.Audit.log({ what: "real" }, { system: true }));
+      release();
+      const refused = await late!;
+      expect((await real).what).toBe("real");
+      expect(refused).toEqual({ ok: false, error: expect.any(FrameworkError) });
+      expect(((refused as { error: Error }).error).message).toStartWith("Audit#log cannot write: it was started while Mesh.checkPolicies(Doc#nudge) was answered,");
+      expect(((await dump(world.db)) as { audits: { what: string }[] }).audits.map((row) => row.what)).toEqual(["real"]);
+      // Only the application's call ran Audit#log's check, steps and seams.
+      expect(helperModule.log).toEqual(["Audit validate", "Audit step", "Audit after write"]);
+      expect(world.seams).toEqual(["beforeTransaction log", "afterWrite log", "afterCommit 1"]);
+    } finally {
+      hooks.escape = async () => undefined;
+      release();
+      await world.db.close();
+    }
+  });
 });
 
 describe("questions and calls at once, and a layer that fails", () => {
@@ -843,6 +914,45 @@ describe("questions and calls at once, and a layer that fails", () => {
       expect(world.seams).toEqual(["afterWrite edit", "afterCommit 1"]);
       // A question joined to the transaction hands the layer nothing: no answer, no outcome, and nothing it rejected with.
       expect(world.handed.filter((value) => value instanceof Error || (typeof value === "object" && value !== null && ("ok" in value || "decision" in value)))).toEqual([]);
+    } finally { await world.db.close(); }
+  });
+
+  test("questions beside real writes on a second binding, outside and inside transaction(fn): each gets its own answer, and only the writes write", async () => {
+    const world = await fresh();
+    const second = secondOf(world);
+    try {
+      const asked = () => [
+        checkPolicies(domain.Doc.edit, edit("asked"), alice),
+        checkPolicies(domain.Doc.edit, edit("asked"), bob),
+        outcome(checkPolicies(domain.Doc.poke, { id: ids.plain }, alice)),
+      ];
+      const scenarios: [string, (writes: () => Promise<unknown>) => Promise<unknown[]>, string[], string[]][] = [
+        ["outside", (writes) => world.binding.run(() => Promise.all([...asked(), second.binding.run(writes)])),
+          [], ["beforeTransaction edit", "afterWrite edit", "afterCommit 1", "beforeTransaction log", "afterWrite log", "afterCommit 1"]],
+        ["inside", (writes) => world.binding.transaction(() => Promise.all([...asked(), second.binding.transaction(writes)])),
+          ["afterCommit 2"], ["afterWrite edit", "afterWrite log"]],
+      ];
+      for (const [where, run, mine, theirs] of scenarios) {
+        helperModule.log.length = 0;
+        world.seams.length = 0;
+        second.seams.length = 0;
+        const [aliceEdits, bobEdits, poked, written] = await run(async () => {
+          const edited = await domain.Doc.edit(edit(`parallel ${where}`), alice);
+          await domain.Audit.log({ what: `logged ${where}` }, { system: true });
+          return edited;
+        });
+        expect([where, aliceEdits, bobEdits]).toEqual([where, ALICE_EDITS, BOB_EDITS]);
+        expect(poked).toEqual({ ok: false, error: expect.any(FrameworkError) });
+        expect(((poked as { error: Error }).error).message).toStartWith("Mesh.checkPolicies(Doc#poke) cannot answer without writing: Audit#log");
+        expect((written as { title: string }).title).toBe(`parallel ${where}`);
+        const after = await dump(world.db) as { docs: { id: string; title: string }[]; audits: { what: string }[] };
+        expect(after.docs.find((doc) => doc.id === ids.plain)?.title).toBe(`parallel ${where}`);
+        expect(after.audits.map((row) => row.what).at(-1)).toBe(`logged ${where}`);
+        // Only the second binding's calls ran their checks, steps and seams.
+        expect([where, helperModule.log]).toEqual([where, ["validate", "step", "Audit validate", "Audit step", "Audit after write"]]);
+        expect([where, world.seams, second.seams]).toEqual([where, mine, theirs]);
+      }
+      expect(((await dump(world.db)) as { audits: unknown[] }).audits).toHaveLength(2);
     } finally { await world.db.close(); }
   });
 
