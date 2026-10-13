@@ -863,6 +863,111 @@ describe("while a question is answered no write action starts, through any bindi
       await world.db.close();
     }
   });
+
+  test("once the question has answered, a read its helper left running joins the transaction it was made in while that transaction runs", async () => {
+    const world = await fresh();
+    const { hooks } = helperModule;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let late: Promise<Outcome> | undefined;
+    try {
+      hooks.escape = async () => { late = gate.then(() => outcome(domain.Doc.read({ filter: { ownerId: { eq: "carol" } } }, carol))); };
+      const [decision, read] = await world.binding.transaction(async () => {
+        await domain.Doc.draft({ ownerId: "carol", title: "uncommitted", level: 1 }, carol);
+        const decision = await nudge(carol);
+        release();
+        const read = await late!;
+        await domain.Doc.sketch({ ownerId: "carol", title: "after" }, carol);
+        return [decision, read];
+      });
+      expect(decision).toEqual(allowed(entry("viaEscape", "authorize-if", "async () => await escapes()", true, true)));
+      // The question's layers were dropped when it answered; the read made them again and joined the running transaction.
+      expect(read).toEqual({ ok: true, value: [expect.objectContaining({ title: "uncommitted" })] });
+      expect(((await dump(world.db)) as { docs: unknown[] }).docs).toHaveLength(6);
+    } finally {
+      hooks.escape = async () => undefined;
+      release();
+      await world.db.close();
+    }
+  });
+});
+
+describe("a question asked inside a question", () => {
+  test("a policy's helper asks, in place and through a second binding: each inner answer is the one the call's helper gets, nothing is written and no seam runs, outside and inside transaction(fn)", async () => {
+    const world = await fresh();
+    const second = secondOf(world);
+    const { hooks } = helperModule;
+    const edit = { id: ids.plain, title: "asked inside" };
+    /** What an inner answer is, comparable: a decision or a boolean as is, an error as its class and message. */
+    const plain = (answer: unknown): unknown => {
+      const settled = answer as Outcome;
+      if (typeof answer !== "object" || answer === null || !("ok" in answer)) return answer;
+      return settled.ok ? settled.value : { error: (settled.error as Error).constructor.name, message: (settled.error as Error).message };
+    };
+    // Every inner question the helper of Doc#nudge's policy asks: allowed, denied, one whose policy writes, two through a
+    // second binding's run and transaction, and a can whose policy reads through an entity.
+    hooks.escape = async () => [
+      await checkPolicies(domain.Doc.edit, edit, alice),
+      await checkPolicies(domain.Doc.edit, edit, bob),
+      await outcome(checkPolicies(domain.Doc.poke, { id: ids.plain }, alice)),
+      await second.binding.run(() => checkPolicies(domain.Doc.edit, edit, alice)),
+      await second.binding.transaction(() => checkPolicies(domain.Doc.edit, edit, bob)),
+      await can(domain.Doc.peek, { id: ids.plain }, carol),
+    ];
+    const NUDGE = allowed(entry("viaEscape", "authorize-if", "async () => await escapes()", true, true));
+    try {
+      for (const where of ["outside", "inside"]) {
+        const inside = where === "inside";
+        const draft = () => domain.Doc.draft({ ownerId: "carol", title: `uncommitted ${where}`, level: 1 }, carol);
+        hooks.results.length = 0;
+        hooks.caught.length = 0;
+        helperModule.log.length = 0;
+        world.seams.length = 0;
+        const before = await dump(world.db) as { docs: unknown[]; audits: unknown[] };
+        const decision = inside
+          ? await world.binding.transaction(async () => {
+            await draft();
+            const decision = await checkPolicies(domain.Doc.nudge, { id: ids.plain }, carol);
+            await domain.Doc.sketch({ ownerId: "carol", title: `after ${where}` }, carol);
+            return decision;
+          })
+          : await world.binding.run(() => checkPolicies(domain.Doc.nudge, { id: ids.plain }, carol));
+        expect([where, decision]).toEqual([where, NUDGE]);
+        expect([where, hooks.caught]).toEqual([where, []]);
+        const asked = (hooks.results[0] as unknown[]).map(plain);
+        // The questions wrote nothing and ran no seam, no check and no step; inside, the transaction committed its own two rows.
+        const after = await dump(world.db) as { docs: unknown[]; audits: unknown[] };
+        expect([where, after.docs.length, after.audits]).toEqual([where, before.docs.length + (inside ? 2 : 0), []]);
+        expect([where, world.seams, second.seams]).toEqual([where, inside ? ["afterWrite draft", "afterWrite sketch", "afterCommit 2"] : [], []]);
+        // Inside, the draft ran its check and its step; nothing else did.
+        expect([where, helperModule.log]).toEqual([where, inside ? ["validate", "step"] : []]);
+        // The call itself, on the same data, runs the same helper, which asks the same questions.
+        hooks.results.length = 0;
+        await (inside
+          ? world.binding.transaction(async () => {
+            await draft();
+            await domain.Doc.nudge({ id: ids.plain }, carol);
+          })
+          : world.binding.run(() => domain.Doc.nudge({ id: ids.plain }, carol)));
+        const called = (hooks.results[0] as unknown[]).map(plain);
+        expect([where, asked]).toEqual([where, called]);
+        expect([where, asked]).toEqual([where, [
+          allowed(entry("owner", "authorize-if", OWNER, true, true), entry("blocklist", "forbid-if", BLOCKLIST, false, true), entry("frozen", "forbid-if", "() => &locked", false, true)),
+          denied(entry("owner", "authorize-if", OWNER, false, true), entry("blocklist", "forbid-if", BLOCKLIST, false, false), entry("frozen", "forbid-if", "() => &locked", false, false)),
+          { error: "FrameworkError", message: expect.stringContaining("Mesh.checkPolicies(Doc#poke) cannot answer without writing: Audit#log, called while its policies were checked, writes a row.") },
+          allowed(entry("owner", "authorize-if", OWNER, true, true), entry("blocklist", "forbid-if", BLOCKLIST, false, true), entry("frozen", "forbid-if", "() => &locked", false, true)),
+          denied(entry("owner", "authorize-if", OWNER, false, true), entry("blocklist", "forbid-if", BLOCKLIST, false, false), entry("frozen", "forbid-if", "() => &locked", false, false)),
+          // Carol owns a doc only inside the transaction, where her uncommitted draft is.
+          inside,
+        ]]);
+        expect(second.seams).toEqual([]);
+      }
+      expect(((await dump(world.db)) as { audits: unknown[] }).audits).toEqual([]);
+    } finally {
+      hooks.escape = async () => undefined;
+      await world.db.close();
+    }
+  });
 });
 
 describe("questions and calls at once, and a layer that fails", () => {
