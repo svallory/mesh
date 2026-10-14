@@ -164,7 +164,7 @@ export const $expressions = {
     $.and($.ne($s.self.state, "released"), () => $.ne($s.self.state, "revoked")),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:72:16)
   "renew.check.claimNotExpired.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
-    $.gt($s.self.expiresAt, $.now($s)),
+    $.and($.ne($s.self.state, "expired"), () => $.gt($s.self.expiresAt, $.now($s))),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:77:16)
   "renew.check.versionMatches.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
     $.or($.isNull($s.input?.expectedVersion), () =>
@@ -208,7 +208,7 @@ export const $expressions = {
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:106:16)
   "release.check.claimNotExpired.that": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
-  ) => $.gt($s.self.expiresAt, $.now($s)),
+  ) => $.and($.ne($s.self.state, "expired"), () => $.gt($s.self.expiresAt, $.now($s))),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:111:16)
   "release.check.versionMatches.that": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,

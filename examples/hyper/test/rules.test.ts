@@ -577,6 +577,15 @@ const RULES: Record<string, Case> = {
       await Claim.expire({ id: held.id }, asSystem(w.alice));
       expect(codes(await issuesOf(Claim.renew({ id: held.id, fence: held.fence }, as(w.bot))))).toEqual(["claim.expired"]);
       expect(codes(await issuesOf(Claim.release({ id: held.id, fence: held.fence }, as(w.bot))))).toEqual(["claim.expired"]);
+      // A claim marked expired stays expired whatever the clock reads, as when the clock steps back past the lease end
+      // after the sweeper marked it: one expired while its lease still runs can be neither renewed nor released.
+      const marked = await claim(w, w.bot, (await Task.create({ title: "Marked" }, as(w.alice))).id);
+      await Claim.expire({ id: marked.id }, asSystem(w.alice));
+      const before = await one(Claim.read({ filter: { id: { eq: marked.id } } }, as(w.alice)));
+      expect(before).toMatchObject({ state: "expired", expiresAt: minutes(20) });
+      expect(codes(await issuesOf(Claim.renew({ id: marked.id, fence: marked.fence }, as(w.bot))))).toEqual(["claim.expired"]);
+      expect(codes(await issuesOf(Claim.release({ id: marked.id, fence: marked.fence }, as(w.bot))))).toEqual(["claim.expired"]);
+      expect(await one(Claim.read({ filter: { id: { eq: marked.id } } }, as(w.alice)))).toEqual(before);
     },
   },
   "submission.none-pending": {

@@ -15508,7 +15508,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 84,
-                      "offset": 3844
+                      "offset": 3867
                     }
                   },
                   "value": {
@@ -15519,7 +15519,7 @@
                       "column": 21,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 84,
-                      "offset": 3855
+                      "offset": 3878
                     },
                     "source": "({ context }) => leaseEnd(%.now, context.leaseMs)",
                     "tree": {
@@ -15532,7 +15532,7 @@
                             "column": 47,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 84,
-                            "offset": 3881
+                            "offset": 3904
                           }
                         },
                         {
@@ -15545,7 +15545,7 @@
                               "column": 54,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 84,
-                              "offset": 3888
+                              "offset": 3911
                             }
                           },
                           "optional": false,
@@ -15553,7 +15553,7 @@
                             "column": 54,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 84,
-                            "offset": 3888
+                            "offset": 3911
                           }
                         }
                       ],
@@ -15564,7 +15564,7 @@
                         "column": 38,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 84,
-                        "offset": 3872
+                        "offset": 3895
                       }
                     }
                   }
@@ -15575,7 +15575,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 83,
-                "offset": 3830
+                "offset": 3853
               }
             },
             {
@@ -15597,7 +15597,7 @@
                     "column": 27,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 85,
-                    "offset": 3932
+                    "offset": 3955
                   },
                   "roots": [],
                   "why": "run-step"
@@ -15606,7 +15606,7 @@
                   "column": 27,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 85,
-                  "offset": 3932
+                  "offset": 3955
                 },
                 "source": "({ self, context }) {\n          await Task.touch({ id: self.taskId }, { ...context, system: true });\n        }"
               },
@@ -15615,7 +15615,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 85,
-                "offset": 3913
+                "offset": 3936
               }
             }
           ],
@@ -15985,23 +15985,45 @@
                   "line": 72,
                   "offset": 3320
                 },
-                "source": "() => &expiresAt > %.now",
+                "source": "() => &state !== :expired && &expiresAt > %.now",
                 "tree": {
                   "args": [
                     {
-                      "kind": "member",
-                      "name": "expiresAt",
-                      "object": {
-                        "kind": "var",
-                        "name": "self",
-                        "position": {
-                          "column": 21,
-                          "file": "src/domain/work/claim.mesh.mx",
-                          "line": 72,
-                          "offset": 3326
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "state",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 21,
+                              "file": "src/domain/work/claim.mesh.mx",
+                              "line": 72,
+                              "offset": 3326
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 21,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 72,
+                            "offset": 3326
+                          }
+                        },
+                        {
+                          "kind": "atom",
+                          "position": {
+                            "column": 32,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 72,
+                            "offset": 3337
+                          },
+                          "value": "expired"
                         }
-                      },
-                      "optional": false,
+                      ],
+                      "fn": "ne",
+                      "kind": "call",
                       "position": {
                         "column": 21,
                         "file": "src/domain/work/claim.mesh.mx",
@@ -16010,18 +16032,51 @@
                       }
                     },
                     {
-                      "args": [],
-                      "fn": "now",
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expiresAt",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 44,
+                              "file": "src/domain/work/claim.mesh.mx",
+                              "line": 72,
+                              "offset": 3349
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 44,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 72,
+                            "offset": 3349
+                          }
+                        },
+                        {
+                          "args": [],
+                          "fn": "now",
+                          "kind": "call",
+                          "position": {
+                            "column": 57,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 72,
+                            "offset": 3362
+                          }
+                        }
+                      ],
+                      "fn": "gt",
                       "kind": "call",
                       "position": {
-                        "column": 34,
+                        "column": 44,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 72,
-                        "offset": 3339
+                        "offset": 3349
                       }
                     }
                   ],
-                  "fn": "gt",
+                  "fn": "and",
                   "kind": "call",
                   "position": {
                     "column": 21,
@@ -16058,7 +16113,7 @@
                     "column": 34,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 80,
-                    "offset": 3729
+                    "offset": 3752
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -16067,7 +16122,7 @@
                   "column": 18,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 80,
-                  "offset": 3713
+                  "offset": 3736
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })"
               },
@@ -16077,7 +16132,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 76,
-                "offset": 3458
+                "offset": 3481
               },
               "that": {
                 "needs": [
@@ -16090,7 +16145,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 77,
-                  "offset": 3497
+                  "offset": 3520
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version",
                 "tree": {
@@ -16107,7 +16162,7 @@
                               "column": 30,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 77,
-                              "offset": 3512
+                              "offset": 3535
                             }
                           },
                           "optional": false,
@@ -16115,7 +16170,7 @@
                             "column": 30,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 77,
-                            "offset": 3512
+                            "offset": 3535
                           }
                         }
                       ],
@@ -16125,7 +16180,7 @@
                         "column": 30,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 77,
-                        "offset": 3512
+                        "offset": 3535
                       }
                     },
                     {
@@ -16140,7 +16195,7 @@
                               "column": 63,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 77,
-                              "offset": 3545
+                              "offset": 3568
                             }
                           },
                           "optional": false,
@@ -16148,7 +16203,7 @@
                             "column": 63,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 77,
-                            "offset": 3545
+                            "offset": 3568
                           }
                         },
                         {
@@ -16164,7 +16219,7 @@
                                 "column": 89,
                                 "file": "src/domain/work/claim.mesh.mx",
                                 "line": 77,
-                                "offset": 3571
+                                "offset": 3594
                               }
                             },
                             "optional": false,
@@ -16172,7 +16227,7 @@
                               "column": 89,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 77,
-                              "offset": 3571
+                              "offset": 3594
                             }
                           },
                           "optional": false,
@@ -16180,7 +16235,7 @@
                             "column": 89,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 77,
-                            "offset": 3571
+                            "offset": 3594
                           }
                         }
                       ],
@@ -16190,7 +16245,7 @@
                         "column": 63,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 77,
-                        "offset": 3545
+                        "offset": 3568
                       }
                     }
                   ],
@@ -16200,7 +16255,7 @@
                     "column": 30,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 77,
-                    "offset": 3512
+                    "offset": 3535
                   }
                 }
               }
@@ -16218,7 +16273,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 118,
-                      "offset": 5285
+                      "offset": 5331
                     }
                   },
                   "value": {
@@ -16232,7 +16287,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 119,
-                      "offset": 5312
+                      "offset": 5358
                     }
                   },
                   "value": {
@@ -16241,7 +16296,7 @@
                       "column": 19,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 119,
-                      "offset": 5321
+                      "offset": 5367
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -16252,7 +16307,7 @@
                         "column": 25,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 119,
-                        "offset": 5327
+                        "offset": 5373
                       }
                     }
                   }
@@ -16264,7 +16319,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 120,
-                      "offset": 5343
+                      "offset": 5389
                     }
                   },
                   "value": {
@@ -16275,7 +16330,7 @@
                       "column": 21,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 120,
-                      "offset": 5354
+                      "offset": 5400
                     },
                     "source": "({ input }) => input.reason ?? \"released\"",
                     "tree": {
@@ -16290,7 +16345,7 @@
                               "column": 36,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 120,
-                              "offset": 5369
+                              "offset": 5415
                             }
                           },
                           "optional": false,
@@ -16298,7 +16353,7 @@
                             "column": 36,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 120,
-                            "offset": 5369
+                            "offset": 5415
                           }
                         },
                         {
@@ -16307,7 +16362,7 @@
                             "column": 52,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 120,
-                            "offset": 5385
+                            "offset": 5431
                           },
                           "value": "released"
                         }
@@ -16318,7 +16373,7 @@
                         "column": 36,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 120,
-                        "offset": 5369
+                        "offset": 5415
                       }
                     }
                   }
@@ -16329,7 +16384,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 117,
-                "offset": 5271
+                "offset": 5317
               }
             },
             {
@@ -16351,7 +16406,7 @@
                     "column": 27,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 121,
-                    "offset": 5423
+                    "offset": 5469
                   },
                   "roots": [],
                   "why": "run-step"
@@ -16360,7 +16415,7 @@
                   "column": 27,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 121,
-                  "offset": 5423
+                  "offset": 5469
                 },
                 "source": "({ self, context }) {\n          await Task.touch({ id: self.taskId }, { ...context, system: true });\n        }"
               },
@@ -16369,7 +16424,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 121,
-                "offset": 5404
+                "offset": 5450
               }
             }
           ],
@@ -16382,7 +16437,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 90,
-                "offset": 4083
+                "offset": 4106
               },
               "type": "integer"
             },
@@ -16394,7 +16449,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 91,
-                "offset": 4106
+                "offset": 4129
               },
               "type": "string"
             },
@@ -16406,7 +16461,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 92,
-                "offset": 4138
+                "offset": 4161
               },
               "type": "integer"
             }
@@ -16417,7 +16472,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 88,
-            "offset": 4047
+            "offset": 4070
           },
           "validate": [
             {
@@ -16445,7 +16500,7 @@
                     "column": 25,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 98,
-                    "offset": 4445
+                    "offset": 4468
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -16454,7 +16509,7 @@
                   "column": 18,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 98,
-                  "offset": 4438
+                  "offset": 4461
                 },
                 "source": "() => ({ currentFence: &task.maxFence, stale: false })"
               },
@@ -16464,7 +16519,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 94,
-                "offset": 4195
+                "offset": 4218
               },
               "that": {
                 "needs": [
@@ -16478,7 +16533,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 95,
-                  "offset": 4232
+                  "offset": 4255
                 },
                 "source": "({ input }) => input.fence === &fence && input.fence === &task.maxFence",
                 "tree": {
@@ -16495,7 +16550,7 @@
                               "column": 30,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 95,
-                              "offset": 4247
+                              "offset": 4270
                             }
                           },
                           "optional": false,
@@ -16503,7 +16558,7 @@
                             "column": 30,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 95,
-                            "offset": 4247
+                            "offset": 4270
                           }
                         },
                         {
@@ -16516,7 +16571,7 @@
                               "column": 46,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 95,
-                              "offset": 4263
+                              "offset": 4286
                             }
                           },
                           "optional": false,
@@ -16524,7 +16579,7 @@
                             "column": 46,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 95,
-                            "offset": 4263
+                            "offset": 4286
                           }
                         }
                       ],
@@ -16534,7 +16589,7 @@
                         "column": 30,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 95,
-                        "offset": 4247
+                        "offset": 4270
                       }
                     },
                     {
@@ -16549,7 +16604,7 @@
                               "column": 56,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 95,
-                              "offset": 4273
+                              "offset": 4296
                             }
                           },
                           "optional": false,
@@ -16557,7 +16612,7 @@
                             "column": 56,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 95,
-                            "offset": 4273
+                            "offset": 4296
                           }
                         },
                         {
@@ -16573,7 +16628,7 @@
                                 "column": 72,
                                 "file": "src/domain/work/claim.mesh.mx",
                                 "line": 95,
-                                "offset": 4289
+                                "offset": 4312
                               }
                             },
                             "optional": false,
@@ -16581,7 +16636,7 @@
                               "column": 72,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 95,
-                              "offset": 4289
+                              "offset": 4312
                             }
                           },
                           "optional": false,
@@ -16589,7 +16644,7 @@
                             "column": 72,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 95,
-                            "offset": 4289
+                            "offset": 4312
                           }
                         }
                       ],
@@ -16599,7 +16654,7 @@
                         "column": 56,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 95,
-                        "offset": 4273
+                        "offset": 4296
                       }
                     }
                   ],
@@ -16609,7 +16664,7 @@
                     "column": 30,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 95,
-                    "offset": 4247
+                    "offset": 4270
                   }
                 }
               }
@@ -16622,7 +16677,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 100,
-                "offset": 4511
+                "offset": 4534
               },
               "that": {
                 "params": [],
@@ -16630,7 +16685,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 101,
-                  "offset": 4547
+                  "offset": 4570
                 },
                 "source": "() => &state !== :released && &state !== :revoked",
                 "tree": {
@@ -16647,7 +16702,7 @@
                               "column": 21,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 101,
-                              "offset": 4553
+                              "offset": 4576
                             }
                           },
                           "optional": false,
@@ -16655,7 +16710,7 @@
                             "column": 21,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 101,
-                            "offset": 4553
+                            "offset": 4576
                           }
                         },
                         {
@@ -16664,7 +16719,7 @@
                             "column": 32,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 101,
-                            "offset": 4564
+                            "offset": 4587
                           },
                           "value": "released"
                         }
@@ -16675,7 +16730,7 @@
                         "column": 21,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 101,
-                        "offset": 4553
+                        "offset": 4576
                       }
                     },
                     {
@@ -16690,7 +16745,7 @@
                               "column": 45,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 101,
-                              "offset": 4577
+                              "offset": 4600
                             }
                           },
                           "optional": false,
@@ -16698,7 +16753,7 @@
                             "column": 45,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 101,
-                            "offset": 4577
+                            "offset": 4600
                           }
                         },
                         {
@@ -16707,7 +16762,7 @@
                             "column": 56,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 101,
-                            "offset": 4588
+                            "offset": 4611
                           },
                           "value": "revoked"
                         }
@@ -16718,7 +16773,7 @@
                         "column": 45,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 101,
-                        "offset": 4577
+                        "offset": 4600
                       }
                     }
                   ],
@@ -16728,7 +16783,7 @@
                     "column": 21,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 101,
-                    "offset": 4553
+                    "offset": 4576
                   }
                 }
               }
@@ -16741,7 +16796,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 105,
-                "offset": 4721
+                "offset": 4744
               },
               "that": {
                 "params": [],
@@ -16749,51 +16804,106 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 106,
-                  "offset": 4761
+                  "offset": 4784
                 },
-                "source": "() => &expiresAt > %.now",
+                "source": "() => &state !== :expired && &expiresAt > %.now",
                 "tree": {
                   "args": [
                     {
-                      "kind": "member",
-                      "name": "expiresAt",
-                      "object": {
-                        "kind": "var",
-                        "name": "self",
-                        "position": {
-                          "column": 21,
-                          "file": "src/domain/work/claim.mesh.mx",
-                          "line": 106,
-                          "offset": 4767
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "state",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 21,
+                              "file": "src/domain/work/claim.mesh.mx",
+                              "line": 106,
+                              "offset": 4790
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 21,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 106,
+                            "offset": 4790
+                          }
+                        },
+                        {
+                          "kind": "atom",
+                          "position": {
+                            "column": 32,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 106,
+                            "offset": 4801
+                          },
+                          "value": "expired"
                         }
-                      },
-                      "optional": false,
+                      ],
+                      "fn": "ne",
+                      "kind": "call",
                       "position": {
                         "column": 21,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 106,
-                        "offset": 4767
+                        "offset": 4790
                       }
                     },
                     {
-                      "args": [],
-                      "fn": "now",
+                      "args": [
+                        {
+                          "kind": "member",
+                          "name": "expiresAt",
+                          "object": {
+                            "kind": "var",
+                            "name": "self",
+                            "position": {
+                              "column": 44,
+                              "file": "src/domain/work/claim.mesh.mx",
+                              "line": 106,
+                              "offset": 4813
+                            }
+                          },
+                          "optional": false,
+                          "position": {
+                            "column": 44,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 106,
+                            "offset": 4813
+                          }
+                        },
+                        {
+                          "args": [],
+                          "fn": "now",
+                          "kind": "call",
+                          "position": {
+                            "column": 57,
+                            "file": "src/domain/work/claim.mesh.mx",
+                            "line": 106,
+                            "offset": 4826
+                          }
+                        }
+                      ],
+                      "fn": "gt",
                       "kind": "call",
                       "position": {
-                        "column": 34,
+                        "column": 44,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 106,
-                        "offset": 4780
+                        "offset": 4813
                       }
                     }
                   ],
-                  "fn": "gt",
+                  "fn": "and",
                   "kind": "call",
                   "position": {
                     "column": 21,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 106,
-                    "offset": 4767
+                    "offset": 4790
                   }
                 }
               }
@@ -16824,7 +16934,7 @@
                     "column": 34,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 114,
-                    "offset": 5170
+                    "offset": 5216
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -16833,7 +16943,7 @@
                   "column": 18,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 114,
-                  "offset": 5154
+                  "offset": 5200
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })"
               },
@@ -16843,7 +16953,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 110,
-                "offset": 4899
+                "offset": 4945
               },
               "that": {
                 "needs": [
@@ -16856,7 +16966,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 111,
-                  "offset": 4938
+                  "offset": 4984
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version",
                 "tree": {
@@ -16873,7 +16983,7 @@
                               "column": 30,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 111,
-                              "offset": 4953
+                              "offset": 4999
                             }
                           },
                           "optional": false,
@@ -16881,7 +16991,7 @@
                             "column": 30,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 111,
-                            "offset": 4953
+                            "offset": 4999
                           }
                         }
                       ],
@@ -16891,7 +17001,7 @@
                         "column": 30,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 111,
-                        "offset": 4953
+                        "offset": 4999
                       }
                     },
                     {
@@ -16906,7 +17016,7 @@
                               "column": 63,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 111,
-                              "offset": 4986
+                              "offset": 5032
                             }
                           },
                           "optional": false,
@@ -16914,7 +17024,7 @@
                             "column": 63,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 111,
-                            "offset": 4986
+                            "offset": 5032
                           }
                         },
                         {
@@ -16930,7 +17040,7 @@
                                 "column": 89,
                                 "file": "src/domain/work/claim.mesh.mx",
                                 "line": 111,
-                                "offset": 5012
+                                "offset": 5058
                               }
                             },
                             "optional": false,
@@ -16938,7 +17048,7 @@
                               "column": 89,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 111,
-                              "offset": 5012
+                              "offset": 5058
                             }
                           },
                           "optional": false,
@@ -16946,7 +17056,7 @@
                             "column": 89,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 111,
-                            "offset": 5012
+                            "offset": 5058
                           }
                         }
                       ],
@@ -16956,7 +17066,7 @@
                         "column": 63,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 111,
-                        "offset": 4986
+                        "offset": 5032
                       }
                     }
                   ],
@@ -16966,7 +17076,7 @@
                     "column": 30,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 111,
-                    "offset": 4953
+                    "offset": 4999
                   }
                 }
               }
@@ -16984,7 +17094,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 142,
-                      "offset": 6267
+                      "offset": 6313
                     }
                   },
                   "value": {
@@ -16998,7 +17108,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 143,
-                      "offset": 6293
+                      "offset": 6339
                     }
                   },
                   "value": {
@@ -17007,7 +17117,7 @@
                       "column": 19,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 143,
-                      "offset": 6302
+                      "offset": 6348
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -17018,7 +17128,7 @@
                         "column": 25,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 143,
-                        "offset": 6308
+                        "offset": 6354
                       }
                     }
                   }
@@ -17030,7 +17140,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 144,
-                      "offset": 6324
+                      "offset": 6370
                     }
                   },
                   "value": {
@@ -17041,7 +17151,7 @@
                       "column": 21,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 144,
-                      "offset": 6335
+                      "offset": 6381
                     },
                     "source": "({ input }) => input.reason",
                     "tree": {
@@ -17054,7 +17164,7 @@
                           "column": 36,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 144,
-                          "offset": 6350
+                          "offset": 6396
                         }
                       },
                       "optional": false,
@@ -17062,7 +17172,7 @@
                         "column": 36,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 144,
-                        "offset": 6350
+                        "offset": 6396
                       }
                     }
                   }
@@ -17073,7 +17183,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 141,
-                "offset": 6253
+                "offset": 6299
               }
             },
             {
@@ -17095,7 +17205,7 @@
                     "column": 27,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 145,
-                    "offset": 6390
+                    "offset": 6436
                   },
                   "roots": [],
                   "why": "run-step"
@@ -17104,7 +17214,7 @@
                   "column": 27,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 145,
-                  "offset": 6390
+                  "offset": 6436
                 },
                 "source": "({ self, context }) {\n          await Task.touch({ id: self.taskId }, { ...context, system: true });\n        }"
               },
@@ -17113,7 +17223,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 145,
-                "offset": 6371
+                "offset": 6417
               }
             }
           ],
@@ -17127,7 +17237,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 126,
-                "offset": 5573
+                "offset": 5619
               },
               "type": "string"
             },
@@ -17139,7 +17249,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 127,
-                "offset": 5602
+                "offset": 5648
               },
               "type": "integer"
             }
@@ -17150,7 +17260,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 124,
-            "offset": 5538
+            "offset": 5584
           },
           "validate": [
             {
@@ -17161,7 +17271,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 129,
-                "offset": 5659
+                "offset": 5705
               },
               "that": {
                 "needs": [
@@ -17172,7 +17282,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 130,
-                  "offset": 5695
+                  "offset": 5741
                 },
                 "source": "() => &state === :active && !&lapsed",
                 "tree": {
@@ -17189,7 +17299,7 @@
                               "column": 21,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 130,
-                              "offset": 5701
+                              "offset": 5747
                             }
                           },
                           "optional": false,
@@ -17197,7 +17307,7 @@
                             "column": 21,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 130,
-                            "offset": 5701
+                            "offset": 5747
                           }
                         },
                         {
@@ -17206,7 +17316,7 @@
                             "column": 32,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 130,
-                            "offset": 5712
+                            "offset": 5758
                           },
                           "value": "active"
                         }
@@ -17217,7 +17327,7 @@
                         "column": 21,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 130,
-                        "offset": 5701
+                        "offset": 5747
                       }
                     },
                     {
@@ -17232,7 +17342,7 @@
                               "column": 44,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 130,
-                              "offset": 5724
+                              "offset": 5770
                             }
                           },
                           "optional": false,
@@ -17240,7 +17350,7 @@
                             "column": 44,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 130,
-                            "offset": 5724
+                            "offset": 5770
                           }
                         }
                       ],
@@ -17250,7 +17360,7 @@
                         "column": 43,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 130,
-                        "offset": 5723
+                        "offset": 5769
                       }
                     }
                   ],
@@ -17260,7 +17370,7 @@
                     "column": 21,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 130,
-                    "offset": 5701
+                    "offset": 5747
                   }
                 }
               }
@@ -17291,7 +17401,7 @@
                     "column": 34,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 138,
-                    "offset": 6152
+                    "offset": 6198
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -17300,7 +17410,7 @@
                   "column": 18,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 138,
-                  "offset": 6136
+                  "offset": 6182
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })"
               },
@@ -17310,7 +17420,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 134,
-                "offset": 5881
+                "offset": 5927
               },
               "that": {
                 "needs": [
@@ -17323,7 +17433,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 135,
-                  "offset": 5920
+                  "offset": 5966
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version",
                 "tree": {
@@ -17340,7 +17450,7 @@
                               "column": 30,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 135,
-                              "offset": 5935
+                              "offset": 5981
                             }
                           },
                           "optional": false,
@@ -17348,7 +17458,7 @@
                             "column": 30,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 135,
-                            "offset": 5935
+                            "offset": 5981
                           }
                         }
                       ],
@@ -17358,7 +17468,7 @@
                         "column": 30,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 135,
-                        "offset": 5935
+                        "offset": 5981
                       }
                     },
                     {
@@ -17373,7 +17483,7 @@
                               "column": 63,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 135,
-                              "offset": 5968
+                              "offset": 6014
                             }
                           },
                           "optional": false,
@@ -17381,7 +17491,7 @@
                             "column": 63,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 135,
-                            "offset": 5968
+                            "offset": 6014
                           }
                         },
                         {
@@ -17397,7 +17507,7 @@
                                 "column": 89,
                                 "file": "src/domain/work/claim.mesh.mx",
                                 "line": 135,
-                                "offset": 5994
+                                "offset": 6040
                               }
                             },
                             "optional": false,
@@ -17405,7 +17515,7 @@
                               "column": 89,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 135,
-                              "offset": 5994
+                              "offset": 6040
                             }
                           },
                           "optional": false,
@@ -17413,7 +17523,7 @@
                             "column": 89,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 135,
-                            "offset": 5994
+                            "offset": 6040
                           }
                         }
                       ],
@@ -17423,7 +17533,7 @@
                         "column": 63,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 135,
-                        "offset": 5968
+                        "offset": 6014
                       }
                     }
                   ],
@@ -17433,7 +17543,7 @@
                     "column": 30,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 135,
-                    "offset": 5935
+                    "offset": 5981
                   }
                 }
               }
@@ -17451,7 +17561,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 159,
-                      "offset": 6781
+                      "offset": 6827
                     }
                   },
                   "value": {
@@ -17465,7 +17575,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 160,
-                      "offset": 6807
+                      "offset": 6853
                     }
                   },
                   "value": {
@@ -17474,7 +17584,7 @@
                       "column": 19,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 160,
-                      "offset": 6816
+                      "offset": 6862
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -17485,7 +17595,7 @@
                         "column": 25,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 160,
-                        "offset": 6822
+                        "offset": 6868
                       }
                     }
                   }
@@ -17497,7 +17607,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 161,
-                      "offset": 6838
+                      "offset": 6884
                     }
                   },
                   "value": {
@@ -17508,7 +17618,7 @@
                       "column": 21,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 161,
-                      "offset": 6849
+                      "offset": 6895
                     },
                     "source": "({ input }) => input.reason ?? \"lease expired\"",
                     "tree": {
@@ -17523,7 +17633,7 @@
                               "column": 36,
                               "file": "src/domain/work/claim.mesh.mx",
                               "line": 161,
-                              "offset": 6864
+                              "offset": 6910
                             }
                           },
                           "optional": false,
@@ -17531,7 +17641,7 @@
                             "column": 36,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 161,
-                            "offset": 6864
+                            "offset": 6910
                           }
                         },
                         {
@@ -17540,7 +17650,7 @@
                             "column": 52,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 161,
-                            "offset": 6880
+                            "offset": 6926
                           },
                           "value": "lease expired"
                         }
@@ -17551,7 +17661,7 @@
                         "column": 36,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 161,
-                        "offset": 6864
+                        "offset": 6910
                       }
                     }
                   }
@@ -17562,7 +17672,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 158,
-                "offset": 6767
+                "offset": 6813
               }
             },
             {
@@ -17584,7 +17694,7 @@
                     "column": 27,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 162,
-                    "offset": 6923
+                    "offset": 6969
                   },
                   "roots": [],
                   "why": "run-step"
@@ -17593,7 +17703,7 @@
                   "column": 27,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 162,
-                  "offset": 6923
+                  "offset": 6969
                 },
                 "source": "({ self, context }) {\n          await Task.touch({ id: self.taskId }, { ...context, system: true });\n        }"
               },
@@ -17602,7 +17712,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 162,
-                "offset": 6904
+                "offset": 6950
               }
             }
           ],
@@ -17615,7 +17725,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 150,
-                "offset": 6540
+                "offset": 6586
               },
               "type": "string"
             }
@@ -17626,7 +17736,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 148,
-            "offset": 6505
+            "offset": 6551
           },
           "validate": [
             {
@@ -17637,7 +17747,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 152,
-                "offset": 6587
+                "offset": 6633
               },
               "that": {
                 "params": [],
@@ -17645,7 +17755,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 153,
-                  "offset": 6623
+                  "offset": 6669
                 },
                 "source": "() => &state === :active",
                 "tree": {
@@ -17660,7 +17770,7 @@
                           "column": 21,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 153,
-                          "offset": 6629
+                          "offset": 6675
                         }
                       },
                       "optional": false,
@@ -17668,7 +17778,7 @@
                         "column": 21,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 153,
-                        "offset": 6629
+                        "offset": 6675
                       }
                     },
                     {
@@ -17677,7 +17787,7 @@
                         "column": 32,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 153,
-                        "offset": 6640
+                        "offset": 6686
                       },
                       "value": "active"
                     }
@@ -17688,7 +17798,7 @@
                     "column": 21,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 153,
-                    "offset": 6629
+                    "offset": 6675
                   }
                 }
               }
@@ -17706,7 +17816,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 177,
-                      "offset": 7363
+                      "offset": 7409
                     }
                   },
                   "value": {
@@ -17717,7 +17827,7 @@
                       "column": 17,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 177,
-                      "offset": 7370
+                      "offset": 7416
                     },
                     "source": "({ input }) => input.outcome",
                     "tree": {
@@ -17730,7 +17840,7 @@
                           "column": 32,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 177,
-                          "offset": 7385
+                          "offset": 7431
                         }
                       },
                       "optional": false,
@@ -17738,7 +17848,7 @@
                         "column": 32,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 177,
-                        "offset": 7385
+                        "offset": 7431
                       }
                     }
                   }
@@ -17750,7 +17860,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 178,
-                      "offset": 7409
+                      "offset": 7455
                     }
                   },
                   "value": {
@@ -17759,7 +17869,7 @@
                       "column": 19,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 178,
-                      "offset": 7418
+                      "offset": 7464
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -17770,7 +17880,7 @@
                         "column": 25,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 178,
-                        "offset": 7424
+                        "offset": 7470
                       }
                     }
                   }
@@ -17782,7 +17892,7 @@
                       "column": 10,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 179,
-                      "offset": 7440
+                      "offset": 7486
                     }
                   },
                   "value": {
@@ -17793,7 +17903,7 @@
                       "column": 21,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 179,
-                      "offset": 7451
+                      "offset": 7497
                     },
                     "source": "({ input }) => input.reason",
                     "tree": {
@@ -17806,7 +17916,7 @@
                           "column": 36,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 179,
-                          "offset": 7466
+                          "offset": 7512
                         }
                       },
                       "optional": false,
@@ -17814,7 +17924,7 @@
                         "column": 36,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 179,
-                        "offset": 7466
+                        "offset": 7512
                       }
                     }
                   }
@@ -17825,7 +17935,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 176,
-                "offset": 7349
+                "offset": 7395
               }
             }
           ],
@@ -17838,7 +17948,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 167,
-                "offset": 7070
+                "offset": 7116
               },
               "type": "enum",
               "values": [
@@ -17861,7 +17971,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 168,
-                "offset": 7131
+                "offset": 7177
               },
               "type": "string"
             }
@@ -17872,7 +17982,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 165,
-            "offset": 7038
+            "offset": 7084
           },
           "validate": [
             {
@@ -17883,7 +17993,7 @@
                 "column": 8,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 170,
-                "offset": 7169
+                "offset": 7215
               },
               "that": {
                 "params": [],
@@ -17891,7 +18001,7 @@
                   "column": 15,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 171,
-                  "offset": 7205
+                  "offset": 7251
                 },
                 "source": "() => &state === :active",
                 "tree": {
@@ -17906,7 +18016,7 @@
                           "column": 21,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 171,
-                          "offset": 7211
+                          "offset": 7257
                         }
                       },
                       "optional": false,
@@ -17914,7 +18024,7 @@
                         "column": 21,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 171,
-                        "offset": 7211
+                        "offset": 7257
                       }
                     },
                     {
@@ -17923,7 +18033,7 @@
                         "column": 32,
                         "file": "src/domain/work/claim.mesh.mx",
                         "line": 171,
-                        "offset": 7222
+                        "offset": 7268
                       },
                       "value": "active"
                     }
@@ -17934,7 +18044,7 @@
                     "column": 21,
                     "file": "src/domain/work/claim.mesh.mx",
                     "line": 171,
-                    "offset": 7211
+                    "offset": 7257
                   }
                 }
               }
@@ -18278,7 +18388,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 182,
-                "offset": 7547
+                "offset": 7593
               },
               "source": "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
               "tree": {
@@ -18292,7 +18402,7 @@
                           "column": 57,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 182,
-                          "offset": 7585
+                          "offset": 7631
                         }
                       }
                     ],
@@ -18302,7 +18412,7 @@
                       "column": 43,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 182,
-                      "offset": 7571
+                      "offset": 7617
                     }
                   },
                   {
@@ -18317,7 +18427,7 @@
                             "column": 69,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 182,
-                            "offset": 7597
+                            "offset": 7643
                           }
                         },
                         "optional": false,
@@ -18325,7 +18435,7 @@
                           "column": 69,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 182,
-                          "offset": 7597
+                          "offset": 7643
                         }
                       }
                     ],
@@ -18335,7 +18445,7 @@
                       "column": 69,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 182,
-                      "offset": 7597
+                      "offset": 7643
                     }
                   }
                 ],
@@ -18345,7 +18455,7 @@
                   "column": 43,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 182,
-                  "offset": 7571
+                  "offset": 7617
                 }
               }
             }
@@ -18356,7 +18466,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 181,
-            "offset": 7494
+            "offset": 7540
           },
           "types": [
             "read"
@@ -18370,7 +18480,7 @@
                 "column": 30,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 183,
-                "offset": 7646
+                "offset": 7692
               }
             },
             {
@@ -18379,7 +18489,7 @@
                 "column": 40,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 183,
-                "offset": 7656
+                "offset": 7702
               }
             },
             {
@@ -18388,7 +18498,7 @@
                 "column": 48,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 183,
-                "offset": 7664
+                "offset": 7710
               }
             },
             {
@@ -18397,7 +18507,7 @@
                 "column": 58,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 183,
-                "offset": 7674
+                "offset": 7720
               }
             }
           ],
@@ -18422,7 +18532,7 @@
                   "column": 19,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 184,
-                  "offset": 7702
+                  "offset": 7748
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -18431,7 +18541,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 184,
-                "offset": 7702
+                "offset": 7748
               },
               "source": "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)"
             }
@@ -18442,7 +18552,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 183,
-            "offset": 7620
+            "offset": 7666
           }
         },
         {
@@ -18453,7 +18563,7 @@
                 "column": 35,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 185,
-                "offset": 7818
+                "offset": 7864
               }
             },
             {
@@ -18462,7 +18572,7 @@
                 "column": 45,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 185,
-                "offset": 7828
+                "offset": 7874
               }
             },
             {
@@ -18471,7 +18581,7 @@
                 "column": 53,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 185,
-                "offset": 7836
+                "offset": 7882
               }
             },
             {
@@ -18480,7 +18590,7 @@
                 "column": 63,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 185,
-                "offset": 7846
+                "offset": 7892
               }
             }
           ],
@@ -18516,7 +18626,7 @@
                   "column": 19,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 186,
-                  "offset": 7874
+                  "offset": 7920
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -18525,7 +18635,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 186,
-                "offset": 7874
+                "offset": 7920
               },
               "source": "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])"
             }
@@ -18536,7 +18646,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 185,
-            "offset": 7787
+            "offset": 7833
           }
         },
         {
@@ -18547,7 +18657,7 @@
                 "column": 35,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 187,
-                "offset": 8007
+                "offset": 8053
               }
             }
           ],
@@ -18573,7 +18683,7 @@
                   "column": 19,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 188,
-                  "offset": 8036
+                  "offset": 8082
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -18582,7 +18692,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 188,
-                "offset": 8036
+                "offset": 8082
               },
               "source": "async ({ input, actor, context }) => Mesh.isSystem(context) || await assigneeMayClaimOf(input.task, actor.id)"
             }
@@ -18593,7 +18703,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 187,
-            "offset": 7976
+            "offset": 8022
           }
         },
         {
@@ -18604,7 +18714,7 @@
                 "column": 33,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 189,
-                "offset": 8179
+                "offset": 8225
               }
             },
             {
@@ -18613,7 +18723,7 @@
                 "column": 41,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 189,
-                "offset": 8187
+                "offset": 8233
               }
             }
           ],
@@ -18628,7 +18738,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 190,
-                "offset": 8216
+                "offset": 8262
               },
               "source": "({ self, actor, context }) => Mesh.isSystem(context) || self.holderId === actor.id",
               "tree": {
@@ -18642,7 +18752,7 @@
                           "column": 63,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 190,
-                          "offset": 8260
+                          "offset": 8306
                         }
                       }
                     ],
@@ -18652,7 +18762,7 @@
                       "column": 49,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 190,
-                      "offset": 8246
+                      "offset": 8292
                     }
                   },
                   {
@@ -18667,7 +18777,7 @@
                             "column": 75,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 190,
-                            "offset": 8272
+                            "offset": 8318
                           }
                         },
                         "optional": false,
@@ -18675,7 +18785,7 @@
                           "column": 75,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 190,
-                          "offset": 8272
+                          "offset": 8318
                         }
                       },
                       {
@@ -18688,7 +18798,7 @@
                             "column": 93,
                             "file": "src/domain/work/claim.mesh.mx",
                             "line": 190,
-                            "offset": 8290
+                            "offset": 8336
                           }
                         },
                         "optional": false,
@@ -18696,7 +18806,7 @@
                           "column": 93,
                           "file": "src/domain/work/claim.mesh.mx",
                           "line": 190,
-                          "offset": 8290
+                          "offset": 8336
                         }
                       }
                     ],
@@ -18706,7 +18816,7 @@
                       "column": 75,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 190,
-                      "offset": 8272
+                      "offset": 8318
                     }
                   }
                 ],
@@ -18716,7 +18826,7 @@
                   "column": 49,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 190,
-                  "offset": 8246
+                  "offset": 8292
                 }
               }
             }
@@ -18727,7 +18837,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 189,
-            "offset": 8150
+            "offset": 8196
           }
         },
         {
@@ -18738,7 +18848,7 @@
                 "column": 34,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 191,
-                "offset": 8333
+                "offset": 8379
               }
             }
           ],
@@ -18764,7 +18874,7 @@
                   "column": 19,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 192,
-                  "offset": 8361
+                  "offset": 8407
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -18773,7 +18883,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 192,
-                "offset": 8361
+                "offset": 8407
               },
               "source": "async ({ self, actor, context }) => Mesh.isSystem(context) || await revokesClaimOf(self.taskId, actor.id)"
             }
@@ -18784,7 +18894,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 191,
-            "offset": 8303
+            "offset": 8349
           }
         },
         {
@@ -18795,7 +18905,7 @@
                 "column": 30,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 193,
-                "offset": 8497
+                "offset": 8543
               }
             },
             {
@@ -18804,7 +18914,7 @@
                 "column": 39,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 193,
-                "offset": 8506
+                "offset": 8552
               }
             }
           ],
@@ -18817,7 +18927,7 @@
                 "column": 19,
                 "file": "src/domain/work/claim.mesh.mx",
                 "line": 194,
-                "offset": 8531
+                "offset": 8577
               },
               "source": "({ context }) => Mesh.isSystem(context)",
               "tree": {
@@ -18829,7 +18939,7 @@
                       "column": 50,
                       "file": "src/domain/work/claim.mesh.mx",
                       "line": 194,
-                      "offset": 8562
+                      "offset": 8608
                     }
                   }
                 ],
@@ -18839,7 +18949,7 @@
                   "column": 36,
                   "file": "src/domain/work/claim.mesh.mx",
                   "line": 194,
-                  "offset": 8548
+                  "offset": 8594
                 }
               }
             }
@@ -18850,7 +18960,7 @@
             "column": 4,
             "file": "src/domain/work/claim.mesh.mx",
             "line": 193,
-            "offset": 8471
+            "offset": 8517
           }
         }
       ],

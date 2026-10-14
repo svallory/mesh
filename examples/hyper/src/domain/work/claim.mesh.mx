@@ -69,7 +69,7 @@ entity :Claim table="claims"
           message="the claim was released or revoked; claim the task again"
         ]
         check :claimNotExpired [
-          that=() => &expiresAt > %.now
+          that=() => &state !== :expired && &expiresAt > %.now
           code="claim.expired"
           message="the lease has expired; claim the task again"
         ]
@@ -103,7 +103,7 @@ entity :Claim table="claims"
           message="the claim was released or revoked; claim the task again"
         ]
         check :claimNotExpired [
-          that=() => &expiresAt > %.now
+          that=() => &state !== :expired && &expiresAt > %.now
           code="claim.expired"
           message="the lease has expired; claim the task again"
         ]
