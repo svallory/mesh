@@ -36,19 +36,17 @@ export class RpcError extends Error {
   }
 }
 
-/** The messages JSON-RPC 2.0 gives its reserved codes. */
-export const messages = Object.freeze({
+/** One of the codes JSON-RPC 2.0 reserves. */
+export type ReservedCode = (typeof codes)[keyof typeof codes];
+
+/** The messages JSON-RPC 2.0 gives its reserved codes; the server's `messages` option replaces them one by one. */
+export const standardMessages: Readonly<Record<ReservedCode, string>> = Object.freeze({
   [codes.parseError]: "Parse error",
   [codes.invalidRequest]: "Invalid Request",
   [codes.methodNotFound]: "Method not found",
   [codes.invalidParams]: "Invalid params",
   [codes.internalError]: "Internal error",
-} as const);
-
-/** An error object for one of the reserved codes, with no data. */
-export function reserved(code: keyof typeof messages): ErrorObject {
-  return { code, message: messages[code] };
-}
+});
 
 /** A request id: a string or a number. `null` is used only in a response to a request whose id could not be read. */
 export type Id = string | number | null;
@@ -57,8 +55,8 @@ export type Id = string | number | null;
 export type Envelope =
   /** A well-formed request. `id` is `undefined` for a notification (a request with no `id` member). */
   | { readonly kind: "request"; readonly id: string | number | undefined; readonly method: string; readonly params: unknown }
-  /** A line that is answered with an error before any method is looked up. */
-  | { readonly kind: "invalid"; readonly id: Id; readonly error: ErrorObject };
+  /** A line that is answered with an error before any method is looked up: `-32700` or `-32600`. */
+  | { readonly kind: "invalid"; readonly id: Id; readonly code: ReservedCode };
 
 /**
  * Reads one line's request.
@@ -66,8 +64,8 @@ export type Envelope =
  * - Text that is not JSON is `-32700` with id `null`.
  * - An array (a batch) is `-32600` with id `null`: batches are not supported.
  * - A value that is not an object, a `jsonrpc` other than `"2.0"`, a `method` that is not a string, or an `id` that is
- *   present but neither a string nor a number (`null` included) is `-32600`, answered with the request's id when that
- *   id is a string or a number, else with `null`.
+ *   present but neither a string nor a finite number (`null` included, and `1e400`, which parses to `Infinity`) is
+ *   `-32600`, answered with the request's id when that id is a string or a finite number, else with `null`.
  *
  * `params` is returned as it was sent, `undefined` when absent; the server checks it.
  */
@@ -76,18 +74,17 @@ export function readEnvelope(text: string): Envelope {
   try {
     value = JSON.parse(text);
   } catch {
-    return { kind: "invalid", id: null, error: reserved(codes.parseError) };
+    return { kind: "invalid", id: null, code: codes.parseError };
   }
-  if (Array.isArray(value)) return { kind: "invalid", id: null, error: reserved(codes.invalidRequest) };
-  if (typeof value !== "object" || value === null) {
-    return { kind: "invalid", id: null, error: reserved(codes.invalidRequest) };
-  }
+  if (Array.isArray(value)) return { kind: "invalid", id: null, code: codes.invalidRequest };
+  if (typeof value !== "object" || value === null) return { kind: "invalid", id: null, code: codes.invalidRequest };
   const request = value as Record<string, unknown>;
   const hasId = Object.hasOwn(request, "id");
   const id = request.id;
-  const validId = typeof id === "string" || typeof id === "number";
+  // JSON has no Infinity, but a number too large for a double parses to it, and would be echoed as `null`.
+  const validId = typeof id === "string" || (typeof id === "number" && Number.isFinite(id));
   if (request.jsonrpc !== "2.0" || typeof request.method !== "string" || (hasId && !validId)) {
-    return { kind: "invalid", id: validId ? id : null, error: reserved(codes.invalidRequest) };
+    return { kind: "invalid", id: validId ? id : null, code: codes.invalidRequest };
   }
   return {
     kind: "request",

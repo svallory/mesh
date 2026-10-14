@@ -1,5 +1,6 @@
 // A raw test client: writes bytes to the server's socket and reads back whole lines.
 import { mkdtemp, rm } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Socket } from "bun";
@@ -122,4 +123,69 @@ export function gate<T = void>(): { promise: Promise<T>; resolve: (value: T) => 
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => (resolve = done));
   return { promise, resolve };
+}
+
+/** What `exchange` saw: every line the server wrote, and how the connection ended. */
+export interface Exchange {
+  readonly lines: string[];
+  /** The server ended the connection (its FIN arrived) rather than the client. */
+  readonly endedByServer: boolean;
+  /** The connection closed with an error (a reset, a write after close). */
+  readonly hadError: boolean;
+}
+
+/**
+ * Writes `text` through a `node:net` connection, which can do two things Bun's own client cannot do here: shut down its
+ * writing side alone (`end()` with `allowHalfOpen`, as `nc -U` and `socat` do), and hold off reading (`pause()`) so the
+ * server's writes back up. With `halfClose`, the client shuts down its writing side right after writing `text`, or,
+ * when `halfCloseAfter` is given, once that many lines have arrived. Resolves once `lines` lines have arrived, or, when
+ * `lines` is not given, once the connection closes.
+ */
+export function exchange(
+  path: string,
+  text: string | Uint8Array,
+  options: { halfClose?: boolean; halfCloseAfter?: number; readAfterMs?: number; lines?: number } = {},
+): Promise<Exchange> {
+  return new Promise((resolve, reject) => {
+    const lines: string[] = [];
+    let pending = Buffer.alloc(0);
+    let endedByServer = false;
+    let settled = false;
+    const finish = (hadError: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ lines, endedByServer, hadError });
+    };
+    const timer = setTimeout(() => {
+      settled = true;
+      socket.destroy();
+      reject(new Error(`no ${options.lines ?? "close"} from the server in time; got ${lines.length} lines`));
+    }, 5_000);
+    const socket = createConnection({ path, allowHalfOpen: true }, () => {
+      socket.write(text);
+      if (options.halfClose && options.halfCloseAfter === undefined) socket.end();
+    });
+    if (options.readAfterMs !== undefined) {
+      socket.pause();
+      setTimeout(() => socket.resume(), options.readAfterMs);
+    }
+    socket.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      for (let end = pending.indexOf(0x0a); end !== -1; end = pending.indexOf(0x0a)) {
+        lines.push(pending.subarray(0, end).toString("utf8"));
+        pending = pending.subarray(end + 1);
+        if (options.halfClose && lines.length === options.halfCloseAfter) socket.end();
+      }
+      if (options.lines !== undefined && lines.length >= options.lines) {
+        finish(false);
+        socket.destroy();
+      }
+    });
+    socket.on("end", () => {
+      endedByServer = true;
+    });
+    socket.on("error", () => {});
+    socket.on("close", (hadError: boolean) => finish(hadError));
+  });
 }

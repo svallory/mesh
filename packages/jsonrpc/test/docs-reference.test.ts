@@ -27,24 +27,42 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
 type Assert<T extends true> = T;
 type C = { actor: string };
 type P = { name: string };
+type T = { a: P; b: unknown };
+type Sent = Readonly<Record<string, unknown>>;
 type ErrorObjectParity = Assert<Equal<Docs.ErrorObject, Actual.ErrorObject>>;
 type ParamsIssueParity = Assert<Equal<Docs.ParamsIssue, Actual.ParamsIssue>>;
 type ServerParity = Assert<Equal<Docs.Server, Actual.Server>>;
 type ConnectionParity = Assert<Equal<Docs.Connection, Actual.Connection>>;
 type CallParity = Assert<Equal<Docs.Call, Actual.Call>>;
 type CodesParity = Assert<Equal<typeof Docs.codes, typeof Actual.codes>>;
-type OptionsParity = Assert<Equal<Omit<Docs.ServeOptions<C>, "methods">, Omit<Actual.ServeOptions<C>, "methods">>>;
-type OptionKeys = Assert<Equal<keyof Docs.ServeOptions<C>, keyof Actual.ServeOptions<C>>>;
+type OptionsParity = Assert<Equal<Omit<Docs.ServeOptions<C, T>, "methods">, Omit<Actual.ServeOptions<C, T>, "methods">>>;
+type OptionKeys = Assert<Equal<keyof Docs.ServeOptions<C, T>, keyof Actual.ServeOptions<C, T>>>;
+type MethodsKeys = Assert<Equal<keyof Docs.ServeOptions<C, T>["methods"], keyof Actual.ServeOptions<C, T>["methods"]>>;
+type MethodsTyped = Assert<Equal<Parameters<Docs.ServeOptions<C, T>["methods"]["a"]["run"]>, Parameters<Actual.ServeOptions<C, T>["methods"]["a"]["run"]>>>;
+type MethodsUntyped = Assert<Equal<Parameters<Docs.ServeOptions<C, T>["methods"]["b"]["run"]>, Parameters<Actual.ServeOptions<C, T>["methods"]["b"]["run"]>>>;
 type MethodParity = Assert<Equal<Omit<Docs.Method<C, P>, "params">, Omit<Actual.Method<C, P>, "params">>>;
 type MethodKeys = Assert<Equal<keyof Docs.Method<C, P>, keyof Actual.Method<C, P>>>;
 type MethodDefault = Assert<Equal<Parameters<Docs.Method<C>["run"]>, Parameters<Actual.Method<C>["run"]>>>;
+type MethodDefaultSent = Assert<Equal<Parameters<Actual.Method<C>["run"]>[0], Sent>>;
 type TableKeys = Assert<Equal<keyof Docs.MethodTable<C>, keyof Actual.MethodTable<C>>>;
-type ServeParameters = Assert<Equal<Parameters<typeof Docs.serve<C>>[0]["context"], Parameters<typeof Actual.serve<C>>[0]["context"]>>;
-type ServeResult = Assert<Equal<Awaited<ReturnType<typeof Docs.serve<C>>>, Awaited<ReturnType<typeof Actual.serve<C>>>>>;
+type TableRun = Assert<Equal<Parameters<Docs.MethodTable<C>[string]["run"]>, Parameters<Actual.MethodTable<C>[string]["run"]>>>;
+type TableRunSent = Assert<Equal<Parameters<Actual.MethodTable<C>[string]["run"]>[0], Sent>>;
+type ServeParameters = Assert<Equal<Parameters<typeof Docs.serve<C, T>>[0]["context"], Parameters<typeof Actual.serve<C, T>>[0]["context"]>>;
+type ServeResult = Assert<Equal<Awaited<ReturnType<typeof Docs.serve<C, T>>>, Awaited<ReturnType<typeof Actual.serve<C, T>>>>>;
 type RpcErrorArguments = Assert<Equal<ConstructorParameters<typeof Docs.RpcError>, ConstructorParameters<typeof Actual.RpcError>>>;
 type RpcErrorMembers = Assert<Equal<Pick<Docs.RpcError, "code" | "data" | "message">, Pick<Actual.RpcError, "code" | "data" | "message">>>;
 declare const schema: StandardSchemaV1<unknown, P>;
 schema satisfies NonNullable<Docs.Method<C, P>["params"]>;
+// An inline table infers each entry's params type from its schema, on both sides.
+declare const docsServe: typeof Docs.serve;
+declare const actualServe: typeof Actual.serve;
+const context = (): C => ({ actor: "ana" });
+docsServe({ socket: "s", context, methods: { a: { params: schema, run: (params) => params satisfies P }, b: { run: (params) => params satisfies Sent } } });
+actualServe({ socket: "s", context, methods: { a: { params: schema, run: (params) => params satisfies P }, b: { run: (params) => params satisfies Sent } } });
+// @ts-expect-error a run written for another type than the schema outputs
+docsServe({ socket: "s", context, methods: { a: { params: schema, run: (params: { name: number }) => params } } });
+// @ts-expect-error a run written for another type than the schema outputs
+actualServe({ socket: "s", context, methods: { a: { params: schema, run: (params: { name: number }) => params } } });
 `;
 
 test("the Docs' declarations of @meshfw/jsonrpc match the package", async () => {

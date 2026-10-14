@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FrameworkError } from "@meshfw/runtime";
+import { FrameworkError, type StandardSchemaV1 } from "@meshfw/runtime";
 import { z } from "zod";
 import { codes, RpcError, serve, type Call, type MethodTable, type ServeOptions, type Server } from "../src/index.ts";
-import { Client, gate, socketDir } from "./client.ts";
+import { removeOwnSocket } from "../src/server.ts";
+import { Client, exchange, gate, socketDir } from "./client.ts";
 
 let dir: Awaited<ReturnType<typeof socketDir>>;
 const servers: Server[] = [];
@@ -24,8 +25,11 @@ afterEach(async () => {
 });
 
 /** Starts a server on a fresh socket, logging into `logged`. */
-async function start<C = null>(methods: MethodTable<C>, options: Partial<ServeOptions<C>> = {}): Promise<Server> {
-  const server = await serve<C>({
+async function start<C = null, T extends Record<string, unknown> = Record<string, unknown>>(
+  methods: ServeOptions<C, T>["methods"],
+  options: Partial<ServeOptions<C, T>> = {},
+): Promise<Server> {
+  const server = await serve<C, T>({
     socket: dir.path(),
     methods,
     context: () => null as C,
@@ -110,6 +114,80 @@ describe("framing", () => {
     // The connection is still in order after the large write.
     expect(await ask(client, "big", undefined, 2).then((answer) => answer.id)).toBe(2);
   });
+
+  test("large and small answers in flight together reach a client that reads late whole, one per line", async () => {
+    const server = await start({
+      big: { params: z.object({ fill: z.string().length(1), mebibytes: z.number() }), run: ({ fill, mebibytes }) => fill.repeat(mebibytes * 1024 * 1024) },
+      small: { run: (_params, _context, call) => call.id },
+    });
+    const sizes: Record<number, [string, number]> = { 1: ["a", 1], 3: ["b", 2], 5: ["c", 1] };
+    const requests = [1, 2, 3, 4, 5, 6].map((id) =>
+      JSON.stringify(id in sizes ? { jsonrpc: "2.0", id, method: "big", params: { fill: sizes[id]![0], mebibytes: sizes[id]![1] } } : { jsonrpc: "2.0", id, method: "small" }),
+    );
+    // The client reads nothing for 200 ms, so the socket's buffer fills and the server queues the rest for its drains.
+    const { lines } = await exchange(server.socket, requests.join("\n") + "\n", { readAfterMs: 200, lines: 6 });
+    const answers = lines.map((line) => JSON.parse(line));
+    expect(answers.map((answer) => answer.id).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    for (const answer of answers) {
+      const size = sizes[answer.id];
+      if (!size) {
+        expect(answer.result).toBe(answer.id);
+        continue;
+      }
+      expect(answer.result.length).toBe(size[1] * 1024 * 1024);
+      expect(answer.result === size[0].repeat(size[1] * 1024 * 1024)).toBe(true);
+    }
+  });
+});
+
+describe("a client that shuts down its writing side", () => {
+  test("gets every answer, slow ones included, and the server then ends the connection cleanly", async () => {
+    let notified = 0;
+    const server = await start({
+      slow: { run: async () => { await Bun.sleep(100); return "slow"; } },
+      fast: { run: () => "fast" },
+      note: { run: async () => { await Bun.sleep(150); notified++; } },
+    });
+    const requests = [
+      { jsonrpc: "2.0", id: 1, method: "slow" },
+      { jsonrpc: "2.0", id: 2, method: "fast" },
+      { jsonrpc: "2.0", method: "note" },
+      { jsonrpc: "2.0", id: 3, method: "missing" },
+    ];
+    const result = await exchange(server.socket, requests.map((request) => JSON.stringify(request) + "\n").join(""), { halfClose: true });
+    const answers = result.lines.map((line) => JSON.parse(line));
+    // The slow call, answered 100 ms after the client stopped writing, is the last line.
+    expect(answers.at(-1)).toEqual({ jsonrpc: "2.0", id: 1, result: "slow" });
+    expect(answers.sort((a, b) => a.id - b.id)).toEqual([
+      { jsonrpc: "2.0", id: 1, result: "slow" },
+      { jsonrpc: "2.0", id: 2, result: "fast" },
+      { jsonrpc: "2.0", id: 3, error: { code: -32601, message: "Method not found" } },
+    ]);
+    // The connection stayed open for the notification too, which ran to its end before the server closed it.
+    expect(notified).toBe(1);
+    expect({ endedByServer: result.endedByServer, hadError: result.hadError }).toEqual({ endedByServer: true, hadError: false });
+  });
+
+  test("gets a large answer whole when it also reads late, and only then is the connection ended", async () => {
+    const big = "x".repeat(4 * 1024 * 1024);
+    const server = await start({ big: { run: () => big } });
+    const result = await exchange(server.socket, '{"jsonrpc":"2.0","id":1,"method":"big"}\n', { halfClose: true, readAfterMs: 150 });
+    expect(result.lines).toHaveLength(1);
+    expect(JSON.parse(result.lines[0]!).result === big).toBe(true);
+    expect({ endedByServer: result.endedByServer, hadError: result.hadError }).toEqual({ endedByServer: true, hadError: false });
+  });
+
+  test("with nothing in flight, the connection is ended at once", async () => {
+    const server = await start(echo);
+    expect(await exchange(server.socket, "", { halfClose: true })).toEqual({ lines: [], endedByServer: true, hadError: false });
+    // Shut down only after the answer arrived, when nothing else on the connection would end it.
+    const request = '{"jsonrpc":"2.0","id":1,"method":"echo","params":{}}\n';
+    expect(await exchange(server.socket, request, { halfClose: true, halfCloseAfter: 1 })).toEqual({
+      lines: ['{"jsonrpc":"2.0","id":1,"result":{}}'],
+      endedByServer: true,
+      hadError: false,
+    });
+  });
 });
 
 describe("the envelope", () => {
@@ -118,6 +196,15 @@ describe("the envelope", () => {
     client.write('{"jsonrpc":"2.0","id":1,"method":\n');
     expect(await client.next()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
     expect(await ask(client, "echo", { ok: true }, 2)).toEqual({ jsonrpc: "2.0", id: 2, result: { ok: true } });
+  });
+
+  test("an id too large for a number (1e400 parses to Infinity) gets -32600 with id null", async () => {
+    const client = await connect(await start(echo));
+    for (const id of ["1e400", "-1e400"]) {
+      client.write(`{"jsonrpc":"2.0","id":${id},"method":"echo","params":{}}\n`);
+      expect(await client.next()).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+    }
+    expect(await ask(client, "echo", {}, 1e300)).toEqual({ jsonrpc: "2.0", id: 1e300, result: {} });
   });
 
   test("a batch gets -32600 with id null", async () => {
@@ -286,6 +373,76 @@ describe("errors", () => {
     const client = await connect(await start({ fail: { run: () => { throw new RpcError(-32003, "rule_violation", { n: 10n }); } } }));
     expect(await ask(client, "fail", {})).toEqual({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "Internal error" } });
     expect(logged).toHaveLength(1);
+  });
+});
+
+describe("messages", () => {
+  const custom = {
+    [codes.parseError]: "parse_error",
+    [codes.invalidRequest]: "invalid_request",
+    [codes.methodNotFound]: "method_not_found",
+    [codes.invalidParams]: "invalid_params",
+    [codes.internalError]: "internal_error",
+  };
+  const failing = {
+    ...echo,
+    typed: { params: z.object({ name: z.string() }), run: () => "ok" },
+    fail: { run: () => { throw new Error("boom"); } },
+    bigint: { run: () => 1n },
+    badData: { run: () => { throw new RpcError(-32003, "rule_violation", { n: 1n }); } },
+  };
+
+  test("each code the package answers with itself carries the message the messages option gives it", async () => {
+    const client = await connect(await start(failing, { messages: custom, maxLineBytes: 256 }));
+    const errorOf = async (line: string | Uint8Array) => {
+      client.write(line);
+      return (await client.next()).error;
+    };
+    expect(await errorOf("not json\n")).toEqual({ code: -32700, message: "parse_error" });
+    expect(await errorOf(`{"pad":"${"x".repeat(300)}"}\n`)).toEqual({ code: -32700, message: "parse_error" });
+    expect(await errorOf(new Uint8Array([0x7b, 0xff, 0x7d, 0x0a]))).toEqual({ code: -32700, message: "parse_error" });
+    expect(await errorOf("[]\n")).toEqual({ code: -32600, message: "invalid_request" });
+    expect(await errorOf('{"id":1,"method":"echo"}\n')).toEqual({ code: -32600, message: "invalid_request" });
+    expect((await ask(client, "missing", {})).error).toEqual({ code: -32601, message: "method_not_found" });
+    expect((await ask(client, "echo", [1])).error).toEqual({
+      code: -32602,
+      message: "invalid_params",
+      data: { issues: [{ message: "params must be an object", path: [] }] },
+    });
+    expect((await ask(client, "typed", { name: 1 })).error).toMatchObject({ code: -32602, message: "invalid_params" });
+    for (const method of ["fail", "bigint", "badData"]) {
+      expect((await ask(client, method, {})).error).toEqual({ code: -32603, message: "internal_error" });
+    }
+    expect(logged).toHaveLength(3);
+  });
+
+  test("the error option receives -32601 and -32602 with those messages, and its own failures are answered with -32603's", async () => {
+    const seen: string[] = [];
+    let mode: "map" | "throw" | "malformed" = "map";
+    const client = await connect(await start(failing, {
+      messages: custom,
+      error(error) {
+        if (mode === "throw") throw new Error("hook failed");
+        if (mode === "malformed") return { code: "x" } as never;
+        seen.push((error as Error).message);
+        return { code: -32000, message: "mapped" };
+      },
+    }));
+    await ask(client, "missing", {});
+    await ask(client, "typed", {});
+    expect(seen).toEqual(["method_not_found", "invalid_params"]);
+    mode = "throw";
+    expect((await ask(client, "fail", {})).error).toEqual({ code: -32603, message: "internal_error" });
+    mode = "malformed";
+    expect((await ask(client, "fail", {})).error).toEqual({ code: -32603, message: "internal_error" });
+  });
+
+  test("a code the option leaves out keeps JSON-RPC's message", async () => {
+    const client = await connect(await start(failing, { messages: { [codes.methodNotFound]: "method_not_found" } }));
+    expect((await ask(client, "missing", {})).error).toEqual({ code: -32601, message: "method_not_found" });
+    expect((await ask(client, "fail", {})).error).toEqual({ code: -32603, message: "Internal error" });
+    client.write("not json\n");
+    expect((await client.next()).error).toEqual({ code: -32700, message: "Parse error" });
   });
 });
 
@@ -480,6 +637,110 @@ describe("lifecycle", () => {
     expect((error as Error).cause).toBeDefined();
   });
 
+  test("the socket file is 0600 unless mode says otherwise, and the process's umask is left as it was", async () => {
+    const umask = process.umask();
+    const first = await start(echo);
+    expect(lstatSync(first.socket).mode & 0o777).toBe(0o600);
+    const second = await start(echo, { socket: dir.path("group.sock"), mode: 0o660 });
+    expect(lstatSync(second.socket).mode & 0o777).toBe(0o660);
+    await serve({ socket: join(dir.path("missing-dir"), "s.sock"), methods: echo, context: () => null }).catch(() => {});
+    expect(process.umask()).toBe(umask);
+    const client = await connect(second);
+    expect((await ask(client, "echo", { group: true })).result).toEqual({ group: true });
+  });
+
+  test("a socket file removed and taken by another server is not deleted by close()", () => {
+    // A server whose file was replaced must leave the replacement alone, so the check compares the file's identity.
+    const path = dir.path("taken.sock");
+    const original = Bun.listen({ unix: path, socket: { data() {} } });
+    const identity = { dev: lstatSync(path).dev, ino: lstatSync(path).ino };
+    unlinkSync(path);
+    const replacement = Bun.listen({ unix: path, socket: { data() {} } });
+    try {
+      removeOwnSocket(path, identity, (message) => logged.push({ message, error: undefined }));
+      expect(lstatSync(path).isSocket()).toBe(true);
+      removeOwnSocket(path, undefined, (message) => logged.push({ message, error: undefined }));
+      expect(lstatSync(path).isSocket()).toBe(true);
+      removeOwnSocket(path, { dev: lstatSync(path).dev, ino: lstatSync(path).ino }, (message) => logged.push({ message, error: undefined }));
+      expect(existsSync(path)).toBe(false);
+      // A file already gone is not an error.
+      removeOwnSocket(path, identity, (message) => logged.push({ message, error: undefined }));
+      expect(logged).toEqual([]);
+    } finally {
+      original.stop(true);
+      replacement.stop(true);
+    }
+  });
+
+  test("lines that arrive after close() has begun are not run, and a call close() overtakes never reaches its context or run", async () => {
+    let server!: Server;
+    const reached: string[] = [];
+    const closer: StandardSchemaV1<unknown, Record<string, unknown>> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: (value) => {
+          reached.push("validate first");
+          void server.close();
+          return { value: value as Record<string, unknown> };
+        },
+      },
+    };
+    const spy: StandardSchemaV1<unknown, Record<string, unknown>> = {
+      "~standard": { version: 1, vendor: "test", validate: (value) => { reached.push("validate second"); return { value: value as Record<string, unknown> }; } },
+    };
+    server = await start(
+      { first: { params: closer, run: () => reached.push("run first") }, second: { params: spy, run: () => reached.push("run second") } },
+      { context: (call) => { reached.push(`context ${call.method}`); return null; } },
+    );
+    const client = await connect(server);
+    client.write('{"jsonrpc":"2.0","id":1,"method":"first","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"second","params":{}}\n');
+    await client.closed();
+    await server.close();
+    expect(reached).toEqual(["validate first"]);
+  });
+
+  test("a call whose validation or context factory is still pending when close() begins never reaches the next step", async () => {
+    const validating = gate<void>();
+    const building = gate<void>();
+    const reached: string[] = [];
+    const slow: StandardSchemaV1<unknown, Record<string, unknown>> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: async (value) => {
+          reached.push("validate");
+          await validating.promise;
+          return { value: value as Record<string, unknown> };
+        },
+      },
+    };
+    const server = await start(
+      { checked: { params: slow, run: () => reached.push("run checked") }, built: { run: () => reached.push("run built") } },
+      {
+        context: async (call) => {
+          reached.push(`context ${call.method}`);
+          if (call.method === "built") await building.promise;
+          return null;
+        },
+      },
+    );
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "checked", params: {} });
+    client.send({ jsonrpc: "2.0", id: 2, method: "built", params: {} });
+    while (reached.length < 2) await Bun.sleep(1);
+    let closed = false;
+    const closing = server.close().then(() => (closed = true));
+    await client.closed();
+    await Bun.sleep(10);
+    expect(closed).toBe(false);
+    validating.resolve();
+    building.resolve();
+    await closing;
+    expect(reached.sort()).toEqual(["context built", "validate"]);
+    expect(logged).toEqual([]);
+  });
+
   const run = () => null;
   test.each<[string, Record<string, unknown>]>([
     ["no options", { options: null }],
@@ -497,6 +758,16 @@ describe("lifecycle", () => {
     ["a zero maxLineBytes", { maxLineBytes: 0 }],
     ["a fractional maxLineBytes", { maxLineBytes: 1.5 }],
     ["a negative maxLineBytes", { maxLineBytes: -1 }],
+    ["a negative mode", { mode: -1 }],
+    ["a mode over 0o777", { mode: 0o1000 }],
+    ["a fractional mode", { mode: 1.5 }],
+    ["a mode that is a string", { mode: "600" }],
+    ["messages that are null", { messages: null }],
+    ["messages that are an array", { messages: [] }],
+    ["a message for a code JSON-RPC does not reserve", { messages: { [-32000]: "server_error" } }],
+    ["a message for a code given by name", { messages: { parseError: "parse_error" } }],
+    ["a message that is not a string", { messages: { [-32700]: 1 } }],
+    ["an empty message", { messages: { [-32700]: "" } }],
   ])("serve rejects %s with FrameworkError", async (_name, change) => {
     const options = "options" in change ? change.options : { socket: dir.path(), methods: { a: { run } }, context: () => null, ...change };
     const error = await serve(options as never).catch((error: unknown) => error);
@@ -508,12 +779,12 @@ describe("lifecycle", () => {
     const path = dir.path();
     const script = `
       import { serve } from ${JSON.stringify(join(import.meta.dir, "../src/index.ts"))};
-      const server = await serve({ socket: ${JSON.stringify(path)}, methods: { fail: { run: () => { throw new Error("boom"); } } }, context: () => null });
+      const server = await serve({ socket: ${JSON.stringify(path)}, methods: { fail: { run: () => { throw new Error("boom"); } }, bad: { run: () => 1n } }, context: () => null });
       const lines = [];
       let done;
       const finished = new Promise((resolve) => (done = resolve));
-      const client = await Bun.connect({ unix: server.socket, socket: { data(_s, chunk) { lines.push(...new TextDecoder().decode(chunk).split("\\n").filter(Boolean)); if (lines.length === 3) done(); } } });
-      client.write('not json\\n{"jsonrpc":"2.0","id":1,"method":"fail","params":{}}\\n{"jsonrpc":"2.0","id":2,"method":"nope"}\\n');
+      const client = await Bun.connect({ unix: server.socket, socket: { data(_s, chunk) { lines.push(...new TextDecoder().decode(chunk).split("\\n").filter(Boolean)); if (lines.length === 4) done(); } } });
+      client.write('not json\\n{"jsonrpc":"2.0","id":1,"method":"fail","params":{}}\\n{"jsonrpc":"2.0","id":2,"method":"nope"}\\n{"jsonrpc":"2.0","id":3,"method":"bad"}\\n');
       await finished;
       client.end();
       await server.close();
@@ -523,6 +794,8 @@ describe("lifecycle", () => {
     const stderr = child.stderr.toString();
     expect({ exit: child.exitCode, stdout: child.stdout.toString() }).toEqual({ exit: 0, stdout: "" });
     expect(stderr).toContain("@meshfw/jsonrpc: fail failed");
-    expect(stderr).toContain("[-32601,-32603,-32700]");
+    // A log call with no error object (the result of bad cannot be serialised) goes to standard error too.
+    expect(stderr).toContain("@meshfw/jsonrpc: the result of bad has no JSON form");
+    expect(stderr).toContain("[-32601,-32603,-32603,-32700]");
   });
 });
