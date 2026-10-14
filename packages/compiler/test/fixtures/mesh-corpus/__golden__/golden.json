@@ -33497,11 +33497,29 @@
   "diagnostics": [
    {
     "severity": "error",
+    "message": "This experimental syntax requires enabling the parser plugin: \"pipelineOperator\".",
+    "line": 1,
+    "column": 13,
+    "offset": 13,
+    "code": "MX_PARSE_EXPRESSION",
+    "end": {
+     "line": 1,
+     "column": 15,
+     "offset": 15
+    }
+   },
+   {
+    "severity": "error",
     "message": "Missing ending \"for\" tag",
     "line": 1,
     "column": 0,
     "offset": 0,
-    "code": "MX_PARSE_MISSING_END_TAG"
+    "code": "MX_PARSE_MISSING_END_TAG",
+    "end": {
+     "line": 2,
+     "column": 6,
+     "offset": 22
+    }
    }
   ]
  },
@@ -33939,7 +33957,12 @@
     "line": 7,
     "column": 12,
     "offset": 104,
-    "code": "MX_PARSE_INVALID_CHARACTER"
+    "code": "MX_PARSE_INVALID_CHARACTER",
+    "end": {
+     "line": 7,
+     "column": 20,
+     "offset": 112
+    }
    }
   ]
  },

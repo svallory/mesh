@@ -206,3 +206,44 @@ describe("the transaction row (SYN-29)", () => {
     for (const body of ["return 1 %.now", "return %now", "return %"]) expect(lower(body), body).toEqual(["MX_PARSE_EXPRESSION"]);
   });
 });
+
+// MX alpha.26 (IR version 4) refuses a write to a read-only binding and reads `await` and prefix operators with new rules; each
+// body below is one spaced form Mesh's rows must still lower, with the mark the front end reads (and no MX refusal).
+describe("Mesh's rows under MX alpha.26: prefix operators, await and conditionals around a marked operand", () => {
+  const lower = (body: string) => {
+    const source = `entity :T\n  computed\n    boolean :c() { ${body} }\n`;
+    const { ir, diagnostics } = lowerSource(source, "t.mesh.mx", { ...BASE, dialect: SYNTAX_DIALECT });
+    const marked: { kind: "member" | "transaction"; name: string }[] = [];
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) return value.forEach(walk);
+      if (value === null || typeof value !== "object") return;
+      const extra = (value as { extra?: { mxMember?: { name?: string }; mxTransaction?: { name: string } } }).extra;
+      if (extra?.mxMember) marked.push({ kind: "member", name: String(extra.mxMember.name) });
+      if (extra?.mxTransaction) marked.push({ kind: "transaction", name: extra.mxTransaction.name });
+      for (const child of Object.values(value)) walk(child);
+    };
+    if (ir) walk(attr(find(ir.body, "boolean"), "value"));
+    return { codes: diagnostics.map((d) => d.code), marked, ir };
+  };
+
+  test("`++&n` lowers a prefix update of one member reference, with no MX refusal", () => {
+    const { codes, marked, ir } = lower("return ++ &n");
+    expect(codes).toEqual([]);
+    expect(marked).toEqual([{ kind: "member", name: "n" }]);
+    expect(JSON.stringify(attr(find(ir!.body, "boolean"), "value"))).toContain('"UpdateExpression"');
+  });
+
+  test("`++%.now` lowers the transaction mark under a prefix update (Mesh's front end refuses the write, MX does not)", () => {
+    const { codes, marked } = lower("return ++ %.now");
+    expect(codes).toEqual([]);
+    expect(marked).toEqual([{ kind: "transaction", name: "now" }]);
+  });
+
+  test("`await &dueAt`, `{ k: await &a }` and `c ? await &a : 1` keep the member reference", () => {
+    for (const body of ["return await &dueAt", "return { k: await &a }", "return c ? await &a : 1"]) {
+      const { codes, marked } = lower(body);
+      expect(codes, body).toEqual([]);
+      expect(marked, body).toEqual([{ kind: "member", name: body.includes("&dueAt") ? "dueAt" : "a" }]);
+    }
+  });
+});
