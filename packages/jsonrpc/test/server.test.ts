@@ -578,7 +578,7 @@ describe("notifications", () => {
 });
 
 describe("lifecycle", () => {
-  test("close() ends open connections, removes the socket file and resolves only after an in-flight call settles", async () => {
+  test("close() holds the connection open until an in-flight call settles and is answered, then ends it and removes the socket file", async () => {
     const running = gate();
     let finished = false;
     const server = await start({ slow: { run: async () => { await running.promise; finished = true; return "late"; } } });
@@ -588,14 +588,166 @@ describe("lifecycle", () => {
     let closed = false;
     const closing = server.close().then(() => (closed = true));
     expect(server.close()).toBe(server.close());
+    await Bun.sleep(20);
+    expect({ closed, clientClosed: client.isClosed }).toEqual({ closed: false, clientClosed: false });
+    running.resolve();
+    expect(await client.next()).toEqual({ jsonrpc: "2.0", id: 1, result: "late" });
+    await closing;
     await client.closed();
+    expect({ finished, closed }).toEqual({ finished: true, closed: true });
     expect(existsSync(server.socket)).toBe(false);
+    await expect(Client.open(server.socket)).rejects.toThrow();
+  });
+
+  test("a call inside run when close() begins gets its result, and close() resolves after the answer is written", async () => {
+    const running = gate();
+    const server = await start({ add: { run: async () => { await running.promise; return { committed: true }; } } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 9, method: "add", params: {} });
     await Bun.sleep(10);
+    const closing = server.close();
+    running.resolve();
+    // close() resolves only once the answer is handed to the socket, so the line is already on its way.
+    await closing;
+    expect(await client.next()).toEqual({ jsonrpc: "2.0", id: 9, result: { committed: true } });
+    await client.closed();
+  });
+
+  test("a call that fails while close() drains still gets its error answer", async () => {
+    const running = gate();
+    const server = await start({ boom: { run: async () => { await running.promise; throw new RpcError(-32001, "nope"); } } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "boom", params: {} });
+    await Bun.sleep(10);
+    const closing = server.close();
+    running.resolve();
+    expect((await client.next()).error).toMatchObject({ code: -32001, message: "nope" });
+    await closing;
+  });
+
+  test("a request sent after close() began gets no answer and its method never runs", async () => {
+    const running = gate();
+    const ran: string[] = [];
+    const server = await start({
+      slow: { run: async () => { ran.push("slow"); await running.promise; return "done"; } },
+      late: { run: () => { ran.push("late"); return "late"; } },
+    });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "slow", params: {} });
+    await Bun.sleep(10);
+    const closing = server.close();
+    client.send({ jsonrpc: "2.0", id: 2, method: "late", params: {} });
+    client.send({ jsonrpc: "2.0", id: 3, method: "nothing-here", params: {} });
+    await Bun.sleep(30);
+    running.resolve();
+    expect(await client.next()).toEqual({ jsonrpc: "2.0", id: 1, result: "done" });
+    await closing;
+    await client.closed();
+    await expect(client.nextLine()).rejects.toThrow("no line");
+    expect(ran).toEqual(["slow"]);
+  });
+
+  test("a new connection attempt after close() began fails, while the drain is still running", async () => {
+    const running = gate();
+    const server = await start({ slow: { run: async () => { await running.promise; return 1; } } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "slow", params: {} });
+    await Bun.sleep(10);
+    const closing = server.close();
+    await expect(Client.open(server.socket)).rejects.toThrow();
+    running.resolve();
+    await client.next();
+    await closing;
+  });
+
+  test("a client that disconnects during the drain does not hang close(), and the other client is still answered", async () => {
+    const running = gate();
+    const server = await start({ slow: { run: async () => { await running.promise; return "ok"; } } });
+    const leaver = await connect(server);
+    const stayer = await connect(server);
+    leaver.send({ jsonrpc: "2.0", id: 1, method: "slow", params: {} });
+    stayer.send({ jsonrpc: "2.0", id: 2, method: "slow", params: {} });
+    await Bun.sleep(10);
+    const closing = server.close();
+    leaver.end();
+    await Bun.sleep(20);
+    running.resolve();
+    expect((await stayer.next()).result).toBe("ok");
+    await closing;
+    expect(logged).toEqual([]);
+  });
+
+  test("a client that half-closes mid-call still gets its answer and does not hang close()", async () => {
+    const running = gate();
+    const server = await start({ slow: { run: async () => { await running.promise; return "ok"; } } });
+    const exchanging = exchange(server.socket, '{"jsonrpc":"2.0","id":1,"method":"slow","params":{}}\n', { halfClose: true });
+    await Bun.sleep(20);
+    const closing = server.close();
+    await Bun.sleep(20);
+    running.resolve();
+    const seen = await exchanging;
+    expect(seen.lines.map((line) => JSON.parse(line).result)).toEqual(["ok"]);
+    await closing;
+  });
+
+  test("a client that vanished with the call still running does not make close() throw or hang", async () => {
+    const running = gate();
+    const server = await start({ slow: { run: async () => { await running.promise; return "ok"; } } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "slow", params: {} });
+    await Bun.sleep(10);
+    client.end();
+    await client.closed();
+    const closing = server.close();
+    running.resolve();
+    await closing;
+    expect(logged).toEqual([]);
+  });
+
+  test("notifications in flight settle before close() resolves", async () => {
+    const running = gate();
+    let finished = false;
+    const server = await start({ note: { run: async () => { await running.promise; finished = true; } } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", method: "note", params: {} });
+    await Bun.sleep(10);
+    let closed = false;
+    const closing = server.close().then(() => (closed = true));
+    await Bun.sleep(20);
     expect(closed).toBe(false);
     running.resolve();
     await closing;
-    expect({ finished, closed }).toEqual({ finished: true, closed: true });
-    await expect(Client.open(server.socket)).rejects.toThrow();
+    expect(finished).toBe(true);
+    await client.closed();
+  });
+
+  test("a notification a call sends through its connection while draining is written before the connection ends", async () => {
+    const running = gate();
+    const server = await start({
+      work: { run: async (_params, _context, call) => { await running.promise; call.connection.notify("progress", { done: true }); return "ok"; } },
+    });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "work", params: {} });
+    await Bun.sleep(10);
+    const closing = server.close();
+    running.resolve();
+    expect(await client.next()).toEqual({ jsonrpc: "2.0", method: "progress", params: { done: true } });
+    expect((await client.next()).result).toBe("ok");
+    await closing;
+  });
+
+  test("two close() calls share one promise, also while the drain runs", async () => {
+    const running = gate();
+    const server = await start({ slow: { run: async () => { await running.promise; return 1; } } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "slow", params: {} });
+    await Bun.sleep(10);
+    const first = server.close();
+    const second = server.close();
+    expect(second).toBe(first);
+    running.resolve();
+    await first;
+    expect(server.close()).toBe(first);
   });
 
   test("a stale socket file left by a server that is gone is replaced", async () => {
@@ -731,12 +883,12 @@ describe("lifecycle", () => {
     while (reached.length < 2) await Bun.sleep(1);
     let closed = false;
     const closing = server.close().then(() => (closed = true));
-    await client.closed();
-    await Bun.sleep(10);
+    await Bun.sleep(20);
     expect(closed).toBe(false);
     validating.resolve();
     building.resolve();
     await closing;
+    await client.closed();
     expect(reached.sort()).toEqual(["context built", "validate"]);
     expect(logged).toEqual([]);
   });
