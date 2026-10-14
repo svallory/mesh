@@ -139,12 +139,12 @@ describe("the daemon's context factory", () => {
   });
 
   test("serving a method takes it off the unserved map, and it then needs an actor with a membership", async () => {
-    const served = { ...methods, "task.assign": { run: () => ({ events: [] }) } };
-    expect(unserved(methods).has("task.assign")).toBe(true);
-    expect(unserved(served).has("task.assign")).toBe(false);
+    const served = { ...methods, "events.read": { run: () => ({ events: [] }) } };
+    expect(unserved(methods).has("events.read")).toBe(true);
+    expect(unserved(served).has("events.read")).toBe(false);
     await within(async ({ alice }) => {
-      expect(await outcome(served, "task.assign", alice.id)).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
-      expect((await outcome(served, "task.assign", ENGINE_ID)) as RpcError).toMatchObject({ code: -32001, data: { failures: [{ check: "membership" }] } });
+      expect(await outcome(served, "events.read", alice.id)).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
+      expect((await outcome(served, "events.read", ENGINE_ID)) as RpcError).toMatchObject({ code: -32001, data: { failures: [{ check: "membership" }] } });
     });
   });
 

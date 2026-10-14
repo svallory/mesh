@@ -1,13 +1,15 @@
 // The transport resolves what the spec names by one record and the port addresses by another (PORTING.md:17): a
-// membership by its collaborator, the workspace by being the only one. It also checks, before an action runs, that each
+// membership by its collaborator, a claim by its Task and fence, a dependency by its two Tasks, the workspace by being
+// the only one. It also checks, before an action runs, that each
 // record a payload names exists, so a missing one is the spec's `exists` (PROTOCOL.md:110) and never a validator
 // failure on an id that is not a UUID, or an id stored without a row behind it (SQLite has no foreign keys here).
 import { ForbiddenError, InvalidInputError, NotFoundError, type ActionContext } from "@meshfw/runtime";
 import { Mesh } from "meshfw";
 import { z } from "zod";
 import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
-import { Task } from "#mesh/domain/work";
+import { Claim, Dependency, Submission, Task } from "#mesh/domain/work";
 import { roleIn } from "../domain/identity/identity.helpers";
+import { revokesClaimOf } from "../domain/work/work.helpers";
 
 const uuid = z.uuid();
 
@@ -41,6 +43,14 @@ export async function existingTask(id: string): Promise<Task> {
   return task;
 }
 
+/** Throws the `NotFoundError` of the submission `id` when there is none. */
+export async function existingSubmission(id: string): Promise<Submission> {
+  requireId("work.Submission", id);
+  const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: id } }, limit: 1 });
+  if (!submission) throw new NotFoundError("work.Submission", { id });
+  return submission;
+}
+
 /** The one workspace this engine hosts, which bootstrap creates (PROTOCOL.md:42). */
 export async function theWorkspace(): Promise<Workspace> {
   const [workspace] = await Mesh.privileged(Workspace).read({ limit: 1 });
@@ -63,8 +73,59 @@ export async function membershipOf(collaboratorId: string, context: ActionContex
   if (!(await roleIn(context.actor.id, ["owner"]))) {
     throw new ForbiddenError({ entity: "identity.Membership", action, policies: ["ownerOnly"], breakdown: [] });
   }
-  throw new InvalidInputError([{
-    label: "membershipActive", code: "membership.active", path: [], source: null, details: null,
-    message: "the collaborator has no membership; grant one with membership.grant",
-  }]);
+  throw nothingToActOn("membershipActive", "membership.active", "the collaborator has no membership; grant one with membership.grant");
+}
+
+/** The issue an action would report for `code`, for a record the transport finds nothing to act on. */
+function nothingToActOn(label: string, code: string, message: string): InvalidInputError {
+  return new InvalidInputError([{ label, code, path: [], source: null, details: null, message }]);
+}
+
+/**
+ * The claim `claim.renew` and `claim.release` act on, which the spec names by its Task and fence (PROTOCOL.md:249):
+ * the actor's claim with that fence, else the actor's latest claim on the Task, so the action's own checks answer
+ * `claim.current-fence`, `claim.active` or `claim.expired`. An actor that never held a claim on the Task is refused
+ * `claim.holder` in the permission phase, as the action's `claimHolder` would refuse it, beside `role` when its role
+ * could not renew or release any claim.
+ */
+export async function claimOf(taskId: string, fence: number, context: ActionContext, action: "renew" | "release"): Promise<Claim> {
+  await existingTask(taskId);
+  const claims = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId }, holderId: { eq: context.actor.id } }, sort: ["fence", "id"] });
+  const claim = claims.find((candidate) => candidate.fence === fence) ?? claims.at(-1);
+  if (claim) return claim;
+  const policies = (await roleIn(context.actor.id, ["owner", "member"])) ? ["claimHolder"] : ["ownerOrMember", "claimHolder"];
+  throw new ForbiddenError({ entity: "work.Claim", action, policies, breakdown: [] });
+}
+
+/**
+ * The claim `claim.revoke` acts on, which the spec names by its Task: the Task's active claim. With none there is
+ * nothing to revoke, `claim.active` (PROTOCOL.md:279), once the permission phase has passed: an actor that could not
+ * revoke the Task's claim is refused as the action's `ownerOrMember` and `claimRevoker` would refuse it.
+ */
+export async function activeClaimOf(taskId: string, context: ActionContext): Promise<Claim> {
+  await existingTask(taskId);
+  const [claim] = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId }, state: { eq: "active" } }, sort: ["fence", "id"] });
+  if (claim) return claim;
+  const policies = [
+    ...((await roleIn(context.actor.id, ["owner", "member"])) ? [] : ["ownerOrMember"]),
+    ...((await revokesClaimOf(taskId, context.actor.id)) ? [] : ["claimRevoker"]),
+  ];
+  if (policies.length > 0) throw new ForbiddenError({ entity: "work.Claim", action: "revoke", policies, breakdown: [] });
+  throw nothingToActOn("claimActive", "claim.active", "the task has no active claim to revoke");
+}
+
+/**
+ * The dependency `dependency.remove` acts on, which the spec names by its two Tasks. Each Task must exist (`exists`);
+ * an edge that does not is `dependency.exists`, a content check (PROTOCOL.md:276), once the permission phase has
+ * passed: an actor whose role could not remove any dependency is refused as the action's `ownerOrMember` would refuse it.
+ */
+export async function dependencyOf(dependentId: string, prerequisiteId: string, context: ActionContext): Promise<Dependency> {
+  await existingTask(dependentId);
+  await existingTask(prerequisiteId);
+  const [dependency] = await Mesh.privileged(Dependency).read({ filter: { dependentId: { eq: dependentId }, prerequisiteId: { eq: prerequisiteId } }, limit: 1 });
+  if (dependency) return dependency;
+  if (!(await roleIn(context.actor.id, ["owner", "member"]))) {
+    throw new ForbiddenError({ entity: "work.Dependency", action: "remove", policies: ["ownerOrMember"], breakdown: [] });
+  }
+  throw nothingToActOn("dependencyExists", "dependency.exists", "the dependency does not exist; nothing to remove");
 }
