@@ -54,10 +54,10 @@ Reads your entity files, checks them and writes the types, action functions, inp
 
 ### What a build error looks like
 
-Every diagnostic names the file, the line and the column, both 1-based, and says what to do:
+Every diagnostic names the file, the line, the column (both 1-based), the severity and the diagnostic's code, then says what to do. The code is the `MESH_*` name the documentation refers to, or the `MX_*` name for a mistake in the syntax itself, as `tsc` prints `TS2345`:
 
 ```text
-src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of todo.Todo. Did you mean &title?
+src/domain/todo/todo.mesh.mx:22:9 error MESH_UNKNOWN_MEMBER &titel is not a member of todo.Todo. Did you mean &title?
 ```
 
 The same shape is used for an unknown declaration, one the build does not implement, a duplicate input name, a free variable in an expression and a capability the adapter does not declare. Nothing is silently dropped.

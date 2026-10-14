@@ -671,10 +671,10 @@ When a check reads the stored row, Mesh folds it into the statement's filter. A 
 mesh build
 ```
 
-The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line and column:
+The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line, column and code:
 
 ```text
-src/domain/todo/todo.mesh.mx:22:9 error &titel is not a member of todo.Todo. Did you mean &title?
+src/domain/todo/todo.mesh.mx:22:9 error MESH_UNKNOWN_MEMBER &titel is not a member of todo.Todo. Did you mean &title?
 ```
 
 Run `mesh inspect Todo` to see the declarations with source positions, and `mesh explain Todo complete` to see the action's plan. Both are in [Command line](./command-line.md).

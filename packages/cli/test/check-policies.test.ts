@@ -140,7 +140,7 @@ beforeAll(async () => {
   const built = mesh(root, "build");
   // The one warning is the tutorial's: its `label` concatenates strings, which runs as plain TypeScript.
   expect(built).toMatchObject({ code: 0, stdout: "" });
-  expect(built.stderr).toStartWith("domain/todo/todo.mesh.mx:16:14 warning this expression runs as plain TypeScript");
+  expect(built.stderr).toStartWith("domain/todo/todo.mesh.mx:16:14 warning MESH_EXPR_PLAIN this expression runs as plain TypeScript");
   expect(built.stderr).toEndWith("\n0 errors, 1 warning\n");
 }, 30_000);
 afterAll(async () => {

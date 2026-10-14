@@ -125,7 +125,7 @@ describe("two entities named List in modules a and b", () => {
     expect(JSON.parse(b.stdout)).toMatchObject({ name: "List", fqn: "b.List", module: "b", file: "domain/b/list.mesh.mx", table: "b_list" });
     expect(a.stdout).not.toBe(b.stdout);
     expect(mesh(root, "inspect", "List")).toEqual({
-      code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error Entity name "List" is ambiguous. Did you mean a.List or b.List?\n1 error, 0 warnings\n',
+      code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error MESH_CLI Entity name "List" is ambiguous. Did you mean a.List or b.List?\n1 error, 0 warnings\n',
     });
   }, 30_000);
 
@@ -181,7 +181,7 @@ describe("ENT-17 without table= on b.List", () => {
     const file = join(other, "domain/b/list.mesh.mx");
     await writeFile(file, (await readFile(file, "utf8")).replace(' table="b_list"', ""));
     expect(mesh(other, "build")).toEqual({ code: 1, stdout: "", stderr:
-      'domain/b/list.mesh.mx:1:1 error Entities a.List (domain/a/list.mesh.mx) and b.List (domain/b/list.mesh.mx) both use the SQLite table "list"\n'
+      'domain/b/list.mesh.mx:1:1 error MESH_SCHEMA_DUPLICATE_TABLE Entities a.List (domain/a/list.mesh.mx) and b.List (domain/b/list.mesh.mx) both use the SQLite table "list"\n'
       + '  fix: Set table="..." on one of the two entities\n1 error, 0 warnings\n' });
     expect(await Bun.file(join(other, ".mesh/model.json")).exists()).toBe(false);
   }, 30_000);
