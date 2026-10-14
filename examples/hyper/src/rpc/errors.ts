@@ -235,22 +235,31 @@ async function explainedFailure(failure: Failure, payload: unknown): Promise<Fai
  * `error` with what two failures need that the action's error does not carry, read through `Mesh.privileged` in a
  * transaction of its own, after the call's has rolled back, so a change committed in between shows:
  *
- * - `task.children-settled`: the reason names each open child by title (PROTOCOL.md:341). A check's `message=` is fixed
- *   text in Mesh today, so the transport appends the titles (PORTING.md); `details` keeps the ids alone, as the spec's do.
+ * - `task.children-settled`: the reason names each open child by title (PROTOCOL.md:341). ACT-30 (ruled) lets a check's
+ *   `message=` be a function, but the compiler does not build that form yet (`packages/compiler/src/front-end/build.ts`
+ *   stores text only), so the transport appends the titles until it does (PORTING.md, G22); `details` keeps the ids
+ *   alone, as the spec's do.
  * - `review.reviewer`: `details` is `{ reviewerId }`, the collaborator the reviewer rule names (PROTOCOL.md:252), for
  *   the submission the call's `payload` names. A policy's denial carries no details (PORTING.md).
  *
- * Any other error is returned as it is, without a read.
+ * Any other error is returned as it is, without a read. So is `error` when the read fails (the layer closing under a
+ * shutdown, a busy database): the rejection is right without the extra facts, so the failure is logged and the client
+ * still gets its code and checks, never `-32603`.
  */
 export async function explained(error: RpcError, payload: unknown): Promise<RpcError> {
   const data = error.data as { phase: Phase; failures: readonly Failure[] } | undefined;
   const failures = data?.failures ?? [];
   if (!failures.some((failure) => failure.check === "task.children-settled" || failure.check === "review.reviewer")) return error;
-  return transaction(async () => {
-    const explainedFailures: Failure[] = [];
-    for (const failure of failures) explainedFailures.push(await explainedFailure(failure, payload));
-    return new RpcError(error.code, error.message, { ...data, failures: explainedFailures });
-  });
+  try {
+    return await transaction(async () => {
+      const explainedFailures: Failure[] = [];
+      for (const failure of failures) explainedFailures.push(await explainedFailure(failure, payload));
+      return new RpcError(error.code, error.message, { ...data, failures: explainedFailures });
+    });
+  } catch (cause) {
+    console.error(`could not read what explains a ${error.message} rejection; answering it as it is`, cause);
+    return error;
+  }
 }
 
 /**
