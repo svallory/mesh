@@ -72,6 +72,51 @@ test("a message function that reads `before` is refused like `that=` (`before` i
   expect(found.map((d) => d.code)).toContain("MESH_VALIDATE_BEFORE");
 });
 
+// The type pass and the lifecycle limits read a message function like `that=` (`before` is gone from validate, a
+// negated unknown is flagged, a create's `&x` is not the caller's value).
+const withMessage = (action: string, message: string) => buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source: `entity :Task
+  attributes
+    uuid :id primary-key
+    string :title
+    string :subtitle nullable
+  actions auto=[:read]
+    ${action}
+      input
+        &title
+      validate
+        check :ok [
+          that=() => false
+          code="task.ok"
+          ${message}
+        ]
+` }] }).diagnostics.map((d) => ({ code: d.code, severity: d.severity, line: d.position.line, message: d.message }));
+
+test.each([["a plain parameter", "message=(s) => s.before.title"], ["a free root", "message=() => before.title"]])(
+  "a message that reads `before` through %s is MESH_VALIDATE_BEFORE (lifecycle limits)",
+  (_name, message) => {
+    const found = withMessage("update :go", message).filter((d) => d.code === "MESH_VALIDATE_BEFORE");
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "error", line: 14 });
+    expect(found[0]!.message).toContain("check :ok (message) reads `before`");
+  },
+);
+
+test("a negated unknown in a message is MESH_EXPR_NEGATED_UNKNOWN, and the warning says what a message does with it", () => {
+  const found = withMessage("update :go", 'message=() => &subtitle !== "x" ? "a" : "b"').filter((d) => d.code === "MESH_EXPR_NEGATED_UNKNOWN");
+  expect(found).toHaveLength(1);
+  expect(found[0]).toMatchObject({ severity: "warning", line: 14 });
+  expect(found[0]!.message).toContain("an unknown condition counts as false");
+  expect(found[0]!.message).toContain("FrameworkError");
+  expect(found[0]!.message).not.toContain("the check fails");
+});
+
+test("a create's message that reads a member the create takes is MESH_VALIDATE_NOT_APPLIED; an update's does not", () => {
+  const found = withMessage("create :make", "message=() => `t ${&title}`").filter((d) => d.code === "MESH_VALIDATE_NOT_APPLIED");
+  expect(found).toHaveLength(1);
+  expect(found[0]).toMatchObject({ severity: "warning", line: 14 });
+  expect(withMessage("update :go", "message=() => `t ${&title}`").filter((d) => d.code === "MESH_VALIDATE_NOT_APPLIED")).toEqual([]);
+});
+
 // The generated code type-checks the function's result: a number, or a field that can be null, is a compile error,
 // where the run time would fail the check with a FrameworkError.
 const roots: string[] = [];

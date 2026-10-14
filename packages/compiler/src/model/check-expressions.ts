@@ -179,9 +179,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       }, policy);
     }
   };
-  /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null. Elsewhere (a step, a computed field) the outcome depends on the position. */
+  /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null, in a `message` an unknown condition counts as false and an unknown message fails the call. Elsewhere (a step, a computed field) the outcome depends on the position. */
   const whenUnknown = (part: Scope["checkPart"]) =>
-    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : part === "message" ? "the check fails with an error, since a message must be text" : "the check fails or the row is left out";
+    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : part === "message" ? "an unknown condition counts as false, and a message that is itself unknown fails the call with a FrameworkError" : "the check fails or the row is left out";
   // No reachability analysis: `&n > 0 || true` is not unknown, so the wording says what happens when the result depends on the read.
   const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
     report("warning", "MESH_VALIDATE_UNFILLED",
