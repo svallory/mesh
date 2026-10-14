@@ -93,7 +93,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer: `bind` and `connect` | Accepted, amended by 0059, 0086 | operator |
 | [0048](./0048-schema-inside-the-process-for-tests.md) | Schema inside the process for tests; the stable Drizzle pin | Accepted | lead |
 | [0049](./0049-vocabulary-is-meshs-own.md) | The vocabulary is Mesh's own; `resource` becomes `entity` | Accepted | operator |
-| [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted, amended 2026-10-11: reusable steps and `after-commit` dropped (0082); amended 2026-10-13: `%.now` and `%.today` (SYN-29) | operator |
+| [0050](./0050-entity-file-syntax.md) | Entity file syntax: `kind #name options`, with the reference file | Accepted, amended 2026-10-11: reusable steps and `after-commit` dropped (0082); amended 2026-10-13: `%.now` and `%.today` (SYN-29); amended 2026-10-14: namespace imports (SYN-21) | operator |
 | [0051](./0051-mesh-mx-files-and-the-mesh-host.md) | Entity files end in `.mesh.mx`; Mesh ships an MX host named `mesh` | Accepted, amended 2026-10-11: the root tag decides a file's kind (0077) | operator; lead, delegated |
 | [0052](./0052-actions-auto-and-on-load.md) | Actions are always named; `auto`; `on:load`; `arguments` | Accepted, amended by 0067, 0072 | operator |
 | [0053](./0053-validate-then-do.md) | `validate`, then `do`; steps `set`, `when`, `load`, `run`; `always`; reusable steps planned | Accepted, amended by 0067, 0068, and 2026-10-11: a check sees `self` before the input; `before` leaves `validate`; step files and `after-commit` dropped (0082, 0079) | operator; lead, delegated |
@@ -110,7 +110,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0064](./0064-order-of-work-after-approval.md) | After approval: realignment, Jig port, then M2 | Accepted | lead, delegated |
 | [0065](./0065-mx-highlighting-on-the-docs-site.md) | The docs site highlights `mx` code with MX's tree-sitter highlighter | Accepted | lead, delegated, with the MX lead |
 | [0066](./0066-names-and-references-are-atoms.md) | Names and references are atoms: `kind :name options` | Accepted, amended by 0067 | operator (three points by the lead) |
-| [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted, amended 2026-10-12 by 0086 | operator; marked choices by the lead |
+| [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted, amended 2026-10-12 by 0086; amended 2026-10-14: namespace imports (SYN-21) | operator; marked choices by the lead |
 | [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-12 by 0086 (points 1 and 3); amended 2026-10-11: `before` leaves `validate`; an effect across aggregates is a service (0078) | operator |
 | [0069](./0069-json-attribute-type.md) | `json` is an attribute type | Accepted | operator |
 | [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `inverse=` | Accepted | operator |
