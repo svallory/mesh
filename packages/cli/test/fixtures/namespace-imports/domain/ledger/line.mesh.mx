@@ -1,0 +1,27 @@
+import * as bills from "../billing/invoice.mesh.mx"
+import * as money from "../billing/money"
+
+entity :Line
+  attributes
+    uuid :id primary-key
+    integer :amount
+  relationships
+    belongs-to :invoice entity=bills.Invoice
+  computed
+    boolean :large() { return &amount > 100 }
+  actions auto=[:read]
+    create :add
+      input
+        &amount
+        &invoice
+    update :check
+      do
+        run async ({ self }) {
+          const actions: typeof bills.Invoice = bills.Invoice
+          const owner: bills.Invoice | null = null
+          const cents: money.Cents = self.amount
+          if (owner !== null || typeof actions.open !== "function" || cents < 0) throw new Error("the namespace did not bind")
+        }
+  policies
+    policy :anyone
+      authorize-if=() => true

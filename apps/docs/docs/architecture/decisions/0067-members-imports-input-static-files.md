@@ -1,6 +1,6 @@
 ---
 title: "0067. Members are &name, entities are imports, one input section, static files"
-description: "Decision record 0067: entity file syntax v4 separates declarations, member references and imported entities, unifies action input and keeps files static. Status: Accepted. Amended 2026-10-12 (colliding action exports)."
+description: "Decision record 0067: entity file syntax v4 separates declarations, member references and imported entities, unifies action input and keeps files static. Status: Accepted. Amended 2026-10-12 (colliding action exports) and 2026-10-14 (namespace imports)."
 ---
 
 # 0067. Members are `&name`, entities are imports, one `input` section, static files
@@ -10,6 +10,8 @@ description: "Decision record 0067: entity file syntax v4 separates declarations
 Accepted. Amends [ADR-0050](./0050-entity-file-syntax.md), [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) and [ADR-0066](./0066-names-and-references-are-atoms.md). The action-input portions of [ADR-0052](./0052-actions-auto-and-on-load.md) and [ADR-0053](./0053-validate-then-do.md) follow this amendment too.
 
 **Amended 2026-10-12 (operator, CMP-18).** The last consequence's open question, how the generated aggregate entry point exposes colliding action exports, is settled by [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md): each domain folder's barrel exports its own entities, so same-named entities in different folders never meet. The rest of this record is unchanged and kept as history.
+
+**Amended 2026-10-14 (operator, SYN-21).** An entity file may also import another entity file as a namespace, `import * as billing from "../billing/invoice.mesh.mx"`, and name the entity that file declares as a member of it, `entity=billing.Invoice`. The operator's reason: "Can't the user pick which they want?" Both are JavaScript's own import forms, so refusing one would make legal syntax illegal. The qualifier is the alias the file gives the import, not a module name Mesh checks, and it is never part of an FQN. Section 2 below is updated; it said there was no qualified-name alternative.
 
 ## Date
 
@@ -45,7 +47,9 @@ Declaration names remain atoms (`entity :Invoice`, `check :invoiceIsSent`). Fixe
 
 A file exports its entity under its declared name. Import it by relative path: `import { Customer } from "./customer.mesh.mx"`, then write `belongs-to :customer entity=Customer`. The same shape applies to `has-many :lines entity=InvoiceLine` and `has-one :payment entity=Payment`.
 
-There is no atom destination and no qualified-name alternative. The folder under `src/domain/` remains the module: no `module=` line, no top-level application name. Two folders may each declare an `entity :List` without conflict because paths distinguish them.
+A file may instead import another entity file as a namespace and name its entity as a member of it (amended 2026-10-14, SYN-21): `import * as billing from "../billing/invoice.mesh.mx"`, then `belongs-to :invoice entity=billing.Invoice`. The author picks the short or the qualified form by the import they write, and may mix them, even for one file. The qualifier is the author's alias for that file: Mesh checks only that the file declares the member, never that the alias matches a folder, and the alias never enters an FQN, a table name or a generated name. A function of the file reads the same reference as a value (`billing.Invoice.pay(input, context)`, `Mesh.privileged(billing.Invoice)`) and as a type (`billing.Invoice`).
+
+There is no atom destination and no qualified name that Mesh resolves on its own. The folder under `src/domain/` remains the module: no `module=` line, no top-level application name. Two folders may each declare an `entity :List` without conflict because paths distinguish them.
 
 A `belongs-to` puts the key column on this entity; a `has-one` expects it on the other. The generated column is TypeScript surface, not entity-file vocabulary: the file names `&customer`, not the generated `customerId` column.
 

@@ -1405,10 +1405,10 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     }
     // From an entity file the advice is the entity's, as before.
     expect(problems(withImport('import { Mesh } from "meshfw"\nimport type { Task as T } from "./task.mesh.mx"')).map((p) => [p.code, p.message, p.fix]))
-      .toEqual([["MESH_IMPORT_FORM", "import the entity by name, not as a type: `import { List } from …`", 'write `import { Task as T } from "./task.mesh.mx"`, the entity that file declares']]);
+      .toEqual([["MESH_IMPORT_FORM", "import the entity by name or as a namespace, not as a type: `import { List } from …` or `import * as billing from …`", 'write `import { Task as T } from "./task.mesh.mx"`, the entity that file declares']]);
     // From a helper file the advice is the helper's, not the entity's.
     const helper = (line: string) => problems(withImport(`import { Mesh } from "meshfw"\n${line}`)).map((p) => [p.code, p.message, p.fix]);
-    expect(helper('import isStaff from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name: `import { isStaff } from …`", 'write `import { isStaff } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
+    expect(helper('import isStaff from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name or as a namespace: `import { isStaff } from …` or `import * as h from …`", 'write `import { isStaff } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
     // The fix keeps every name the file uses: a default binding becomes a named one.
     expect(helper('import isStaff, { other } from "./task.helpers"').map((p) => p[2]))
       .toEqual(['write `import { isStaff, other } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']);
@@ -1416,8 +1416,12 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
       .toEqual(['write `import { Task, Task as T } from "./task.mesh.mx"`, the entity that file declares']);
     // A package other than "meshfw" is refused by its path, not advised on its form.
     expect(helper('import _ from "lodash"').map((p) => p[0])).toEqual(["MESH_UNKNOWN_IMPORT"]);
-    expect(helper('import * as h from "./task.helpers"')[0]![1]).toBe("import a helper by name: `import { isStaff } from …`");
-    expect(helper('import type { isStaff } from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name, not as a type: `import { isStaff } from …`", 'write `import { isStaff } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
+    // A namespace import is one of the two forms (SYN-21); a default one with it keeps both bindings in the fix.
+    expect(helper('import * as h from "./task.helpers"').filter((p) => p[0] === "MESH_IMPORT_FORM")).toEqual([]);
+    expect(helper('import isStaff, * as h from "./task.helpers"').map((p) => p[2]))
+      .toEqual(['write `import { isStaff } from "./task.helpers"` and `import * as h from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']);
+    expect(helper('import type * as h from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name or as a namespace, not as a type: `import { isStaff } from …` or `import * as h from …`", 'write `import * as h from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
+    expect(helper('import type { isStaff } from "./task.helpers"')).toEqual([["MESH_IMPORT_FORM", "import a helper by name or as a namespace, not as a type: `import { isStaff } from …` or `import * as h from …`", 'write `import { isStaff } from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']]);
   });
 
   test("a bare call's fix keeps the call's own arguments", () => {

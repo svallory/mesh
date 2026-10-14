@@ -21,7 +21,10 @@ export type ExprNode = (
   | { kind: "var"; name: string }
   | { kind: "member"; object: ExprNode; name: string; optional: boolean }
   | { kind: "call"; fn: FunctionId; args: ExprNode[] }
-  /** An imported pure function that does not read the record. */
+  /**
+   * An imported pure function that does not read the record. `name` is the callee as written: the import's local
+   * (`isStaff`), or a member of a namespace import (`h.isStaff`, SYN-21).
+   */
   | { kind: "helper"; name: string; from: string; args: ExprNode[] }
   | { kind: "quantify"; op: QuantifierId; source: ExprNode; param: string; body: ExprNode }
 ) & { position: SourcePosition };

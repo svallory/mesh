@@ -153,6 +153,24 @@ test("an entity names its own type in a relationship with no import, and no othe
   expect(oldSpellingInV4(own.replace("entity=Task nullable", "entity=Nope nullable"))).toContain("entity=Nope must name an import");
 });
 
+test("an entity named through a namespace import needs that import in the fence (SYN-21)", () => {
+  const qualified = `import * as billing from "../billing/invoice.mesh.mx"
+import { Customer } from "./customer.mesh.mx"
+entity :Payment
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :invoice entity=billing.Invoice
+    belongs-to :customer entity=Customer
+`;
+  expect(oldSpellingInV4(qualified)).toBeNull();
+  expect(parseV4(qualified, "qualified.mx")).toEqual([]);
+  expect(oldSpellingInV4(qualified.replace("entity=billing.Invoice", "entity=bililng.Invoice"))).toContain("entity=bililng.Invoice must name a member of a namespace import");
+  expect(oldSpellingInV4(qualified.replace("entity=billing.Invoice", "entity=Customer.Invoice"))).toContain("entity=Customer.Invoice must name a member of a namespace import");
+  expect(oldSpellingInV4(qualified.replace("entity=billing.Invoice", "entity=billing"))).toContain("entity=billing names a namespace import, not an entity");
+  expect(oldSpellingInV4(qualified.replace("entity=Customer", "entity=Invoice"))).toContain("entity=Invoice must name an import");
+});
+
 // Member placement is the parse's job now: MX lowers `&name` through MESH_SYNTAX
 // and the production contracts refuse a member line out of place.
 const placementFailures = [

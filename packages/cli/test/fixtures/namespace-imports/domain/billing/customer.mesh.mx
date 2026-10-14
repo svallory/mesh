@@ -1,0 +1,17 @@
+import { Invoice } from "./invoice.mesh.mx"
+
+entity :Customer
+  attributes
+    uuid :id primary-key
+    string :name
+  relationships
+    has-many :invoices entity=Invoice
+  computed
+    count :invoiceCount of=&invoices
+  actions auto=[:read]
+    create :join
+      input
+        &name
+  policies
+    policy :anyone
+      authorize-if=() => true
