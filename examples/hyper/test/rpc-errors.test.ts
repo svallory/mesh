@@ -83,7 +83,7 @@ describe("rpcErrorOf: InvalidInputError", () => {
   });
 
   test("a rule of the port alone has no wire error, even beside one of the spec's", () => {
-    for (const code of ["claim.stale-fence", "submission.task-version", "machine.retired", "attempt.open"]) {
+    for (const code of ["claim.stale-fence", "machine.retired", "attempt.open"]) {
       expect(contentChecks.has(code)).toBe(false);
       expect(rpcErrorOf(new InvalidInputError([issue(code, "port rule")]))).toBeUndefined();
       expect(rpcErrorOf(new InvalidInputError([issue("task.open", "the task is settled"), issue(code, "port rule")]))).toBeUndefined();

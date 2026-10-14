@@ -420,15 +420,6 @@ export async function submittedVersionsOf(submissionId: string): Promise<Submitt
   return { state: submission.state, submitted: submission.taskVersion, current: await taskVersionOf(submission.taskId) };
 }
 
-/**
- * `submission.task-version` (`tasks/review/rules.ex:10-25`): a pending submission's Task is one version past the one
- * submitted (submitting touches it here, which Hyper's engine does not), so nothing changed it since. Refused when the submission does not exist.
- */
-export function taskUnchangedSinceSubmit(versions: SubmittedVersions): boolean {
-  if (versions.state === null) return false;
-  return versions.state !== "pending" || (versions.submitted !== null && versions.current === versions.submitted + 1);
-}
-
 /** Which part of the reviewer rule names the reviewer of the Task `taskId` (`review.accept`'s `ruleApplied`). */
 export async function reviewerRuleOf(taskId: string): Promise<ReviewerRule> {
   return (await reviewerOfTask(taskId)).rule;
