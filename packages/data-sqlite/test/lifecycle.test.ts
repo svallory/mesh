@@ -20,7 +20,7 @@ entity :Member table="members"
   relationships
     has-many :tasks entity=Task inverse=:owner
   computed
-    count :taskCount of="tasks"
+    count :taskCount of=&tasks
   actions auto=[:read]
     create :join
       input

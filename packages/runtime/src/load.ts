@@ -509,7 +509,7 @@ async function loadRelation(
 function rollupShape(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
 ): { path: string; relation: HasPlan & { column: string }; target: EntityPlan; column: string } {
-  const label = `${computed.fn} :${name} of="${computed.of.join(".")}" on ${entity}`;
+  const label = `${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity}`;
   if (computed.fn !== "count" && computed.fn !== "max")
     throw new FrameworkError(`${label} cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it`);
   const [path, attribute, ...more] = computed.of as [string, string?, ...string[]];

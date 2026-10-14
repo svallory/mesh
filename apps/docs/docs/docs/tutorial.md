@@ -48,7 +48,7 @@ entity :List table="lists"
     has-many :todos entity=Todo
 
   computed
-    count :todoCount of="todos"
+    count :todoCount of=&todos
 
   actions auto=[:read, :destroy]
     create :create

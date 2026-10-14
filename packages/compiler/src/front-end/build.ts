@@ -52,6 +52,7 @@ import {
   atomOf,
   attr,
   attrOffset,
+  readMemberPath,
   containsAtom,
   declaredName,
   expression,
@@ -524,7 +525,8 @@ function buildEntity(
   for (const tag of tags(section("computed")?.children ?? [])) {
     const base = { name: declaredName(tag), position: pos(tag) };
     if (["count", "sum", "avg", "min", "max"].includes(tag.name)) {
-      const of = String(opt(tag, "of"));
+      const segments = readMemberPath(attr(tag, "of"), at);
+      const of = segments.map((s) => s.name).join(".");
       const computed: Computed = {
         ...base,
         type: "integer",
@@ -532,14 +534,6 @@ function buildEntity(
         rollup: { fn: tag.name as Rollup["fn"], of },
       };
       entity.computed.push(computed);
-      const a = attr(tag, "of")!;
-      let offset = attrOffset(a);
-      if (source[offset] === '"' || source[offset] === "'") offset++;
-      const segments = of.split(".").map((name) => {
-        const ref = { name, position: at(offset) };
-        offset += name.length + 1;
-        return ref;
-      });
       rollups.push({ entity, computed, segments });
     } else {
       const allowed = tag.name === "enum" ? ["name", "value", "values"] : ["name", "value"];

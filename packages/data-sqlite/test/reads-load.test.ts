@@ -25,8 +25,8 @@ entity :Project table="projects"
     has-many :tasks entity=Task
   computed
     string :label() { return &name.toUpperCase() }
-    count :taskCount of="tasks"
-    max :topPriority of="tasks.priority"
+    count :taskCount of=&tasks
+    max :topPriority of=&tasks.priority
     boolean :busy() { return &taskCount > 1 }
     string :viewer({ actor }) { return actor.id }
   actions auto=[:read]

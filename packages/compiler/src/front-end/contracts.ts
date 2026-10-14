@@ -57,6 +57,15 @@ const node = (a: Attr | undefined): Node | undefined =>
   a && (a.kind === "dynamic" || a.kind === "bound")
     ? (a.value.node as Node | undefined)
     : undefined;
+/** `&a`, `&a.b`, `&a.b.c`: plain property accesses from one marked member. */
+const isMemberPath = (n: Node | null | undefined): boolean => {
+  let cursor = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
+  while (cursor && !cursor.extra?.mxMember) {
+    if (cursor.type !== "MemberExpression" || cursor.computed || cursor.property?.type !== "Identifier") return false;
+    cursor = cursor.object;
+  }
+  return cursor?.type === "MemberExpression";
+};
 const isMember = (n: Node | null | undefined) =>
   n?.type === "MemberExpression" && !!n.extra?.mxMember;
 /** A slot that holds one member only (MX decision 182 addendum 4): MX checks
@@ -266,7 +275,24 @@ for (const kind of ACTION_TYPES)
 for (const kind of ROLLUPS)
   contracts[kind] = closed({
     parents: ["computed"],
-    attributes: { ...named(), of: text(true) },
+    // `of=&lines.amount` (SYN-28): a member reference, a path of marked members through relationships. The string form is refused with its fix.
+    attributes: { ...named(), of: { required: true } },
+    analyze(calls, ctx) {
+      for (const call of calls) {
+        const a = get(call, "of");
+        if (!a) continue;
+        const literal = node(a);
+        const written = a.kind === "static" ? a.value : literal?.type === "StringLiteral" && !literal.extra?.mxAtom ? String(literal.value) : undefined;
+        if (written !== undefined) {
+          const path = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(written) ? written : undefined;
+          ctx.fail(
+            `of takes a member reference, not a string: ${path ? `write of=&${path}` : "write of=&relationship for a count, of=&relationship.attribute for the others"}`,
+            { at: a.loc, code: "MESH_ROLLUP_PATH_STRING" },
+          );
+        } else if (!isMemberPath(node(a)) || /\s/.test((a.kind === "dynamic" ? a.value.code : "") ?? ""))
+          ctx.fail("of takes a member reference: &relationship for a count, &relationship.attribute for the others", { at: a.loc, code: "MESH_ROLLUP_PATH" });
+      }
+    },
   });
 for (const kind of ["asc", "desc"])
   contracts[kind] = closed({

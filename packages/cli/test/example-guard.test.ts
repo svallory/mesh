@@ -83,7 +83,7 @@ test("mesh db push refuses a stale tree, refuses data loss without --force, and 
     rmSync(join(dir, "src/domain/blog/comment.mesh.mx"));
     writeFileSync(join(dir, "src/domain/blog/post.mesh.mx"), readFileSync(join(dir, "src/domain/blog/post.mesh.mx"), "utf8")
       .replace('import { Comment } from "./comment.mesh.mx"\n', "").replace("    has-many :comments entity=Comment\n", "")
-      .replace('    count :commentCount of="comments"\n', "").replace("load=[&comments, &excerpt]", "load=[&excerpt]"));
+      .replace('    count :commentCount of=&comments\n', "").replace("load=[&comments, &excerpt]", "load=[&excerpt]"));
     const stale = script(dir, "db:push");
     expect(stale.code).toBe(1);
     expect(stale.stderr).toStartWith("$ mesh db push\nthe generated tree is out of date: run mesh build first\n");

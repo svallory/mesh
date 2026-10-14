@@ -81,8 +81,8 @@ test("a policy colliding with an auto action is reported on the policy line", ()
   ]);
 });
 test("an own computed field in a rollup has an author-facing diagnostic", () => {
-  const result = build(`${keyed}  computed\n    integer :amount() { return 1 }\n    sum :total of="amount"\n`);
+  const result = build(`${keyed}  computed\n    integer :amount() { return 1 }\n    sum :total of=&amount\n`);
   expect(result.diagnostics).toMatchObject([
-    { code: "MESH_ROLLUP_PATH", message: "rollups read attributes through relationships, not computed fields", position: { line: 6, column: 19 } },
+    { code: "MESH_ROLLUP_PATH", message: "rollups read attributes through relationships, not computed fields", position: { line: 6, column: 18 } },
   ]);
 });

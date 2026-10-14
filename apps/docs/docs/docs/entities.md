@@ -26,7 +26,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `&status === :sent`, `&status=:paid` |
 | Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` |
-| A path through relationships | a string | `of="lines.amount"`, `of="lines"` |
+| A path through relationships | a member reference | `of=&lines.amount`, `of=&lines` |
 | A pattern, a number, a boolean | as in TypeScript | `match=/^INV-\d+$/`, `min=0`, `default=false` |
 
 An **atom** is a name that stands for itself, not a string. It names a declaration or a value from a fixed set. The name of an entity, attribute, relationship, action, check or policy is an atom made of letters, digits and underscores, because it becomes a TypeScript identifier. An enum value may also contain hyphens: `values=[:review-accepted, :review-waived]` gives the union `"review-accepted" | "review-waived"`, and `default=:review-accepted` and `&rule=:review-waived` refer to them. At run time an atom is its name as a string: `values=[:draft, :sent]` gives TypeScript the union `"draft" | "sent"`, and your program compares with `invoice.status === "sent"`.
@@ -282,20 +282,20 @@ entity :Invoice
     string :label() {
       return &number + " · " + formatMoney(&amount)
     }
-    count :lineCount of="lines"
+    count :lineCount of=&lines
 ```
 
 **A field with a body.** A type, a `:name`, parameters and a body. Leave the parameters empty when it reads only members; add `actor` when it depends on who is asking.
 
-**A rollup.** A kind, a `:name` and `of=`, a path through relationships. The path is a string even with one step. `load=[&lines]` is a member reference instead, not a path.
+**A rollup.** A kind, a `:name` and `of=`, a path through relationships. The path is a member reference: `&lines` for a `count`, `&lines.amount` for the others, with one step or more. Each name is checked at that position. The string form `of="lines.amount"` is a build error (`MESH_ROLLUP_PATH_STRING`) that says to write `of=&lines.amount`.
 
 | Rollup | Result |
 |:--|:--|
-| `count :lineCount of="lines"` | How many rows the path reaches |
-| `sum :total of="lines.amount"` | The total of a numeric field |
-| `avg :averageAmount of="lines.amount"` | Its average |
-| `min :firstDueOn of="lines.dueOn"` | The smallest value |
-| `max :lastDueOn of="lines.dueOn"` | The largest value |
+| `count :lineCount of=&lines` | How many rows the path reaches |
+| `sum :total of=&lines.amount` | The total of a numeric field |
+| `avg :averageAmount of=&lines.amount` | Its average |
+| `min :firstDueOn of=&lines.dueOn` | The smallest value |
+| `max :lastDueOn of=&lines.dueOn` | The largest value |
 
 Paths are checked at build time. Inside the entity, checks, steps, filters and policies can read `&lineCount` without asking. A caller sees a computed field only when they name it in `load`; otherwise reading it is a type error.
 
@@ -490,7 +490,7 @@ entity :User
     has-many :todos entity=Todo
 
   computed
-    count :todoCount of="todos"
+    count :todoCount of=&todos
 
   actions
     create :create
@@ -661,7 +661,7 @@ A helper that reads data is `async`, so the check awaits it inside an `async` ar
 
 A read policy reads no other entity: it is a filter on the query. An imported function there is a pure call, evaluated once and bound as a parameter, with no lock to wait for, and a helper there that calls `Mesh.privileged` throws at run time (`Mesh.privileged` called directly in the policy is a build error). It also decides what a caller loads from another entity: a relationship or a rollup that reaches this entity runs its read policies, and a caller they do not admit gets `[]`, `null` or `0` there, never an error.
 
-On a load, a read policy's `input` is empty (`{}`): a load has no read input, so a policy that decides loads too reads `actor` and `context`. A computed field's body runs no policy on what it reads: it is the entity's own rule, worked out the same for every caller, as `Mesh.privileged` is, and its value is shown to whoever may read the record. So on a post, `count :n of="comments"` counts the comments the caller may read, while `integer :n() { return &comments.length }` counts every comment. A relationship to an entity whose policies cover other actions but not its `read` (only `actions=[&list]`, say) loads nothing for any caller, and the build warns at the relationship (`MESH_LOAD_NO_POLICY`).
+On a load, a read policy's `input` is empty (`{}`): a load has no read input, so a policy that decides loads too reads `actor` and `context`. A computed field's body runs no policy on what it reads: it is the entity's own rule, worked out the same for every caller, as `Mesh.privileged` is, and its value is shown to whoever may read the record. So on a post, `count :n of=&comments` counts the comments the caller may read, while `integer :n() { return &comments.length }` counts every comment. A relationship to an entity whose policies cover other actions but not its `read` (only `actions=[&list]`, say) loads nothing for any caller, and the build warns at the relationship (`MESH_LOAD_NO_POLICY`).
 
 When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `Mesh.checkPolicies(Task.update, input, context)` asks for the reason instead. A policy sees `self` as a check does, before the input is applied: on an update or destroy the stored record, on a create the new record with its defaults and a `uuid` or `string` key, and the caller's values in `input`. So a create policy on a list's todos reads `input.list`, not `&list`, and a related-row read there is a query inside the transaction before the insert; reading `&list` in a create policy draws a warning (`MESH_POLICY_NOT_APPLIED`), as it does in a check. An update or destroy of a row that does not exist is reported as not found before any policy that reads the record runs. A policy check that reads the record runs inside the transaction, after the row is read under the lock and before `validate`, so a caller who may not run the action is told forbidden, never that their input is invalid.
 
@@ -700,7 +700,7 @@ Run `mesh inspect Todo` to see the declarations with source positions, and `mesh
 |:--|:--|:--|
 | `attributes` | `type :name options` | `string :title min=1` |
 | `relationships` | `kind :name entity=ImportedName` | `belongs-to :list entity=List` |
-| `computed` | `type :name() { … }` or a rollup | `count :todoCount of="todos"` |
+| `computed` | `type :name() { … }` or a rollup | `count :todoCount of=&todos` |
 | `actions` | `type :name`, with `input`, `validate`, `do` | `update :send` |
 | `policies` | `policy :name`, scope and checks | `policy :owner types=[:read]` |
 
@@ -742,8 +742,8 @@ entity :Invoice table="invoices"
     string :label() {
       return &number + " · " + formatMoney(&total)
     }
-    count :lineCount of="lines"
-    sum :total of="lines.amount"
+    count :lineCount of=&lines
+    sum :total of=&lines.amount
 
   actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]

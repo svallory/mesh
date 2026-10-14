@@ -538,8 +538,8 @@ entity :Shelf table="shelves"
     belongs-to :keeper entity=Keeper
     has-many :items entity=Item
   computed
-    count :itemCount of="items"
-    max :topRank of="items.rank"
+    count :itemCount of=&items
+    max :topRank of=&items.rank
   actions auto=[:read]
     create :make
       input

@@ -21,8 +21,8 @@ entity :Todo table="todos"
     has-one :detail entity=List
   computed
     string :label({ self }) { return self.title }
-    count :childCount of="children"
-    max :largest of="children.amount"
+    count :childCount of=&children
+    max :largest of=&children.amount
   actions auto=[:read, :destroy]
     always types=[:create, :update]
       validate

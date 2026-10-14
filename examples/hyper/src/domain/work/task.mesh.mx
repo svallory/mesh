@@ -37,7 +37,7 @@ entity :Task table="tasks"
     boolean :inReview() { return &submissions.some((s) => s.state === :pending) }
     boolean :assigned() { return &assignments.some((a) => a.endedAt === null) }
     boolean :blocked() { return &dependencies.some((d) => d.prerequisite.state !== :done) }
-    max :maxFence of="claims.fence"
+    max :maxFence of=&claims.fence
     enum :derivedState values=[:ready, :blocked, :claimed, :in-review, :done, :canceled] value=() => &state === :done ? :done : &state === :canceled ? :canceled : &inReview ? :in-review : &claimed ? :claimed : &blocked ? :blocked : :ready
   actions auto=[:read]
     create :create

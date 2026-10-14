@@ -351,7 +351,7 @@ entity :User
   relationships
     has-many :docs entity=Doc inverse=:owner
   computed
-    count :docCount of="docs"
+    count :docCount of=&docs
 `;
   const doc = (computed: string) => `import { User } from "./user.mesh.mx"
 import { Note } from "./note.mesh.mx"
@@ -474,7 +474,7 @@ boolean :c() { return &a }`);
   });
 
   test("a rollup has no needs: it calls the data layer", () => {
-    const { result } = needs('count :noteCount of="notes"');
+    const { result } = needs('count :noteCount of=&notes');
     expect(entityOf(result, "Doc").computed[0]!.needs).toBeUndefined();
   });
 });
@@ -516,7 +516,7 @@ describe("a used has-many with several candidates and no inverse lists them", ()
   });
 
   test("a rollup that reads it names them too", () => {
-    const result = build({ "collaborator.mesh.mx": withUse('    count :membershipCount of="memberships"'), "membership.mesh.mx": unnamed() });
+    const result = build({ "collaborator.mesh.mx": withUse('    count :membershipCount of=&memberships'), "membership.mesh.mx": unnamed() });
     expect(result.diagnostics.filter((d) => d.message.startsWith("count :membershipCount"))).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_REQUIRED",
       message: expect.stringContaining("(:holder, :grantedBy, :revokedBy)"),

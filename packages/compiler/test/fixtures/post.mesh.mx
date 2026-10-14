@@ -31,8 +31,8 @@ entity :Invoice table="invoices"
     string :label() {
       return &number + " · " + formatMoney(&total)
     }
-    count :lineCount of="lines"
-    max :total of="lines.amount"
+    count :lineCount of=&lines
+    max :total of=&lines.amount
 
   actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]

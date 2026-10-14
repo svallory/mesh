@@ -80,7 +80,7 @@ describe("json in an entity file (ADR-0069)", () => {
 
   test("a json attribute is not a rollup operand", () => {
     const list = "import { Todo } from \"./todo.mesh.mx\"\nentity :List\n  attributes\n    uuid :id primary-key\n    json :data\n  relationships\n    belongs-to :todo entity=Todo\n";
-    const source = `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lists entity=List\n  computed\n    max :biggest of="lists.data"\n`;
+    const source = `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lists entity=List\n  computed\n    max :biggest of=&lists.data\n`;
     const result = buildModel({ root: "/project", files: [{ file: "todo/todo.mesh.mx", source }, { file: "todo/list.mesh.mx", source: list }] });
     expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_ROLLUP_TYPE"]);
   });
@@ -307,7 +307,7 @@ describe("the data adapter's capabilities", () => {
       await writeFile(resolve(root, "mesh.config.ts"), `export default { domain: "src/domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: "./none", ${adapter} options: {} } };\n`);
       return root;
     }
-    test.each([['count :todoCount of="todos"', "count"], ['max :topRank of="todos.rank"', "max"]])("%s fails without aggregates, at the rollup", async (computed, fn) => {
+    test.each([['count :todoCount of=&todos', "count"], ['max :topRank of=&todos.rank', "max"]])("%s fails without aggregates, at the rollup", async (computed, fn) => {
       const loaded = await loadConfig(await rollupProject(manifest("integer-key-fill"), computed));
       const built = await loadProject(loaded.config!);
       expect(built.document).toBeNull();
@@ -319,7 +319,7 @@ describe("the data adapter's capabilities", () => {
       })]);
     });
     test("with aggregates it builds; a model with no rollup needs nothing", async () => {
-      const ok = await loadProject((await loadConfig(await rollupProject(manifest("aggregates"), 'count :todoCount of="todos"'))).config!);
+      const ok = await loadProject((await loadConfig(await rollupProject(manifest("aggregates"), 'count :todoCount of=&todos'))).config!);
       expect(ok.diagnostics).toEqual([]);
       expect(ok.document).not.toBeNull();
       const plain = await loadProject((await loadConfig(await rollupProject(manifest(), 'boolean :empty() { return &todos.length === 0 }'))).config!);
