@@ -41,14 +41,14 @@ An entity file writes **`:name` for a name, an atom for anything chosen from a f
 | A reference to something declared | an atom, or a list of atoms | `accept=[:number, :amount]`, `require=[:dueOn]`, `asc :dueOn` under `sort`, `load=[:customer]`, `actions=[:pay]`, `on:load=:visible`, `belongs-to=:Customer` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `self.status === :sent`, `:status=:paid` |
-| Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` (a check's `message=` may also be a function, ACT-30) |
+| Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` |
 | A path through relationships | a member reference (SYN-28) | `of=&lines.amount`, `of=&lines` |
 | A pattern, a number, a boolean | as in TypeScript | `match=/^INV-\d+$/`, `min=0`, `default=false` |
 
 The rules that follow, which the user docs state where each one applies. Rules 2 and 4 rest on the lead's reading of the open question and are marked as such; the rest are the operator's.
 
 1. **`#name` is gone.** There is one way to name a thing: `:name`.
-2. **A string where a name is expected is an error** (`accept=["title"]`), and so is an atom where text is expected (`message=:oops`; a check's `message=` takes text or a function, never an atom). *(The lead's reading of the open question (2), below.)*
+2. **A string where a name is expected is an error** (`accept=["title"]`), and so is an atom where text is expected (`message=:oops`). *(The lead's reading of the open question (2), below.)*
 3. **A name is checked.** `accept=[:titel]` is an error at that position, with a suggestion, in the editor and in `mesh build`.
 4. **Names in these positions are written out.** A variable or an expression there is an error, because Mesh reads the file without running it. *(The lead's reading of the open question (2), below.)* A function is ordinary TypeScript; what a **translated** one may use is its parameters, the registered functions, and calls to imported pure functions that do not read `self`. A `run` body may use anything.
 5. **At run time an atom is its name as a string**: `todo.status === "sent"` in TypeScript, `self.status === :sent` in the entity file.

@@ -49,8 +49,6 @@ entity :Invoice
         check :dueAfterIssue
 ```
 
-A named check has the options of any `check`, and `message=` is fixed text or a function of the same arguments as `that=` and `details=` (ACT-30): `message=({ self }) => ...`. The function runs when the check fails, so a rule that lives in a `checks` section or in a mixin can name the record it refused, and the entity that includes it supplies the record. A function that throws, or returns anything but a string, fails the call with a `FrameworkError` that names the entity, the check and its line.
-
 ## Options considered
 
 The study's D18: (a) named checks as an extension-host run-time point written in TypeScript, after the host exists (the documented form); (b) the ADR-0053 step model, with MX `check` definition files that extensions can also contribute (recommended). The ruling took neither: named checks are an entity-level `checks` section (DOM-28), and step files were dropped, with reuse by a TypeScript helper or a mixin. That drop was ruled on 2026-10-11 with the study's answers; no DOM row states it, so this record is its source.
