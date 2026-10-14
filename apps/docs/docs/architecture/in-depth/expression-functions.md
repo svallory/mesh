@@ -9,6 +9,8 @@ This page is generated from the test data (`EXPRESSION_TABLES` and `QUANTIFIER_T
 
 `null` is both NULL and an unknown boolean. `D(n)` is the instant `n` milliseconds after the epoch. `T` stands for one class of number, string, boolean, date or enum, the same on both sides.
 
+In memory, the right side of `&&`, `||` and `??` and both branches of `?:` are evaluated only when the left side or the test lets them: `a && b` does not evaluate `b` when `a` is false, `a || b` not when `a` is true, `a ?? b` not when `a` is not null, and `c ? x : y` only the branch it takes. An unknown (`null`) left side still evaluates `b`, as SQL would, and a test that is unknown takes the else branch. The tables hold the results; they do not change with this. An imported helper behind such a guard therefore runs only when the guard lets it.
+
 Anything not listed here (string ordering, truthiness, `==`, string concatenation, string methods) is not translated: it stays plain TypeScript with JavaScript's rules, and the build warns.
 
 `%.now` and `%.today` are properties of `%`, the current transaction: its instant and its date, values and not calls, written with no import. One transaction has one instant: every action and read that joins it reads the instant of the call or `transaction` that opened it. `Mesh.isSystem(context)` is one of Mesh's own functions, members of `Mesh`, which an entity file imports from `meshfw`: `import { Mesh } from "meshfw"` (or under an alias, `import { Mesh as M } from "meshfw"`, then `M.isSystem(context)`).

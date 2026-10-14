@@ -1,0 +1,44 @@
+import { hit, isBig } from "./probe"
+
+entity :Gate
+  attributes
+    uuid :id primary-key
+    integer :n nullable
+    boolean :flag default=false
+    boolean :andOut nullable
+    boolean :orOut nullable
+    integer :coalesceOut nullable
+    integer :condOut nullable
+    boolean :nestedOut nullable
+    integer :nestedCondOut nullable
+    boolean :helperGuardOut nullable
+
+  actions auto=[:read]
+    create :blocked
+      input
+        &n
+        &flag
+      do
+        set
+          &andOut=({ input }) => input.flag === true && hit("and", true, true)
+          &orOut=({ input }) => input.flag === false || hit("or", true, true)
+          &coalesceOut=({ input }) => input.n ?? hit("coalesce", true, 1)
+          &condOut=({ input }) => input.flag ? hit("cond-then", true, 1) : 2
+          &nestedOut=({ input }) => input.flag === true && (input.n > 1 || hit("nested", true, true))
+          &nestedCondOut=({ input }) => input.flag === false ? (input.n ?? hit("nested-coalesce", true, 1)) : hit("nested-else", true, 2)
+          &helperGuardOut=({ input }) => isBig(input.n) && hit("helper-guard", true, true)
+
+    create :unknown
+      input
+        &n
+        &flag
+      do
+        set
+          &andOut=({ input }) => input.n > 1 && hit("and-null", false, true)
+          &orOut=({ input }) => input.n > 1 || hit("or-null", false, false)
+          &coalesceOut=({ input }) => input.n ?? hit("coalesce-null", false, 9)
+          &condOut=({ input }) => input.n > 1 ? hit("cond-then", true, 1) : hit("cond-null", false, 2)
+
+  policies
+    policy :open types=[:create, :read]
+      authorize-if=() => true

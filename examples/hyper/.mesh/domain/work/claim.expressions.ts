@@ -75,7 +75,7 @@ export type $work$Claim$NewScope<I = unknown> = $Omit<$work$Claim$CheckScope<I>,
 export const $expressions = {
   // computed lapsed, translated (src/domain/work/claim.mesh.mx:21:20)
   "computed.lapsed": ($s: $work$Claim$Scope<unknown>) =>
-    $.and($.eq($s.self.state, "active"), $.lte($s.self.expiresAt, $.now($s))),
+    $.and($.eq($s.self.state, "active"), () => $.lte($s.self.expiresAt, $.now($s))),
   // check :taskReady that, plain (awaits-helper) (src/domain/work/claim.mesh.mx:29:16)
   "acquire.check.taskReady.that": ($s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>) => {
     return (async ({ input }) => (await derivedStateOf(input.task)) === "ready")($s);
@@ -122,7 +122,10 @@ export const $expressions = {
     $s.actor?.id,
   // set &fence, translated (src/domain/work/claim.mesh.mx:47:18)
   "acquire.step.1.set.fence": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
-    $.add($.coalesce($s.self.task?.maxFence, 0), 1),
+    $.add(
+      $.coalesce($s.self.task?.maxFence, () => 0),
+      1,
+    ),
   // set &acquiredAt, translated (src/domain/work/claim.mesh.mx:48:23)
   "acquire.step.1.set.acquiredAt": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
     $.now($s),
@@ -148,7 +151,9 @@ export const $expressions = {
   },
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:61:16)
   "renew.check.currentFence.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
-    $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
+    $.and($.eq($s.input?.fence, $s.self.fence), () =>
+      $.eq($s.input?.fence, $s.self.task?.maxFence),
+    ),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:64:19)
   "renew.check.currentFence.details": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) => {
     const $self = $s.self;
@@ -162,8 +167,7 @@ export const $expressions = {
     $.gt($s.self.expiresAt, $.now($s)),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:77:16)
   "renew.check.versionMatches.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
-    $.or(
-      $.isNull($s.input?.expectedVersion),
+    $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:80:19)
@@ -188,7 +192,9 @@ export const $expressions = {
   },
   // check :currentFence that, translated (src/domain/work/claim.mesh.mx:95:16)
   "release.check.currentFence.that": ($s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>) =>
-    $.and($.eq($s.input?.fence, $s.self.fence), $.eq($s.input?.fence, $s.self.task?.maxFence)),
+    $.and($.eq($s.input?.fence, $s.self.fence), () =>
+      $.eq($s.input?.fence, $s.self.task?.maxFence),
+    ),
   // check :currentFence details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:98:19)
   "release.check.currentFence.details": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
@@ -207,8 +213,7 @@ export const $expressions = {
   "release.check.versionMatches.that": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
   ) =>
-    $.or(
-      $.isNull($s.input?.expectedVersion),
+    $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:114:19)
@@ -226,7 +231,7 @@ export const $expressions = {
     $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:120:22)
   "release.step.0.set.endReason": ($s: $work$Claim$StoredScope<$work$Claim$ReleaseClaimInput>) =>
-    $.coalesce($s.input?.reason, "released"),
+    $.coalesce($s.input?.reason, () => "released"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:121:28)
   "release.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$ReleaseClaimInput>) => {
     const Task: $work$Task$ReadOnly = $work$Task$value;
@@ -239,8 +244,7 @@ export const $expressions = {
     $.eq($s.self.state, "active"),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:135:16)
   "revoke.check.versionMatches.that": ($s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>) =>
-    $.or(
-      $.isNull($s.input?.expectedVersion),
+    $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/claim.mesh.mx:138:19)
@@ -274,7 +278,7 @@ export const $expressions = {
     $.now($s),
   // set &endReason, translated (src/domain/work/claim.mesh.mx:161:22)
   "expire.step.0.set.endReason": ($s: $work$Claim$StoredScope<$work$Claim$ExpireClaimInput>) =>
-    $.coalesce($s.input?.reason, "lease expired"),
+    $.coalesce($s.input?.reason, () => "lease expired"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:162:28)
   "expire.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$ExpireClaimInput>) => {
     const Task: $work$Task$ReadOnly = $work$Task$value;
@@ -295,7 +299,7 @@ export const $expressions = {
     $s.input?.reason,
   // policy :membersRead authorize-if, translated (src/domain/work/claim.mesh.mx:182:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Claim$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:184:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Claim$NewScope<
@@ -335,7 +339,7 @@ export const $expressions = {
     $s: $work$Claim$CheckScope<
       $SharedInput<$work$Claim$RenewClaimInput | $work$Claim$ReleaseClaimInput>
     >,
-  ) => $.or($.isSystem($s.context), $.eq($s.self.holderId, $s.actor?.id)),
+  ) => $.or($.isSystem($s.context), () => $.eq($s.self.holderId, $s.actor?.id)),
   // policy :claimRevoker authorize-if, plain (awaits-helper) (src/domain/work/claim.mesh.mx:192:20)
   "policy.claimRevoker.authorize-if.0": (
     $s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>,

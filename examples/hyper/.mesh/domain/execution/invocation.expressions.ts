@@ -78,8 +78,8 @@ export const $expressions = {
     $s: $execution$Invocation$NewScope<$execution$Invocation$RecordInvocationInput>,
   ) =>
     $.or(
-      $.and($.isNotNull($s.input?.inputTokens), $.isNotNull($s.input?.outputTokens)),
-      $.isNull($s.input?.estimatedCost),
+      $.and($.isNotNull($s.input?.inputTokens), () => $.isNotNull($s.input?.outputTokens)),
+      () => $.isNull($s.input?.estimatedCost),
     ),
   // set &task, translated (src/domain/execution/invocation.mesh.mx:64:17)
   "record.step.0.set.task": (
@@ -106,14 +106,18 @@ export const $expressions = {
   // check :reason that, translated (src/domain/execution/invocation.mesh.mx:91:16)
   "correct.check.reason.that": (
     $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
-  ) => $.ne($.coalesce($s.input?.reason, ""), ""),
+  ) =>
+    $.ne(
+      $.coalesce($s.input?.reason, () => ""),
+      "",
+    ),
   // check :costUnknown that, translated (src/domain/execution/invocation.mesh.mx:96:16)
   "correct.check.costUnknown.that": (
     $s: $execution$Invocation$NewScope<$execution$Invocation$CorrectInvocationInput>,
   ) =>
     $.or(
-      $.and($.isNotNull($s.input?.inputTokens), $.isNotNull($s.input?.outputTokens)),
-      $.isNull($s.input?.estimatedCost),
+      $.and($.isNotNull($s.input?.inputTokens), () => $.isNotNull($s.input?.outputTokens)),
+      () => $.isNull($s.input?.estimatedCost),
     ),
   // set &attempt, plain (uses-privileged) (src/domain/execution/invocation.mesh.mx:102:20)
   "correct.step.0.set.attempt": (
@@ -141,7 +145,7 @@ export const $expressions = {
   ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/execution/invocation.mesh.mx:107:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Invocation$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/invocation.mesh.mx:109:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Invocation$NewScope<

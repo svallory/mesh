@@ -104,11 +104,18 @@ export const $expressions = {
   // check :availabilityKept that, translated (src/domain/execution/session-reference.mesh.mx:56:16)
   "setAvailability.check.availabilityKept.that": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
-  ) => $.ne($.coalesce($s.input?.availability, $s.self.availability), "redacted"),
+  ) =>
+    $.ne(
+      $.coalesce($s.input?.availability, () => $s.self.availability),
+      "redacted",
+    ),
   // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:61:16)
   "setAvailability.check.versionMatches.that": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:64:19)
   "setAvailability.check.versionMatches.details": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
@@ -130,7 +137,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/session-reference.mesh.mx:80:16)
   "redact.check.versionMatches.that": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/session-reference.mesh.mx:83:19)
   "redact.check.versionMatches.details": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$RedactSessionReferenceInput>,
@@ -147,7 +157,7 @@ export const $expressions = {
   ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/execution/session-reference.mesh.mx:92:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$SessionReference$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/session-reference.mesh.mx:94:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$SessionReference$NewScope<
@@ -176,5 +186,5 @@ export const $expressions = {
   // policy :sessionRecorder authorize-if, translated (src/domain/execution/session-reference.mesh.mx:100:20)
   "policy.sessionRecorder.authorize-if.0": (
     $s: $execution$SessionReference$CheckScope<$execution$SessionReference$SetAvailabilitySessionReferenceInput>,
-  ) => $.or($.isSystem($s.context), $.eq($s.self.recordedById, $s.actor?.id)),
+  ) => $.or($.isSystem($s.context), () => $.eq($s.self.recordedById, $s.actor?.id)),
 } as const;

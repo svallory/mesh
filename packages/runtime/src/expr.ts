@@ -4,10 +4,12 @@ import { FrameworkError } from "./errors.ts";
  * The in-memory half of Mesh's expressions (M4, ADR-0010, ADR-0012 option A).
  *
  * A value is `true`, `false` or unknown, and unknown is `null`; `undefined` is read as `null`.
- * Every function is total: it accepts null and never throws on one, so evaluating both
- * operands of `and` is the same as short-circuiting and is what SQL does. The meaning of
- * each function is its table in `EXPRESSION_TABLES` (`@meshfw/runtime/testing`); the M10
- * SQL evaluator must give the same answers.
+ * Every function is total: it accepts null and never throws on one. The right side of `and`, `or`
+ * and `coalesce` and both branches of `cond` are thunks (`FunctionSpec.lazy`), called only when the
+ * left side lets them, so an imported helper behind a guard runs only then (EXP-03); an unknown
+ * (null) guard still calls them, as SQL would. The meaning of each function is its table in
+ * `EXPRESSION_TABLES` (`@meshfw/runtime/testing`), whose rows hold plain values; the M10 SQL
+ * evaluator must give the same answers.
  */
 export type Clock = () => Date;
 export const systemClock: Clock = () => new Date();
@@ -68,14 +70,20 @@ export const lte = (a: unknown, b: unknown) => order(a, b, (x, y) => x <= y);
 export const gt = (a: unknown, b: unknown) => order(a, b, (x, y) => x > y);
 export const gte = (a: unknown, b: unknown) => order(a, b, (x, y) => x >= y);
 
-export function and(a: unknown, b: unknown): boolean | null {
-  const x = bool(a, "and"), y = bool(b, "and");
-  if (x === false || y === false) return false;
+/** A definitely false `a` is the answer and `b` is not called; an unknown `a` calls it, as SQL would. */
+export function and(a: unknown, b: () => unknown): boolean | null {
+  const x = bool(a, "and");
+  if (x === false) return false;
+  const y = bool(b(), "and");
+  if (y === false) return false;
   return x === null || y === null ? null : true;
 }
-export function or(a: unknown, b: unknown): boolean | null {
-  const x = bool(a, "or"), y = bool(b, "or");
-  if (x === true || y === true) return true;
+/** A definitely true `a` is the answer and `b` is not called; an unknown `a` calls it, as SQL would. */
+export function or(a: unknown, b: () => unknown): boolean | null {
+  const x = bool(a, "or");
+  if (x === true) return true;
+  const y = bool(b(), "or");
+  if (y === true) return true;
   return x === null || y === null ? null : false;
 }
 export function not(a: unknown): boolean | null {
@@ -112,9 +120,15 @@ export function today(s: Scope): Date {
   return new Date(Math.floor(now(s).getTime() / 86_400_000) * 86_400_000);
 }
 
-export const coalesce = <T>(a: T | null | undefined, b: T): T | null => (isNull(a) ? (isNull(b) ? null : b) : a);
-export function cond<T>(c: unknown, a: T, b: T): T {
-  return bool(c, "cond") === true ? a : b;
+/** `b` is called only when `a` is null. */
+export function coalesce<T>(a: T | null | undefined, b: () => T): T | null {
+  if (!isNull(a)) return a;
+  const y = b();
+  return isNull(y) ? null : y;
+}
+/** Only the branch taken is called; an unknown test takes the else branch. */
+export function cond<T>(c: unknown, a: () => T, b: () => T): T {
+  return bool(c, "cond") === true ? a() : b();
 }
 
 /**

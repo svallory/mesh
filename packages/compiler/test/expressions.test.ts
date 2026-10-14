@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { FUNCTIONS, type Expression, type ExprNode } from "@meshfw/model";
+import { FUNCTIONS, type Expression, type ExprNode, type FunctionId } from "@meshfw/model";
 import { expr, scope } from "@meshfw/runtime";
 import { EXPRESSION_TABLES, QUANTIFIER_TABLES } from "@meshfw/runtime/testing";
 import { buildModel } from "../src/front-end/build.ts";
@@ -33,6 +33,52 @@ describe("the function tables (acceptance test 1)", () => {
         expect(run(expr, s, ...c.args)).toEqual(c.result as never);
       }
     });
+  describe("lazy operands print as thunks (EXP-03)", () => {
+    const call = (fn: FunctionId, ...args: ExprNode[]): ExprNode => ({ kind: "call", fn, args, position: at });
+    const helper = (name: string, ...args: ExprNode[]): ExprNode => ({ kind: "helper", name, from: "./h", args, position: at });
+    const lit = (value: boolean | number): ExprNode => ({ kind: "literal", value, position: at });
+    test("the right side of && || ?? and both branches of ?: are thunks; the guard is not", () => {
+      expect(printTree(call("and", v("a"), v("b")))).toBe("$.and(l$a, () => l$b)");
+      expect(printTree(call("or", v("a"), v("b")))).toBe("$.or(l$a, () => l$b)");
+      expect(printTree(call("coalesce", v("a"), v("b")))).toBe("$.coalesce(l$a, () => l$b)");
+      expect(printTree(call("cond", v("c"), v("x"), v("y")))).toBe("$.cond(l$c, () => l$x, () => l$y)");
+      // Eager operators keep their operands as they were.
+      expect(printTree(call("gt", v("a"), v("b")))).toBe("$.gt(l$a, l$b)");
+    });
+    test("a helper behind a guard is inside the thunk, a helper guard is not", () => {
+      expect(printTree(call("and", call("isNotNull", v("m")), helper("isBig", v("m"))))).toBe('$.and($.isNotNull(l$m), () => $.asBool($.pure(isBig(l$m), "isBig")))');
+      expect(printTree(call("and", helper("ok", v("m")), v("b")), true)).toBe('$.and($.asBool($.pure(ok(l$m), "ok")), () => l$b)');
+    });
+    test("nesting: a && (b || f(x)) and c ? (d ?? f(x)) : g(y)", () => {
+      expect(printTree(call("and", v("a"), call("or", v("b"), helper("f", v("x")))))).toBe('$.and(l$a, () => $.or(l$b, () => $.asBool($.pure(f(l$x), "f"))))');
+      expect(printTree(call("cond", v("c"), call("coalesce", v("d"), helper("f", v("x"))), helper("g", v("y")))))
+        .toBe('$.cond(l$c, () => $.coalesce(l$d, () => $.pure(f(l$x), "f")), () => $.pure(g(l$y), "g"))');
+    });
+    test("evaluated: the helper behind a guard runs only when the guard lets it; a null guard runs it", () => {
+      const run = (tree: ExprNode, locals: Record<string, unknown>) => {
+        const names = Object.keys(locals);
+        const calls: string[] = [];
+        const f = (...a: unknown[]) => { calls.push(String(a[0])); if (a[0] === "boom") throw new Error("must not run"); return true; };
+        const out = new Function("$", "$s", "f", ...names.map((n) => `l$${n}`), `return ${printTree(tree, true)};`)(expr, scope({}), f, ...names.map((n) => locals[n]));
+        return { out, calls };
+      };
+      const f = (...args: ExprNode[]) => helper("f", ...args);
+      const t = call("and", v("a"), f(v("x")));
+      expect(run(t, { a: false, x: "boom" })).toEqual({ out: false, calls: [] });
+      expect(run(t, { a: null, x: "ran" })).toEqual({ out: null, calls: ["ran"] });
+      expect(run(t, { a: true, x: "ran" })).toEqual({ out: true, calls: ["ran"] });
+      const o = call("or", v("a"), f(v("x")));
+      expect(run(o, { a: true, x: "boom" })).toEqual({ out: true, calls: [] });
+      expect(run(o, { a: null, x: "ran" })).toEqual({ out: true, calls: ["ran"] });
+      const n = call("coalesce", v("a"), call("cond", lit(true), f(v("x")), lit(false)));
+      expect(run(n, { a: 1, x: "boom" })).toEqual({ out: 1, calls: [] });
+      expect(run(call("cond", v("c"), f(v("x")), f(v("y"))), { c: false, x: "boom", y: "ran" })).toEqual({ out: true, calls: ["ran"] });
+      expect(run(call("cond", v("c"), f(v("x")), f(v("y"))), { c: null, x: "boom", y: "ran" })).toEqual({ out: true, calls: ["ran"] });
+      // Nested: a && (b || f(x)) with a false never reaches the inner or.
+      expect(run(call("and", v("a"), call("or", v("b"), f(v("x")))), { a: false, b: false, x: "boom" }).calls).toEqual([]);
+      expect(run(call("and", v("a"), call("or", v("b"), f(v("x")))), { a: true, b: true, x: "boom" }).calls).toEqual([]);
+    });
+  });
   for (const op of ["some", "every", "find", "filter"] as const)
     test(`${op}, printed and evaluated`, () => {
       for (const c of QUANTIFIER_TABLES[op]) {

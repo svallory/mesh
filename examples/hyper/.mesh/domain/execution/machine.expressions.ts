@@ -86,7 +86,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:54:16)
   "update.check.versionMatches.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$UpdateMachineInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:57:19)
   "update.check.versionMatches.details": (
     $s: $execution$Machine$CheckScope<$execution$Machine$UpdateMachineInput>,
@@ -112,7 +115,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/machine.mesh.mx:78:16)
   "retire.check.versionMatches.that": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/machine.mesh.mx:81:19)
   "retire.check.versionMatches.details": (
     $s: $execution$Machine$CheckScope<$execution$Machine$RetireMachineInput>,
@@ -129,7 +135,7 @@ export const $expressions = {
   ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/execution/machine.mesh.mx:89:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Machine$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/machine.mesh.mx:91:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Machine$NewScope<

@@ -77,7 +77,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/run.mesh.mx:57:16)
   "cancel.check.versionMatches.that": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/run.mesh.mx:60:19)
   "cancel.check.versionMatches.details": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
@@ -109,7 +112,7 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/execution/run.mesh.mx:79:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Run$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:81:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Run$NewScope<

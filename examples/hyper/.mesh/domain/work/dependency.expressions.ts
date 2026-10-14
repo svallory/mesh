@@ -122,8 +122,7 @@ export const $expressions = {
   "remove.check.versionMatches.that": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) =>
-    $.or(
-      $.isNull($s.input?.expectedVersion),
+    $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.dependent?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/dependency.mesh.mx:64:19)
@@ -147,7 +146,7 @@ export const $expressions = {
   },
   // policy :membersRead authorize-if, translated (src/domain/work/dependency.mesh.mx:72:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Dependency$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:74:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Dependency$NewScope<

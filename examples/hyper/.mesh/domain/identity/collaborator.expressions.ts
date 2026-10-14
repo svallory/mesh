@@ -66,7 +66,7 @@ export const $expressions = {
   // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:37:16)
   "update.check.kindImmutable.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
-  ) => $.or($.isNull($s.input?.kind), $.eq($s.input?.kind, $s.self.kind)),
+  ) => $.or($.isNull($s.input?.kind), () => $.eq($s.input?.kind, $s.self.kind)),
   // check :nameUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:42:16)
   "update.check.nameUnique.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
@@ -77,7 +77,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:47:16)
   "update.check.versionMatches.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:50:19)
   "update.check.versionMatches.details": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
@@ -106,7 +109,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:71:16)
   "retire.check.versionMatches.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:74:19)
   "retire.check.versionMatches.details": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
@@ -123,7 +129,7 @@ export const $expressions = {
   ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/identity/collaborator.mesh.mx:82:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Collaborator$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:84:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Collaborator$NewScope<

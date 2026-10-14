@@ -1,4 +1,4 @@
-import type { ExprNode, Expression } from "@meshfw/model";
+import { lazyOperands, type ExprNode, type Expression } from "@meshfw/model";
 
 /**
  * Prints an expression as TypeScript over `@meshfw/runtime`'s `expr` namespace (imported as
@@ -56,7 +56,12 @@ export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedN
         return `$.${n.fn}(${SCOPE})`;
       }
       const booleanArgs = n.fn === "and" || n.fn === "or" || n.fn === "not";
-      const args = n.args.map((a, i) => printTree(a, booleanArgs || (n.fn === "cond" && i === 0), emitted));
+      // The right side of `&&`, `||` and `??` and both branches of `?:` are thunks, so what a guard rules out never runs.
+      const lazy = lazyOperands(n.fn);
+      const args = n.args.map((a, i) => {
+        const text = printTree(a, booleanArgs || (n.fn === "cond" && i === 0), emitted);
+        return lazy.includes(i) ? `() => ${text.startsWith("{") ? `(${text})` : text}` : text;
+      });
       return `$.${n.fn}(${args.join(", ")})`;
     }
     case "helper": {

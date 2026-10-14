@@ -53,7 +53,7 @@ export const $expressions = {
   ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/work/evidence-reference.mesh.mx:27:20)
   "policy.membersRead.authorize-if.0": ($s: $work$EvidenceReference$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:29:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
