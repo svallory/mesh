@@ -90,7 +90,7 @@ test("a rollup through a belongs-to needs a join too", () => {
   expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_NOT_IMPLEMENTED", message: expect.stringContaining("goes through a belongs-to") })]);
 });
 
-test("a rollup over a relationship that nothing points back at cannot be loaded, and the build says so", () => {
+test("a rollup over a relationship that nothing points back at is the one MESH_NO_INVERSE, at the has-many line (DOM-34)", () => {
   const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :lineCount of="lines"\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
@@ -98,14 +98,15 @@ test("a rollup over a relationship that nothing points back at cannot be loaded,
   ] });
   expect(result.diagnostics).toEqual([expect.objectContaining({
     code: "MESH_NO_INVERSE",
-    message: "count :lineCount reads has-many :lines, which cannot be loaded: billing.Line has no belongs-to back to billing.Invoice",
+    message: "has-many :lines of billing.Invoice needs a belongs-to back, and billing.Line has none to billing.Invoice: add `belongs-to :invoice entity=Invoice` to billing.Line",
+    position: expect.objectContaining({ line: 6 }),
   })]);
-  // The same relationship with nothing that reads it builds.
+  // Nothing reading it changes nothing: the error is the relationship's.
   const unused = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source: source.replace('  computed\n    count :lineCount of="lines"\n', "") },
     { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n" },
   ] });
-  expect(unused.diagnostics).toEqual([]);
+  expect(unused.diagnostics.map((d) => d.code)).toEqual(["MESH_NO_INVERSE"]);
 });
 
 test.each([

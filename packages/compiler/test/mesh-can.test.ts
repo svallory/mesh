@@ -17,6 +17,7 @@ entity :Task
     integer :n
   relationships
     has-many :children entity=Task
+    belongs-to :parent entity=Task nullable
 ${extra}  actions auto=[:read]
     update :go
 ${steps}`;

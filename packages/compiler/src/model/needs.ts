@@ -36,7 +36,7 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
           if (relation.kind !== "belongs-to" && relation.inverse === undefined && !noInverse.has(relation)) {
             noInverse.add(relation);
             const problem = inverseProblem(document, owner, relation);
-            diagnostics.push(error(problem.code,
+            if (problem) diagnostics.push(error(problem.code,
               `${what} reads ${relation.kind} :${relation.name}, which cannot be loaded: ${problem.because}`,
               position, problem.fix));
           }

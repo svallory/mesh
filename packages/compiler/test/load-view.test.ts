@@ -80,12 +80,6 @@ describe("the load view", () => {
     ]);
   });
 
-  test("a has-many with no belongs-to back has a null column, which fails when it is loaded", () => {
-    const orphaned = documentOf({ author: author.replace("    has-many :posts entity=Post\n", '    has-many :posts entity=Post\n    has-many :lonelies entity=Lonely\n').replace('import { Post }', 'import { Lonely } from "./lonely.mesh.mx"\nimport { Post }'), post, lonely });
-    const entry = loadView(input(orphaned), "generated/load.ts").entities[0]!;
-    expect(entry.relations[1]).toEqual({ key: "lonelies", plan: '{ kind: "has-many", target: "app.Lonely", column: null }' });
-  });
-
   test("a rollup names its function and path; a body names what it needs and the expression it runs", () => {
     const entry = loadView(input(documentOf()), "generated/load.ts").entities[0]!;
     expect(entry.computed).toEqual([

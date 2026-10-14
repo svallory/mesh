@@ -79,7 +79,7 @@ describe("json in an entity file (ADR-0069)", () => {
   });
 
   test("a json attribute is not a rollup operand", () => {
-    const list = "entity :List\n  attributes\n    uuid :id primary-key\n    json :data\n";
+    const list = "import { Todo } from \"./todo.mesh.mx\"\nentity :List\n  attributes\n    uuid :id primary-key\n    json :data\n  relationships\n    belongs-to :todo entity=Todo\n";
     const source = `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lists entity=List\n  computed\n    max :biggest of="lists.data"\n`;
     const result = buildModel({ root: "/project", files: [{ file: "todo/todo.mesh.mx", source }, { file: "todo/list.mesh.mx", source: list }] });
     expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_ROLLUP_TYPE"]);

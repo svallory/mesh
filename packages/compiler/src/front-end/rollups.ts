@@ -140,7 +140,7 @@ export function resolveRollups(
     }
     if (first.inverse === undefined) {
       const problem = inverseProblem(document, entity, first);
-      diagnostics.push({ severity: "error", code: problem.code, message: `${fn} :${computed.name} reads ${first.kind} :${first.name}, which cannot be loaded: ${problem.because}`, position: computed.position, fix: problem.fix });
+      if (problem) diagnostics.push({ severity: "error", code: problem.code, message: `${fn} :${computed.name} reads ${first.kind} :${first.name}, which cannot be loaded: ${problem.because}`, position: computed.position, fix: problem.fix });
     }
   }
 }

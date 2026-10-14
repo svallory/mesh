@@ -59,8 +59,20 @@ export function resolveRelationships(
         }
         continue;
       }
-      // No belongs-to back is not a build error (cross-file inverse checks come after 1.0): loading it fails at run time.
-      if (candidates.length === 0) continue;
+      // No belongs-to back: the has-many or has-one is what the other entity's key column hangs on, so the build fails
+      // (DOM-34, ADR-0018). This pass runs after every entity is built, so the target's relationships are all known.
+      if (candidates.length === 0) {
+        // A belongs-to of the target whose entity is unknown may have been meant to point here; its own error is reported.
+        if (target.relationships.some((other) => other.kind === "belongs-to" && !targetOf(target, other))) continue;
+        const back = lowerCamel(entity.name);
+        fail(
+          "MESH_NO_INVERSE",
+          `${describe} needs a belongs-to back, and ${target.fqn} has none to ${entity.fqn}: add \`belongs-to :${back} entity=${entity.name}\` to ${target.fqn}`,
+          relation.position,
+          `Add \`belongs-to :${back} entity=${entity.name}\` to ${target.fqn}`,
+        );
+        continue;
+      }
       // The ladder: one candidate is the one; of several, the one named after this entity (Collaborator's
       // `memberships` follows Membership's `collaborator`); otherwise the author must say (DOM-32).
       const namedAfterEntity = names.find((name) => name === lowerCamel(entity.name));
