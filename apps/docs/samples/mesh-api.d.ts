@@ -265,7 +265,10 @@ declare module "@meshfw/jsonrpc" {
 
   export interface Server {
     readonly socket: string;
-    /** Resolves once the calls still running have settled, with no deadline of its own. */
+    /**
+     * Stops accepting connections and requests, answers the calls still running, then ends every connection and
+     * resolves, with no deadline of its own. Calling it again returns the same promise.
+     */
     close(): Promise<void>;
   }
 

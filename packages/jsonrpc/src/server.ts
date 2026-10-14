@@ -107,8 +107,10 @@ export interface Server {
   /** The socket's file path. */
   readonly socket: string;
   /**
-   * Stops accepting connections, closes every open one and removes the socket file, then resolves once the calls
-   * still running have settled, with no deadline of its own. A call that has not reached `run` by then never runs.
+   * Stops accepting connections and removes the socket file, stops reading requests on the open connections, waits
+   * for the calls still running and writes each one's answer, then ends every connection and resolves, with no
+   * deadline of its own: the caller owns it. A request that arrives after `close()` began gets no answer, and a call
+   * that has not reached its context factory or `run` by then never runs. A client that has gone does not delay it.
    * Calling it again returns the same promise.
    */
   close(): Promise<void>;
@@ -227,11 +229,21 @@ export async function serve<C, T extends Record<string, unknown>>(options: Serve
     close(): Promise<void> {
       closed ??= (async () => {
         state.closing = true;
-        listener.stop(true);
-        for (const peer of peers) peer.markClosed();
-        peers.clear();
+        // The socket file goes first, so no client finds the path while the calls drain. `stop(false)` also refuses new
+        // connections, but only the removal makes a late client fail at once with ENOENT instead of connecting to a
+        // listener that is winding down. The identity check leaves a file another server took over alone. Bun's own
+        // unlink inside `stop` finds nothing to remove after that.
         removeOwnSocket(settings.socket, identity, settings.log);
+        // `false` keeps the open connections: their calls still owe an answer.
+        listener.stop(false);
+        // `receive` ignores every line from now on. Calls past the context factory run to the end; their answers are
+        // written to the connection's queue as they settle. A call that fails still answers, so allSettled.
         await Promise.allSettled([...inflight]);
+        // A connection the client already closed resolves at once (`markClosed`), so a vanished client never blocks.
+        const open = [...peers];
+        await Promise.all(open.map((peer) => peer.drained()));
+        for (const peer of open) peer.finish();
+        peers.clear();
       })();
       return closed;
     },
@@ -349,6 +361,8 @@ class Peer implements Connection {
   #pending = 0;
   /** True once the client shut down its writing side: no request follows. */
   #readEnded = false;
+  /** Resolvers of `drained()`, called once the queue is empty or the connection is closed. */
+  #drainWaiters: (() => void)[] = [];
 
   constructor(socket: Socket<Peer | undefined>, settings: PeerSettings) {
     this.#socket = socket;
@@ -426,7 +440,21 @@ class Peer implements Connection {
       }
       this.#queue.shift();
     }
+    if (this.#queue.length === 0) this.#releaseDrained();
     this.#endIfFinished();
+  }
+
+  /** Resolves once every queued byte is written, or the connection is closed (the client left, or a write failed). */
+  drained(): Promise<void> {
+    if (this.#closed || this.#queue.length === 0) return Promise.resolve();
+    return new Promise((resolve) => this.#drainWaiters.push(resolve));
+  }
+
+  /** Ends the connection from the server's side, after `drained()`; does nothing when it is already closed. */
+  finish(): void {
+    if (this.#closed) return;
+    this.markClosed();
+    this.#socket.end();
   }
 
   /** Ends a connection whose client stopped writing, once every call it made has finished and every byte is written. */
@@ -439,6 +467,11 @@ class Peer implements Connection {
   markClosed(): void {
     this.#closed = true;
     this.#queue = [];
+    this.#releaseDrained();
+  }
+
+  #releaseDrained(): void {
+    for (const resolve of this.#drainWaiters.splice(0)) resolve();
   }
 }
 
