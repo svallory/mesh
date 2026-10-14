@@ -254,7 +254,7 @@ export const methods: MethodTable<ActionContext> = {
     return { task: await currentTask(claim.taskId), claim: claimView(claim) };
   }),
   "claim.revoke": command(params["claim.revoke"], async ({ payload, expectedVersion }, context) => {
-    const { id } = await activeClaimOf(payload.taskId, new Date(), context);
+    const { id } = await activeClaimOf(payload.taskId, context);
     const claim = await Claim.revoke(defined({ id, reason: payload.reason, expectedVersion }), context);
     return { task: await currentTask(claim.taskId), claim: claimView(claim) };
   }),
