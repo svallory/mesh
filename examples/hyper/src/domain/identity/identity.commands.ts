@@ -11,23 +11,24 @@ import { nested } from "../../context";
 import { connected, type Binding } from "../binding";
 
 /**
- * Revoke every live claim `holderId` holds at `now`, each through `Claim.revoke`, which bumps its Task's version
+ * Revoke every live claim `holderId` holds, each through `Claim.revoke`, which bumps its Task's version
  * (`tasks/claim/changes/end_claim.ex:15-21`, `revoke_all`). Hyper's `revoke_all` also revokes a lapsed claim; the port
  * leaves it to the lease sweeper, as `liveClaims` in `src/domain/work/work.helpers.ts` explains, and `Claim.revoke`
- * refuses it. Each is a nested call (`system`): the actor's permission was decided on the command, as Hyper's
- * `nested_opts` skips the claims' policies.
+ * refuses it. Whether a claim has lapsed is the claim's `lapsed` field, read inside the command's transaction, so it
+ * is decided at the transaction's instant (ACT-29), the one `Claim.revoke` checks: a lease that runs out while the
+ * command runs cannot pass this read and then fail the revoke. Each is a nested call (`system`): the actor's
+ * permission was decided on the command, as Hyper's `nested_opts` skips the claims' policies.
  */
-async function revokeHeldClaims(holderId: string, reason: string, now: Date, context: ActionContext): Promise<void> {
-  for (const claim of await Mesh.privileged(Claim).read({ filter: { holderId: { eq: holderId }, state: { eq: "active" }, expiresAt: { gt: now } } }))
-    await Claim.revoke({ id: claim.id, reason }, nested(context));
+async function revokeHeldClaims(holderId: string, reason: string, context: ActionContext): Promise<void> {
+  for (const claim of await Mesh.privileged(Claim).read({ filter: { holderId: { eq: holderId }, state: { eq: "active" } }, load: ["lapsed"] }))
+    if (!claim.lapsed) await Claim.revoke({ id: claim.id, reason }, nested(context));
 }
 
 /** `membership.revoke`: `Membership.revoke`, then the collaborator's claims (`memberships/membership/changes/revoke_claims.ex:11-15`). */
 export async function membershipRevoke(input: RevokeMembershipInput, context: ActionContext, binding: Binding = connected): Promise<{ readonly membership: Membership }> {
   return binding.transaction(async () => {
-    const now = binding.clock();
     const membership = await Membership.revoke(input, context);
-    await revokeHeldClaims(membership.collaboratorId, "membership revoked", now, context);
+    await revokeHeldClaims(membership.collaboratorId, "membership revoked", context);
     return { membership };
   });
 }
@@ -39,11 +40,10 @@ export async function membershipRevoke(input: RevokeMembershipInput, context: Ac
  */
 export async function collaboratorRetire(input: RetireCollaboratorInput, context: ActionContext, binding: Binding = connected): Promise<{ readonly collaborator: Collaborator }> {
   return binding.transaction(async () => {
-    const now = binding.clock();
     const collaborator = await Collaborator.retire(input, context);
     const [membership] = await Mesh.privileged(Membership).read({ filter: { collaboratorId: { eq: collaborator.id }, state: { eq: "active" } }, limit: 1 });
     if (membership) await membershipRevoke({ id: membership.id, reason: "collaborator retired" }, nested(context), binding);
-    await revokeHeldClaims(collaborator.id, "collaborator retired", now, context);
+    await revokeHeldClaims(collaborator.id, "collaborator retired", context);
     return { collaborator };
   });
 }
