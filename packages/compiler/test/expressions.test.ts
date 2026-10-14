@@ -1562,7 +1562,7 @@ describe("%.now and %.today are the current transaction's instant and date (SYN-
       fix: "read it into a local of the function and change that: `let at = %.now`",
       offset: source.indexOf("%.now ="),
     }]);
-    for (const body of ["%.today = %.now", "%.now.x = 1", "%.now += 1", "%.now++", "%.today--", "[%.now] = [new Date(0)]", "({ a: %.today } = { a: new Date(0) })", "delete %.now.x", "for (%.now of [new Date(0)]) {}", "for (%.today.x in {}) {}"])
+    for (const body of ["%.today = %.now", "%.now.x = 1", "%.now += 1", "%.now++", "%.today--", "++ %.now", "-- %.today", "[%.now] = [new Date(0)]", "({ a: %.today } = { a: new Date(0) })", "delete %.now.x", "for (%.now of [new Date(0)]) {}", "for (%.today.x in {}) {}"])
       expect(problems(write(body)).map((p) => p.code), body).toEqual(["MESH_TRANSACTION_ASSIGN"]);
     // Reading it into a local and changing that is fine.
     expect(problems(write("let at = %.now; at = new Date(at.getTime() + 1); console.log(at)"))).toEqual([]);
