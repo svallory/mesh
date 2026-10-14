@@ -99,12 +99,12 @@ export const $expressions = {
   // computed claimed, translated (src/domain/work/task.mesh.mx:35:21)
   "computed.claimed": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
-      $.and($.eq(l$c.state, "active"), $.gt(l$c.expiresAt, $.now($s))),
+      $.and($.eq(l$c.state, "active"), () => $.gt(l$c.expiresAt, $.now($s))),
     ),
   // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:36:25)
   "computed.lapsedClaim": ($s: $work$Task$Scope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
-      $.and($.eq(l$c.state, "active"), $.lte(l$c.expiresAt, $.now($s))),
+      $.and($.eq(l$c.state, "active"), () => $.lte(l$c.expiresAt, $.now($s))),
     ),
   // computed inReview, translated (src/domain/work/task.mesh.mx:37:22)
   "computed.inReview": ($s: $work$Task$Scope<unknown>) =>
@@ -119,16 +119,28 @@ export const $expressions = {
   "computed.derivedState": ($s: $work$Task$Scope<unknown>) =>
     $.cond(
       $.eq($s.self.state, "done"),
-      "done",
-      $.cond(
-        $.eq($s.self.state, "canceled"),
-        "canceled",
+      () => "done",
+      () =>
         $.cond(
-          $s.self.inReview,
-          "in-review",
-          $.cond($s.self.claimed, "claimed", $.cond($s.self.blocked, "blocked", "ready")),
+          $.eq($s.self.state, "canceled"),
+          () => "canceled",
+          () =>
+            $.cond(
+              $s.self.inReview,
+              () => "in-review",
+              () =>
+                $.cond(
+                  $s.self.claimed,
+                  () => "claimed",
+                  () =>
+                    $.cond(
+                      $s.self.blocked,
+                      () => "blocked",
+                      () => "ready",
+                    ),
+                ),
+            ),
         ),
-      ),
     ),
   // check :parentOpen that, plain (awaits-helper) (src/domain/work/task.mesh.mx:51:16)
   "create.check.parentOpen.that": ($s: $work$Task$NewScope<$work$Task$CreateTaskInput>) => {
@@ -145,7 +157,9 @@ export const $expressions = {
   },
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:75:16)
   "update.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$UpdateTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:78:19)
   "update.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$UpdateTaskInput>,
@@ -165,7 +179,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:94:16)
   "setPriority.check.versionMatches.that": (
     $s: $work$Task$CheckScope<$work$Task$SetPriorityTaskInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:97:19)
   "setPriority.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$SetPriorityTaskInput>,
@@ -196,7 +213,9 @@ export const $expressions = {
     $.not($s.self.claimed),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:128:16)
   "move.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:131:19)
   "move.check.versionMatches.details": ($s: $work$Task$CheckScope<$work$Task$MoveTaskInput>) => {
     const $self = $s.self;
@@ -213,7 +232,9 @@ export const $expressions = {
     $.ne($s.self.state, "open"),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:147:16)
   "reopen.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$ReopenTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:150:19)
   "reopen.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$ReopenTaskInput>,
@@ -238,7 +259,9 @@ export const $expressions = {
     $.eq($s.self.state, "open"),
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:172:16)
   "cancel.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$CancelTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:175:19)
   "cancel.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$CancelTaskInput>,
@@ -305,7 +328,7 @@ export const $expressions = {
   ) =>
     $.not(
       $.some($s.self.submissions, (l$s: any) =>
-        $.and($.eq(l$s.state, "pending"), $.ne(l$s.submitterId, $s.actor?.id)),
+        $.and($.eq(l$s.state, "pending"), () => $.ne(l$s.submitterId, $s.actor?.id)),
       ),
     ),
   // check :currentFence that, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:217:16)
@@ -361,12 +384,13 @@ export const $expressions = {
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
   ) =>
     $.or(
-      $.and($.isNull($s.input?.summary), $.isNull($s.input?.evidence)),
-      $.not(
-        $.some($s.self.submissions, (l$s: any) =>
-          $.and($.eq(l$s.state, "pending"), $.eq(l$s.submitterId, $s.actor?.id)),
+      $.and($.isNull($s.input?.summary), () => $.isNull($s.input?.evidence)),
+      () =>
+        $.not(
+          $.some($s.self.submissions, (l$s: any) =>
+            $.and($.eq(l$s.state, "pending"), () => $.eq(l$s.submitterId, $s.actor?.id)),
+          ),
         ),
-      ),
     ),
   // check :evidenceExists that, plain (awaits-helper) (src/domain/work/task.mesh.mx:234:16)
   "complete.check.evidenceExists.that": (
@@ -382,7 +406,9 @@ export const $expressions = {
   },
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:240:16)
   "complete.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:243:19)
   "complete.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
@@ -470,7 +496,9 @@ export const $expressions = {
   },
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:297:16)
   "assign.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$AssignTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:300:19)
   "assign.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$AssignTaskInput>,
@@ -521,7 +549,9 @@ export const $expressions = {
   ) => $s.self.assigned,
   // check :versionMatches that, translated (src/domain/work/task.mesh.mx:326:16)
   "unassign.check.versionMatches.that": ($s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>) =>
-    $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/task.mesh.mx:329:19)
   "unassign.check.versionMatches.details": (
     $s: $work$Task$CheckScope<$work$Task$UnassignTaskInput>,
@@ -562,7 +592,7 @@ export const $expressions = {
   },
   // policy :membersRead authorize-if, translated (src/domain/work/task.mesh.mx:343:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Task$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/task.mesh.mx:345:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Task$NewScope<
@@ -629,7 +659,7 @@ export const $expressions = {
   // policy :reviewCompletion forbid-if, translated (src/domain/work/task.mesh.mx:355:17)
   "policy.reviewCompletion.forbid-if.0": (
     $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
-  ) => $.and($.isNotNull($s.context?.completion), $.not($.isSystem($s.context))),
+  ) => $.and($.isNotNull($s.context?.completion), () => $.not($.isSystem($s.context))),
   // policy :internal authorize-if, translated (src/domain/work/task.mesh.mx:357:20)
   "policy.internal.authorize-if.0": ($s: $work$Task$CheckScope<$work$Task$TouchTaskInput>) =>
     $.isSystem($s.context),

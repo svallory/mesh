@@ -171,8 +171,7 @@ export const $expressions = {
   "withdraw.check.versionMatches.that": (
     $s: $work$Submission$CheckScope<$work$Submission$WithdrawSubmissionInput>,
   ) =>
-    $.or(
-      $.isNull($s.input?.expectedVersion),
+    $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.task?.version),
     ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/work/submission.mesh.mx:82:19)
@@ -208,7 +207,7 @@ export const $expressions = {
   ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/work/submission.mesh.mx:115:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Submission$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:117:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Submission$NewScope<
@@ -240,7 +239,7 @@ export const $expressions = {
   // policy :submissionSubmitter authorize-if, translated (src/domain/work/submission.mesh.mx:123:20)
   "policy.submissionSubmitter.authorize-if.0": (
     $s: $work$Submission$CheckScope<$work$Submission$WithdrawSubmissionInput>,
-  ) => $.or($.isSystem($s.context), $.eq($s.self.submitterId, $s.actor?.id)),
+  ) => $.or($.isSystem($s.context), () => $.eq($s.self.submitterId, $s.actor?.id)),
   // policy :internal authorize-if, translated (src/domain/work/submission.mesh.mx:125:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Submission$NewScope<

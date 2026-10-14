@@ -90,7 +90,11 @@ export const $expressions = {
   // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:48:16)
   "changeRole.check.roleChanges.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
-  ) => $.ne($.coalesce($s.input?.role, $s.self.role), $s.self.role),
+  ) =>
+    $.ne(
+      $.coalesce($s.input?.role, () => $s.self.role),
+      $s.self.role,
+    ),
   // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:53:16)
   "changeRole.check.lastOwner.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
@@ -106,7 +110,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:58:16)
   "changeRole.check.versionMatches.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:61:19)
   "changeRole.check.versionMatches.details": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
@@ -137,7 +144,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:82:16)
   "revoke.check.versionMatches.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:85:19)
   "revoke.check.versionMatches.details": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
@@ -162,7 +172,7 @@ export const $expressions = {
   ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:95:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Membership$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:97:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Membership$NewScope<

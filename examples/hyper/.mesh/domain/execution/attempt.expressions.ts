@@ -167,7 +167,7 @@ export const $expressions = {
   // check :error that, translated (src/domain/execution/attempt.mesh.mx:88:16)
   "finish.check.error.that": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$FinishAttemptInput>,
-  ) => $.or($.eq($s.input?.result, "failed"), $.isNull($s.input?.error)),
+  ) => $.or($.eq($s.input?.result, "failed"), () => $.isNull($s.input?.error)),
   // check :evidence that, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:93:16)
   "finish.check.evidence.that": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$FinishAttemptInput>,
@@ -183,7 +183,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:99:16)
   "finish.check.versionMatches.that": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$FinishAttemptInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:102:19)
   "finish.check.versionMatches.details": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$FinishAttemptInput>,
@@ -234,7 +237,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:126:16)
   "reportStopped.check.versionMatches.that": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$ReportStoppedAttemptInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:129:19)
   "reportStopped.check.versionMatches.details": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$ReportStoppedAttemptInput>,
@@ -266,7 +272,10 @@ export const $expressions = {
   // check :versionMatches that, translated (src/domain/execution/attempt.mesh.mx:148:16)
   "abandon.check.versionMatches.that": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$AbandonAttemptInput>,
-  ) => $.or($.isNull($s.input?.expectedVersion), $.eq($s.input?.expectedVersion, $s.self.version)),
+  ) =>
+    $.or($.isNull($s.input?.expectedVersion), () =>
+      $.eq($s.input?.expectedVersion, $s.self.version),
+    ),
   // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/attempt.mesh.mx:151:19)
   "abandon.check.versionMatches.details": (
     $s: $execution$Attempt$CheckScope<$execution$Attempt$AbandonAttemptInput>,
@@ -293,7 +302,7 @@ export const $expressions = {
   ) => $.add($s.self.version, 1),
   // policy :membersRead authorize-if, translated (src/domain/execution/attempt.mesh.mx:161:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Attempt$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/attempt.mesh.mx:163:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Attempt$NewScope<$execution$Attempt$StartAttemptInput>,
@@ -324,5 +333,5 @@ export const $expressions = {
         | $execution$Attempt$AbandonAttemptInput
       >
     >,
-  ) => $.or($.isSystem($s.context), $.eq($s.self.performerId, $s.actor?.id)),
+  ) => $.or($.isSystem($s.context), () => $.eq($s.self.performerId, $s.actor?.id)),
 } as const;

@@ -74,7 +74,7 @@ export const $expressions = {
   ) => $s.input?.reason,
   // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:41:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Assignment$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:43:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Assignment$NewScope<

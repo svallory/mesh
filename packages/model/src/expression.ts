@@ -138,6 +138,13 @@ export interface FunctionSpec {
    * test gives (`c ? a : b`, an unknown test takes the else branch).
    */
   nullResult: "propagates" | "never" | "all-operands" | "branches";
+  /**
+   * The indexes of the operands the in-memory evaluation evaluates only when the others let it (EXP-03): the right side of
+   * `&&`, `||` and `??`, and both branches of `?:`. The generated code passes each as a thunk (`() => ...`), so an imported
+   * helper behind a guard runs only when the guard lets it. An unknown (`null`) guard still evaluates the operand, as SQL
+   * would. Absent: every operand is evaluated first.
+   */
+  lazy?: readonly number[];
 }
 
 export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
@@ -149,8 +156,8 @@ export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
   { id: "lte", spelling: "a <= b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
   { id: "gt", spelling: "a > b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
   { id: "gte", spelling: "a >= b", arity: 2, signature: "(number | date, same) -> boolean", nulls: "any operand null: unknown", nullResult: "propagates" },
-  { id: "and", spelling: "a && b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene", nullResult: "propagates" },
-  { id: "or", spelling: "a || b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene", nullResult: "propagates" },
+  { id: "and", spelling: "a && b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene", nullResult: "propagates", lazy: [1] },
+  { id: "or", spelling: "a || b", arity: 2, signature: "(boolean, boolean) -> boolean", nulls: "Kleene", nullResult: "propagates", lazy: [1] },
   { id: "not", spelling: "!a", arity: 1, signature: "(boolean) -> boolean", nulls: "null stays unknown", nullResult: "propagates" },
   { id: "add", spelling: "a + b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null", nullResult: "propagates" },
   { id: "sub", spelling: "a - b", arity: 2, signature: "(number, number) -> number", nulls: "any operand null: null", nullResult: "propagates" },
@@ -161,12 +168,16 @@ export const FUNCTIONS: readonly FunctionSpec[] = Object.freeze([
   { id: "length", spelling: "a.length", arity: 1, signature: "(string | list) -> number", nulls: "null string: null; a list is never null", nullResult: "propagates" },
   { id: "now", spelling: "%.now", arity: 0, signature: "date", nulls: "never null; the current transaction's instant, one per transaction", nullResult: "never" },
   { id: "today", spelling: "%.today", arity: 0, signature: "date", nulls: "never null; %.now at 00:00 UTC", nullResult: "never" },
-  { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b", nullResult: "all-operands" },
-  { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch", nullResult: "branches" },
+  { id: "coalesce", spelling: "a ?? b", arity: 2, signature: "(T, T) -> T", nulls: "a unless a is null, else b", nullResult: "all-operands", lazy: [1] },
+  { id: "cond", spelling: "c ? a : b", arity: 3, signature: "(boolean, T, T) -> T", nulls: "unknown test: the else branch", nullResult: "branches", lazy: [1, 2] },
   { id: "isSystem", spelling: "Mesh.isSystem(context)", arity: 1, signature: "(any) -> boolean", nulls: "never unknown: true only when the value is an object whose `system` is `true`", nullResult: "never" },
 ] satisfies FunctionSpec[]);
 
 export const FUNCTION_IDS: ReadonlySet<string> = new Set(FUNCTIONS.map((f) => f.id));
+/** The operands of the call `fn` that are evaluated lazily, in the order the call lists them (see `FunctionSpec.lazy`). */
+export function lazyOperands(fn: FunctionId): readonly number[] {
+  return functionSpec(fn).lazy ?? [];
+}
 export function functionSpec(id: FunctionId): FunctionSpec {
   return FUNCTIONS.find((f) => f.id === id)!;
 }

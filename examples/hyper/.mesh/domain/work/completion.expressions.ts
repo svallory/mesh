@@ -48,7 +48,7 @@ export const $expressions = {
   ) => $s.actor?.id,
   // policy :membersRead authorize-if, translated (src/domain/work/completion.mesh.mx:26:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Completion$CheckScope<unknown>) =>
-    $.or($.isSystem($s.context), $.isNotNull($s.actor?.role)),
+    $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
   // policy :internal authorize-if, translated (src/domain/work/completion.mesh.mx:28:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Completion$NewScope<$work$Completion$RecordCompletionInput>,
