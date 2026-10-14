@@ -21,7 +21,7 @@ import {
 } from "#mesh/domain/work";
 import { nested } from "../../context";
 import { connected, type Binding } from "../binding";
-import { blockReasonsOf, staleClaim, type BlockReason } from "./work.helpers";
+import { blockReasonsOf, staleClaimWithLapsed, type BlockReason } from "./work.helpers";
 
 export type LateResultRecorded = { readonly outcome: "late-result-recorded"; readonly lateResult: LateResult };
 
@@ -37,6 +37,11 @@ export type SubmissionSubmitted = { readonly outcome: "submitted"; readonly task
 
 export type ReviewAccepted = { readonly task: Task; readonly review: Review; readonly completion: Completion; readonly warnings: BlockReason[] };
 
+/** The Task's claims, each with `lapsed`, read at the running transaction's instant. */
+function claimsOfTask(taskId: string) {
+  return Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId } }, load: ["lapsed"] });
+}
+
 async function taskOf(id: string): Promise<Task> {
   const [task] = await Mesh.privileged(Task).read({ filter: { id: { eq: id } } });
   if (!task) throw new Error(`Task ${id} not found`);
@@ -51,9 +56,9 @@ async function taskOf(id: string): Promise<Task> {
  */
 export async function taskComplete(input: CompleteTaskInput, context: ActionContext, binding: Binding = connected): Promise<TaskCompleted | LateResultRecorded> {
   return binding.transaction(async () => {
-    // Read inside the transaction: a call queued behind another one decides stale or not when it runs.
-    const now = binding.clock();
-    const stale = staleClaim(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.id } } }), input.fence, context.actor.id, now);
+    // Read inside the transaction, with `lapsed`: a lease is judged at the transaction's instant (ACT-29), the one
+    // `Task.complete` checks the fence at, so a lease that runs out while the call waits or runs records a late result.
+    const stale = staleClaimWithLapsed(await claimsOfTask(input.id), input.fence, context.actor.id);
     if (stale) {
       const lateResult = await LateResult.record({ task: input.id, fence: stale.fence, summary: input.summary ?? null, evidence: input.evidence ?? [] }, context);
       return { outcome: "late-result-recorded", lateResult } as const;
@@ -73,8 +78,8 @@ export async function taskComplete(input: CompleteTaskInput, context: ActionCont
  */
 export async function submissionSubmit(input: SubmitSubmissionInput, context: ActionContext, binding: Binding = connected): Promise<SubmissionSubmitted | LateResultRecorded> {
   return binding.transaction(async () => {
-    const now = binding.clock();
-    const stale = staleClaim(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.task } } }), input.fence, context.actor.id, now);
+    // As in `taskComplete`: judged at the transaction's instant, the one `Submission.submit` checks the fence at.
+    const stale = staleClaimWithLapsed(await claimsOfTask(input.task), input.fence, context.actor.id);
     if (stale) {
       const lateResult = await LateResult.record({ task: input.task, fence: stale.fence, summary: input.summary, evidence: input.evidence ?? [] }, context);
       return { outcome: "late-result-recorded", lateResult } as const;

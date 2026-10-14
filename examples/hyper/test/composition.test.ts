@@ -68,7 +68,7 @@ describe("acceptance 1: task.complete writes the completion, the submission and 
     const claim = await Claim.acquire({ task: w.task.id }, as(w.alice));
     const before = await taskOf(w, w.task.id);
     const failing = bind(refusing(w.db, (table, changes) => table === tables.claims && changes.state === "released"), { clock: w.clock });
-    await expect(taskComplete({ id: w.task.id, fence: claim.fence, summary: "shipped" }, as(w.alice), { transaction: failing.transaction, clock: w.clock })).rejects.toThrow("the last step failed");
+    await expect(taskComplete({ id: w.task.id, fence: claim.fence, summary: "shipped" }, as(w.alice), { transaction: failing.transaction })).rejects.toThrow("the last step failed");
     expect(await Completion.read({}, as(w.alice))).toEqual([]);
     expect(await Submission.read({}, as(w.alice))).toEqual([]);
     expect(await claimsOf(w, w.task.id)).toMatchObject([{ id: claim.id, state: "active", endedAt: null }]);
@@ -192,7 +192,7 @@ describe("acceptance 2: task.cancel revokes the claims, withdraws the submission
     await Run.start({ task: w.task.id }, as(w.bot));
     const before = await taskOf(w, w.task.id);
     const failing = bind(refusing(w.db, (table, changes) => table === tables.runs && changes.state === "canceled"), { clock: w.clock });
-    await expect(taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), { transaction: failing.transaction, clock: w.clock })).rejects.toThrow("the last step failed");
+    await expect(taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), { transaction: failing.transaction })).rejects.toThrow("the last step failed");
     expect(await taskOf(w, w.task.id)).toEqual(before);
     expect(await claimsOf(w, w.task.id)).toMatchObject([{ id: claim.id, state: "active" }]);
   }));

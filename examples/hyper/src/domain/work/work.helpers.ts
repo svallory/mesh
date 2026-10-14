@@ -58,14 +58,27 @@ export function lapsedClaims<C extends ClaimFacts>(claims: readonly C[], now: Da
   return claims.filter((claim) => claim.state === "active" && claim.expiresAt.getTime() <= now.getTime());
 }
 
+/** The claim `holderId` held with `fence` that expired or was revoked, or whose lease `lapsed` says ran out. */
+function staleOf<C extends ClaimFacts>(claims: readonly C[], fence: number | null | undefined, holderId: string, lapsed: (claim: C) => boolean): C | undefined {
+  if (fence === null || fence === undefined) return undefined;
+  return claims.find((claim) => claim.fence === fence && claim.holderId === holderId && (claim.state === "expired" || claim.state === "revoked" || lapsed(claim)));
+}
+
 /**
  * The claim `holderId` held with `fence` that expired or was revoked, or a still-active one whose lease ran out
  * (`tasks/queries.ex:22-33`, `stale_claim`): the fence of a late result.
  */
 export function staleClaim<C extends ClaimFacts>(claims: readonly C[], fence: number | null | undefined, holderId: string, now: Date): C | undefined {
-  if (fence === null || fence === undefined) return undefined;
-  return claims.find((claim) => claim.fence === fence && claim.holderId === holderId &&
-    (claim.state === "expired" || claim.state === "revoked" || (claim.state === "active" && claim.expiresAt.getTime() <= now.getTime())));
+  return staleOf(claims, fence, holderId, (claim) => claim.state === "active" && claim.expiresAt.getTime() <= now.getTime());
+}
+
+/**
+ * `staleClaim` for a function outside the actions, which has no `%.now`: the claims carry their `lapsed` field, read
+ * inside the function's transaction, so a lease is judged at the transaction's instant (ACT-29), the one the actions
+ * it then calls check the fence at.
+ */
+export function staleClaimWithLapsed<C extends ClaimFacts & { readonly lapsed: boolean }>(claims: readonly C[], fence: number | null | undefined, holderId: string): C | undefined {
+  return staleOf(claims, fence, holderId, (claim) => claim.lapsed);
 }
 
 /** Whether `fence` names a stale claim of `holderId` (`staleClaim`): the condition of a late result. */
