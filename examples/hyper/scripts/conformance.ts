@@ -1,29 +1,25 @@
-// Runs the Hyper engine spec's conformance suite against this example's daemon (`main.ts`).
+// Runs the conformance cases in `conformance/cases/` against this example's daemon (`main.ts`).
 //
-//   bun run conformance          the cases in conformance.txt; fails unless every one of them passes
-//   bun run conformance --all    every case, then lists the ones that pass and are not in conformance.txt yet
+//   bun run conformance
 //
-// The suite comes from the spec repository at the commit `conformance.json` pins: the checkout at `$HYPER_SPEC_DIR`
-// when it is set, else a clone in `.spec/` (git-ignored), made with `gh` and moved to the pinned commit. Either way the
-// checkout must be at that commit with no local changes, so the run tests the pinned suite and nothing else.
+// The cases, their harness and the protocol schemas they validate against are copies of the Hyper engine
+// specification's conformance suite (`conformance/README.md` lists them). Those copies are the gate: the run fails
+// unless the cases it finds are exactly the ones `conformance/cases.txt` lists and every one of them passes, so a
+// listed case that is missing, skipped or failing fails it, and so does a copied case the list leaves out.
 //
-// The suite starts the engine through `sh -c "exec $ENGINE_CMD --socket <path> --db <path>"`. `ENGINE_CMD` names the
+// The cases start the engine through `sh -c "exec $ENGINE_CMD --socket <path> --db <path>"`. `ENGINE_CMD` names the
 // Bun running this script and the absolute path of `main.ts`, and that Bun's folder goes first on `PATH`, so a shell
-// that finds an older Bun first still runs the engine on this one. `SCHEMA_STRICT` is removed, so the suite validates
+// that finds an older Bun first still runs the engine on this one. `SCHEMA_STRICT` is removed, so the harness validates
 // every result strictly.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { dirname, join } from "node:path";
 
 const HYPER = join(import.meta.dir, "..");
 const MAIN = join(HYPER, "main.ts");
+const CASES = join(HYPER, "conformance", "cases");
+const LIST = join(HYPER, "conformance", "cases.txt");
 const BUN = process.execPath;
-
-interface Pin {
-  readonly repository: string;
-  readonly commit: string;
-}
 
 interface Case {
   /** As the suite prints it: the describe blocks and the test, joined by ` > `. */
@@ -36,71 +32,24 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** Runs `command`, its output shown; throws when it exits non-zero. */
+/** Runs `command`, its output shown, and returns its exit code. */
 function run(command: readonly string[], cwd: string, env: Record<string, string | undefined> = process.env): number {
   const { exitCode } = Bun.spawnSync([...command], { cwd, env, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
   return exitCode;
 }
 
-/** Runs `command` and returns its standard output, trimmed; `undefined` when it exits non-zero. */
-function output(command: readonly string[], cwd: string): string | undefined {
-  const result = Bun.spawnSync([...command], { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-  return result.exitCode === 0 ? result.stdout.toString().trim() : undefined;
-}
-
-/** The checkout to run: `$HYPER_SPEC_DIR` as it is, or `.spec/`, cloned and moved to the pinned commit. */
-function checkout(pin: Pin): string {
-  const given = process.env.HYPER_SPEC_DIR;
-  if (given) {
-    const dir = resolve(given);
-    if (!existsSync(join(dir, "conformance"))) fail(`HYPER_SPEC_DIR is ${dir}, which holds no conformance suite`);
-    return dir;
-  }
-  const dir = join(HYPER, ".spec");
-  if (!existsSync(join(dir, ".git"))) {
-    console.log(`conformance: cloning ${pin.repository} into ${dir}`);
-    if (run(["gh", "repo", "clone", pin.repository, dir, "--", "--filter=blob:none", "--quiet"], HYPER) !== 0) {
-      fail(`could not clone ${pin.repository}; it is private for now, so \`gh\` must be signed in to an account that can read it (\`gh auth status\`)`);
-    }
-  }
-  if (output(["git", "cat-file", "-e", `${pin.commit}^{commit}`], dir) === undefined && run(["git", "fetch", "--quiet", "origin"], dir) !== 0) {
-    fail(`could not fetch ${pin.repository} into ${dir}`);
-  }
-  if (run(["git", "checkout", "--quiet", "--detach", pin.commit], dir) !== 0) fail(`could not check out ${pin.commit} in ${dir}`);
-  return dir;
-}
-
-/** Fails unless `dir` is at the pinned commit with no local changes. */
-function checkPinned(dir: string, pin: Pin): void {
-  const head = output(["git", "rev-parse", "HEAD"], dir);
-  if (head === undefined) fail(`${dir} is not a git checkout`);
-  if (head !== pin.commit) fail(`${dir} is at ${head}, not at the pinned commit ${pin.commit}; check it out, or move the pin in conformance.json`);
-  const changes = output(["git", "status", "--porcelain", "--untracked-files=no"], dir);
-  if (changes !== "") fail(`${dir} has local changes, so it is not the pinned suite:\n${changes}`);
-}
-
-/** The names in `conformance.txt`: one per line; blank lines and lines starting with `#` are skipped. */
+/** The names in `conformance/cases.txt`: one per line; blank lines and lines starting with `#` are skipped. */
 function allowList(): string[] {
-  const names = readFileSync(join(HYPER, "conformance.txt"), "utf8")
+  const names = readFileSync(LIST, "utf8")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith("#"));
   const seen = new Set<string>();
   for (const name of names) {
-    if (seen.has(name)) fail(`conformance.txt lists ${JSON.stringify(name)} twice`);
+    if (seen.has(name)) fail(`cases.txt lists ${JSON.stringify(name)} twice`);
     seen.add(name);
   }
   return names;
-}
-
-const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * The `-t` pattern that selects exactly the listed cases. Bun matches it against a case's describe blocks and test
- * joined by spaces, where the suite prints them joined by ` > `.
- */
-function namePattern(names: readonly string[]): string {
-  return `^(?:${names.map((name) => escapeRegExp(name.split(" > ").join(" "))).join("|")})$`;
 }
 
 const entities: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -115,9 +64,8 @@ function attribute(attributes: string, name: string): string {
 }
 
 /**
- * Every case of the run, from Bun's JUnit report, which lists the cases `-t` left out as skipped. A file is the outer
- * `testsuite`, each describe block a `testsuite` inside it, and a `testcase` with no `skipped`, `failure` or `error`
- * child passed.
+ * Every case of the run, from Bun's JUnit report. A file is the outer `testsuite`, each describe block a `testsuite`
+ * inside it, and a `testcase` with no `skipped`, `failure` or `error` child passed.
  */
 function casesOf(report: string): Case[] {
   const cases: Case[] = [];
@@ -145,15 +93,10 @@ function casesOf(report: string): Case[] {
   return cases;
 }
 
-const { values: flags } = parseArgs({ options: { all: { type: "boolean", default: false } }, strict: true, allowPositionals: false });
+if (process.argv.length > 2) fail(`takes no arguments, got ${process.argv.slice(2).join(" ")}`);
 
-const pin = JSON.parse(readFileSync(join(HYPER, "conformance.json"), "utf8")) as Pin;
 const allowed = allowList();
-if (!flags.all && allowed.length === 0) fail("conformance.txt lists no case");
-
-const spec = checkout(pin);
-checkPinned(spec, pin);
-if (run([BUN, "install", "--frozen-lockfile"], spec) !== 0) fail(`bun install failed in ${spec}`);
+if (allowed.length === 0) fail("conformance/cases.txt lists no case");
 
 const reports = mkdtempSync(join(tmpdir(), "hyper-conformance-"));
 const report = join(reports, "junit.xml");
@@ -168,8 +111,7 @@ delete env.SCHEMA_STRICT;
 let junit: string | undefined;
 let exitCode: number;
 try {
-  const select = flags.all ? [] : ["-t", namePattern(allowed)];
-  exitCode = run([BUN, "test", "conformance", ...select, "--reporter=junit", `--reporter-outfile=${report}`], spec, env);
+  exitCode = run([BUN, "test", CASES, "--reporter=junit", `--reporter-outfile=${report}`], HYPER, env);
   junit = existsSync(report) ? readFileSync(report, "utf8") : undefined;
 } finally {
   rmSync(reports, { recursive: true, force: true });
@@ -179,20 +121,18 @@ const cases = casesOf(junit);
 
 const byName = new Map<string, Case[]>();
 for (const one of cases) byName.set(one.name, [...(byName.get(one.name) ?? []), one]);
+const listed = new Set(allowed);
 
-const unknown = allowed.filter((name) => !byName.has(name));
+const missing = allowed.filter((name) => !byName.has(name));
 const notPassing = allowed.filter((name) => byName.get(name)?.some((one) => one.status !== "pass"));
-const passing = cases.filter((one) => one.status === "pass");
+const unlisted = [...byName.keys()].filter((name) => !listed.has(name));
+const twice = [...byName].filter(([, runs]) => runs.length > 1).map(([name]) => name);
 
-console.log(`\nconformance: suite ${pin.repository} at ${pin.commit}, ${cases.length} cases`);
-for (const name of unknown) console.error(`  not in the suite: ${name}`);
+console.log(`\nconformance: ${cases.length} cases in conformance/cases, ${allowed.length} listed`);
+for (const name of missing) console.error(`  listed, not in conformance/cases: ${name}`);
 for (const name of notPassing) console.error(`  listed, does not pass: ${name}`);
-if (flags.all) {
-  const listed = new Set(allowed);
-  for (const one of passing) if (!listed.has(one.name)) console.log(`  passes, not listed: ${one.name}`);
-  console.log(`conformance: ${passing.length} of ${cases.length} cases pass; ${allowed.length - notPassing.length - unknown.length} of the ${allowed.length} listed pass`);
-} else {
-  console.log(`conformance: ${allowed.length - notPassing.length - unknown.length} of the ${allowed.length} listed cases pass`);
-}
-if (unknown.length > 0 || notPassing.length > 0) process.exit(1);
-if (!flags.all && exitCode !== 0) fail(`bun test exited ${exitCode}`);
+for (const name of unlisted) console.error(`  in conformance/cases, not listed: ${name}`);
+for (const name of twice) console.error(`  reported more than once: ${name}`);
+console.log(`conformance: ${allowed.length - notPassing.length - missing.length} of the ${allowed.length} listed cases pass`);
+if (missing.length > 0 || notPassing.length > 0 || unlisted.length > 0 || twice.length > 0) process.exit(1);
+if (exitCode !== 0) fail(`bun test exited ${exitCode}`);

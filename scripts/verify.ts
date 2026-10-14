@@ -1,11 +1,11 @@
-// Runs test, typecheck, build and validate for every workspace package that defines them,
-// plus a type check of this script. Keeps going after a failure so one run lists every
-// broken step; exits 1 if any failed or if nothing ran.
+// Runs test, typecheck, build, validate and conformance for every workspace package that
+// defines them, plus a type check of this script. Keeps going after a failure so one run
+// lists every broken step; exits 1 if any failed or if nothing ran.
 import { Glob } from "bun";
 import { dirname, join } from "node:path";
 
 const root = join(import.meta.dir, "..");
-const STEPS = ["test", "typecheck", "build", "validate"] as const;
+const STEPS = ["test", "typecheck", "build", "validate", "conformance"] as const;
 
 const rootPackage = await Bun.file(join(root, "package.json")).json();
 const dirs: string[] = [];

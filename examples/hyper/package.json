@@ -10,14 +10,15 @@
     "#mesh/domain/*": "./.mesh/domain/*/index.ts"
   },
   "scripts": {
-    "test": "mesh build --check && bun test",
-    "typecheck": "tsc --noEmit",
+    "test": "mesh build --check && bun test ./test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p conformance",
     "validate": "mesh build --check",
     "db:push": "mesh db push",
     "conformance": "bun scripts/conformance.ts"
   },
   "devDependencies": {
     "@meshfw/compiler": "workspace:*",
+    "@sinclair/typebox": "0.34.52",
     "drizzle-kit": "0.31.11"
   },
   "dependencies": {

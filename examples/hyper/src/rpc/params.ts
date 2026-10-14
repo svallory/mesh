@@ -1,7 +1,7 @@
 // The parameters of each method the engine serves, as zod schemas. They mirror the spec's `Methods`
-// (`schemas/protocol.ts:376-705` of `svallory/hyper-engine-spec` at the commit `conformance.json` pins), written by hand
-// because the spec is not copied into this repository; the conformance suite checks the mirror. A schema keeps the
-// spec's field names: the methods in `methods.ts` turn them into the inputs of the port's actions.
+// (`conformance/schemas/protocol.ts:376-705`, copied from the spec at commit `ccc00f9`), written by hand; the
+// conformance cases check the mirror. A schema keeps the spec's field names: the methods in `methods.ts` turn them into
+// the inputs of the port's actions.
 import { z } from "zod";
 
 /** An engine-generated identifier (`Id`). Clients never parse it, so any non-empty string is well formed. */

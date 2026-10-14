@@ -6,7 +6,7 @@ Hyper's 18 entities as `.mesh.mx` files, in four modules under `src/domain/`: `i
 bun install
 mesh build        # writes .mesh/
 mesh db push      # creates the 18 tables in hyper.db
-bun test          # the rules, the effects, the relationships and a round-trip of every entity
+bun test ./test   # the rules, the effects, the relationships and a round-trip of every entity
 ```
 
 Code here imports `bind`, `connect`, `disconnect`, `transaction` and `tables` from `#mesh`, `Mesh` (for `Mesh.privileged`) from `meshfw`, and a module's entity values, record and input types and load functions from that module's specifier: `#mesh/domain/identity`, `#mesh/domain/work`, `#mesh/domain/execution` or `#mesh/domain/audit`. `package.json` maps the three specifiers (`#mesh`, `#mesh/domain` and `#mesh/domain/*`) to `.mesh/`.
@@ -34,8 +34,7 @@ It serves `workspace.get`, `workspace.create`, `workspace.rename`, the collabora
 ## Conformance
 
 ```sh
-bun run conformance         # the cases listed in conformance.txt; fails unless every one passes
-bun run conformance --all   # every case; lists those that pass and are not listed yet
+bun run conformance   # the cases in conformance/cases; fails unless they are exactly the ones conformance/cases.txt lists and each one passes
 ```
 
-The runner takes the specification's conformance suite at the commit `conformance.json` pins: from the checkout at `$HYPER_SPEC_DIR`, or from a clone it makes in `.spec/` (git-ignored) with `gh`. It refuses a checkout at another commit or with local changes. It runs the suite against `main.ts` on the Bun that runs the script, with strict result validation. The specification repository is private for now, so the clone needs a `gh` login that can read it, and the step is not part of `bun run verify` yet.
+`conformance/` holds copies of the Hyper engine specification's conformance suite: its harness, its protocol schemas and the cases this daemon passes. [conformance/README.md](./conformance/README.md) names the source commit and lists every file copied and how. Those copies are the gate for Mesh 1.0 (RDM-02): the specification repository will be deleted, so they are never synced back to it. The runner starts `main.ts` on the Bun that runs the script, with strict result validation, and `bun run verify` runs it as a step that never skips. A pull request that makes a case pass copies the case in and adds its name to `conformance/cases.txt`.
