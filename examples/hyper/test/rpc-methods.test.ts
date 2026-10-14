@@ -4,20 +4,28 @@
 // `task.unassign`, `claim.renew`, `claim.release`, `claim.revoke`, `submission.withdraw`), the order of `task.next` and
 // `task.list`, and what `explained` adds to a failure. The world's clock is set to the system's first: the methods pass
 // `connected` to the command functions, whose stale-fence test reads the system clock.
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { type Call, RpcError } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
 import { Collaborator, Membership } from "#mesh/domain/identity";
+import { checkResult } from "../conformance/harness/validate.ts";
+import type { MethodName } from "../conformance/schemas/protocol.ts";
+import { explained, rejection } from "../src/rpc/errors";
 import { methods } from "../src/rpc/methods";
 import { params as schemas } from "../src/rpc/params";
 import { as, setup, within, type World } from "./world";
 
 type Sent = Record<string, unknown>;
 
-/** Runs `method` with `sent` as its params and `context` as the factory would give it. */
+/**
+ * Runs `method` with `sent` as its params and `context` as the factory would give it, and holds what it returns, as the
+ * client reads it after the JSON round trip, to the spec's result schema for the method.
+ */
 async function run(method: keyof typeof schemas, sent: Sent, context: ActionContext): Promise<any> {
   const call = { method, id: 1, params: sent, connection: {} } as unknown as Call;
-  return methods[method]!.run(schemas[method].parse(sent) as never, context, call);
+  const result = await methods[method]!.run(schemas[method].parse(sent) as never, context, call);
+  expect(checkResult(method as MethodName, JSON.parse(JSON.stringify(result)))).toEqual([]);
+  return result;
 }
 
 /** A command's params: the envelope and `payload`. */
@@ -95,13 +103,15 @@ describe("claim.renew, claim.release and claim.revoke find the claim from the Ta
     expect(checks(guest)).toEqual(["role", "claim.holder"]);
   }));
 
-  test("claim.release ends the claim and frees the Task; the released claim can no longer be renewed (claim.active)", () => inWorld(async (w) => {
+  test("claim.release ends the claim and frees the Task; the released claim can no longer be renewed or released (claim.active)", () => inWorld(async (w) => {
     const { claim } = await send("claim.acquire", as(w.bot), { taskId: w.task.id });
     const released = await send("claim.release", as(w.bot), { taskId: w.task.id, fence: claim.fence, reason: "handing over" });
     expect(released.claim).toMatchObject({ id: claim.id, state: "released", endReason: "handing over" });
     expect(released.task).toMatchObject({ activeClaim: null, derived: { state: "ready" } });
     const again = await refusal(send("claim.renew", as(w.bot), { taskId: w.task.id, fence: claim.fence }));
     expect([again.code, checks(again)]).toEqual([-32003, ["claim.active"]]);
+    const twice = await refusal(send("claim.release", as(w.bot), { taskId: w.task.id, fence: claim.fence }));
+    expect([twice.code, twice.phase, checks(twice)]).toEqual([-32003, "content", ["claim.active"]]);
   }));
 
   test("claim.revoke revokes the Task's active claim; with none an owner gets claim.active, and a member who could not revoke gets claim.revoker either way", () => inWorld(async (w) => {
@@ -193,6 +203,20 @@ describe("what explained adds to a failure", () => {
     const guest = await refusal(send("review.return", as(w.gus), { submissionId: submission.id, reasons: "no" }));
     expect(guest.failures.find((entry) => entry.check === "role")!.details).toEqual({ role: "guest", required: ["owner", "member"] });
     expect(guest.failures.find((entry) => entry.check === "review.reviewer")!.details).toEqual({ reviewerId: w.alice.id });
+  }));
+
+  test("when the read that explains a failure fails, the rejection is answered as it is and the failure is logged", () => inWorld(async (w) => {
+    const child = await send("task.create", as(w.alice), { title: "Open child", parentId: w.task.id });
+    const error = rejection(-32003, "content", [{ check: "task.children-settled", reason: "complete or cancel every child first", details: { openChildren: [child.task.id] } }]);
+    // Closing the in-memory layer drops its database: the next transaction opens an empty one, with no tables to read.
+    await w.db.close();
+    const logged = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await explained(error, {})).toBe(error);
+      expect(logged).toHaveBeenCalledTimes(1);
+    } finally {
+      logged.mockRestore();
+    }
   }));
 });
 
