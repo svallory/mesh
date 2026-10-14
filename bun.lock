@@ -37,6 +37,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@meshfw/data-sqlite": "workspace:*",
+        "@meshfw/jsonrpc": "workspace:*",
         "@meshfw/runtime": "workspace:*",
         "drizzle-orm": "0.45.3",
         "meshfw": "workspace:*",

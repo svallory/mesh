@@ -844,8 +844,21 @@ const RULES: Record<string, Case> = {
   },
 };
 
-/** A rule of the port that is not one of Hyper's 57: a report that names a retired machine. */
+/**
+ * The rules of the port that are not among Hyper's 57: a report that names a retired machine, and a second workspace
+ * (the spec's `workspace.exists`, PROTOCOL.md:52: one engine hosts the one workspace its bootstrap creates).
+ */
 const PORT_ONLY: Record<string, Case> = {
+  "workspace.exists": {
+    pass: async (w) => {
+      expect((await Workspace.create({ name: "Home" }, as(w.alice))).name).toBe("Home");
+    },
+    fail: async (w) => {
+      await Workspace.create({ name: null }, setup);
+      await refused(Workspace.create({ name: "Again" }, as(w.alice)), "workspace.exists");
+      expect(await Workspace.read({}, as(w.alice))).toHaveLength(1);
+    },
+  },
   "machine.retired": {
     pass: async (w) => {
       const attempt = await started(w, await running(w), { machine: "laptop" });

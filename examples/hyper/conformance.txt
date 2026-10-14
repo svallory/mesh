@@ -1,0 +1,21 @@
+# The conformance cases this daemon passes, one per line, as the suite prints them (describe > test). `bun run
+# conformance` runs exactly these and fails unless each one passes. The list grows as the methods and the
+# milestones that unlock more cases land; at the gate it holds every case of the suite.
+
+01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap] > workspace.create on a daemon that has its workspace is rejected: rule_violation workspace.exists
+01.3 transport [PROTOCOL.md#transport] > a malformed line gets parse_error (-32700, id null) and the connection stays usable
+01.3 transport [PROTOCOL.md#transport] > an unknown method gets method_not_found (-32601)
+01.3 transport [PROTOCOL.md#transport] > inherited object property names are not methods (-32601)
+01.3 transport [PROTOCOL.md#transport] > params that do not match the schema get invalid_params (-32602)
+01.3 transport [PROTOCOL.md#transport] > one phase, several failures: params failing the schema in two ways report one or more schema failures (shape)
+01.3 transport [PROTOCOL.md#transport] > a batch (JSON array) is rejected with invalid_request (-32600)
+01.3 transport [PROTOCOL.md#transport] > pipelined requests on one connection are all answered and matched by id
+01.3 transport [PROTOCOL.md#transport] > several connections can be open at once
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a member cannot register, grant, change roles, revoke or retire: permission_denied role
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > one active membership per collaborator: rule_violation membership.none-active
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a revoked collaborator returns through a new grant (a new membership)
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > the last owner cannot be demoted or revoked: rule_violation membership.last-owner
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a second owner can manage memberships; then the first owner may be demoted
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > collaborator names are unique among active collaborators: rule_violation collaborator.name-unique
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a guest may update its own profile, and only its own (collaborator.self-or-owner)
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > changing a role to the one it already has is rejected (membership.unchanged)
