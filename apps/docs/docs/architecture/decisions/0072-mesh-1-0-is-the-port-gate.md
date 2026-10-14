@@ -1,11 +1,13 @@
 ---
 title: "0072. Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite"
-description: "Decision record 0072: what Mesh 1.0 is, which contract the port follows, what the gate covers, and what leaves the 1.0 line (SQL translation, atomic updates, the extension host, Postgres, tracing, on:load). Status: Accepted. Amended 2026-10-11 (DOM-18, DOM-20, DOM-25, DOM-28, RDM-01)."
+description: "Decision record 0072: what Mesh 1.0 is, which contract the port follows, what the gate covers, and what leaves the 1.0 line (SQL translation, atomic updates, the extension host, Postgres, tracing, on:load). Status: Accepted. Amended 2026-10-11 (DOM-18, DOM-20, DOM-25, DOM-28, RDM-01) and 2026-10-14 (RDM-02)."
 ---
 
 # 0072. Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite
 
 > **Amendment, 2026-10-11 (DOM-18, DOM-20, DOM-25, DOM-28, RDM-01).** M6 builds domain events and the outbox ([ADR-0079](./0079-commands-events-and-the-outbox.md)), and HA drops its hand-written event table and keeps `@meshfw/jsonrpc` with a hand-written method table ([ADR-0077](./0077-surfaces-and-file-kinds.md)). The `after-commit` step is no longer planned for after 1.0: it is dropped. Surfaces generate the method table after 1.0. One transport, JSON-RPC over a Unix socket (`@meshfw/jsonrpc`), is therefore built before the gate. Named reusable checks leave the extension-host row below: they are core, an entity-level `checks` section ([ADR-0082](./0082-named-checks-and-mixins.md), DOM-28). The gate's rule of construct growth has two halves (RDM-01): no new construct is added before the port unless the port needs it, and as many planned constructs as possible are added before 1.0.
+
+> **Amendment, 2026-10-14 (RDM-02).** The action item "Pin the suite's source for `verify`" is settled, and not by a pinned checkout: the specification repository is internal and will be deleted, so the gate lives in Mesh's repository. `examples/hyper/conformance/` holds copies of the suite's harness, its schema module and the cases the port passes, taken from the specification at commit `ccc00f9`. The copies are the gate and are never synced back; each pull request that makes a case pass copies it in. `bun run conformance` runs them as a step of `bun run verify`, and the step never skips.
 
 ## Status
 
@@ -74,4 +76,4 @@ The gate is narrower than revision 4's v1: the two-evaluator promise of [ADR-001
 
 - [ ] Rewrite the roadmap as revision 5 (this pull request).
 - [ ] Scope M3 from revision 5.
-- [ ] Pin the suite's source for `verify`.
+- [x] Pin the suite's source for `verify` (amendment of 2026-10-14).
