@@ -1,6 +1,7 @@
 # The conformance cases this daemon passes, one per line, as the suite prints them (describe > test). `bun run
-# conformance` runs exactly these and fails unless each one passes. The list grows as the methods and the
-# milestones that unlock more cases land; at the gate it holds every case of the suite.
+# conformance` runs every case copied into cases/ and fails unless those are exactly the cases listed here and each
+# one passes. A pull request that makes a case pass copies it into cases/ and adds its line here; at the gate the
+# list holds every case of the suite.
 
 01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap] > workspace.create on a daemon that has its workspace is rejected: rule_violation workspace.exists
 01.3 transport [PROTOCOL.md#transport] > a malformed line gets parse_error (-32700, id null) and the connection stays usable

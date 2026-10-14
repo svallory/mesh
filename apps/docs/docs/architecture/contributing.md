@@ -82,7 +82,7 @@ From the repository root:
 
 ```bash
 bun install        # at the repository root; the @mxlang scope resolves from the registry
-bun run verify      # every package's tests, type check, build and validate, plus the docs checks
+bun run verify      # every package's tests, type check, build, validate and conformance, plus the docs checks
 bun run test        # tests only
 bun run typecheck   # type checks only
 ```
