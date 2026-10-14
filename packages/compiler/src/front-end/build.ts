@@ -37,7 +37,7 @@ import { hasMeshExtension } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf, SCOPE_NAMES } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
-import { referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
+import { referenceText, resolveReference, writtenAlone, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
 import { literalFits } from "./literal-types.ts";
 import {
   resolveRollups,
@@ -521,7 +521,19 @@ function buildEntity(
   }
   for (const tag of tags(section("relationships")?.children ?? [])) {
     // `entity=List` or `entity=billing.Invoice` (SYN-21); an entity relates to its own type by its own name, with no import.
-    const written = writtenReference(nodeOf(attr(tag, "entity")));
+    const option = attr(tag, "entity");
+    let written = writtenReference(nodeOf(option));
+    // MX lowers `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` to `List`, which the contract cannot tell
+    // from `List`; refused here, as the contract refuses any other expression.
+    if (written && option?.kind === "dynamic" && !writtenAlone(source, tag, option, written)) {
+      fail(
+        "MESH_ENTITY_REFERENCE",
+        "entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`), written alone: no parentheses, `!`, `as`, `satisfies` or `<T>`",
+        at(option.nameSpan.sourceStart),
+        `write \`${referenceText(written)}\``,
+      );
+      written = undefined;
+    }
     const target = written ? resolveReference(written, references, ENTITY_REFERENCE) : undefined;
     if (target && !target.ok) fail(target.code, target.message, at(target.offset), target.fix);
     const name = declaredName(tag);

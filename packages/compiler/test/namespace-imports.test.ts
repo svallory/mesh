@@ -169,6 +169,52 @@ describe("a reference that does not resolve is MESH_UNKNOWN_ENTITY, from the one
       expect(result.diagnostics.map((d) => d.code), written).toEqual(["MESH_ENTITY_REFERENCE"]);
     }
   });
+
+  // MX lowers each of these to the plain identifier or member, with nothing in the node that marks the wrapper; the
+  // reference is written alone or refused, whichever side of the dot the wrapper is on, and nothing else is reported.
+  test.each([
+    ["(billing.Invoice)", "billing.Invoice"],
+    ["billing.Invoice!", "billing.Invoice"],
+    ["billing.Invoice as any", "billing.Invoice"],
+    ["billing.Invoice satisfies object", "billing.Invoice"],
+    ["<any>billing.Invoice", "billing.Invoice"],
+    ["(billing).Invoice", "billing.Invoice"],
+    ["billing!.Invoice", "billing.Invoice"],
+    ["(Customer)", "Customer"],
+    ["Customer!", "Customer"],
+    ["Customer as any", "Customer"],
+    ["Customer satisfies object", "Customer"],
+    ["<any>Customer", "Customer"],
+    ["(Customer) nullable", "Customer"],
+    ["Customer! nullable", "Customer"],
+    ["Customer as any nullable", "Customer"],
+    ["Customer satisfies object nullable", "Customer"],
+  ])("entity=%s is MESH_ENTITY_REFERENCE, a wrapper MX drops from the node", (written, alone) => {
+    const imports = 'import * as billing from "../billing/invoice.mesh.mx"\nimport { Customer } from "../billing/customer.mesh.mx"';
+    const result = build(line(imports, `    belongs-to :invoice entity=${written}\n`));
+    expect(brief(result.diagnostics)).toEqual([[
+      "MESH_ENTITY_REFERENCE",
+      "entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`), written alone: no parentheses, `!`, `as`, `satisfies` or `<T>`",
+      8, 24, `write \`${alone}\``,
+    ]]);
+  });
+
+  test("whitespace and comments around the reference, and a comma after it, are no wrapper", () => {
+    const imports = 'import * as billing from "../billing/invoice.mesh.mx"\nimport { Customer } from "../billing/customer.mesh.mx"';
+    for (const [written, identifier] of [
+      ["billing. Invoice", "billing.Invoice"],
+      ["billing .Invoice", "billing.Invoice"],
+      ["billing /* the ledger's */ . Invoice nullable", "billing.Invoice"],
+      ["billing.Invoice  ", "billing.Invoice"],
+      ["billing.Invoice // the invoice", "billing.Invoice"],
+      ["billing.Invoice, nullable", "billing.Invoice"],
+      ["Customer\t nullable /* (x) */", "Customer"],
+    ] as const) {
+      const result = build(line(imports, `    belongs-to :invoice entity=${written}\n`));
+      expect(result.diagnostics, written).toEqual([]);
+      expect(entityOf(result, "Line").relationships.map((r) => r.entity.identifier), written).toEqual([identifier]);
+    }
+  });
 });
 
 describe("namespace import forms", () => {

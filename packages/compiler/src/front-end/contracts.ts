@@ -74,7 +74,8 @@ const isPlainIdentifier = (n: Node | null | undefined) =>
 /**
  * A reference to another file's declaration (SYN-21): an imported identifier (`List`), or a member of a namespace import
  * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
- * Mesh's to resolve (`front-end/references.ts`).
+ * Mesh's to resolve (`front-end/references.ts`). MX lowers `(List)`, `List!`, `List as T`, `List satisfies T` and
+ * `<T>List` to `List`, so this sees no wrapper; `writtenAlone` refuses one from the source.
  */
 const isReference = (n: Node | null | undefined): boolean => {
   if (isPlainIdentifier(n)) return true;

@@ -1,6 +1,6 @@
 import type { Import } from "@meshfw/model";
 import { nearestName } from "./nearest-name.ts";
-import type { SyntaxNode } from "./tree.ts";
+import type { Attr, SyntaxNode, Tag } from "./tree.ts";
 
 /**
  * A reference to a declaration of another file (SYN-21), as the entity file writes it: an imported identifier (`List`), or
@@ -34,6 +34,21 @@ export function writtenReference(node: SyntaxNode | null | undefined): WrittenRe
     && n.property?.type === "Identifier" && n.property.name)
     return { qualifier: { name: n.object.name, offset: startOf(n.object) }, name: n.property.name, offset: startOf(n.property) };
   return undefined;
+}
+
+/**
+ * Whether the option writes the reference alone: `entity=List` or `entity=billing.Invoice`, with only whitespace and
+ * comments around its words and the comma that may end an option. MX lowers `(List)`, `List!`, `List as T`,
+ * `List satisfies T` and `<T>List` to `List`, and keeps no mark of `!`, `as` or `satisfies` in the node or its spans, so
+ * only the source tells a wrapper apart. It is read here to refuse one, never to give a reference its meaning. The option
+ * runs from its name to the next option, or to the end of the tag's line.
+ */
+export function writtenAlone(source: string, tag: Tag, option: Extract<Attr, { kind: "dynamic" }>, written: WrittenReference): boolean {
+  const from = option.nameSpan.sourceEnd;
+  const next = Math.min(...tag.attrs.map((a) => a.span.sourceStart).filter((start) => start >= from), tag.span.sourceEnd);
+  const text = source.slice(from, next).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, " ").split("\n")[0]!.replace(/\s+/g, "");
+  const alone = `=${referenceText(written)}`;
+  return text === alone || text === `${alone},`;
 }
 
 /** What a reference is resolved against: the file's imports and own declaration, and what each imported file declares. */
