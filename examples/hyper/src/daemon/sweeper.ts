@@ -23,13 +23,16 @@ const lapsedAt = (now: Date) => ({ state: { eq: "active" as const }, expiresAt: 
  * in the daemon), each in a transaction of its own, in which it reads the claim again: a command may have ended it in
  * the meantime, or `claim.acquire` expired it first. `expire` touches the Task, which bumps its version, as the
  * protocol's `claim.expired` does (PROTOCOL.md:118). Resolves with how many it expired. A claim that fails does not
- * stop the others: once every claim was tried, it rejects with an `AggregateError` of the failures.
+ * stop the others: once every claim was tried, it rejects with an `AggregateError` of the failures, each an error that
+ * names the claim, with what it failed with as its `cause`. Once `signal` is aborted, it starts no other claim and
+ * settles as if the claims left had not been found.
  */
-export async function sweep(binding: SweepBinding, context: ActionContext, clock: () => Date = () => new Date()): Promise<number> {
+export async function sweep(binding: SweepBinding, context: ActionContext, clock: () => Date = () => new Date(), signal?: AbortSignal): Promise<number> {
   const lapsed = await binding.transaction(() => Mesh.privileged(Claim).read({ filter: lapsedAt(clock()), sort: ["expiresAt", "id"] }));
-  const failures: unknown[] = [];
+  const failures: Error[] = [];
   let expired = 0;
   for (const { id } of lapsed) {
+    if (signal?.aborted) break;
     try {
       const done = await binding.transaction(async () => {
         const [still] = await Mesh.privileged(Claim).read({ filter: { id: { eq: id }, ...lapsedAt(clock()) }, limit: 1 });
@@ -39,7 +42,7 @@ export async function sweep(binding: SweepBinding, context: ActionContext, clock
       });
       if (done) expired++;
     } catch (error) {
-      failures.push(error);
+      failures.push(new Error(`the lease sweeper could not expire claim ${id}`, { cause: error }));
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, `the lease sweeper could not expire ${failures.length} of ${lapsed.length} lapsed claims`);
@@ -56,24 +59,29 @@ export interface SweeperOptions {
 }
 
 export interface Sweeper {
-  /** Stops the timer and resolves once the sweep in progress, if any, has finished. Calling it again returns the same promise. */
+  /**
+   * Stops the timer, and the sweep in progress, if any, before its next claim; resolves once the claim being expired,
+   * if any, has committed or rolled back. Calling it again returns the same promise.
+   */
   stop(): Promise<void>;
 }
 
 /**
  * Starts sweeping on `binding`: the first sweep `intervalMs` from now, and each next one `intervalMs` after the last
- * finished, so two never overlap. A sweep that fails is logged on standard error and the next one tries again. The
- * timer does not keep the process alive on its own.
+ * finished, so two never overlap. A sweep that fails is logged on standard error and the next one tries again, with
+ * no back-off: a claim that keeps failing is tried, and logged, on every sweep. The timer does not keep the process
+ * alive on its own.
  */
 export function startSweeper(binding: SweepBinding, options: SweeperOptions): Sweeper {
   const intervalMs = options.intervalMs ?? SWEEP_INTERVAL_MS;
+  const stopped = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | undefined;
   let stopping: Promise<void> | undefined;
   const schedule = () => {
     timer = setTimeout(() => {
       timer = undefined;
-      running = sweep(binding, options.context, options.clock)
+      running = sweep(binding, options.context, options.clock, stopped.signal)
         .then(
           () => {},
           (error: unknown) => console.error("the lease sweeper failed; it tries again on its next sweep", error),
@@ -89,6 +97,7 @@ export function startSweeper(binding: SweepBinding, options: SweeperOptions): Sw
   return {
     stop: () =>
       (stopping ??= (async () => {
+        stopped.abort();
         if (timer !== undefined) clearTimeout(timer);
         timer = undefined;
         await running;

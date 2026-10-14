@@ -1,7 +1,7 @@
 // The lease sweeper (`src/daemon/sweeper.ts`) in process, on the world's clock: `sweep` expires each claim whose lease
 // has run out, as the engine, in a transaction of its own, and leaves every other claim alone; `startSweeper` sweeps on
-// a timer, one sweep at a time, and `stop` waits for the sweep in progress. `test/daemon.test.ts` holds the running
-// daemon to the protocol's 1000 ms (PROTOCOL.md:312).
+// a timer, one sweep at a time, and `stop` ends the sweep in progress once the claim it is expiring commits.
+// `test/daemon.test.ts` holds the running daemon to the protocol's 1000 ms (PROTOCOL.md:312).
 import { describe, expect, spyOn, test } from "bun:test";
 import { Claim, Task } from "#mesh/domain/work";
 import { startSweeper, sweep, type SweepBinding } from "../src/daemon/sweeper";
@@ -88,7 +88,10 @@ describe("sweep", () => {
     const failed = await sweep(binding, ENGINE, w.clock).then(() => undefined, (error: unknown) => error);
     expect(failed).toBeInstanceOf(AggregateError);
     expect((failed as AggregateError).message).toBe("the lease sweeper could not expire 1 of 2 lapsed claims");
-    expect((failed as AggregateError).errors.map((error: Error) => error.message)).toEqual(["disk full"]);
+    // Each failure names its claim, with what it failed with as its cause.
+    const errors = (failed as AggregateError).errors as Error[];
+    expect(errors.map((error) => error.message)).toEqual([`the lease sweeper could not expire claim ${first.claim.id}`]);
+    expect(errors.map((error) => (error.cause as Error).message)).toEqual(["disk full"]);
     expect(await claimOf(w, first.claim.id)).toMatchObject({ state: "active" });
     expect(await claimOf(w, second.claim.id)).toMatchObject({ state: "expired" });
     // The next sweep tries it again.
@@ -115,15 +118,16 @@ describe("startSweeper", () => {
     }
   }));
 
-  test("stop waits for the sweep in progress, returns the same promise each time, and no sweep starts after it", () => within(async (w) => {
-    const { claim } = await claimed(w, "Draining");
+  test("stop lets the claim being expired commit, expires no other, returns the same promise each time, and no sweep starts after it", () => within(async (w) => {
+    const { claim } = await claimed(w, "Draining", 60_000);
+    const { claim: left } = await claimed(w, "Left", 2 * 60_000);
     w.advance(10);
     let open!: () => void;
     const gate = new Promise<void>((resolve) => (open = resolve));
     let entered!: () => void;
     const inProgress = new Promise<void>((resolve) => (entered = resolve));
-    // The first sweep's read waits at the gate.
-    const binding = counted(w, async (n) => { if (n === 1) { entered(); await gate; } });
+    // The first sweep reads both lapsed claims; the transaction that expires the first one waits at the gate.
+    const binding = counted(w, async (n) => { if (n === 2) { entered(); await gate; } });
     const sweeper = startSweeper(binding, { context: ENGINE, intervalMs: 5, clock: w.clock });
     await inProgress;
     let stopped = false;
@@ -134,8 +138,10 @@ describe("startSweeper", () => {
     expect(stopped).toBe(false);
     open();
     await stopping;
-    // The sweep it waited for ran to the end.
+    // The claim it waited for was expired, and the sweep stopped before the next one.
     expect(await claimOf(w, claim.id)).toMatchObject({ state: "expired" });
+    expect(await claimOf(w, left.id)).toMatchObject({ state: "active" });
+    expect(binding.calls).toBe(2);
     const calls = binding.calls;
     const { claim: next } = await claimed(w, "After the stop");
     w.advance(10);
