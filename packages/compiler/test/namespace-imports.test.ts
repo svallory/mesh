@@ -368,8 +368,11 @@ entity :Task
     // Given the record, it is plain code, as an imported function given the record is; it still names the import.
     const plain = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("() => h.big(&n)") }).document!.entities[0]!.actions[0]!.validate[0]!.that.plain;
     expect(plain).toMatchObject({ why: "reads-record-in-helper", helpers: ["h"] });
-    // A parameter of the alias's name hides the namespace.
-    const hidden = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => [actor].some((h) => h.isStaff)") }).document!.entities[0]!.actions[0]!.validate[0]!.that;
+    // A parameter of the alias's name hides the namespace: `h.isStaff(h)` is a method of the parameter, not a helper call.
+    // `actor.roles` is translated, so the quantifier's body reaches the helper-namespace branch of the translation.
+    const hidden = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => actor.roles.some((h) => h.isStaff(h))") }).document!.entities[0]!.actions[0]!.validate[0]!.that;
+    expect(hidden.plain).toMatchObject({ why: "unsupported-construct", detail: "a method call", position: { column: 61 } });
+    expect(hidden.plain?.helpers).toBeUndefined();
     expect(JSON.stringify(hidden)).not.toContain('"kind":"helper"');
     // The namespace itself is no function.
     const called = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => h(actor)") }).document!.entities[0]!.actions[0]!.validate[0]!.that;

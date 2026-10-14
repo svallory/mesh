@@ -73,6 +73,9 @@ describe("namespace imports of entity files and helper modules (SYN-21)", () => 
     const line = await readFile(join(root, ".mesh/domain/ledger/line.expressions.ts"), "utf8");
     expect(line).toMatch(/const bills: \{ readonly Invoice: \$billing\$Invoice\$ReadOnly \} = \{\s*Invoice: \$billing\$Invoice\$value,?\s*\};/);
     expect(line).toMatch(/declare namespace bills \{\s*export type Invoice = \$billing\$Invoice\$Record;\s*\}/);
+    // A helper module the functions name only in a type is a type import: the generated file loads none of its code.
+    expect(line).toContain('import type * as money from "../../../domain/billing/money";');
+    expect(line).not.toContain('import * as money');
   });
 
   test("the model records each reference as written and resolves it to the entity the file declares; FQNs carry no alias", async () => {

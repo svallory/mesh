@@ -1,4 +1,5 @@
 import * as bills from "../billing/invoice.mesh.mx"
+import * as money from "../billing/money"
 
 entity :Line
   attributes
@@ -18,7 +19,8 @@ entity :Line
         run async ({ self }) {
           const actions: typeof bills.Invoice = bills.Invoice
           const owner: bills.Invoice | null = null
-          if (owner !== null || typeof actions.open !== "function" || self.amount < 0) throw new Error("the namespace did not bind")
+          const cents: money.Cents = self.amount
+          if (owner !== null || typeof actions.open !== "function" || cents < 0) throw new Error("the namespace did not bind")
         }
   policies
     policy :anyone
