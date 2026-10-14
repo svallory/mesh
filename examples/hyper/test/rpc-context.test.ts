@@ -5,11 +5,12 @@ import { type Call, RpcError } from "@meshfw/jsonrpc";
 import { ForbiddenError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
 import { Collaborator, Membership } from "#mesh/domain/identity";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
-import { contextFactory, ENGINE } from "../src/rpc/context";
+import { contextFactory, ENGINE, ENGINE_ID } from "../src/rpc/context";
+import { actorless, methods, unserved } from "../src/rpc/methods";
 import { existingCollaborator, existingTask, isId, membershipOf, requireId } from "../src/rpc/resolve";
 import { as, setup, within } from "./world";
 
-const factory = contextFactory(new Set(["workspace.get"]));
+const factory = contextFactory(new Set(["workspace.get"]), new Map());
 const call = (method: string): Call => ({ method, id: 1, params: {}, connection: {} as Call["connection"] });
 const params = (actor: string, extra: Record<string, unknown> = {}) => ({ commandId: "c-1", actor, caller: "cli", payload: {}, ...extra });
 
@@ -90,6 +91,67 @@ describe("contextFactory", () => {
       await collaboratorRetire({ id: bot.id }, as(alice), binding);
       const data = await refusal(factory(call("task.create"), params(bot.id)));
       expect(data.failures).toEqual([{ check: "membership", reason: `collaborator ${bot.id} is retired and can no longer act` }]);
+    });
+  });
+});
+
+/** The methods whose params have no `actor` in the spec's `schemas/protocol.ts` (PROTOCOL.md:124, 132). */
+const SPEC_ACTORLESS: readonly string[] = ["events.unsubscribe", "workspace.get"];
+
+/** What the daemon's factory (`contextFactory(actorless, unserved(table))`) makes of `method` for `actor`: a context, or the error. */
+async function outcome(table: typeof methods, method: string, actor: string): Promise<unknown> {
+  return contextFactory(actorless, unserved(table))(call(method), params(actor)).catch((error: unknown) => error);
+}
+
+describe("the daemon's context factory", () => {
+  test("only the methods the spec defines without an actor run with the engine's context", () => {
+    expect([...actorless].sort()).toEqual([...SPEC_ACTORLESS]);
+  });
+
+  test("every unserved method answers -32010 before the actor is read, so an unknown actor is never reached", async () => {
+    const reasons = unserved(methods);
+    expect(reasons.size).toBeGreaterThan(0);
+    await within(async () => {
+      for (const [method, why] of reasons) {
+        const error = await outcome(methods, method, crypto.randomUUID());
+        expect(error).toBeInstanceOf(RpcError);
+        expect(error).toMatchObject({
+          code: -32010,
+          message: "not_implemented",
+          data: { phase: "shape", failures: [{ check: "method", reason: `${method} is not implemented by this engine: ${why}` }] },
+        });
+      }
+    });
+  });
+
+  test("no method outside the spec's actorless list gets the engine's context: each takes the actor's, or is refused", async () => {
+    await within(async ({ alice }) => {
+      const reasons = unserved(methods);
+      for (const method of Object.keys(methods).filter((name) => !SPEC_ACTORLESS.includes(name))) {
+        const asEngine = await outcome(methods, method, ENGINE_ID);
+        expect(asEngine).toBeInstanceOf(RpcError);
+        expect((asEngine as RpcError).code).toBe(reasons.has(method) ? -32010 : -32001);
+        const asAlice = await outcome(methods, method, alice.id);
+        if (reasons.has(method)) expect((asAlice as RpcError).code).toBe(-32010);
+        else expect(asAlice).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
+      }
+    });
+  });
+
+  test("serving a method takes it off the unserved map, and it then needs an actor with a membership", async () => {
+    const served = { ...methods, "task.assign": { run: () => ({ events: [] }) } };
+    expect(unserved(methods).has("task.assign")).toBe(true);
+    expect(unserved(served).has("task.assign")).toBe(false);
+    await within(async ({ alice }) => {
+      expect(await outcome(served, "task.assign", alice.id)).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
+      expect((await outcome(served, "task.assign", ENGINE_ID)) as RpcError).toMatchObject({ code: -32001, data: { failures: [{ check: "membership" }] } });
+    });
+  });
+
+  test("of the spec's actorless methods, workspace.get gets the engine's context and events.unsubscribe, not served yet, answers -32010", async () => {
+    await within(async () => {
+      expect(await outcome(methods, "workspace.get", "anyone")).toBe(ENGINE);
+      expect(await outcome(methods, "events.unsubscribe", "anyone")).toMatchObject({ code: -32010 });
     });
   });
 });

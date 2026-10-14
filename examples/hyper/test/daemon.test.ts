@@ -1,18 +1,28 @@
 // The daemon as a process (`main.ts`, PROTOCOL.md:24-48): it prints `READY` and nothing else on standard output,
-// bootstraps once per database, keeps what it stored across a restart on the same `--db`, exits 0 within 5 seconds of
-// `SIGTERM` even with a call in flight that never settles, and refuses bad flags with exit code 2.
+// bootstraps once per database, keeps what it stored across a restart on the same `--db`, and refuses bad flags with
+// exit code 2. On `SIGTERM` or `SIGINT`, even one that arrives during start-up, it lets the calls inside a transaction
+// commit whole, closes the database, removes the socket file and exits 0, within 5 seconds even when a call never
+// settles. Over the wire, a non-member is `-32001` and a method it does not serve `-32010`, before the actor is read.
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
+import { ENGINE_ID } from "../src/rpc/context";
+import { methods, unserved } from "../src/rpc/methods";
 
 const HYPER = join(import.meta.dir, "..");
 const MAIN = join(HYPER, "main.ts");
-const HANGING = join(import.meta.dir, "fixtures", "hanging-daemon.ts");
+const TEST_DAEMON = join(import.meta.dir, "fixtures", "test-daemon.ts");
 /** How long the spec gives an engine to exit after `SIGTERM` before it is killed (PROTOCOL.md:38). */
 const STOP_MS = 5_000;
+/** How long the daemon waits for the calls in flight before it exits anyway (`exitOnSignal` in `src/daemon/daemon.ts`). */
+const GRACE_MS = 4_000;
+/** What the daemon logs when it exits through the grace timer instead of after closing. */
+const GRACE_EXIT = "calls still running";
 const TIMEOUT_MS = 30_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** A temporary directory for the socket and the database. Short on macOS, where a socket path is limited to 104 bytes. */
 function scratch(): { socket: string; db: string; dir: string } {
@@ -37,8 +47,8 @@ interface Engine {
   logged(text: string): Promise<void>;
   /** Resolves once `READY` is on standard output; rejects if the process exits first. */
   ready(): Promise<void>;
-  /** Sends `SIGTERM` and resolves with the exit code and how long the process took to exit. */
-  stop(): Promise<{ code: number | null; ms: number }>;
+  /** Sends `signal` (`SIGTERM` unless given) and resolves with the exit code and how long the process took to exit. */
+  stop(signal?: "SIGTERM" | "SIGINT"): Promise<{ code: number | null; ms: number }>;
 }
 
 /** Runs `bun <args>` from the example's folder, collecting both outputs. */
@@ -78,9 +88,9 @@ function launch(args: readonly string[]): Engine {
     err: () => err,
     logged: (text) => until(() => err.includes(text), `it logged ${JSON.stringify(text)}`),
     ready: () => until(() => out.includes("READY\n"), "it printed READY"),
-    async stop() {
+    async stop(signal = "SIGTERM") {
       const started = performance.now();
-      proc.kill("SIGTERM");
+      proc.kill(signal);
       const code = await proc.exited;
       return { code, ms: performance.now() - started };
     },
@@ -126,6 +136,16 @@ async function connect(socket: string) {
 
 const command = (actor: string, payload: Record<string, unknown>) => ({ commandId: crypto.randomUUID(), actor, caller: "test", payload });
 
+/** The names of the collaborators stored in `db`, read straight from the file once the daemon has exited. */
+function storedNames(db: string): string[] {
+  const database = new Database(db);
+  try {
+    return database.query<{ name: string }, []>("SELECT name FROM collaborators ORDER BY name").all().map((row) => row.name);
+  } finally {
+    database.close();
+  }
+}
+
 describe("the daemon", () => {
   test("bootstraps a workspace with one owner, prints only READY, and exits 0 on SIGTERM", async () => {
     const { socket, db } = scratch();
@@ -143,10 +163,13 @@ describe("the daemon", () => {
     });
 
     // The connection stays open: stopping must not wait for an idle client.
+    expect(existsSync(socket)).toBe(true);
     const { code, ms } = await engine.stop();
     expect(code).toBe(0);
     expect(ms).toBeLessThan(STOP_MS);
     expect(engine.out()).toBe("READY\n");
+    expect(engine.err()).toBe("");
+    expect(existsSync(socket)).toBe(false);
     client.close();
   }, TIMEOUT_MS);
 
@@ -179,9 +202,44 @@ describe("the daemon", () => {
     expect((await second.stop()).code).toBe(0);
   }, TIMEOUT_MS);
 
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    test(`on ${signal}, the calls inside a transaction commit whole, then it exits 0 well before the grace timer and removes the socket`, async () => {
+      const { socket, db } = scratch();
+      const engine = launch([TEST_DAEMON, socket, db]);
+      await engine.ready();
+      const client = await connect(socket);
+      const names = ["w0", "w1", "w2"];
+      // Each call takes the write lock in turn and holds it across its pause, so they finish one after another.
+      for (const name of names) void client.call("test.write-twice", { name, pauseMs: 300 });
+      await engine.logged("test.write-twice w0 wrote w0-1");
+
+      const { code, ms } = await engine.stop(signal);
+      expect(code).toBe(0);
+      expect(ms).toBeLessThan(GRACE_MS / 2);
+      expect(engine.err()).not.toContain(GRACE_EXIT);
+      expect(existsSync(socket)).toBe(false);
+      // A call answered after the connection closed is not sent, so the database is what shows each call finished.
+      for (const name of names) expect(engine.err()).toContain(`test.write-twice ${name} committed`);
+      expect(storedNames(db).filter((name) => /^w\d-/.test(name))).toEqual(["w0-1", "w0-2", "w1-1", "w1-2", "w2-1", "w2-2"]);
+      expect(engine.out()).toBe("READY\n");
+      client.close();
+    }, TIMEOUT_MS);
+  }
+
+  test("SIGINT, like SIGTERM, closes an idle daemon, exits 0 and removes the socket", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([MAIN, "--socket", socket, "--db", db]);
+    await engine.ready();
+    const { code, ms } = await engine.stop("SIGINT");
+    expect(code).toBe(0);
+    expect(ms).toBeLessThan(STOP_MS);
+    expect(engine.err()).toBe("");
+    expect(existsSync(socket)).toBe(false);
+  }, TIMEOUT_MS);
+
   test("SIGTERM exits 0 within 5 seconds even with a call in flight that never settles", async () => {
     const { socket, db } = scratch();
-    const engine = launch([HANGING, socket, db]);
+    const engine = launch([TEST_DAEMON, socket, db]);
     await engine.ready();
     const client = await connect(socket);
     void client.call("test.hang", {});
@@ -190,9 +248,95 @@ describe("the daemon", () => {
     const { code, ms } = await engine.stop();
     expect(code).toBe(0);
     expect(ms).toBeLessThan(STOP_MS);
-    expect(engine.err()).toContain("calls still running");
+    expect(engine.err()).toContain(GRACE_EXIT);
     expect(engine.out()).toBe("READY\n");
+    expect(existsSync(socket)).toBe(false);
     client.close();
+  }, TIMEOUT_MS);
+
+  test("a signal while it is still starting waits for start-up to finish, then closes, exits 0 and removes the socket", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([TEST_DAEMON, socket, db, "500"]);
+    await engine.logged("starting");
+    expect(existsSync(socket)).toBe(false);
+
+    const { code, ms } = await engine.stop();
+    expect(code).toBe(0);
+    expect(ms).toBeLessThan(STOP_MS);
+    expect(engine.err()).not.toContain(GRACE_EXIT);
+    expect(existsSync(socket)).toBe(false);
+    // Start-up ran to the end: the workspace and its owner were stored.
+    expect(storedNames(db)).toEqual(["owner"]);
+  }, TIMEOUT_MS);
+
+  test("over the wire, a caller with no membership is -32001 membership, and every method not served is -32010 before the actor is read", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([MAIN, "--socket", socket, "--db", db]);
+    await engine.ready();
+    const client = await connect(socket);
+
+    for (const actor of [crypto.randomUUID(), "nope", ENGINE_ID]) {
+      const { error } = await client.call("collaborator.register", command(actor, { kind: "agent", name: "Eve" }));
+      expect(error).toEqual({
+        code: -32001,
+        message: "permission_denied",
+        data: { phase: "permission", failures: [{ check: "membership", reason: `no collaborator with id ${actor}; register it, and have an owner grant it a membership` }] },
+      });
+    }
+
+    const reasons = unserved(methods);
+    expect([...reasons.keys()]).toContain("task.get");
+    for (const [method, why] of reasons) {
+      // An unknown actor would be -32001 had its context been built.
+      const { error } = await client.call(method, { ...command(crypto.randomUUID(), {}), taskId: crypto.randomUUID() });
+      expect(error).toEqual({
+        code: -32010,
+        message: "not_implemented",
+        data: { phase: "shape", failures: [{ check: "method", reason: `${method} is not implemented by this engine: ${why}` }] },
+      });
+    }
+    client.close();
+    expect((await engine.stop()).code).toBe(0);
+  }, TIMEOUT_MS);
+
+  test("task.create over the wire returns the new Task's view, with no events until the event log exists", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([MAIN, "--socket", socket, "--db", db]);
+    await engine.ready();
+    const client = await connect(socket);
+    const { result: workspace } = await client.call("workspace.get", {});
+    const owner: string = workspace!.owners[0].id;
+
+    const { result, error } = await client.call("task.create", command(owner, { title: "Write the report", intent: "for the board", priority: 3 }));
+    expect(error).toBeUndefined();
+    expect(result).toEqual({
+      events: [],
+      task: {
+        id: expect.stringMatching(UUID),
+        title: "Write the report",
+        intent: "for the board",
+        state: "open",
+        parentId: null,
+        priority: 3,
+        creatorId: owner,
+        version: 1,
+        createdAt: expect.any(String),
+        derived: { state: "ready", reasons: [] },
+        dependsOn: [],
+        assignment: null,
+        activeClaim: null,
+        pendingSubmission: null,
+        reviewer: { collaboratorId: owner, rule: "task-creator" },
+      },
+    });
+    expect(new Date(result!.task.createdAt).toISOString()).toBe(result!.task.createdAt);
+
+    const child = await client.call("task.create", command(owner, { title: "Draft it", parentId: result!.task.id }));
+    expect(child.result?.task).toMatchObject({ title: "Draft it", intent: null, parentId: result!.task.id, priority: null, version: 1 });
+    const orphan = await client.call("task.create", command(owner, { title: "Lost", parentId: crypto.randomUUID() }));
+    expect(orphan.error).toMatchObject({ code: -32005, message: "not_found", data: { phase: "permission", failures: [{ check: "exists" }] } });
+    client.close();
+    expect((await engine.stop()).code).toBe(0);
   }, TIMEOUT_MS);
 
   test("each usage error exits 2 with the usage on standard error and nothing on standard output", async () => {

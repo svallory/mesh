@@ -164,16 +164,18 @@ const env: Record<string, string | undefined> = {
 };
 delete env.SCHEMA_STRICT;
 
-let cases: Case[];
+// Nothing inside the `try` may call `fail`: `process.exit` skips the `finally`, which would leave the directory behind.
+let junit: string | undefined;
 let exitCode: number;
 try {
   const select = flags.all ? [] : ["-t", namePattern(allowed)];
   exitCode = run([BUN, "test", "conformance", ...select, "--reporter=junit", `--reporter-outfile=${report}`], spec, env);
-  if (!existsSync(report)) fail(`bun test wrote no report (exit code ${exitCode})`);
-  cases = casesOf(readFileSync(report, "utf8"));
+  junit = existsSync(report) ? readFileSync(report, "utf8") : undefined;
 } finally {
   rmSync(reports, { recursive: true, force: true });
 }
+if (junit === undefined) fail(`bun test wrote no report (exit code ${exitCode})`);
+const cases = casesOf(junit);
 
 const byName = new Map<string, Case[]>();
 for (const one of cases) byName.set(one.name, [...(byName.get(one.name) ?? []), one]);

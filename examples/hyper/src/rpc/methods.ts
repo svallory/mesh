@@ -12,7 +12,7 @@ import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
 import { Task } from "#mesh/domain/work";
 import { connected } from "../domain/binding";
 import { collaboratorRetire, membershipRevoke } from "../domain/identity/identity.commands";
-import { rejection, rpcErrorOf, specCodes } from "./errors";
+import { notServed, rpcErrorOf } from "./errors";
 import { params } from "./params";
 import { existingCollaborator, existingTask, membershipOf, requireId, theWorkspace } from "./resolve";
 import { collaboratorView, membershipView, taskView, workspaceView } from "./views";
@@ -47,27 +47,47 @@ function query<S extends z.ZodType, R extends object>(schema: S, run: (params: z
   };
 }
 
-/** A method of the spec this engine does not serve (yet): `-32010 not_implemented`, check `method` (PROTOCOL.md:215). */
+/** Why each entry `notImplemented` made is not served; `unserved` reads it. */
+const unservedReasons = new WeakMap<Method<ActionContext, any>, string>();
+
+/**
+ * A method of the spec this engine does not serve (yet): `-32010 not_implemented`, check `method` (PROTOCOL.md:215). The
+ * context factory answers it before it reads anything (`unserved`), so `run` is reached only through a factory that
+ * skips that step.
+ */
 function notImplemented(why: string): Method<ActionContext, any> {
-  return {
+  const method: Method<ActionContext, any> = {
     run: (_sent: unknown, _context: ActionContext, call: Call) => {
-      throw rejection(specCodes.notImplemented, "shape", [{ check: "method", reason: `${call.method} is not implemented by this engine: ${why}` }]);
+      throw notServed(call.method, why);
     },
   };
+  unservedReasons.set(method, why);
+  return method;
 }
 
 const outsideTheSlice = notImplemented("it is outside the v0 slice");
 const needsTheEventLog = notImplemented("it needs the event log, which arrives with the outbox (Mesh's M6)");
 const notYet = notImplemented("the work methods are not served yet");
 
-/** The methods that run with the engine's context instead of an actor's: those that take no actor, and those not served. */
-export const actorless: ReadonlySet<string> = new Set([
-  "workspace.get", "workspace.export", "workspace.move", "events.read", "events.subscribe", "events.unsubscribe",
-  "task.update", "task.set-priority", "task.move", "task.complete", "task.cancel", "task.reopen", "task.assign", "task.unassign",
-  "dependency.add", "dependency.remove", "claim.acquire", "claim.renew", "claim.release", "claim.revoke",
-  "submission.submit", "submission.withdraw", "review.accept", "review.return", "evidence-reference.record",
-  "task.get", "task.list", "task.next",
-]);
+/**
+ * The methods that take no actor (PROTOCOL.md:124, 132; `workspace.get` and `events.unsubscribe` are the two whose
+ * params have no `actor` in `schemas/protocol.ts`): they run with the engine's context. Every other method names its
+ * actor, so serving one never needs an entry here.
+ */
+export const actorless: ReadonlySet<string> = new Set(["workspace.get", "events.unsubscribe"]);
+
+/**
+ * The methods of `table` this engine does not serve, each with the reason its `-32010` gives: the entries
+ * `notImplemented` made. Serving one means replacing its entry, which takes it off this map.
+ */
+export function unserved(table: MethodTable<ActionContext>): ReadonlyMap<string, string> {
+  const reasons = new Map<string, string>();
+  for (const [name, method] of Object.entries(table)) {
+    const why = unservedReasons.get(method);
+    if (why !== undefined) reasons.set(name, why);
+  }
+  return reasons;
+}
 
 /** The method table: every one of the spec's 37 methods. */
 export const methods: MethodTable<ActionContext> = {

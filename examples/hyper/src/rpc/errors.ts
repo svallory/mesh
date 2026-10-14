@@ -105,6 +105,11 @@ export function recordTypeOf(entity: string): string {
   return name.replace(/[A-Z]/g, (letter, at: number) => (at === 0 ? "" : "-") + letter.toLowerCase());
 }
 
+/** The `-32010 not_implemented` of a method this engine does not serve, check `method` (PROTOCOL.md:215, 243). */
+export function notServed(method: string, why: string): RpcError {
+  return rejection(specCodes.notImplemented, "shape", [{ check: "method", reason: `${method} is not implemented by this engine: ${why}` }]);
+}
+
 /** The `exists` failure of a record that is missing or that the actor cannot see; the spec answers both alike (PROTOCOL.md:110). */
 export function notFound(recordType: string, id: string): RpcError {
   return rejection(specCodes.notFound, "permission", [{ check: "exists", reason: `no ${recordType} with id ${id}`, details: { recordType, id } }]);
@@ -166,6 +171,8 @@ function forbidden(error: ForbiddenError, context: ActionContext | undefined): R
     if (seen.has(mapped.check)) continue;
     seen.add(mapped.check);
     if (mapped.required) {
+      // The role read when the call came in (`contextFactory`), outside the transaction. The policy reads it again
+      // inside the transaction (POL-20), so if an owner changed it in between, these details name the earlier role.
       const role = context?.actor.role ?? null;
       failures.push({
         check: "role",

@@ -7,7 +7,7 @@
 // setting comes from the flags: there are no environment variables and no configuration file. Exit codes: 0 after
 // `SIGTERM` or `SIGINT`, 1 when it cannot start, 2 for a usage error.
 import { parseArgs } from "node:util";
-import { exitOnSignal, startDaemon } from "./src/daemon/daemon";
+import { runDaemon, startDaemon } from "./src/daemon/daemon";
 
 const USAGE = "usage: bun examples/hyper/main.ts --socket <path> --db <path>";
 
@@ -36,11 +36,4 @@ function flags(): { socket: string; db: string } {
 }
 
 const { socket, db } = flags();
-try {
-  const daemon = await startDaemon({ socket, db });
-  exitOnSignal(daemon);
-  process.stdout.write("READY\n");
-} catch (error) {
-  console.error("the engine could not start", error);
-  process.exit(1);
-}
+await runDaemon(() => startDaemon({ socket, db }));

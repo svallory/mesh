@@ -22,14 +22,14 @@ bun main.ts --socket /tmp/hyper.sock --db hyper.db
 - It opens the database file, creating it when it is missing, in WAL mode, and creates the tables it lacks; a restart on the same `--db` keeps every row.
 - On a database with no workspace it bootstraps one, in one transaction: a collaborator named `owner`, the local workspace, and the owner membership that collaborator holds. On a database that has its workspace it does nothing.
 - It prints `READY` on standard output once the socket accepts connections, and nothing else there; its logs go to standard error.
-- It exits 0 on `SIGTERM` or `SIGINT`, after the calls in flight finish or 4 seconds, whichever comes first; 1 when it cannot start; 2 on a usage error. `--lease-ms` and `--plugins` are usage errors for now: the lease is the default ten minutes, and the plugin host is not built.
+- It exits 0 on `SIGTERM` or `SIGINT`, even one that arrives while it is starting: it stops serving and removes the socket file, lets the calls in flight finish, each committing or rolling back whole, closes the database and exits, or exits after 4 seconds when a call is still running; 1 when it cannot start; 2 on a usage error. `--lease-ms` and `--plugins` are usage errors for now: the lease is the default ten minutes, and the plugin host is not built.
 
-Each call runs as its actor, read from the database: the collaborator the request names and the role of its active membership. An unknown or retired collaborator, or one with no active membership, is refused before the method runs. A command runs in one transaction and calls the command function where there is one. An error reaches the client in the protocol's shape: the code, the short name, the phase that refused the call and the checks that failed.
+Each call runs as its actor, read from the database: the collaborator the request names and the role of its active membership. An unknown or retired collaborator, or one with no active membership, is refused before the method runs. Only `workspace.get` and `events.unsubscribe`, which the protocol defines without an actor, run as the engine itself. A command runs in one transaction and calls the command function where there is one. An error reaches the client in the protocol's shape: the code, the short name, the phase that refused the call and the checks that failed.
 
-It serves `workspace.get`, `workspace.create`, `workspace.rename`, the collaborator and membership methods, and `task.create`. Every other method of the protocol answers `-32010 not_implemented`, naming why. Until the event log lands (M6), a command's result carries `events: []` and `workspace.get`'s `head` is 0.
+It serves `workspace.get`, `workspace.create`, `workspace.rename`, the collaborator and membership methods, and `task.create`. Every other method of the protocol answers `-32010 not_implemented`, naming why, before the actor is read. Until the event log lands (M6), a command's result carries `events: []` and `workspace.get`'s `head` is 0.
 
 - `src/rpc/`: the method table (`methods.ts`), the params schemas (`params.ts`), the context factory (`context.ts`), the record views (`views.ts`), the lookups that turn the protocol's ids into records (`resolve.ts`) and the error mapping (`errors.ts`).
-- `src/daemon/`: `startDaemon` and `exitOnSignal` (`daemon.ts`) and bootstrap (`bootstrap.ts`).
+- `src/daemon/`: `startDaemon`, `exitOnSignal` and `runDaemon`, the start sequence `main.ts` runs (`daemon.ts`), and bootstrap (`bootstrap.ts`).
 
 ## Conformance
 

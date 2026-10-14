@@ -8,7 +8,7 @@ import type { ActionContext } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
 import { contextFactory } from "../rpc/context";
 import { messages, wireError } from "../rpc/errors";
-import { actorless as hyperActorless, methods as hyperMethods } from "../rpc/methods";
+import { actorless as hyperActorless, methods as hyperMethods, unserved } from "../rpc/methods";
 import { bootstrap } from "./bootstrap";
 
 export interface DaemonOptions {
@@ -51,10 +51,11 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   await createSchema(layer, tables);
   const hyper = bind(layer);
   await bootstrap(hyper);
+  const methods = options.methods ?? hyperMethods;
   const server = await serve({
     socket: options.socket,
-    methods: options.methods ?? hyperMethods,
-    context: contextFactory(options.actorless ?? hyperActorless),
+    methods,
+    context: contextFactory(options.actorless ?? hyperActorless, unserved(methods)),
     binding: hyper,
     error: wireError,
     messages,
@@ -62,7 +63,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   let closing: Promise<void> | undefined;
   return {
     server,
-    close: () => (closing ??= server.close().then(() => layer.close())),
+    // The database is closed even when `server.close()` rejects; that rejection is still what `close()` rejects with.
+    close: () => (closing ??= server.close().finally(() => layer.close())),
   };
 }
 
@@ -71,8 +73,12 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
  * closes the database, then exits 0. A call that never settles would hold that up, so the process exits 0 anyway
  * `graceMs` after the signal, within the spec's 5 seconds; each method is one transaction, so the database stays
  * consistent. A second signal while stopping changes nothing.
+ *
+ * `daemon` may be the promise `startDaemon` returned, so the handlers are in place while the daemon starts: a signal
+ * then waits for start-up to finish and closes the daemon as above. When start-up fails, the handler leaves the report
+ * and the exit to whoever awaits the promise (`runDaemon` exits 1).
  */
-export function exitOnSignal(daemon: Daemon, graceMs = 4_000): void {
+export function exitOnSignal(daemon: Daemon | Promise<Daemon>, graceMs = 4_000): void {
   let stopping = false;
   const stop = (signal: string) => {
     if (stopping) return;
@@ -81,14 +87,36 @@ export function exitOnSignal(daemon: Daemon, graceMs = 4_000): void {
       console.error(`calls still running ${graceMs} ms after ${signal}; exiting without waiting for them`);
       process.exit(0);
     }, graceMs);
-    daemon.close().then(
-      () => process.exit(0),
-      (error: unknown) => {
-        console.error("the daemon did not close cleanly", error);
-        process.exit(1);
-      },
+    Promise.resolve(daemon).then(
+      (started) =>
+        started.close().then(
+          () => process.exit(0),
+          (error: unknown) => {
+            console.error("the daemon did not close cleanly", error);
+            process.exit(1);
+          },
+        ),
+      () => {}, // start-up failed: `runDaemon` reports it and exits 1
     );
   };
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
+}
+
+/**
+ * What `main.ts` does once it has read the flags, and what the tests' daemon does too: it calls `start`, with the
+ * signal handlers in place before start-up finishes (so a signal during schema creation or bootstrap still waits for it,
+ * closes the database and exits 0), prints `READY` on standard output once the daemon serves, and exits 1 with the
+ * reason on standard error when it cannot start.
+ */
+export async function runDaemon(start: () => Promise<Daemon>): Promise<void> {
+  const started = start();
+  exitOnSignal(started);
+  try {
+    await started;
+  } catch (error) {
+    console.error("the engine could not start", error);
+    process.exit(1);
+  }
+  process.stdout.write("READY\n");
 }
