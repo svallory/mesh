@@ -216,13 +216,16 @@ declare module "@meshfw/jsonrpc" {
     };
   }
 
+  /** What `run` receives: the schema's output, or, for a method with no schema, the object as sent. */
+  type Params<P> = unknown extends P ? Readonly<Record<string, unknown>> : P;
+
   /** One method: an optional schema for `params`, and `run`, whose result (or a promise of it) is the answer. */
-  export interface Method<C, P = Record<string, unknown>> {
+  export interface Method<C, P = unknown> {
     readonly params?: ParamsSchema<P>;
-    run(params: P, context: C, call: Call): unknown;
+    run(params: Params<P>, context: C, call: Call): unknown;
   }
 
-  /** Method name to entry. Only the table's own keys are methods. */
+  /** Method name to entry, for a table built apart from `serve`: every `run` receives the object as sent. */
   export type MethodTable<C> = { readonly [name: string]: Method<C, any> };
 
   export interface Call {
@@ -245,23 +248,29 @@ declare module "@meshfw/jsonrpc" {
     readonly path: readonly (string | number)[];
   }
 
-  export interface ServeOptions<C> {
+  export interface ServeOptions<C, T extends Record<string, unknown> = Record<string, unknown>> {
     socket: string;
-    methods: MethodTable<C>;
+    /** The socket file's permission bits; `0o600` unless set. */
+    mode?: number;
+    /** Written inline, each entry's `run` receives the type its `params` schema outputs. */
+    methods: { readonly [K in keyof T]: Method<C, T[K]> };
     context: (call: Call, params: unknown) => C | Promise<C>;
-    binding?: { run<T>(fn: () => Promise<T>): Promise<T> };
+    binding?: { run<R>(fn: () => Promise<R>): Promise<R> };
     error?: (error: unknown, call: Call) => ErrorObject;
+    /** The message of each code the package answers with itself, in place of JSON-RPC's. */
+    messages?: Partial<Record<-32700 | -32600 | -32601 | -32602 | -32603, string>>;
     log?: (message: string, error?: unknown) => void;
     maxLineBytes?: number;
   }
 
   export interface Server {
     readonly socket: string;
+    /** Resolves once the calls still running have settled, with no deadline of its own. */
     close(): Promise<void>;
   }
 
   /** Resolves once the socket accepts connections; rejects with `FrameworkError` on a bad option or an unusable path. */
-  export function serve<C>(options: ServeOptions<C>): Promise<Server>;
+  export function serve<C, T extends Record<string, unknown>>(options: ServeOptions<C, T>): Promise<Server>;
 
   export interface ErrorObject {
     code: number;

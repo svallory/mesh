@@ -542,6 +542,7 @@ The [error classes](#errors) stay the same: `invalid_input` is a bad request, `f
 ```ts "src/rpc.ts"
 import { codes, RpcError, serve } from "@meshfw/jsonrpc";
 import { ForbiddenError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
+import { z } from "zod";
 import { connect, disconnect } from "#mesh";
 import { List } from "#mesh/domain/todo";
 import { alice } from "./context";
@@ -550,7 +551,7 @@ await connect();
 const server = await serve({
   socket: "/run/todo/todo.sock",
   methods: {
-    "list.create": { run: (params, context) => List.create(params, context) },
+    "list.create": { params: z.object({ name: z.string() }), run: (params, context) => List.create(params, context) },
   },
   // Anyone who can open the socket file can call every method. This daemon serves one local user.
   context: () => ({ actor: alice }),
@@ -564,8 +565,9 @@ const server = await serve({
 });
 
 process.on("SIGTERM", async () => {
-  await server.close();
-  await disconnect();
+  // Both wait for the calls still running, with no deadline of their own: give them ten seconds.
+  await Promise.race([server.close().then(() => disconnect()), Bun.sleep(10_000)]);
+  process.exit(0);
 });
 ```
 
@@ -578,27 +580,33 @@ A client writes one request per line and reads one answer per line:
 
 Each request goes through the same steps:
 
-1. If the method's entry has `params`, a [Standard Schema](https://standardschema.dev) validator such as a zod schema, the request's `params` must pass it, and `run` receives the validator's output. A failure is answered `-32602` before anything else runs. Without `params`, `run` receives the object as sent; the example needs none, because `List.create` validates its own input.
+1. If the method's entry has `params`, a [Standard Schema](https://standardschema.dev) validator such as a zod schema, the request's `params` must pass it, and `run` receives the validator's output, typed as that output. A failure is answered `-32602` before anything else runs. Without `params`, `run` receives the object as sent, typed `Readonly<Record<string, unknown>>`. The example's schema gives `params` the type `List.create` takes; the action still checks its input itself.
 2. `context(call, params)` builds the context, once per request.
 3. `run(params, context, call)` is called, and what it returns, or what its promise resolves with, is the answer (`undefined` is sent as `null`). Pass `binding: bind(layer)` and steps 2 and 3 run inside its `run`, on that data layer instead of the one `connect()` opened.
 4. Whatever steps 2 and 3 throw goes to your `error` function, together with the package's own `-32601` and `-32602`, which arrive as `RpcError`s. It returns the error object the client receives, so one function decides how every failure reads. JSON-RPC leaves the codes from `-32000` to `-32099` to the server; the example uses two of them. An error the function rethrows, as the example does for the ones it does not know, is answered `-32603` and passed to `log`. Without an `error` function, an `RpcError` is sent as it is and anything else is answered `-32603`, its details logged and never sent.
+
+The type of each entry's `params` reaches its `run` when the table is written inside `serve`'s options, as in the example. A table built apart and typed `MethodTable<Context>` takes any entry, and every `run` in it receives `Readonly<Record<string, unknown>>`.
 
 The package answers these itself:
 
 | Code | When |
 |---|---|
 | `-32700` | A line that is not JSON, is not UTF-8, or is longer than `maxLineBytes` (8 MiB unless you set it). The answer's `id` is `null`, and the connection stays open. |
-| `-32600` | A batch (an array of requests, which is not supported), or a request without `"jsonrpc": "2.0"`, without a string `method`, or with an `id` that is neither a string nor a number. |
+| `-32600` | A batch (an array of requests, which is not supported), or a request without `"jsonrpc": "2.0"`, without a string `method`, or with an `id` that is neither a string nor a finite number. |
 | `-32601` | A method the table does not have. Only the table's own keys are methods, so `toString` is not one. |
 | `-32602` | `params` that is not an object, or that fails the method's schema. `data.issues` lists each failure with its `message` and its `path`. |
 | `-32603` | A result that has no JSON form (a `BigInt`, a cycle), and any failure that step 4 does not turn into another code. |
 
+Each goes out with JSON-RPC's message for it ("Parse error", "Invalid Request", "Method not found", "Invalid params", "Internal error"). A protocol that names these errors differently sets its own with `messages`, one per code: `messages: { [codes.parseError]: "parse_error" }`. The `-32601` and `-32602` errors that reach your `error` function carry the same messages.
+
 What else to know:
 
 - Requests on one connection run at the same time, and each is answered when it finishes, so answers can arrive out of order: match them by `id`. A client may open several connections.
+- A client may shut down its writing side after its last request, as `nc -U` and `socat` do: it still gets every answer, and the server closes the connection once the last one is written.
 - A request with no `id` is a notification: it runs and gets no answer, even when it fails. `call.connection.notify(method, params)` sends your own notification to the client that made the call; `call.connection.closed` says whether that client is still connected.
-- `server.close()` stops accepting connections, closes the open ones and removes the socket file, then resolves once the calls still running have finished. Disconnect after it, as the example does.
-- At start, a socket file left by a server that is gone is replaced. A socket another server is listening on, or a file that is not a socket, makes `serve` reject with `FrameworkError` and is left as it is. The socket file takes the permissions your process's umask gives it, so put it in a directory that only the users allowed to call it can enter.
+- `server.close()` stops accepting connections, closes the open ones and removes the socket file, then resolves once the calls still running have finished. It has no deadline: a call that never settles keeps it waiting, so give it one yourself, as the example does. A call that has not reached `run` when `close()` begins never runs. Disconnect after it.
+- The socket file is created with mode `0600`, so only the user the server runs as can connect; `mode: 0o660` lets the file's group in too. Some systems ignore a socket file's permissions, so put it in a directory that only the users allowed to call it can enter as well.
+- One path, one server. At start, a socket file left by a server that is gone is replaced. A socket another server is listening on, or a file that is not a socket, makes `serve` reject with `FrameworkError` and is left as it is. If a server's socket file is deleted while it runs and a second server takes the path, the first one's `close()` removes the second one's file.
 - The package writes nothing to standard output, which stays free for your process. Unexpected failures go to `log`, which defaults to `console.error`.
 
 ## In a web app
