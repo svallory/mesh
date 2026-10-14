@@ -127,7 +127,8 @@ export interface Check {
   label: string;
   that: Expression;
   code: string;
-  message: string;
+  /** The text the failed check reports, or (ACT-30) a function of the arguments `that` gets that returns it. */
+  message: string | Expression;
   when?: Expression;
   /** A function returning data the caller receives on the failed check's issue (`details`, G22). */
   details?: Expression;

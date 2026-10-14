@@ -291,9 +291,9 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 | `InvalidInputError` | `invalid_input` | The input does not fit the action, or a `check` failed |
 | `NotFoundError` | `not_found` | The row the call names does not exist, or is not visible to this actor |
 | `ForbiddenError` | `forbidden` | A policy denied the call, no policy covers the action, or none of the policies that cover it applies (each one's `when` was false). Names the `entity`, the `action` and the `policies`, says which of the three in `reason` (`failed`, `not-covered` or `not-applied`), and carries a `breakdown` of the checks that ran |
-| `FrameworkError` | `framework` | A mistake in the program: an action called before `connect` and outside any `run` or `transaction`, a load that cannot be served |
+| `FrameworkError` | `framework` | A mistake in the program: an action called before `connect` and outside any `run` or `transaction`, a load that cannot be served, a check's `message=` function that throws or does not return a string |
 
-`InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote, the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
+`InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote (the text of the `message=`, or the string its function returned), the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
 
 ```ts "src/main.ts"
 import { InvalidInputError } from "@meshfw/runtime";

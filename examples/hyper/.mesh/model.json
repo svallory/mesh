@@ -24994,7 +24994,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 57,
-                      "offset": 2822
+                      "offset": 2845
                     }
                   },
                   "value": {
@@ -25005,7 +25005,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 57,
-                      "offset": 2831
+                      "offset": 2854
                     },
                     "source": "({ actor }) => actor.id",
                     "tree": {
@@ -25018,7 +25018,7 @@
                           "column": 34,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 57,
-                          "offset": 2846
+                          "offset": 2869
                         }
                       },
                       "optional": false,
@@ -25026,7 +25026,7 @@
                         "column": 34,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 57,
-                        "offset": 2846
+                        "offset": 2869
                       }
                     }
                   }
@@ -25037,7 +25037,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 56,
-                "offset": 2808
+                "offset": 2831
               }
             }
           ],
@@ -25050,7 +25050,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 45,
-                  "offset": 2522
+                  "offset": 2545
                 }
               }
             },
@@ -25062,7 +25062,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 46,
-                  "offset": 2537
+                  "offset": 2560
                 }
               }
             },
@@ -25074,7 +25074,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 47,
-                  "offset": 2553
+                  "offset": 2576
                 }
               }
             },
@@ -25086,7 +25086,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 48,
-                  "offset": 2569
+                  "offset": 2592
                 }
               }
             }
@@ -25097,7 +25097,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 43,
-            "offset": 2487
+            "offset": 2510
           },
           "validate": [
             {
@@ -25108,7 +25108,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 50,
-                "offset": 2602
+                "offset": 2625
               },
               "that": {
                 "params": [
@@ -25124,7 +25124,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 51,
-                    "offset": 2637
+                    "offset": 2660
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -25133,7 +25133,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 51,
-                  "offset": 2637
+                  "offset": 2660
                 },
                 "source": "async ({ input }) => await parentOpenOf(input.parent ?? null)"
               }
@@ -25151,7 +25151,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 82,
-                      "offset": 3725
+                      "offset": 3748
                     }
                   },
                   "value": {
@@ -25160,7 +25160,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 82,
-                      "offset": 3734
+                      "offset": 3757
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -25175,7 +25175,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 82,
-                              "offset": 3740
+                              "offset": 3763
                             }
                           },
                           "optional": false,
@@ -25183,7 +25183,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 82,
-                            "offset": 3740
+                            "offset": 3763
                           }
                         },
                         {
@@ -25192,7 +25192,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 82,
-                            "offset": 3751
+                            "offset": 3774
                           },
                           "value": 1
                         }
@@ -25203,7 +25203,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 82,
-                        "offset": 3740
+                        "offset": 3763
                       }
                     }
                   }
@@ -25214,7 +25214,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 81,
-                "offset": 3711
+                "offset": 3734
               }
             }
           ],
@@ -25227,7 +25227,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 60,
-                  "offset": 2894
+                  "offset": 2917
                 }
               }
             },
@@ -25239,7 +25239,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 61,
-                  "offset": 2909
+                  "offset": 2932
                 }
               }
             },
@@ -25251,7 +25251,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 62,
-                "offset": 2925
+                "offset": 2948
               },
               "type": "integer"
             }
@@ -25262,7 +25262,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 58,
-            "offset": 2859
+            "offset": 2882
           },
           "validate": [
             {
@@ -25273,7 +25273,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 64,
-                "offset": 2982
+                "offset": 3005
               },
               "that": {
                 "params": [],
@@ -25281,7 +25281,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 65,
-                  "offset": 3015
+                  "offset": 3038
                 },
                 "source": "() => &state === :open",
                 "tree": {
@@ -25296,7 +25296,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 65,
-                          "offset": 3021
+                          "offset": 3044
                         }
                       },
                       "optional": false,
@@ -25304,7 +25304,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 65,
-                        "offset": 3021
+                        "offset": 3044
                       }
                     },
                     {
@@ -25313,7 +25313,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 65,
-                        "offset": 3032
+                        "offset": 3055
                       },
                       "value": "open"
                     }
@@ -25324,7 +25324,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 65,
-                    "offset": 3021
+                    "offset": 3044
                   }
                 }
               }
@@ -25337,7 +25337,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 69,
-                "offset": 3141
+                "offset": 3164
               },
               "that": {
                 "params": [
@@ -25354,7 +25354,7 @@
                     "column": 36,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 70,
-                    "offset": 3198
+                    "offset": 3221
                   },
                   "roots": [],
                   "why": "reads-record-in-helper"
@@ -25363,7 +25363,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 70,
-                  "offset": 3177
+                  "offset": 3200
                 },
                 "source": "({ self, input }) => taskChanges(self, input)"
               }
@@ -25391,7 +25391,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 78,
-                    "offset": 3615
+                    "offset": 3638
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -25400,7 +25400,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 78,
-                  "offset": 3599
+                  "offset": 3622
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -25410,7 +25410,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 74,
-                "offset": 3347
+                "offset": 3370
               },
               "that": {
                 "params": [
@@ -25420,7 +25420,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 75,
-                  "offset": 3386
+                  "offset": 3409
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -25437,7 +25437,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 75,
-                              "offset": 3401
+                              "offset": 3424
                             }
                           },
                           "optional": false,
@@ -25445,7 +25445,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 75,
-                            "offset": 3401
+                            "offset": 3424
                           }
                         }
                       ],
@@ -25455,7 +25455,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 75,
-                        "offset": 3401
+                        "offset": 3424
                       }
                     },
                     {
@@ -25470,7 +25470,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 75,
-                              "offset": 3434
+                              "offset": 3457
                             }
                           },
                           "optional": false,
@@ -25478,7 +25478,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 75,
-                            "offset": 3434
+                            "offset": 3457
                           }
                         },
                         {
@@ -25491,7 +25491,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 75,
-                              "offset": 3460
+                              "offset": 3483
                             }
                           },
                           "optional": false,
@@ -25499,7 +25499,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 75,
-                            "offset": 3460
+                            "offset": 3483
                           }
                         }
                       ],
@@ -25509,7 +25509,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 75,
-                        "offset": 3434
+                        "offset": 3457
                       }
                     }
                   ],
@@ -25519,7 +25519,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 75,
-                    "offset": 3401
+                    "offset": 3424
                   }
                 }
               }
@@ -25537,7 +25537,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 101,
-                      "offset": 4409
+                      "offset": 4432
                     }
                   },
                   "value": {
@@ -25546,7 +25546,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 101,
-                      "offset": 4418
+                      "offset": 4441
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -25561,7 +25561,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 101,
-                              "offset": 4424
+                              "offset": 4447
                             }
                           },
                           "optional": false,
@@ -25569,7 +25569,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 101,
-                            "offset": 4424
+                            "offset": 4447
                           }
                         },
                         {
@@ -25578,7 +25578,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 101,
-                            "offset": 4435
+                            "offset": 4458
                           },
                           "value": 1
                         }
@@ -25589,7 +25589,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 101,
-                        "offset": 4424
+                        "offset": 4447
                       }
                     }
                   }
@@ -25600,7 +25600,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 100,
-                "offset": 4395
+                "offset": 4418
               }
             }
           ],
@@ -25613,7 +25613,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 85,
-                  "offset": 3797
+                  "offset": 3820
                 }
               }
             },
@@ -25625,7 +25625,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 86,
-                "offset": 3815
+                "offset": 3838
               },
               "type": "integer"
             }
@@ -25636,7 +25636,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 83,
-            "offset": 3757
+            "offset": 3780
           },
           "validate": [
             {
@@ -25647,7 +25647,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 88,
-                "offset": 3872
+                "offset": 3895
               },
               "that": {
                 "params": [],
@@ -25655,7 +25655,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 89,
-                  "offset": 3905
+                  "offset": 3928
                 },
                 "source": "() => &state === :open",
                 "tree": {
@@ -25670,7 +25670,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 89,
-                          "offset": 3911
+                          "offset": 3934
                         }
                       },
                       "optional": false,
@@ -25678,7 +25678,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 89,
-                        "offset": 3911
+                        "offset": 3934
                       }
                     },
                     {
@@ -25687,7 +25687,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 89,
-                        "offset": 3922
+                        "offset": 3945
                       },
                       "value": "open"
                     }
@@ -25698,7 +25698,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 89,
-                    "offset": 3911
+                    "offset": 3934
                   }
                 }
               }
@@ -25726,7 +25726,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 97,
-                    "offset": 4299
+                    "offset": 4322
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -25735,7 +25735,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 97,
-                  "offset": 4283
+                  "offset": 4306
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -25745,7 +25745,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 93,
-                "offset": 4031
+                "offset": 4054
               },
               "that": {
                 "params": [
@@ -25755,7 +25755,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 94,
-                  "offset": 4070
+                  "offset": 4093
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -25772,7 +25772,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 94,
-                              "offset": 4085
+                              "offset": 4108
                             }
                           },
                           "optional": false,
@@ -25780,7 +25780,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 94,
-                            "offset": 4085
+                            "offset": 4108
                           }
                         }
                       ],
@@ -25790,7 +25790,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 94,
-                        "offset": 4085
+                        "offset": 4108
                       }
                     },
                     {
@@ -25805,7 +25805,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 94,
-                              "offset": 4118
+                              "offset": 4141
                             }
                           },
                           "optional": false,
@@ -25813,7 +25813,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 94,
-                            "offset": 4118
+                            "offset": 4141
                           }
                         },
                         {
@@ -25826,7 +25826,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 94,
-                              "offset": 4144
+                              "offset": 4167
                             }
                           },
                           "optional": false,
@@ -25834,7 +25834,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 94,
-                            "offset": 4144
+                            "offset": 4167
                           }
                         }
                       ],
@@ -25844,7 +25844,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 94,
-                        "offset": 4118
+                        "offset": 4141
                       }
                     }
                   ],
@@ -25854,7 +25854,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 94,
-                    "offset": 4085
+                    "offset": 4108
                   }
                 }
               }
@@ -25872,7 +25872,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 135,
-                      "offset": 5691
+                      "offset": 5714
                     }
                   },
                   "value": {
@@ -25881,7 +25881,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 135,
-                      "offset": 5700
+                      "offset": 5723
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -25896,7 +25896,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 135,
-                              "offset": 5706
+                              "offset": 5729
                             }
                           },
                           "optional": false,
@@ -25904,7 +25904,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 135,
-                            "offset": 5706
+                            "offset": 5729
                           }
                         },
                         {
@@ -25913,7 +25913,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 135,
-                            "offset": 5717
+                            "offset": 5740
                           },
                           "value": 1
                         }
@@ -25924,7 +25924,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 135,
-                        "offset": 5706
+                        "offset": 5729
                       }
                     }
                   }
@@ -25935,7 +25935,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 134,
-                "offset": 5677
+                "offset": 5700
               }
             }
           ],
@@ -25948,7 +25948,7 @@
                   "column": 8,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 104,
-                  "offset": 4474
+                  "offset": 4497
                 }
               }
             },
@@ -25960,7 +25960,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 105,
-                "offset": 4490
+                "offset": 4513
               },
               "type": "integer"
             }
@@ -25971,7 +25971,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 102,
-            "offset": 4441
+            "offset": 4464
           },
           "validate": [
             {
@@ -25982,7 +25982,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 107,
-                "offset": 4547
+                "offset": 4570
               },
               "that": {
                 "params": [],
@@ -25990,7 +25990,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 108,
-                  "offset": 4580
+                  "offset": 4603
                 },
                 "source": "() => &state === :open",
                 "tree": {
@@ -26005,7 +26005,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 108,
-                          "offset": 4586
+                          "offset": 4609
                         }
                       },
                       "optional": false,
@@ -26013,7 +26013,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 108,
-                        "offset": 4586
+                        "offset": 4609
                       }
                     },
                     {
@@ -26022,7 +26022,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 108,
-                        "offset": 4597
+                        "offset": 4620
                       },
                       "value": "open"
                     }
@@ -26033,7 +26033,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 108,
-                    "offset": 4586
+                    "offset": 4609
                   }
                 }
               }
@@ -26046,7 +26046,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 112,
-                "offset": 4706
+                "offset": 4729
               },
               "that": {
                 "params": [
@@ -26064,7 +26064,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 113,
-                    "offset": 4741
+                    "offset": 4764
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -26073,7 +26073,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 113,
-                  "offset": 4741
+                  "offset": 4764
                 },
                 "source": "async ({ self, input }) => await parentOpenOf(movedParent(self, input.parent))"
               }
@@ -26086,7 +26086,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 117,
-                "offset": 4920
+                "offset": 4943
               },
               "that": {
                 "params": [
@@ -26112,7 +26112,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 118,
-                    "offset": 4952
+                    "offset": 4975
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -26121,7 +26121,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 118,
-                  "offset": 4952
+                  "offset": 4975
                 },
                 "source": "async ({ input }) => await noContainmentCycleOf(&id, input.parent)"
               }
@@ -26134,7 +26134,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 122,
-                "offset": 5142
+                "offset": 5165
               },
               "that": {
                 "needs": [
@@ -26145,7 +26145,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 123,
-                  "offset": 5180
+                  "offset": 5203
                 },
                 "source": "() => !&claimed",
                 "tree": {
@@ -26160,7 +26160,7 @@
                           "column": 22,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 123,
-                          "offset": 5187
+                          "offset": 5210
                         }
                       },
                       "optional": false,
@@ -26168,7 +26168,7 @@
                         "column": 22,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 123,
-                        "offset": 5187
+                        "offset": 5210
                       }
                     }
                   ],
@@ -26178,7 +26178,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 123,
-                    "offset": 5186
+                    "offset": 5209
                   }
                 }
               }
@@ -26206,7 +26206,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 131,
-                    "offset": 5581
+                    "offset": 5604
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -26215,7 +26215,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 131,
-                  "offset": 5565
+                  "offset": 5588
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -26225,7 +26225,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 127,
-                "offset": 5313
+                "offset": 5336
               },
               "that": {
                 "params": [
@@ -26235,7 +26235,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 128,
-                  "offset": 5352
+                  "offset": 5375
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -26252,7 +26252,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 128,
-                              "offset": 5367
+                              "offset": 5390
                             }
                           },
                           "optional": false,
@@ -26260,7 +26260,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 128,
-                            "offset": 5367
+                            "offset": 5390
                           }
                         }
                       ],
@@ -26270,7 +26270,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 128,
-                        "offset": 5367
+                        "offset": 5390
                       }
                     },
                     {
@@ -26285,7 +26285,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 128,
-                              "offset": 5400
+                              "offset": 5423
                             }
                           },
                           "optional": false,
@@ -26293,7 +26293,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 128,
-                            "offset": 5400
+                            "offset": 5423
                           }
                         },
                         {
@@ -26306,7 +26306,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 128,
-                              "offset": 5426
+                              "offset": 5449
                             }
                           },
                           "optional": false,
@@ -26314,7 +26314,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 128,
-                            "offset": 5426
+                            "offset": 5449
                           }
                         }
                       ],
@@ -26324,7 +26324,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 128,
-                        "offset": 5400
+                        "offset": 5423
                       }
                     }
                   ],
@@ -26334,7 +26334,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 128,
-                    "offset": 5367
+                    "offset": 5390
                   }
                 }
               }
@@ -26352,7 +26352,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 154,
-                      "offset": 6368
+                      "offset": 6391
                     }
                   },
                   "value": {
@@ -26366,7 +26366,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 155,
-                      "offset": 6391
+                      "offset": 6414
                     }
                   },
                   "value": {
@@ -26375,7 +26375,7 @@
                       "column": 22,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 155,
-                      "offset": 6403
+                      "offset": 6426
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -26386,7 +26386,7 @@
                         "column": 28,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 155,
-                        "offset": 6409
+                        "offset": 6432
                       }
                     }
                   }
@@ -26398,7 +26398,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 156,
-                      "offset": 6425
+                      "offset": 6448
                     }
                   },
                   "value": {
@@ -26407,7 +26407,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 156,
-                      "offset": 6434
+                      "offset": 6457
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -26422,7 +26422,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 156,
-                              "offset": 6440
+                              "offset": 6463
                             }
                           },
                           "optional": false,
@@ -26430,7 +26430,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 156,
-                            "offset": 6440
+                            "offset": 6463
                           }
                         },
                         {
@@ -26439,7 +26439,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 156,
-                            "offset": 6451
+                            "offset": 6474
                           },
                           "value": 1
                         }
@@ -26450,7 +26450,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 156,
-                        "offset": 6440
+                        "offset": 6463
                       }
                     }
                   }
@@ -26461,7 +26461,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 153,
-                "offset": 6354
+                "offset": 6377
               }
             }
           ],
@@ -26474,7 +26474,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 138,
-                "offset": 5758
+                "offset": 5781
               },
               "type": "string"
             },
@@ -26486,7 +26486,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 139,
-                "offset": 5781
+                "offset": 5804
               },
               "type": "integer"
             }
@@ -26497,7 +26497,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 136,
-            "offset": 5723
+            "offset": 5746
           },
           "validate": [
             {
@@ -26508,7 +26508,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 141,
-                "offset": 5838
+                "offset": 5861
               },
               "that": {
                 "params": [],
@@ -26516,7 +26516,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 142,
-                  "offset": 5874
+                  "offset": 5897
                 },
                 "source": "() => &state !== :open",
                 "tree": {
@@ -26531,7 +26531,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 142,
-                          "offset": 5880
+                          "offset": 5903
                         }
                       },
                       "optional": false,
@@ -26539,7 +26539,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 142,
-                        "offset": 5880
+                        "offset": 5903
                       }
                     },
                     {
@@ -26548,7 +26548,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 142,
-                        "offset": 5891
+                        "offset": 5914
                       },
                       "value": "open"
                     }
@@ -26559,7 +26559,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 142,
-                    "offset": 5880
+                    "offset": 5903
                   }
                 }
               }
@@ -26587,7 +26587,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 150,
-                    "offset": 6258
+                    "offset": 6281
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -26596,7 +26596,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 150,
-                  "offset": 6242
+                  "offset": 6265
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -26606,7 +26606,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 146,
-                "offset": 5990
+                "offset": 6013
               },
               "that": {
                 "params": [
@@ -26616,7 +26616,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 147,
-                  "offset": 6029
+                  "offset": 6052
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -26633,7 +26633,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 147,
-                              "offset": 6044
+                              "offset": 6067
                             }
                           },
                           "optional": false,
@@ -26641,7 +26641,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 147,
-                            "offset": 6044
+                            "offset": 6067
                           }
                         }
                       ],
@@ -26651,7 +26651,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 147,
-                        "offset": 6044
+                        "offset": 6067
                       }
                     },
                     {
@@ -26666,7 +26666,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 147,
-                              "offset": 6077
+                              "offset": 6100
                             }
                           },
                           "optional": false,
@@ -26674,7 +26674,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 147,
-                            "offset": 6077
+                            "offset": 6100
                           }
                         },
                         {
@@ -26687,7 +26687,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 147,
-                              "offset": 6103
+                              "offset": 6126
                             }
                           },
                           "optional": false,
@@ -26695,7 +26695,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 147,
-                            "offset": 6103
+                            "offset": 6126
                           }
                         }
                       ],
@@ -26705,7 +26705,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 147,
-                        "offset": 6077
+                        "offset": 6100
                       }
                     }
                   ],
@@ -26715,7 +26715,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 147,
-                    "offset": 6044
+                    "offset": 6067
                   }
                 }
               }
@@ -26733,7 +26733,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 160,
-                      "offset": 6502
+                      "offset": 6525
                     }
                   },
                   "value": {
@@ -26742,7 +26742,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 160,
-                      "offset": 6511
+                      "offset": 6534
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -26757,7 +26757,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 160,
-                              "offset": 6517
+                              "offset": 6540
                             }
                           },
                           "optional": false,
@@ -26765,7 +26765,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 160,
-                            "offset": 6517
+                            "offset": 6540
                           }
                         },
                         {
@@ -26774,7 +26774,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 160,
-                            "offset": 6528
+                            "offset": 6551
                           },
                           "value": 1
                         }
@@ -26785,7 +26785,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 160,
-                        "offset": 6517
+                        "offset": 6540
                       }
                     }
                   }
@@ -26796,7 +26796,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 159,
-                "offset": 6488
+                "offset": 6511
               }
             }
           ],
@@ -26807,7 +26807,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 157,
-            "offset": 6457
+            "offset": 6480
           },
           "validate": []
         },
@@ -26822,7 +26822,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 179,
-                      "offset": 7192
+                      "offset": 7215
                     }
                   },
                   "value": {
@@ -26836,7 +26836,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 180,
-                      "offset": 7219
+                      "offset": 7242
                     }
                   },
                   "value": {
@@ -26845,7 +26845,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 180,
-                      "offset": 7228
+                      "offset": 7251
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -26860,7 +26860,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 180,
-                              "offset": 7234
+                              "offset": 7257
                             }
                           },
                           "optional": false,
@@ -26868,7 +26868,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 180,
-                            "offset": 7234
+                            "offset": 7257
                           }
                         },
                         {
@@ -26877,7 +26877,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 180,
-                            "offset": 7245
+                            "offset": 7268
                           },
                           "value": 1
                         }
@@ -26888,7 +26888,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 180,
-                        "offset": 7234
+                        "offset": 7257
                       }
                     }
                   }
@@ -26899,7 +26899,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 178,
-                "offset": 7178
+                "offset": 7201
               }
             },
             {
@@ -26955,7 +26955,7 @@
                     "column": 27,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 181,
-                    "offset": 7274
+                    "offset": 7297
                   },
                   "privileged": true,
                   "roots": [],
@@ -26965,7 +26965,7 @@
                   "column": 27,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 181,
-                  "offset": 7274
+                  "offset": 7297
                 },
                 "source": "({ self, context }) {\n          for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now))\n            await Claim.end({ id: claim.id, outcome: :revoked, reason: \"task canceled\" }, { ...context, system: true });\n          for (const submission of await Mesh.privileged(Submission).read({ filter: { taskId: { eq: self.id }, state: { eq: :pending } } }))\n            await Submission.settle({ id: submission.id, outcome: :withdrawn }, { ...context, system: true });\n        }"
               },
@@ -26974,7 +26974,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 181,
-                "offset": 7255
+                "offset": 7278
               }
             }
           ],
@@ -26988,7 +26988,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 163,
-                "offset": 6569
+                "offset": 6592
               },
               "type": "string"
             },
@@ -27000,7 +27000,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 164,
-                "offset": 6598
+                "offset": 6621
               },
               "type": "integer"
             }
@@ -27011,7 +27011,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 161,
-            "offset": 6534
+            "offset": 6557
           },
           "validate": [
             {
@@ -27022,7 +27022,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 166,
-                "offset": 6655
+                "offset": 6678
               },
               "that": {
                 "params": [],
@@ -27030,7 +27030,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 167,
-                  "offset": 6688
+                  "offset": 6711
                 },
                 "source": "() => &state === :open",
                 "tree": {
@@ -27045,7 +27045,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 167,
-                          "offset": 6694
+                          "offset": 6717
                         }
                       },
                       "optional": false,
@@ -27053,7 +27053,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 167,
-                        "offset": 6694
+                        "offset": 6717
                       }
                     },
                     {
@@ -27062,7 +27062,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 167,
-                        "offset": 6705
+                        "offset": 6728
                       },
                       "value": "open"
                     }
@@ -27073,7 +27073,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 167,
-                    "offset": 6694
+                    "offset": 6717
                   }
                 }
               }
@@ -27101,7 +27101,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 175,
-                    "offset": 7082
+                    "offset": 7105
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -27110,7 +27110,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 175,
-                  "offset": 7066
+                  "offset": 7089
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -27120,7 +27120,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 171,
-                "offset": 6814
+                "offset": 6837
               },
               "that": {
                 "params": [
@@ -27130,7 +27130,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 172,
-                  "offset": 6853
+                  "offset": 6876
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -27147,7 +27147,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 172,
-                              "offset": 6868
+                              "offset": 6891
                             }
                           },
                           "optional": false,
@@ -27155,7 +27155,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 172,
-                            "offset": 6868
+                            "offset": 6891
                           }
                         }
                       ],
@@ -27165,7 +27165,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 172,
-                        "offset": 6868
+                        "offset": 6891
                       }
                     },
                     {
@@ -27180,7 +27180,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 172,
-                              "offset": 6901
+                              "offset": 6924
                             }
                           },
                           "optional": false,
@@ -27188,7 +27188,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 172,
-                            "offset": 6901
+                            "offset": 6924
                           }
                         },
                         {
@@ -27201,7 +27201,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 172,
-                              "offset": 6927
+                              "offset": 6950
                             }
                           },
                           "optional": false,
@@ -27209,7 +27209,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 172,
-                            "offset": 6927
+                            "offset": 6950
                           }
                         }
                       ],
@@ -27219,7 +27219,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 172,
-                        "offset": 6901
+                        "offset": 6924
                       }
                     }
                   ],
@@ -27229,7 +27229,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 172,
-                    "offset": 6868
+                    "offset": 6891
                   }
                 }
               }
@@ -27247,7 +27247,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 247,
-                      "offset": 10864
+                      "offset": 10887
                     }
                   },
                   "value": {
@@ -27261,7 +27261,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 248,
-                      "offset": 10887
+                      "offset": 10910
                     }
                   },
                   "value": {
@@ -27270,7 +27270,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 248,
-                      "offset": 10896
+                      "offset": 10919
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -27285,7 +27285,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 248,
-                              "offset": 10902
+                              "offset": 10925
                             }
                           },
                           "optional": false,
@@ -27293,7 +27293,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 248,
-                            "offset": 10902
+                            "offset": 10925
                           }
                         },
                         {
@@ -27302,7 +27302,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 248,
-                            "offset": 10913
+                            "offset": 10936
                           },
                           "value": 1
                         }
@@ -27313,7 +27313,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 248,
-                        "offset": 10902
+                        "offset": 10925
                       }
                     }
                   }
@@ -27324,7 +27324,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 246,
-                "offset": 10850
+                "offset": 10873
               }
             },
             {
@@ -27389,7 +27389,7 @@
                     "column": 27,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 249,
-                    "offset": 10942
+                    "offset": 10965
                   },
                   "privileged": true,
                   "roots": [],
@@ -27399,7 +27399,7 @@
                   "column": 27,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 249,
-                  "offset": 10942
+                  "offset": 10965
                 },
                 "source": "({ self, before, input, actor, context }) {\n          let submission: string | null = null;\n          let rule: \"review-accepted\" | \"performer-is-reviewer\" | \"review-waived\" = \"review-accepted\";\n          if (context.completion) submission = await acceptedSubmissionOf(self.id, context.completion.submissionId);\n          else {\n            rule = completionRule(actor.id, await reviewerFor(self));\n            if (input.summary != null || input.evidence != null) {\n              const recorded = await Submission.recordAccepted({ task: self.id, summary: input.summary ?? null, evidence: input.evidence ?? [], fence: input.fence ?? null, taskVersion: before.version }, { ...context, system: true });\n              submission = recorded.id;\n            } else {\n              const own = ownPending(await Mesh.privileged(Submission).read({ filter: { taskId: { eq: self.id }, state: { eq: :pending } } }), actor.id);\n              if (own) {\n                await Submission.settle({ id: own.id, outcome: :accepted }, { ...context, system: true });\n                submission = own.id;\n              }\n            }\n          }\n          await Completion.record({ task: self.id, submission, rule }, { ...context, system: true });\n          const live = claimToRelease(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now);\n          if (live) await Claim.end({ id: live.id, outcome: :released, reason: \"completed\" }, { ...context, system: true });\n        }"
               },
@@ -27408,7 +27408,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 249,
-                "offset": 10923
+                "offset": 10946
               }
             }
           ],
@@ -27422,7 +27422,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 189,
-                "offset": 7845
+                "offset": 7868
               },
               "type": "integer"
             },
@@ -27435,7 +27435,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 190,
-                "offset": 7883
+                "offset": 7906
               },
               "type": "string"
             },
@@ -27447,7 +27447,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 191,
-                "offset": 7922
+                "offset": 7945
               },
               "type": "json"
             },
@@ -27459,7 +27459,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 192,
-                "offset": 7945
+                "offset": 7968
               },
               "type": "integer"
             }
@@ -27470,7 +27470,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 187,
-            "offset": 7808
+            "offset": 7831
           },
           "validate": [
             {
@@ -27481,7 +27481,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 194,
-                "offset": 8002
+                "offset": 8025
               },
               "that": {
                 "params": [],
@@ -27489,7 +27489,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 195,
-                  "offset": 8035
+                  "offset": 8058
                 },
                 "source": "() => &state === :open",
                 "tree": {
@@ -27504,7 +27504,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 195,
-                          "offset": 8041
+                          "offset": 8064
                         }
                       },
                       "optional": false,
@@ -27512,7 +27512,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 195,
-                        "offset": 8041
+                        "offset": 8064
                       }
                     },
                     {
@@ -27521,7 +27521,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 195,
-                        "offset": 8052
+                        "offset": 8075
                       },
                       "value": "open"
                     }
@@ -27532,7 +27532,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 195,
-                    "offset": 8041
+                    "offset": 8064
                   }
                 }
               }
@@ -27564,7 +27564,7 @@
                     "column": 25,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 203,
-                    "offset": 8345
+                    "offset": 8368
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -27573,17 +27573,54 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 203,
-                  "offset": 8338
+                  "offset": 8361
                 },
                 "source": "() => ({ openChildren: openChildren(&children) })"
               },
               "label": "childrenSettled",
-              "message": "complete or cancel every child first",
+              "message": {
+                "needs": [
+                  "children"
+                ],
+                "params": [],
+                "plain": {
+                  "detail": "a call to childrenSettledReason, which is given the record",
+                  "edits": [
+                    {
+                      "from": 28,
+                      "member": "children",
+                      "text": "$self.children",
+                      "to": 37
+                    }
+                  ],
+                  "helpers": [
+                    "childrenSettledReason"
+                  ],
+                  "internal": {
+                    "self": "$self"
+                  },
+                  "position": {
+                    "column": 24,
+                    "file": "src/domain/work/task.mesh.mx",
+                    "line": 202,
+                    "offset": 8310
+                  },
+                  "roots": [],
+                  "why": "reads-record-in-helper"
+                },
+                "position": {
+                  "column": 18,
+                  "file": "src/domain/work/task.mesh.mx",
+                  "line": 202,
+                  "offset": 8304
+                },
+                "source": "() => childrenSettledReason(&children)"
+              },
               "position": {
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 199,
-                "offset": 8161
+                "offset": 8184
               },
               "that": {
                 "needs": [
@@ -27594,7 +27631,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 200,
-                  "offset": 8201
+                  "offset": 8224
                 },
                 "source": "() => &childrenSettled",
                 "tree": {
@@ -27607,7 +27644,7 @@
                       "column": 21,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 200,
-                      "offset": 8207
+                      "offset": 8230
                     }
                   },
                   "optional": false,
@@ -27615,7 +27652,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 200,
-                    "offset": 8207
+                    "offset": 8230
                   }
                 }
               }
@@ -27636,7 +27673,7 @@
                     "column": 18,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 209,
-                    "offset": 8655
+                    "offset": 8678
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -27645,7 +27682,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 209,
-                  "offset": 8655
+                  "offset": 8678
                 },
                 "source": "async ({ self }) => ({ reviewerId: (await reviewerFor(self)).collaboratorId })"
               },
@@ -27655,7 +27692,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 205,
-                "offset": 8406
+                "offset": 8429
               },
               "that": {
                 "params": [
@@ -27672,7 +27709,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 206,
-                    "offset": 8445
+                    "offset": 8468
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -27681,7 +27718,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 206,
-                  "offset": 8445
+                  "offset": 8468
                 },
                 "source": "async ({ self, actor }) => await reviewNotRequiredOf(self, actor.id)"
               }
@@ -27694,7 +27731,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 211,
-                "offset": 8752
+                "offset": 8775
               },
               "that": {
                 "needs": [
@@ -27707,7 +27744,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 212,
-                  "offset": 8796
+                  "offset": 8819
                 },
                 "source": "({ actor }) => !&submissions.some((s) => s.state === :pending && s.submitterId !== actor.id)",
                 "tree": {
@@ -27727,7 +27764,7 @@
                                     "column": 56,
                                     "file": "src/domain/work/task.mesh.mx",
                                     "line": 212,
-                                    "offset": 8837
+                                    "offset": 8860
                                   }
                                 },
                                 "optional": false,
@@ -27735,7 +27772,7 @@
                                   "column": 56,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 212,
-                                  "offset": 8837
+                                  "offset": 8860
                                 }
                               },
                               {
@@ -27744,7 +27781,7 @@
                                   "column": 68,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 212,
-                                  "offset": 8849
+                                  "offset": 8872
                                 },
                                 "value": "pending"
                               }
@@ -27755,7 +27792,7 @@
                               "column": 56,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 212,
-                              "offset": 8837
+                              "offset": 8860
                             }
                           },
                           {
@@ -27770,7 +27807,7 @@
                                     "column": 80,
                                     "file": "src/domain/work/task.mesh.mx",
                                     "line": 212,
-                                    "offset": 8861
+                                    "offset": 8884
                                   }
                                 },
                                 "optional": false,
@@ -27778,7 +27815,7 @@
                                   "column": 80,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 212,
-                                  "offset": 8861
+                                  "offset": 8884
                                 }
                               },
                               {
@@ -27791,7 +27828,7 @@
                                     "column": 98,
                                     "file": "src/domain/work/task.mesh.mx",
                                     "line": 212,
-                                    "offset": 8879
+                                    "offset": 8902
                                   }
                                 },
                                 "optional": false,
@@ -27799,7 +27836,7 @@
                                   "column": 98,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 212,
-                                  "offset": 8879
+                                  "offset": 8902
                                 }
                               }
                             ],
@@ -27809,7 +27846,7 @@
                               "column": 80,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 212,
-                              "offset": 8861
+                              "offset": 8884
                             }
                           }
                         ],
@@ -27819,7 +27856,7 @@
                           "column": 56,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 212,
-                          "offset": 8837
+                          "offset": 8860
                         }
                       },
                       "kind": "quantify",
@@ -27829,7 +27866,7 @@
                         "column": 31,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 212,
-                        "offset": 8812
+                        "offset": 8835
                       },
                       "source": {
                         "kind": "member",
@@ -27841,7 +27878,7 @@
                             "column": 31,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 212,
-                            "offset": 8812
+                            "offset": 8835
                           }
                         },
                         "optional": false,
@@ -27849,7 +27886,7 @@
                           "column": 31,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 212,
-                          "offset": 8812
+                          "offset": 8835
                         }
                       }
                     }
@@ -27860,7 +27897,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 212,
-                    "offset": 8811
+                    "offset": 8834
                   }
                 }
               }
@@ -27911,7 +27948,7 @@
                     "column": 40,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 220,
-                    "offset": 9291
+                    "offset": 9314
                   },
                   "roots": [],
                   "why": "reads-record-in-helper"
@@ -27920,7 +27957,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 220,
-                  "offset": 9269
+                  "offset": 9292
                 },
                 "source": "({ input, actor }) => fenceDetails(&maxFence, &claims, input.fence, actor.id, %.now)"
               },
@@ -27930,7 +27967,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 216,
-                "offset": 9023
+                "offset": 9046
               },
               "that": {
                 "needs": [
@@ -27969,7 +28006,7 @@
                     "column": 37,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 217,
-                    "offset": 9082
+                    "offset": 9105
                   },
                   "roots": [],
                   "why": "reads-record-in-helper"
@@ -27978,7 +28015,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 217,
-                  "offset": 9060
+                  "offset": 9083
                 },
                 "source": "({ input, actor }) => fenceIsCurrent(&claims, input.fence, actor.id, %.now)"
               }
@@ -28034,7 +28071,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 226,
-                    "offset": 9730
+                    "offset": 9753
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -28043,7 +28080,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 226,
-                  "offset": 9714
+                  "offset": 9737
                 },
                 "source": "({ actor }) => ({ fences: invalidatedFences(&claims, actor.id, &completions, &reopenedAt, %.now) })"
               },
@@ -28053,7 +28090,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 222,
-                "offset": 9372
+                "offset": 9395
               },
               "that": {
                 "needs": [
@@ -28106,7 +28143,7 @@
                     "column": 46,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 223,
-                    "offset": 9447
+                    "offset": 9470
                   },
                   "roots": [],
                   "why": "reads-record-in-helper"
@@ -28115,7 +28152,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 223,
-                  "offset": 9416
+                  "offset": 9439
                 },
                 "source": "({ input, actor, context }) => claimNotInvalidated(&claims, input.fence, actor.id, &completions, &reopenedAt, %.now, context.completion)"
               }
@@ -28128,7 +28165,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 228,
-                "offset": 9832
+                "offset": 9855
               },
               "that": {
                 "needs": [
@@ -28142,7 +28179,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 229,
-                  "offset": 9877
+                  "offset": 9900
                 },
                 "source": "({ input, actor }) => (input.summary == null && input.evidence == null) || !&submissions.some((s) => s.state === :pending && s.submitterId === actor.id)",
                 "tree": {
@@ -28161,7 +28198,7 @@
                                   "column": 38,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 229,
-                                  "offset": 9900
+                                  "offset": 9923
                                 }
                               },
                               "optional": false,
@@ -28169,7 +28206,7 @@
                                 "column": 38,
                                 "file": "src/domain/work/task.mesh.mx",
                                 "line": 229,
-                                "offset": 9900
+                                "offset": 9923
                               }
                             }
                           ],
@@ -28179,7 +28216,7 @@
                             "column": 38,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 229,
-                            "offset": 9900
+                            "offset": 9923
                           }
                         },
                         {
@@ -28194,7 +28231,7 @@
                                   "column": 63,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 229,
-                                  "offset": 9925
+                                  "offset": 9948
                                 }
                               },
                               "optional": false,
@@ -28202,7 +28239,7 @@
                                 "column": 63,
                                 "file": "src/domain/work/task.mesh.mx",
                                 "line": 229,
-                                "offset": 9925
+                                "offset": 9948
                               }
                             }
                           ],
@@ -28212,7 +28249,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 229,
-                            "offset": 9925
+                            "offset": 9948
                           }
                         }
                       ],
@@ -28222,7 +28259,7 @@
                         "column": 38,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 229,
-                        "offset": 9900
+                        "offset": 9923
                       }
                     },
                     {
@@ -28242,7 +28279,7 @@
                                         "column": 116,
                                         "file": "src/domain/work/task.mesh.mx",
                                         "line": 229,
-                                        "offset": 9978
+                                        "offset": 10001
                                       }
                                     },
                                     "optional": false,
@@ -28250,7 +28287,7 @@
                                       "column": 116,
                                       "file": "src/domain/work/task.mesh.mx",
                                       "line": 229,
-                                      "offset": 9978
+                                      "offset": 10001
                                     }
                                   },
                                   {
@@ -28259,7 +28296,7 @@
                                       "column": 128,
                                       "file": "src/domain/work/task.mesh.mx",
                                       "line": 229,
-                                      "offset": 9990
+                                      "offset": 10013
                                     },
                                     "value": "pending"
                                   }
@@ -28270,7 +28307,7 @@
                                   "column": 116,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 229,
-                                  "offset": 9978
+                                  "offset": 10001
                                 }
                               },
                               {
@@ -28285,7 +28322,7 @@
                                         "column": 140,
                                         "file": "src/domain/work/task.mesh.mx",
                                         "line": 229,
-                                        "offset": 10002
+                                        "offset": 10025
                                       }
                                     },
                                     "optional": false,
@@ -28293,7 +28330,7 @@
                                       "column": 140,
                                       "file": "src/domain/work/task.mesh.mx",
                                       "line": 229,
-                                      "offset": 10002
+                                      "offset": 10025
                                     }
                                   },
                                   {
@@ -28306,7 +28343,7 @@
                                         "column": 158,
                                         "file": "src/domain/work/task.mesh.mx",
                                         "line": 229,
-                                        "offset": 10020
+                                        "offset": 10043
                                       }
                                     },
                                     "optional": false,
@@ -28314,7 +28351,7 @@
                                       "column": 158,
                                       "file": "src/domain/work/task.mesh.mx",
                                       "line": 229,
-                                      "offset": 10020
+                                      "offset": 10043
                                     }
                                   }
                                 ],
@@ -28324,7 +28361,7 @@
                                   "column": 140,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 229,
-                                  "offset": 10002
+                                  "offset": 10025
                                 }
                               }
                             ],
@@ -28334,7 +28371,7 @@
                               "column": 116,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 229,
-                              "offset": 9978
+                              "offset": 10001
                             }
                           },
                           "kind": "quantify",
@@ -28344,7 +28381,7 @@
                             "column": 91,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 229,
-                            "offset": 9953
+                            "offset": 9976
                           },
                           "source": {
                             "kind": "member",
@@ -28356,7 +28393,7 @@
                                 "column": 91,
                                 "file": "src/domain/work/task.mesh.mx",
                                 "line": 229,
-                                "offset": 9953
+                                "offset": 9976
                               }
                             },
                             "optional": false,
@@ -28364,7 +28401,7 @@
                               "column": 91,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 229,
-                              "offset": 9953
+                              "offset": 9976
                             }
                           }
                         }
@@ -28375,7 +28412,7 @@
                         "column": 90,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 229,
-                        "offset": 9952
+                        "offset": 9975
                       }
                     }
                   ],
@@ -28385,7 +28422,7 @@
                     "column": 37,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 229,
-                    "offset": 9899
+                    "offset": 9922
                   }
                 }
               }
@@ -28406,7 +28443,7 @@
                     "column": 18,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 237,
-                    "offset": 10386
+                    "offset": 10409
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -28415,7 +28452,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 237,
-                  "offset": 10386
+                  "offset": 10409
                 },
                 "source": "async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) })"
               },
@@ -28425,7 +28462,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 233,
-                "offset": 10157
+                "offset": 10180
               },
               "that": {
                 "params": [
@@ -28442,7 +28479,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 234,
-                    "offset": 10196
+                    "offset": 10219
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -28451,7 +28488,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 234,
-                  "offset": 10196
+                  "offset": 10219
                 },
                 "source": "async ({ input }) => (await missingEvidenceOf(input.evidence ?? [])).length === 0"
               }
@@ -28479,7 +28516,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 243,
-                    "offset": 10754
+                    "offset": 10777
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -28488,7 +28525,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 243,
-                  "offset": 10738
+                  "offset": 10761
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -28498,7 +28535,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 239,
-                "offset": 10486
+                "offset": 10509
               },
               "that": {
                 "params": [
@@ -28508,7 +28545,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 240,
-                  "offset": 10525
+                  "offset": 10548
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -28525,7 +28562,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 240,
-                              "offset": 10540
+                              "offset": 10563
                             }
                           },
                           "optional": false,
@@ -28533,7 +28570,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 240,
-                            "offset": 10540
+                            "offset": 10563
                           }
                         }
                       ],
@@ -28543,7 +28580,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 240,
-                        "offset": 10540
+                        "offset": 10563
                       }
                     },
                     {
@@ -28558,7 +28595,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 240,
-                              "offset": 10573
+                              "offset": 10596
                             }
                           },
                           "optional": false,
@@ -28566,7 +28603,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 240,
-                            "offset": 10573
+                            "offset": 10596
                           }
                         },
                         {
@@ -28579,7 +28616,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 240,
-                              "offset": 10599
+                              "offset": 10622
                             }
                           },
                           "optional": false,
@@ -28587,7 +28624,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 240,
-                            "offset": 10599
+                            "offset": 10622
                           }
                         }
                       ],
@@ -28597,7 +28634,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 240,
-                        "offset": 10573
+                        "offset": 10596
                       }
                     }
                   ],
@@ -28607,7 +28644,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 240,
-                    "offset": 10540
+                    "offset": 10563
                   }
                 }
               }
@@ -28625,7 +28662,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 304,
-                      "offset": 13790
+                      "offset": 13813
                     }
                   },
                   "value": {
@@ -28634,7 +28671,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 304,
-                      "offset": 13799
+                      "offset": 13822
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -28649,7 +28686,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 304,
-                              "offset": 13805
+                              "offset": 13828
                             }
                           },
                           "optional": false,
@@ -28657,7 +28694,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 304,
-                            "offset": 13805
+                            "offset": 13828
                           }
                         },
                         {
@@ -28666,7 +28703,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 304,
-                            "offset": 13816
+                            "offset": 13839
                           },
                           "value": 1
                         }
@@ -28677,7 +28714,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 304,
-                        "offset": 13805
+                        "offset": 13828
                       }
                     }
                   }
@@ -28688,7 +28725,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 303,
-                "offset": 13776
+                "offset": 13799
               }
             },
             {
@@ -28742,7 +28779,7 @@
                     "column": 27,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 305,
-                    "offset": 13845
+                    "offset": 13868
                   },
                   "privileged": true,
                   "roots": [],
@@ -28752,7 +28789,7 @@
                   "column": 27,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 305,
-                  "offset": 13845
+                  "offset": 13868
                 },
                 "source": "({ self, input, context }) {\n          const current = currentAssignment(await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }));\n          if (current) {\n            if (current.assigneeId !== input.assignee)\n              for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now, current.assigneeId))\n                await Claim.end({ id: claim.id, outcome: :revoked, reason: \"reassigned\" }, { ...context, system: true });\n            await Assignment.finish({ id: current.id, reason: :reassigned }, { ...context, system: true });\n          }\n          await Assignment.start({ task: self.id, assignee: input.assignee, reviewWaived: input.waiveReview ?? false }, { ...context, system: true });\n        }"
               },
@@ -28761,7 +28798,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 305,
-                "offset": 13826
+                "offset": 13849
               }
             }
           ],
@@ -28774,7 +28811,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 272,
-                "offset": 12466
+                "offset": 12489
               },
               "type": "uuid"
             },
@@ -28786,7 +28823,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 273,
-                "offset": 12489
+                "offset": 12512
               },
               "type": "boolean"
             },
@@ -28798,7 +28835,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 274,
-                "offset": 12527
+                "offset": 12550
               },
               "type": "integer"
             }
@@ -28809,7 +28846,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 270,
-            "offset": 12431
+            "offset": 12454
           },
           "validate": [
             {
@@ -28820,7 +28857,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 276,
-                "offset": 12584
+                "offset": 12607
               },
               "that": {
                 "params": [],
@@ -28828,7 +28865,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 277,
-                  "offset": 12617
+                  "offset": 12640
                 },
                 "source": "() => &state === :open",
                 "tree": {
@@ -28843,7 +28880,7 @@
                           "column": 21,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 277,
-                          "offset": 12623
+                          "offset": 12646
                         }
                       },
                       "optional": false,
@@ -28851,7 +28888,7 @@
                         "column": 21,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 277,
-                        "offset": 12623
+                        "offset": 12646
                       }
                     },
                     {
@@ -28860,7 +28897,7 @@
                         "column": 32,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 277,
-                        "offset": 12634
+                        "offset": 12657
                       },
                       "value": "open"
                     }
@@ -28871,7 +28908,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 277,
-                    "offset": 12623
+                    "offset": 12646
                   }
                 }
               }
@@ -28884,7 +28921,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 281,
-                "offset": 12743
+                "offset": 12766
               },
               "that": {
                 "params": [
@@ -28900,7 +28937,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 282,
-                    "offset": 12782
+                    "offset": 12805
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -28909,7 +28946,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 282,
-                  "offset": 12782
+                  "offset": 12805
                 },
                 "source": "async ({ input }) => await collaboratorActiveOf(input.assignee)"
               }
@@ -28922,7 +28959,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 286,
-                "offset": 12949
+                "offset": 12972
               },
               "that": {
                 "params": [
@@ -28938,7 +28975,7 @@
                     "column": 15,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 287,
-                    "offset": 12986
+                    "offset": 13009
                   },
                   "roots": [],
                   "why": "awaits-helper"
@@ -28947,7 +28984,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 287,
-                  "offset": 12986
+                  "offset": 13009
                 },
                 "source": "async ({ input }) => await assignableOf(input.assignee)"
               }
@@ -28960,7 +28997,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 291,
-                "offset": 13162
+                "offset": 13185
               },
               "that": {
                 "needs": [
@@ -28989,7 +29026,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 292,
-                    "offset": 13219
+                    "offset": 13242
                   },
                   "roots": [],
                   "why": "reads-record-in-helper"
@@ -28998,7 +29035,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 292,
-                  "offset": 13204
+                  "offset": 13227
                 },
                 "source": "({ input }) => assignmentChanges(&assignments, input.assignee, input.waiveReview ?? false)"
               }
@@ -29026,7 +29063,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 300,
-                    "offset": 13680
+                    "offset": 13703
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -29035,7 +29072,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 300,
-                  "offset": 13664
+                  "offset": 13687
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -29045,7 +29082,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 296,
-                "offset": 13412
+                "offset": 13435
               },
               "that": {
                 "params": [
@@ -29055,7 +29092,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 297,
-                  "offset": 13451
+                  "offset": 13474
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -29072,7 +29109,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 297,
-                              "offset": 13466
+                              "offset": 13489
                             }
                           },
                           "optional": false,
@@ -29080,7 +29117,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 297,
-                            "offset": 13466
+                            "offset": 13489
                           }
                         }
                       ],
@@ -29090,7 +29127,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 297,
-                        "offset": 13466
+                        "offset": 13489
                       }
                     },
                     {
@@ -29105,7 +29142,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 297,
-                              "offset": 13499
+                              "offset": 13522
                             }
                           },
                           "optional": false,
@@ -29113,7 +29150,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 297,
-                            "offset": 13499
+                            "offset": 13522
                           }
                         },
                         {
@@ -29126,7 +29163,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 297,
-                              "offset": 13525
+                              "offset": 13548
                             }
                           },
                           "optional": false,
@@ -29134,7 +29171,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 297,
-                            "offset": 13525
+                            "offset": 13548
                           }
                         }
                       ],
@@ -29144,7 +29181,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 297,
-                        "offset": 13499
+                        "offset": 13522
                       }
                     }
                   ],
@@ -29154,7 +29191,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 297,
-                    "offset": 13466
+                    "offset": 13489
                   }
                 }
               }
@@ -29172,7 +29209,7 @@
                       "column": 10,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 333,
-                      "offset": 15331
+                      "offset": 15354
                     }
                   },
                   "value": {
@@ -29181,7 +29218,7 @@
                       "column": 19,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 333,
-                      "offset": 15340
+                      "offset": 15363
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -29196,7 +29233,7 @@
                               "column": 25,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 333,
-                              "offset": 15346
+                              "offset": 15369
                             }
                           },
                           "optional": false,
@@ -29204,7 +29241,7 @@
                             "column": 25,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 333,
-                            "offset": 15346
+                            "offset": 15369
                           }
                         },
                         {
@@ -29213,7 +29250,7 @@
                             "column": 36,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 333,
-                            "offset": 15357
+                            "offset": 15380
                           },
                           "value": 1
                         }
@@ -29224,7 +29261,7 @@
                         "column": 25,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 333,
-                        "offset": 15346
+                        "offset": 15369
                       }
                     }
                   }
@@ -29235,7 +29272,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 332,
-                "offset": 15317
+                "offset": 15340
               }
             },
             {
@@ -29288,7 +29325,7 @@
                     "column": 27,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 334,
-                    "offset": 15386
+                    "offset": 15409
                   },
                   "privileged": true,
                   "roots": [],
@@ -29298,7 +29335,7 @@
                   "column": 27,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 334,
-                  "offset": 15386
+                  "offset": 15409
                 },
                 "source": "({ self, context }) {\n          const current = currentAssignment(await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }));\n          if (!current) return;\n          for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now, current.assigneeId))\n            await Claim.end({ id: claim.id, outcome: :revoked, reason: \"unassigned\" }, { ...context, system: true });\n          await Assignment.finish({ id: current.id, reason: :unassigned }, { ...context, system: true });\n        }"
               },
@@ -29307,7 +29344,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 334,
-                "offset": 15367
+                "offset": 15390
               }
             }
           ],
@@ -29320,7 +29357,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 317,
-                "offset": 14697
+                "offset": 14720
               },
               "type": "string"
             },
@@ -29332,7 +29369,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 318,
-                "offset": 14729
+                "offset": 14752
               },
               "type": "integer"
             }
@@ -29343,7 +29380,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 315,
-            "offset": 14660
+            "offset": 14683
           },
           "validate": [
             {
@@ -29354,7 +29391,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 320,
-                "offset": 14786
+                "offset": 14809
               },
               "that": {
                 "needs": [
@@ -29365,7 +29402,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 321,
-                  "offset": 14828
+                  "offset": 14851
                 },
                 "source": "() => &assigned",
                 "tree": {
@@ -29378,7 +29415,7 @@
                       "column": 21,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 321,
-                      "offset": 14834
+                      "offset": 14857
                     }
                   },
                   "optional": false,
@@ -29386,7 +29423,7 @@
                     "column": 21,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 321,
-                    "offset": 14834
+                    "offset": 14857
                   }
                 }
               }
@@ -29414,7 +29451,7 @@
                     "column": 34,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 329,
-                    "offset": 15221
+                    "offset": 15244
                   },
                   "roots": [],
                   "why": "unsupported-construct"
@@ -29423,7 +29460,7 @@
                   "column": 18,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 329,
-                  "offset": 15205
+                  "offset": 15228
                 },
                 "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
               },
@@ -29433,7 +29470,7 @@
                 "column": 8,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 325,
-                "offset": 14953
+                "offset": 14976
               },
               "that": {
                 "params": [
@@ -29443,7 +29480,7 @@
                   "column": 15,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 326,
-                  "offset": 14992
+                  "offset": 15015
                 },
                 "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
                 "tree": {
@@ -29460,7 +29497,7 @@
                               "column": 30,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 326,
-                              "offset": 15007
+                              "offset": 15030
                             }
                           },
                           "optional": false,
@@ -29468,7 +29505,7 @@
                             "column": 30,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 326,
-                            "offset": 15007
+                            "offset": 15030
                           }
                         }
                       ],
@@ -29478,7 +29515,7 @@
                         "column": 30,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 326,
-                        "offset": 15007
+                        "offset": 15030
                       }
                     },
                     {
@@ -29493,7 +29530,7 @@
                               "column": 63,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 326,
-                              "offset": 15040
+                              "offset": 15063
                             }
                           },
                           "optional": false,
@@ -29501,7 +29538,7 @@
                             "column": 63,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 326,
-                            "offset": 15040
+                            "offset": 15063
                           }
                         },
                         {
@@ -29514,7 +29551,7 @@
                               "column": 89,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 326,
-                              "offset": 15066
+                              "offset": 15089
                             }
                           },
                           "optional": false,
@@ -29522,7 +29559,7 @@
                             "column": 89,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 326,
-                            "offset": 15066
+                            "offset": 15089
                           }
                         }
                       ],
@@ -29532,7 +29569,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 326,
-                        "offset": 15040
+                        "offset": 15063
                       }
                     }
                   ],
@@ -29542,7 +29579,7 @@
                     "column": 30,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 326,
-                    "offset": 15007
+                    "offset": 15030
                   }
                 }
               }
@@ -29559,7 +29596,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 14,
-            "offset": 905
+            "offset": 928
           },
           "primaryKey": true,
           "type": "uuid",
@@ -29572,7 +29609,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 15,
-            "offset": 930
+            "offset": 953
           },
           "primaryKey": false,
           "type": "string",
@@ -29585,7 +29622,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 16,
-            "offset": 948
+            "offset": 971
           },
           "primaryKey": false,
           "type": "string",
@@ -29598,7 +29635,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 17,
-            "offset": 976
+            "offset": 999
           },
           "primaryKey": false,
           "type": "integer",
@@ -29614,7 +29651,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 18,
-            "offset": 1007
+            "offset": 1030
           },
           "primaryKey": false,
           "type": "enum",
@@ -29639,7 +29676,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 19,
-            "offset": 1070
+            "offset": 1093
           },
           "primaryKey": false,
           "type": "integer",
@@ -29653,7 +29690,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 20,
-            "offset": 1101
+            "offset": 1124
           },
           "primaryKey": false,
           "type": "timestamp",
@@ -29666,7 +29703,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 21,
-            "offset": 1137
+            "offset": 1160
           },
           "primaryKey": false,
           "type": "timestamp",
@@ -29684,7 +29721,7 @@
               "column": 28,
               "file": "src/domain/work/task.mesh.mx",
               "line": 34,
-              "offset": 1675
+              "offset": 1698
             },
             "source": "() { return &children.every((c) => c.state !== :open) }",
             "tree": {
@@ -29700,7 +29737,7 @@
                         "column": 63,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 34,
-                        "offset": 1710
+                        "offset": 1733
                       }
                     },
                     "optional": false,
@@ -29708,7 +29745,7 @@
                       "column": 63,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 34,
-                      "offset": 1710
+                      "offset": 1733
                     }
                   },
                   {
@@ -29717,7 +29754,7 @@
                       "column": 75,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 34,
-                      "offset": 1722
+                      "offset": 1745
                     },
                     "value": "open"
                   }
@@ -29728,7 +29765,7 @@
                   "column": 63,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 34,
-                  "offset": 1710
+                  "offset": 1733
                 }
               },
               "kind": "quantify",
@@ -29738,7 +29775,7 @@
                 "column": 40,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 34,
-                "offset": 1687
+                "offset": 1710
               },
               "source": {
                 "kind": "member",
@@ -29750,7 +29787,7 @@
                     "column": 40,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 34,
-                    "offset": 1687
+                    "offset": 1710
                   }
                 },
                 "optional": false,
@@ -29758,7 +29795,7 @@
                   "column": 40,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 34,
-                  "offset": 1687
+                  "offset": 1710
                 }
               }
             }
@@ -29772,7 +29809,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 34,
-            "offset": 1651
+            "offset": 1674
           },
           "type": "boolean"
         },
@@ -29783,7 +29820,7 @@
               "column": 20,
               "file": "src/domain/work/task.mesh.mx",
               "line": 35,
-              "offset": 1751
+              "offset": 1774
             },
             "source": "() { return &claims.some((c) => c.state === :active && c.expiresAt > %.now) }",
             "tree": {
@@ -29801,7 +29838,7 @@
                             "column": 52,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 35,
-                            "offset": 1783
+                            "offset": 1806
                           }
                         },
                         "optional": false,
@@ -29809,7 +29846,7 @@
                           "column": 52,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 35,
-                          "offset": 1783
+                          "offset": 1806
                         }
                       },
                       {
@@ -29818,7 +29855,7 @@
                           "column": 64,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 35,
-                          "offset": 1795
+                          "offset": 1818
                         },
                         "value": "active"
                       }
@@ -29829,7 +29866,7 @@
                       "column": 52,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 35,
-                      "offset": 1783
+                      "offset": 1806
                     }
                   },
                   {
@@ -29844,7 +29881,7 @@
                             "column": 75,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 35,
-                            "offset": 1806
+                            "offset": 1829
                           }
                         },
                         "optional": false,
@@ -29852,7 +29889,7 @@
                           "column": 75,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 35,
-                          "offset": 1806
+                          "offset": 1829
                         }
                       },
                       {
@@ -29863,7 +29900,7 @@
                           "column": 89,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 35,
-                          "offset": 1820
+                          "offset": 1843
                         }
                       }
                     ],
@@ -29873,7 +29910,7 @@
                       "column": 75,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 35,
-                      "offset": 1806
+                      "offset": 1829
                     }
                   }
                 ],
@@ -29883,7 +29920,7 @@
                   "column": 52,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 35,
-                  "offset": 1783
+                  "offset": 1806
                 }
               },
               "kind": "quantify",
@@ -29893,7 +29930,7 @@
                 "column": 32,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 35,
-                "offset": 1763
+                "offset": 1786
               },
               "source": {
                 "kind": "member",
@@ -29905,7 +29942,7 @@
                     "column": 32,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 35,
-                    "offset": 1763
+                    "offset": 1786
                   }
                 },
                 "optional": false,
@@ -29913,7 +29950,7 @@
                   "column": 32,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 35,
-                  "offset": 1763
+                  "offset": 1786
                 }
               }
             }
@@ -29927,7 +29964,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 35,
-            "offset": 1735
+            "offset": 1758
           },
           "type": "boolean"
         },
@@ -29938,7 +29975,7 @@
               "column": 24,
               "file": "src/domain/work/task.mesh.mx",
               "line": 36,
-              "offset": 1853
+              "offset": 1876
             },
             "source": "() { return &claims.some((c) => c.state === :active && c.expiresAt <= %.now) }",
             "tree": {
@@ -29956,7 +29993,7 @@
                             "column": 56,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 36,
-                            "offset": 1885
+                            "offset": 1908
                           }
                         },
                         "optional": false,
@@ -29964,7 +30001,7 @@
                           "column": 56,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 36,
-                          "offset": 1885
+                          "offset": 1908
                         }
                       },
                       {
@@ -29973,7 +30010,7 @@
                           "column": 68,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 36,
-                          "offset": 1897
+                          "offset": 1920
                         },
                         "value": "active"
                       }
@@ -29984,7 +30021,7 @@
                       "column": 56,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 36,
-                      "offset": 1885
+                      "offset": 1908
                     }
                   },
                   {
@@ -29999,7 +30036,7 @@
                             "column": 79,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 36,
-                            "offset": 1908
+                            "offset": 1931
                           }
                         },
                         "optional": false,
@@ -30007,7 +30044,7 @@
                           "column": 79,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 36,
-                          "offset": 1908
+                          "offset": 1931
                         }
                       },
                       {
@@ -30018,7 +30055,7 @@
                           "column": 94,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 36,
-                          "offset": 1923
+                          "offset": 1946
                         }
                       }
                     ],
@@ -30028,7 +30065,7 @@
                       "column": 79,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 36,
-                      "offset": 1908
+                      "offset": 1931
                     }
                   }
                 ],
@@ -30038,7 +30075,7 @@
                   "column": 56,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 36,
-                  "offset": 1885
+                  "offset": 1908
                 }
               },
               "kind": "quantify",
@@ -30048,7 +30085,7 @@
                 "column": 36,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 36,
-                "offset": 1865
+                "offset": 1888
               },
               "source": {
                 "kind": "member",
@@ -30060,7 +30097,7 @@
                     "column": 36,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 36,
-                    "offset": 1865
+                    "offset": 1888
                   }
                 },
                 "optional": false,
@@ -30068,7 +30105,7 @@
                   "column": 36,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 36,
-                  "offset": 1865
+                  "offset": 1888
                 }
               }
             }
@@ -30082,7 +30119,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 36,
-            "offset": 1833
+            "offset": 1856
           },
           "type": "boolean"
         },
@@ -30093,7 +30130,7 @@
               "column": 21,
               "file": "src/domain/work/task.mesh.mx",
               "line": 37,
-              "offset": 1953
+              "offset": 1976
             },
             "source": "() { return &submissions.some((s) => s.state === :pending) }",
             "tree": {
@@ -30109,7 +30146,7 @@
                         "column": 58,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 37,
-                        "offset": 1990
+                        "offset": 2013
                       }
                     },
                     "optional": false,
@@ -30117,7 +30154,7 @@
                       "column": 58,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 37,
-                      "offset": 1990
+                      "offset": 2013
                     }
                   },
                   {
@@ -30126,7 +30163,7 @@
                       "column": 70,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 37,
-                      "offset": 2002
+                      "offset": 2025
                     },
                     "value": "pending"
                   }
@@ -30137,7 +30174,7 @@
                   "column": 58,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 37,
-                  "offset": 1990
+                  "offset": 2013
                 }
               },
               "kind": "quantify",
@@ -30147,7 +30184,7 @@
                 "column": 33,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 37,
-                "offset": 1965
+                "offset": 1988
               },
               "source": {
                 "kind": "member",
@@ -30159,7 +30196,7 @@
                     "column": 33,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 37,
-                    "offset": 1965
+                    "offset": 1988
                   }
                 },
                 "optional": false,
@@ -30167,7 +30204,7 @@
                   "column": 33,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 37,
-                  "offset": 1965
+                  "offset": 1988
                 }
               }
             }
@@ -30181,7 +30218,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 37,
-            "offset": 1936
+            "offset": 1959
           },
           "type": "boolean"
         },
@@ -30192,7 +30229,7 @@
               "column": 21,
               "file": "src/domain/work/task.mesh.mx",
               "line": 38,
-              "offset": 2035
+              "offset": 2058
             },
             "source": "() { return &assignments.some((a) => a.endedAt === null) }",
             "tree": {
@@ -30208,7 +30245,7 @@
                         "column": 58,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 38,
-                        "offset": 2072
+                        "offset": 2095
                       }
                     },
                     "optional": false,
@@ -30216,7 +30253,7 @@
                       "column": 58,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 38,
-                      "offset": 2072
+                      "offset": 2095
                     }
                   }
                 ],
@@ -30226,7 +30263,7 @@
                   "column": 58,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 38,
-                  "offset": 2072
+                  "offset": 2095
                 }
               },
               "kind": "quantify",
@@ -30236,7 +30273,7 @@
                 "column": 33,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 38,
-                "offset": 2047
+                "offset": 2070
               },
               "source": {
                 "kind": "member",
@@ -30248,7 +30285,7 @@
                     "column": 33,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 38,
-                    "offset": 2047
+                    "offset": 2070
                   }
                 },
                 "optional": false,
@@ -30256,7 +30293,7 @@
                   "column": 33,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 38,
-                  "offset": 2047
+                  "offset": 2070
                 }
               }
             }
@@ -30270,7 +30307,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 38,
-            "offset": 2018
+            "offset": 2041
           },
           "type": "boolean"
         },
@@ -30281,7 +30318,7 @@
               "column": 20,
               "file": "src/domain/work/task.mesh.mx",
               "line": 39,
-              "offset": 2114
+              "offset": 2137
             },
             "source": "() { return &dependencies.some((d) => d.prerequisite.state !== :done) }",
             "tree": {
@@ -30300,7 +30337,7 @@
                           "column": 58,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 39,
-                          "offset": 2152
+                          "offset": 2175
                         }
                       },
                       "optional": false,
@@ -30308,7 +30345,7 @@
                         "column": 58,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 39,
-                        "offset": 2152
+                        "offset": 2175
                       }
                     },
                     "optional": false,
@@ -30316,7 +30353,7 @@
                       "column": 58,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 39,
-                      "offset": 2152
+                      "offset": 2175
                     }
                   },
                   {
@@ -30325,7 +30362,7 @@
                       "column": 83,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 39,
-                      "offset": 2177
+                      "offset": 2200
                     },
                     "value": "done"
                   }
@@ -30336,7 +30373,7 @@
                   "column": 58,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 39,
-                  "offset": 2152
+                  "offset": 2175
                 }
               },
               "kind": "quantify",
@@ -30346,7 +30383,7 @@
                 "column": 32,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 39,
-                "offset": 2126
+                "offset": 2149
               },
               "source": {
                 "kind": "member",
@@ -30358,7 +30395,7 @@
                     "column": 32,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 39,
-                    "offset": 2126
+                    "offset": 2149
                   }
                 },
                 "optional": false,
@@ -30366,7 +30403,7 @@
                   "column": 32,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 39,
-                  "offset": 2126
+                  "offset": 2149
                 }
               }
             }
@@ -30381,7 +30418,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 39,
-            "offset": 2098
+            "offset": 2121
           },
           "type": "boolean"
         },
@@ -30392,7 +30429,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 40,
-            "offset": 2190
+            "offset": 2213
           },
           "rollup": {
             "fn": "max",
@@ -30407,7 +30444,7 @@
               "column": 95,
               "file": "src/domain/work/task.mesh.mx",
               "line": 41,
-              "offset": 2316
+              "offset": 2339
             },
             "source": "() => &state === :done ? :done : &state === :canceled ? :canceled : &inReview ? :in-review : &claimed ? :claimed : &blocked ? :blocked : :ready",
             "tree": {
@@ -30424,7 +30461,7 @@
                           "column": 101,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 41,
-                          "offset": 2322
+                          "offset": 2345
                         }
                       },
                       "optional": false,
@@ -30432,7 +30469,7 @@
                         "column": 101,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 41,
-                        "offset": 2322
+                        "offset": 2345
                       }
                     },
                     {
@@ -30441,7 +30478,7 @@
                         "column": 112,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 41,
-                        "offset": 2333
+                        "offset": 2356
                       },
                       "value": "done"
                     }
@@ -30452,7 +30489,7 @@
                     "column": 101,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 41,
-                    "offset": 2322
+                    "offset": 2345
                   }
                 },
                 {
@@ -30461,7 +30498,7 @@
                     "column": 120,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 41,
-                    "offset": 2341
+                    "offset": 2364
                   },
                   "value": "done"
                 },
@@ -30479,7 +30516,7 @@
                               "column": 128,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 41,
-                              "offset": 2349
+                              "offset": 2372
                             }
                           },
                           "optional": false,
@@ -30487,7 +30524,7 @@
                             "column": 128,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 41,
-                            "offset": 2349
+                            "offset": 2372
                           }
                         },
                         {
@@ -30496,7 +30533,7 @@
                             "column": 139,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 41,
-                            "offset": 2360
+                            "offset": 2383
                           },
                           "value": "canceled"
                         }
@@ -30507,7 +30544,7 @@
                         "column": 128,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 41,
-                        "offset": 2349
+                        "offset": 2372
                       }
                     },
                     {
@@ -30516,7 +30553,7 @@
                         "column": 151,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 41,
-                        "offset": 2372
+                        "offset": 2395
                       },
                       "value": "canceled"
                     },
@@ -30532,7 +30569,7 @@
                               "column": 163,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 41,
-                              "offset": 2384
+                              "offset": 2407
                             }
                           },
                           "optional": false,
@@ -30540,7 +30577,7 @@
                             "column": 163,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 41,
-                            "offset": 2384
+                            "offset": 2407
                           }
                         },
                         {
@@ -30549,7 +30586,7 @@
                             "column": 175,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 41,
-                            "offset": 2396
+                            "offset": 2419
                           },
                           "value": "in-review"
                         },
@@ -30565,7 +30602,7 @@
                                   "column": 188,
                                   "file": "src/domain/work/task.mesh.mx",
                                   "line": 41,
-                                  "offset": 2409
+                                  "offset": 2432
                                 }
                               },
                               "optional": false,
@@ -30573,7 +30610,7 @@
                                 "column": 188,
                                 "file": "src/domain/work/task.mesh.mx",
                                 "line": 41,
-                                "offset": 2409
+                                "offset": 2432
                               }
                             },
                             {
@@ -30582,7 +30619,7 @@
                                 "column": 199,
                                 "file": "src/domain/work/task.mesh.mx",
                                 "line": 41,
-                                "offset": 2420
+                                "offset": 2443
                               },
                               "value": "claimed"
                             },
@@ -30598,7 +30635,7 @@
                                       "column": 210,
                                       "file": "src/domain/work/task.mesh.mx",
                                       "line": 41,
-                                      "offset": 2431
+                                      "offset": 2454
                                     }
                                   },
                                   "optional": false,
@@ -30606,7 +30643,7 @@
                                     "column": 210,
                                     "file": "src/domain/work/task.mesh.mx",
                                     "line": 41,
-                                    "offset": 2431
+                                    "offset": 2454
                                   }
                                 },
                                 {
@@ -30615,7 +30652,7 @@
                                     "column": 221,
                                     "file": "src/domain/work/task.mesh.mx",
                                     "line": 41,
-                                    "offset": 2442
+                                    "offset": 2465
                                   },
                                   "value": "blocked"
                                 },
@@ -30625,7 +30662,7 @@
                                     "column": 232,
                                     "file": "src/domain/work/task.mesh.mx",
                                     "line": 41,
-                                    "offset": 2453
+                                    "offset": 2476
                                   },
                                   "value": "ready"
                                 }
@@ -30636,7 +30673,7 @@
                                 "column": 210,
                                 "file": "src/domain/work/task.mesh.mx",
                                 "line": 41,
-                                "offset": 2431
+                                "offset": 2454
                               }
                             }
                           ],
@@ -30646,7 +30683,7 @@
                             "column": 188,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 41,
-                            "offset": 2409
+                            "offset": 2432
                           }
                         }
                       ],
@@ -30656,7 +30693,7 @@
                         "column": 163,
                         "file": "src/domain/work/task.mesh.mx",
                         "line": 41,
-                        "offset": 2384
+                        "offset": 2407
                       }
                     }
                   ],
@@ -30666,7 +30703,7 @@
                     "column": 128,
                     "file": "src/domain/work/task.mesh.mx",
                     "line": 41,
-                    "offset": 2349
+                    "offset": 2372
                   }
                 }
               ],
@@ -30676,7 +30713,7 @@
                 "column": 101,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 41,
-                "offset": 2322
+                "offset": 2345
               }
             }
           },
@@ -30691,7 +30728,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 41,
-            "offset": 2225
+            "offset": 2248
           },
           "type": "enum",
           "values": [
@@ -30809,6 +30846,7 @@
           "identifiers": [
             "acceptedSubmissionOf",
             "assignmentChanges",
+            "childrenSettledReason",
             "claimNotInvalidated",
             "claimToRelease",
             "completionRule",
@@ -30849,7 +30887,7 @@
             "column": 0,
             "file": "src/domain/work/task.mesh.mx",
             "line": 9,
-            "offset": 730
+            "offset": 753
           }
         },
         {
@@ -30862,7 +30900,7 @@
             "column": 0,
             "file": "src/domain/work/task.mesh.mx",
             "line": 10,
-            "offset": 830
+            "offset": 853
           }
         }
       ],
@@ -30880,7 +30918,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 343,
-                "offset": 16037
+                "offset": 16060
               },
               "source": "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
               "tree": {
@@ -30894,7 +30932,7 @@
                           "column": 57,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 343,
-                          "offset": 16075
+                          "offset": 16098
                         }
                       }
                     ],
@@ -30904,7 +30942,7 @@
                       "column": 43,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 343,
-                      "offset": 16061
+                      "offset": 16084
                     }
                   },
                   {
@@ -30919,7 +30957,7 @@
                             "column": 69,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 343,
-                            "offset": 16087
+                            "offset": 16110
                           }
                         },
                         "optional": false,
@@ -30927,7 +30965,7 @@
                           "column": 69,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 343,
-                          "offset": 16087
+                          "offset": 16110
                         }
                       }
                     ],
@@ -30937,7 +30975,7 @@
                       "column": 69,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 343,
-                      "offset": 16087
+                      "offset": 16110
                     }
                   }
                 ],
@@ -30947,7 +30985,7 @@
                   "column": 43,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 343,
-                  "offset": 16061
+                  "offset": 16084
                 }
               }
             }
@@ -30958,7 +30996,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 342,
-            "offset": 15984
+            "offset": 16007
           },
           "types": [
             "read"
@@ -30972,7 +31010,7 @@
                 "column": 30,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16136
+                "offset": 16159
               }
             },
             {
@@ -30981,7 +31019,7 @@
                 "column": 39,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16145
+                "offset": 16168
               }
             },
             {
@@ -30990,7 +31028,7 @@
                 "column": 48,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16154
+                "offset": 16177
               }
             },
             {
@@ -30999,7 +31037,7 @@
                 "column": 62,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16168
+                "offset": 16191
               }
             },
             {
@@ -31008,7 +31046,7 @@
                 "column": 69,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16175
+                "offset": 16198
               }
             },
             {
@@ -31017,7 +31055,7 @@
                 "column": 78,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16184
+                "offset": 16207
               }
             },
             {
@@ -31026,7 +31064,7 @@
                 "column": 89,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16195
+                "offset": 16218
               }
             },
             {
@@ -31035,7 +31073,7 @@
                 "column": 98,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16204
+                "offset": 16227
               }
             },
             {
@@ -31044,7 +31082,7 @@
                 "column": 107,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 344,
-                "offset": 16213
+                "offset": 16236
               }
             }
           ],
@@ -31069,7 +31107,7 @@
                   "column": 19,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 345,
-                  "offset": 16243
+                  "offset": 16266
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -31078,7 +31116,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 345,
-                "offset": 16243
+                "offset": 16266
               },
               "source": "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)"
             }
@@ -31089,7 +31127,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 344,
-            "offset": 16110
+            "offset": 16133
           }
         },
         {
@@ -31100,7 +31138,7 @@
                 "column": 35,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16359
+                "offset": 16382
               }
             },
             {
@@ -31109,7 +31147,7 @@
                 "column": 44,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16368
+                "offset": 16391
               }
             },
             {
@@ -31118,7 +31156,7 @@
                 "column": 53,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16377
+                "offset": 16400
               }
             },
             {
@@ -31127,7 +31165,7 @@
                 "column": 67,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16391
+                "offset": 16414
               }
             },
             {
@@ -31136,7 +31174,7 @@
                 "column": 74,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16398
+                "offset": 16421
               }
             },
             {
@@ -31145,7 +31183,7 @@
                 "column": 83,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16407
+                "offset": 16430
               }
             },
             {
@@ -31154,7 +31192,7 @@
                 "column": 94,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16418
+                "offset": 16441
               }
             },
             {
@@ -31163,7 +31201,7 @@
                 "column": 103,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16427
+                "offset": 16450
               }
             },
             {
@@ -31172,7 +31210,7 @@
                 "column": 112,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 346,
-                "offset": 16436
+                "offset": 16459
               }
             }
           ],
@@ -31208,7 +31246,7 @@
                   "column": 19,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 347,
-                  "offset": 16466
+                  "offset": 16489
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -31217,7 +31255,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 347,
-                "offset": 16466
+                "offset": 16489
               },
               "source": "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])"
             }
@@ -31228,7 +31266,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 346,
-            "offset": 16328
+            "offset": 16351
           }
         },
         {
@@ -31239,7 +31277,7 @@
                 "column": 33,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 348,
-                "offset": 16597
+                "offset": 16620
               }
             },
             {
@@ -31248,7 +31286,7 @@
                 "column": 42,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 348,
-                "offset": 16606
+                "offset": 16629
               }
             }
           ],
@@ -31274,7 +31312,7 @@
                   "column": 19,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 349,
-                  "offset": 16634
+                  "offset": 16657
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -31283,7 +31321,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 349,
-                "offset": 16634
+                "offset": 16657
               },
               "source": "async ({ self, actor, context }) => Mesh.isSystem(context) || await managesTaskOf(self, actor.id, true)"
             }
@@ -31294,7 +31332,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 348,
-            "offset": 16568
+            "offset": 16591
           }
         },
         {
@@ -31305,7 +31343,7 @@
                 "column": 36,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 350,
-                "offset": 16774
+                "offset": 16797
               }
             }
           ],
@@ -31331,7 +31369,7 @@
                   "column": 19,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 351,
-                  "offset": 16804
+                  "offset": 16827
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -31340,7 +31378,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 351,
-                "offset": 16804
+                "offset": 16827
               },
               "source": "async ({ self, actor, context }) => Mesh.isSystem(context) || await managesTaskOf(self, actor.id, false)"
             }
@@ -31351,7 +31389,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 350,
-            "offset": 16742
+            "offset": 16765
           }
         },
         {
@@ -31362,7 +31400,7 @@
                 "column": 33,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 352,
-                "offset": 16942
+                "offset": 16965
               }
             }
           ],
@@ -31401,7 +31439,7 @@
                   "column": 19,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 353,
-                  "offset": 16972
+                  "offset": 16995
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -31410,7 +31448,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 353,
-                "offset": 16972
+                "offset": 16995
               },
               "source": "async ({ self, input, actor, context }) => Mesh.isSystem(context) || await noOtherHolderOf(self.id, input.fence, actor.id, %.now)"
             }
@@ -31421,7 +31459,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 352,
-            "offset": 16913
+            "offset": 16936
           }
         },
         {
@@ -31432,7 +31470,7 @@
                 "column": 38,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 354,
-                "offset": 17140
+                "offset": 17163
               }
             }
           ],
@@ -31446,7 +31484,7 @@
                 "column": 16,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 355,
-                "offset": 17167
+                "offset": 17190
               },
               "source": "({ context }) => context.completion != null && !Mesh.isSystem(context)",
               "tree": {
@@ -31463,7 +31501,7 @@
                             "column": 33,
                             "file": "src/domain/work/task.mesh.mx",
                             "line": 355,
-                            "offset": 17184
+                            "offset": 17207
                           }
                         },
                         "optional": false,
@@ -31471,7 +31509,7 @@
                           "column": 33,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 355,
-                          "offset": 17184
+                          "offset": 17207
                         }
                       }
                     ],
@@ -31481,7 +31519,7 @@
                       "column": 33,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 355,
-                      "offset": 17184
+                      "offset": 17207
                     }
                   },
                   {
@@ -31495,7 +31533,7 @@
                               "column": 78,
                               "file": "src/domain/work/task.mesh.mx",
                               "line": 355,
-                              "offset": 17229
+                              "offset": 17252
                             }
                           }
                         ],
@@ -31505,7 +31543,7 @@
                           "column": 64,
                           "file": "src/domain/work/task.mesh.mx",
                           "line": 355,
-                          "offset": 17215
+                          "offset": 17238
                         }
                       }
                     ],
@@ -31515,7 +31553,7 @@
                       "column": 63,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 355,
-                      "offset": 17214
+                      "offset": 17237
                     }
                   }
                 ],
@@ -31525,7 +31563,7 @@
                   "column": 33,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 355,
-                  "offset": 17184
+                  "offset": 17207
                 }
               }
             }
@@ -31535,7 +31573,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 354,
-            "offset": 17106
+            "offset": 17129
           }
         },
         {
@@ -31546,7 +31584,7 @@
                 "column": 30,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 356,
-                "offset": 17268
+                "offset": 17291
               }
             }
           ],
@@ -31559,7 +31597,7 @@
                 "column": 19,
                 "file": "src/domain/work/task.mesh.mx",
                 "line": 357,
-                "offset": 17295
+                "offset": 17318
               },
               "source": "({ context }) => Mesh.isSystem(context)",
               "tree": {
@@ -31571,7 +31609,7 @@
                       "column": 50,
                       "file": "src/domain/work/task.mesh.mx",
                       "line": 357,
-                      "offset": 17326
+                      "offset": 17349
                     }
                   }
                 ],
@@ -31581,7 +31619,7 @@
                   "column": 36,
                   "file": "src/domain/work/task.mesh.mx",
                   "line": 357,
-                  "offset": 17312
+                  "offset": 17335
                 }
               }
             }
@@ -31592,7 +31630,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 356,
-            "offset": 17242
+            "offset": 17265
           }
         }
       ],
@@ -31600,7 +31638,7 @@
         "column": 0,
         "file": "src/domain/work/task.mesh.mx",
         "line": 12,
-        "offset": 861
+        "offset": 884
       },
       "relationships": [
         {
@@ -31617,7 +31655,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 23,
-            "offset": 1188
+            "offset": 1211
           }
         },
         {
@@ -31634,7 +31672,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 24,
-            "offset": 1232
+            "offset": 1255
           }
         },
         {
@@ -31650,7 +31688,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 25,
-            "offset": 1276
+            "offset": 1299
           }
         },
         {
@@ -31666,7 +31704,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 26,
-            "offset": 1311
+            "offset": 1334
           }
         },
         {
@@ -31682,7 +31720,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 27,
-            "offset": 1375
+            "offset": 1398
           }
         },
         {
@@ -31698,7 +31736,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 28,
-            "offset": 1440
+            "offset": 1463
           }
         },
         {
@@ -31714,7 +31752,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 29,
-            "offset": 1484
+            "offset": 1507
           }
         },
         {
@@ -31730,7 +31768,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 30,
-            "offset": 1518
+            "offset": 1541
           }
         },
         {
@@ -31746,7 +31784,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 31,
-            "offset": 1562
+            "offset": 1585
           }
         },
         {
@@ -31762,7 +31800,7 @@
             "column": 4,
             "file": "src/domain/work/task.mesh.mx",
             "line": 32,
-            "offset": 1606
+            "offset": 1629
           }
         }
       ],

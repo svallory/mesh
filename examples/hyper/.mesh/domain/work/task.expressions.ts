@@ -11,6 +11,7 @@ import {
 import {
   acceptedSubmissionOf,
   assignmentChanges,
+  childrenSettledReason,
   claimNotInvalidated,
   claimToRelease,
   completionRule,
@@ -311,6 +312,13 @@ export const $expressions = {
   ) => {
     const $self = $s.self;
     return (() => ({ openChildren: openChildren($self.children) }))();
+  },
+  // check :childrenSettled message, plain (reads-record-in-helper) (src/domain/work/task.mesh.mx:202:19)
+  "complete.check.childrenSettled.message": (
+    $s: $work$Task$CheckScope<$work$Task$CompleteTaskInput>,
+  ) => {
+    const $self = $s.self;
+    return (() => childrenSettledReason($self.children))();
   },
   // check :reviewRequired that, plain (awaits-helper) (src/domain/work/task.mesh.mx:206:16)
   "complete.check.reviewRequired.that": (

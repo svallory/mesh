@@ -83,7 +83,7 @@ interface Scope {
   /** In a check that can run on a create: the members some such create takes as a member input (and a relationship's key column). */
   pending?: ReadonlySet<string>;
   /** Which part of a check this is: an unknown `that` fails the check, an unknown `when` skips it. */
-  checkPart?: "that" | "when" | "details";
+  checkPart?: "that" | "when" | "details" | "message";
   /** References (`self.x`, `before.x`, `input.x`, `before`) that the left of an enclosing `&&` or `||` has shown are not null here. */
   nonNull?: ReadonlySet<string>;
   /** True where the expression is printed as the author's TypeScript, where tsc narrows less than Mesh does: nothing narrows. */
@@ -181,7 +181,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   };
   /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null. Elsewhere (a step, a computed field) the outcome depends on the position. */
   const whenUnknown = (part: Scope["checkPart"]) =>
-    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : "the check fails or the row is left out";
+    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : part === "message" ? "the check fails with an error, since a message must be text" : "the check fails or the row is left out";
   // No reachability analysis: `&n > 0 || true` is not unknown, so the wording says what happens when the result depends on the read.
   const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
     report("warning", "MESH_VALIDATE_UNFILLED",
@@ -487,7 +487,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
    * a member with no default is still null. The steps before the write see the input applied; on a create the key the data
    * layer gives (an `integer` key) is null until the write.
    */
-  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[]): void {
+  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression; message: string | Expression }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[]): void {
     const gaps = newInstanceGaps(entity);
     const accepted = acceptedBy(creates);
     const pending = pendingOn(entity, creates);
@@ -501,7 +501,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         if (t?.unfilled !== undefined) unfilled(t.unfilled, e.tree!.position, part);
       }
       if (check.details) visit(check.details, { ...checks, checkPart: "details" }, false);
-      if (checks.pending?.size) for (const e of [check.that, check.when, check.details]) if (e?.plain) plainNotApplied(e, checks.pending);
+      if (typeof check.message !== "string") visit(check.message, { ...checks, checkPart: "message" }, false);
+      if (checks.pending?.size) for (const e of [check.that, check.when, check.details, check.message]) if (typeof e === "object" && e.plain) plainNotApplied(e, checks.pending);
     }
     steps(list, entity, creates.length && gaps.key ? { ...scope, fresh: new Set([gaps.key]) } : scope);
   }

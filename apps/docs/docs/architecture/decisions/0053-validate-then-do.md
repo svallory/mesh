@@ -42,7 +42,7 @@ Operator, 2026-10-05, [rulings of 2026-10-04](./rulings-2026-10-04.md), section 
 **Validations.**
 
 - A rule about one field goes on its attribute or argument line, always: `min` and `max` (length for a string, value for a number) and `match`: `decimal #amount min=0`, `string #notes nullable max=2000`, `string #number match=/^INV-\d+$/`. A `check` is only for rules across fields (`self.dueOn >= self.issuedOn`) or about stored state (`self.status === "sent"`); restating a one-field rule as a `check` is the second way to write one thing that the syntax forbids ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Rulings after the review of the user docs (2026-10-05, lead under delegation)", row "Where do rules about one field go?").
-- The rules of an action go in a `validate` block: `require=[...]` (fields that must be present) and `check :name [ that=fn code=... message=... ]`. `:name` is a label (MX's `:name` sugar); `code` is the caller-facing code, a string or a number; `when` nests checks under a condition.
+- The rules of an action go in a `validate` block: `require=[...]` (fields that must be present) and `check :name [ that=fn code=... message=... ]`. `:name` is a label (MX's `:name` sugar); `code` is the caller-facing code, a string or a number; `message` is the sentence the caller sees, either fixed text or a function of the same arguments as `that` (`message=({ self }) => ...`, ACT-30), which runs only when the check fails; `when` nests checks under a condition.
 - "`validate` runs before `do` and sees the stored record plus `input` (replaces the lead's earlier 'sees the record after the changes')." A `check` runs only before the steps.
 
 **Steps.**

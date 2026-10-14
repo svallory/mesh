@@ -171,7 +171,8 @@ const contracts: ContractMap = {
       ...named(),
       that: fn(true),
       code: text(true),
-      message: text(true),
+      // Text, or a function of the arguments `that` gets (ACT-30): the contract leaves the type open, `check` in the builder tells them apart.
+      message: { required: true },
       when: fn(),
       details: fn(),
     },

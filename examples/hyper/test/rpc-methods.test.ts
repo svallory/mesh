@@ -258,8 +258,8 @@ describe("submission.withdraw and the review methods", () => {
   }));
 });
 
-describe("what explained adds to a failure", () => {
-  test("task.children-settled names each open child by title in the reason, and its details keep the ids alone", () => inWorld(async (w) => {
+describe("what a failure carries", () => {
+  test("task.children-settled names each open child by title in the reason (the check's message function, ACT-30), and its details keep the ids alone", () => inWorld(async (w) => {
     const open = await send("task.create", as(w.alice), { title: "Open child", parentId: w.task.id });
     const other = await send("task.create", as(w.alice), { title: "Other \"quoted\" child", parentId: w.task.id });
     const refused = await refusal(send("task.complete", as(w.alice), { taskId: w.task.id }));
@@ -281,13 +281,12 @@ describe("what explained adds to a failure", () => {
   }));
 
   test("when the read that explains a failure fails, the rejection is answered as it is and the failure is logged", () => inWorld(async (w) => {
-    const child = await send("task.create", as(w.alice), { title: "Open child", parentId: w.task.id });
-    const error = rejection(-32003, "content", [{ check: "task.children-settled", reason: "complete or cancel every child first", details: { openChildren: [child.task.id] } }]);
+    const error = rejection(-32001, "permission", [{ check: "review.reviewer", reason: "only the reviewer can review" }]);
     // Closing the in-memory layer drops its database: the next transaction opens an empty one, with no tables to read.
     await w.db.close();
     const logged = spyOn(console, "error").mockImplementation(() => {});
     try {
-      expect(await explained(error, {})).toBe(error);
+      expect(await explained(error, { submissionId: "00000000-0000-4000-8000-000000000001" })).toBe(error);
       expect(logged).toHaveBeenCalledTimes(1);
     } finally {
       logged.mockRestore();

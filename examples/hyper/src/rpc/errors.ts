@@ -2,13 +2,13 @@
 // and whose `data` names the phase that refused the call and lists that phase's failures. `rpcErrorOf` turns the errors
 // the port's actions throw into that shape; `wireError`, the `error` option of `serve`, gives the server's own `-32601`
 // and `-32602` the same shape and lets every other `RpcError` through. Whatever is left is an engine bug: it is rethrown,
-// so the server logs it and answers `-32603 internal_error` with no data. `explained` adds what two failures need that
+// so the server logs it and answers `-32603 internal_error` with no data. `explained` adds what one failure needs that
 // the action's error does not carry, read once the call's transaction has rolled back.
 import { type Call, codes, type ErrorObject, RpcError } from "@meshfw/jsonrpc";
 import { ForbiddenError, type Issue, InvalidInputError, NotFoundError, type ActionContext } from "@meshfw/runtime";
 import { Mesh } from "meshfw";
 import { transaction } from "#mesh";
-import { Submission, Task } from "#mesh/domain/work";
+import { Submission } from "#mesh/domain/work";
 import { reviewerOfTask } from "../domain/work/work.helpers";
 import { isId } from "./resolve";
 
@@ -213,14 +213,6 @@ function submissionIdOf(payload: unknown): string | undefined {
 
 /** One failure with what `explained` adds to it, or as it is. */
 async function explainedFailure(failure: Failure, payload: unknown): Promise<Failure> {
-  if (failure.check === "task.children-settled") {
-    const ids = failure.details?.openChildren;
-    if (!Array.isArray(ids) || ids.length === 0) return failure;
-    const children = await Mesh.privileged(Task).read({ filter: { id: { in: ids as string[] } } });
-    const titles = new Map(children.map((child) => [child.id, child.title]));
-    const named = (ids as string[]).map((id) => (titles.has(id) ? JSON.stringify(titles.get(id)) : id));
-    return { ...failure, reason: `${failure.reason}; open: ${named.join(", ")}` };
-  }
   if (failure.check === "review.reviewer") {
     const submissionId = submissionIdOf(payload);
     if (submissionId === undefined) return failure;
@@ -232,24 +224,21 @@ async function explainedFailure(failure: Failure, payload: unknown): Promise<Fai
 }
 
 /**
- * `error` with what two failures need that the action's error does not carry, read through `Mesh.privileged` in a
+ * `error` with what one failure needs that the action's error does not carry, read through `Mesh.privileged` in a
  * transaction of its own, after the call's has rolled back, so a change committed in between shows:
  *
- * - `task.children-settled`: the reason names each open child by title (PROTOCOL.md:341). ACT-30 (ruled) lets a check's
- *   `message=` be a function, but the compiler does not build that form yet (`packages/compiler/src/front-end/build.ts`
- *   stores text only), so the transport appends the titles until it does (PORTING.md, G22); `details` keeps the ids
- *   alone, as the spec's do.
  * - `review.reviewer`: `details` is `{ reviewerId }`, the collaborator the reviewer rule names (PROTOCOL.md:252), for
  *   the submission the call's `payload` names. A policy's denial carries no details (PORTING.md).
  *
- * Any other error is returned as it is, without a read. So is `error` when the read fails (the layer closing under a
+ * Any other error is returned as it is, without a read (the reason of `task.children-settled`, which names the open children,
+ * comes from the check's `message=` function in `task.mesh.mx`, ACT-30). So is `error` when the read fails (the layer closing under a
  * shutdown, a busy database): the rejection is right without the extra facts, so the failure is logged and the client
  * still gets its code and checks, never `-32603`.
  */
 export async function explained(error: RpcError, payload: unknown): Promise<RpcError> {
   const data = error.data as { phase: Phase; failures: readonly Failure[] } | undefined;
   const failures = data?.failures ?? [];
-  if (!failures.some((failure) => failure.check === "task.children-settled" || failure.check === "review.reviewer")) return error;
+  if (!failures.some((failure) => failure.check === "review.reviewer")) return error;
   try {
     return await transaction(async () => {
       const explainedFailures: Failure[] = [];

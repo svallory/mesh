@@ -189,11 +189,13 @@ and the `always` block that adds `check :dueAfterIssue` (`(input.dueOn ?? &dueOn
 
 The checks read `&status` and `&lineCount`, so the build makes `pay` **read-then-write**; `explain` names those checks.
 
+A check's `message=` is fixed text, as above, or a function of the same arguments as `that=` and `details=`: `message=({ self }) => "invoice " + self.number + " is not sent"`. The function runs only for a check that failed (a check that passes, or that `when=` skips, never computes it), reads what `that=` can read, including loaded relationships, and may be `async`. The issue carries the string it returns. A function that throws, or returns anything but a string, `null` and `undefined` included, fails the call with a `FrameworkError` that names the entity, the check and the line of the check in the entity file; the error replaces the `InvalidInputError`, so a failure is never reported with the wrong text.
+
 1. **Enter.** `payInvoice({ id, paidAt }, { actor })`.
 2. **Cast.** `id` and the member input `paidAt` pass; anything else is an error.
 3. **Plan.** Read with lock, then write.
 4. **Pre-check.** `isStaff(actor)` reads nothing stored, so `:staffWrites` runs here. A non-staff caller is forbidden before the transaction opens.
-5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. No policy reads the record, so `validate` runs next, on the stored invoice, with the supplied `paidAt` still in `input`: the `always` check `dueAfterIssue` (`pay` sends no dates, so it compares the stored ones), then `invoiceIsSent` and `invoiceHasLines`. If any fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check and writes nothing. Then `paidAt` is applied, and `do` runs: the `set` assigns status and payer; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
+5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. No policy reads the record, so `validate` runs next, on the stored invoice, with the supplied `paidAt` still in `input`: the `always` check `dueAfterIssue` (`pay` sends no dates, so it compares the stored ones), then `invoiceIsSent` and `invoiceHasLines`. If any fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check (its `message` is the check's text, or what its `message=` function returned) and writes nothing. Then `paidAt` is applied, and `do` runs: the `set` assigns status and payer; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
 6. **Data layer.** The row, with `paidAt` and the steps' changes, is written inside the locked transaction.
 7. **Commit.** The transaction closes.
 8. **After commit.** `customer` is loaded onto the returned record, which comes back typed.

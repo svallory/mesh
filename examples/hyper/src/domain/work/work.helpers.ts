@@ -262,6 +262,12 @@ export function openChildren(children: readonly { readonly id: string; readonly 
   return children.filter((child) => child.state === "open").map((child) => child.id);
 }
 
+/** The reason of `task.children-settled`: the fixed sentence, then each open child by title (PROTOCOL.md:341, conformance `03:175`). */
+export function childrenSettledReason(children: readonly { readonly state: string; readonly title: string }[]): string {
+  const titles = children.filter((child) => child.state === "open").map((child) => JSON.stringify(child.title));
+  return `complete or cancel every child first${titles.length > 0 ? `; open: ${titles.join(", ")}` : ""}`;
+}
+
 export interface BlockReason {
   readonly kind: "dependency" | "prerequisite-canceled" | "condition";
   readonly taskId?: string;

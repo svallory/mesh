@@ -65,7 +65,7 @@ export function checkLifecycleLimits(
     // `before` parameter is caught here.
     for (const { expression, kind, what } of actionExpressions(entity)) {
       // In a step or `run`, `before` is legal: the stored record, null on a create (the docs' `do` steps and `run` keep it).
-      if (kind !== "that" && kind !== "check-when" && kind !== "details") continue;
+      if (kind !== "that" && kind !== "check-when" && kind !== "details" && kind !== "message") continue;
       // A destructured `before`, or a rest parameter that can reach it, or a free one (the root, EXP-12).
       const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source))
         || expression.plain?.roots.includes("before");
