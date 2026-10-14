@@ -323,6 +323,18 @@ function bindings(root: N): Set<string> {
  * binds the name: each reference is resolved against its own scopes, so `[1].some((Mesh) => Mesh === 1) && Mesh.isSystem(c)`
  * reads the import (a function's `var`s count for its parameters: `scopeNames`).
  */
+/** The identifier a member chain starts at: `billing` in `billing?.Invoice["open"]`, through any wrapper MX leaves. */
+function chainRoot(n: N): N | undefined {
+  let at: N | undefined = n;
+  while (at && at.type !== "Identifier") {
+    if (at.type === "MemberExpression" || at.type === "OptionalMemberExpression") at = at.object as N;
+    else if (CHAIN_WRAPPERS.has(at.type)) at = at.expression as N;
+    else return undefined;
+  }
+  return at;
+}
+const CHAIN_WRAPPERS = new Set(["ParenthesizedExpression", "TSNonNullExpression", "TSAsExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
+
 function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: Names): string[] {
   const bound = bindings(fn);
   const roots = new Set<string>();
@@ -445,10 +457,13 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
         // `billing.Invoice`: what the namespace import's file declares (SYN-21), resolved as `entity=` resolves it.
+        // A computed member written as a string (`billing["Invoice"]`) names the same member.
         const member = parent?.property as N | undefined;
+        const memberName = !parent?.computed && member?.type === "Identifier" ? member.name
+          : parent?.computed && member?.type === "StringLiteral" ? String(member.value) : undefined;
         if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object"
-          && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && !parent!.computed && member?.type === "Identifier") {
-          const resolved = ctx.reference({ qualifier: { name: n.name!, offset: start(n) }, name: member.name!, offset: start(member) });
+          && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && memberName !== undefined) {
+          const resolved = ctx.reference({ qualifier: { name: n.name!, offset: start(n) }, name: memberName, offset: start(member!) });
           if (!resolved.ok)
             ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
         }
@@ -489,9 +504,12 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         position: ctx.at(start(argument)),
         fix: `write \`${member.local}.privileged(Task)\`, naming the entity, and import it when it is another file's`,
       });
-    // `Task.touch(...)`: a call to an entity's action (CMP-16).
-    const target = callee && (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") ? callee.object as N : undefined;
-    if (isEntity(target, scope)) names.acts = true;
+    // `Task.touch(...)`: a call to an entity's action (CMP-16), through a namespace import too (`billing.Invoice.open(...)`,
+    // SYN-21). Any call on a member chain that starts at an entity the file names acts, whatever the member syntax
+    // (`billing?.Invoice.open`, `billing["Invoice"].open`, `Task.touch.call`), so no spelling escapes `MESH_POLICY_ACTS`
+    // and `MESH_COMPUTED_COMPOSES`.
+    const root = callee && (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") ? chainRoot(callee) : undefined;
+    if (root && namesEntity(root.name!, scope)) names.acts = true;
     const opened = scopeNames(n);
     const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);

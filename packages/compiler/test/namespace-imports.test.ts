@@ -215,6 +215,28 @@ describe("functions name an entity through a namespace import as through a named
     expect(stepOf(result).plain).toMatchObject({ entities: ["billing"], acts: true });
   });
 
+  test("a call through the namespace acts whatever the member syntax: no spelling escapes MESH_POLICY_ACTS or MESH_COMPUTED_COMPOSES", () => {
+    const withRules = (call: string, around = (c: string) => c) => line('import * as billing from "../billing/invoice.mesh.mx"', "    belongs-to :invoice entity=billing.Invoice\n", `  computed
+    integer :opened() {
+      void ${around(`${call}({ amount: 7 }, {})`)}
+      return 1
+    }
+  actions auto=[:read]
+    update :touch
+  policies
+    policy :acts types=[:update]
+      forbid-if=async ({ context }) => { await ${around(`${call}({ amount: 7 }, context)`)}; return false }
+`);
+    for (const call of ["billing?.Invoice.open", 'billing["Invoice"].open', "billing.Invoice?.open", 'billing.Invoice["open"]', "billing.Invoice.open.call"]) {
+      const result = build(withRules(call));
+      expect([call, result.diagnostics.map((d) => d.code).sort()]).toEqual([call, ["MESH_COMPUTED_COMPOSES", "MESH_POLICY_ACTS"]]);
+    }
+    // An unknown member written as a string is the same unknown member.
+    expect(build(withRules('billing["Invoce"].open')).diagnostics.map((d) => d.code)).toContain("MESH_UNKNOWN_ENTITY");
+    // A parameter of the alias's name is not the namespace: its calls are its own.
+    expect(build(withRules("billing?.Invoice.open", (c) => `[{ Invoice: { open: (..._: unknown[]) => 1 } }].map((billing) => ${c})`)).diagnostics).toEqual([]);
+  });
+
   test("Mesh.privileged takes a member of a namespace import, never the alias alone", () => {
     const ok = build(withRun("await Mesh.privileged(billing.Invoice).read({})"));
     expect(ok.diagnostics).toEqual([]);
