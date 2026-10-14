@@ -28,6 +28,61 @@ describe("runCheck", () => {
     expect((await run({ that: () => false, details }))[0]!.details).toEqual({ n: 1 });
     expect((await run({ that: () => false, details: () => undefined }))[0]!.details).toBeNull();
   });
+  describe("a message function (ACT-30)", () => {
+    const named = { entity: "Order" };
+    test("text is used as it is; a function's string replaces it, and it gets the scope `that` got", async () => {
+      expect((await run({ that: () => false }))[0]!.message).toBe("m");
+      const issues: Issue[] = [];
+      await runCheck(issues, { n: 4 }, spec({ that: () => false, message: (s: { n: number }) => `n is ${s.n}` }));
+      expect(issues[0]!.message).toBe("n is 4");
+    });
+    test("an async function is awaited", async () =>
+      expect((await run({ that: () => false, message: async () => "later" }))[0]!.message).toBe("later"));
+    test("it runs only for a failed check that `when` did not skip", async () => {
+      let calls = 0;
+      const message = () => { calls++; return "x"; };
+      expect(await run({ message })).toEqual([]);
+      expect(await run({ that: () => false, when: () => false, message })).toEqual([]);
+      expect(calls).toBe(0);
+      expect(await run({ that: () => false, when: () => true, message })).toHaveLength(1);
+      expect(calls).toBe(1);
+    });
+    test.each([[""], ["   "], ["\n\t"]])("blank text %j is a FrameworkError, like the build's refusal of a blank message=", async (text) => {
+      const error = await run({ ...named, label: "stock", that: () => false, message: () => text }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as FrameworkError).message).toBe("the message of check :stock of Order (t.mesh.mx:3) must return text, and returned a blank string");
+    });
+    test("a throw is a FrameworkError naming the entity, the check and the line, with the cause kept", async () => {
+      const cause = new Error("boom");
+      const error = await run({ ...named, label: "stock", that: () => false, message: () => { throw cause; } }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as FrameworkError).message).toBe("the message of check :stock of Order (t.mesh.mx:3) threw: boom");
+      expect((error as FrameworkError).cause).toBe(cause);
+    });
+    test("a rejected promise is the same error; a thrown non-Error is named too", async () => {
+      expect(await run({ ...named, that: () => false, message: async () => { throw new Error("late"); } }).catch((e: unknown) => e)).toBeInstanceOf(FrameworkError);
+      const error = await run({ ...named, that: () => false, message: () => { throw "plain"; } }).catch((e: unknown) => e);
+      expect((error as FrameworkError).message).toContain("threw: plain");
+    });
+    test.each([[undefined, "undefined"], [null, "null"], [7, "number"], [{ a: 1 }, "object"], [["a"], "an array"], [true, "boolean"]])(
+      "a result of %p is a FrameworkError, not text",
+      async (value, word) => {
+        const error = await run({ ...named, label: "stock", that: () => false, message: () => value as never }).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect((error as FrameworkError).message).toBe(`the message of check :stock of Order (t.mesh.mx:3) must return a string, and returned ${word}`);
+      },
+    );
+    test("an entity left out of the spec is left out of the message", async () => {
+      const error = await run({ label: "stock", that: () => false, message: () => 1 as never }).catch((e: unknown) => e);
+      expect((error as FrameworkError).message).toStartWith("the message of check :stock (t.mesh.mx:3)");
+    });
+    test("a failing message keeps the earlier failed checks out of the result: the call fails loudly", async () => {
+      const issues: Issue[] = [];
+      await runCheck(issues, {}, spec({ label: "a", that: () => false }));
+      await expect(runCheck(issues, {}, spec({ label: "b", that: () => false, message: () => 1 as never }))).rejects.toBeInstanceOf(FrameworkError);
+      expect(issues.map((issue) => issue.label)).toEqual(["a"]);
+    });
+  });
   test("a throw in a function propagates; the failed checks already collected are not the caller's problem", async () => {
     await expect(run({ that: () => { throw new Error("boom"); } })).rejects.toThrow("boom");
   });

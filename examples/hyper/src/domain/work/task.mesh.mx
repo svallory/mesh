@@ -5,7 +5,7 @@ import { Claim } from "./claim.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Completion } from "./completion.mesh.mx"
 import { Event } from "../audit/event.mesh.mx"
-import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, liveClaims, managesTaskOf, missingEvidenceOf, movedParent, noContainmentCycleOf, noOtherHolderOf, openChildren, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
+import { acceptedSubmissionOf, assignmentChanges, childrenSettledReason, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, liveClaims, managesTaskOf, missingEvidenceOf, movedParent, noContainmentCycleOf, noOtherHolderOf, openChildren, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
 import { assignableOf, collaboratorActiveOf, memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -199,7 +199,7 @@ entity :Task table="tasks"
         check :childrenSettled [
           that=() => &childrenSettled
           code="task.children-settled"
-          message="complete or cancel every child first"
+          message=() => childrenSettledReason(&children)
           details=() => ({ openChildren: openChildren(&children) })
         ]
         check :reviewRequired [

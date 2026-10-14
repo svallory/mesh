@@ -1272,7 +1272,8 @@ export function bindTask(
             await $runCheck($issues, $checks, {
               label: "childrenSettled",
               code: "task.children-settled",
-              message: "complete or cancel every child first",
+              entity: "work.Task",
+              message: $expressions["complete.check.childrenSettled.message"],
               source: { file: "src/domain/work/task.mesh.mx", line: 199, column: 9 },
               that: $expressions["complete.check.childrenSettled.that"],
               details: $expressions["complete.check.childrenSettled.details"],

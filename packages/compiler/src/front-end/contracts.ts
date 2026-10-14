@@ -171,9 +171,25 @@ const contracts: ContractMap = {
       ...named(),
       that: fn(true),
       code: text(true),
-      message: text(true),
+      // Text, or a function of the arguments `that` gets (ACT-30): the contract leaves the type open, `check` in the builder tells them apart.
+      message: { required: true },
       when: fn(),
       details: fn(),
+    },
+    // MX's contract takes one type per attribute, so `message` is left open and this hook refuses what is neither text nor a function.
+    analyze(calls, ctx) {
+      for (const call of calls) {
+        const a = get(call, "message");
+        if (!a) continue;
+        const type = node(a)?.type;
+        if (type === "ArrowFunctionExpression" || type === "FunctionExpression") continue;
+        const s = a as { kind: string; value?: unknown; atom?: unknown; member?: unknown; node?: unknown };
+        if (s.kind === "static" && typeof s.value === "string" && !s.atom && !s.member && !s.node) {
+          if (!s.value.trim()) ctx.fail("message cannot be empty", { at: a.loc, code: "MESH_TEXT" });
+          continue;
+        }
+        ctx.fail("message is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)", { at: a.loc, code: "MESH_ATTRIBUTE_VALUE" });
+      }
     },
   }),
   do: closed({ parents: [...ACTION_TYPES, "always"], children: steps }),

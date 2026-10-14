@@ -374,7 +374,7 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 |:--|:--|
 | `that=` | A function returning a boolean |
 | `code=` | The caller-facing code, a string or number, on the issue rather than the error |
-| `message=` | The sentence the caller sees |
+| `message=` | The sentence the caller sees: fixed text, or a function of the same arguments as `that=` that returns it |
 | `when=` | Apply this check only when the condition holds |
 | `details=` | A function returning data the caller receives on the issue, such as the reasons a task is not ready |
 
@@ -390,6 +390,19 @@ check :taskReady [
   details=({ input }) => taskReasons(input.task)
 ]
 ```
+
+**A message that names the record.** `message=` is either fixed text or a function taking the same arguments as `that=` and `details=`. Use the function when the sentence depends on the call: it can read `self`, `input`, `actor`, `context`, and what the check loads through a relationship.
+
+```text "src/domain/work/task.mesh.mx (excerpt)"
+check :childrenSettled [
+  that=() => &childrenSettled
+  code="task.children-settled"
+  message=() => childrenSettledReason(&children)
+  details=() => ({ openChildren: openChildren(&children) })
+]
+```
+
+The function runs only when the check fails, so a check that passes, or that `when=` skips, never computes it; it may be `async`. It must return text that is not blank, as `message=""` is refused at build time. One that throws, or returns anything else (`null`, `undefined` and blank text included), is a bug in your rule, so the call fails with a `FrameworkError` that names the entity, the check and the line of the check in the entity file, never with some other text in its place.
 
 #### A check that compares with the stored record
 

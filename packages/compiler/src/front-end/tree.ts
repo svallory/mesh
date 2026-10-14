@@ -71,6 +71,11 @@ export const atomOf = (a: Attr | undefined): StaticAttr["atom"] => (a?.kind === 
 const memberOf = (a: Attr | undefined) => (a?.kind === "static" ? a.member : undefined);
 const plainString = (a: Attr | undefined): StaticAttr | undefined =>
   a?.kind === "static" && !a.atom && !a.member && !a.node ? a : undefined;
+/** The text of a plain string option (`message="..."`), or `undefined` when the option is anything else (a function, an atom, a number). */
+export const textOf = (a: Attr | undefined): string | undefined => {
+  const text = plainString(a);
+  return text ? String(text.value) : undefined;
+};
 export const nodeOf = (a: Attr | undefined): SyntaxNode | undefined =>
   a?.kind === "dynamic"
     ? (a.value.node as SyntaxNode | undefined)

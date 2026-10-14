@@ -1,4 +1,4 @@
-import type { Issue, IssueSource } from "./errors.ts";
+import { FrameworkError, type Issue, type IssueSource } from "./errors.ts";
 import { now, type Clock, type Scope } from "./expr.ts";
 import type { Seams } from "./seams.ts";
 
@@ -20,7 +20,10 @@ export interface BindOptions {
 export interface CheckSpec {
   label: string;
   code: string;
-  message: string;
+  /** Fixed text, or (ACT-30) a function of the arguments `that` gets; it runs only for a failed check and must return a string that is not blank. */
+  message: string | ((scope: never) => string | PromiseLike<string>);
+  /** The entity the check belongs to, named by the error a `message` function causes. */
+  entity?: string;
   /** Where the `check` tag sits in the entity file: embedded as data, so a failure names its line (ADR-0039). */
   source: IssueSource;
   that: (scope: never) => unknown;
@@ -45,7 +48,9 @@ export function checkScope<S extends Scope<object>>(scope: S): Omit<S, "before">
  * Run one check and, if it fails, add its issue to `issues`; never throws for a failed check, so that every failed
  * check of an action is reported together. A check passes when `that` is true. `false` fails it, and so does an
  * unknown result (`null`), because a rule over a missing value must not pass silently (ADR-0012, ruling D1). A `when`
- * that is not true, unknown included, skips the check. `details` is worked out only for a failed check.
+ * that is not true, unknown included, skips the check. `details` and a `message` function are worked out only for a failed
+ * check. A `message` function that throws or returns anything but a non-blank string is a `FrameworkError` naming the entity, the
+ * check and its line (ACT-30): the failure is never swallowed and never replaced by other text.
  */
 export async function runCheck(issues: Issue[], scope: object, spec: CheckSpec): Promise<void> {
   const s = scope as never;
@@ -56,10 +61,28 @@ export async function runCheck(issues: Issue[], scope: object, spec: CheckSpec):
     label: spec.label,
     code: spec.code,
     path: [],
-    message: spec.message,
+    message: typeof spec.message === "string" ? spec.message : await messageOf(spec, s, spec.message),
     source: spec.source,
     details: details === undefined ? null : details,
   });
+}
+
+/** Run a check's `message` function; any failure of it names the check (ACT-30). */
+async function messageOf(spec: CheckSpec, scope: never, message: (scope: never) => unknown): Promise<string> {
+  const where = `the message of check :${spec.label}${spec.entity ? ` of ${spec.entity}` : ""} (${spec.source.file}:${spec.source.line})`;
+  let text: unknown;
+  try {
+    text = await message(scope);
+  } catch (cause) {
+    throw new FrameworkError(`${where} threw: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+  if (typeof text !== "string") {
+    throw new FrameworkError(`${where} must return a string, and returned ${text === null ? "null" : Array.isArray(text) ? "an array" : typeof text}`);
+  }
+  if (text.trim() === "") {
+    throw new FrameworkError(`${where} must return text, and returned a blank string`);
+  }
+  return text;
 }
 
 /** The named keys of each member of `U`; an action that takes nothing has none (its input type is `{ [key: string]: never }`). */

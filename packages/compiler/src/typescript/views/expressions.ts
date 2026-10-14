@@ -138,12 +138,13 @@ function collect(entity: Entity): Found[] {
   const covers = (scope: { types?: readonly string[]; actions?: readonly { name: string }[] }) => effectiveActions(entity).filter((action) => action.kind !== "read"
     && ((!scope.types && !scope.actions) || scope.types?.includes(action.kind) || scope.actions?.some((ref) => ref.name === action.name)));
   entity.computed.forEach((c) => { if (c.body) add(`computed.${c.name}`, `computed ${c.name}`, c.body, false); });
-  const checks = (prefix: string, list: { label: string; that: Expression; when?: Expression; details?: Expression }[]) => {
+  const checks = (prefix: string, list: { label: string; that: Expression; when?: Expression; details?: Expression; message: string | Expression }[]) => {
     phase = "check";
     for (const check of list) {
       add(`${prefix}.check.${check.label}.that`, `check :${check.label} that`, check.that, true);
       if (check.when) add(`${prefix}.check.${check.label}.when`, `check :${check.label} when`, check.when, true);
       if (check.details) add(`${prefix}.check.${check.label}.details`, `check :${check.label} details`, check.details, false);
+      if (typeof check.message !== "string") add(`${prefix}.check.${check.label}.message`, `check :${check.label} message`, check.message, false);
     }
   };
   const steps = (prefix: string, list: Step[], path: string) => {

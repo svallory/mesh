@@ -63,6 +63,7 @@ import {
   readMemberLine,
   readMembers,
   tags,
+  textOf,
   valueOf,
   type Attr,
   type IrImport,
@@ -561,13 +562,21 @@ function buildEntity(
       }
     }
   }
+  /** A check's `message=`: fixed text, or (ACT-30) a function of the arguments `that` gets. Anything else is refused. */
+  const message = (tag: Tag): string | Expression => {
+    const a = attr(tag, "message");
+    const text = textOf(a);
+    if (text !== undefined) return text;
+    if (nodeOf(a)?.type === "ArrowFunctionExpression" || nodeOf(a)?.type === "FunctionExpression") return expr(a);
+    throw new Error("A check's `message=` is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)");
+  };
   const checks = (holder: Tag): Check[] => {
     const names = new Set<string>();
     return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).map((tag) => {
       const label = declaredName(tag);
       if (names.has(label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${label}`, tag);
       names.add(label);
-      return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: String(opt(tag, "message")), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
+      return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
     });
   };
   const steps = (holder: Tag): Step[] =>

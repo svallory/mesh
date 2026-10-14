@@ -474,7 +474,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // ---- end policies ------------------------------------------------------------------------------------------
 
     // What the checks read through a relationship or a computed field, loaded onto the record before they run.
-    const checkNeeds = [...new Set(checks.flatMap((check) => [check.that, check.when, check.details].flatMap((e) => e?.needs ?? [])))].sort();
+    const checkNeeds = [...new Set(checks.flatMap((check) => [check.that, check.when, check.details, check.message].flatMap((e) => (typeof e === "object" ? e.needs ?? [] : []))))].sort();
     // Does the call need the stored row? An update always reads it (every update is read then write, ADR-0072);
     // a destroy reads it only when something in its body can see it.
     const reads = action.kind === "update" || checks.length > 0 || steps.length > 0 || recordPolicies.length > 0;
@@ -491,7 +491,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
     const stamped = entity.attributes.filter((a) => a.on === "update");
     // Does any function of the action read a relationship or computed field? Only then is something ever loaded onto the record.
-    const anyNeeds = [...recordPolicies, ...checks.flatMap((check) => [check.that, check.when, check.details]), ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
+    const anyNeeds = [...recordPolicies, ...checks.flatMap((check) => [check.that, check.when, check.details, typeof check.message === "string" ? undefined : check.message]), ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
       if (step.kind === "set") return step.assignments.map(({ value }) => (isExpression(value) ? value : undefined));
       if (step.kind === "when") return [step.condition, ...step.steps.flatMap(expressionsOf)];
       return step.kind === "run" ? [step.fn] : [];
@@ -628,7 +628,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         const parts = [
           `label: ${JSON.stringify(check.label)}`,
           `code: ${JSON.stringify(check.code)}`,
-          `message: ${JSON.stringify(check.message)}`,
+          // Only a message function names its entity (in the error it can cause); text needs nothing more.
+          ...(typeof check.message === "string" ? [] : [`entity: ${JSON.stringify(entity.fqn)}`]),
+          `message: ${typeof check.message === "string" ? JSON.stringify(check.message) : idOf(check.message)}`,
           `source: ${source}`,
           `that: ${idOf(check.that)}`,
           ...(check.when ? [`when: ${idOf(check.when)}`] : []),
