@@ -2,3 +2,4 @@ hyper.db
 hyper.db-journal
 hyper.db-wal
 hyper.db-shm
+.spec/

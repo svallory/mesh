@@ -1,7 +1,7 @@
 // Helpers for the identity entity files and the identity functions: reads through `Mesh.privileged`, which runs the
 // entity's reads with no policy inside the running transaction, each named after the Hyper rule it follows.
 import { Mesh } from "meshfw";
-import { Collaborator, Membership } from "#mesh/domain/identity";
+import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
 import type { Role } from "../../context";
 
 /**
@@ -65,4 +65,12 @@ export async function retireKeepsAnOwnerOf(collaboratorId: string): Promise<bool
 export async function nameFreeOf(name: string, exceptId?: string | null): Promise<boolean> {
   const same = await Mesh.privileged(Collaborator).read({ filter: { name: { eq: name }, state: { eq: "active" } } });
   return same.every((collaborator) => collaborator.id === exceptId);
+}
+
+/**
+ * `workspace.exists` (PROTOCOL.md:42, :52): one engine hosts exactly one workspace, which bootstrap creates, so a create
+ * is refused once any workspace exists.
+ */
+export async function noWorkspaceOf(): Promise<boolean> {
+  return (await Mesh.privileged(Workspace).read({ limit: 1 })).length === 0;
 }

@@ -152,12 +152,8 @@ export function bindWorkspace(
             // plan: a create is one insert; nothing is read first
             const $changes: $Record = {
               id: $uuidv7(),
-              name:
-                $Object.hasOwn(parsed, "name") && parsed.name !== undefined ? parsed.name : null,
-              location:
-                $Object.hasOwn(parsed, "location") && parsed.location !== undefined
-                  ? parsed.location
-                  : "local",
+              name: null,
+              location: "local",
               state: "active",
               version: 1,
             };
@@ -175,6 +171,23 @@ export function bindWorkspace(
             ) as unknown as $Scope<CreateWorkspaceInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // validate: every check runs, and every failed check is reported together
+            const $issues: $Issue[] = [];
+            const $checks = $checkScope($s);
+            await $runCheck($issues, $checks, {
+              label: "workspaceUnique",
+              code: "workspace.exists",
+              message:
+                "this engine already hosts its workspace; read it with workspace.get, or rename it",
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 17, column: 9 },
+              that: $expressions["create.check.workspaceUnique.that"],
+            });
+            if ($issues.length > 0) throw new $InvalidInputError($issues);
+            // the input: the member inputs the caller sent, applied now that the checks have passed
+            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
+              $changes.name = $record.name = parsed.name;
+            if ($Object.hasOwn(parsed, "location") && parsed.location !== undefined)
+              $changes.location = $record.location = parsed.location;
             // data layer
             const $stored = await tx.insert(tables.workspaces, $changes);
             $noteWrite(tx);
@@ -282,14 +295,14 @@ export function bindWorkspace(
               label: "workspaceActive",
               code: "workspace.active",
               message: "the workspace has moved; it can no longer be changed",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 21, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 27, column: 9 },
               that: $expressions["rename.check.workspaceActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 26, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 32, column: 9 },
               that: $expressions["rename.check.versionMatches.that"],
               details: $expressions["rename.check.versionMatches.details"],
             });
@@ -302,7 +315,7 @@ export function bindWorkspace(
               const $value = await $expressions["rename.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/workspace.mesh.mx:34:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/workspace.mesh.mx:40:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }

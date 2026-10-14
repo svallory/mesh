@@ -1,4 +1,4 @@
-import { memberOf, roleIn } from "./identity.helpers"
+import { memberOf, noWorkspaceOf, roleIn } from "./identity.helpers"
 import { Mesh } from "meshfw"
 
 entity :Workspace table="workspaces"
@@ -13,6 +13,12 @@ entity :Workspace table="workspaces"
       input
         &name
         &location
+      validate
+        check :workspaceUnique [
+          that=async () => await noWorkspaceOf()
+          code="workspace.exists"
+          message="this engine already hosts its workspace; read it with workspace.get, or rename it"
+        ]
     update :rename
       input
         &name
