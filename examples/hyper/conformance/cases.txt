@@ -12,6 +12,10 @@
 01.3 transport [PROTOCOL.md#transport] > a batch (JSON array) is rejected with invalid_request (-32600)
 01.3 transport [PROTOCOL.md#transport] > pipelined requests on one connection are all answered and matched by id
 01.3 transport [PROTOCOL.md#transport] > several connections can be open at once
+02.1 guests [domain/core/membership.md#roles] > a guest cannot send work commands: permission_denied role
+02.1 guests [domain/core/membership.md#roles] > a guest cannot be assigned work: rule_violation assignment.assignee-role
+02.1 guests [domain/core/membership.md#roles] > task.next for a guest is null (a guest may not claim)
+02.1 guests [domain/core/membership.md#roles] > a collaborator with no membership cannot act or read: permission_denied membership
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a member cannot register, grant, change roles, revoke or retire: permission_denied role
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > one active membership per collaborator: rule_violation membership.none-active
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a revoked collaborator returns through a new grant (a new membership)
@@ -20,3 +24,35 @@
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > collaborator names are unique among active collaborators: rule_violation collaborator.name-unique
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a guest may update its own profile, and only its own (collaborator.self-or-owner)
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > changing a role to the one it already has is rejected (membership.unchanged)
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > phase precedence: a guest with a stale expectedVersion is rejected by the permission phase; content never runs
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > one phase, several failures: a guest claiming a Task assigned to someone else may report role, claim.assignee, or both (permission)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.create with a parent: the parent must exist (not_found) and be open (task.parent-open)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > no-ops are rejected: task.update with nothing that differs (task.unchanged), task.assign to the same assignee (assignment.unchanged)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > one phase, several failures: a no-op update of a canceled Task may report task.open, task.unchanged, or both (content)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.cancel/reopen: the assignee, the delegator or an owner — not another member (task.manager)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > the creator may cancel and reopen its Task while it is unassigned, not once someone else delegated it
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > unknown Task IDs are not_found
+03.2 hierarchy [domain/core/task.md#rules] > task.move is rejected while the Task has an active claim (task.no-active-claim)
+03.2 hierarchy [domain/core/task.md#rules] > task.list filters by parent (null = top-level) and stored state
+03.2 hierarchy [domain/core/task.md#rules] > case 8: two concurrent moves that together would make a parent cycle — exactly one is rejected
+03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/completion.md#rules] > case 7: completing a parent with an open child fails naming the child; canceling the child with a reason allows it
+03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/completion.md#rules] > reopening a done Task keeps its earlier completion; completing again adds a second one
+04.1 dependency commands [domain/core/dependency.md#commands] > rejects a self-dependency, a duplicate, an unknown Task, removing a missing one, and a cycle
+04.1 dependency commands [domain/core/dependency.md#commands] > a guest cannot add dependencies
+04.1 dependency commands [domain/core/dependency.md#commands] > case 8: two concurrent dependency.add that together would make a cycle — exactly one is rejected
+04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > a blocked Task cannot be claimed (claim.task-ready, with reasons); completing it succeeds with the dependency as a warning
+04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > only done satisfies: prerequisite done → ready; canceled → blocked with prerequisite-canceled
+04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > a prerequisite reopened after the claim: review.accept succeeds and returns it as a warning
+04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > derived state precedence: in-review over claimed over blocked over ready; stored states win
+05.2 claim race — case 4 [domain/core/claim.md#rules] > race on an assigned Task between its assignee's two connections: one wins, the other gets claim.task-ready
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > only the reviewer may review — not the worker, not another member, not even an owner (review.reviewer)
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > with the waiver, the assignee's own pending submission is accepted the same way (review-waived)
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > a review binds to the submission it saw: editing the Task afterwards does not change the submission
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > the reviewer is the parent's assignee when it has one (parent-assignee), else the parent's creator
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > review is required when the performer is not the reviewer: task.complete is rejected (task.review-required)
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > while holding the claim, task.complete needs the current fence (claim.current-fence); another holder blocks others (claim.holder)
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > the reviewer cannot bypass a pending submission from someone else with task.complete (task.no-foreign-submission)
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > accepting checks the parent rule: a child with an open grandchild cannot be accepted (task.children-settled)
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > changing roles resolves nothing pending: demoting the reviewer leaves the submission pending, and a guest reviewer cannot act
+07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > expectedVersion is checked on the command's target: the dependent for dependency.add, the membership for change-role
+07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > version and entity rules share the content phase: a stale update on a canceled Task may report expected-version, task.open, or both
