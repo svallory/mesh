@@ -41,13 +41,27 @@ test("`message` is required", () => {
   expect(errors("").length).toBeGreaterThan(0);
 });
 
-test.each([["a number", "message=42"], ["an atom", "message=:oops"], ["a boolean", "message=true"], ["a bare expression", "message=`text`"]])(
-  "%s is refused, with a diagnostic and no model",
-  (_name, message) => {
-    const result = built(message);
-    expect(result.diagnostics.filter((d) => d.severity === "error").length).toBeGreaterThan(0);
-  },
-);
+const where = (message: string) => errors(message).map((d) => [d.code, d.position.line, d.position.column]);
+
+test.each([
+  ["a number", "message=42"], ["a negative number", "message=-1"], ["null", "message=null"], ["a boolean", "message=true"],
+  ["a list", "message=[1]"], ["a bare template", "message=`text`"], ["a member path", "message=Foo.bar"], ["a member reference", "message=&title"],
+])("%s is MESH_ATTRIBUTE_VALUE at the attribute, not MESH_MODEL_SHAPE at the entity", (_name, message) => {
+  expect(where(message)).toEqual([["MESH_ATTRIBUTE_VALUE", 11, 10]]);
+});
+
+test("an atom is MESH_ATTRIBUTE_VALUE at the attribute", () => {
+  expect(where("message=:oops").map(([code, line]) => [code, line])).toEqual([["MESH_ATTRIBUTE_VALUE", 11]]);
+});
+
+test.each([['""'], ['"   "'], ['"\t"']])("blank text %s is MESH_TEXT at the attribute", (text) => {
+  expect(where(`message=${text}`)).toEqual([["MESH_TEXT", 11, 10]]);
+});
+
+test("a refused value is not a model-shape failure of the whole entity", () => {
+  const result = built("message=42");
+  expect(result.diagnostics.map((d) => d.code)).not.toContain("MESH_MODEL_SHAPE");
+});
 
 test("a message function that reads `before` is refused like `that=` (`before` is gone from validate)", () => {
   const found = errors("message=({ before }) => before.title");
