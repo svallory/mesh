@@ -285,7 +285,7 @@ describe("the daemon", () => {
     }
 
     const reasons = unserved(methods);
-    expect([...reasons.keys()]).toContain("task.get");
+    expect([...reasons.keys()]).toContain("events.read");
     for (const [method, why] of reasons) {
       // An unknown actor would be -32001 had its context been built.
       const { error } = await client.call(method, { ...command(crypto.randomUUID(), {}), taskId: crypto.randomUUID() });

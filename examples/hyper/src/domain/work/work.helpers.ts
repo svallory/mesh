@@ -407,26 +407,15 @@ export async function derivedStateOf(taskId: string): Promise<DerivedState | nul
 export interface SubmittedVersions {
   /** The submission's state, or null when there is no such submission. */
   readonly state: string | null;
-  /** The Task's version when it was submitted. */
-  readonly submitted: number | null;
   /** The Task's version now. */
   readonly current: number | null;
 }
 
-/** The submission `submissionId`'s state and its Task's versions, for `review.accept` and `review.return`. */
+/** The submission `submissionId`'s state and its Task's current version, for `review.accept` and `review.return`. */
 export async function submittedVersionsOf(submissionId: string): Promise<SubmittedVersions> {
   const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
-  if (!submission) return { state: null, submitted: null, current: null };
-  return { state: submission.state, submitted: submission.taskVersion, current: await taskVersionOf(submission.taskId) };
-}
-
-/**
- * `submission.task-version` (`tasks/review/rules.ex:10-25`): a pending submission's Task is one version past the one
- * submitted (submitting touches it here, which Hyper's engine does not), so nothing changed it since. Refused when the submission does not exist.
- */
-export function taskUnchangedSinceSubmit(versions: SubmittedVersions): boolean {
-  if (versions.state === null) return false;
-  return versions.state !== "pending" || (versions.submitted !== null && versions.current === versions.submitted + 1);
+  if (!submission) return { state: null, current: null };
+  return { state: submission.state, current: await taskVersionOf(submission.taskId) };
 }
 
 /** Which part of the reviewer rule names the reviewer of the Task `taskId` (`review.accept`'s `ruleApplied`). */

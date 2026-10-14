@@ -3,9 +3,9 @@
 // aggregates is called through its function in `src/domain/<module>/<module>.commands.ts`, never through the generated
 // action alone (PORTING.md). The rule `role`, a permission check in Hyper, is a policy since M8b: its cases, in
 // POLICIES, fail with `ForbiddenError` naming the policy; `attempt.claimer` is both a rule and a policy, as in Hyper.
-// The rule whose case needs plugins is listed in NOT_PORTED with the reason and the milestone; the last test checks
-// that the three lists together are the 57, and that every code an entity file reports, at any depth under the domain
-// root, has its cases here.
+// The rule whose case needs plugins is listed in NOT_PORTED with the reason and the milestone, and the rule the spec does
+// not have, in NOT_IN_THE_SPEC (ADR-0072); a test checks that the four lists together are the 57, and that every code
+// an entity file reports, at any depth under the domain root, has its cases here.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -583,17 +583,6 @@ const RULES: Record<string, Case> = {
       expect(codes(issues)).toEqual(["submission.none-pending"]);
     },
   },
-  "submission.task-version": {
-    pass: async (w) => {
-      const { submission } = await submitted(w);
-      expect((await reviewAccept({ submission: submission.id }, as(w.alice), w.binding)).task.state).toBe("done");
-    },
-    fail: async (w) => {
-      const { submission } = await submitted(w);
-      await Task.setPriority({ id: w.task.id, priority: 1 }, as(w.alice));
-      await refused(reviewAccept({ submission: submission.id }, as(w.alice), w.binding), "submission.task-version");
-    },
-  },
   "expected-version": {
     pass: async (w) => {
       expect((await Task.setPriority({ id: w.task.id, priority: 1, expectedVersion: 1 }, as(w.alice))).version).toBe(2);
@@ -909,6 +898,14 @@ const NOT_PORTED: Record<string, string> = {
   "task.not-blocked": "asks the blocking-condition providers (`tasks/task/rules.ex:82`); providers arrive with the plugin hook points in M6 (G11)",
 };
 
+/**
+ * Hyper's rules the spec has no rule for, which the port does not have: it follows the spec's v0 and nothing else
+ * (ADR-0072), and the Elixir engine is not a source.
+ */
+const NOT_IN_THE_SPEC: Record<string, string> = {
+  "submission.task-version": "not ported: the spec has no such rule (ADR-0072). The Elixir engine refuses a review of a submission whose Task changed after it was submitted (`tasks/review/rules.ex:10-25`); the spec binds a review to the submission it saw, whatever happened to the Task since (conformance `06:128`)",
+};
+
 /** Appendix A of the gap analysis: the 57 rule names, in its order. */
 const HYPER_RULES = [
   "workspace.active", "collaborator.active", "collaborator.name-unique", "collaborator.kind-immutable", "role",
@@ -933,10 +930,12 @@ describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case
   test("the rules run here and the ones not ported are Hyper's 57, and every code an entity file reports is run here", () => {
     expect(HYPER_RULES).toHaveLength(57);
     expect(new Set(HYPER_RULES).size).toBe(57);
-    expect(Object.keys(RULES)).toHaveLength(55);
+    expect(Object.keys(RULES)).toHaveLength(54);
     expect(Object.keys(POLICIES)).toEqual(["role"]);
     expect(Object.keys(NOT_PORTED)).toEqual(["task.not-blocked"]);
-    expect([...Object.keys(RULES), ...Object.keys(POLICIES), ...Object.keys(NOT_PORTED)].sort()).toEqual([...HYPER_RULES].sort());
+    expect(Object.keys(NOT_IN_THE_SPEC)).toEqual(["submission.task-version"]);
+    const lists = [...Object.keys(RULES), ...Object.keys(POLICIES), ...Object.keys(NOT_PORTED), ...Object.keys(NOT_IN_THE_SPEC)];
+    expect(lists.sort()).toEqual([...HYPER_RULES].sort());
     // Every entity file under the domain root (`mesh.config.ts`), at any depth.
     const domain = resolve(import.meta.dir, "../src/domain");
     const files = readdirSync(domain, { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".mesh.mx"));
@@ -946,6 +945,16 @@ describe("roadmap M5 test 9: each of Hyper's rules, a passing and a failing case
       for (const [, code] of readFileSync(resolve(domain, file), "utf8").matchAll(/code="([^"]+)"/g)) reported.add(code!);
     expect([...reported].sort()).toEqual([...Object.keys(RULES), ...Object.keys(PORT_ONLY)].sort());
   });
+
+  test("submission.task-version is not ported: a Task changed after the submission is still accepted, and the submission keeps the version it saw", () => within(async (w) => {
+    const { submission } = await submitted(w);
+    const changed = await Task.update({ id: w.task.id, intent: "changed after submission" }, as(w.alice));
+    const accepted = await reviewAccept({ submission: submission.id }, as(w.alice), w.binding);
+    expect(accepted.task.state).toBe("done");
+    expect(accepted.task.version).toBeGreaterThan(changed.version);
+    expect(accepted.review.submissionId).toBe(submission.id);
+    expect((await one(Submission.read({ filter: { id: { eq: submission.id } } }, as(w.alice)))).taskVersion).toBe(submission.taskVersion);
+  }));
 });
 
 describe("rules together, and the version rule on the other entities", () => {

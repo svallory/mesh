@@ -1,7 +1,7 @@
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Task } from "./task.mesh.mx"
-import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf, taskUnchangedSinceSubmit } from "./work.helpers"
+import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -25,12 +25,6 @@ entity :Review table="reviews"
           that=async ({ input }) => (await submittedVersionsOf(input.submission)).state === :pending
           code="submission.pending"
           message="the submission is not pending"
-        ]
-        check :taskVersion [
-          that=async ({ input }) => taskUnchangedSinceSubmit(await submittedVersionsOf(input.submission))
-          code="submission.task-version"
-          message="the task changed since this was submitted; return it for rework"
-          details=async ({ input }) => { const { submitted, current } = await submittedVersionsOf(input.submission); return { submitted, current }; }
         ]
         check :versionMatches [
           that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(input.submission)).current

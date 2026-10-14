@@ -4,7 +4,7 @@
 // its current assignment, live claim and pending submission, and the reviewer the rule names now.
 import { Mesh } from "meshfw";
 import type { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
-import { Assignment, Claim, Dependency, Review, Submission, type Task } from "#mesh/domain/work";
+import { Assignment, Claim, Completion, Dependency, type EvidenceReference, LateResult, Review, Submission, type Task } from "#mesh/domain/work";
 import { blockReasonsOf, currentAssignment, derivedStateOf, liveClaim, reviewerFor } from "../domain/work/work.helpers";
 
 type Instant = Pick<Date, "toISOString">;
@@ -75,19 +75,86 @@ export function reviewView(review: Review) {
   };
 }
 
-/** A submission and its review, `null` until it is decided. The stored evidence is the list of ids it was given, or none. */
+/** The evidence ids a submission or a late result stores: the list it was given, or none. */
+const evidenceOf = (evidence: unknown) => (Array.isArray(evidence) ? (evidence as string[]) : []);
+
+/** A submission and its review, `null` until it is decided. */
 export function submissionView(submission: Submission, review: Review | null) {
   return {
     id: submission.id,
     taskId: submission.taskId,
     submitterId: submission.submitterId,
     summary: submission.summary,
-    evidence: Array.isArray(submission.evidence) ? (submission.evidence as string[]) : [],
+    evidence: evidenceOf(submission.evidence),
     taskVersion: submission.taskVersion,
     fence: submission.fence,
     state: submission.state,
     submittedAt: time(submission.submittedAt),
     review: review === null ? null : reviewView(review),
+  };
+}
+
+/** A submission with its review read through `Mesh.privileged`: there is one review at most per submission. */
+export async function reviewedSubmissionView(submission: Submission) {
+  const [review] = await Mesh.privileged(Review).read({ filter: { submissionId: { eq: submission.id } }, limit: 1 });
+  return submissionView(submission, review ?? null);
+}
+
+export function completionView(completion: Completion) {
+  return {
+    id: completion.id,
+    taskId: completion.taskId,
+    rule: completion.rule,
+    submissionId: completion.submissionId,
+    completedBy: completion.completedById,
+    completedAt: time(completion.completedAt),
+  };
+}
+
+export function lateResultView(lateResult: LateResult) {
+  return {
+    id: lateResult.id,
+    taskId: lateResult.taskId,
+    submitterId: lateResult.submitterId,
+    fence: lateResult.fence,
+    summary: lateResult.summary,
+    evidence: evidenceOf(lateResult.evidence),
+    recordedAt: time(lateResult.recordedAt),
+  };
+}
+
+export function evidenceReferenceView(evidenceReference: EvidenceReference) {
+  return {
+    id: evidenceReference.id,
+    kind: evidenceReference.kind,
+    locator: evidenceReference.locator,
+    contentHash: evidenceReference.contentHash,
+    description: evidenceReference.description,
+    recordedBy: evidenceReference.recordedById,
+    recordedAt: time(evidenceReference.recordedAt),
+  };
+}
+
+/**
+ * The Task's history as `task.get` returns it (PROTOCOL.md:125): every assignment, claim, submission with its review,
+ * late result and completion, each list in the order the records were made (ids are time-ordered UUIDs, which break a
+ * tie within one millisecond).
+ */
+export async function taskHistory(taskId: string) {
+  const ofTask = { taskId: { eq: taskId } };
+  const assignments = await Mesh.privileged(Assignment).read({ filter: ofTask, sort: ["startedAt", "id"] });
+  const claims = await Mesh.privileged(Claim).read({ filter: ofTask, sort: ["acquiredAt", "id"] });
+  const submissions = await Mesh.privileged(Submission).read({ filter: ofTask, sort: ["submittedAt", "id"] });
+  const reviews = submissions.length === 0 ? [] : await Mesh.privileged(Review).read({ filter: { submissionId: { in: submissions.map((submission) => submission.id) } } });
+  const reviewOf = new Map(reviews.map((review) => [review.submissionId, review]));
+  const lateResults = await Mesh.privileged(LateResult).read({ filter: ofTask, sort: ["recordedAt", "id"] });
+  const completions = await Mesh.privileged(Completion).read({ filter: ofTask, sort: ["completedAt", "id"] });
+  return {
+    assignments: assignments.map(assignmentView),
+    claims: claims.map(claimView),
+    submissions: submissions.map((submission) => submissionView(submission, reviewOf.get(submission.id) ?? null)),
+    lateResults: lateResults.map(lateResultView),
+    completions: completions.map(completionView),
   };
 }
 
