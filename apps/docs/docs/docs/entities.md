@@ -137,7 +137,7 @@ entity :Invoice
       authorize-if=({ actor }) => isStaff(actor)
 ```
 
-Only relative, named imports of files inside `src/domain/` are allowed. An import name, whether a helper or an alias for another entity, may not start with `$` or `l$`: Mesh uses those prefixes for the names it generates, and the build refuses the binding (`MESH_HELPER_NAME`). An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. So it runs even behind a guard: in `input.m !== null && isBig(input.m)`, `isBig` is called with `null` too, and a helper must accept every value it can be given. A `run` step is different: it is plain code and may call anything.
+Imports are relative and named. A helper may come from any file inside the project, not only from `src/domain/`; an import of another entity stays inside `src/domain/`, where entity files live. An import name, whether a helper or an alias for another entity, may not start with `$` or `l$`: Mesh uses those prefixes for the names it generates, and the build refuses the binding (`MESH_HELPER_NAME`). An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. So it runs even behind a guard: in `input.m !== null && isBig(input.m)`, `isBig` is called with `null` too, and a helper must accept every value it can be given. A `run` step is different: it is plain code and may call anything.
 
 ### What a translated arrow may use
 

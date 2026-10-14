@@ -28,10 +28,10 @@ Each row is one proposed decision. "Row" is the id the decision records cite for
 | D13 | Aggregates | **Ruled, differently:** an aggregate file (`aggregate :Name`, a `root` line and an `entities` section), not a `part-of` flag; an aggregate contains concepts through its entities' attributes. Mesh does not prevent an entity from being a part of two aggregates | DOM-23, DOM-03, DOM-31 | [ADR-0080](../decisions/0080-aggregates-and-concepts.md) |
 | D14 | Event sourcing and CQRS | **Ruled as proposed:** two extensions, `@meshfw/event-sourcing` and `@meshfw/cqrs` | DOM-24 | [ADR-0081](../decisions/0081-event-sourcing-and-cqrs-are-extensions.md) |
 | D15 | Outbox | **Ruled, differently:** the outbox is core, and it comes with domain events in M6 | DOM-06 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md) |
-| D16 | Reactions and after-commit work | **Ruled, differently:** the planned `after-commit` step is dropped and the `afterCommit` seam is not used for it either; the way is `publish` plus a listener. `emit` became `publish`; a handler that updates a read-model row is `apply`, one that runs commands is `process` (the draft's `react`) | DOM-25, DOM-05 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md), [ADR-0083](../decisions/0083-names-for-the-new-constructs.md), [ADR-0053](../decisions/0053-validate-then-do.md) (amended) |
+| D16 | Reactions and after-commit work | **Ruled, differently:** the planned `after-commit` step is dropped and the `afterCommit` seam is not used for it either; the way is `publish` plus a listener. `emit` became `publish`; a handler that updates a read-model row is `project` (first ruled as `apply`; DOM-05, 2026-10-13), one that runs commands is `process` (the draft's `react`) | DOM-25, DOM-05 | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md), [ADR-0083](../decisions/0083-names-for-the-new-constructs.md), [ADR-0053](../decisions/0053-validate-then-do.md) (amended) |
 | D17 | Value types | **Ruled, differently:** `concept`, one construct that is both the value object and the Concepts library idea: a shared understanding of something with no identity and as many fields as it needs. A repository is allowed as a pattern, with no construct | DOM-26, DOM-27 | [ADR-0080](../decisions/0080-aggregates-and-concepts.md) |
-| D18 | Named checks | **Ruled, differently:** an entity-level `checks` section, referenced as `check &name` (DOM-28, amended 2026-10-12; first ruled as a bare `check :name`), in core (not MX check files, and not an extension-host point). Reusable blocks are `mixin` files included with `use`; Mesh ships `:timestamps` and `:versioned`. Step files (reusable steps) are dropped | DOM-28, DOM-04, DOM-33 | [ADR-0082](../decisions/0082-named-checks-and-mixins.md), [ADR-0053](../decisions/0053-validate-then-do.md) (amended) |
-| D19 | Name clashes | **Ruled as proposed for the port:** the table in section 5 is accepted, with the changed words (`publish`, `apply`, `process`, `uses`) | DOM-29 | [ADR-0083](../decisions/0083-names-for-the-new-constructs.md) |
+| D18 | Named checks | **Ruled, differently:** an entity-level `checks` section, referenced as `check &name` (DOM-28, amended 2026-10-12; first ruled as a bare `check :name`), in core (not MX check files, and not an extension-host point). Reusable blocks are `mixin` files, imported and included with `use mixin=Name`; Mesh ships `Timestamps` and `Versioned`, imported from `meshfw/mixins` like a project's own (DOM-33, amended 2026-10-13; first ruled as `use :timestamps`). Step files (reusable steps) are dropped | DOM-28, DOM-04, DOM-33 | [ADR-0082](../decisions/0082-named-checks-and-mixins.md), [ADR-0053](../decisions/0053-validate-then-do.md) (amended) |
+| D19 | Name clashes | **Ruled as proposed for the port:** the table in section 5 is accepted, with the changed words (`publish`, `project`, `process`, `uses`) | DOM-29 | [ADR-0083](../decisions/0083-names-for-the-new-constructs.md) |
 | D20 | Decide now: flat namespace, the meaning of `&`, seam payloads | **Partly ruled differently:** item 1 recommended one flat namespace, and the ruling is folder modules, not a flat namespace (`#mesh/domain/<module>`); `&name` always refers to a member declared by the type it sits in; item 3 (seam payloads) follows D9: no `events` field is needed once events come from the outbox | CMP-12, CMP-16, CMP-17, SYN-19 | [ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md) (amended), [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | D21 | Architecture rules: ring | **Ruled, differently:** the rule language, the engine and the presets are core, not an extension. Mesh uses them to guide users and agents. When they are built is **open** | DOM-30, DOM-10 (open) | [ADR-0084](../decisions/0084-architecture-rules-are-core.md) |
 | D22 | Architecture rules: file name and root tag | **Ruled as proposed:** `architecture.mesh.mx`, root `architecture :name` | DOM-30 | [ADR-0084](../decisions/0084-architecture-rules-are-core.md) |
@@ -455,7 +455,7 @@ entity :Task
   Domain events, outbox or event store. **Hyper.** No (the Task view is computed in memory, M7).
   **When.** After 1.0.
 
-  > **Names.** The block that updates a read-model row is called `apply`, not `handle`, and the one that runs commands is `process` ([ADR-0083], DOM-05). The syntax inside a projection is still the extension's to settle ([ADR-0081]).
+  > **Names.** The block that updates a read-model row is called `project`, not `handle` (first ruled as `apply`; DOM-05 reserved `apply` for event-sourced folding on 2026-10-13), and the one that runs commands is `process` ([ADR-0083], DOM-05). The syntax inside a projection is still the extension's to settle ([ADR-0081]).
 
 ```mx "src/domain/work/open-work.mesh.mx (sketch; extension @meshfw/cqrs)"
 import { Task } from "./task.mesh.mx"
@@ -543,7 +543,7 @@ events
     (`on=:create` on a timestamp, `on:load`).
   - **Sagas and process managers:** a `workflow` file kind from the workflows extension; its state is
     the engine's ([durable engines][a-durable]).
-  > **Replaced by a ruling.** The planned `after-commit` step is dropped, and the `afterCommit` seam is not used for this either. An effect after commit is a `publish` plus a listener; `emit` became `publish`, and `react` became `process` (a handler that runs commands) or `apply` (one that updates a read-model row). Step files are dropped as well (see 2.7). See [ADR-0079], [ADR-0083], [ADR-0053] (amended) (DOM-25, DOM-05).
+  > **Replaced by a ruling.** The planned `after-commit` step is dropped, and the `afterCommit` seam is not used for this either. An effect after commit is a `publish` plus a listener; `emit` became `publish`, and `react` became `process` (a handler that runs commands) or `project` (one that updates a read-model row). Step files are dropped as well (see 2.7). See [ADR-0079], [ADR-0083], [ADR-0053] (amended) (DOM-25, DOM-05).
 
 - **Ring.** Extension (`@meshfw/workflows`, owning reactions, jobs and workflows) with runner adapters.
   **Hyper.** No; lease expiry is an application timer (G17). **When.** After 1.0. Decision D16.
@@ -972,11 +972,11 @@ lists which have been edited and which wait for their user-docs pages, [ADR-0077
 
 ## 5. Name clashes (decision D19)
 
-> **Ruled.** The table is accepted for the port, with the words that changed (`publish` for `emit`, `process` for `react` and `apply` for `handle`, `uses` for `call`, `concept` for `value`, `mixin` for fragments). A repository construct may come later. See [ADR-0083] (DOM-29, DOM-27).
+> **Ruled.** The table is accepted for the port, with the words that changed (`publish` for `emit`, `process` for `react` and `project` for `handle`, `uses` for `call`, `concept` for `value`, `mixin` for fragments). A repository construct may come later. See [ADR-0083] (DOM-29, DOM-27).
 
 | Word | Meanings in play | Resolution |
 |:--|:--|:--|
-| **policy** | Mesh authorization ([ADR-0055]); EventStorming reaction; Evans ch. 12 Strategy "a.k.a. Policy" | `policy` is authorization only; a reaction is a listener, `apply` or `process` (the study proposed `react`; [ADR-0083]) |
+| **policy** | Mesh authorization ([ADR-0055]); EventStorming reaction; Evans ch. 12 Strategy "a.k.a. Policy" | `policy` is authorization only; a reaction is a listener, `project` or `process` (the study proposed `react`; [ADR-0083]) |
 | **repository** | DDD repository; Mesh's generated functions; the data layer | Mesh never uses the word; docs map it to the generated reads and writes |
 | **app** | Ruling-1 file; `apps/`; "your app"; application service; "the Hyper application" | Name the file `surface`; keep "application" for the user's program |
 | **service** | Domain, application, grab-bag class, microservice | `service` = Vernon's domain service; "application service" = the generated wrapper, docs only |
@@ -989,7 +989,7 @@ lists which have been edited and which wait for their user-docs pages, [ADR-0077
 | **module** | Mesh folder; Evans's Module; ES modules | Same as Evans's; no change |
 | **adapter / port** | Mesh ring; hexagonal; the Hyper port | Name nothing "port" |
 | **step** | `do` step; `step` file; workflow step | Decide with the workflows ADR |
-| **on** | `on=:create`; `on:load`; proposed reactions and projection handlers | Use `process` and `apply` (proposed as `react` and `handle`, in that order), not `on` ([ADR-0083]) |
+| **on** | `on=:create`; `on:load`; proposed reactions and projection handlers | Use `process` and `project` (proposed as `react` and `handle`, in that order), not `on` ([ADR-0083]) |
 | **check** | Mesh validation; Hyper's checks, which are every named rule across its four phases (§4.4, §7.1: `claim.assignee`, `expected-version`, ...) | Hyper's checks map to Mesh `check`s, policies and named checks (G04); the shared word is accurate |
 
 ## 6. The target project structure

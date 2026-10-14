@@ -27,7 +27,7 @@ The study's name-clash table (section 5) is accepted for the port, with the word
 
 | Word | Resolution |
 |:--|:--|
-| policy | Authorization only. The study's `react` is `publish` plus a listener; a read-model handler is `apply`, a command runner `process` ([ADR-0079](./0079-commands-events-and-the-outbox.md)) |
+| policy | Authorization only. The study's `react` is `publish` plus a listener; a read-model handler is `project` (first ruled as `apply`; DOM-05, 2026-10-13), a command runner `process` ([ADR-0079](./0079-commands-events-and-the-outbox.md)) |
 | repository | A pattern; no construct ([ADR-0080](./0080-aggregates-and-concepts.md)) |
 | app | The file kind is `surface` ([ADR-0077](./0077-surfaces-and-file-kinds.md)); "application" stays the user's program |
 | service | A domain service as Vernon defines it ([ADR-0078](./0078-services-and-where-effects-go.md)); the dependency keyword is `uses` |
