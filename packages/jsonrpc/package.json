@@ -1,0 +1,13 @@
+{
+  "name": "@meshfw/jsonrpc",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": ["src"],
+  "exports": { ".": "./src/index.ts" },
+  "description": "Newline-delimited JSON-RPC 2.0 over a Unix socket, dispatching to a method table given as plain data",
+  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "peerDependencies": { "@meshfw/runtime": "workspace:*" },
+  "devDependencies": { "@meshfw/runtime": "workspace:*", "zod": "4.6.5" }
+}

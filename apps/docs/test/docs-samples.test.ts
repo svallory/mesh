@@ -54,7 +54,11 @@ const tsconfig = {
       "@meshfw/runtime": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/jsonrpc": ["../../samples/mesh-api.d.ts"],
       "meshfw": ["../../samples/mesh-api.d.ts"],
+      // Every Mesh project depends on zod (its generated validators import it), so a sample may use it for its own
+      // schemas. The docs app does not install it; the compiler's own dependency, the same version, supplies the types.
+      "zod": ["../../../../packages/compiler/node_modules/zod"],
     },
   },
   files: [] as string[],
