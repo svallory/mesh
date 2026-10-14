@@ -28,18 +28,23 @@ function noMembership(reason: string) {
  * actor: an unknown or retired collaborator, or one with no active membership, is refused before the method runs, with
  * the spec's `membership` check, which also closes POL-18's gap (a non-member could otherwise tell a missing record
  * from a hidden one).
+ *
+ * `leaseMs` (`--lease-ms`) goes on every context the factory returns, the engine's included, so Claim `acquire` and
+ * `renew` read it (`ActionContext.leaseMs`, gap G34); left out, the contexts carry none and the lease is `LEASE_MS`.
  */
-export function contextFactory(actorless: ReadonlySet<string>, unserved: ReadonlyMap<string, string>) {
+export function contextFactory(actorless: ReadonlySet<string>, unserved: ReadonlyMap<string, string>, leaseMs?: number) {
+  const lease = leaseMs === undefined ? {} : { leaseMs };
+  const engine: ActionContext = leaseMs === undefined ? ENGINE : Object.freeze({ ...ENGINE, leaseMs });
   return async (call: Call, params: unknown): Promise<ActionContext> => {
     const why = unserved.get(call.method);
     if (why !== undefined) throw notServed(call.method, why);
-    if (actorless.has(call.method)) return ENGINE;
+    if (actorless.has(call.method)) return engine;
     const { actor, caller, commandId } = params as { readonly actor: string; readonly caller: string; readonly commandId?: string };
     const [collaborator] = isId(actor) ? await Mesh.privileged(Collaborator).read({ filter: { id: { eq: actor } }, limit: 1 }) : [];
     if (!collaborator) throw noMembership(`no collaborator with id ${actor}; register it, and have an owner grant it a membership`);
     if (collaborator.state !== "active") throw noMembership(`collaborator ${actor} is retired and can no longer act`);
     const [membership] = await Mesh.privileged(Membership).read({ filter: { collaboratorId: { eq: actor }, state: { eq: "active" } }, limit: 1 });
     if (!membership) throw noMembership(`collaborator ${actor} has no active membership; an owner can grant one`);
-    return { actor: { id: actor, role: membership.role }, caller, ...(commandId === undefined ? {} : { commandId }) };
+    return { actor: { id: actor, role: membership.role }, caller, ...(commandId === undefined ? {} : { commandId }), ...lease };
   };
 }

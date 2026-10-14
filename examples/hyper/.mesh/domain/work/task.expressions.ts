@@ -18,13 +18,13 @@ import {
   fenceDetails,
   fenceIsCurrent,
   invalidatedFences,
+  liveClaims,
   managesTaskOf,
   missingEvidenceOf,
   movedParent,
   noContainmentCycleOf,
   noOtherHolderOf,
   openChildren,
-  openClaims,
   ownPending,
   parentOpenOf,
   reviewNotRequiredOf,
@@ -277,11 +277,13 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:181:28)
   "cancel.step.1.run": ($s: $work$Task$StoredScope<$work$Task$CancelTaskInput>) => {
+    const $now = () => $.now($s);
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     return (async function ({ self, context }) {
-      for (const claim of openClaims(
+      for (const claim of liveClaims(
         await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+        $now(),
       ))
         await Claim.end(
           { id: claim.id, outcome: "revoked", reason: "task canceled" },
@@ -514,6 +516,7 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:305:28)
   "assign.step.1.run": ($s: $work$Task$StoredScope<$work$Task$AssignTaskInput>) => {
+    const $now = () => $.now($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, input, context }) {
@@ -524,8 +527,9 @@ export const $expressions = {
       );
       if (current) {
         if (current.assigneeId !== input.assignee)
-          for (const claim of openClaims(
+          for (const claim of liveClaims(
             await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+            $now(),
             current.assigneeId,
           ))
             await Claim.end(
@@ -567,6 +571,7 @@ export const $expressions = {
     $.add($s.self.version, 1),
   // run, plain (run-step) (src/domain/work/task.mesh.mx:334:28)
   "unassign.step.1.run": ($s: $work$Task$StoredScope<$work$Task$UnassignTaskInput>) => {
+    const $now = () => $.now($s);
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
     const Claim: $work$Claim$ReadOnly = $work$Claim$value;
     return (async function ({ self, context }) {
@@ -576,8 +581,9 @@ export const $expressions = {
         }),
       );
       if (!current) return;
-      for (const claim of openClaims(
+      for (const claim of liveClaims(
         await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }),
+        $now(),
         current.assigneeId,
       ))
         await Claim.end(

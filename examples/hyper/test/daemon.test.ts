@@ -1,8 +1,10 @@
 // The daemon as a process (`main.ts`, PROTOCOL.md:24-48): it prints `READY` and nothing else on standard output,
 // bootstraps once per database, keeps what it stored across a restart on the same `--db`, and refuses bad flags with
-// exit code 2. On `SIGTERM` or `SIGINT`, even one that arrives during start-up, it lets the calls inside a transaction
-// commit whole, closes the database, removes the socket file and exits 0, within 5 seconds even when a call never
-// settles. Over the wire, a non-member is `-32001` and a method it does not serve `-32010`, before the actor is read.
+// exit code 2, a `--lease-ms` that is not a positive integer included. Its lease sweeper expires a claim no command
+// touches within the protocol's 1000 ms. On `SIGTERM` or `SIGINT`, even one that arrives during start-up, it lets the
+// calls inside a transaction commit whole, closes the database, removes the socket file and exits 0, within 5 seconds
+// even when a call never settles. Over the wire, a non-member is `-32001` and a method it does not serve `-32010`,
+// before the actor is read.
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -345,7 +347,11 @@ describe("the daemon", () => {
       [["--db", db], "--socket is required"],
       [["--socket", socket], "--db is required"],
       [["--socket", socket, "--db", db, "--plugins", "plugins.ts"], "--plugins is not supported yet"],
-      [["--socket", socket, "--db", db, "--lease-ms", "1000"], "--lease-ms is not supported yet"],
+      ...["0", "-5", "1.5", "abc", "", "010", "1e3", "+5", " 5", "9007199254740993"].map(
+        (lease): [readonly string[], string] => [["--socket", socket, "--db", db, `--lease-ms=${lease}`], `--lease-ms must be a positive integer of milliseconds, got ${JSON.stringify(lease)}`],
+      ),
+      [["--socket", socket, "--db", db, "--lease-ms=8640000000000000"], "--lease-ms 8640000000000000 is too long"],
+      [["--socket", socket, "--db", db, "--lease-ms"], "--lease-ms"],
       [["--socket", socket, "--db", db, "--verbose"], "--verbose"],
       [["--socket", socket, "--db", db, "extra"], "extra"],
       [["--socket"], "--socket"],
@@ -355,8 +361,51 @@ describe("the daemon", () => {
       expect(await engine.proc.exited).toBe(2);
       expect(engine.out()).toBe("");
       expect(engine.err()).toContain(message);
-      expect(engine.err()).toContain("usage: bun examples/hyper/main.ts --socket <path> --db <path>");
+      expect(engine.err()).toContain("usage: bun examples/hyper/main.ts --socket <path> --db <path> [--lease-ms <n>]");
     }
+  }, TIMEOUT_MS);
+
+  test("--lease-ms sets the lease, and the sweeper expires a claim no command touches within 1000 ms of its expiresAt (PROTOCOL.md:312)", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([MAIN, "--socket", socket, "--db", db, "--lease-ms", "300"]);
+    await engine.ready();
+    const client = await connect(socket);
+    const owner: string = (await client.call("workspace.get", {})).result!.owners[0].id;
+    const task: string = (await client.call("task.create", command(owner, { title: "Left alone" }))).result!.task.id;
+    const acquired = (await client.call("claim.acquire", command(owner, { taskId: task }))).result!;
+    const expiresAt = Date.parse(acquired.claim.expiresAt);
+    expect(expiresAt - Date.parse(acquired.claim.acquiredAt)).toBe(300);
+
+    // Nothing touches the Task until the protocol's tolerance has passed.
+    await Bun.sleep(expiresAt + 1_000 - Date.now());
+    const { task: view, history } = (await client.call("task.get", { actor: owner, caller: "test", taskId: task })).result!;
+    expect(view).toMatchObject({ activeClaim: null, version: acquired.task.version + 1 });
+    expect(history.claims).toMatchObject([{ id: acquired.claim.id, state: "expired", endReason: "lease expired" }]);
+    const late = Date.parse(history.claims[0].endedAt) - expiresAt;
+    expect(late).toBeGreaterThanOrEqual(0);
+    expect(late).toBeLessThanOrEqual(1_000);
+
+    for (const method of ["claim.renew", "claim.release"]) {
+      const { error } = await client.call(method, command(owner, { taskId: task, fence: acquired.claim.fence }));
+      expect(error).toMatchObject({ code: -32003, data: { phase: "content", failures: [{ check: "claim.expired" }] } });
+    }
+    const again = await client.call("claim.acquire", command(owner, { taskId: task }));
+    expect(again.result?.claim).toMatchObject({ fence: acquired.claim.fence + 1, state: "active" });
+    client.close();
+    expect((await engine.stop()).code).toBe(0);
+  }, TIMEOUT_MS);
+
+  test("without --lease-ms a lease is 600000 ms", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([MAIN, "--socket", socket, "--db", db]);
+    await engine.ready();
+    const client = await connect(socket);
+    const owner: string = (await client.call("workspace.get", {})).result!.owners[0].id;
+    const task: string = (await client.call("task.create", command(owner, { title: "Held" }))).result!.task.id;
+    const { claim } = (await client.call("claim.acquire", command(owner, { taskId: task }))).result!;
+    expect(Date.parse(claim.expiresAt) - Date.parse(claim.acquiredAt)).toBe(600_000);
+    client.close();
+    expect((await engine.stop()).code).toBe(0);
   }, TIMEOUT_MS);
 
   test("a database it cannot open exits 1, with the reason on standard error", async () => {

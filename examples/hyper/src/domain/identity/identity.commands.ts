@@ -11,13 +11,17 @@ import { nested } from "../../context";
 import { connected, type Binding } from "../binding";
 
 /**
- * Revoke every active claim `holderId` holds, a lapsed one included, each through `Claim.revoke`, which bumps its
- * Task's version (`tasks/claim/changes/end_claim.ex:15-21`, `revoke_all`). Each is a nested call (`system`): the
- * actor's permission was decided on the command, as Hyper's `nested_opts` skips the claims' policies.
+ * Revoke every live claim `holderId` holds, each through `Claim.revoke`, which bumps its Task's version
+ * (`tasks/claim/changes/end_claim.ex:15-21`, `revoke_all`). Hyper's `revoke_all` also revokes a lapsed claim; the port
+ * leaves it to the lease sweeper, as `liveClaims` in `src/domain/work/work.helpers.ts` explains, and `Claim.revoke`
+ * refuses it. Whether a claim has lapsed is the claim's `lapsed` field, read inside the command's transaction, so it
+ * is decided at the transaction's instant (ACT-29), the one `Claim.revoke` checks: a lease that runs out while the
+ * command runs cannot pass this read and then fail the revoke. Each is a nested call (`system`): the actor's
+ * permission was decided on the command, as Hyper's `nested_opts` skips the claims' policies.
  */
 async function revokeHeldClaims(holderId: string, reason: string, context: ActionContext): Promise<void> {
-  for (const claim of await Mesh.privileged(Claim).read({ filter: { holderId: { eq: holderId }, state: { eq: "active" } } }))
-    await Claim.revoke({ id: claim.id, reason }, nested(context));
+  for (const claim of await Mesh.privileged(Claim).read({ filter: { holderId: { eq: holderId }, state: { eq: "active" } }, load: ["lapsed"] }))
+    if (!claim.lapsed) await Claim.revoke({ id: claim.id, reason }, nested(context));
 }
 
 /** `membership.revoke`: `Membership.revoke`, then the collaborator's claims (`memberships/membership/changes/revoke_claims.ex:11-15`). */

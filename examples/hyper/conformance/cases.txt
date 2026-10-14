@@ -45,6 +45,9 @@
 04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > a prerequisite reopened after the claim: review.accept succeeds and returns it as a warning
 04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > derived state precedence: in-review over claimed over blocked over ready; stored states win
 05.2 claim race — case 4 [domain/core/claim.md#rules] > race on an assigned Task between its assignee's two connections: one wins, the other gets claim.task-ready
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > renewing just after expiresAt is rejected with claim.expired even before claim.expired is emitted
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > one phase, several failures: renewing an expired claim with a wrong fence may report claim.expired, claim.current-fence, or both (content)
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > a result under a revoked fence is also a late result; a fence the actor never held is claim.current-fence
 06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > only the reviewer may review — not the worker, not another member, not even an owner (review.reviewer)
 06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > with the waiver, the assignee's own pending submission is accepted the same way (review-waived)
 06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > a review binds to the submission it saw: editing the Task afterwards does not change the submission

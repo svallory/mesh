@@ -9,9 +9,13 @@ import { roleOf } from "../identity/identity.helpers";
 /** The default lease (PROTOCOL.md:33, `--lease-ms`): 10 minutes. */
 export const LEASE_MS = 600_000;
 
-/** When a lease taken or renewed at `now` runs out (PROTOCOL.md:311, `tasks/claim/changes/lease.ex:23-26`). */
-export function leaseEnd(now: Date): Date {
-  return new Date(now.getTime() + LEASE_MS);
+/**
+ * When a lease taken or renewed at `now` runs out (PROTOCOL.md:311, `tasks/claim/changes/lease.ex:23-26`): `leaseMs`
+ * later, the call's `context.leaseMs`, or `LEASE_MS` when the context has none. An entity file's expression reads a
+ * missing key as `null`, so the default is applied here rather than as a default parameter.
+ */
+export function leaseEnd(now: Date, leaseMs?: number | null): Date {
+  return new Date(now.getTime() + (leaseMs ?? LEASE_MS));
 }
 
 /** A stored time as the records handed to a function carry it: read-only, so only its reading methods. */
@@ -40,11 +44,13 @@ export function claimToRelease<C extends ClaimFacts>(claims: readonly C[], now: 
 }
 
 /**
- * The claims to revoke: every claim still `active`, a lapsed one included, optionally only one holder's
- * (`tasks/claim/changes/end_claim.ex:16-21`, `revoke_all`).
+ * The claims a command revokes (`tasks/claim/changes/end_claim.ex:16-21`, `revoke_all`): the live ones, optionally
+ * only one holder's. Hyper's `revoke_all` revokes every claim still `active`, a lapsed one included; the port leaves a
+ * lapsed one to the lease sweeper (`src/daemon/sweeper.ts`), since a claim is expired the moment its lease runs out
+ * and no check may count it as active (PROTOCOL.md:312), and the protocol records the expiry as the engine's.
  */
-export function openClaims<C extends ClaimFacts>(claims: readonly C[], holderId?: string): C[] {
-  return claims.filter((claim) => claim.state === "active" && (holderId === undefined || claim.holderId === holderId));
+export function liveClaims<C extends ClaimFacts>(claims: readonly C[], now: Date, holderId?: string): C[] {
+  return claims.filter((claim) => claim.state === "active" && claim.expiresAt.getTime() > now.getTime() && (holderId === undefined || claim.holderId === holderId));
 }
 
 /** The active claims whose lease has run out, which `claim.acquire` expires first (`tasks/claim/changes/lease.ex:44-50`). */
@@ -52,14 +58,27 @@ export function lapsedClaims<C extends ClaimFacts>(claims: readonly C[], now: Da
   return claims.filter((claim) => claim.state === "active" && claim.expiresAt.getTime() <= now.getTime());
 }
 
+/** The claim `holderId` held with `fence` that expired or was revoked, or whose lease `lapsed` says ran out. */
+function staleOf<C extends ClaimFacts>(claims: readonly C[], fence: number | null | undefined, holderId: string, lapsed: (claim: C) => boolean): C | undefined {
+  if (fence === null || fence === undefined) return undefined;
+  return claims.find((claim) => claim.fence === fence && claim.holderId === holderId && (claim.state === "expired" || claim.state === "revoked" || lapsed(claim)));
+}
+
 /**
  * The claim `holderId` held with `fence` that expired or was revoked, or a still-active one whose lease ran out
  * (`tasks/queries.ex:22-33`, `stale_claim`): the fence of a late result.
  */
 export function staleClaim<C extends ClaimFacts>(claims: readonly C[], fence: number | null | undefined, holderId: string, now: Date): C | undefined {
-  if (fence === null || fence === undefined) return undefined;
-  return claims.find((claim) => claim.fence === fence && claim.holderId === holderId &&
-    (claim.state === "expired" || claim.state === "revoked" || (claim.state === "active" && claim.expiresAt.getTime() <= now.getTime())));
+  return staleOf(claims, fence, holderId, (claim) => claim.state === "active" && claim.expiresAt.getTime() <= now.getTime());
+}
+
+/**
+ * `staleClaim` for a function outside the actions, which has no `%.now`: the claims carry their `lapsed` field, read
+ * inside the function's transaction, so a lease is judged at the transaction's instant (ACT-29), the one the actions
+ * it then calls check the fence at.
+ */
+export function staleClaimWithLapsed<C extends ClaimFacts & { readonly lapsed: boolean }>(claims: readonly C[], fence: number | null | undefined, holderId: string): C | undefined {
+  return staleOf(claims, fence, holderId, (claim) => claim.lapsed);
 }
 
 /** Whether `fence` names a stale claim of `holderId` (`staleClaim`): the condition of a late result. */
@@ -75,8 +94,8 @@ export interface EndedClaimFacts extends ClaimFacts {
  * When a claim stopped counting for its holder, in milliseconds, or null while it is live or once it was released. A
  * claim is expired the moment its lease runs out, whether or not it was marked expired (PROTOCOL.md:312), so a revoked
  * or expired claim counts from its end or its lease end, whichever came first, and an active one from its lease end
- * once that has passed. The port marks a lapsed claim expired only when a command notices it (no sweeper), and a
- * command that revokes every open claim can end one whose lease had already run out, so `endedAt` alone would be late.
+ * once that has passed. The lease sweeper marks a lapsed claim expired some time after its lease ran out (up to a
+ * quarter of a second in the daemon, never in a test that runs no sweeper), so `endedAt` alone would be late.
  * The Elixir engine compares `ended_at` once a claim is marked (`tasks/task/rules.ex:175-176`); the port follows the spec.
  */
 export function invalidatedAt(claim: EndedClaimFacts, now: Date): number | null {

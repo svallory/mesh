@@ -1,15 +1,16 @@
-// The engine daemon (PROTOCOL.md:24-38): one SQLite database in WAL mode, the domain bound to it, bootstrap, and the
-// method table served on a Unix socket. `main.ts` parses the flags and calls `startDaemon`; the tests start it the same
-// way, with an extra method when they need one.
+// The engine daemon (PROTOCOL.md:24-38): one SQLite database in WAL mode, the domain bound to it, bootstrap, the
+// method table served on a Unix socket, and the lease sweeper. `main.ts` parses the flags and calls `startDaemon`; the
+// tests start it the same way, with an extra method when they need one.
 import { Database } from "bun:sqlite";
 import { serve, type MethodTable, type Server } from "@meshfw/jsonrpc";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import type { ActionContext } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
-import { contextFactory } from "../rpc/context";
+import { contextFactory, ENGINE } from "../rpc/context";
 import { messages, wireError } from "../rpc/errors";
 import { actorless as hyperActorless, methods as hyperMethods, unserved } from "../rpc/methods";
 import { bootstrap } from "./bootstrap";
+import { startSweeper } from "./sweeper";
 
 export interface DaemonOptions {
   /** The socket's path (`--socket`). */
@@ -20,11 +21,16 @@ export interface DaemonOptions {
   readonly methods?: MethodTable<ActionContext>;
   /** The methods that run with the engine's context (`actorless` in `src/rpc/methods.ts`). */
   readonly actorless?: ReadonlySet<string>;
+  /** The claim lease in milliseconds (`--lease-ms`), which every call's context carries; the default lease when left out. */
+  readonly leaseMs?: number;
 }
 
 export interface Daemon {
   readonly server: Server;
-  /** Stops serving, waits for the calls in flight, then closes the database. Calling it again returns the same promise. */
+  /**
+   * Stops the lease sweeper and serving, waits for the calls in flight and the sweep in progress, then closes the
+   * database. Calling it again returns the same promise.
+   */
   close(): Promise<void>;
 }
 
@@ -42,7 +48,10 @@ function useWal(file: string): void {
   }
 }
 
-/** Opens the database, prepares its schema, runs bootstrap and starts serving. Resolves once the socket accepts connections. */
+/**
+ * Opens the database, prepares its schema, runs bootstrap, starts serving and starts the lease sweeper. Resolves once
+ * the socket accepts connections.
+ */
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   useWal(options.db);
   const layer = sqlite({ file: options.db });
@@ -55,16 +64,26 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   const server = await serve({
     socket: options.socket,
     methods,
-    context: contextFactory(options.actorless ?? hyperActorless, unserved(methods)),
+    context: contextFactory(options.actorless ?? hyperActorless, unserved(methods), options.leaseMs),
     binding: hyper,
     error: wireError,
     messages,
   });
+  const sweeper = startSweeper(hyper, { context: ENGINE });
   let closing: Promise<void> | undefined;
   return {
     server,
-    // The database is closed even when `server.close()` rejects; that rejection is still what `close()` rejects with.
-    close: () => (closing ??= server.close().finally(() => layer.close())),
+    // The sweeper stops first, so no new sweep starts while the calls drain; `stop` never rejects. The database is
+    // closed even when `server.close()` rejects; that rejection is still what `close()` rejects with.
+    close: () => (closing ??= (async () => {
+      const sweeping = sweeper.stop();
+      try {
+        await server.close();
+      } finally {
+        await sweeping;
+        await layer.close();
+      }
+    })()),
   };
 }
 

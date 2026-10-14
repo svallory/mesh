@@ -28,6 +28,13 @@ declare module "@meshfw/runtime" {
      * (`acceptedSubmissionOf` in `src/domain/work/work.helpers.ts`).
      */
     completion?: { readonly rule: "review-accepted"; readonly submissionId: string };
+    /**
+     * The claim lease in milliseconds (`--lease-ms`, PROTOCOL.md:33), which Claim `acquire` and `renew` add to the
+     * time they run at (`leaseEnd` in `src/domain/work/work.helpers.ts`), as Hyper reads `lease_ms` from its
+     * configuration (`tasks/claim/changes/lease.ex:24-25`; gap G34). The daemon's context factory sets it on every
+     * call; a context without it gets the default lease, `LEASE_MS`.
+     */
+    leaseMs?: number;
   }
 }
 

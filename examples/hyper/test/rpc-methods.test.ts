@@ -2,11 +2,12 @@
 // factory has passed the call: params parsed by the method's schema, then `run`. The conformance cases cover what the
 // spec's suite asks of each; these cover the methods no case of the v0 slice reaches yet (`task.set-priority`,
 // `task.unassign`, `claim.renew`, `claim.release`, `claim.revoke`, `submission.withdraw`), the order of `task.next` and
-// `task.list`, and what `explained` adds to a failure. The world's clock is set to the system's first: the methods pass
-// `connected` to the command functions, whose stale-fence test reads the system clock.
+// `task.list`, what `explained` adds to a failure, and commands during which a lease runs out. The world's clock is set
+// to the system's first: the methods read the system clock for the Task they show (`activeClaim`).
 import { describe, expect, spyOn, test } from "bun:test";
 import { type Call, RpcError } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
+import { Mesh } from "meshfw";
 import { Collaborator, Membership } from "#mesh/domain/identity";
 import { checkResult } from "../conformance/harness/validate.ts";
 import type { MethodName } from "../conformance/schemas/protocol.ts";
@@ -51,6 +52,15 @@ async function refusal(made: Promise<unknown>): Promise<{ code: number; message:
 }
 
 const checks = (refused: { failures: { check: string }[] }) => refused.failures.map((failure) => failure.check);
+
+/**
+ * From here on the world's clock advances 1 ms on every read, starting at `start`: two readings in one command differ,
+ * unless they are its transaction's instant (ACT-29), which is read once.
+ */
+function ticking(w: World, start: Date): void {
+  let at = start.getTime();
+  Object.defineProperty(w.time, "now", { get: () => new Date(at++), configurable: true });
+}
 
 /** A world whose clock reads the system's, with Gus, a guest. */
 function inWorld(body: (w: World & { gus: Collaborator }) => Promise<void>) {
@@ -129,11 +139,76 @@ describe("claim.renew, claim.release and claim.revoke find the claim from the Ta
     expect(checks(noneForGus)).toEqual(["role", "claim.revoker"]);
   }));
 
+  test("a claim whose lease ran out is not active before the sweeper marks it (PROTOCOL.md:312): revoke is claim.active, renew and release claim.expired, and the Task shows no active claim", () => inWorld(async (w) => {
+    const { claim } = await send("claim.acquire", { ...as(w.bot), leaseMs: 30 }, { taskId: w.task.id });
+    expect(Date.parse(claim.expiresAt) - Date.parse(claim.acquiredAt)).toBe(30);
+    // The methods read the system clock and the actions the world's: both move past `expiresAt`.
+    await Bun.sleep(40);
+    w.time.now = new Date();
+    const revoke = await refusal(send("claim.revoke", as(w.alice), { taskId: w.task.id, reason: "stalled" }));
+    expect([revoke.code, revoke.phase, checks(revoke)]).toEqual([-32003, "content", ["claim.active"]]);
+    const renew = await refusal(send("claim.renew", as(w.bot), { taskId: w.task.id, fence: claim.fence }));
+    expect([renew.code, renew.phase, checks(renew)]).toEqual([-32003, "content", ["claim.expired"]]);
+    const release = await refusal(send("claim.release", as(w.bot), { taskId: w.task.id, fence: claim.fence }));
+    expect([release.code, release.phase, checks(release)]).toEqual([-32003, "content", ["claim.expired"]]);
+    const { task, history } = await ask("task.get", as(w.alice), { taskId: w.task.id });
+    expect(task).toMatchObject({ activeClaim: null, derived: { state: "ready" } });
+    // No sweeper runs in process: the row still says active.
+    expect(history.claims).toMatchObject([{ id: claim.id, state: "active", endedAt: null }]);
+  }));
+
   test("an unknown Task is not_found before any claim is looked for", () => inWorld(async (w) => {
     for (const taskId of ["nope", crypto.randomUUID()]) {
       const refused = await refusal(send("claim.release", as(w.bot), { taskId, fence: 1 }));
       expect(refused).toMatchObject({ code: -32005, phase: "permission", failures: [{ check: "exists", details: { recordType: "task", id: taskId } }] });
     }
+  }));
+});
+
+describe("a lease that runs out while a command runs is decided at the command's instant", () => {
+  // Each test acquires a one-minute lease and makes the clock tick from the moment it ends: the lease runs out on the
+  // command's first reading of the clock, a minute after the system's, and every later reading sees it lapsed. A
+  // command that decided from a reading other than its transaction's instant would see the claim live there and lapsed
+  // in the action, and be refused.
+
+  test("membership.revoke revokes the membership and leaves the lapsed claim to the sweeper", () => inWorld(async (w) => {
+    const { claim } = await send("claim.acquire", { ...as(w.bot), leaseMs: 60_000 }, { taskId: w.task.id });
+    ticking(w, new Date(claim.expiresAt));
+    const { membership } = await send("membership.revoke", as(w.alice), { collaboratorId: w.bot.id, reason: "offboarded" });
+    expect(membership).toMatchObject({ id: w.memberships.bot.id, state: "revoked" });
+    const { history } = await ask("task.get", as(w.alice), { taskId: w.task.id });
+    expect(history.claims).toMatchObject([{ id: claim.id, state: "active", endedAt: null }]);
+  }));
+
+  test("collaborator.retire retires the collaborator, revokes its membership and leaves the lapsed claim to the sweeper", () => inWorld(async (w) => {
+    const { claim } = await send("claim.acquire", { ...as(w.bot), leaseMs: 60_000 }, { taskId: w.task.id });
+    ticking(w, new Date(claim.expiresAt));
+    const { collaborator } = await send("collaborator.retire", as(w.alice), { collaboratorId: w.bot.id, reason: "model retired" });
+    expect(collaborator).toMatchObject({ id: w.bot.id, state: "retired" });
+    expect(await Mesh.privileged(Membership).read({ filter: { id: { eq: w.memberships.bot.id } } })).toMatchObject([{ state: "revoked" }]);
+    const { history } = await ask("task.get", as(w.alice), { taskId: w.task.id });
+    expect(history.claims).toMatchObject([{ id: claim.id, state: "active", endedAt: null }]);
+  }));
+
+  test("task.complete with the lapsed claim's fence records a late result and leaves the Task open", () => inWorld(async (w) => {
+    const { claim } = await send("claim.acquire", { ...as(w.bot), leaseMs: 60_000 }, { taskId: w.task.id });
+    ticking(w, new Date(claim.expiresAt));
+    const done = await send("task.complete", as(w.bot), { taskId: w.task.id, fence: claim.fence, summary: "shipped" });
+    expect(done).toMatchObject({ outcome: "late-result-recorded", lateResult: { taskId: w.task.id, submitterId: w.bot.id, fence: claim.fence, summary: "shipped" } });
+    expect(Date.parse(done.lateResult.recordedAt)).toBeGreaterThanOrEqual(Date.parse(claim.expiresAt));
+    const { task, history } = await ask("task.get", as(w.alice), { taskId: w.task.id });
+    expect(task.state).toBe("open");
+    expect(history.completions).toEqual([]);
+  }));
+
+  test("submission.submit with the lapsed claim's fence records a late result and submits nothing", () => inWorld(async (w) => {
+    const { claim } = await send("claim.acquire", { ...as(w.bot), leaseMs: 60_000 }, { taskId: w.task.id });
+    ticking(w, new Date(claim.expiresAt));
+    const done = await send("submission.submit", as(w.bot), { taskId: w.task.id, fence: claim.fence, summary: "ready" });
+    expect(done).toMatchObject({ outcome: "late-result-recorded", lateResult: { taskId: w.task.id, submitterId: w.bot.id, fence: claim.fence, summary: "ready" } });
+    expect(Date.parse(done.lateResult.recordedAt)).toBeGreaterThanOrEqual(Date.parse(claim.expiresAt));
+    const { history } = await ask("task.get", as(w.alice), { taskId: w.task.id });
+    expect(history.submissions).toEqual([]);
   }));
 });
 

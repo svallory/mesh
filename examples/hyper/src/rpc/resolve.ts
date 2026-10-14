@@ -101,9 +101,11 @@ export async function claimOf(taskId: string, fence: number, context: ActionCont
 }
 
 /**
- * The claim `claim.revoke` acts on, which the spec names by its Task: the Task's active claim. With none there is
- * nothing to revoke, `claim.active` (PROTOCOL.md:279), once the permission phase has passed: an actor that could not
- * revoke the Task's claim is refused as the action's `ownerOrMember` and `claimRevoker` would refuse it.
+ * The claim `claim.revoke` acts on, which the spec names by its Task: the Task's active claim. One whose lease has run
+ * out before the lease sweeper marked it is expired (PROTOCOL.md:312), and `Claim.revoke` refuses it as `claim.active`
+ * (`!&lapsed`), at the transaction's instant. With none there is nothing to revoke, `claim.active` (PROTOCOL.md:279),
+ * once the permission phase has passed: an actor that could not revoke the Task's claim is refused as the action's
+ * `ownerOrMember` and `claimRevoker` would refuse it.
  */
 export async function activeClaimOf(taskId: string, context: ActionContext): Promise<Claim> {
   await existingTask(taskId);

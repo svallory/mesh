@@ -64,7 +64,7 @@ export async function empty(options: { readonly seams?: Seams } = {}) {
   const own = options.seams?.afterCommit;
   const seams: Seams = { ...options.seams, afterCommit: async (event) => { trackRoles(event); await own?.(event); } };
   const hyper = bind(db, { clock, seams });
-  const binding: Binding = { transaction: hyper.transaction, clock };
+  const binding: Binding = { transaction: hyper.transaction };
   /** Write a column the actions never write, to reach a state for a test: set columns of one row. */
   const force = (table: keyof typeof tables, id: string, changes: Record<string, unknown>) =>
     db.transaction((tx) => tx.updateByKey(tables[table], { id } as never, changes as never));

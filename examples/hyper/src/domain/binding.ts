@@ -4,15 +4,13 @@
 import { transaction } from "#mesh";
 
 export interface Binding {
-  /** The application transaction: `transaction` from `#mesh`, or the one `bind(layer)` returns. */
-  readonly transaction: typeof transaction;
   /**
-   * The time the stale-fence test of `task.complete` and `submission.submit` reads, as the first line inside the
-   * function's transaction, so a call queued behind another transaction reads the time it runs at, not the time it
-   * was made. Pass the clock given to `bind`, so the function and the actions read the same time.
+   * The application transaction: `transaction` from `#mesh`, or the one `bind(layer)` returns. It has one instant
+   * (ACT-29), which every action and read inside it reads, so a function judges a lease the way the actions it calls
+   * do: through a field that reads `%.now`, such as Claim's `lapsed`, never through a clock of its own.
    */
-  readonly clock: () => Date;
+  readonly transaction: typeof transaction;
 }
 
-/** The binding `connect()` opens, read through the top-level `transaction`, with the system clock. */
-export const connected: Binding = { transaction, clock: () => new Date() };
+/** The binding `connect()` opens, read through the top-level `transaction`. */
+export const connected: Binding = { transaction };

@@ -456,7 +456,7 @@ export function bindClaim(
             await $runCheck($issues, $checks, {
               label: "claimActive",
               code: "claim.active",
-              message: "the claim has ended; claim the task again",
+              message: "the claim was released or revoked; claim the task again",
               source: { file: "src/domain/work/claim.mesh.mx", line: 66, column: 9 },
               that: $expressions["renew.check.claimActive.that"],
             });
@@ -636,7 +636,7 @@ export function bindClaim(
             await $runCheck($issues, $checks, {
               label: "claimActive",
               code: "claim.active",
-              message: "the claim has ended; claim the task again",
+              message: "the claim was released or revoked; claim the task again",
               source: { file: "src/domain/work/claim.mesh.mx", line: 100, column: 9 },
               that: $expressions["release.check.claimActive.that"],
             });
@@ -801,11 +801,12 @@ export function bindClaim(
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
-            await $loadInto($loadPlan, "work.Claim", tx, $record, ["task"], $load);
+            await $loadInto($loadPlan, "work.Claim", tx, $record, ["lapsed", "task"], $load);
             await $runCheck($issues, $checks, {
               label: "claimActive",
               code: "claim.active",
-              message: "the claim has ended; claim the task again",
+              message:
+                "the claim has ended or its lease has run out; there is no active claim to revoke",
               source: { file: "src/domain/work/claim.mesh.mx", line: 129, column: 9 },
               that: $expressions["revoke.check.claimActive.that"],
             });
