@@ -535,6 +535,72 @@ const app = new Elysia().post("/lists", async ({ body, request, status }) => {
 
 The [error classes](#errors) stay the same: `invalid_input` is a bad request, `forbidden` is a denied call. A route that names an existing row should map `NotFoundError` to 404, whether the row is missing or invisible. Keep policy breakdowns and source positions in server-side diagnostics rather than exposing them to strangers; unexpected errors belong in your server's error handler.
 
+## Over a Unix socket
+
+`@meshfw/jsonrpc` serves your domain to other processes on the same machine: [JSON-RPC 2.0](https://www.jsonrpc.org/specification), one message per line, over a Unix socket. You hand `serve` a table of methods (plain data, one entry per method name), a function that builds each call's context and, if you want, the binding the calls run in. The package reads the requests, calls your methods and writes the answers; what a method does and how your errors read on the wire stay in your code.
+
+```ts "src/rpc.ts"
+import { codes, RpcError, serve } from "@meshfw/jsonrpc";
+import { ForbiddenError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
+import { connect, disconnect } from "#mesh";
+import { List } from "#mesh/domain/todo";
+import { alice } from "./context";
+
+await connect();
+const server = await serve({
+  socket: "/run/todo/todo.sock",
+  methods: {
+    "list.create": { run: (params, context) => List.create(params, context) },
+  },
+  // Anyone who can open the socket file can call every method. This daemon serves one local user.
+  context: () => ({ actor: alice }),
+  error(error) {
+    if (error instanceof RpcError) return { code: error.code, message: error.message, data: error.data };
+    if (error instanceof InvalidInputError) return { code: codes.invalidParams, message: error.code };
+    if (error instanceof ForbiddenError) return { code: -32001, message: error.code };
+    if (error instanceof NotFoundError) return { code: -32002, message: error.code };
+    throw error;
+  },
+});
+
+process.on("SIGTERM", async () => {
+  await server.close();
+  await disconnect();
+});
+```
+
+A client writes one request per line and reads one answer per line:
+
+```text
+{"jsonrpc":"2.0","id":1,"method":"list.create","params":{"name":"Groceries"}}
+{"jsonrpc":"2.0","id":1,"result":{"id":"0199…","name":"Groceries",…}}
+```
+
+Each request goes through the same steps:
+
+1. If the method's entry has `params`, a [Standard Schema](https://standardschema.dev) validator such as a zod schema, the request's `params` must pass it, and `run` receives the validator's output. A failure is answered `-32602` before anything else runs. Without `params`, `run` receives the object as sent; the example needs none, because `List.create` validates its own input.
+2. `context(call, params)` builds the context, once per request.
+3. `run(params, context, call)` is called, and what it returns, or what its promise resolves with, is the answer (`undefined` is sent as `null`). Pass `binding: bind(layer)` and steps 2 and 3 run inside its `run`, on that data layer instead of the one `connect()` opened.
+4. Whatever steps 2 and 3 throw goes to your `error` function, together with the package's own `-32601` and `-32602`, which arrive as `RpcError`s. It returns the error object the client receives, so one function decides how every failure reads. JSON-RPC leaves the codes from `-32000` to `-32099` to the server; the example uses two of them. An error the function rethrows, as the example does for the ones it does not know, is answered `-32603` and passed to `log`. Without an `error` function, an `RpcError` is sent as it is and anything else is answered `-32603`, its details logged and never sent.
+
+The package answers these itself:
+
+| Code | When |
+|---|---|
+| `-32700` | A line that is not JSON, is not UTF-8, or is longer than `maxLineBytes` (8 MiB unless you set it). The answer's `id` is `null`, and the connection stays open. |
+| `-32600` | A batch (an array of requests, which is not supported), or a request without `"jsonrpc": "2.0"`, without a string `method`, or with an `id` that is neither a string nor a number. |
+| `-32601` | A method the table does not have. Only the table's own keys are methods, so `toString` is not one. |
+| `-32602` | `params` that is not an object, or that fails the method's schema. `data.issues` lists each failure with its `message` and its `path`. |
+| `-32603` | A result that has no JSON form (a `BigInt`, a cycle), and any failure that step 4 does not turn into another code. |
+
+What else to know:
+
+- Requests on one connection run at the same time, and each is answered when it finishes, so answers can arrive out of order: match them by `id`. A client may open several connections.
+- A request with no `id` is a notification: it runs and gets no answer, even when it fails. `call.connection.notify(method, params)` sends your own notification to the client that made the call; `call.connection.closed` says whether that client is still connected.
+- `server.close()` stops accepting connections, closes the open ones and removes the socket file, then resolves once the calls still running have finished. Disconnect after it, as the example does.
+- At start, a socket file left by a server that is gone is replaced. A socket another server is listening on, or a file that is not a socket, makes `serve` reject with `FrameworkError` and is left as it is. The socket file takes the permissions your process's umask gives it, so put it in a directory that only the users allowed to call it can enter.
+- The package writes nothing to standard output, which stays free for your process. Unexpected failures go to `log`, which defaults to `console.error`.
+
 ## In a web app
 
 [SolidStart server functions](https://docs.solidjs.com/solid-start/reference/server/use-server) make the server boundary explicit, which is why this example uses SolidStart; any framework works, because your domain is a module of functions.

@@ -86,6 +86,7 @@ packages/
   cli/                core       the `mesh` command (build, check, inspect, explain, export generators); adapters add commands
   data-drizzle/       adapter    shared code of the SQL adapters: Mesh queries and expressions -> Drizzle
   data-sqlite/        adapter    data layer on SQLite (file or in-memory), on Drizzle
+  jsonrpc/            adapter    newline-delimited JSON-RPC 2.0 over a Unix socket, dispatching to a method table given as plain data
 examples/blog/        the example entities and a script that calls them
 examples/hyper/       the Hyper application on Mesh; the port gate (moves to its own repository once it passes)
 

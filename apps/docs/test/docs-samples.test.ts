@@ -54,6 +54,7 @@ const tsconfig = {
       "@meshfw/runtime": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/jsonrpc": ["../../samples/mesh-api.d.ts"],
       "meshfw": ["../../samples/mesh-api.d.ts"],
     },
   },

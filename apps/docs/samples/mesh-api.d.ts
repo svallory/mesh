@@ -5,7 +5,7 @@
 // This is not Mesh. Mesh does not exist as an installable runtime yet, so the file
 // states the shape the pages promise: the generated entry points (`#mesh` and the
 // `#mesh/domain/<module>` specifiers) for the entities of the pages, the run-time error
-// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter and the configuration helper. If a page and this file
+// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter, the JSON-RPC transport and the configuration helper. If a page and this file
 // disagree, the page is a bug or this file is; both are cheap to fix and the sample
 // check is what notices.
 //
@@ -203,6 +203,85 @@ declare module "@meshfw/data-postgres" {
   }
 
   export function postgres(options: { url: string | undefined }): PostgresDataLayer;
+}
+
+declare module "@meshfw/jsonrpc" {
+  /** Any Standard Schema validator (zod, valibot, ArkType...); `run` receives its output. */
+  export interface ParamsSchema<P> {
+    readonly "~standard": {
+      readonly version: 1;
+      readonly vendor: string;
+      readonly validate: (value: unknown) => unknown;
+      readonly types?: { readonly input: unknown; readonly output: P } | undefined;
+    };
+  }
+
+  /** One method: an optional schema for `params`, and `run`, whose result (or a promise of it) is the answer. */
+  export interface Method<C, P = Record<string, unknown>> {
+    readonly params?: ParamsSchema<P>;
+    run(params: P, context: C, call: Call): unknown;
+  }
+
+  /** Method name to entry. Only the table's own keys are methods. */
+  export type MethodTable<C> = { readonly [name: string]: Method<C, any> };
+
+  export interface Call {
+    readonly method: string;
+    /** `null` for a notification. */
+    readonly id: string | number | null;
+    readonly params: Readonly<Record<string, unknown>>;
+    readonly connection: Connection;
+  }
+
+  export interface Connection {
+    /** Writes a notification (a line with no `id`) to this client; does nothing once it is closed. */
+    notify(method: string, params: Record<string, unknown>): void;
+    readonly closed: boolean;
+  }
+
+  /** One failure of a method's schema, in `data.issues` of the `-32602` answer. */
+  export interface ParamsIssue {
+    readonly message: string;
+    readonly path: readonly (string | number)[];
+  }
+
+  export interface ServeOptions<C> {
+    socket: string;
+    methods: MethodTable<C>;
+    context: (call: Call, params: unknown) => C | Promise<C>;
+    binding?: { run<T>(fn: () => Promise<T>): Promise<T> };
+    error?: (error: unknown, call: Call) => ErrorObject;
+    log?: (message: string, error?: unknown) => void;
+    maxLineBytes?: number;
+  }
+
+  export interface Server {
+    readonly socket: string;
+    close(): Promise<void>;
+  }
+
+  /** Resolves once the socket accepts connections; rejects with `FrameworkError` on a bad option or an unusable path. */
+  export function serve<C>(options: ServeOptions<C>): Promise<Server>;
+
+  export interface ErrorObject {
+    code: number;
+    message: string;
+    data?: unknown;
+  }
+
+  export class RpcError extends Error {
+    constructor(code: number, message: string, data?: unknown);
+    readonly code: number;
+    readonly data?: unknown;
+  }
+
+  export const codes: {
+    readonly parseError: -32700;
+    readonly invalidRequest: -32600;
+    readonly methodNotFound: -32601;
+    readonly invalidParams: -32602;
+    readonly internalError: -32603;
+  };
 }
 
 declare module "meshfw" {
