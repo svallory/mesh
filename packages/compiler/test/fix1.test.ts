@@ -55,11 +55,13 @@ test("fix10: import diagnostics distinguish duplicates, forms and relative paths
   // A wrong imported name is positioned at the name, an alias is not what is wrong.
   const wrongAlias = buildModel(project('import { Usr as List } from "./list.mesh.mx"\n' + keyed));
   expect(wrongAlias.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_UNKNOWN_IMPORT", 1, 9]]);
-  for (const declaration of ['import List from "./list.mesh.mx"', 'import * as List from "./list.mesh.mx"', 'import "./list.mesh.mx"']) {
-    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name: `import { List } from …`" })]);
+  // A default or side-effect import is neither form (SYN-21); a namespace import is one, and is accepted.
+  for (const declaration of ['import List from "./list.mesh.mx"', 'import "./list.mesh.mx"', 'import List, * as lists from "./list.mesh.mx"']) {
+    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace: `import { List } from …` or `import * as billing from …`" })]);
   }
-  for (const declaration of ['import type { List } from "./list.mesh.mx"', 'import { type List } from "./list.mesh.mx"']) {
-    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name, not as a type: `import { List } from …`", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+  expect(buildModel(project('import * as List from "./list.mesh.mx"\n' + keyed)).diagnostics).toEqual([]);
+  for (const declaration of ['import type { List } from "./list.mesh.mx"', 'import { type List } from "./list.mesh.mx"', 'import type * as lists from "./list.mesh.mx"']) {
+    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace, not as a type: `import { List } from …` or `import * as billing from …`", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   }
   expect(buildModel(project('import List, { List as L } from "./list.mesh.mx"\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   // MX itself refuses an import that is not one ES import declaration (decision 193).

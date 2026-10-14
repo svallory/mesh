@@ -22,7 +22,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 | A declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `check :invoiceIsSent` |
 | A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]`, `on:load=&visible` |
 | A value of the current transaction | `%.name`, in a function | `&dueOn < %.today`, `stamp(%.now)` |
-| Another entity | an imported identifier | `import { Customer } from "./customer.mesh.mx"`, then `belongs-to :customer entity=Customer` |
+| Another entity | an imported identifier, or a member of a namespace import | `import { Customer } from "./customer.mesh.mx"`, then `belongs-to :customer entity=Customer`; `import * as billing from "../billing/invoice.mesh.mx"`, then `belongs-to :invoice entity=billing.Invoice` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `&status === :sent`, `&status=:paid` |
 | Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` |
@@ -33,7 +33,21 @@ An **atom** is a name that stands for itself, not a string. It names a declarati
 
 A **member reference** points at something declared in this entity: an attribute, relationship, computed field, action, check or policy. Inside a function, `&status` reads the record's status. A name that is not a member is a build error at that position, with a suggestion: `&titel` suggests `&title`. Strings cannot stand in for member references, and an atom cannot stand in for text: `message=:oops` is an error.
 
-A `.mesh.mx` file exports its entity under its declared name. Import that name by relative path, then use it in `entity=Customer`. There is no project-wide name lookup and no qualified-name spelling.
+A `.mesh.mx` file exports its entity under its declared name. Import that name by relative path, then use it in `entity=Customer`. Or import the file as a namespace and name its entity as a member of it: `import * as billing from "../billing/invoice.mesh.mx"`, then `entity=billing.Invoice`. Both are JavaScript's own import forms, so pick the one that reads better; a file may use both, even for the same file. The namespace name is your alias for that file, not a module name: Mesh checks that the file declares the member you name (`billing.Invoce` is a build error that suggests `billing.Invoice`), never that the alias matches a folder, and the alias never appears in a generated name or an FQN. There is no project-wide name lookup.
+
+```mx "src/domain/ledger/payment.mesh.mx"
+import * as billing from "../billing/invoice.mesh.mx"
+import { Account } from "./account.mesh.mx"
+
+entity :Payment
+  attributes
+    uuid :id primary-key
+    integer :amount min=1
+
+  relationships
+    belongs-to :invoice entity=billing.Invoice
+    belongs-to :account entity=Account
+```
 
 ### One input section
 
@@ -143,7 +157,7 @@ entity :Invoice
       authorize-if=({ actor }) => isStaff(actor)
 ```
 
-Imports are relative and named. A helper may come from any file inside the project, not only from `src/domain/`; an import of another entity stays inside `src/domain/`, where entity files live. An import name, whether a helper or an alias for another entity, may not start with `$` or `l$`: Mesh uses those prefixes for the names it generates, and the build refuses the binding (`MESH_HELPER_NAME`). An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. In memory, a helper behind a guard runs only when the guard lets it: in `input.m !== null && isBig(input.m)`, `isBig` is not called when `input.m` is `null`, and the same holds for the right side of `||` and `??` and the branch of `?:` not taken. An unknown guard still runs it, as SQL would: in `input.m > 1 && isBig(input.m)` with `input.m` null, `isBig(null)` is called, so a helper must still accept `null` wherever the guard can be unknown. A `run` step is different: it is plain code and may call anything.
+Imports are relative, and either named (`import { isStaff } from "./invoice.helpers"`) or a namespace (`import * as rules from "./invoice.helpers"`, then `rules.isStaff(actor)`, which translates as `isStaff(actor)` does). A default import and an `import type` are build errors (`MESH_IMPORT_FORM`). A helper may come from any file inside the project, not only from `src/domain/`; an import of another entity stays inside `src/domain/`, where entity files live. An import name, whether a helper or an alias for another entity, may not start with `$` or `l$`: Mesh uses those prefixes for the names it generates, and the build refuses the binding (`MESH_HELPER_NAME`). An imported helper in a translated expression must be pure: it may not read the clock, the network or anything Mesh did not hand it. A helper that does not read the record, such as `isStaff(actor)`, runs once before the query and enters SQL as a bound value. In memory, a helper behind a guard runs only when the guard lets it: in `input.m !== null && isBig(input.m)`, `isBig` is not called when `input.m` is `null`, and the same holds for the right side of `||` and `??` and the branch of `?:` not taken. An unknown guard still runs it, as SQL would: in `input.m > 1 && isBig(input.m)` with `input.m` null, `isBig(null)` is called, so a helper must still accept `null` wherever the guard can be unknown. A `run` step is different: it is plain code and may call anything.
 
 ### What a translated arrow may use
 
@@ -555,7 +569,7 @@ A `run` body may call anything, including logging or messaging code. The pure-he
 
 ### Calling other actions
 
-An action is called on its entity, `Receipt.record(...)`, in an entity file as everywhere else, and the entity is in scope the way every name in an entity file is: it is the file's own entity or one the file imports. A `run` step, and a function-valued `check`, `when` or `set` value, call the entities they import:
+An action is called on its entity, `Receipt.record(...)`, in an entity file as everywhere else, and the entity is in scope the way every name in an entity file is: it is the file's own entity or one the file imports. Through a namespace import the entity is a member of the alias, as in `entity=`: `billing.Receipt.record(...)`, `Mesh.privileged(billing.Receipt)`, and `billing.Receipt` as a type. A `run` step, and a function-valued `check`, `when` or `set` value, call the entities they import:
 
 | Call | What it is |
 |:--|:--|

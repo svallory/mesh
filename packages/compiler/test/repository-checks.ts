@@ -337,6 +337,8 @@ function invalidMembersInV4(source: string): string | null {
     ? token.replace(/[^\r\n]/g, " ") : token);
   const members = new Set<string>();
   const imports = new Set<string>();
+  // SYN-21: `import * as billing from "…"` binds an alias; `entity=billing.Invoice` names a member of it.
+  const namespaces = new Set<string>();
   const uses: { name: string; line: number; imported: boolean }[] = [];
   const parents: { indent: number; kind: string; self: boolean }[] = [];
   let previous = "";
@@ -359,7 +361,9 @@ function invalidMembersInV4(source: string): string | null {
       const local = /^\s*\w+(?:\s+as\s+(\w+))?\s*$/.exec(entry);
       if (local) imports.add(local[1] ?? entry.trim());
     }
-    for (const match of text.matchAll(/\bentity\s*=\s*([A-Za-z_]\w*)/g)) {
+    const namespaceImport = /^import\s*\*\s*as\s+(\w+)/.exec(text);
+    if (namespaceImport) namespaces.add(namespaceImport[1]!);
+    for (const match of text.matchAll(/\bentity\s*=\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)/g)) {
       uses.push({ name: match[1]!, line: at, imported: true });
     }
 
@@ -398,10 +402,17 @@ function invalidMembersInV4(source: string): string | null {
   }
   // Resolve after collecting the fence: forward member declarations are legal.
   for (const use of uses) {
-    if (use.imported ? !imports.has(use.name) : !members.has(use.name)) {
-      return use.imported
-        ? `line ${use.line}: entity=${use.name} must name an import in this fence`
-        : `line ${use.line}: &${use.name} is not a declared member of this entity`;
+    if (!use.imported) {
+      if (!members.has(use.name)) return `line ${use.line}: &${use.name} is not a declared member of this entity`;
+      continue;
+    }
+    const [qualifier, member] = use.name.split(".");
+    if (member !== undefined) {
+      if (!namespaces.has(qualifier!)) return `line ${use.line}: entity=${use.name} must name a member of a namespace import in this fence (\`import * as ${qualifier} from "…"\`)`;
+    } else if (namespaces.has(use.name)) {
+      return `line ${use.line}: entity=${use.name} names a namespace import, not an entity; write \`entity=${use.name}.Name\``;
+    } else if (!imports.has(use.name)) {
+      return `line ${use.line}: entity=${use.name} must name an import in this fence`;
     }
   }
   return null;

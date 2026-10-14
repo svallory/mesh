@@ -50,7 +50,7 @@ interface Node {
   type: string;
   name?: string;
   value?: unknown;
-  extra?: { mxMember?: unknown; mxAtom?: unknown };
+  extra?: { mxMember?: unknown; mxAtom?: unknown; mxTransaction?: unknown };
   elements?: (Node | null)[];
 }
 const node = (a: Attr | undefined): Node | undefined =>
@@ -68,6 +68,21 @@ const isMemberPath = (n: Node | null | undefined): boolean => {
 };
 const isMember = (n: Node | null | undefined) =>
   n?.type === "MemberExpression" && !!n.extra?.mxMember;
+/** An unmarked identifier: not an atom (`:x`), and not the stand-in of a mark such as `&x` or `%.x`. */
+const isPlainIdentifier = (n: Node | null | undefined) =>
+  n?.type === "Identifier" && !n.extra?.mxMember && !n.extra?.mxAtom && !n.extra?.mxTransaction;
+/**
+ * A reference to another file's declaration (SYN-21): an imported identifier (`List`), or a member of a namespace import
+ * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
+ * Mesh's to resolve (`front-end/references.ts`).
+ */
+const isReference = (n: Node | null | undefined): boolean => {
+  if (isPlainIdentifier(n)) return true;
+  const access = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
+  return access?.type === "MemberExpression" && !access.computed && !access.extra?.mxMember
+    && !access.extra?.mxTransaction
+    && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
+};
 /** A slot that holds one member only (MX decision 182 addendum 4): MX checks
  * the `&name` form, after a kind or as a whole value; Mesh resolves membership. */
 const member = (required = false): CustomTagAttribute => ({
@@ -273,8 +288,8 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
     analyze(calls, ctx) {
       for (const call of calls) {
         const a = get(call, "entity");
-        if (node(a)?.type !== "Identifier")
-          ctx.fail("entity must be an imported identifier", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
+        if (!isReference(node(a)))
+          ctx.fail("entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
       }
     },
   });

@@ -18,7 +18,7 @@ import {
   @end
 } from "@meshfw/runtime";
 @each(helper in helperImports)
-{{ helper.keyword }} { {{ helper.names }} } from {{ helper.fromLiteral }};
+{{ helper.keyword }} {{ helper.bindings }} from {{ helper.fromLiteral }};
 @end
 @each(imported in entityImports)
 {{ imported.keyword }} { {{ imported.names }} } from {{ imported.fromLiteral }};
@@ -30,6 +30,9 @@ import type {
 } from {{ typesFromLiteral }};
 @if(globals)
 {{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
+@end
+@each(namespace in entityNamespaces)
+declare namespace {{ namespace.name }} { {{ namespace.members }} }
 @end
 
 /** What every expression of {{ recordName }} reads; `I` is the input of the action it runs in. */

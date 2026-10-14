@@ -1,0 +1,36 @@
+import { Mesh } from "meshfw"
+import * as people from "./customer.mesh.mx"
+import { Line } from "../ledger/line.mesh.mx"
+import * as entries from "../ledger/line.mesh.mx"
+import * as money from "./money"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    integer :amount min=0
+    string :label
+  relationships
+    belongs-to :customer entity=people.Customer
+    has-many :lines entity=entries.Line
+  computed
+    string :shown() { const cents: money.Cents = &amount; return money.format(cents) }
+    count :lineCount of=&lines
+  actions auto=[:read]
+    create :open
+      input
+        &amount
+        &label
+        &customer
+      validate
+        check :positive that=({ input }) => money.isPositive(input.amount) code="positive" message="An invoice is for a positive amount"
+    update :split
+      do
+        run [after=:write] async ({ self, context }) {
+          const first: entries.Line = await entries.Line.add({ amount: 1, invoice: self.id }, context)
+          const second: Line = await Line.add({ amount: self.amount - 1, invoice: self.id }, context)
+          const all = await Mesh.privileged(entries.Line).read({})
+          if (all.length < 2 || first.id === second.id) throw new Error("split did not add two lines")
+        }
+  policies
+    policy :anyone
+      authorize-if=() => true

@@ -53,6 +53,13 @@ export interface ExpressionsView {
    */
   readonly entityImports: readonly { keyword: "import" | "import type"; names: string; fromLiteral: string }[];
   /**
+   * The namespace imports of entity files (SYN-21) that the functions name in a type (`billing.Invoice | null`), each a
+   * module-level `declare namespace billing { export type Invoice = $billing$Invoice$Record; }`: a function cannot declare
+   * a namespace, and the value a function binds under the alias (`const billing = { Invoice: ... }`) has no types. `name`
+   * is the alias, `members` the printed body, one `export type` per entity the file declares.
+   */
+  readonly entityNamespaces: readonly { name: string; members: string }[];
+  /**
    * True when a plain function calls the global `structuredClone` (no binding of the function and no import of the file
    * has that name): the file imports `cloneValue` as `$cloneValue`, and each such function binds `structuredClone` to it,
    * since it copies a read-only record.
@@ -88,11 +95,12 @@ export interface HelperImport {
   /** `import type` when every name is named only in a type, else `import`. */
   readonly keyword: "import" | "import type";
   /**
-   * The names as printed, sorted by the name the entity file gives each: `fmt, type Money`, where `type` marks a helper
-   * the functions name only in a type (`const x: Money`, `typeof fmt`), or `Money` alone when `keyword` is `import type`.
-   * A helper the entity file imports under an alias keeps it: `fmt as format`.
+   * What the import binds, as printed between `import` and `from`: the names in braces, sorted by the name the entity file
+   * gives each, `{ fmt, type Money }`, where `type` marks a helper the functions name only in a type (`const x: Money`,
+   * `typeof fmt`), or `{ Money }` alone when `keyword` is `import type`. A helper the entity file imports under an alias
+   * keeps it: `{ fmt as format }`. A namespace import (SYN-21) is its own import: `* as h`.
    */
-  readonly names: string;
+  readonly bindings: string;
   /** The helper module from the expressions file, a quoted string literal, e.g. `"../../../domain/work/money"`. */
   readonly fromLiteral: string;
 }
@@ -193,7 +201,8 @@ function collect(entity: Entity): Found[] {
 }
 
 function helpersIn(n: ExprNode, into: Set<string>): void {
-  if (n.kind === "helper") { into.add(n.name); n.args.forEach((a) => helpersIn(a, into)); }
+  // `h.isStaff`: the import is the namespace's, `h` (SYN-21).
+  if (n.kind === "helper") { into.add(n.name.split(".")[0]!); n.args.forEach((a) => helpersIn(a, into)); }
   else if (n.kind === "call") n.args.forEach((a) => helpersIn(a, into));
   else if (n.kind === "member") helpersIn(n.object, into);
   else if (n.kind === "quantify") { helpersIn(n.source, into); helpersIn(n.body, into); }
@@ -281,10 +290,10 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   };
   // Helper imports: the entity file's non-entity imports, rewritten relative to the generated file, each by the name the
   // entity file gives it and the name its module exports it under (`import { fmt as format }`).
-  const helperFrom = new Map<string, { from: string; imported: string }>();
+  const helperFrom = new Map<string, { from: string; imported: string; namespace?: true }>();
   for (const imported of entity.imports)
     if (imported.helper)
-      imported.identifiers.forEach((name, index) => helperFrom.set(name, { from: imported.from, imported: imported.imported?.[index] ?? name }));
+      imported.identifiers.forEach((name, index) => helperFrom.set(name, { from: imported.from, imported: imported.imported?.[index] ?? name, ...(imported.namespace ? { namespace: true as const } : {}) }));
   const used = new Set<string>();
   for (const { expression } of found) {
     if (expression.tree) helpersIn(expression.tree, used);
@@ -292,14 +301,30 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   }
   // The entities the functions can name, each under the name the entity file gives it (CMP-16): its own and the imported
   // ones. Each is imported from its actions file under FQN-derived locals and bound in each function under that name.
+  // A namespace import of an entity file (SYN-21) names that file's entities under its alias, `billing` for
+  // `billing.Invoice`: a function binds the alias to an object of their values, and the file declares a namespace of
+  // their record types.
   const targets = new Map<string, Entity>();
+  const namespaceTargets = new Map<string, Entity[]>();
   for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh).flatMap((entry) => entry.identifiers)])) {
     const imported = entity.imports.find((entry) => !entry.helper && !entry.mesh && entry.identifiers.includes(local));
     const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
     const target = document.entities.find((candidate) => candidate.file === file);
-    if (target) targets.set(local, target); // else the front end reported the import
+    if (target && imported?.namespace) namespaceTargets.set(local, [target]);
+    else if (target) targets.set(local, target); // else the front end reported the import
   }
+  /** The entities a name the functions read stands for: the one it names, or each one of a namespace import's file. */
+  const entitiesOf = (name: string): readonly Entity[] => namespaceTargets.get(name) ?? (targets.has(name) ? [targets.get(name)!] : []);
   const locals: EntityLocals = (name) => {
+    const members = namespaceTargets.get(name);
+    if (members) {
+      const named = (local: (target: Entity) => string) => members.map((target) => `${typeName(target.name, target.position)}: ${local(target)}`);
+      return {
+        value: `{ ${named((target) => entityLocal(target, "value")).join(", ")} }`,
+        type: `{ ${named((target) => entityLocal(target, "ReadOnly")).map((member) => `readonly ${member}`).join("; ")} }`,
+        record: "",
+      };
+    }
     const target = targets.get(name);
     if (!target) throw emitError("MESH_UNKNOWN_ENTITY", `Entity ${name} is not imported by ${entity.file}`, entity.position);
     return { value: entityLocal(target, "value"), type: entityLocal(target, "ReadOnly"), record: entityLocal(target, "Record") };
@@ -322,7 +347,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const valued = new Set<string>(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
   const recordTypes = new Set<string>();
   const meshLocals = new Set(entity.imports.filter((entry) => entry.mesh).flatMap((entry) => entry.identifiers));
-  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...meshLocals]);
+  const namespaceTypes = new Set<string>();
+  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...namespaceTargets.keys(), ...meshLocals]);
   // The names of the file's `Mesh` import the functions read as values, as the front end found them, and those `typeNames`
   // finds only in a type, never from the printed text, where a string could spell `Mesh`: the file imports each.
   const meshValues = new Set<string>(found.flatMap(({ expression }) => expression.plain?.mesh ?? []));
@@ -334,9 +360,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       const roots = SCOPE_NAMES.filter((name) => values.has(name));
       const inTypes: NamedInTypes = {
         roots,
-        values: [...values].filter((name) => targets.has(name) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
+        values: [...values].filter((name) => (targets.has(name) || namespaceTargets.has(name)) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
         types: [...types].filter((name) => targets.has(name) && !helperFrom.has(name)).sort(),
       };
+      // `billing.Invoice` as a type: the alias is the file's namespace, declared once at module level.
+      for (const name of types) if (namespaceTargets.has(name) && !helperFrom.has(name)) namespaceTypes.add(name);
       for (const name of values) if (meshLocals.has(name) && !SCOPE_NAMES.includes(name)) meshTypes.add(name);
       for (const name of [...types, ...[...values].filter((name) => !SCOPE_NAMES.includes(name))]) if (unread.has(name)) typed.add(name);
       if (roots.includes("before") && (f.scope === "check" || f.scope === "new")) {
@@ -362,18 +390,18 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // The entity imports: each value with its read-only type, and each record type, from the entity's actions file; its own
   // record type is already imported from its types file.
   const entityFrom = new Map<string, { names: Set<string>; value: boolean }>();
-  for (const name of [...new Set([...valued, ...recordTypes])].sort()) {
-    const target = targets.get(name);
-    if (!target) continue; // `locals` reported it
-    if (!valued.has(name) && target === entity) continue;
-    let from = relative(dirname(entityPath(entity)), `${entityPath(target)}.actions`).replace(/\\/g, "/");
-    if (!from.startsWith(".")) from = `./${from}`;
-    const exported = typeName(target.name, target.position);
-    const { value, type, record } = locals(name);
-    const entry = entityFrom.get(from) ?? { names: new Set<string>(), value: false };
-    if (valued.has(name)) { entry.names.add(`${exported} as ${value}`).add(`type $ReadOnly as ${type}`); entry.value = true; }
-    if (recordTypes.has(name) && target !== entity) entry.names.add(`type ${exported} as ${record}`);
-    entityFrom.set(from, entry);
+  for (const name of [...new Set([...valued, ...recordTypes, ...namespaceTypes])].sort()) {
+    for (const target of entitiesOf(name)) { // none: `locals` reported it
+      if (!valued.has(name) && target === entity) continue;
+      let from = relative(dirname(entityPath(entity)), `${entityPath(target)}.actions`).replace(/\\/g, "/");
+      if (!from.startsWith(".")) from = `./${from}`;
+      const exported = typeName(target.name, target.position);
+      const [value, type, record] = [entityLocal(target, "value"), entityLocal(target, "ReadOnly"), entityLocal(target, "Record")];
+      const entry = entityFrom.get(from) ?? { names: new Set<string>(), value: false };
+      if (valued.has(name)) { entry.names.add(`${exported} as ${value}`).add(`type $ReadOnly as ${type}`); entry.value = true; }
+      if ((recordTypes.has(name) || namespaceTypes.has(name)) && target !== entity) entry.names.add(`type ${exported} as ${record}`);
+      entityFrom.set(from, entry);
+    }
   }
   const byModule = new Map<string, string[]>();
   for (const name of [...used, ...typed].filter((n) => helperFrom.has(n)).sort()) {
@@ -382,17 +410,26 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (!relativePath.startsWith(".")) relativePath = `./${relativePath}`;
     byModule.set(relativePath, [...(byModule.get(relativePath) ?? []), name]);
   }
-  const helperImports = [...byModule].map(([from, names]): HelperImport => {
-    const typeOnly = names.every((name) => typed.has(name));
+  const helperImports = [...byModule].flatMap(([from, all]): HelperImport[] => {
     const named = (name: string) => {
       const { imported } = helperFrom.get(name)!;
       return imported === name ? name : `${IDENTIFIER.test(imported) ? imported : JSON.stringify(imported)} as ${name}`;
     };
-    return {
-      keyword: typeOnly ? "import type" : "import",
-      names: names.map((name) => (!typeOnly && typed.has(name) ? `type ${named(name)}` : named(name))).join(", "),
+    // A namespace import (SYN-21) cannot share braces: `import * as h from …`, a type import when the functions name `h`
+    // only in a type.
+    const namespaces = all.filter((name) => helperFrom.get(name)!.namespace).map((name): HelperImport => ({
+      keyword: typed.has(name) && !used.has(name) ? "import type" : "import",
+      bindings: `* as ${name}`,
       fromLiteral: JSON.stringify(from),
-    };
+    }));
+    const names = all.filter((name) => !helperFrom.get(name)!.namespace);
+    if (!names.length) return namespaces;
+    const typeOnly = names.every((name) => typed.has(name));
+    return [{
+      keyword: typeOnly ? "import type" : "import",
+      bindings: `{ ${names.map((name) => (!typeOnly && typed.has(name) ? `type ${named(name)}` : named(name))).join(", ")} }`,
+      fromLiteral: JSON.stringify(from),
+    }, ...namespaces];
   });
   // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that calls
   // the global binds it to `cloneValue`. The front end decided which functions do: not one that binds the name itself,
@@ -416,6 +453,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       keyword: value ? "import" as const : "import type" as const,
       names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),
       fromLiteral: JSON.stringify(from),
+    })),
+    entityNamespaces: [...namespaceTypes].sort().map((name) => ({
+      name,
+      members: namespaceTargets.get(name)!
+        .map((target) => `export type ${typeName(target.name, target.position)} = ${entityLocal(target, "Record")};`).join(" "),
     })),
     shadowsStructuredClone,
     scopeName,

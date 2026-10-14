@@ -9,6 +9,7 @@ import type {
   SourcePosition,
 } from "@meshfw/model";
 import type { At, SyntaxNode } from "./tree.ts";
+import type { Resolution, WrittenReference } from "./references.ts";
 
 /**
  * Babel node to Mesh's expression tree (M4, ADR-0056). The only code that reads the Babel
@@ -25,8 +26,18 @@ export interface ConvertContext {
   helpers: ReadonlyMap<string, string>;
   /** Every name the file imports, helpers and entities. */
   imported: ReadonlySet<string>;
-  /** The entities the file names: its own and the ones it imports, by the name the file gives them (CMP-16). */
+  /**
+   * The entities the file names: its own and the ones it imports, by the name the file gives them (CMP-16), and the alias
+   * of each namespace import of an entity file (`billing`, read as `billing.Invoice`; SYN-21).
+   */
   entities?: ReadonlySet<string>;
+  /**
+   * The aliases of the file's namespace imports (SYN-21), of entity files (also in `entities`) and of helper modules (also
+   * in `helpers`, whose functions a function calls as `h.isStaff(...)`).
+   */
+  namespaces?: ReadonlySet<string>;
+  /** Resolves `billing.Invoice`, a member of an entity file's namespace import, as `entity=` does (`resolveReference`). */
+  reference?: (written: WrittenReference) => Resolution;
   /** The names the file imports `Mesh` under, from "meshfw" (PRJ-22): `Mesh`, or its alias. */
   mesh?: ReadonlySet<string>;
   report: (diagnostic: Diagnostic) => void;
@@ -320,6 +331,17 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     bound.has(name) || ctx.imported.has(name) || entities.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name);
   /** Whether a free `name` read in `scope` is an entity the file names: no scope binds it and it is no scope name (EXP-12). */
   const namesEntity = (name: string, scope: ReadonlySet<string>) => entities.has(name) && !scope.has(name) && !SCOPE_NAMES.has(name);
+  /**
+   * Whether `n` names one entity: an entity's name (`Invoice`), or a member of an entity file's namespace import
+   * (`billing.Invoice`, SYN-21) that the file declares. A namespace alias alone names a file, not an entity.
+   */
+  const isEntity = (n: N | undefined, scope: ReadonlySet<string>): boolean => {
+    if (n?.type === "Identifier") return namesEntity(n.name!, scope) && !ctx.namespaces?.has(n.name!);
+    const object = n?.object as N | undefined;
+    return n?.type === "MemberExpression" && !n.computed && object?.type === "Identifier" && (n.property as N)?.type === "Identifier"
+      && namesEntity(object.name!, scope) && ctx.namespaces?.has(object.name!) === true
+      && ctx.reference?.({ qualifier: { name: object.name!, offset: start(object) }, name: (n.property as N).name!, offset: start(n.property as N) }).ok !== false;
+  };
   const walk = (value: unknown, parent: N | undefined, key: string | undefined, scope: ReadonlySet<string>): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
@@ -422,6 +444,14 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
+        // `billing.Invoice`: what the namespace import's file declares (SYN-21), resolved as `entity=` resolves it.
+        const member = parent?.property as N | undefined;
+        if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object"
+          && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && !parent!.computed && member?.type === "Identifier") {
+          const resolved = ctx.reference({ qualifier: { name: n.name!, offset: start(n) }, name: member.name!, offset: start(member) });
+          if (!resolved.ok)
+            ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
+        }
         // The global `structuredClone`, unless the file imports something under its name (PRJ-20).
         if (n.name === "structuredClone" && !ctx.imported.has(n.name) && !entities.has(n.name)) names.structuredClone = true;
       }
@@ -451,17 +481,17 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       });
     // `Mesh.privileged(X)` takes an entity the file names (TXN-16): its own or an imported one, never a variable that holds one.
     const argument = args[0];
-    if (member?.name === "privileged" && argument && !(argument.type === "Identifier" && namesEntity(argument.name!, scope)))
+    if (member?.name === "privileged" && argument && !isEntity(argument, scope))
       ctx.report({
         severity: "error",
         code: "MESH_PRIVILEGED_ENTITY",
-        message: `\`${member.local}.privileged()\` takes an entity this file names, its own or an imported one${argument.type === "Identifier" ? `, and \`${argument.name}\` is not one` : ""}`,
+        message: `\`${member.local}.privileged()\` takes an entity this file names, its own or an imported one${argument.type === "Identifier" ? `, and \`${argument.name}\` is not one${ctx.namespaces?.has(argument.name!) ? `: it is a namespace import, and \`${argument.name}.Name\` names the entity it holds` : ""}` : ""}`,
         position: ctx.at(start(argument)),
         fix: `write \`${member.local}.privileged(Task)\`, naming the entity, and import it when it is another file's`,
       });
     // `Task.touch(...)`: a call to an entity's action (CMP-16).
     const target = callee && (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") ? callee.object as N : undefined;
-    if (target?.type === "Identifier" && namesEntity(target.name!, scope)) names.acts = true;
+    if (isEntity(target, scope)) names.acts = true;
     const opened = scopeNames(n);
     const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);
@@ -689,7 +719,8 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if (callee.type === "Identifier") {
         const name = callee.name!;
         // A free scope name is the root, never a helper imported under that name (EXP-12).
-        const from = SCOPE_NAMES.has(name) ? undefined : ctx.helpers.get(name);
+        // A namespace import (`h`) is the module, not one of its functions: `h.isStaff(...)` is the call.
+        const from = SCOPE_NAMES.has(name) || ctx.namespaces?.has(name) ? undefined : ctx.helpers.get(name);
         if (from !== undefined) {
           const before = env.reads.record;
           env.reads.record = false;
@@ -703,6 +734,19 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if ((callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") && !callee.computed && !callee.optional && n.type === "CallExpression") {
         const op = String(callee.property.name);
         const object = callee.object as N;
+        // `h.isStaff(...)`: a function of a helper module the file imports as a namespace (SYN-21), called as an imported one is.
+        const local = object.type === "Identifier" ? object.name! : undefined;
+        const from = local !== undefined && ctx.namespaces?.has(local) && !SCOPE_NAMES.has(local) && !env.roots.has(local) && !env.locals.has(local)
+          ? ctx.helpers.get(local) : undefined;
+        if (from !== undefined) {
+          const name = `${local}.${op}`;
+          const before = env.reads.record;
+          env.reads.record = false;
+          const converted = args.map((a) => sub(a, true));
+          if (env.reads.record) throw new Plain("reads-record-in-helper", `a call to ${name}, which is given the record`, n);
+          env.reads.record = before;
+          return { kind: "helper", name, from, args: converted, position };
+        }
         if (object.type === "Identifier" && ctx.entities?.has(object.name!) && !SCOPE_NAMES.has(object.name!) && !env.roots.has(object.name!) && !env.locals.has(object.name!))
           throw new Plain("calls-entity", `a call to \`${object.name}.${op}\``, n);
         if (op === "some" || op === "every" || op === "find" || op === "filter") {
