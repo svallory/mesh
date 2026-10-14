@@ -56,6 +56,7 @@ This is the same file the [Introduction](./index.md) shows and the [tutorial](./
 
 ```mx "src/domain/todo/todo.mesh.mx"
 import { List } from "./list.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Todo table="todos"
   attributes
@@ -100,8 +101,13 @@ entity :Todo table="todos"
         asc &insertedAt
 
   policies
-    policy :owner types=[:create, :read, :update, :destroy]
+    policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
+    policy :ownerCreates types=[:create]
+      authorize-if=async ({ input, actor }) => {
+        const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })
+        return list?.ownerId === actor.id
+      }
 ```
 
 **Sections group declarations.** `attributes`, `relationships`, `computed`, `actions` and `policies` may be in any order, empty or left out. Inside an action are `input`, `validate` and `do`: validation happens before the steps, however you order those sections. Steps inside `do` run in order. An action no policy covers is forbidden, so a file with no `policies` can be built but nothing in it can be called.
@@ -663,7 +669,7 @@ A read policy reads no other entity: it is a filter on the query. An imported fu
 
 On a load, a read policy's `input` is empty (`{}`): a load has no read input, so a policy that decides loads too reads `actor` and `context`. A computed field's body runs no policy on what it reads: it is the entity's own rule, worked out the same for every caller, as `Mesh.privileged` is, and its value is shown to whoever may read the record. So on a post, `count :n of=&comments` counts the comments the caller may read, while `integer :n() { return &comments.length }` counts every comment. A relationship to an entity whose policies cover other actions but not its `read` (only `actions=[&list]`, say) loads nothing for any caller, and the build warns at the relationship (`MESH_LOAD_NO_POLICY`).
 
-When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `Mesh.checkPolicies(Task.update, input, context)` asks for the reason instead. A policy sees `self` as a check does, before the input is applied: on an update or destroy the stored record, on a create the new record with its defaults and a `uuid` or `string` key, and the caller's values in `input`. So a create policy on a list's todos reads `input.list`, not `&list`, and a related-row read there is a query inside the transaction before the insert; reading `&list` in a create policy draws a warning (`MESH_POLICY_NOT_APPLIED`), as it does in a check. An update or destroy of a row that does not exist is reported as not found before any policy that reads the record runs. A policy check that reads the record runs inside the transaction, after the row is read under the lock and before `validate`, so a caller who may not run the action is told forbidden, never that their input is invalid.
+When a check reads the stored row, Mesh folds it into the statement's filter. A row the caller cannot see is reported as not found rather than forbidden; `Mesh.checkPolicies(Task.update, input, context)` asks for the reason instead. A policy sees `self` as a check does, before the input is applied: on an update or destroy the stored record, on a create the new record with its defaults and a `uuid` or `string` key, and the caller's values in `input`. So a create policy on a list's todos reads `input.list`, not `&list`, and a related-row read there is a query inside the transaction before the insert; reading `&list` in a create policy draws a warning (`MESH_POLICY_NOT_APPLIED`), as it does in a check. The todo file at the top of this page is written that way: `policy :owner` leaves out `create`, because no list is stored yet to read `&list.ownerId` from, and `policy :ownerCreates` finds the list from `input.list` through `Mesh.privileged(List)` and lets only its owner add a todo. A policy may not share a name with an action (`policy :create` beside `create :create` is a duplicate member), so the policy has its own name. An update or destroy of a row that does not exist is reported as not found before any policy that reads the record runs. A policy check that reads the record runs inside the transaction, after the row is read under the lock and before `validate`, so a caller who may not run the action is told forbidden, never that their input is invalid.
 
 ## Building one
 

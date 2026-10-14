@@ -17,7 +17,7 @@ const intro = /```mx-figure\n([\s\S]*?)```/.exec(docsPage('index.md'))[1]
 test('the home excerpt uses v4 and every nonblank line occurs in order in the full file', () => {
   expect(fences).toHaveLength(1);
   expect(fences[0]).toStartWith('import { List } from "./list.mesh.mx"\n');
-  expect(createHash('sha256').update(fences[0]).digest('hex')).toBe('ad19a0f0112a3d92e92a7c6fc0827ca4f203c554388279c9f0cade65eb8092eb');
+  expect(createHash('sha256').update(fences[0]).digest('hex')).toBe('263940e6ded82d053d1491f45a8c1384f44fa32e6c12275e8949c6db28655b4b');
   expect(oldSpellingInV4(fences[0])).toBeNull();
   expect(parseV4(fences[0], 'home.mx')).toEqual([]);
   expect(fences[0]).toContain('belongs-to :list entity=List');

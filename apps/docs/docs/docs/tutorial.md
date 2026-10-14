@@ -78,6 +78,7 @@ Add `src/domain/todo/todo.mesh.mx`, the file shown in the [Introduction](./index
 
 ```mx "src/domain/todo/todo.mesh.mx"
 import { List } from "./list.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Todo table="todos"
   attributes
@@ -122,13 +123,19 @@ entity :Todo table="todos"
         asc &insertedAt
 
   policies
-    policy :owner types=[:create, :read, :update, :destroy]
+    policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
+    policy :ownerCreates types=[:create]
+      authorize-if=async ({ input, actor }) => {
+        const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })
+        return list?.ownerId === actor.id
+      }
 ```
 
 What this gives you:
 
 - **`&list` takes the related list's id.** The imported `List` is the destination of `belongs-to :list entity=List`. The relationship reads that list, and `todo.list` is there when you ask for it.
+- **A create has its own policy.** A policy sees a todo as it is stored, before the caller's input is applied, and a todo being created is not stored yet: `&list` is empty, so `policy :owner` could not tell whose list it is. That is why `:owner` leaves out `create`, and `policy :ownerCreates` reads the list the caller named, `input.list`, through `Mesh.privileged(List)` (a read without policies), and lets only that list's owner add a todo. A list that does not exist is not owned by anyone, so a create into it is forbidden too.
 - **`min=1` is the whole of "a todo needs a title"**, and it is checked twice: the input validator refuses it before the call, and the column refuses it.
 - **`check :notDoneYet` is about state, not about one field**, which is what a `check` is for. It runs on the stored todo, before anything the caller sent is applied, so it fails with the message you wrote before anything is written.
 - **`complete` accepts nothing.** It takes an id and a context, and its check reads the todo it was given, so Mesh reads that row, locked, and writes it in the same transaction rather than running one blind `UPDATE`. Two callers completing the same todo cannot both win on a stale copy. `rename`, which has no check, is the one that runs as a single `UPDATE`.

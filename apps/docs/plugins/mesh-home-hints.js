@@ -148,8 +148,14 @@ const ROW_HINTS = new Map([
   ['sort', [section('sort')]],
   ['asc &insertedAt', [t('asc', 'direction'), member('&insertedAt', 'insertedAt', 'attribute-insertedAt')]],
   ['policies', [section('policies')]],
-  ['policy :owner types=[:create, :read, :update, :destroy]', [kind('policy'), name(':owner', 'owner-name'), option('types=', 'types'), ...array(['create', 'read', 'update', 'destroy'].map((type) => atom(`:${type}`, `types-${type}`, type === 'create' || type === 'update' ? `action-${type}` : 'actions')))]],
+  ['policy :owner types=[:read, :update, :destroy]', [kind('policy'), name(':owner', 'owner-name'), option('types=', 'types'), ...array(['read', 'update', 'destroy'].map((type) => atom(`:${type}`, `types-${type}`, type === 'update' ? `action-${type}` : 'actions')))]],
   ['authorize-if=({ actor }) => &list.ownerId === actor.id', [option('authorize-if=', 'authorize'), fn('('), fn('{'), fn('actor', 'actor'), fn('}'), fn(')'), fn('=>'), member('&list', 'list-owner', 'relationship'), fn('.'), fn('ownerId'), fn('==='), fn('actor', 'actor'), fn('.'), fn('id')]],
+  ['policy :ownerCreates types=[:create]', [kind('policy'), name(':ownerCreates', 'ownerCreates-name'), option('types=', 'types'), ...array([atom(':create', 'types-create', 'action-create')])]],
+  ['authorize-if=async ({ input, actor }) => {', [option('authorize-if=', 'authorize'), fn('async'), fn('('), fn('{'), fn('input'), fn(','), fn('actor', 'actor'), fn('}'), fn(')'), fn('=>'), fn('{')]],
+  ['const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })', [fn('const'), fn('['), fn('list'), fn(']'), fn('='), fn('await'), fn('Mesh'), fn('.'), fn('privileged'), fn('('), t('List', 'imported-entity', 'privileged-list'), fn(')'), fn('.'), fn('read'), fn('('), fn('{'), fn('filter'), fn(':'), fn('{'), fn('id'), fn(':'), fn('{'), fn('eq'), fn(':'), fn('input'), fn('.'), fn('list'), fn('}'), fn('}'), fn('}'), fn(')')]],
+  ['return list?.ownerId === actor.id', [fn('return'), fn('list'), fn('?.'), fn('ownerId'), fn('==='), fn('actor', 'actor'), fn('.'), fn('id')]],
+  ['}', [fn('}')]],
+  ['import { Mesh } from "meshfw"', [t('import', 'import'), t('{', 'import'), t('Mesh', 'import'), t('}', 'import'), t('from', 'import'), t('"meshfw"', 'string')]],
 ]);
 
 const LINE_ANCHORS = new Map([

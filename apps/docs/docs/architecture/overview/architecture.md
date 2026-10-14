@@ -23,6 +23,7 @@ A short entity file, `src/domain/todo/todo.mesh.mx` (the full reference file is 
 
 ```mx
 import { List } from "./list.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Todo table="todos"
   attributes
@@ -54,8 +55,13 @@ entity :Todo table="todos"
       filter=() => &done === false
 
   policies
-    policy :owner
+    policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
+    policy :ownerCreates types=[:create]
+      authorize-if=async ({ input, actor }) => {
+        const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })
+        return list?.ownerId === actor.id
+      }
 ```
 
 From it Mesh generates the `Todo` value with `Todo.create(input, context)`, `Todo.complete`, `Todo.pending`, `Todo.read` and `Todo.destroy`, the `Todo` type, an input validator per action and the `todos` table. Application code imports the entity from its folder's barrel, `#mesh/domain/todo` for an entity in `src/domain/todo/`, `connect`, `bind` and `transaction` from `#mesh`, and `Mesh`, whose members are the functions that are the same in every project (`Mesh.privileged`, `Mesh.can`), from `meshfw` ([ADR-0058](../decisions/0058-generated-code-in-mesh-imported-as-hash-mesh.md), amended 2026-10-11 and 2026-10-12, [ADR-0086](../decisions/0086-entity-values-privileged-barrels-and-fqns.md)).

@@ -1,8 +1,8 @@
 // CMP-21 end to end: `Mesh.checkPolicies` and `Mesh.can`, imported from meshfw by application code, asked about the
 // tutorial's todo domain. The fixture (`fixtures/check-policies/domain/todo`) is the tutorial's `List` and `Todo` with
-// the policies this version builds: a read policy that reads the record is the SQL evaluator's (M10), and so is a create
-// policy that reads `&list` (it sees no list before the input is applied, ACT-27), so `List` and `Todo` are read and
-// created by any signed-in caller, and `Todo.complete`, `rename` and `destroy` are the list owner's. The project is built
+// the policies this version builds: a read policy that reads the record is the SQL evaluator's (M10), so `List` and `Todo`
+// are read by any signed-in caller; a todo is created by its list's owner (a create policy reads `input.list`, not `&list`,
+// which is empty before the input is applied, POL-08); and `Todo.complete`, `rename` and `destroy` are the list owner's. The project is built
 // by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with an application
 // module that runs the two documented examples (using-your-domain.md, "Asking instead of calling", and testing.md), and
 // run on SQLite in memory.
@@ -140,7 +140,7 @@ beforeAll(async () => {
   const built = mesh(root, "build");
   // The one warning is the tutorial's: its `label` concatenates strings, which runs as plain TypeScript.
   expect(built).toMatchObject({ code: 0, stdout: "" });
-  expect(built.stderr).toStartWith("domain/todo/todo.mesh.mx:16:14 warning MESH_EXPR_PLAIN this expression runs as plain TypeScript");
+  expect(built.stderr).toStartWith("domain/todo/todo.mesh.mx:17:14 warning MESH_EXPR_PLAIN this expression runs as plain TypeScript");
   expect(built.stderr).toEndWith("\n0 errors, 1 warning\n");
 }, 30_000);
 afterAll(async () => {
@@ -219,5 +219,97 @@ describe("Mesh.checkPolicies and Mesh.can from application code (CMP-21)", () =>
     } finally {
       await db.close();
     }
+  });
+});
+
+// The todo's create policy (POL-08): a create has no stored list yet, so `Todo`'s `policy :ownerCreates` reads `input.list`
+// and looks the list up. The owner policy keeps the writes on a todo that exists; read stays `signedIn` until M10.
+describe("the todo's create policy reads the list from the input (POL-08)", () => {
+  const MISSING = "00000000-0000-4000-8000-0000000000ff";
+
+  /** Runs `work` on a fresh in-memory database that has alice's list "Groceries"; `todo` is the generated barrel. */
+  async function withList(work: (todo: any, list: { id: string }, db: any) => Promise<void>): Promise<void> {
+    const app = await import(join(root, ".mesh/index.ts"));
+    const { todo } = await import(join(root, ".mesh/domain/index.ts"));
+    const { alice } = await import(join(root, "context.ts"));
+    const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    const db = sqlite({ file: ":memory:" });
+    await createSchema(db, app.tables);
+    try {
+      await app.bind(db).run(async () => {
+        const list = await todo.List.create({ name: "Groceries" }, { actor: alice });
+        await work(todo, list, db);
+      });
+    } finally {
+      await db.close();
+    }
+  }
+
+  const forbiddenBy = (result: Outcome): ForbiddenError => {
+    expect(result).toEqual({ ok: false, error: expect.any(ForbiddenError) });
+    return (result as { error: ForbiddenError }).error;
+  };
+
+  test("the list's owner creates a todo", async () => {
+    const { alice } = await import(join(root, "context.ts"));
+    await withList(async (todo, list) => {
+      const milk = await todo.Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
+      expect(milk).toMatchObject({ title: "Buy milk", listId: list.id });
+      expect(await todo.Todo.read({}, { actor: alice })).toHaveLength(1);
+    });
+  });
+
+  test("another actor is forbidden, the error names the policy, and nothing is written", async () => {
+    const { alice, bob } = await import(join(root, "context.ts"));
+    await withList(async (todo, list) => {
+      const error = forbiddenBy(await outcome(todo.Todo.create({ title: "Buy milk", list: list.id }, { actor: bob })));
+      expect(error).toMatchObject({ entity: "todo.Todo", action: "create", policies: ["ownerCreates"], reason: "failed" });
+      expect(error.breakdown).toMatchObject([{ policy: "ownerCreates", kind: "authorize-if", result: false, decisive: true }]);
+      expect(await todo.Todo.read({}, { actor: alice })).toEqual([]);
+    });
+  });
+
+  test("an input.list that names no list is forbidden, even for an actor who owns other lists", async () => {
+    const { alice } = await import(join(root, "context.ts"));
+    await withList(async (todo) => {
+      const error = forbiddenBy(await outcome(todo.Todo.create({ title: "Buy milk", list: MISSING }, { actor: alice })));
+      expect(error).toMatchObject({ action: "create", policies: ["ownerCreates"] });
+      expect(await todo.Todo.read({}, { actor: alice })).toEqual([]);
+    });
+  });
+
+  test("Mesh.checkPolicies and Mesh.can give the same answers as the calls", async () => {
+    const { alice, bob } = await import(join(root, "context.ts"));
+    const { Mesh } = await import(Bun.resolveSync("meshfw", root));
+    await withList(async (todo, list) => {
+      const input = { title: "Buy milk", list: list.id };
+      expect(await Mesh.can(todo.Todo.create, input, { actor: alice })).toBe(true);
+      expect(await Mesh.can(todo.Todo.create, input, { actor: bob })).toBe(false);
+      expect(await Mesh.can(todo.Todo.create, { ...input, list: MISSING }, { actor: alice })).toBe(false);
+      const answer = await Mesh.checkPolicies(todo.Todo.create, input, { actor: bob });
+      expect(answer).toMatchObject({ allowed: false, breakdown: [{ policy: "ownerCreates", result: false, decisive: true }] });
+    });
+  });
+
+  test("the owner still reads, updates and destroys their todos, and another actor still cannot", async () => {
+    const { alice, bob } = await import(join(root, "context.ts"));
+    await withList(async (todo, list) => {
+      const milk = await todo.Todo.create({ title: "Buy milk", list: list.id }, { actor: alice });
+      const bread = await todo.Todo.create({ title: "Buy bread", list: list.id }, { actor: alice });
+
+      expect(await todo.Todo.read({}, { actor: alice })).toHaveLength(2);
+
+      // Bob may not update or destroy: the owner policy covers both, and the todo is in alice's list.
+      expect(forbiddenBy(await outcome(todo.Todo.rename({ id: milk.id, title: "Buy oat milk" }, { actor: bob }))).policies).toEqual(["owner"]);
+      expect(forbiddenBy(await outcome(todo.Todo.complete({ id: milk.id }, { actor: bob }))).policies).toEqual(["owner"]);
+      expect(forbiddenBy(await outcome(todo.Todo.destroy({ id: milk.id }, { actor: bob }))).policies).toEqual(["owner"]);
+      expect((await todo.Todo.read({}, { actor: alice })).map((row: { title: string }) => row.title).sort()).toEqual(["Buy bread", "Buy milk"]);
+
+      // Alice may.
+      expect(await todo.Todo.rename({ id: milk.id, title: "Buy oat milk" }, { actor: alice })).toMatchObject({ title: "Buy oat milk" });
+      expect(await todo.Todo.complete({ id: milk.id }, { actor: alice })).toMatchObject({ done: true });
+      await todo.Todo.destroy({ id: bread.id }, { actor: alice });
+      expect((await todo.Todo.read({}, { actor: alice })).map((row: { id: string }) => row.id)).toEqual([milk.id]);
+    });
   });
 });

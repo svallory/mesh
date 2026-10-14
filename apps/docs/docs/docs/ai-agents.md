@@ -23,6 +23,7 @@ The tutorial's two entity files are the whole surface an agent has to understand
 
 ```text
 import { List } from "./list.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Todo table="todos"
   attributes
@@ -37,8 +38,13 @@ entity :Todo table="todos"
         &title
         &list
   policies
-    policy :owner types=[:create, :read, :update, :destroy]
+    policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
+    policy :ownerCreates types=[:create]
+      authorize-if=async ({ input, actor }) => {
+        const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })
+        return list?.ownerId === actor.id
+      }
 ```
 
 (That is the shape of the content, not the file's exact text: the real file is longer and lists every entity.) It writes names and lists of names the way an entity file does, because that is what it is teaching: an agent that copies a line from it into a `.mesh.mx` file has written a valid one.
