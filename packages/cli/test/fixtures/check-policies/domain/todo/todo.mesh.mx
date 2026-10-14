@@ -1,4 +1,5 @@
 import { List } from "./list.mesh.mx"
+import { Mesh } from "meshfw"
 
 entity :Todo table="todos"
   attributes
@@ -45,5 +46,10 @@ entity :Todo table="todos"
   policies
     policy :owner types=[:update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
-    policy :signedIn types=[:create, :read]
+    policy :signedIn types=[:read]
       authorize-if=({ actor }) => actor.id !== null
+    policy :ownerCreates types=[:create]
+      authorize-if=async ({ input, actor }) => {
+        const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })
+        return list?.ownerId === actor.id
+      }

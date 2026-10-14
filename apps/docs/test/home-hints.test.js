@@ -225,8 +225,8 @@ test('all 15 reference occurrences connect to existing unique targets from the b
     ['import-list', 'entity-option'], ['on-create', 'action-create'], ['entity-list', 'import'],
     ['auto-read', 'actions'], ['auto-destroy', 'actions'], ['title', 'attribute-title'], ['list', 'relationship'],
     ['title', 'attribute-title'], ['done', 'attribute-done'], ['insertedAt', 'attribute-insertedAt'],
-    ['types-create', 'action-create'], ['types-read', 'actions'], ['types-update', 'action-update'], ['types-destroy', 'actions'],
-    ['list-owner', 'relationship'],
+    ['types-read', 'actions'], ['types-update', 'action-update'], ['types-destroy', 'actions'],
+    ['list-owner', 'relationship'], ['types-create', 'action-create'],
   ]);
   const html = renderMxFlow(source, 'home.md');
   for (const [, to] of connections) expect(html.split(`data-hint-anchor="${to}"`).length - 1).toBe(1);

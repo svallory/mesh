@@ -19,6 +19,7 @@ This is a complete `src/domain/todo/todo.mesh.mx`, top to bottom, as your editor
 ```mx-figure
 // @imports: Another entity — `List` is imported from the file that declares it. The path tells Mesh which list this todo belongs to.
 import { List } from "./list.mesh.mx"
+import { Mesh } from "meshfw"
 
 // @name: Name and table — a name is written `:name`, so this is `:Todo`; it lives in the `todos` table. The type, the functions and the migration come from this one line.
 entity :Todo table="todos"
@@ -73,8 +74,14 @@ entity :Todo table="todos"
 
 // @who: Who may do it — an action no policy covers is forbidden, and a todo in someone else's list is simply not found.
   policies
-    policy :owner types=[:create, :read, :update, :destroy]
+    policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
+// @creates: Who may add one — a new todo has no stored list yet, so this policy reads the list from `input.list`.
+    policy :ownerCreates types=[:create]
+      authorize-if=async ({ input, actor }) => {
+        const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })
+        return list?.ownerId === actor.id
+      }
 ```
 
 ## What you call
