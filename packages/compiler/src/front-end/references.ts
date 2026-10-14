@@ -55,6 +55,11 @@ export function writtenAlone(source: string, tag: Tag, option: Extract<Attr, { k
 export interface ReferenceScope {
   /** Each name the file's imports bind, to its import: a named import's local, or a namespace import's alias. */
   imports: ReadonlyMap<string, Import>;
+  /**
+   * The names two imports bind. `MESH_DUPLICATE_IMPORT` reports the second binding, so a reference through such a name
+   * resolves to nothing and reports nothing more.
+   */
+  duplicates: ReadonlySet<string>;
   /** The file's own declaration, which the file names without an import (an entity relates to itself), and its path. */
   own: { name: string; from: string };
   /**
@@ -76,7 +81,9 @@ export interface ReferenceKind {
 
 export type Resolution =
   | { ok: true; identifier: string; from: string }
-  | { ok: false; code: string; message: string; offset: number; fix?: string };
+  | { ok: false; code: string; message: string; offset: number; fix?: string }
+  /** A reference through a name two imports bind: `MESH_DUPLICATE_IMPORT` already reports it. */
+  | { ok: false; reported: true };
 
 /**
  * Resolves a reference (SYN-21): `List` to the file whose import binds it (or to the file itself, by its own name), and
@@ -86,6 +93,7 @@ export type Resolution =
  */
 export function resolveReference(written: WrittenReference, scope: ReferenceScope, kind: ReferenceKind): Resolution {
   const { qualifier, name } = written;
+  if (scope.duplicates.has(qualifier?.name ?? name)) return { ok: false, reported: true };
   const identifier = referenceText(written);
   const fail = (message: string, offset: number, fix?: string): Resolution => ({ ok: false, code: kind.code, message, offset, ...(fix ? { fix } : {}) });
   const unknown = (detail = "") => {

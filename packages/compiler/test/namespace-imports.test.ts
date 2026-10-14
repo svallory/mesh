@@ -233,6 +233,48 @@ describe("namespace import forms", () => {
     expect(brief(result.diagnostics).map((d) => [d[0], d[1], d[2], d[3]])).toEqual([["MESH_DUPLICATE_IMPORT", "Duplicate import identifier Invoice", 2, 12]]);
   });
 
+  // The second binding binds nothing, and a use of the name, whichever binding it means, says nothing the duplicate does not.
+  test.each([
+    ["the named import first, a member of the namespace", 'import { Invoice } from "../billing/invoice.mesh.mx"\nimport * as Invoice from "../billing/customer.mesh.mx"', "Invoice.Customer"],
+    ["the named import first, the name alone", 'import { Invoice } from "../billing/invoice.mesh.mx"\nimport * as Invoice from "../billing/customer.mesh.mx"', "Invoice"],
+    ["the namespace first, the name alone", 'import * as Invoice from "../billing/customer.mesh.mx"\nimport { Invoice } from "../billing/invoice.mesh.mx"', "Invoice"],
+    ["the namespace first, an unknown member", 'import * as Invoice from "../billing/customer.mesh.mx"\nimport { Invoice } from "../billing/invoice.mesh.mx"', "Invoice.Custmer"],
+  ])("a duplicate name reports MESH_DUPLICATE_IMPORT alone: %s", (_, imports, reference) => {
+    const withUses = line(`import { Mesh } from "meshfw"\n${imports}`, `    belongs-to :invoice entity=${reference}\n`, `  actions auto=[:read]
+    update :touch
+      do
+        run async ({ context }) {
+          await Mesh.privileged(${reference}).read({}, context)
+          void ${reference}
+        }
+`);
+    expect(brief(build(withUses).diagnostics).map((d) => [d[0], d[2]])).toEqual([["MESH_DUPLICATE_IMPORT", 3]]);
+  });
+
+  test("a check on a duplicate binding's name runs once, on the binding that keeps the name", () => {
+    const result = onDisk({
+      "a.helpers.ts": "export const $one = 1\n",
+      "b.helpers.ts": "export const $one = 2\n",
+      "line.mesh.mx": line('import { $one } from "./a.helpers"\nimport { $one } from "./b.helpers"', "    belongs-to :line entity=Line nullable\n"),
+    });
+    expect(brief(result.diagnostics).map((d) => [d[0], d[2]])).toEqual([["MESH_HELPER_NAME", 1], ["MESH_DUPLICATE_IMPORT", 2]]);
+  });
+
+  test("the second binding reaches no function: a helper namespace that keeps the name is no entity there", () => {
+    // Were the entity file's binding to reach the functions too, the call would be an entity's action, MESH_POLICY_ACTS.
+    const result = onDisk({
+      "billing/invoice.mesh.mx": INVOICE,
+      "ledger/line.helpers.ts": "export const isStaff = (context: unknown) => context !== null\n",
+      "ledger/line.mesh.mx": line('import * as Invoice from "./line.helpers"\nimport * as Invoice from "../billing/invoice.mesh.mx"', "    belongs-to :line entity=Line nullable\n", `  actions auto=[:read]
+    update :touch
+  policies
+    policy :staff types=[:read, :update]
+      authorize-if=({ context }) => Invoice.isStaff(context)
+`),
+    });
+    expect(brief(result.diagnostics).map((d) => [d[0], d[2]])).toEqual([["MESH_DUPLICATE_IMPORT", 2]]);
+  });
+
   test("an alias generated code could take is refused, as a named import's is", () => {
     expect(build(line('import * as $billing from "../billing/invoice.mesh.mx"', "    belongs-to :invoice entity=$billing.Invoice\n")).diagnostics.map((d) => d.code)).toEqual(["MESH_HELPER_NAME"]);
   });

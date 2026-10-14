@@ -287,7 +287,11 @@ function buildEntity(
       return value;
     },
   );
+  // Each name to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
+  // nothing: no name set below holds it, and a reference through the name reports nothing more (`duplicates`).
   const importNames = new Map<string, Import>();
+  const duplicates = new Set<string>();
+  const bindings: { entry: Import; index: number; name: string }[] = [];
   for (const entry of entity.imports)
     for (const [index, name] of entry.identifiers.entries()) {
       if (importNames.has(name)) {
@@ -297,9 +301,11 @@ function buildEntity(
           `Duplicate import identifier ${name}`,
           localOffset === undefined ? entry.position : at(localOffset),
         );
-        continue; // the first binding stays the name's, so a reference to it reports nothing more
+        duplicates.add(name);
+        continue;
       }
       importNames.set(name, entry);
+      bindings.push({ entry, index, name });
     }
   const pending: {
     ref: MemberRef;
@@ -314,41 +320,39 @@ function buildEntity(
   };
   const helperImports = new Map<string, string>();
   const meshImports = new Set<string>();
-  for (const entry of entity.imports) {
+  for (const { entry, index, name } of bindings) {
     const helper = entry.helper === true;
-    for (const [index, name] of entry.identifiers.entries()) {
-      if (helper) helperImports.set(name, entry.from);
-      if (entry.mesh) meshImports.add(name);
-      // A scope name (`input`) is the root in every function of the file (EXP-12), and a function is the one place a
-      // file reads `Mesh`: under that name the import could never be read.
-      if (entry.mesh && SCOPE_NAMES.has(name)) {
-        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-        fail(
-          "MESH_HELPER_NAME",
-          `The Mesh import name ${name} is a scope name: in every function of the file \`${name}\` is the scope's \`${name}\`, so \`Mesh\` imported as ${name} could never be read`,
-          localOffset === undefined ? entry.position : at(localOffset),
-          `import it as \`Mesh\`, or under a name other than ${[...SCOPE_NAMES].map((root) => `\`${root}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
-        );
-      }
-      // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
-      // local as `l$...` (CMP-06): no name an import binds, a helper's or an entity's alias, may start with either.
-      if (/^(\$|l\$)/.test(name)) {
-        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-        fail(
-          "MESH_HELPER_NAME",
-          `The ${helper ? "helper" : entry.mesh ? "Mesh import" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
-          localOffset === undefined ? entry.position : at(localOffset),
-        );
-      }
+    if (helper) helperImports.set(name, entry.from);
+    if (entry.mesh) meshImports.add(name);
+    // A scope name (`input`) is the root in every function of the file (EXP-12), and a function is the one place a
+    // file reads `Mesh`: under that name the import could never be read.
+    if (entry.mesh && SCOPE_NAMES.has(name)) {
+      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+      fail(
+        "MESH_HELPER_NAME",
+        `The Mesh import name ${name} is a scope name: in every function of the file \`${name}\` is the scope's \`${name}\`, so \`Mesh\` imported as ${name} could never be read`,
+        localOffset === undefined ? entry.position : at(localOffset),
+        `import it as \`Mesh\`, or under a name other than ${[...SCOPE_NAMES].map((root) => `\`${root}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
+      );
+    }
+    // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
+    // local as `l$...` (CMP-06): no name an import binds, a helper's or an entity's alias, may start with either.
+    if (/^(\$|l\$)/.test(name)) {
+      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+      fail(
+        "MESH_HELPER_NAME",
+        `The ${helper ? "helper" : entry.mesh ? "Mesh import" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
+        localOffset === undefined ? entry.position : at(localOffset),
+      );
     }
   }
   // What a reference to another file's declaration resolves against (SYN-21): `entity=List`, `entity=billing.Invoice`.
-  const references: ReferenceScope = { imports: importNames, own: { name: entity.name, from: `./${basename(file)}` }, declared };
+  const references: ReferenceScope = { imports: importNames, duplicates, own: { name: entity.name, from: `./${basename(file)}` }, declared };
   // The entities a function in this file can name (CMP-16): its own and each one it imports, by the name the file gives it.
-  const entities = new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh).flatMap((entry) => entry.identifiers)]);
+  const entities = new Set([entity.name, ...bindings.filter(({ entry }) => !entry.helper && !entry.mesh).map(({ name }) => name)]);
   // Each namespace import's alias (SYN-21): a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
   // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
-  const namespaces = new Set(entity.imports.filter((entry) => entry.namespace).flatMap((entry) => entry.identifiers));
+  const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
   // `Mesh` under the entity's own name would give one name two meanings in a function of the file (PRJ-22).
   for (const entry of entity.imports)
     if (entry.mesh && entry.identifiers.includes(entity.name))
@@ -371,6 +375,7 @@ function buildEntity(
         entities,
         namespaces,
         reference: (written) => resolveReference(written, references, ENTITY_REFERENCE),
+        duplicates,
         mesh: meshImports,
         report: (d) => {
           if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
@@ -535,7 +540,7 @@ function buildEntity(
       written = undefined;
     }
     const target = written ? resolveReference(written, references, ENTITY_REFERENCE) : undefined;
-    if (target && !target.ok) fail(target.code, target.message, at(target.offset), target.fix);
+    if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
     const name = declaredName(tag);
     const kind = tag.name as Relationship["kind"];
     const inverse = atomOf(attr(tag, "inverse"))?.name;

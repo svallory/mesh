@@ -38,6 +38,8 @@ export interface ConvertContext {
   namespaces?: ReadonlySet<string>;
   /** Resolves `billing.Invoice`, a member of an entity file's namespace import, as `entity=` does (`resolveReference`). */
   reference?: (written: WrittenReference) => Resolution;
+  /** The names two imports bind: `MESH_DUPLICATE_IMPORT` reports them, so a use of one reports nothing more. */
+  duplicates?: ReadonlySet<string>;
   /** The names the file imports `Mesh` under, from "meshfw" (PRJ-22): `Mesh`, or its alias. */
   mesh?: ReadonlySet<string>;
   report: (diagnostic: Diagnostic) => void;
@@ -464,7 +466,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object"
           && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && memberName !== undefined) {
           const resolved = ctx.reference({ qualifier: { name: n.name!, offset: start(n) }, name: memberName, offset: start(member!) });
-          if (!resolved.ok)
+          if (!resolved.ok && "code" in resolved)
             ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
         }
         // The global `structuredClone`, unless the file imports something under its name (PRJ-20).
@@ -496,7 +498,9 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       });
     // `Mesh.privileged(X)` takes an entity the file names (TXN-16): its own or an imported one, never a variable that holds one.
     const argument = args[0];
-    if (member?.name === "privileged" && argument && !isEntity(argument, scope))
+    const argumentRoot = argument && chainRoot(argument)?.name;
+    if (member?.name === "privileged" && argument && !isEntity(argument, scope)
+      && !(argumentRoot !== undefined && !scope.has(argumentRoot) && ctx.duplicates?.has(argumentRoot)))
       ctx.report({
         severity: "error",
         code: "MESH_PRIVILEGED_ENTITY",
