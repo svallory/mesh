@@ -101,13 +101,15 @@ export async function claimOf(taskId: string, fence: number, context: ActionCont
 }
 
 /**
- * The claim `claim.revoke` acts on, which the spec names by its Task: the Task's active claim. With none there is
- * nothing to revoke, `claim.active` (PROTOCOL.md:279), once the permission phase has passed: an actor that could not
- * revoke the Task's claim is refused as the action's `ownerOrMember` and `claimRevoker` would refuse it.
+ * The claim `claim.revoke` acts on, which the spec names by its Task: the Task's active claim at `now`, one whose
+ * lease has not run out, since a claim is expired the moment it does, before the lease sweeper marks it
+ * (PROTOCOL.md:312). With none there is nothing to revoke, `claim.active` (PROTOCOL.md:279), once the permission
+ * phase has passed: an actor that could not revoke the Task's claim is refused as the action's `ownerOrMember` and
+ * `claimRevoker` would refuse it.
  */
-export async function activeClaimOf(taskId: string, context: ActionContext): Promise<Claim> {
+export async function activeClaimOf(taskId: string, now: Date, context: ActionContext): Promise<Claim> {
   await existingTask(taskId);
-  const [claim] = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId }, state: { eq: "active" } }, sort: ["fence", "id"] });
+  const [claim] = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId }, state: { eq: "active" }, expiresAt: { gt: now } }, sort: ["fence", "id"] });
   if (claim) return claim;
   // With no claim there is no record to run the policies on, so this decides them by hand. It mirrors
   // `policy :ownerOrMember` and `policy :claimRevoker` of `src/domain/work/claim.mesh.mx`; a call from the transport is

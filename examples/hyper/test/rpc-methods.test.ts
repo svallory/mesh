@@ -129,6 +129,24 @@ describe("claim.renew, claim.release and claim.revoke find the claim from the Ta
     expect(checks(noneForGus)).toEqual(["role", "claim.revoker"]);
   }));
 
+  test("a claim whose lease ran out is not active before the sweeper marks it (PROTOCOL.md:312): revoke is claim.active, renew and release claim.expired, and the Task shows no active claim", () => inWorld(async (w) => {
+    const { claim } = await send("claim.acquire", { ...as(w.bot), leaseMs: 30 }, { taskId: w.task.id });
+    expect(Date.parse(claim.expiresAt) - Date.parse(claim.acquiredAt)).toBe(30);
+    // The methods read the system clock and the actions the world's: both move past `expiresAt`.
+    await Bun.sleep(40);
+    w.time.now = new Date();
+    const revoke = await refusal(send("claim.revoke", as(w.alice), { taskId: w.task.id, reason: "stalled" }));
+    expect([revoke.code, revoke.phase, checks(revoke)]).toEqual([-32003, "content", ["claim.active"]]);
+    const renew = await refusal(send("claim.renew", as(w.bot), { taskId: w.task.id, fence: claim.fence }));
+    expect([renew.code, renew.phase, checks(renew)]).toEqual([-32003, "content", ["claim.expired"]]);
+    const release = await refusal(send("claim.release", as(w.bot), { taskId: w.task.id, fence: claim.fence }));
+    expect([release.code, release.phase, checks(release)]).toEqual([-32003, "content", ["claim.expired"]]);
+    const { task, history } = await ask("task.get", as(w.alice), { taskId: w.task.id });
+    expect(task).toMatchObject({ activeClaim: null, derived: { state: "ready" } });
+    // No sweeper runs in process: the row still says active.
+    expect(history.claims).toMatchObject([{ id: claim.id, state: "active", endedAt: null }]);
+  }));
+
   test("an unknown Task is not_found before any claim is looked for", () => inWorld(async (w) => {
     for (const taskId of ["nope", crypto.randomUUID()]) {
       const refused = await refusal(send("claim.release", as(w.bot), { taskId, fence: 1 }));

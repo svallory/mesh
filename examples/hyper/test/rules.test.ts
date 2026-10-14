@@ -538,6 +538,10 @@ const RULES: Record<string, Case> = {
     pass: async (w) => {
       const held = await claim(w);
       expect(await Claim.revoke({ id: held.id, reason: "taking over" }, as(w.alice))).toMatchObject({ state: "revoked", endReason: "taking over", endedAt: NOW });
+      // A claim whose lease has a moment left is still live, and revoked.
+      const live = await claim(w, w.bot, (await Task.create({ title: "Live" }, as(w.alice))).id);
+      w.time.now = new Date(live.expiresAt.getTime() - 1);
+      expect(await Claim.revoke({ id: live.id, reason: "just in time" }, as(w.alice))).toMatchObject({ state: "revoked" });
     },
     fail: async (w) => {
       const held = await claim(w);
@@ -547,6 +551,12 @@ const RULES: Record<string, Case> = {
       await refused(Claim.revoke({ id: held.id, reason: "late" }, as(w.alice)), "claim.active");
       // Claim :expire is internal (the engine's lease sweeper): called as the engine.
       await refused(Claim.expire({ id: held.id }, asSystem(w.alice)), "claim.active");
+      // A claim is expired the moment its lease runs out (PROTOCOL.md:312): before the sweeper marks it, revoking it is
+      // refused too, and it stays active for the sweeper.
+      const lapsed = await claim(w, w.bot, (await Task.create({ title: "Lapsed" }, as(w.alice))).id);
+      w.advance(10);
+      await refused(Claim.revoke({ id: lapsed.id, reason: "stalled" }, as(w.alice)), "claim.active");
+      expect(await one(Claim.read({ filter: { id: { eq: lapsed.id } } }, as(w.alice)))).toMatchObject({ state: "active", endedAt: null });
     },
   },
   "claim.expired": {
@@ -562,6 +572,11 @@ const RULES: Record<string, Case> = {
       await refused(Claim.renew({ id: held.id, fence: held.fence }, as(w.bot)), "claim.expired");
       await refused(Claim.release({ id: held.id, fence: held.fence }, as(w.bot)), "claim.expired");
       expect(await one(Claim.read({ filter: { id: { eq: held.id } } }, as(w.alice)))).toMatchObject({ state: "active", expiresAt: minutes(10) });
+      // Once the sweeper has marked it, the answer is the same and only that: claim.active is for a released or revoked
+      // claim (PROTOCOL.md:314).
+      await Claim.expire({ id: held.id }, asSystem(w.alice));
+      expect(codes(await issuesOf(Claim.renew({ id: held.id, fence: held.fence }, as(w.bot))))).toEqual(["claim.expired"]);
+      expect(codes(await issuesOf(Claim.release({ id: held.id, fence: held.fence }, as(w.bot))))).toEqual(["claim.expired"]);
     },
   },
   "submission.none-pending": {

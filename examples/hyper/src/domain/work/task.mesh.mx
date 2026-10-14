@@ -5,7 +5,7 @@ import { Claim } from "./claim.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Completion } from "./completion.mesh.mx"
 import { Event } from "../audit/event.mesh.mx"
-import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, managesTaskOf, missingEvidenceOf, movedParent, noContainmentCycleOf, noOtherHolderOf, openChildren, openClaims, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
+import { acceptedSubmissionOf, assignmentChanges, claimNotInvalidated, claimToRelease, completionRule, currentAssignment, fenceDetails, fenceIsCurrent, invalidatedFences, liveClaims, managesTaskOf, missingEvidenceOf, movedParent, noContainmentCycleOf, noOtherHolderOf, openChildren, ownPending, parentOpenOf, reviewerFor, reviewNotRequiredOf, taskChanges } from "./work.helpers"
 import { assignableOf, collaboratorActiveOf, memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -179,7 +179,7 @@ entity :Task table="tasks"
           &state=:canceled
           &version=() => &version + 1
         run [after=:write] ({ self, context }) {
-          for (const claim of openClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } })))
+          for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now))
             await Claim.end({ id: claim.id, outcome: :revoked, reason: "task canceled" }, { ...context, system: true });
           for (const submission of await Mesh.privileged(Submission).read({ filter: { taskId: { eq: self.id }, state: { eq: :pending } } }))
             await Submission.settle({ id: submission.id, outcome: :withdrawn }, { ...context, system: true });
@@ -306,7 +306,7 @@ entity :Task table="tasks"
           const current = currentAssignment(await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }));
           if (current) {
             if (current.assigneeId !== input.assignee)
-              for (const claim of openClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), current.assigneeId))
+              for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now, current.assigneeId))
                 await Claim.end({ id: claim.id, outcome: :revoked, reason: "reassigned" }, { ...context, system: true });
             await Assignment.finish({ id: current.id, reason: :reassigned }, { ...context, system: true });
           }
@@ -334,7 +334,7 @@ entity :Task table="tasks"
         run [after=:write] ({ self, context }) {
           const current = currentAssignment(await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.id }, endedAt: { nil: true } } }));
           if (!current) return;
-          for (const claim of openClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), current.assigneeId))
+          for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now, current.assigneeId))
             await Claim.end({ id: claim.id, outcome: :revoked, reason: "unassigned" }, { ...context, system: true });
           await Assignment.finish({ id: current.id, reason: :unassigned }, { ...context, system: true });
         }

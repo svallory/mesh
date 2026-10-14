@@ -19,6 +19,8 @@ import * as identityCommands from "../src/domain/identity/identity.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import * as workCommands from "../src/domain/work/work.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
+import { sweep } from "../src/daemon/sweeper";
+import { ENGINE } from "../src/rpc/context";
 import { as, asSystem, codes, deniedBy, issuesOf, minutes, NOW, one, within, type World } from "./world";
 
 const taskOf = async (w: World, id: string) => one(Task.read({ filter: { id: { eq: id } } }, as(w.alice)));
@@ -410,6 +412,59 @@ describe("effects across aggregates in the identity commands", () => {
     expect(codes(await issuesOf(collaboratorRetire({ id: w.alice.id }, as(w.alice), w.binding)))).toEqual(["membership.last-owner"]);
     expect(codes(await issuesOf(membershipRevoke({ id: w.memberships.alice.id }, as(w.alice), w.binding)))).toEqual(["membership.last-owner"]);
     expect(await one(Collaborator.read({ filter: { id: { eq: w.alice.id } } }, as(w.alice)))).toMatchObject({ state: "active", version: 1 });
+  }));
+});
+
+describe("the lease: context.leaseMs, and a lapsed claim the sweeper has not marked (PROTOCOL.md:312)", () => {
+  test("acquire and renew take the lease from context.leaseMs, and ten minutes when the context has none", () => within(async (w) => {
+    const claim = await Claim.acquire({ task: w.task.id }, { ...as(w.bot), leaseMs: 90_000 });
+    expect(claim).toMatchObject({ acquiredAt: NOW, expiresAt: new Date(NOW.getTime() + 90_000) });
+    w.advance(1);
+    const shorter = await Claim.renew({ id: claim.id, fence: claim.fence }, { ...as(w.bot), leaseMs: 1 });
+    expect(shorter.expiresAt).toEqual(new Date(minutes(1).getTime() + 1));
+    const renewed = await Claim.renew({ id: claim.id, fence: claim.fence }, as(w.bot));
+    expect(renewed.expiresAt).toEqual(minutes(11));
+  }));
+
+  test("task.cancel, task.assign and task.unassign revoke only live claims: a lapsed one stays active for the sweeper", () => within(async (w) => {
+    const canceled = w.task;
+    const reassigned = await Task.create({ title: "Reassigned" }, as(w.alice));
+    const unassigned = await Task.create({ title: "Unassigned" }, as(w.alice));
+    const lapsed = [];
+    for (const task of [canceled, reassigned, unassigned]) lapsed.push(await Claim.acquire({ task: task.id }, as(w.bot)));
+    w.advance(10);
+    const versions = await Promise.all([canceled, reassigned, unassigned].map(async (task) => (await taskOf(w, task.id)).version));
+    await taskCancel({ id: canceled.id, reason: "dropped" }, as(w.alice), w.binding);
+    await Task.assign({ id: reassigned.id, assignee: w.bob.id }, as(w.alice));
+    await Task.unassign({ id: unassigned.id }, as(w.alice));
+    for (const claim of lapsed) expect(await one(Claim.read({ filter: { id: { eq: claim.id } } }, as(w.alice)))).toMatchObject({ state: "active", endedAt: null, endReason: null });
+    // Each command bumped its Task once, for its own change: no claim was revoked.
+    expect(await Promise.all([canceled, reassigned, unassigned].map(async (task) => (await taskOf(w, task.id)).version))).toEqual(versions.map((v) => v + 1));
+    expect(await Assignment.read({ filter: { taskId: { eq: reassigned.id }, endedAt: { nil: true } } }, as(w.alice))).toMatchObject([{ assigneeId: w.bob.id }]);
+    // The sweeper expires all three.
+    expect(await sweep(w.hyper, ENGINE, w.clock)).toBe(3);
+    for (const claim of lapsed) expect(await one(Claim.read({ filter: { id: { eq: claim.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endReason: "lease expired", endedAt: minutes(10) });
+  }));
+
+  test("membership.revoke and collaborator.retire revoke only live claims: a lapsed one stays active for the sweeper", () => within(async (w) => {
+    const lapsedTask = await Task.create({ title: "Lapsed" }, as(w.alice));
+    const bobsTask = await Task.create({ title: "Bob's" }, as(w.alice));
+    const lapsed = await Claim.acquire({ task: lapsedTask.id }, as(w.bot));
+    const bobs = await Claim.acquire({ task: bobsTask.id }, as(w.bob));
+    w.advance(11);
+    const live = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const before = { lapsed: (await taskOf(w, lapsedTask.id)).version, live: (await taskOf(w, w.task.id)).version, bobs: (await taskOf(w, bobsTask.id)).version };
+    await membershipRevoke({ id: w.memberships.bot.id, reason: "left" }, as(w.alice), w.binding);
+    await collaboratorRetire({ id: w.bob.id }, as(w.alice), w.binding);
+    const stateOf = async (id: string) => one(Claim.read({ filter: { id: { eq: id } } }, as(w.alice)));
+    expect(await stateOf(live.id)).toMatchObject({ state: "revoked", endReason: "membership revoked" });
+    expect(await stateOf(lapsed.id)).toMatchObject({ state: "active", endedAt: null });
+    expect(await stateOf(bobs.id)).toMatchObject({ state: "active", endedAt: null });
+    expect({ lapsed: (await taskOf(w, lapsedTask.id)).version, live: (await taskOf(w, w.task.id)).version, bobs: (await taskOf(w, bobsTask.id)).version })
+      .toEqual({ lapsed: before.lapsed, live: before.live + 1, bobs: before.bobs });
+    expect(await sweep(w.hyper, ENGINE, w.clock)).toBe(2);
+    expect(await stateOf(lapsed.id)).toMatchObject({ state: "expired", endReason: "lease expired" });
+    expect(await stateOf(bobs.id)).toMatchObject({ state: "expired", endReason: "lease expired" });
   }));
 });
 

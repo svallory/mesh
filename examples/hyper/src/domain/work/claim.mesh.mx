@@ -46,7 +46,7 @@ entity :Claim table="claims"
           &holder=({ actor }) => actor.id
           &fence=() => (&task.maxFence ?? 0) + 1
           &acquiredAt=() => %.now
-          &expiresAt=() => leaseEnd(%.now)
+          &expiresAt=({ context }) => leaseEnd(%.now, context.leaseMs)
         run [after=:write] ({ self, context }) {
           const open = await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
           if (open.length === 0) await Assignment.start({ task: self.taskId, assignee: self.holderId, reviewWaived: false }, { ...context, system: true });
@@ -64,9 +64,9 @@ entity :Claim table="claims"
           details=() => ({ currentFence: &task.maxFence, stale: false })
         ]
         check :claimActive [
-          that=() => &state === :active
+          that=() => &state !== :released && &state !== :revoked
           code="claim.active"
-          message="the claim has ended; claim the task again"
+          message="the claim was released or revoked; claim the task again"
         ]
         check :claimNotExpired [
           that=() => &expiresAt > %.now
@@ -81,7 +81,7 @@ entity :Claim table="claims"
         ]
       do
         set
-          &expiresAt=() => leaseEnd(%.now)
+          &expiresAt=({ context }) => leaseEnd(%.now, context.leaseMs)
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
@@ -98,9 +98,9 @@ entity :Claim table="claims"
           details=() => ({ currentFence: &task.maxFence, stale: false })
         ]
         check :claimActive [
-          that=() => &state === :active
+          that=() => &state !== :released && &state !== :revoked
           code="claim.active"
-          message="the claim has ended; claim the task again"
+          message="the claim was released or revoked; claim the task again"
         ]
         check :claimNotExpired [
           that=() => &expiresAt > %.now
@@ -127,9 +127,9 @@ entity :Claim table="claims"
         integer :expectedVersion nullable
       validate
         check :claimActive [
-          that=() => &state === :active
+          that=() => &state === :active && !&lapsed
           code="claim.active"
-          message="the claim has ended; claim the task again"
+          message="the claim has ended or its lease has run out; there is no active claim to revoke"
         ]
         check :versionMatches [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version

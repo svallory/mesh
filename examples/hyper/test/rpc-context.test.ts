@@ -60,6 +60,22 @@ describe("contextFactory", () => {
     });
   });
 
+  test("the daemon's --lease-ms is on every context, the engine's a frozen copy of ENGINE with it; without one, no context names it", async () => {
+    await within(async ({ alice }) => {
+      const leased = contextFactory(new Set(["workspace.get"]), new Map(), 30_000);
+      expect(await leased(call("task.create"), params(alice.id))).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1", leaseMs: 30_000 });
+      expect(await leased(call("task.get"), { actor: alice.id, caller: "cli", taskId: "t" })).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", leaseMs: 30_000 });
+      const engine = await leased(call("workspace.get"), {});
+      expect(engine).toEqual({ ...ENGINE, leaseMs: 30_000 });
+      expect(Object.isFrozen(engine)).toBe(true);
+      expect(engine.actor).toBe(ENGINE.actor);
+      // The same frozen object on every actorless call, and ENGINE itself unchanged.
+      expect(await leased(call("workspace.get"), params("nobody"))).toBe(engine);
+      expect("leaseMs" in ENGINE).toBe(false);
+      expect("leaseMs" in (await factory(call("task.create"), params(alice.id)))).toBe(false);
+    });
+  });
+
   test("an unknown actor, by UUID or by any other string, is refused with the membership check", async () => {
     await within(async () => {
       for (const actor of [crypto.randomUUID(), "nope"]) {

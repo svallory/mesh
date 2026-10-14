@@ -131,7 +131,7 @@ export const $expressions = {
     $.now($s),
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:49:22)
   "acquire.step.1.set.expiresAt": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) =>
-    $.pure(leaseEnd($.now($s)), "leaseEnd"),
+    $.pure(leaseEnd($.now($s), $s.context?.leaseMs), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:50:28)
   "acquire.step.2.run": ($s: $work$Claim$Scope<$work$Claim$AcquireClaimInput>) => {
     const Assignment: $work$Assignment$ReadOnly = $work$Assignment$value;
@@ -161,7 +161,7 @@ export const $expressions = {
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:67:16)
   "renew.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
-    $.eq($s.self.state, "active"),
+    $.and($.ne($s.self.state, "released"), () => $.ne($s.self.state, "revoked")),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:72:16)
   "renew.check.claimNotExpired.that": ($s: $work$Claim$CheckScope<$work$Claim$RenewClaimInput>) =>
     $.gt($s.self.expiresAt, $.now($s)),
@@ -182,7 +182,7 @@ export const $expressions = {
   },
   // set &expiresAt, translated (src/domain/work/claim.mesh.mx:84:22)
   "renew.step.0.set.expiresAt": ($s: $work$Claim$StoredScope<$work$Claim$RenewClaimInput>) =>
-    $.pure(leaseEnd($.now($s)), "leaseEnd"),
+    $.pure(leaseEnd($.now($s), $s.context?.leaseMs), "leaseEnd"),
   // run, plain (run-step) (src/domain/work/claim.mesh.mx:85:28)
   "renew.step.1.run": ($s: $work$Claim$StoredScope<$work$Claim$RenewClaimInput>) => {
     const Task: $work$Task$ReadOnly = $work$Task$value;
@@ -204,7 +204,7 @@ export const $expressions = {
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:101:16)
   "release.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>) =>
-    $.eq($s.self.state, "active"),
+    $.and($.ne($s.self.state, "released"), () => $.ne($s.self.state, "revoked")),
   // check :claimNotExpired that, translated (src/domain/work/claim.mesh.mx:106:16)
   "release.check.claimNotExpired.that": (
     $s: $work$Claim$CheckScope<$work$Claim$ReleaseClaimInput>,
@@ -241,7 +241,7 @@ export const $expressions = {
   },
   // check :claimActive that, translated (src/domain/work/claim.mesh.mx:130:16)
   "revoke.check.claimActive.that": ($s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>) =>
-    $.eq($s.self.state, "active"),
+    $.and($.eq($s.self.state, "active"), () => $.not($s.self.lapsed)),
   // check :versionMatches that, translated (src/domain/work/claim.mesh.mx:135:16)
   "revoke.check.versionMatches.that": ($s: $work$Claim$CheckScope<$work$Claim$RevokeClaimInput>) =>
     $.or($.isNull($s.input?.expectedVersion), () =>
