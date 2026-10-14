@@ -127,6 +127,17 @@
         "drizzle-kit",
       ],
     },
+    "packages/jsonrpc": {
+      "name": "@meshfw/jsonrpc",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@meshfw/runtime": "workspace:*",
+        "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@meshfw/runtime": "workspace:*",
+      },
+    },
     "packages/model": {
       "name": "@meshfw/model",
       "version": "0.0.0",
@@ -314,6 +325,8 @@
     "@meshfw/data-drizzle": ["@meshfw/data-drizzle@workspace:packages/data-drizzle"],
 
     "@meshfw/data-sqlite": ["@meshfw/data-sqlite@workspace:packages/data-sqlite"],
+
+    "@meshfw/jsonrpc": ["@meshfw/jsonrpc@workspace:packages/jsonrpc"],
 
     "@meshfw/model": ["@meshfw/model@workspace:packages/model"],
 
