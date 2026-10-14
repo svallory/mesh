@@ -189,7 +189,7 @@ and the `always` block that adds `check :dueAfterIssue` (`(input.dueOn ?? &dueOn
 
 The checks read `&status` and `&lineCount`, so the build makes `pay` **read-then-write**; `explain` names those checks.
 
-A check's `message=` is fixed text, as above, or a function of the same arguments as `that=` and `details=`: `message=({ self }) => "invoice " + self.number + " is not sent"`. The function runs only for a check that failed (a check that passes, or that `when=` skips, never computes it), reads what `that=` can read, including loaded relationships, and may be `async`. The issue carries the string it returns. A function that throws, or returns anything but a string, `null` and `undefined` included, fails the call with a `FrameworkError` that names the entity, the check and the line of the check in the entity file; the error replaces the `InvalidInputError`, so a failure is never reported with the wrong text.
+A check's `message=` is fixed text, as above, or a function of the same arguments as `that=` and `details=`: `` message=({ self }) => `invoice ${self.number} is not sent` ``. The function runs only for a check that failed (a check that passes, or that `when=` skips, never computes it), reads what `that=` can read, including loaded relationships, and may be `async`. The issue carries the string it returns. A function that throws, or returns anything but a string, `null` and `undefined` included, fails the call with a `FrameworkError` that names the entity, the check and the line of the check in the entity file; the error replaces the `InvalidInputError`, so a failure is never reported with the wrong text.
 
 1. **Enter.** `payInvoice({ id, paidAt }, { actor })`.
 2. **Cast.** `id` and the member input `paidAt` pass; anything else is an error.

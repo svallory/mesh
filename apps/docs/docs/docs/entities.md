@@ -391,7 +391,7 @@ check :taskReady [
 ]
 ```
 
-**A message that names the record.** `message=` is either fixed text or a function taking the same arguments as `that=` and `details=`. Use the function when the sentence depends on the call: it can read `self`, `input`, `actor`, and what the check loads through a relationship.
+**A message that names the record.** `message=` is either fixed text or a function taking the same arguments as `that=` and `details=`. Use the function when the sentence depends on the call: it can read `self`, `input`, `actor`, `context`, and what the check loads through a relationship.
 
 ```text "src/domain/work/task.mesh.mx (excerpt)"
 check :childrenSettled [
@@ -402,7 +402,7 @@ check :childrenSettled [
 ]
 ```
 
-The function runs only when the check fails, so a check that passes, or that `when=` skips, never computes it; it may be `async`. It must return a string. One that throws, or returns anything else (`null` and `undefined` included), is a bug in your rule, so the call fails with a `FrameworkError` that names the entity, the check and the line of the check in the entity file, never with some other text in its place.
+The function runs only when the check fails, so a check that passes, or that `when=` skips, never computes it; it may be `async`. It must return text that is not blank, as `message=""` is refused at build time. One that throws, or returns anything else (`null`, `undefined` and blank text included), is a bug in your rule, so the call fails with a `FrameworkError` that names the entity, the check and the line of the check in the entity file, never with some other text in its place.
 
 #### A check that compares with the stored record
 

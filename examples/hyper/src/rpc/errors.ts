@@ -230,10 +230,10 @@ async function explainedFailure(failure: Failure, payload: unknown): Promise<Fai
  * - `review.reviewer`: `details` is `{ reviewerId }`, the collaborator the reviewer rule names (PROTOCOL.md:252), for
  *   the submission the call's `payload` names. A policy's denial carries no details (PORTING.md).
  *
- * Any other error is returned as it is, without a read (the reason of `task.children-settled`, which names the open children,
- * comes from the check's `message=` function in `task.mesh.mx`, ACT-30). So is `error` when the read fails (the layer closing under a
- * shutdown, a busy database): the rejection is right without the extra facts, so the failure is logged and the client
- * still gets its code and checks, never `-32603`.
+ * Any other error is returned as it is, without a read. (The reason of `task.children-settled`, which names the open
+ * children, comes from the check's `message=` function in `task.mesh.mx`, ACT-30.) So is `error` when the read fails
+ * (the layer closing under a shutdown, a busy database): the rejection is right without the extra facts, so the failure
+ * is logged and the client still gets its code and checks, never `-32603`.
  */
 export async function explained(error: RpcError, payload: unknown): Promise<RpcError> {
   const data = error.data as { phase: Phase; failures: readonly Failure[] } | undefined;
