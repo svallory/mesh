@@ -1,5 +1,9 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
+import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
+import { checkTypes, configOf } from "./generated.ts";
 
 // ACT-30: a check's `message=` is fixed text or a function of the arguments `that=` gets.
 const entity = (message: string) => `entity :Task
@@ -67,3 +71,51 @@ test("a message function that reads `before` is refused like `that=` (`before` i
   const found = errors("message=({ before }) => before.title");
   expect(found.map((d) => d.code)).toContain("MESH_VALIDATE_BEFORE");
 });
+
+// The generated code type-checks the function's result: a number, or a field that can be null, is a compile error,
+// where the run time would fail the check with a FrameworkError.
+const roots: string[] = [];
+afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+async function typeCheck(message: string) {
+  const source = `entity :Task
+  attributes
+    uuid :id primary-key
+    string :title
+    string :subtitle nullable
+  relationships
+    belongs-to :owner entity=Task nullable
+  actions auto=[:read]
+    update :go
+      validate
+        check :ok [
+          that=() => false
+          code="task.ok"
+          ${message}
+        ]
+`;
+  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-message-"));
+  roots.push(root);
+  const result = buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source }] });
+  expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+  const config = configOf(root);
+  await writeGeneratedFiles(await generateFiles({ document: result.document!, config }), config);
+  await writeFile(resolve(root, "generated/schema.ts"), "export const tables: any = {};\n");
+  return checkTypes(root, ["generated/domain/task.actions.ts"]);
+}
+
+test("the generated code type-checks with a message that is text or returns a string", async () => {
+  expect(await typeCheck('message="fixed"')).toEqual({ code: 0, output: "" });
+  expect(await typeCheck("message=({ self }) => `title ${self.title}`")).toEqual({ code: 0, output: "" });
+  expect(await typeCheck("message=async ({ self }) => await Promise.resolve(self.title)")).toEqual({ code: 0, output: "" });
+});
+
+test.each([["a number", "message=() => 42"], ["a nullable field", "message=({ self }) => self.subtitle"]])(
+  "the generated code does not type-check with %s as the message",
+  async (_name, message) => {
+    const result = await typeCheck(message);
+    expect(result.code).not.toBe(0);
+    expect(result.output).toContain("task.actions.ts");
+    expect(result.output).toContain("TS2322");
+    expect(result.output).toContain("string | PromiseLike<string>");
+  },
+);

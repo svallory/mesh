@@ -20,8 +20,8 @@ export interface BindOptions {
 export interface CheckSpec {
   label: string;
   code: string;
-  /** Fixed text, or (ACT-30) a function of the arguments `that` gets; it runs only for a failed check and must return a string. */
-  message: string | ((scope: never) => unknown);
+  /** Fixed text, or (ACT-30) a function of the arguments `that` gets; it runs only for a failed check and must return a string that is not blank. */
+  message: string | ((scope: never) => string | PromiseLike<string>);
   /** The entity the check belongs to, named by the error a `message` function causes. */
   entity?: string;
   /** Where the `check` tag sits in the entity file: embedded as data, so a failure names its line (ADR-0039). */
@@ -49,7 +49,7 @@ export function checkScope<S extends Scope<object>>(scope: S): Omit<S, "before">
  * check of an action is reported together. A check passes when `that` is true. `false` fails it, and so does an
  * unknown result (`null`), because a rule over a missing value must not pass silently (ADR-0012, ruling D1). A `when`
  * that is not true, unknown included, skips the check. `details` and a `message` function are worked out only for a failed
- * check. A `message` function that throws or returns anything but a string is a `FrameworkError` naming the entity, the
+ * check. A `message` function that throws or returns anything but a non-blank string is a `FrameworkError` naming the entity, the
  * check and its line (ACT-30): the failure is never swallowed and never replaced by other text.
  */
 export async function runCheck(issues: Issue[], scope: object, spec: CheckSpec): Promise<void> {
@@ -78,6 +78,9 @@ async function messageOf(spec: CheckSpec, scope: never, message: (scope: never) 
   }
   if (typeof text !== "string") {
     throw new FrameworkError(`${where} must return a string, and returned ${text === null ? "null" : Array.isArray(text) ? "an array" : typeof text}`);
+  }
+  if (text.trim() === "") {
+    throw new FrameworkError(`${where} must return text, and returned a blank string`);
   }
   return text;
 }
