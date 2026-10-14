@@ -93,6 +93,9 @@ export async function claimOf(taskId: string, fence: number, context: ActionCont
   const claims = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId }, holderId: { eq: context.actor.id } }, sort: ["fence", "id"] });
   const claim = claims.find((candidate) => candidate.fence === fence) ?? claims.at(-1);
   if (claim) return claim;
+  // With no claim there is no record to run the policies on, so this decides them by hand. It mirrors
+  // `policy :ownerOrMember` and `policy :claimHolder` of `src/domain/work/claim.mesh.mx` (the actor holds no claim, so
+  // `claimHolder` fails); a call from the transport is never `system`. Change it with them.
   const policies = (await roleIn(context.actor.id, ["owner", "member"])) ? ["claimHolder"] : ["ownerOrMember", "claimHolder"];
   throw new ForbiddenError({ entity: "work.Claim", action, policies, breakdown: [] });
 }
@@ -106,6 +109,9 @@ export async function activeClaimOf(taskId: string, context: ActionContext): Pro
   await existingTask(taskId);
   const [claim] = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: taskId }, state: { eq: "active" } }, sort: ["fence", "id"] });
   if (claim) return claim;
+  // With no claim there is no record to run the policies on, so this decides them by hand. It mirrors
+  // `policy :ownerOrMember` and `policy :claimRevoker` of `src/domain/work/claim.mesh.mx`; a call from the transport is
+  // never `system`. Change it with them.
   const policies = [
     ...((await roleIn(context.actor.id, ["owner", "member"])) ? [] : ["ownerOrMember"]),
     ...((await revokesClaimOf(taskId, context.actor.id)) ? [] : ["claimRevoker"]),
@@ -124,6 +130,9 @@ export async function dependencyOf(dependentId: string, prerequisiteId: string, 
   await existingTask(prerequisiteId);
   const [dependency] = await Mesh.privileged(Dependency).read({ filter: { dependentId: { eq: dependentId }, prerequisiteId: { eq: prerequisiteId } }, limit: 1 });
   if (dependency) return dependency;
+  // With no edge there is no record to run the policies on, so this decides them by hand. It mirrors
+  // `policy :ownerOrMember` of `src/domain/work/dependency.mesh.mx`; a call from the transport is never `system`. Change
+  // it with it.
   if (!(await roleIn(context.actor.id, ["owner", "member"]))) {
     throw new ForbiddenError({ entity: "work.Dependency", action: "remove", policies: ["ownerOrMember"], breakdown: [] });
   }
