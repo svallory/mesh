@@ -199,13 +199,62 @@ entity :Membership
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_INVERSE_REQUIRED", message: expect.stringContaining("a has-one takes no inverse") })]);
   });
 
-  test("no belongs-to back is not a build error: cross-file inverse checks come after 1.0, and loading it fails at run time", () => {
-    const result = build({
-      "collaborator.mesh.mx": collaborator(),
-      "membership.mesh.mx": "entity :Membership\n  attributes\n    uuid :id primary-key\n",
+  describe("a has-many or has-one needs a belongs-to back (DOM-34)", () => {
+    const bare = "entity :Membership\n  attributes\n    uuid :id primary-key\n";
+    const expected = (kind: string) => [expect.objectContaining({
+      code: "MESH_NO_INVERSE",
+      message: `${kind} :memberships of app.Collaborator needs a belongs-to back, and app.Membership has none to app.Collaborator: add \`belongs-to :collaborator entity=Collaborator\` to app.Membership`,
+      fix: "Add `belongs-to :collaborator entity=Collaborator` to app.Membership",
+      position: expect.objectContaining({ file: "app/collaborator.mesh.mx", line: 6 }),
+    })];
+
+    test("a has-many with no belongs-to back in the other file is an error that names the line to add", () => {
+      expect(build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": bare }).diagnostics).toEqual(expected("has-many"));
     });
-    expect(result.diagnostics).toEqual([]);
-    expect(entityOf(result, "Collaborator").relationships[0]!.inverse).toBeUndefined();
+
+    test("so is a has-one", () => {
+      const result = build({ "collaborator.mesh.mx": collaborator().replace("has-many", "has-one"), "membership.mesh.mx": bare });
+      expect(result.diagnostics).toEqual(expected("has-one"));
+    });
+
+    test("a belongs-to to some other entity is not a belongs-to back", () => {
+      const other = `import { Other } from "./other.mesh.mx"\n${bare}  relationships\n    belongs-to :other entity=Other\n`;
+      const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": other, "other.mesh.mx": "entity :Other\n  attributes\n    uuid :id primary-key\n" });
+      expect(codes(result)).toEqual(["MESH_NO_INVERSE"]);
+    });
+
+    test("with a module path, the entity is named by it and the file is still the one to change", () => {
+      const result = buildModel({ root: "/project", files: [
+        { file: "crm/people/collaborator.mesh.mx", source: collaborator() },
+        { file: "crm/people/membership.mesh.mx", source: bare },
+      ] });
+      expect(result.diagnostics).toEqual([expect.objectContaining({
+        code: "MESH_NO_INVERSE",
+        message: expect.stringContaining("add `belongs-to :collaborator entity=Collaborator` to crm.people.Membership"),
+      })]);
+    });
+
+    test("the pair builds, and the has-many follows the belongs-to", () => {
+      const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": "import { Collaborator } from \"./collaborator.mesh.mx\"\n" + bare + "  relationships\n    belongs-to :collaborator entity=Collaborator\n" });
+      expect(result.diagnostics).toEqual([]);
+      expect(entityOf(result, "Collaborator").relationships[0]!.inverse).toBe("collaborator");
+    });
+
+    test("a belongs-to alone still builds: it declares the key and needs nothing back", () => {
+      const result = build({ "collaborator.mesh.mx": "entity :Collaborator\n  attributes\n    uuid :id primary-key\n", "membership.mesh.mx": membership().replace("belongs-to :grantedBy entity=Collaborator\n    belongs-to :revokedBy entity=Collaborator nullable", "") });
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    test("in one file, a self-referencing entity builds with its belongs-to, and the has-many alone is an error", () => {
+      expect(build({ "task.mesh.mx": task }).diagnostics).toEqual([]);
+      const alone = build({ "task.mesh.mx": task.replace("    belongs-to :parent entity=Task nullable\n", "") });
+      expect(alone.diagnostics).toEqual([expect.objectContaining({ code: "MESH_NO_INVERSE", message: expect.stringContaining("add `belongs-to :task entity=Task` to app.Task") })]);
+    });
+
+    test("an inverse= that names no belongs-to stays MESH_INVERSE_UNKNOWN, and adds no second error", () => {
+      const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:nope"), "membership.mesh.mx": bare });
+      expect(codes(result)).toEqual(["MESH_INVERSE_UNKNOWN"]);
+    });
   });
 
   test("several has-many to the same entity, each with its own inverse", () => {
@@ -392,13 +441,14 @@ string :three() { return JSON.stringify(&notes?.at(0)?.doc?.owner?.docCount) }`)
     expect(of("three")).toEqual(["notes"]);
   });
 
-  test("a body that reads a has-many nothing points back at cannot be loaded, and the build says so", () => {
+  test("a body that reads a has-many nothing points back at is the one MESH_NO_INVERSE, at the has-many line, not one per reader", () => {
     const orphan = "entity :Orphan\n  attributes\n    uuid :id primary-key\n";
     const owner = `import { Orphan } from "./orphan.mesh.mx"\nentity :Doc\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :orphans entity=Orphan\n  computed\n    boolean :hasOrphans() { return &orphans.length > 0 }\n`;
     const result = build({ "doc.mesh.mx": owner, "orphan.mesh.mx": orphan });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_NO_INVERSE",
-      message: "&hasOrphans reads has-many :orphans, which cannot be loaded: app.Orphan has no belongs-to back to app.Doc",
+      message: "has-many :orphans of app.Doc needs a belongs-to back, and app.Orphan has none to app.Doc: add `belongs-to :doc entity=Doc` to app.Orphan",
+      position: expect.objectContaining({ line: 6 }),
     })]);
   });
 

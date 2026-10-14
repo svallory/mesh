@@ -235,6 +235,8 @@ entity :Todo
 | `has-many` | One todo has many comments; the key is on the other entity, and `todo.comments` arrives when loaded |
 | `has-one` | At most one attachment, through that entity's own `belongs-to`; its foreign key is unique |
 
+A `belongs-to` stands alone: it declares the key column, and nothing requires a `has-many` back. The other direction is not free: a `has-many` or `has-one` needs a `belongs-to` back on the other entity, because that line is what declares the key column. Without one the build fails at the `has-many` line and names the line to add, for example ``add `belongs-to :list entity=List` to todo.Todo``.
+
 Add `nullable` to a `belongs-to` when a related row is optional. A caller sets the relationship through `&list` in `input`, sending the list's id. The entity file names the relationship, never its generated key column; [Using your domain](./using-your-domain.md#relationship-input-and-record-fields) explains the TypeScript surface.
 
 ### Choosing the key a has-many follows

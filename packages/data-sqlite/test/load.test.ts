@@ -13,7 +13,6 @@ import { createSchema, sqlite } from "../src/index.ts";
 
 const author = `import { Post } from "./post.mesh.mx"
 import { Profile } from "./profile.mesh.mx"
-import { Orphan } from "./orphan.mesh.mx"
 import { Comment } from "./comment.mesh.mx"
 entity :Author table="authors"
   attributes
@@ -24,7 +23,6 @@ entity :Author table="authors"
     has-many :posts entity=Post
     has-many :reviews entity=Post inverse=:reviewer
     has-one :profile entity=Profile
-    has-many :orphans entity=Orphan
   computed
     count :postCount of="posts"
     max :lastPostedAt of="posts.postedAt"
@@ -85,10 +83,6 @@ entity :Profile table="profiles"
   relationships
     belongs-to :author entity=Author
 `;
-const orphan = `entity :Orphan table="orphans"
-  attributes
-    uuid :id primary-key
-`;
 const ticket = `entity :Ticket table="tickets"
   attributes
     integer :id primary-key
@@ -122,7 +116,7 @@ beforeAll(async () => {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" } },
   };
-  const files = { author, post, comment, profile, orphan, ticket };
+  const files = { author, post, comment, profile, ticket };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(files).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
@@ -285,17 +279,6 @@ describe("has-many and has-one", () => {
         await tx.insert(app.tables.profiles, { id: id(2), bio: "second", authorId: id(1) });
         await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["profile"])).rejects.toThrow(
           `has-one :profile of Author found 2 rows for "${id(1)}", and a has-one is for at most one`);
-      });
-    } finally { await db.close(); }
-  });
-
-  test("a has-many with no belongs-to back builds and fails when loaded, saying what to declare", async () => {
-    const db = await fresh();
-    try {
-      await run(db, async (tx) => {
-        await seed(tx);
-        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["orphans"])).rejects.toThrow(
-          "has-many :orphans of Author cannot be loaded: Orphan has no belongs-to back to Author");
       });
     } finally { await db.close(); }
   });
@@ -608,7 +591,7 @@ describe("what cannot be loaded is an error", () => {
     try {
       await run(db, async (tx) => {
         await seed(tx);
-        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["orphans"])).rejects.toBeInstanceOf(FrameworkError);
+        await expect(app.loadAuthorFields(tx, await rowsOf(tx, "authors"), ["autor"])).rejects.toBeInstanceOf(FrameworkError);
       });
     } finally { await db.close(); }
   });
