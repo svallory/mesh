@@ -158,8 +158,8 @@ describe("&name, %.now and %.today in plain code read Mesh's own names, which no
     // Each at its `%`: line 16 is the tagged template's step and line 17 the sequence's.
     const errors = result.stderr.split("\n").filter((line) => line.startsWith("domain/shop/item.mesh.mx"));
     expect(errors).toEqual([
-      "domain/shop/item.mesh.mx:16:30 error `%.now` is a value, not a function: it is the current transaction's instant",
-      "domain/shop/item.mesh.mx:17:34 error `%.now` is a value, not a function: it is the current transaction's instant",
+      "domain/shop/item.mesh.mx:16:30 error MESH_TRANSACTION_CALL `%.now` is a value, not a function: it is the current transaction's instant",
+      "domain/shop/item.mesh.mx:17:34 error MESH_TRANSACTION_CALL `%.now` is a value, not a function: it is the current transaction's instant",
     ]);
     expect(result.stderr).toContain("fix: write `%.now`, without the template after it\n");
     expect(result.stderr).toEndWith("2 errors, 3 warnings\n");

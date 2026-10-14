@@ -121,7 +121,7 @@ mark();
 <div class="mh-tally">
 <h3>What the agent writes, and what it does not</h3>
 <p>It writes the 28 lines of <code>todo.mesh.mx</code> above. It does not write the types, the action functions, the input validators, the authorization checks, the table schema, the migration SQL, the rules file or the model: the diagram above shows where each comes from.</p>
-<pre><code>src/domain/todo/todo.mesh.mx:16:9 error &amp;titel is not a member of todo.Todo.
+<pre><code>src/domain/todo/todo.mesh.mx:16:9 error MESH_UNKNOWN_MEMBER &amp;titel is not a member of todo.Todo.
 Did you mean &amp;title?</code></pre>
 </div>
 <p class="mh-more">More in <a href="/docs/ai-agents/">Working with AI agents</a>: the rules file, <code>mesh inspect</code>, <code>mesh explain</code>, and what Mesh does not solve for an agent.</p>
