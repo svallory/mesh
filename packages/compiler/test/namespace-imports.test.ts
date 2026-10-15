@@ -170,6 +170,59 @@ describe("a reference that does not resolve is MESH_UNKNOWN_ENTITY, from the one
     }
   });
 
+  // MX lowers a wrapped value to the bare one and keeps the value as written in the option's `valueSpan` (MX 0.1.0-alpha.28,
+  // IR version 5): a reference is written bare, so a wrapper is refused at the value as written, in every reference position.
+  test("a wrapped reference is MESH_ENTITY_REFERENCE at the value as written, in belongs-to, has-many and has-one", () => {
+    const imports = 'import * as billing from "../billing/invoice.mesh.mx"\nimport { Customer } from "../billing/customer.mesh.mx"';
+    const wrapped = [
+      "(Customer)", "Customer!", "Customer as any", "Customer satisfies object", "<any>Customer",
+      "(billing.Invoice)", "billing.Invoice!", "billing.Invoice as any", "billing.Invoice satisfies object", "<any>billing.Invoice",
+      "( Customer )", "((Customer as any)!)", "(billing.Invoice) nullable",
+    ];
+    for (const kind of ["belongs-to", "has-many", "has-one"])
+      for (const written of wrapped) {
+        if (kind !== "belongs-to" && written.endsWith("nullable")) continue;
+        const relationship = `    ${kind} :other entity=${written}`;
+        const result = build(line(imports, `${relationship}\n`));
+        expect(brief(result.diagnostics).map((d) => [d[0], d[2], d[3]]), `${kind} ${written}`)
+          .toEqual([["MESH_ENTITY_REFERENCE", 8, relationship.indexOf("entity=") + "entity=".length]]);
+        expect(result.diagnostics[0]!.message, `${kind} ${written}`).toContain("entity must be the reference alone");
+      }
+  });
+
+  // One mistake, one error: a wrapped value that is no reference either gets the not-a-reference error alone, at the
+  // option, since that one says what to write.
+  test("a wrapped value that is not a reference is one MESH_ENTITY_REFERENCE, the not-a-reference one", () => {
+    const imports = 'import * as billing from "../billing/invoice.mesh.mx"';
+    for (const kind of ["belongs-to", "has-many", "has-one"])
+      for (const written of ["(getList())", "(billing?.Invoice)"]) {
+        const relationship = `    ${kind} :other entity=${written}`;
+        const result = build(line(imports, `${relationship}\n`));
+        expect(brief(result.diagnostics).map((d) => [d[0], d[2], d[3]]), `${kind} ${written}`)
+          .toEqual([["MESH_ENTITY_REFERENCE", 7, relationship.indexOf("entity=")]]);
+        expect(result.diagnostics[0]!.message, `${kind} ${written}`).toContain("entity must be an imported identifier");
+      }
+  });
+
+  test("a wrapped option that is not a reference still builds: max=(5), min=(1 as const), code=(\"42\" as const)", () => {
+    const source = `entity :Note
+  attributes
+    uuid :id primary-key
+    string :title max=(5) min=(1 as const)
+  actions
+    create :open
+      validate
+        check :titled that=({ input }) => input.title.length > 0 code=("42" as const) message=("a title is required")
+      input
+        &title
+`;
+    const result = buildModel({ root: "/project", files: [{ file: "notes/note.mesh.mx", source }] });
+    expect(result.diagnostics).toEqual([]);
+    const note = entityOf(result, "Note");
+    expect(note.attributes.find((a) => a.name === "title")).toMatchObject({ min: 1, max: 5 });
+    expect(note.actions[0]!.validate).toMatchObject([{ label: "titled", code: "42", message: "a title is required" }]);
+  });
+
   test("whitespace and comments around the reference, and a comma after it, are accepted", () => {
     const imports = 'import * as billing from "../billing/invoice.mesh.mx"\nimport { Customer } from "../billing/customer.mesh.mx"';
     for (const [written, identifier] of [

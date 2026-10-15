@@ -3,6 +3,7 @@ import type {
   ContractMap,
   CustomTag,
   CustomTagAttribute,
+  SourceSpan,
   TagCall,
 } from "@mxlang/core";
 import { ACTION_TYPES, ATTRIBUTE_TYPES as REGISTRY } from "@meshfw/model";
@@ -75,8 +76,7 @@ const isPlainIdentifier = (n: Node | null | undefined) =>
  * A reference to another file's declaration (SYN-21): an imported identifier (`List`), or a member of a namespace import
  * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
  * Mesh's to resolve (`front-end/references.ts`). MX lowers `(List)`, `List!`, `List as T`, `List satisfies T` and
- * `<T>List` to `List`, so this sees no wrapper and none is refused yet: that waits on MX keeping a mark of the wrapper in
- * the lowered tree, since Mesh never reads the `.mx` text.
+ * `<T>List` to `List`, so the node shows no wrapper: `isWrapped` finds one from the option's spans instead.
  */
 const isReference = (n: Node | null | undefined): boolean => {
   if (isPlainIdentifier(n)) return true;
@@ -85,6 +85,15 @@ const isReference = (n: Node | null | undefined): boolean => {
     && !access.extra?.mxTransaction
     && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
 };
+/**
+ * A dynamic option whose value is written inside a wrapper, `(x)`, `x!`, `x as T`, `x satisfies T` or `<T>x` (nested ones
+ * too): MX strips the wrapper from `value`, and keeps the value as written in `valueSpan` (MX 0.1.0-alpha.28, IR version
+ * 5), so the two spans differ exactly when a wrapper was written. Whitespace and comments around a plain value are in
+ * neither span.
+ */
+const isWrapped = (a: Attr | undefined): a is Extract<Attr, { kind: "dynamic" }> & { valueSpan: SourceSpan } =>
+  a?.kind === "dynamic" && !!a.valueSpan && !!a.value.span
+  && (a.valueSpan.sourceStart !== a.value.span.sourceStart || a.valueSpan.sourceEnd !== a.value.span.sourceEnd);
 /** A slot that holds one member only (MX decision 182 addendum 4): MX checks
  * the `&name` form, after a kind or as a whole value; Mesh resolves membership. */
 const member = (required = false): CustomTagAttribute => ({
@@ -292,6 +301,11 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
         const a = get(call, "entity");
         if (!isReference(node(a)))
           ctx.fail("entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
+        // SYN-21: a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
+        // the value as written. One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
+        // error above alone, which says what to write.
+        else if (isWrapped(a))
+          ctx.fail("entity must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`entity=List`, `entity=billing.Invoice`)", { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
       }
     },
   });

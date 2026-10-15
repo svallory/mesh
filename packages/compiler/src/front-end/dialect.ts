@@ -36,6 +36,9 @@
  *
  * `diagnosticCodes` (MX 0.1.0-alpha.27, decision MX-05) renames MX's codes to Mesh's on every Mesh file, in the
  * compiler and in every tool: `MX_UNKNOWN_TAG` is `MESH_UNKNOWN_TAG` (`diagnostic-codes.ts`).
+ *
+ * The syntax table sets `tagShorthands: false` (MX 0.1.0-alpha.28, `syntax/mesh.ts`): a line head has no `#id` or
+ * `.class` shorthand, a `.` continues the tag name, and `#x`, `.x` or a `#` inside a head is `MESH_NO_TAG_SHORTHAND`.
  */
 import type { Dialect, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";

@@ -16,6 +16,15 @@ import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { FAILING, PASSING, REGISTRATION, vocab } from "./atom-contract-cases.ts";
 
 const MESH: LowerSourceOptions = { dialect: SYNTAX_DIALECT };
+/**
+ * The matrix below sets a `node`'s `id` with MX's `#id` shorthand (`<node#a/>`), as the data was recorded. Mesh's dialect has no
+ * tag shorthands since MX 0.1.0-alpha.28 (`tagShorthands: false`, `src/front-end/syntax/mesh.ts`), where `<node#a/>` is
+ * `MESH_NO_TAG_SHORTHAND`. The cases check the contract hooks, not the line head, so they run with the shorthands on and the
+ * recorded data stays as it was; `id="a"` under Mesh's own table declares the same (the last test of the block).
+ */
+const SHORTHANDS: LowerSourceOptions = {
+  dialect: Object.freeze({ ...SYNTAX_DIALECT, table: Object.freeze({ ...SYNTAX_DIALECT.table, tagShorthands: true }) }) as Dialect,
+};
 
 const DATA = join(import.meta.dir, "fixtures/atom-contracts.json");
 const update = process.env.MESH_CONTRACTS_UPDATE === "1";
@@ -36,14 +45,14 @@ const diagnosticsOf = (source: string, tags: Record<string, CustomTag>, options:
 
 describe("the dialect's contract checks", () => {
   test.each(FAILING.map((s) => [s]))("rejects: %s", (source) => {
-    const found = diagnosticsOf(source, vocab, MESH);
+    const found = diagnosticsOf(source, vocab, SHORTHANDS);
     expect(found.length).toBeGreaterThan(0);
     expect(found[0]?.severity).toBe("error");
     expectRecorded(`vocab|${source}`, found);
   });
 
   test.each(PASSING.map((s) => [s]))("accepts: %s", (source) => {
-    expect(diagnosticsOf(source, vocab, MESH)).toEqual([]);
+    expect(diagnosticsOf(source, vocab, SHORTHANDS)).toEqual([]);
   });
 
   test.each(REGISTRATION.map(([name, tags]) => [name, tags] as const))("registration: %s", (name, tags) => {
@@ -56,9 +65,17 @@ describe("the dialect's contract checks", () => {
   });
 
   test("a duplicate declaration names both places", () => {
-    const [d] = diagnosticsOf("<node#a/>\n<node#a/>", vocab, MESH);
+    const [d] = diagnosticsOf("<node#a/>\n<node#a/>", vocab, SHORTHANDS);
     expect(d?.message).toBe("`a` is already declared as `node` at 1:7");
     expect([d?.line, d?.column]).toEqual([2, 6]);
+  });
+
+  test("under Mesh's own table `id=` declares as the shorthand did, and the shorthand is MESH_NO_TAG_SHORTHAND", () => {
+    const [d] = diagnosticsOf('<node id="a"/>\n<node id="a"/>', vocab, MESH);
+    expect(d?.message).toBe("`a` is already declared as `node` at 1:10");
+    expect([d?.line, d?.column]).toEqual([2, 9]);
+    expect(diagnosticsOf('<node id="a"/><link to=:a/>', vocab, MESH)).toEqual([]);
+    expect(diagnosticsOf("<node#a/>", vocab, MESH).map((x) => [x.code, x.line, x.column])).toEqual([["MESH_NO_TAG_SHORTHAND", 1, 5]]);
   });
 });
 
