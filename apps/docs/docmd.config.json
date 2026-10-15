@@ -521,7 +521,7 @@
               "path": "/architecture/in-depth/generated-code-and-guard/"
             },
             {
-              "title": "How Mesh uses MX",
+              "title": "The contract between Mesh and MX",
               "path": "/architecture/in-depth/mx-integration/"
             },
             {

@@ -96,7 +96,7 @@ Mesh has two halves that share little, as Ash does ([research synthesis](../rese
 
 ### Build time
 
-Details in [build pipeline](../in-depth/build-pipeline.md) and [how Mesh uses MX](../in-depth/mx-integration.md).
+Details in [build pipeline](../in-depth/build-pipeline.md) and [the contract between Mesh and MX](../in-depth/mx-integration.md).
 
 1. Load: every `.mesh.mx` file under `src/domain/` is parsed by MX into a tree with source positions.
 2. Check structure: tags, attributes and nesting are checked against the tag contracts.
@@ -163,7 +163,7 @@ Not in v1 ([roadmap](../roadmap/roadmap.md), section 6): bulk actions, identitie
 |---|---|
 | [three rings](../in-depth/three-rings.md) | Where does new code go? What may import what? |
 | [build pipeline](../in-depth/build-pipeline.md) | What happens between a `.mesh.mx` file and a committed file? |
-| [how Mesh uses MX](../in-depth/mx-integration.md) | What does MX do for Mesh, and what must Mesh check itself? |
+| [the contract between Mesh and MX](../in-depth/mx-integration.md) | What does MX do for Mesh, and what must Mesh check itself? |
 | [generated code and the guard](../in-depth/generated-code-and-guard.md) | What is generated, why, and how is it kept honest? |
 | [action lifecycle](../in-depth/action-lifecycle.md) | What happens inside one action call? |
 | [expressions](../in-depth/expressions.md) | How does one arrow function run in memory and in SQL? |
