@@ -78,6 +78,12 @@ rm .mesh-generators/{binding,expressions,index,load,module,types,validators,sche
 
 The build now uses your `actions.ts.jig` and Mesh's own for the rest, and a Mesh release that improves the others reaches you as usual. Start there: copy one template when one template is what does not fit, and only copy the rest when you have a reason for each.
 
+## Printing imports in `expressions.ts.jig`
+
+`expressions.ts.jig` imports the helpers your entity files use, and each import it prints comes with a `keyword`, `import` or `import type`. Mesh's own template prints a helper import as `{{ helper.keyword }} {{ helper.bindings }} from {{ helper.fromLiteral }};`, and the imports of entity values and of the globals carry a `keyword` the same way. An override must print every import with the view's `keyword`, never a literal `import`.
+
+The keyword is `import type` when the functions take only types from a module (a `Money` type that a function names in an annotation and never calls). A project that sets `verbatimModuleSyntax` keeps a plain `import` of such a module as written, and `tsc` refuses it with TS1484. An override written before the view had a `keyword` field prints `import` every time, so a project with that setting fails type checking at the line, and the fix is to replace the literal `import` in each import line with the `keyword` field.
+
 ## Next
 
 - [Project structure](./project-structure.md) — what `.mesh/` contains and why it is committed.
