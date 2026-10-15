@@ -183,15 +183,15 @@ test.each([["titel", " Did you mean &title?"], ["unknown", ""]])("unknown member
   expect(run(root, "build")).toEqual({ code: 1, stdout: "", stderr: `${sourcePath}:8:9 error MESH_UNKNOWN_MEMBER &${name} is not a member of todos.Todo.${tail}\n1 error, 0 warnings\n` });
 }, 30_000);
 
-// `mesh build` prints `file:line:column severity message` and never a code, so the CLI cannot show `MX_UNKNOWN_TAG`;
-// the code is pinned on the compiler's diagnostics (`compiler/test/mx-codes.test.ts`). Here the line is MX's own, at MX's position.
+// `mesh build` prints `file:line:column severity CODE message`. MX's `MX_UNKNOWN_TAG` arrives as Mesh's `MESH_UNKNOWN_TAG` (the dialect's
+// `diagnosticCodes`, pinned in `compiler/test/diagnostic-codes.test.ts`); the message is MX's own, at MX's position.
 test("an unknown tag prints MX's diagnostic at MX's position", async () => {
   const root = await project();
   await writeFile(join(root, sourcePath), source.replace("  actions", "  mystery\n  actions"));
   const result = run(root, "build");
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toBe(`${sourcePath}:5:3 error MX_UNKNOWN_TAG \`<mystery>\` is not a known tag in the \`mesh\` dialect\n1 error, 0 warnings\n`);
+  expect(result.stderr).toBe(`${sourcePath}:5:3 error MESH_UNKNOWN_TAG \`<mystery>\` is not a known tag in the \`mesh\` dialect\n1 error, 0 warnings\n`);
 }, 30_000);
 
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {

@@ -50,15 +50,15 @@ const where = (message: string) => errors(message).map((d) => [d.code, d.positio
 test.each([
   ["a number", "message=42"], ["a negative number", "message=-1"], ["null", "message=null"], ["a boolean", "message=true"],
   ["a list", "message=[1]"], ["a bare template", "message=`text`"], ["a member path", "message=Foo.bar"], ["a member reference", "message=&title"],
-])("%s is MESH_ATTRIBUTE_VALUE at the attribute, not MESH_MODEL_SHAPE at the entity", (_name, message) => {
-  expect(where(message)).toEqual([["MESH_ATTRIBUTE_VALUE", 11, 10]]);
+])("%s is MESH_OPTION_VALUE at the option, not MESH_MODEL_SHAPE at the entity", (_name, message) => {
+  expect(where(message)).toEqual([["MESH_OPTION_VALUE", 11, 10]]);
 });
 
-test("an atom is MESH_ATTRIBUTE_VALUE at the attribute", () => {
-  expect(where("message=:oops").map(([code, line]) => [code, line])).toEqual([["MESH_ATTRIBUTE_VALUE", 11]]);
+test("an atom is MESH_OPTION_VALUE at the option", () => {
+  expect(where("message=:oops").map(([code, line]) => [code, line])).toEqual([["MESH_OPTION_VALUE", 11]]);
 });
 
-test.each([['""'], ['"   "'], ['"\t"']])("blank text %s is MESH_TEXT at the attribute", (text) => {
+test.each([['""'], ['"   "'], ['"\t"']])("blank text %s is MESH_TEXT at the option", (text) => {
   expect(where(`message=${text}`)).toEqual([["MESH_TEXT", 11, 10]]);
 });
 

@@ -66,7 +66,7 @@ test.each(["uuid", "integer", "string"])("%s accepts primary-key", (type) => {
 test.each(["boolean", "date", "datetime", "timestamp", "float", "decimal", "enum"])("%s rejects primary-key at the contract boundary", (type) => {
   const result = build(keyed.replace("uuid :id", `${type} :id${type === "enum" ? " values=[:one]" : ""}`));
   expect(result.document).toBeNull();
-  expect(result.diagnostics[0]?.code).toBe("MX_UNKNOWN_ATTRIBUTE");
+  expect(result.diagnostics[0]?.code).toBe("MESH_UNKNOWN_OPTION");
   expect(result.diagnostics[0]?.message).toContain("primary-key");
 });
 test("nonliteral assignment names the authored member rather than an AST node", () => {

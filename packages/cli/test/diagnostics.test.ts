@@ -27,14 +27,14 @@ test("each line prints its own code: a Mesh error, a Mesh warning and an MX code
   });
   const output: string[] = [];
   printDiagnostics([
-    at("b.mesh.mx", 2, 8, "MX_UNKNOWN_TAG", "error", "`<x>` is not a known tag"),
+    at("b.mesh.mx", 2, 8, "MESH_UNKNOWN_TAG", "error", "`<x>` is not a known tag"),
     at("a.mesh.mx", 22, 8, "MESH_UNKNOWN_MEMBER", "error", "&titel is not a member of todo.Todo. Did you mean &title?"),
     at("a.mesh.mx", 3, 0, "MESH_EXPR_PLAIN", "warning", "this expression runs as plain TypeScript"),
   ], (text) => { output.push(text); });
   expect(output.join("")).toBe([
     "a.mesh.mx:3:1 warning MESH_EXPR_PLAIN this expression runs as plain TypeScript",
     "a.mesh.mx:22:9 error MESH_UNKNOWN_MEMBER &titel is not a member of todo.Todo. Did you mean &title?",
-    "b.mesh.mx:2:9 error MX_UNKNOWN_TAG `<x>` is not a known tag",
+    "b.mesh.mx:2:9 error MESH_UNKNOWN_TAG `<x>` is not a known tag",
     "2 errors, 1 warning", ""].join("\n"));
 });
 

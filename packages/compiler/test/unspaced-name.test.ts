@@ -48,7 +48,7 @@ describe("the unspaced tag-head name is refused, showing the spaced spelling", (
 describe("Mesh's explainUnknownTag leaves every other unknown tag to MX", () => {
   test("a plain unknown tag keeps MX's own code", () => {
     const found = lowerSource("<entity :T><bogus/></entity>", "/v/x.mesh.mx", { dialect: { ...MESH_DIALECT, contracts: tags } }).diagnostics;
-    expect(found.map((d) => d.code)).toEqual(["MX_UNKNOWN_TAG"]);
+    expect(found.map((d) => d.code)).toEqual(["MESH_UNKNOWN_TAG"]);
   });
   test("in reject mode inside a closed parent, an unspaced tag still gives one Mesh error", () => {
     const found = lowerSource("<entity :T>\n  <attributes><string:title/></attributes>\n</entity>", "/v/x.mesh.mx", {

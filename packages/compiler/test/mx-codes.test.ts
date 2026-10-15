@@ -1,23 +1,24 @@
-// MX's diagnostic codes reach Mesh's output as MX gives them (MX alpha.23: every error and warning has a stable code).
-// A Mesh hook's `MESH_*` code is unchanged; `MESH_SYNTAX` is only the fallback for a diagnostic that arrives with none.
+// MX's diagnostic codes reach Mesh's output under Mesh's names (MX alpha.23: every error and warning has a stable code; alpha.27:
+// the dialect's `diagnosticCodes` renames them, `MX_TO_MESH_CODES`, pinned in `diagnostic-codes.test.ts`). A Mesh hook's `MESH_*`
+// code is unchanged; `MESH_SYNTAX` is only the fallback for a diagnostic that arrives with none.
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { fixture, fixtureDir } from "./helpers.ts";
 import { buildModel, meshDiagnostic, parseEntitySource, type MxDiagnostic } from "../src/front-end/build.ts";
 import { build, keyed } from "./v4.ts";
 
-describe("MX codes pass through", () => {
-  test("an unknown tag in an entity file is MX_UNKNOWN_TAG, positioned at the tag", () => {
+describe("MX codes arrive as Mesh's", () => {
+  test("an unknown tag in an entity file is MESH_UNKNOWN_TAG, positioned at the tag", () => {
     const result = buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source: "entity :Todo\n  mystery :x\n" }] });
     expect(result.document).toBeNull();
     expect(result.diagnostics).toEqual([
-      expect.objectContaining({ severity: "error", code: "MX_UNKNOWN_TAG", position: expect.objectContaining({ file: "todo.mesh.mx", line: 2, column: 2 }) }),
+      expect.objectContaining({ severity: "error", code: "MESH_UNKNOWN_TAG", position: expect.objectContaining({ file: "todo.mesh.mx", line: 2, column: 2 }) }),
     ]);
   });
 
   test.each([
-    ["an unknown attribute", keyed + "    boolean :ok min=0\n", "MX_UNKNOWN_ATTRIBUTE"],
-  ])("%s keeps MX's code", (_, source, code) => {
+    ["an unknown option", keyed + "    boolean :ok min=0\n", "MESH_UNKNOWN_OPTION"],
+  ])("%s has Mesh's name for MX's code", (_, source, code) => {
     const found = build(source).diagnostics;
     expect(found.length).toBeGreaterThan(0);
     expect(found[0]!.code).toBe(code);
@@ -44,12 +45,12 @@ describe("meshDiagnostic", () => {
       severity: "error", code: "MESH_SYNTAX", message: "m", position: { file: "a.mesh.mx", line: 3, column: 4, offset: 20 }, fix: null,
     });
   });
-  test.each(["MX_UNKNOWN_TAG", "MX_DIALECT_HOOK_ERROR", "MESH_UNSPACED_NAME", "MESH_ANYTHING"])("%s is kept as it is", (code) => {
+  test.each(["MESH_UNKNOWN_TAG", "MX_DIALECT_HOOK_ERROR", "MESH_UNSPACED_NAME", "MESH_ANYTHING"])("%s is kept as it is", (code) => {
     expect(meshDiagnostic({ ...base, code } as MxDiagnostic, "a.mesh.mx").code).toBe(code);
   });
   test("a warning keeps its severity and code", () => {
-    const d = meshDiagnostic({ ...base, severity: "warning", code: "MX_DUPLICATE_ATTRIBUTE" } as MxDiagnostic, "a.mesh.mx");
-    expect([d.severity, d.code]).toEqual(["warning", "MX_DUPLICATE_ATTRIBUTE"]);
+    const d = meshDiagnostic({ ...base, severity: "warning", code: "MESH_DUPLICATE_OPTION" } as MxDiagnostic, "a.mesh.mx");
+    expect([d.severity, d.code]).toEqual(["warning", "MESH_DUPLICATE_OPTION"]);
   });
 });
 

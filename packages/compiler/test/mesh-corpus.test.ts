@@ -8,10 +8,15 @@
 //   MESH_CORPUS_UPDATE=1 bun test packages/compiler/test/mesh-corpus.test.ts
 //
 // rewrites the golden; review its diff like any other change.
+//
+// Since MX alpha.27 `MESH_DIALECT` renames MX's codes (`diagnosticCodes`, `src/front-end/diagnostic-codes.ts`). The golden is
+// MX's file and records MX's codes, so the comparison renames the golden's codes through the same map (`meshCodes`): a code is
+// still compared, under the name a Mesh user sees.
 import { lowerSource, type LowerSourceResult } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { MX_TO_MESH_CODES } from "../src/front-end/diagnostic-codes.ts";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { CORPUS, GOLDEN, corpusFiles, parseEntity } from "./mesh-corpus.ts";
@@ -50,6 +55,13 @@ function snapshot(rel: string): unknown {
   );
 }
 
+/** A golden entry with each MX code its diagnostics carry under the name `MESH_DIALECT` gives it; any other code stays. */
+function meshCodes(entry: { diagnostics: { code?: string }[] }): unknown {
+  const map: Readonly<Record<string, string>> = MX_TO_MESH_CODES;
+  const rename = (code: string | undefined) => (code !== undefined && Object.hasOwn(map, code) ? map[code] : code);
+  return { ...entry, diagnostics: entry.diagnostics.map((d) => ("code" in d ? { ...d, code: rename(d.code) } : d)) };
+}
+
 describe("Mesh's golden parse corpus", () => {
   test("Mesh's explainUnknownTag never throws on a corpus tag", () => {
     const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
@@ -69,7 +81,7 @@ describe("Mesh's golden parse corpus", () => {
     if (process.env.MESH_CORPUS_UPDATE === "1") writeFileSync(GOLDEN, `${JSON.stringify(actual, null, 1)}\n`);
     const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
     expect(Object.keys(golden)).toEqual(FILES);
-    for (const rel of FILES) expect(actual[rel], rel).toEqual(golden[rel]);
+    for (const rel of FILES) expect(actual[rel], rel).toEqual(meshCodes(golden[rel]));
   });
 
   // The column-21 refusal (`Expected a single expression, but found `:` after it.` at 5:21) is what a

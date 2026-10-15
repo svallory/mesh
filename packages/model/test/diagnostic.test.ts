@@ -31,7 +31,7 @@ describe("formatDiagnostic", () => {
       .toBe("b.mesh.mx:3:1 error MESH_DUPLICATE_ENTITY bad\\nvalue\\rhere\n  fix: try\\u2028again\\u2029");
   });
   test("prints an MX code as it is, and no code when none is set", () => {
-    expect(formatDiagnostic({ ...base, code: "MX_UNKNOWN_TAG" })).toStartWith("b.mesh.mx:3:1 error MX_UNKNOWN_TAG entity");
+    expect(formatDiagnostic({ ...base, code: "MX_INTERNAL_ERROR" })).toStartWith("b.mesh.mx:3:1 error MX_INTERNAL_ERROR entity");
     expect(formatDiagnostic({ ...base, code: "" })).toStartWith("b.mesh.mx:3:1 error entity");
   });
   test("survives a JSON round trip", () => {

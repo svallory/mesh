@@ -492,7 +492,7 @@ describe("a computed enum names its values", () => {
     expect(entityOf(result, "Doc").computed[0]!.values).toBeUndefined();
   });
   test("a non-enum computed field takes no values, and no other option", () => {
-    expect(codes(build({ "doc.mesh.mx": source("string :label values=[:a] value=() => &state") }))).toEqual(["MX_UNKNOWN_ATTRIBUTE"]);
+    expect(codes(build({ "doc.mesh.mx": source("string :label values=[:a] value=() => &state") }))).toEqual(["MESH_UNKNOWN_OPTION"]);
     expect(codes(build({ "doc.mesh.mx": source("string :label nullable value=() => &state") }))).toContain("MESH_COMPUTED_OPTIONS");
     expect(codes(build({ "doc.mesh.mx": source("enum :phase nullable value=() => :a") }))).toContain("MESH_COMPUTED_OPTIONS");
   });

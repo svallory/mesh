@@ -89,7 +89,7 @@ describe("v4 contracts", () => {
   test("old-relationship: exact message and position (alpha.14's text, restored by the value-position atom row)", () => {
     const result = parseFixture("negative/old-relationship.mesh.mx");
     expect(result.diagnostics.map((d) => [d.code, d.message, d.line, d.column])).toEqual([
-      [ "MX_UNKNOWN_ATTRIBUTE", "`<belongs-to>`: unknown attribute `value`", 5, 14],
+      [ "MESH_UNKNOWN_OPTION", "`<belongs-to>`: unknown attribute `value`", 5, 14],
     ]);
   });
   test("every negative fixture fails with a positioned diagnostic", () => {
@@ -98,33 +98,33 @@ describe("v4 contracts", () => {
     );
     const expected: Record<string, readonly [string, number, number]> = {
       "primary-keys": ["MESH_PRIMARY_KEY", 1, 0],
-      let: ["MX_NOT_IN_DATA_FILE", 1, 0],
-      "unknown-root": ["MX_UNKNOWN_TAG", 1, 0],
-      "primary-key-boolean": ["MX_UNKNOWN_ATTRIBUTE", 3, 16],
+      let: ["MESH_NOT_IN_ENTITY_FILE", 1, 0],
+      "unknown-root": ["MESH_UNKNOWN_TAG", 1, 0],
+      "primary-key-boolean": ["MESH_UNKNOWN_OPTION", 3, 16],
       "duplicate-member": ["MESH_DUPLICATE_MEMBER", 4, 4],
       "enum-values": ["MESH_ENUM_VALUES", 4, 4],
-      "member-options": ["MX_PARSE_INVALID_CHARACTER", 7, 12],
+      "member-options": ["MESH_PARSE_INVALID_CHARACTER", 7, 12],
       "unknown-member": ["MESH_UNKNOWN_MEMBER", 7, 8],
-      "old-arguments": ["MX_UNKNOWN_TAG", 6, 6],
-      "unknown-option": ["MX_UNKNOWN_ATTRIBUTE", 1, 13],
-      "member-assignment": ["MX_UNKNOWN_ATTRIBUTE", 7, 8],
+      "old-arguments": ["MESH_UNKNOWN_TAG", 6, 6],
+      "unknown-option": ["MESH_UNKNOWN_OPTION", 1, 13],
+      "member-assignment": ["MESH_UNKNOWN_OPTION", 7, 8],
       "member-assign-expression": ["MESH_MEMBER_ASSIGN", 6, 33],
       "duplicate-set": ["MESH_DUPLICATE_SET", 10, 10],
-      "check-that": ["MX_MISSING_ATTRIBUTE", 7, 8],
-      "atom-sort": ["MX_UNKNOWN_ATTRIBUTE", 7, 12],
-      "has-many-nullable": ["MX_UNKNOWN_ATTRIBUTE", 5, 32],
-      "old-accept": ["MX_UNKNOWN_ATTRIBUTE", 5, 19],
+      "check-that": ["MESH_MISSING_OPTION", 7, 8],
+      "atom-sort": ["MESH_UNKNOWN_OPTION", 7, 12],
+      "has-many-nullable": ["MESH_UNKNOWN_OPTION", 5, 32],
+      "old-accept": ["MESH_UNKNOWN_OPTION", 5, 19],
       "unknown-entity": ["MESH_UNKNOWN_ENTITY", 5, 28],
-      const: ["MX_STRUCTURAL_CONSTRUCT", 1, 0],
-      "old-module": ["MX_UNKNOWN_ATTRIBUTE", 1, 13],
-      "old-relationship": ["MX_UNKNOWN_ATTRIBUTE", 5, 14],
+      const: ["MESH_STRUCTURAL_CONSTRUCT", 1, 0],
+      "old-module": ["MESH_UNKNOWN_OPTION", 1, 13],
+      "old-relationship": ["MESH_UNKNOWN_OPTION", 5, 14],
       "atom-input": ["MESH_UNSPACED_NAME", 7, 8],
       "read-input-member": ["MESH_READ_INPUT_MEMBER", 7, 8],
       "unknown-import": ["MESH_UNKNOWN_IMPORT", 1, 0],
       "duplicate-input": ["MESH_DUPLICATE_INPUT", 8, 8],
-      if: ["MX_UNSUPPORTED_CONSTRUCT", 1, 4],
-      "check-code-atom": ["MX_INVALID_ATTRIBUTE_VALUE", 7, 39],
-      for: ["MX_PARSE_MISSING_END_TAG", 1, 0],
+      if: ["MESH_UNSUPPORTED_CONSTRUCT", 1, 4],
+      "check-code-atom": ["MESH_OPTION_VALUE", 7, 39],
+      for: ["MESH_PARSE_MISSING_END_TAG", 1, 0],
     };
     expect(files.map((name) => name.replace(".mesh.mx", "")).sort()).toEqual(
       Object.keys(expected).sort(),

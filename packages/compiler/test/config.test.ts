@@ -130,7 +130,7 @@ test("collects read and parse errors without throwing", async () => {
   await writeFile(resolve(root, "src/domain/blog/todo.mesh.mx"), "enttiy :Todo\n");
   const built = await loadProject(loaded.config!);
   expect(built.document).toBeNull();
-  expect(built.diagnostics.map((d) => d.code)).toEqual(["MESH_ENTITY_READ", "MX_UNKNOWN_TAG"]);
+  expect(built.diagnostics.map((d) => d.code)).toEqual(["MESH_ENTITY_READ", "MESH_UNKNOWN_TAG"]);
 });
 
 test.each(["folder", "glob", "list"])("%s domain derives root-level and nested modules", async (mode) => {

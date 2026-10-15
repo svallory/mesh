@@ -1,6 +1,6 @@
 // The bracket form `run [after=:write] ({ self }) { ... }` (ADR-0068) lowers to one `value` attribute, the method, and
 // raises no warning (MX alpha.17, #500). Before, MX lowered it to two and warned; Mesh filtered that warning by message
-// text. A real duplicate still warns, with the stable code `MX_DUPLICATE_ATTRIBUTE`: match the code, never the message.
+// text. A real duplicate still warns, with the stable code `MESH_DUPLICATE_OPTION`: match the code, never the message.
 import { lowerSource } from "@mxlang/core";
 import { expect, test } from "bun:test";
 import { parseEntitySource } from "../src/front-end/build.ts";
@@ -26,8 +26,8 @@ test("run [after=:write] (...) { ... } lowers to one value and no warning", () =
   expect(run.attrs.filter((a) => a.kind !== "spread" && a.name === "after")).toHaveLength(1);
 });
 
-test("a real duplicate attribute warns with the code MX_DUPLICATE_ATTRIBUTE", () => {
+test("a real duplicate option warns with the code MESH_DUPLICATE_OPTION", () => {
   const { diagnostics } = lowerSource("<x a=1 a=2/>", "/v/x.mesh.mx", { dialect: SYNTAX_DIALECT });
   expect(diagnostics).toHaveLength(1);
-  expect(diagnostics[0]).toMatchObject({ severity: "warning", code: "MX_DUPLICATE_ATTRIBUTE" });
+  expect(diagnostics[0]).toMatchObject({ severity: "warning", code: "MESH_DUPLICATE_OPTION" });
 });
