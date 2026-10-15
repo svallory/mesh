@@ -173,7 +173,7 @@ The one exception: a tag that fails its own lowering, such as one a closed `chil
 - In `ir.body` Mesh reads `DelegatedTag` nodes (`{ kind, tag, loc }`); in `ir.imports`, `Import` (`code`, `bindings`, `from`, `names`, `typeOnly`, `span`).
 - `DelegatedTag`: `name`, `nameSpan`, `span`, `trigger` (`{ id, span, text }`, set on a tag a dialect row built, such as a tagless member line), `alias` (on a wildcard child), `attrs`, `args` (always present, `[]` without arguments), `children`, `attributeTags`, `attributeTagTree`, `attrTagProps`, `params`, `var` and `data`.
 - `Attr`, MX's word for an option: `static` (`value`, `valueSpan`, `nameSpan`, and at most one of `atom`, `member` or `node`), `boolean`, `dynamic` (`value`, an `Expr`), `bound`, `event` or `spread`; each with `span`, `sugar`, `sugarValueOf` and `args`.
-- `Expr`: `code`, `shape`, `node` (the Babel node), `span`, `file`, `atoms`, `unrewrittenCode`, `bodySpan` and `bodySource`. `code` is the authored text at `span`, not a reprint: spacing and comments survive. Each dialect trigger in it is replaced by what it lowered to, so `&status === :sent` has the code `self.status === "sent"`. A shorthand `id` or `class` with a placeholder, and an option written as a method shorthand, have a built `code` instead; `bodySource` then keeps the authored block. Mesh reads `node` and the span, never `code` (2.4).
+- `Expr`: `code`, `shape`, `node` (the Babel node), `span`, `file`, `atoms`, `unrewrittenCode`, `bodySpan` and `bodySource`. `code` is the authored text at `span`, not a reprint: spacing and comments survive. Each dialect trigger in it is replaced by what it lowered to, so `&status === :sent` has the code `self.status === "sent"`. A shorthand `id` or `class` with a placeholder has the template literal core built. An option written as a method shorthand has a printed `function` expression, with triggers lowered and spacing not kept, and `bodySource` keeps its authored block with the triggers as written. With `stripTypes` on (the default), a top-level `as`, `!`, `satisfies` or `<T>x` is not in `code`: `span` and `code` are the operand's. Two `ctx.expression` values from one trigger are spliced twice (section 5). Mesh reads `node` and the span, never `code` (2.4).
 
 **Spans.**
 
@@ -182,7 +182,7 @@ The one exception: a tag that fails its own lowering, such as one a closed `chil
 - An option a contract's `default` added has an empty `span`, `nameSpan` and value span at the end of the tag name. The empty span is how a reader tells it from an authored one.
 - A contract's `transform` hook may emit tags; MX returns them with their spans, but with no `nameSpan`, since they have no authored name, and they skip the unknown-tag check. Mesh uses no `transform`.
 - These fields are opaque and carry no span: `node`, `paramNodes`, `declaration`, `data`, `loc`, `end` and `tagMetadata`.
-- A dynamic option's `span` and `value.span` do not cover a TypeScript wrapper today (`x as T`, `x!`). The fix is planned (alpha.28), 3.9.
+- A dynamic option's `value.span` never covers a wrapper. `attr.span` already reaches past `(x)` and `<T>x`, but stops short of `x!`, `as` and `satisfies`. The fix is planned (alpha.28), 3.9.
 
 **Diagnostics.** An `IrDiagnostic` has:
 
@@ -232,7 +232,7 @@ Core has no atom or member syntax. Mesh's rows fire, and Mesh's hooks build the 
 - A whole option value that the `mesh:Atom` node type claims (`inverse=:owner`) lowers to a `static` option with `atom: { name, span }`. `Attr.node` stays unset, because Mesh's `lower` returns an expression, not a string.
 - The marks' types, `MxAtomMark` and `MxMemberMark`, are public API, as stable as the IR.
 
-Core still carries pieces only Mesh uses: the IR types `Atom` and `Member` with `Attr.atom` and `Attr.member`; the contract types `"atom"` and `"member"` and their check; `TriggerAttributeValue { kind: "atom" | "member" }`; and the claim-only contract data `CustomTagAttribute.values`, `pattern` and `ref` and `CustomTag.declares`. They leave core when atoms and members move into the node registry, and dialect nodes inside expressions are pending the operator's ruling; section 5 has both.
+Core still carries pieces only Mesh uses: the IR types `Atom` and `Member` with `Attr.atom` and `Attr.member`; the contract types `"atom"` and `"member"` and their check; `TriggerAttributeValue { kind: "atom" | "member" }`; and the claim-only contract data `CustomTagAttribute.values`, `pattern` and `ref` and `CustomTag.declares`. Members leave core when they move into the node registry; atoms may follow, pending the operator's ruling (section 5).
 
 ### 3.5 Contract semantics
 
@@ -289,11 +289,11 @@ Because the tools route the file rather than pass the dialect, they apply the ma
 - **Without a marker:** the IR types (`Attr`, `DelegatedTag` and the rest) are public and versioned by `IR_VERSION`. `CustomTag`, `WildcardChildEntry`, `MxDiagnosticCode`, `Trigger`, `TriggerContext`, `TriggerResult` and `SourceSpan` carry no marker, and fall under the README's note.
 - **Who approves a change.** MX's lead approves an additive field that follows a precedent. A change to or removal of a public API, or a new required pattern, goes to the operator, and is announced to Mesh before the alpha that carries it.
 - **How a change reaches Mesh.**
-  1. Each MX pull request adds a changelog fragment, `changes/<slug>.md`, of kind Added, Changed, Fixed or Removed; MX's CI enforces it (section 6).
+  1. Each MX pull request adds a changelog fragment, `changes/<slug>.md`, of kind Added, Changed, Fixed or Removed. MX's CI enforces it on a pull request that touches `packages/*/src` or a package's `package.json`, unless the PR body gives a `no-changelog: <reason>` line (section 6).
   2. At release the fragments are folded into each package's `CHANGELOG.md`, which ships in the `@mxlang/core` tarball.
   3. A change of the IR's shape bumps `IR_VERSION`.
-  4. MX's lead tells Mesh's lead the alpha number when a release tag moves, and the release notes reach Mesh's lead.
-- **Releases** are `0.1.0-alpha.N` on `https://npm.saulo.tech`, published under the `alpha` tag, after which `latest` moves to the same version. Nothing is published to npmjs before MX 2. Today `alpha` and `latest` both point to `0.1.0-alpha.27`, the version Mesh pins.
+  4. MX's lead tells Mesh's lead the alpha number when a release tag moves, and the link-update script appends the new commits to Mesh's `notes/mx/updates.md`.
+- **Releases** are `0.1.0-alpha.N` on `https://npm.saulo.tech`, published under the `alpha` tag, after which `latest` moves to the same version. Nothing is published to npmjs before MX 2 and the framework targets. Today `alpha` and `latest` both point to `0.1.0-alpha.27`, the version Mesh pins.
 
 ### 3.9 Planned (alpha.28)
 
@@ -301,10 +301,10 @@ Neither change exists in alpha.27.
 
 - **`tagShorthands: false` in a syntax table.** The default is `true`, so current files are unchanged; the flag is validated and part of the table's content hash.
   - With `false`, `.` continues a tag name: `billing.InvoiceVoided` is one tag, in concise and HTML form alike, and closes with `</billing.InvoiceVoided>`.
-  - `#` anywhere in a tag head, or a head that starts with `.` or `#`, is the new code `MX_NO_TAG_SHORTHAND`.
+  - `#` anywhere in a tag head, or a head that starts with `.` or `#`, is the new code `MX_NO_TAG_SHORTHAND` (exported as `NO_TAG_SHORTHAND_CODE`).
   - A trailing `.`, `..`, or a `.` after a dynamic `${…}` name is `MX_INVALID_TAG_NAME`.
   - The wildcard matcher accepts dotted names.
-- **The written span of a dynamic option.** Dynamic options gain `valueSpan`, the written value with any wrapper (`(x)`, `x!`, `x as T`, `x satisfies T`); a reader finds a wrapper where `valueSpan` differs from `value.span`. `attr.span` is fixed to cover the whole written option (today `entity=List as any` ends at `List`). This adds a field to the IR, so `IR_VERSION` is expected to become 5. `<T>x` in an option stays `MX_PARSE_EXPRESSION`.
+- **The written span of a dynamic option.** Dynamic options gain `valueSpan`, the written value with any wrapper (`(x)`, `<T>x`, `x!`, `x as T`, `x satisfies T`); a reader finds a wrapper where `valueSpan` differs from `value.span`. `attr.span` is fixed to cover the whole written option (today `entity=List as any` ends at `List`). This adds a field to the IR, so `IR_VERSION` is expected to become 5. `<T>x` in a concise option value is also lowered to `x` today; in HTML form (`<t a=<T>x/>`) it is `MX_PARSE_EXPRESSION`.
 
 ## 4. Who checks what
 
@@ -346,7 +346,7 @@ Neither change exists in alpha.27.
 | Positions: 1-based line, 0-based column, UTF-16 offset; no position becomes 1:0 with a prefix | MX | MX's diagnostics module |
 | Every diagnostic carries a code; an uncoded one becomes `MX_INTERNAL_ERROR` | MX | MX's diagnostics module |
 | Codes are renamed per the dialect's map at every `lowerSource` exit; tools use `diagnosticCodesOf` | MX | `renameDiagnosticCodes` |
-| Codes are never renamed or reused across releases | MX, by rule and test | the rule in MX's `diagnostic-codes.ts`; `diagnostic-code-table.test.ts` |
+| Codes are never renamed or reused across releases | MX, by rule; the table test keeps each code listed and reachable | the rule in MX's `diagnostic-codes.ts`; `diagnostic-code-table.test.ts` |
 | A change of the IR's shape bumps `IR_VERSION`; a change of meaning is its author's call | MX, by test | `ir-version.test.ts` (a hash) |
 | The installed `@mxlang/core` speaks IR version 4 | Mesh | `test/ir-version.test.ts` |
 | `lowerSource` never throws | MX, by design; probed on four kinds of failure | `lowerSource` |
@@ -368,10 +368,10 @@ Each item names its MX TODO slug, MX decision or Mesh decision row.
 
 - **No partial IR on error.** A file with an error gives no tree, so Mesh runs none of its own checks on that file until MX's errors are fixed. MX TODO `ir-entry-partial-ir`.
 - **A refused tag hides its subtree.** A tag refused by its own lowering hides the errors inside it until the refusal is fixed (3.1). MX decision 162; no TODO.
-- **Wrapped references**, planned (alpha.28). MX lowers `(x)`, `x!`, `x as T` and `x satisfies T` to `x`, so Mesh cannot refuse them in a reference position yet. Mesh refuses them once MX marks them in the tree with `valueSpan` (3.9). MX TODO `dynamic-attr-value-span`; SYN-21, SYN-26.
+- **Wrapped references**, planned (alpha.28). MX lowers `(x)`, `<T>x`, `x!`, `x as T` and `x satisfies T` to `x`. Mesh's `analyze` hooks see only `x`, so `entity=<T>Customer` passes with no diagnostic. Mesh refuses these forms once the written value's `valueSpan` differs from `value.span` (3.9). MX TODO `dynamic-attr-value-span`; SYN-21, SYN-26.
 - **Dotted line heads**, planned (alpha.28). Until Mesh's dialect sets `tagShorthands: false`, a dotted line head lowers as MX's `.class` shorthand, so a head such as `billing.InvoiceVoided` in an owner's `events` or `commands` section waits on it. MX TODO `dialect-tag-shorthands-off`; SYN-21, DOM-17.
 - **Dialect nodes inside expressions**, pending the operator's ruling. The operator has ruled that a dialect's expression output is always a clean expression in the file's own expression language. Two points are open: whether nodes are kept in a record core owns, `Expr.nodes` (each with a "forward", the plain JavaScript it lowers to; contract types could then name a node type, `type: "mesh:Atom"`), which amends MX-12; and a mandatory node schema (fields, forward, printer, and marking characters checked to be disjoint at load). If ruled yes, the `extra.*` marks stay for one alpha beside `Expr.nodes`, with a migration note to Mesh. MX TODO `research-nodes-inside-expressions`, MX decision 222; MX-12.
-- **Atoms and members leave core.** The core pieces only Mesh uses (3.4) move into the node registry, with a one-alpha fallback for the marks and a migration note to Mesh. MX TODO `member-to-dialect-registry`, MX decision 218; MX-12.
+- **Members leave core**, and atoms may follow (pending the ruling above). The core pieces only Mesh uses (3.4) move into the node registry, with a one-alpha fallback for the marks and a migration note to Mesh. MX TODO `member-to-dialect-registry`, MX decision 218; MX-12.
 - **The atom's dialect name in `afterLower`.** `afterLower` names a value atom `mx:Atom` while the IR names it `mesh:Atom`. MX TODO `lowered-unit-atom-dialect-name`.
 - **Dialect files are check-only.** The Vite and Bun plugins refuse to import them. MX TODO `dialect-emit-step`, MX decision 218.
 - **`stripTypes` is not a dialect field**, so the editor and a build that passed the option could see different nodes. MX TODO `strip-types-dialect-field`.
@@ -381,7 +381,7 @@ Each item names its MX TODO slug, MX decision or Mesh decision row.
 - **Reloading a dialect.** A dialect module is not reloaded in watch mode (MX TODO `sync-esm-reload-node`), and reloading is untested (MX TODO `dialect-reload-untested`).
 - **No formatter for node types.** A node type's `print` has no formatter to plug into. MX TODO `dialect-print-formatter`.
 - **Highlighting.** The docs site highlights `mx` fences with MX's tree-sitter highlighter, `@mxlang/tree-sitter-mx` `0.1.0-alpha.2` ([ADR-0065](../decisions/0065-mx-highlighting-on-the-docs-site.md)). It treats `input` as an HTML void tag, so the docs plugin carries one counted allowance, `MX_V4_INPUT_PENDING_SYNTAX_TABLE`, which gives nested input sections and bare member lines same-width stand-ins for highlighting only, and one render-only overlay, `MESH_V4_MEMBER_RENDER`, which colours `&name` heads and `%.now`/`%.today` where they start an operand. The rendered text is always the authored text. A line at the left margin ends the root tag's block, a comment included, so a comment inside an entity is indented with its block; the grammar reports such a line as an error and the docs build fails, naming the page and the line. Both bridges go when MX ships the syntax-table route for highlighting and `@mxlang/tree-sitter-mx` moves past alpha.2. MX's editor grammars also still colour sugars core removed. MX TODOs `mesh-syntax-highlighting-route` (MX decision 182, addendum 1) and `editor-grammars-layer-2`.
-- **MX's words in messages.** MX's messages call an option an "attribute" ("unknown attribute"), print a tag in its HTML form (`<attributes>`, and `<member>` for a line the user wrote as `&title`), and call a dialect file a "data file". Planned: a small vocabulary on `Dialect` (`attributeNoun`, `formatTag`, and a lowered node reported as its authored text), which Mesh sets to say "option" and print tags as Mesh writes them; output for `.mx` files stays the same. Pending the operator's go on MX's queue. MX TODO `dialect-message-vocabulary`, which absorbs `ir-entry-data-file-wording`. The indentation message's missing "not" ("does match indentation") is MX TODO `parse-invalid-indentation-typo`.
+- **MX's words in messages.** MX's messages call an option an "attribute" ("unknown attribute"), print a tag in its HTML form (`<attributes>`, and `<member>` for a line the user wrote as `&title`), and call a dialect file a "data file". Planned, design not settled: a small vocabulary on `Dialect` (for example a noun for options and a tag formatter), approved by MX's lead as additive `@unstable` fields, which Mesh will set to say "option" and print tags as Mesh writes them; output for `.mx` files stays the same. MX TODO `dialect-message-vocabulary`, which absorbs `ir-entry-data-file-wording`. The indentation message's missing "not" ("does match indentation") is MX TODO `parse-invalid-indentation-typo`.
 - **One read of `Expr.code`.** The rollup `of=` hook in `contracts.ts` refuses whitespace inside a member path by testing `Expr.code`, which breaks promise 2.4.1. It is to be replaced by a test of the member nodes' spans. No row yet.
 - **The changelog in the tarball.** MX TODO `release-changelog-in-package` is still open, though `@mxlang/core`'s `files` already lists `CHANGELOG.md`.
 - **Mesh drops `end`, `fixes` and `file`.** `meshDiagnostic` keeps only a diagnostic's start, so `mesh build` shows no range and none of the fixes MX offers, and a diagnostic in another file would be placed in the parsed one. No row yet.
@@ -410,5 +410,5 @@ All of them run in `bun run verify`, which GitHub Actions runs on every pull req
 ### MX's tests
 
 - **The IR version hash.** `ir-entry/ir-version.test.ts` in `@mxlang/core` pins `IR_VERSION` together with a hash of the IR's type declarations, so a change of shape fails MX's CI until the version goes up.
-- **The diagnostic code table.** `ir-entry/diagnostic-code-table.test.ts` keeps one row per code of `MX_DIAGNOSTIC_CODES`, under the rule that a code is never renamed or reused.
-- **The changelog fragment check.** [`scripts/check-changelog-fragment.ts`](https://github.com/svallory/mxlang/blob/main/scripts/check-changelog-fragment.ts) fails an MX pull request that adds no `changes/<slug>.md` fragment, so every change reaches the changelog Mesh reads before it moves its pin.
+- **The diagnostic code table.** `ir-entry/diagnostic-code-table.test.ts` keeps one row per code of `MX_DIAGNOSTIC_CODES`, each reached at a pinned position. The never-renamed rule is enforced by review, not by this test.
+- **The changelog fragment check.** [`scripts/check-changelog-fragment.ts`](https://github.com/svallory/mxlang/blob/main/scripts/check-changelog-fragment.ts) fails an MX pull request that touches `packages/*/src` or a package's `package.json` and adds no `changes/<slug>.md` fragment, unless the PR body gives a `no-changelog: <reason>` line.
