@@ -1,9 +1,11 @@
 ---
 title: "0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it"
-description: "Decision record 0079: `command` and `event` files, `handles=`, `publish` and the outbox in core, no `after-commit` step, `project` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows), 2026-10-12 and 2026-10-13 (DOM-43: how long it keeps them is configured by the application, and by default a delivered row is deleted) and 2026-10-13 (DOM-05: a read-model handler is `project`, not `apply`)."
+description: "Decision record 0079: `command` and `event` files, `on=`, `publish` and the outbox in core, no `after-commit` step, `project` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows), 2026-10-12 and 2026-10-13 (DOM-43: how long it keeps them is configured by the application, and by default a delivered row is deleted) and 2026-10-13 (DOM-05: a read-model handler is `project`, not `apply`) and 2026-10-15 (DOM-17: an action answers a command with `on=`, not `handles=`)."
 ---
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
+
+> **Amendment, 2026-10-15 (DOM-17).** An action names the command it answers with `on=` and the command's imported identifier, one command per action (`update on=CompleteTask`); `handles=[...]` is not the option. When the action has `on=` and no name, it is named after the command (`update on=CompleteTask` is `completeTask`); `update :complete on=CompleteTask` names it `complete`. A command may also live in an owner's `commands` section, not only in its own file. The Decision item 1 and the illustration below are corrected to `on=`. The operator ruled this on 2026-10-11 and 2026-10-14.
 
 > **Amendment, 2026-10-13 (DOM-05).** A handler that updates a read-model row is `project`, not `apply`; a handler that runs commands is still `process`. `apply` is kept for folding events into an event-sourced aggregate (the extension's word, [ADR-0081](./0081-event-sourcing-and-cqrs-are-extensions.md)), so each word has one meaning. Item 7 below, and the last consequence, say `apply` for a read-model handler; read them as `project`. The operator ruled this on 2026-10-11 and confirmed it on 2026-10-13. The body is kept as history.
 
@@ -31,7 +33,7 @@ Hyper's engine keeps an event table by hand and delivers events from application
 
 ## Decision
 
-1. **`command` and `event` declarations live in their own files**, and an action names the commands it answers with `handles=[...]` (DOM-17). A command is a serialised request to run a write action; a query is a serialised read request.
+1. **`command` and `event` declarations live in their own files**, and an action names the command it answers with `on=` (DOM-17). A command is a serialised request to run a write action; a query is a serialised read request.
 2. **Declaring and raising are separate syntax** (DOM-19). An action raises an event with `publish :task-completed`.
 3. **`publish` writes the event to the outbox**, in the action's transaction, and an event bus delivers it from there (DOM-02, DOM-06). A surface lists what it sends out with `publishes` ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
 4. **The outbox is core** (DOM-06). It is a permanent, ordered log of the events, not a table emptied after delivery (see the amendment at the top). It comes with domain events in M6 (DOM-18), so [ADR-0023](./0023-workflows-and-jobs-deferred.md)'s "after 1.0" no longer covers it. Jobs and workflows stay after 1.0 (ARC-14).
@@ -39,7 +41,7 @@ Hyper's engine keeps an event table by hand and delivers events from application
 6. **There is no `after-commit` step**, and the `afterCommit` seam is not used for it either (DOM-25). An effect after commit is a `publish` and a listener.
 7. **Handler words** (DOM-05): a handler that updates a read-model row is `apply`; a handler that runs commands is `process`.
 
-An illustration. The files, `handles=` and `publish` are ruled; the lines inside them are the study's sketch:
+An illustration. The files, `on=` and `publish` are ruled; the lines inside them are the study's sketch:
 
 ```mx "An event file and an action that raises it (illustration)"
 event :task-completed
@@ -48,16 +50,18 @@ event :task-completed
 ```
 
 ```mx "src/domain/work/task.mesh.mx (illustration)"
+import { CompleteTask } from "./complete-task.mesh.mx"
+
 entity :Task
   actions
-    update :complete handles=[:complete-task]
+    update :complete on=CompleteTask
       do
         publish :task-completed
 ```
 
 ## Options considered
 
-The study's D7 (a command in core): (a) generated only, as `Command` and `Query` unions with a `dispatch()` per surface; (b) a `command` declaration per entity action. The ruling is closer to (b): commands are declared in their own files and an action names them with `handles=`. D8 (domain events): the form, (a) an `events` section and an `emit` step, (b) an `emits=` option on the action line, (c) application code on seams only; the timing, (i) after 1.0 with Hyper keeping its table, (ii) before the gate. The ruling is before the gate (M6) and, per DOM-19, declaring and raising are separate syntax. D9 (seam payloads now): (a) reserve an `events` field on `afterWrite` and `afterCommit`; (b) declared events get their own seam later; (c) decide later. (a) was not taken: with events delivered from the outbox, the seams need no `events` field (a consequence, not a ruling; the payloads are settled in M6's design). D15 (outbox): (a) an extension; (b) core (chosen). D16 (after-commit): (a) drop the `after-commit` step; (b) keep it for one-off side effects (the ruling is (a), and the `afterCommit` seam is not the route either).
+The study's D7 (a command in core): (a) generated only, as `Command` and `Query` unions with a `dispatch()` per surface; (b) a `command` declaration per entity action. The ruling is closer to (b): commands are declared in their own files and an action names its command with `on=`. D8 (domain events): the form, (a) an `events` section and an `emit` step, (b) an `emits=` option on the action line, (c) application code on seams only; the timing, (i) after 1.0 with Hyper keeping its table, (ii) before the gate. The ruling is before the gate (M6) and, per DOM-19, declaring and raising are separate syntax. D9 (seam payloads now): (a) reserve an `events` field on `afterWrite` and `afterCommit`; (b) declared events get their own seam later; (c) decide later. (a) was not taken: with events delivered from the outbox, the seams need no `events` field (a consequence, not a ruling; the payloads are settled in M6's design). D15 (outbox): (a) an extension; (b) core (chosen). D16 (after-commit): (a) drop the `after-commit` step; (b) keep it for one-off side effects (the ruling is (a), and the `afterCommit` seam is not the route either).
 
 ## Trade-off analysis
 

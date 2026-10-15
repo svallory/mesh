@@ -1,11 +1,13 @@
 ---
 title: "0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`"
-description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068, and on 2026-10-11 (a check sees `self` before the input). Amended 2026-10-11 (DOM-25, DOM-28) and 2026-10-15 (ACT-30: a check's `message=` may be a function)."
+description: "Decision record 0053: validations, the steps of an action, the shared `always` body and reusable steps. Status: Accepted, amended by ADR-0067, ADR-0068, and on 2026-10-11 (a check sees `self` before the input). Amended 2026-10-11 (DOM-25, DOM-28), 2026-10-15 (ACT-30: a check's `message=` may be a function) and 2026-10-15 (ACT-24, the lead's reading: `code=` is text)."
 ---
 
 # 0053. An action body is `validate`, then `do`; steps are `set`, `when`, `load` and `run`
 
 > **Amendment, 2026-10-11 (DOM-25, DOM-28, and the 2026-10-11 ruling on step files, which has no DOM row).** Step files and reusable steps are dropped: reuse is a TypeScript helper or a `mixin` ([ADR-0082](./0082-named-checks-and-mixins.md)), and named checks are an entity-level `checks` section. There is no `after-commit` step either; an effect after commit is a `publish` plus a listener ([ADR-0079](./0079-commands-events-and-the-outbox.md)). Read the "reusable steps" paragraph and the planned `after-commit` line below as history.
+
+> **Amendment, 2026-10-15 (ACT-24, the lead's reading, awaiting the operator).** A check's `code=` is text, as the check contract takes it; a number is written as a string (`code="42"`). The line in the Decision that calls `code` "a string or a number" no longer holds. The body below is kept as history.
 
 > **Amendment, 2026-10-15 (ACT-30).** A check's `message=` is fixed text or a function of the same arguments as `that=` and `details=`: `message=({ self }) => ...`. The function runs only when the check fails and `when=` did not skip it, and it returns the text the issue carries. A function that throws, or returns anything but text that is not blank, fails the call with a `FrameworkError` that names the entity, the check and its line. Read `message=...` in the `check :name [ that=fn code=... message=... ]` bullet below as text or such a function.
 
