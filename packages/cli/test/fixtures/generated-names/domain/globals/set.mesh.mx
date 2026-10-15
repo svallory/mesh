@@ -23,7 +23,7 @@ entity :Set
     update :count
       do
         set
-          &counted=async () => (await isSystem.read({})).length
+          &counted=async () => (await isSystem.read({}, { actor: { id: "counter" } })).length
   policies
     policy :anyone types=[:create, :read, :update]
       authorize-if=() => true

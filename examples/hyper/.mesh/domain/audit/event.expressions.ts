@@ -3,6 +3,7 @@
 
 import {
   expr as $,
+  type ActionContext as $ActionContext,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
@@ -17,8 +18,12 @@ import type { $Omit } from "../../$globals";
 export type $audit$Event$Scope<I = unknown> = $Scope<{
   self: $DeepReadonly<$audit$Event$Loaded>;
   input: $DeepReadonly<I>;
-  actor: any;
-  context: any;
+  actor: $ActionContext extends infer C
+    ? "actor" extends keyof C
+      ? { [K in keyof C]-?: C[K] }["actor"] | (C extends { actor: unknown } ? never : undefined)
+      : undefined
+    : never;
+  context: $ActionContext;
   before: $DeepReadonly<$audit$Event$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */

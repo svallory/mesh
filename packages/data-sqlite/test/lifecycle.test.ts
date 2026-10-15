@@ -344,10 +344,12 @@ describe("the generated files", () => {
     expect(files.length).toBeGreaterThan(8);
     // `binding.ts` imports the project's config, which is not part of this fixture.
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
+    // The project declares the context keys its functions read (PRJ-12): a required actor, and the log a step pushes to.
+    await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n  }\n}\nexport {};\n');
     const child = Bun.spawnSync([
       resolve(import.meta.dir, "../../../node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
       "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--noUnusedLocals", "--noUnusedParameters",
-      "--exactOptionalPropertyTypes", "--verbatimModuleSyntax", "--isolatedModules", "--allowImportingTsExtensions", "mesh.config.ts", ...files,
+      "--exactOptionalPropertyTypes", "--verbatimModuleSyntax", "--isolatedModules", "--allowImportingTsExtensions", "mesh.config.ts", "project-context.ts", ...files,
     ], { cwd: dir });
     expect(relative(dir, dir) + (child.stdout.toString() + child.stderr.toString())).toBe("");
     expect(child.exitCode).toBe(0);
@@ -355,6 +357,8 @@ describe("the generated files", () => {
 
   test("a load nested in when is typed as possibly absent; a top-level load as present", async () => {
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
+    // The project declares the context keys its functions read (PRJ-12): a required actor, and the log a step pushes to.
+    await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n  }\n}\nexport {};\n');
     await Bun.write(join(dir, "check-types.ts"), [
       'import type { Task } from "./.mesh/domain/index.ts";',
       "declare const maybe: Awaited<ReturnType<typeof Task.wantOwner>>;",
@@ -375,7 +379,7 @@ describe("the generated files", () => {
     const files = (await readdir(join(dir, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     const child = Bun.spawnSync([
       resolve(import.meta.dir, "../../../node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
-      "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--allowImportingTsExtensions", "mesh.config.ts", "check-types.ts", ...files,
+      "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--allowImportingTsExtensions", "mesh.config.ts", "project-context.ts", "check-types.ts", ...files,
     ], { cwd: dir });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
   }, 30_000);

@@ -23,7 +23,7 @@ entity :Record
     update :count
       do
         set
-          &counted=async () => (await structuredClone.read({})).length
+          &counted=async () => (await structuredClone.read({}, { actor: { id: "counter" } })).length
   policies
     policy :anyone types=[:create, :read, :update]
       authorize-if=() => true

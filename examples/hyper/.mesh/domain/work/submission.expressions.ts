@@ -4,6 +4,7 @@
 import {
   expr as $,
   Mesh,
+  type ActionContext as $ActionContext,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
@@ -39,8 +40,12 @@ import type { $Omit } from "../../$globals";
 export type $work$Submission$Scope<I = unknown> = $Scope<{
   self: $DeepReadonly<$work$Submission$Loaded>;
   input: $DeepReadonly<I>;
-  actor: any;
-  context: any;
+  actor: $ActionContext extends infer C
+    ? "actor" extends keyof C
+      ? { [K in keyof C]-?: C[K] }["actor"] | (C extends { actor: unknown } ? never : undefined)
+      : undefined
+    : never;
+  context: $ActionContext;
   before: $DeepReadonly<$work$Submission$Record> | null;
 }>;
 /** What the expressions that only run on a stored record (an update or a destroy) read: `before` is the stored record. */
