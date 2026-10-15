@@ -396,7 +396,7 @@ async function generate(prefix: string, sources: Record<string, string>): Promis
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
   // The project declares the context keys its functions pass (ADR-0059): against the bare `ActionContext`, which holds only
   // the reserved `system`, `{ actor, log }` would be excess properties.
-  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor?: { id: string };\n    log?: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
+  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
   return dir;
 }
 

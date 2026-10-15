@@ -1,0 +1,28 @@
+import { isStaff } from "./staff"
+
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :title
+    string :owner nullable
+    string :memo nullable
+    string :memo2 nullable
+
+  actions auto=[:read]
+    create :make
+      input
+        &title
+    update :rename
+      input
+        &title
+      validate
+        check :titled that=({ input }) => input.title !== null && input.title !== "" code="no" message="no"
+        check :ownerOrStaff that=({ actor, self }) => self.owner === actor.id || isStaff(actor) code="no" message="no"
+        check :contextRead that=({ context }) => context.system === true code="no" message="no"
+      do
+        set
+          &owner=({ actor, before }) => before === null ? actor.id : before.owner
+
+  policies
+    policy :open types=[:create, :read, :update]
+      authorize-if=() => true

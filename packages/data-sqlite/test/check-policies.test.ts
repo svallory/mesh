@@ -263,7 +263,7 @@ beforeAll(async () => {
   // `binding.ts` imports the project's config, which is not part of this fixture.
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
   // The project declares its actor (ADR-0059); `system` is Mesh's own key.
-  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor?: { id?: string };\n  }\n}\nexport {};\n');
+  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id?: string };\n  }\n}\nexport {};\n');
   app = await import(join(dir, ".mesh/index.ts"));
   domain = await import(join(dir, ".mesh/domain/index.ts"));
   helperModule = await import(join(dir, "src/domain/doc-helpers.ts"));

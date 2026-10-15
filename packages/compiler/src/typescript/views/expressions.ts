@@ -250,7 +250,13 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
   const loaded = hasLoader(entity);
   const selfType = loaded ? entityLocal(entity, "Loaded") : recordLocal;
-  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: any; context: any; before: $DeepReadonly<${recordLocal}> | null }>`;
+  // `context` is the project's `ActionContext` (PRJ-02, PRJ-12) and `actor` its `actor` member, so a read of a member the
+  // project did not declare fails tsc (EXP-12: a root is like a parameter, and a parameter has a type). A project that
+  // declares no `actor` gets `undefined`, which is what the runtime binds (`options.actor`), so a read fails at the read,
+  // not at this alias, and `actor` is assignable to nothing. The test is on `keyof`, so an optional `actor?: User`
+  // is `User | undefined` (an `infer` pattern on `{ actor: infer A }` would miss it). `$ActionContext extends infer C` makes
+  // `C` a type variable: TypeScript 7 refuses the index `C["actor"]` on the concrete interface in the branch of a conditional.
+  const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: $ActionContext extends infer C ? "actor" extends keyof C ? { [K in keyof C]-?: C[K] }["actor"] | (C extends { actor: unknown } ? never : undefined) : undefined : never; context: $ActionContext; before: $DeepReadonly<${recordLocal}> | null }>`;
   const found = collect(entity);
   // On a create, `self` is the new instance (ACT-27): the members nothing has filled yet are null there, so the scopes
   // of the functions that can run on one say so.

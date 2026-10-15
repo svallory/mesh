@@ -11,6 +11,7 @@ import {
   @each(name in meshImports)
   {{ name }},
   @end
+  type ActionContext as $ActionContext,
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
   @if(usesSharedInput)

@@ -24,7 +24,7 @@ entity :Object
       do
         when=() => true
           set
-            &counted=async () => (await now.read({})).length
+            &counted=async () => (await now.read({}, { actor: { id: "counter" } })).length
           run [after=:write] () { }
   policies
     policy :anyone types=[:create, :read, :update]

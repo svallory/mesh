@@ -154,7 +154,7 @@ async function generate(prefix: string, sources: Record<string, string>, modules
   // `binding.ts` imports the project's config, which is not part of this fixture.
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
   // The project declares its actor (ADR-0059); `system` is Mesh's own key.
-  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor?: { id?: string };\n  }\n}\nexport {};\n');
+  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    badge?: boolean;\n    seen: unknown[];\n  }\n}\nexport {};\n');
   return dir;
 }
 
@@ -675,14 +675,14 @@ import { Mesh } from "@meshfw/runtime";
 import { transaction } from "./.mesh/index.ts";
 import { Shelf, loadShelfFields } from "./.mesh/domain/index.ts";
 export async function use(): Promise<string[]> {
-  const [shelf] = await Shelf.read({ load: ["keeper", "items"] }, { actor: { id: "a" } });
+  const [shelf] = await Shelf.read({ load: ["keeper", "items"] }, { actor: { id: "a" }, seen: [] });
   // @ts-expect-error a caller's keeper may be one it may not read
   const name: string = shelf!.keeper.name;
   const maybe: string | undefined = shelf!.keeper?.name;
-  const shown = await Shelf.show({ id: "x" }, { actor: { id: "a" } });
+  const shown = await Shelf.show({ id: "x" }, { actor: { id: "a" }, seen: [] });
   // @ts-expect-error the same for a write's load step
   shown.keeper.name;
-  const inside = await transaction(async () => (await Mesh.privileged(Shelf).read({ load: ["keeper"] }, { actor: { id: "a" } }))[0]!.keeper.name);
+  const inside = await transaction(async () => (await Mesh.privileged(Shelf).read({ load: ["keeper"] }, { actor: { id: "a" }, seen: [] }))[0]!.keeper.name);
   return [name, maybe ?? "", inside, String(shelf!.items.length)];
 }
 // The loader a \`run\` or a test calls runs no policy, so its options have no \`policies\` (R2-N1).

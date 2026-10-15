@@ -22,6 +22,15 @@ const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
 export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
 `;
+/** The project's `src/context.ts` (PRJ-12): `context` and `actor` are typed by it, so a function reads only what it declares. */
+const CONTEXT = `import "@meshfw/runtime";
+
+declare module "@meshfw/runtime" {
+  interface ActionContext {
+    actor: { id: string };
+  }
+}
+`;
 const PACKAGE = {
   name: "mesh-namespace", private: true, type: "module",
   imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
@@ -55,6 +64,7 @@ async function project(): Promise<string> {
   projects.push(root);
   await cp(fixture, join(root, "domain"), { recursive: true });
   await writeFile(join(root, "mesh.config.ts"), CONFIG);
+  await writeFile(join(root, "context.ts"), CONTEXT);
   await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
   await writeFile(join(root, "app.ts"), APP);
   // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
@@ -123,7 +133,7 @@ describe("Mesh's own functions through the Mesh import (PRJ-22), the instant thr
       join(repo, "node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
       "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--noUnusedLocals", "--noUnusedParameters",
       "--exactOptionalPropertyTypes", "--verbatimModuleSyntax", "--isolatedModules", "--allowImportingTsExtensions", "--types", "bun",
-      "mesh.config.ts", "app.ts", "domain/work/clock.ts", ...files,
+      "mesh.config.ts", "context.ts", "app.ts", "domain/work/clock.ts", ...files,
     ], { cwd: root });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
     expect(child.exitCode).toBe(0);
