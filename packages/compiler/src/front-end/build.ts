@@ -902,8 +902,25 @@ export function meshDiagnostic(d: MxDiagnostic, file: string): Diagnostic {
     code: d.code ?? "MESH_SYNTAX",
     message: d.message,
     position: { file, line: d.line, column: d.column, offset: d.offset },
-    fix: null,
+    fix: staticFileFix(d),
   };
+}
+
+/**
+ * MX's message for a `for` or an `if` in an entity file says the tree is static and stops there. Mesh adds what to write
+ * instead (the entity file page of the docs: no loops or conditions that add or remove declarations). MX owns the
+ * message, so this is a `fix:` line beside it and not a rewording.
+ */
+// Matches MX's wording today ("does not evaluate") and the agreed rewording ("they do not evaluate", MX-16).
+const STATIC_CONSTRUCT = /\bevaluate `(for|if)`$/;
+export function staticFileFix(d: Pick<MxDiagnostic, "code" | "message">): string | null {
+  if (d.code !== "MESH_STRUCTURAL_CONSTRUCT") return null;
+  const construct = STATIC_CONSTRUCT.exec(d.message)?.[1];
+  if (construct === "for")
+    return "a Mesh file has no loops; write each declaration out, or write a rule over a list as an expression such as `&lines.every((line) => ...)`";
+  if (construct === "if")
+    return "a Mesh file has no conditionals; put the condition on the line it conditions, as `when=` on a policy or a check, or inside its expression";
+  return null;
 }
 
 /** Parse with closed MX contracts, then project the static tree without executing it. */
