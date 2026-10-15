@@ -9,7 +9,10 @@
  * `member` (`&name`) and `transaction` (`%.now` in an expression, SYN-29;
  * `transaction.ts`, Mesh's own, not ported). One row per first character in
  * each list, so no two rows compete. MX's `#id` and `.class` rows are not
- * carried: Mesh writes neither.
+ * carried: Mesh writes neither. The table also turns the tag head's shorthands
+ * off (`tagShorthands: false`, MX 0.1.0-alpha.28): a `.` continues the tag
+ * name, so a dotted head (`billing.InvoiceVoided`) is one tag, and a `#`, or a
+ * head that starts with `.`, is `MESH_NO_TAG_SHORTHAND`.
  *
  * The atom contract checks (`contractFields`, `checkContract`,
  * `afterLower`, `describeAttribute`) are in `atoms-sugars.ts`.
@@ -70,6 +73,7 @@ export const MESH_SYNTAX = {
     attributeTriggers: Object.freeze([NAME_SUGAR, MEMBER]),
     lineTriggers: Object.freeze([MEMBER]),
     valueTriggers: Object.freeze([ATOM_VALUE]),
+    tagShorthands: false,
   }),
   nodeTypes: Object.freeze({ Atom: AtomValue }),
   lowerTrigger(id, text, span, ctx) {

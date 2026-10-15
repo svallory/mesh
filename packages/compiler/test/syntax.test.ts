@@ -17,9 +17,10 @@ const tagsOf = (nodes: SpannedIr["body"]): Tag[] =>
 const attrOf = (tag: Tag, name: string): Attr | undefined =>
   tag.attrs.find((a) => a.kind !== "spread" && a.name === name);
 
-test("MESH_DIALECT is frozen and is Mesh's: id, name, tag rules and no #id or .class row", () => {
+test("MESH_DIALECT is frozen and is Mesh's: id, name, tag rules, no #id or .class row and no tag shorthands", () => {
   expect(Object.isFrozen(MESH_DIALECT)).toBe(true);
   expect(MESH_DIALECT).toMatchObject({ id: "mesh", name: "Mesh", tagRules: "none" });
+  expect(MESH_DIALECT.table.tagShorthands).toBe(false);
   const rows = (list: readonly { id: string }[] | undefined) => (list ?? []).map((row) => row.id).sort();
   expect(rows(MESH_DIALECT.table.attributeTriggers)).toEqual(["member", "name"]);
   expect(rows(MESH_DIALECT.table.expressionTriggers)).toEqual(["atom", "member", "transaction"]);

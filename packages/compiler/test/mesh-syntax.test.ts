@@ -6,6 +6,7 @@
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
+import { buildModel } from "../src/front-end/build.ts";
 import { TRANSACTION } from "../src/front-end/syntax/transaction.ts";
 import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 
@@ -166,6 +167,47 @@ describe("what Mesh's dialect does not read", () => {
   });
 });
 
+// MX 0.1.0-alpha.28: Mesh's syntax table sets `tagShorthands: false`, so a line head has no `#id` or `.class` shorthand and no
+// implicit `div`. A `.` continues the tag name (`billing.InvoiceVoided` is one tag, SYN-21, DOM-17); a `#` anywhere in a head, or a
+// head that starts with `.`, is `MESH_NO_TAG_SHORTHAND` at that character; an empty part of a dotted name is
+// `MESH_INVALID_TAG_NAME` at the dots. Each is an error of the build, at a position, with a Mesh code.
+describe("line heads under tagShorthands: false", () => {
+  const entity = (head: string) => `entity :T\n  attributes\n    uuid :id primary-key\n  ${head}\n`;
+  const built = (source: string) =>
+    buildModel({ root: "/project", files: [{ file: "t/t.mesh.mx", source }] }).diagnostics.map((d) => [d.severity, d.code, d.position.line, d.position.column]);
+
+  test("the dialect turns the shorthands off", () => {
+    expect(SYNTAX_DIALECT.table.tagShorthands).toBe(false);
+  });
+
+  test("`#x`, `.x` and a `#` inside a head are MESH_NO_TAG_SHORTHAND at the `#` or the leading `.`", () => {
+    for (const [head, at] of [["#x", 0], [".x", 0], ["a#b", 1], ["billing.Invoice#x", 15], ["a#", 1]] as const)
+      expect(built(entity(head)), head).toEqual([["error", "MESH_NO_TAG_SHORTHAND", 4, 2 + at]]);
+    // The same at the top of a file, outside any section.
+    expect(built("#x\n")).toEqual([["error", "MESH_NO_TAG_SHORTHAND", 1, 0]]);
+    expect(built(".x\n")).toEqual([["error", "MESH_NO_TAG_SHORTHAND", 1, 0]]);
+  });
+
+  test("`a.` and `a..b` are MESH_INVALID_TAG_NAME at the dots", () => {
+    for (const [head, at] of [["a.", 1], ["a..b", 1], ["billing.Invoice.", 15], ["a...b", 1]] as const)
+      expect(built(entity(head)), head).toEqual([["error", "MESH_INVALID_TAG_NAME", 4, 2 + at]]);
+  });
+
+  test("a dotted head is one tag, never a tag with a class; no section takes one yet, so it is MESH_UNKNOWN_TAG", () => {
+    const source = entity("billing.InvoiceVoided");
+    const { ir, diagnostics } = lowerSource(source, "/v/t.mesh.mx", { dialect: SYNTAX_DIALECT, ...BASE });
+    expect(diagnostics).toEqual([]);
+    const head = find(ir!.body as unknown as SpannedNode[], "billing.InvoiceVoided");
+    expect(head.attrs).toEqual([]);
+    expect(source.slice(head.nameSpan.sourceStart, head.nameSpan.sourceEnd)).toBe("billing.InvoiceVoided");
+    // Events, commands and the other sections that list references are not built (M6), so Mesh's contracts claim no dotted tag.
+    const result = buildModel({ root: "/project", files: [{ file: "t/t.mesh.mx", source }] });
+    expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column, d.message])).toEqual([
+      ["MESH_UNKNOWN_TAG", 4, 2, "`<billing.InvoiceVoided>` is not a known tag in the `mesh` dialect"],
+    ]);
+  });
+});
+
 describe("the transaction row (SYN-29)", () => {
   test("`%.name` is an expression row only: the row the MX lead gave, an identifier stand-in of the same length", () => {
     expect(TRANSACTION).toEqual({
@@ -226,24 +268,45 @@ describe("Mesh's rows under MX alpha.26: prefix operators, await and conditional
     return { codes: diagnostics.map((d) => d.code), marked, ir };
   };
 
-  test("`++&n` lowers a prefix update of one member reference, with no MX refusal", () => {
-    const { codes, marked, ir } = lower("return ++ &n");
-    expect(codes).toEqual([]);
-    expect(marked).toEqual([{ kind: "member", name: "n" }]);
-    expect(JSON.stringify(attr(find(ir!.body, "boolean"), "value"))).toContain('"UpdateExpression"');
+  test("`++&n` and `--&n` lower a prefix update of one member reference, spaced or not, with no MX refusal", () => {
+    for (const body of ["return ++ &n", "return ++&n", "return -- &n", "return --&n"]) {
+      const { codes, marked, ir } = lower(body);
+      expect(codes, body).toEqual([]);
+      expect(marked, body).toEqual([{ kind: "member", name: "n" }]);
+      expect(JSON.stringify(attr(find(ir!.body, "boolean"), "value")), body).toContain('"UpdateExpression"');
+    }
   });
 
   test("`++%.now` lowers the transaction mark under a prefix update (Mesh's front end refuses the write, MX does not)", () => {
-    const { codes, marked } = lower("return ++ %.now");
+    for (const [body, name] of [["return ++ %.now", "now"], ["return ++%.now", "now"], ["return --%.today", "today"]] as const) {
+      const { codes, marked } = lower(body);
+      expect(codes, body).toEqual([]);
+      expect(marked, body).toEqual([{ kind: "transaction", name }]);
+    }
+  });
+
+  test("`await &dueAt`, `f(await &a)`, `{ k: await &a }`, `c ? await &a : 1` and `c ? await ++&a : 1` keep the member reference", () => {
+    for (const body of ["return await &dueAt", "return f(await &a)", "return [await &a]", "return { k: await &a }", "return c ? await &a : 1", "return c ? await ++&a : 1"]) {
+      const { codes, marked } = lower(body);
+      expect(codes, body).toEqual([]);
+      expect(marked, body).toEqual([{ kind: "member", name: body.includes("&dueAt") ? "dueAt" : "a" }]);
+    }
+  });
+
+  test("`await %.now` keeps the transaction mark", () => {
+    const { codes, marked } = lower("return await %.now");
     expect(codes).toEqual([]);
     expect(marked).toEqual([{ kind: "transaction", name: "now" }]);
   });
 
-  test("`await &dueAt`, `{ k: await &a }` and `c ? await &a : 1` keep the member reference", () => {
-    for (const body of ["return await &dueAt", "return { k: await &a }", "return c ? await &a : 1"]) {
+  // Still unarmed (the MX lead, 2026-10-13): a keyword glued to a mark (`typeof&n`, `f(await&a)`), filed in MX core, and, on
+  // purpose, a `:` right after a bare `yield` in a generator (`c ? yield :b` is valid JavaScript). Each is a loud parse error, not
+  // a silent misreading; a test fails here the day MX arms one.
+  test("a keyword glued to a mark (`typeof&n`, `await&a`) and `{ k: yield :b }` stay unarmed: MESH_PARSE_EXPRESSION", () => {
+    for (const body of ["return typeof&n", "return await&a", "return f(await&a)", "const g = function* () { return { k: yield :b } }; return true"]) {
       const { codes, marked } = lower(body);
-      expect(codes, body).toEqual([]);
-      expect(marked, body).toEqual([{ kind: "member", name: body.includes("&dueAt") ? "dueAt" : "a" }]);
+      expect(codes, body).toEqual(["MESH_PARSE_EXPRESSION"]);
+      expect(marked, body).toEqual([]);
     }
   });
 });

@@ -7,15 +7,16 @@
 //
 //   MESH_CORPUS_UPDATE=1 bun test packages/compiler/test/mesh-corpus.test.ts
 //
-// rewrites the golden; review its diff like any other change.
+// rewrites the golden (with MX's codes, through the dialect without its code map); review its diff like any other change.
 //
 // Since MX alpha.27 `MESH_DIALECT` renames MX's codes (`diagnosticCodes`, `src/front-end/diagnostic-codes.ts`). The golden is
 // MX's file and records MX's codes, so the comparison renames the golden's codes through the same map (`meshCodes`): a code is
 // still compared, under the name a Mesh user sees.
-import { lowerSource, type LowerSourceResult } from "@mxlang/core";
+import { lowerSource, type Dialect, type LowerSourceResult } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { deepFreeze } from "../src/front-end/deep-freeze.ts";
 import { MX_TO_MESH_CODES } from "../src/front-end/diagnostic-codes.ts";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
@@ -47,9 +48,12 @@ function babelNode(value: unknown): unknown {
   return out;
 }
 
+/** `MESH_DIALECT` without its code map: what `MESH_CORPUS_UPDATE=1` writes, since the golden records MX's own codes. */
+const UNMAPPED: Dialect = deepFreeze((({ diagnosticCodes: _, ...rest }: Dialect) => rest)(MESH_DIALECT));
+
 /** A file's lowering as plain JSON, under a stable virtual path so the golden names no machine's directory. */
-function snapshot(rel: string): unknown {
-  const result = parseEntity(readFileSync(join(CORPUS, rel), "utf8"), `/mesh-corpus/${rel}`);
+function snapshot(rel: string, dialect: Dialect = MESH_DIALECT): unknown {
+  const result = parseEntity(readFileSync(join(CORPUS, rel), "utf8"), `/mesh-corpus/${rel}`, dialect);
   return JSON.parse(
     JSON.stringify(result, (key, value) => (key === "loc" ? undefined : NODE_KEYS.has(key) ? babelNode(value) : value)),
   );
@@ -78,7 +82,10 @@ describe("Mesh's golden parse corpus", () => {
 
   test("every file lowers to the golden IR through MESH_DIALECT", () => {
     const actual = Object.fromEntries(FILES.map((rel) => [rel, snapshot(rel)]));
-    if (process.env.MESH_CORPUS_UPDATE === "1") writeFileSync(GOLDEN, `${JSON.stringify(actual, null, 1)}\n`);
+    if (process.env.MESH_CORPUS_UPDATE === "1") {
+      const recorded = Object.fromEntries(FILES.map((rel) => [rel, snapshot(rel, UNMAPPED)]));
+      writeFileSync(GOLDEN, `${JSON.stringify(recorded, null, 1)}\n`);
+    }
     const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
     expect(Object.keys(golden)).toEqual(FILES);
     for (const rel of FILES) expect(actual[rel], rel).toEqual(meshCodes(golden[rel]));

@@ -111,6 +111,9 @@ export const MX_TO_MESH_CODES = Object.freeze({
   MX_ATTRIBUTE_TAG_AT_ROOT: "MESH_OPTION_TAG_AT_ROOT",
   MX_UNESCAPED_PLACEHOLDER_IN_ATTRIBUTE_VALUE: "MESH_UNESCAPED_PLACEHOLDER_IN_OPTION_VALUE",
   MX_TAG_TYPES_MISMATCH: "MESH_TAG_TYPES_MISMATCH",
+  // Its own code, not `MESH_INVALID_SHORTHAND` or `MESH_PARSE_INVALID_TAG_SHORTHAND`: those are a malformed `#id`/`.class`
+  // in a language that has the shorthands, and Mesh's has none (`tagShorthands: false`, `syntax/mesh.ts`).
+  MX_NO_TAG_SHORTHAND: "MESH_NO_TAG_SHORTHAND",
   MX_INPUT_ENDS_IN_DELIMITER: "MESH_INPUT_ENDS_IN_DELIMITER",
   // Mesh's front end is its compiler's first half (`src/front-end/`); this is MX's parser.
   MX_FRONT_END_INTERNAL: "MESH_PARSER_INTERNAL",
