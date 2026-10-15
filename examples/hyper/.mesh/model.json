@@ -1277,7 +1277,7 @@
                       "input"
                     ],
                     "plain": {
-                      "detail": "object",
+                      "detail": "an object literal",
                       "edits": [],
                       "helpers": [
                         "attemptOutcome"
@@ -1750,7 +1750,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -1966,7 +1966,7 @@
                       "input"
                     ],
                     "plain": {
-                      "detail": "object",
+                      "detail": "an object literal",
                       "edits": [],
                       "helpers": [
                         "attemptOutcome"
@@ -2170,7 +2170,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -2386,7 +2386,7 @@
                       "input"
                     ],
                     "plain": {
-                      "detail": "object",
+                      "detail": "an object literal",
                       "edits": [],
                       "helpers": [
                         "attemptOutcome"
@@ -2589,7 +2589,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -5915,7 +5915,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -6376,7 +6376,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -7605,7 +7605,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -9162,7 +9162,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -9524,7 +9524,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -10797,7 +10797,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -11193,7 +11193,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -12391,7 +12391,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -12880,7 +12880,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -13761,7 +13761,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -15663,7 +15663,7 @@
                 ],
                 "params": [],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 23,
@@ -16097,7 +16097,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -16484,7 +16484,7 @@
                 ],
                 "params": [],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 23,
@@ -16918,7 +16918,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -17385,7 +17385,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -19969,7 +19969,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -23775,7 +23775,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -25375,7 +25375,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -25710,7 +25710,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -26190,7 +26190,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -26571,7 +26571,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -27085,7 +27085,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -27545,7 +27545,7 @@
                 ],
                 "params": [],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 36,
@@ -28034,7 +28034,7 @@
                   "clock": [
                     "now"
                   ],
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 44,
@@ -28500,7 +28500,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -29047,7 +29047,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,
@@ -29435,7 +29435,7 @@
                   "input"
                 ],
                 "plain": {
-                  "detail": "object",
+                  "detail": "an object literal",
                   "edits": [
                     {
                       "from": 73,

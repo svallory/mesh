@@ -784,8 +784,43 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       throw new Plain("unsupported-construct", "a method call", n);
     }
     default:
-      throw new Plain("unsupported-construct", `${n.type.replace(/Expression$|Literal$/, "").toLowerCase() || n.type}`, n);
+      throw new Plain("unsupported-construct", describeConstruct(n), n);
   }
+}
+
+/**
+ * What the author wrote, for a node `convert` does not translate. The message `MESH_EXPR_PLAIN` prints says "because of
+ * <this>", so it names the construct in the author's own syntax, never the parser's node name (`OptionalCallExpression`).
+ * A node the table does not know still gets a sentence the author can read.
+ */
+const CONSTRUCTS: Readonly<Record<string, string>> = {
+  TemplateLiteral: "a template literal",
+  TaggedTemplateExpression: "a tagged template literal",
+  ArrayExpression: "an array literal",
+  ObjectExpression: "an object literal",
+  ArrowFunctionExpression: "an arrow function used as a value",
+  FunctionExpression: "a function expression",
+  ClassExpression: "a class expression",
+  SequenceExpression: "the comma operator",
+  ThisExpression: "`this`",
+  Super: "`super`",
+  RegExpLiteral: "a regular expression literal",
+  BigIntLiteral: "a bigint literal",
+  NewExpression: "a `new` expression",
+  AssignmentExpression: "an assignment",
+  UpdateExpression: "`++` or `--`",
+  AwaitExpression: "`await`",
+  YieldExpression: "`yield`",
+  SpreadElement: "a spread (`...`)",
+  MetaProperty: "`import.meta` or `new.target`",
+  Import: "a dynamic `import()`",
+  ImportExpression: "a dynamic `import()`",
+  PrivateName: "a private name (`#name`)",
+};
+function describeConstruct(n: N): string {
+  // `a?.()` is optional; `a?.b()` is a call inside a `?.` chain, which Babel also types as an optional call.
+  if (n.type === "OptionalCallExpression") return n.optional === true ? "an optional call (`?.()`)" : "a method call in a `?.` chain";
+  return CONSTRUCTS[n.type] ?? "a construct Mesh does not translate";
 }
 
 /** Whether `node` holds an `await`, in a nested function too. */
