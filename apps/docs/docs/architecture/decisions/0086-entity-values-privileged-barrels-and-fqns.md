@@ -1,9 +1,11 @@
 ---
 title: "0086. Entity values, `Mesh.privileged`, barrels and FQNs: generated code follows modules"
-description: "Decision record 0086: how actions are called and bound once nothing in Mesh's syntax is project-wide, what replaces the `actions` and `tx` handles, and how names leave the files. Status: Accepted. Amended 2026-10-13 (PRJ-22, SYN-29)."
+description: "Decision record 0086: how actions are called and bound once nothing in Mesh's syntax is project-wide, what replaces the `actions` and `tx` handles, and how names leave the files. Status: Accepted. Amended 2026-10-13 (PRJ-22, SYN-29) and 2026-10-15 (CMP-28: an entity name may be written in any casing)."
 ---
 
 # 0086. Entity values, `Mesh.privileged`, barrels and FQNs: generated code follows modules
+
+> **Amendment, 2026-10-15 (CMP-28).** An entity's name follows CMP-20 as an event's does: it may be written in any casing and Mesh converts it to PascalCase (`entity :todo` generates `Todo`), so its FQN and the name it is imported by are the PascalCase name. Casing is never an error. The class bullet below says so; the entity names in the FQN and table bullets are the converted name. The operator ruled this on 2026-10-15.
 
 > **Amendment, 2026-10-13 (PRJ-22 amended, SYN-29, ACT-29).** `Mesh` loses `now` and `today`: it keeps `privileged` and `isSystem` (`checkPolicies` and `can` come next, CMP-21). As first built, `Mesh.now()` and `Mesh.today()` read the instant of the action or load that ran the expression and always threw `FrameworkError` when application TypeScript called them, since the runtime cannot reach the action's frame from there; the operator rejected a function that always throws in TypeScript. An expression reads the current transaction's instant as `%.now` and its date as `%.today`, properties and not calls ([ADR-0050](./0050-entity-file-syntax.md), amended the same day). Application TypeScript that needs the instant takes it as a parameter, which the entity file passes: `dueIn(%.today, 30)`. A `Mesh.privileged` read reads the transaction's instant, which every action call joined to the transaction shares ([ADR-0012](./0012-expression-semantics.md), amended the same day). The text below says so.
 
@@ -65,7 +67,7 @@ An entity is a value whose methods are its actions, imported from its folder's b
 - **Output is the FQN (PRJ-17).** Errors, diagnostics, the `entity` field of seams and errors, labels and the load plan carry it, so code comparing `change.entity` writes `"work.Task"`.
 - **Nothing global (PRJ-15).** No name a user writes is unique project-wide. Generated code and the run time may keep registries.
 - **Folders (PRJ-20, PRJ-21).** Folder names are free: letters, digits, `-` and `_`. In a barrel, the namespace replaces every character that is invalid in an identifier with `_` and puts `_` in front of a leading digit: `order-management` gives `domain.order_management`, `2024-reports` gives `domain._2024_reports`. The FQN and the import path keep the folder name as written. Two sibling folders that normalise alike are a build error naming both. A folder named like a reserved word needs no rule: `domain.class` and `domain.default` work.
-- **Classes (CMP-19, CMP-20).** Everything generated as a class has a PascalCase name. Events are classes, and Mesh converts the declared name (`event :invoicePaid` is the class `InvoicePaid`). The FQN carries the class's name (`billing.InvoicePaid`). An FQN is exactly what one imports: the module path as written, the export as generated.
+- **Classes (CMP-19, CMP-20).** Everything generated as a class has a PascalCase name. Events are classes, and Mesh converts the declared name (`event :invoicePaid` is the class `InvoicePaid`); an entity name is converted the same way (CMP-28: `entity :todo` generates `Todo`). The FQN carries the class's name (`billing.InvoicePaid`). An FQN is exactly what one imports: the module path as written, the export as generated.
 - **Tables (ENT-17, DAT-16).** An entity's default table is `snake_case(Name)`. Two entities on one table are a build error naming both by FQN, with a tip to set `table=`. `tables`, exported by `#mesh`, is keyed by the table name exactly as stored, `table=` included (`tables.claim`, `tables.late_result`), not by FQN. How schema exports are named is not decided here.
 
 ## Lead design, for operator review

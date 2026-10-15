@@ -130,7 +130,7 @@ entity :Todo table="todos"
 
 **Values are written out.** An atom, string, number, regular expression, boolean, list or object is a literal. A member reference and an imported entity have the meanings above. The places whose value is code — `filter`, `when`, `authorize-if`, `forbid-if`, a check's `that`, a `set` value and a computed field's body — take functions.
 
-**One expression can be translated.** An arrow `(…) => …`, or a method body with a single `return`, can run inside a database query. A body that cannot be translated runs in memory. Where SQL is required — a filter, sort key or policy check — an expression that cannot be translated is a build error naming the line.
+**One expression can be translated.** An arrow `(…) => …`, or a method body with a single `return`, can run inside a database query. A body that cannot be translated runs in memory. A construct the expression language does not define stays plain code with JavaScript semantics, and the build warns (`MESH_EXPR_PLAIN`). Where SQL is required (a filter, sort key or policy check), such a construct is a build error naming the line.
 
 **Functions receive four things.** `self` is the whole record, `input` is what the caller sent, `actor` is who is calling and `context` is the rest of the call. Use `&name` to read a member; a function that reads only members takes no parameters. Destructure `input`, `actor` or `context` when you use them. Destructure `self` when you pass the whole record to a helper, such as `isOwner(self, actor)`. [What `self` holds](#what-self-holds) depends on where the function runs.
 
@@ -169,7 +169,7 @@ Names in an expression resolve as JavaScript resolves them. Mesh's own functions
 
 | Option | Required | Meaning |
 |:--|:--|:--|
-| `:Todo` | yes | The entity's declared name, in PascalCase; also its named export |
+| `:Todo` | yes | The entity's declared name, in any casing; Mesh converts it to PascalCase (`entity :todo` generates `Todo`), which is also its named export |
 | `table` | no | The database table; defaults to the entity's name in snake_case |
 
 The folder that holds the file is the module. Entities in `src/domain/todo/` belong together; no line repeats the folder's name. A plain nested folder is a submodule (`todo/reminders`), while a folder starting with `_` only organises files and is left out of the module (`todo/_scheduling/` is module `todo`); the `ignore` option in `mesh.config.ts` excludes files from Mesh. Another entity is imported by relative path. Two folders may each declare an `entity :List` without conflict: their paths distinguish them, each module's import specifier (`#mesh/domain/<module>`) exports its own entity value `List`, and Mesh names them by their fully qualified names, `school.List` and `work.List`, wherever it writes an entity's name (errors, seams, `mesh inspect`). When both would be stored in the table `list`, the build fails naming both by those names, and a `table=` on one of them resolves it. No name Mesh generates is unique across the project: two modules may declare entities of one name, and the generated files tell them apart internally. See [Project structure](./project-structure.md#the-domain).
@@ -331,7 +331,7 @@ A body that runs in memory reads a record in which only what it names is loaded.
 
 ### input
 
-An `input` section lists member references and declares arguments. A create must receive every input member that is required and has no default. On an update, member inputs are optional: the caller sends what changes. A typed argument is required unless `nullable`. A create's required attribute must be supplied through input, have a default, be filled by Mesh or be set by a step; otherwise the build fails.
+An `input` section lists member references and declares arguments. A create must receive every input member that is required and has no default. On an update, member inputs are optional: the caller sends what changes. A typed argument is required unless `nullable`. A create's required attribute must be supplied through input, have a default, be filled by Mesh or be set by a step. Otherwise generating the create fails with `MESH_EMIT_UNFILLABLE`; checking the file without generating code does not report it.
 
 ```mx "src/domain/billing/invoice.mesh.mx"
 entity :Invoice
@@ -352,7 +352,7 @@ entity :Invoice
           &amount=({ input }) => &amount * (1 - input.percent / 100)
 ```
 
-Call `applyDiscountInvoice({ id, percent: 10 }, context)`. The percentage reaches the expression as `input.percent`; no field stores "10% off". A member line takes the declaration unchanged, while a typed line is a new argument. An action without `input` takes no declared fields; an update or destroy still takes its id.
+Call it on its entity: `Invoice.applyDiscount({ id, percent: 10 }, context)`. The percentage reaches the expression as `input.percent`; no field stores "10% off". A member line takes the declaration unchanged, while a typed line is a new argument. An action without `input` takes no declared fields; an update or destroy still takes its id.
 
 Options such as `auto=`, `on:load=`, `types=` and `actions=` sit on the declaration line. Sections such as `input`, `validate`, `do` and `sort` have their own lines.
 
@@ -387,7 +387,7 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 | Option | Meaning |
 |:--|:--|
 | `that=` | A function returning a boolean |
-| `code=` | The caller-facing code, a string or number, on the issue rather than the error |
+| `code=` | The caller-facing code, as text, on the issue rather than the error; write a number as a string (`code="42"`) |
 | `message=` | The sentence the caller sees: fixed text, or a function of the same arguments as `that=` that returns it |
 | `when=` | Apply this check only when the condition holds |
 | `details=` | A function returning data the caller receives on the issue, such as the reasons a task is not ready |

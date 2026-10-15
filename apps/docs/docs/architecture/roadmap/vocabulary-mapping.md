@@ -397,7 +397,7 @@ The source of truth is [`packages/compiler/src/contracts.ts`](https://github.com
 
 | Group | Current form | Where checked |
 |---|---|---|
-| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `actions`, `policies` | Contracts constrain nesting; the builder requires exactly one entity per file and a PascalCase name |
+| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `actions`, `policies` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase (CMP-28) |
 | Stored attributes and arguments | `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp` | Type-specific options in contracts; defaults and scalar formats in the builder. Attributes are required unless `nullable` |
 | Primary keys | `primary-key` on `uuid`, `integer` or `string` only | Contracts reject other types; the builder requires exactly one non-null key |
 | Relationships | `belongs-to`, `has-many`, `has-one`, each with an imported entity identifier or a member of a namespace import (`billing.Invoice`, SYN-21) | Contracts check the written reference's shape; the builder resolves named imports, namespace members and their relative paths |
