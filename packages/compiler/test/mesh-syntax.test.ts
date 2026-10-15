@@ -203,7 +203,7 @@ describe("the transaction row (SYN-29)", () => {
     });
     expect(lower("return %.now !== null")).toEqual([]);
     // An operand only: never a modulo, and `%` or `%name` alone is no row.
-    for (const body of ["return 1 %.now", "return %now", "return %"]) expect(lower(body), body).toEqual(["MX_PARSE_EXPRESSION"]);
+    for (const body of ["return 1 %.now", "return %now", "return %"]) expect(lower(body), body).toEqual(["MESH_PARSE_EXPRESSION"]);
   });
 });
 

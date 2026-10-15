@@ -30,7 +30,7 @@ function expectRecorded(key: string, actual: unknown): void {
 }
 
 // Deliberately `customTags`: these cases pin what the dialect's contract hooks do with a contract MX is handed per call. A malformed
-// contract in `Dialect.contracts` instead stops the whole dialect (`MX_INVALID_DIALECT_CONTRACT`), pinned in `dialect-contracts.test.ts`.
+// contract in `Dialect.contracts` instead stops the whole dialect (`MX_INVALID_DIALECT_CONTRACT`: a dialect that fails to load renames no code), pinned in `dialect-contracts.test.ts`.
 const diagnosticsOf = (source: string, tags: Record<string, CustomTag>, options: LowerSourceOptions, file = "/v/x.mx") =>
   lowerSource(source, file, { ...options, customTags: tags }).diagnostics;
 

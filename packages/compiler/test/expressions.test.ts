@@ -1499,12 +1499,12 @@ describe("%.now and %.today are the current transaction's instant and date (SYN-
 
   test("%.now and %.today are no attribute values: a default is a literal, and `x %.now` is no expression", () => {
     const attribute = (line: string) => entity(check("() => true")).replace("    json :meta\n", `    json :meta\n    ${line}\n`);
-    expect(build(attribute("timestamp :at default=%.now")).diagnostics.map((d) => d.code)).toEqual(["MX_INVALID_ATTRIBUTE_VALUE"]);
-    expect(build(attribute("date :on default=%.today")).diagnostics.map((d) => d.code)).toEqual(["MX_INVALID_ATTRIBUTE_VALUE"]);
-    expect(build(attribute("timestamp :at default=x %.now")).diagnostics.map((d) => d.code)).toEqual(["MX_PARSE_EXPRESSION"]);
+    expect(build(attribute("timestamp :at default=%.now")).diagnostics.map((d) => d.code)).toEqual(["MESH_OPTION_VALUE"]);
+    expect(build(attribute("date :on default=%.today")).diagnostics.map((d) => d.code)).toEqual(["MESH_OPTION_VALUE"]);
+    expect(build(attribute("timestamp :at default=x %.now")).diagnostics.map((d) => d.code)).toEqual(["MESH_PARSE_EXPRESSION"]);
     // In a function too: `%.now` is an operand, never a modulo, and `%now` or `%` alone is no name.
     for (const that of ["() => 1 %.now", "() => %now !== null", "() => % !== null"])
-      expect(build(entity(check(that))).diagnostics.map((d) => d.code), that).toEqual(["MX_PARSE_EXPRESSION"]);
+      expect(build(entity(check(that))).diagnostics.map((d) => d.code), that).toEqual(["MESH_PARSE_EXPRESSION"]);
   });
 
   test("a name the transaction does not hold is MESH_UNKNOWN_TRANSACTION_MEMBER at the `%`, in translated and plain code", () => {

@@ -205,7 +205,7 @@ const contracts: ContractMap = {
           if (!s.value.trim()) ctx.fail("message cannot be empty", { at: a.loc, code: "MESH_TEXT" });
           continue;
         }
-        ctx.fail("message is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)", { at: a.loc, code: "MESH_ATTRIBUTE_VALUE" });
+        ctx.fail("message is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)", { at: a.loc, code: "MESH_OPTION_VALUE" });
       }
     },
   }),

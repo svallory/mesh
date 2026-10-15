@@ -54,7 +54,7 @@ Reads your entity files, checks them and writes the types, action functions, inp
 
 ### What a build error looks like
 
-Every diagnostic names the file, the line, the column (both 1-based), the severity and the diagnostic's code, then says what to do. The code is the `MESH_*` name the documentation refers to, or the `MX_*` name for a mistake in the syntax itself, as `tsc` prints `TS2345`:
+Every diagnostic names the file, the line, the column (both 1-based), the severity and the diagnostic's code, then says what to do. The code is the `MESH_*` name the documentation refers to, as `tsc` prints `TS2345`; a mistake in the syntax itself has one too (`MESH_UNKNOWN_TAG`). An `MX_*` code points at a bug in Mesh or in MX, the parser Mesh reads entity files with, not at your file: report it.
 
 ```text
 src/domain/todo/todo.mesh.mx:22:9 error MESH_UNKNOWN_MEMBER &titel is not a member of todo.Todo. Did you mean &title?

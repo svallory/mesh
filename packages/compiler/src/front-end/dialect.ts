@@ -33,10 +33,14 @@
  * `tagRules: "none"` makes `input`, `script` or `title` an ordinary Mesh tag
  * (`input` is a section of an action). The preset applies when the dialect is
  * passed directly; `test/dialect.test.ts` asserts it.
+ *
+ * `diagnosticCodes` (MX 0.1.0-alpha.27, decision MX-05) renames MX's codes to Mesh's on every Mesh file, in the
+ * compiler and in every tool: `MX_UNKNOWN_TAG` is `MESH_UNKNOWN_TAG` (`diagnostic-codes.ts`).
  */
 import type { Dialect, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";
 import MESH_CONTRACTS from "./contracts.ts";
+import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { deepFreeze } from "./deep-freeze.ts";
 
 /** The message, from the tag name alone: `uuid:id` is written `uuid :id`; `:x` has no kind, the parent's default tag names it. */
@@ -78,6 +82,8 @@ export const MESH_DIALECT: Dialect = deepFreeze({
   structural: "reject",
   unknownTags: "reject",
   imports: "pass",
+  // MX's codes as Mesh's. `Dialect.diagnosticCodes` is `@unstable` in MX (alpha.27).
+  diagnosticCodes: MX_TO_MESH_CODES,
   ...MESH_SYNTAX,
   explainUnknownTag,
 });

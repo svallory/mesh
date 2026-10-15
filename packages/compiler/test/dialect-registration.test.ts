@@ -69,7 +69,7 @@ test("MX loads the registered module: with no options, the vocabulary, tag rules
   expect(node.tag.name).toBe("entity");
   // The module carries the vocabulary: a tag outside it is refused with the dialect named, and a top-level input is misplaced.
   expect(lowerSource("bogus :x\n", file, {}).diagnostics.map((d) => [d.code, d.message])).toEqual([
-    ["MX_UNKNOWN_TAG", "`<bogus>` is not a known tag in the `mesh` dialect"],
+    ["MESH_UNKNOWN_TAG", "`<bogus>` is not a known tag in the `mesh` dialect"],
   ]);
   // The same file under a project that does not register Mesh is plain MX, which rejects `:title` as a line.
   const plain = join(project("plain", {}), "domain/todo.mesh.mx");
@@ -157,7 +157,7 @@ test("a project's mx.tags, mx.contracts and tags/ directory do not reach a .mesh
     // Control: the project's own `.mx` file sees all three definitions (an open vocabulary, so no error at all).
     expect(callCodes(root, "page.mx", tag), `${tag} in .mx`).toEqual([]);
     expect(callCodes(root, "todo.mesh.mx", tag), `${tag} in .mesh.mx`).toEqual([
-      ["MX_UNKNOWN_TAG", `\`<${tag}>\` is not a known tag in the \`mesh\` dialect`],
+      ["MESH_UNKNOWN_TAG", `\`<${tag}>\` is not a known tag in the \`mesh\` dialect`],
     ]);
   }
 });
@@ -172,17 +172,17 @@ test("a project definition named like a Mesh tag never replaces Mesh's contract"
   expect(lowerSource(source, join(root, "domain/todo.mesh.mx"), {}).diagnostics).toEqual([]);
 });
 
-// MX reports `MX_RESERVED_TAG` for a project's `mx.tags` entry, tag file or `mx.contracts` key only in the tools' project scan
-// (the language server, `checkDialectFile`), which this repository does not run. What the compiler's path reaches is a `customTags`
+// MX reports `MX_RESERVED_TAG` (`MESH_RESERVED_TAG` through the dialect's `diagnosticCodes`) for a project's `mx.tags` entry, tag file
+// or `mx.contracts` key only in the tools' project scan (the language server, `checkDialectFile`), which this repository does not run. What the compiler's path reaches is a `customTags`
 // entry handed to `lowerSource` for a file routed to the dialect: the one place in `packages/` that passes `customTags` on purpose.
-test("a customTags entry that names a Mesh vocabulary key is MX_RESERVED_TAG, naming the dialect", () => {
+test("a customTags entry that names a Mesh vocabulary key is MESH_RESERVED_TAG, naming the dialect", () => {
   const root = project("reserved", { meshfw: "*" });
   const file = join(root, "domain/todo.mesh.mx");
   for (const name of ["entity", "sort", "belongs-to"]) {
     const found = lowerSource("entity :T\n", file, { customTags: { [name]: {} } }).diagnostics;
-    expect(found.map((d) => [d.code, d.message]), name).toEqual([["MX_RESERVED_TAG", `\`<${name}>\` cannot be defined by \`customTags\`: Mesh reserves it`]]);
+    expect(found.map((d) => [d.code, d.message]), name).toEqual([["MESH_RESERVED_TAG", `\`<${name}>\` cannot be defined by \`customTags\`: Mesh reserves it`]]);
   }
-  expect(lowerSource("entity :T\n", file, { customTags: { widget: {} } }).diagnostics.map((d) => d.code)).not.toContain("MX_RESERVED_TAG");
+  expect(lowerSource("entity :T\n", file, { customTags: { widget: {} } }).diagnostics.map((d) => d.code)).not.toContain("MESH_RESERVED_TAG");
 });
 
 test("lowering a .mesh.mx file with no options is as strict as the compiler was with its options spelled out", () => {

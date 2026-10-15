@@ -113,7 +113,7 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     [
       "<x=1 :n=2/>",
       // MX alpha.17 dropped its own error: a spaced `:n` after a value continues the value, so this is Marko's text,
-      // with code `MX_EXPECTED_SINGLE_EXPRESSION` since alpha.18. Mesh keeps it as written (the message is pinned here, not parsed by Mesh).
+      // with code `MX_EXPECTED_SINGLE_EXPRESSION` since alpha.18, `MESH_EXPECTED_SINGLE_EXPRESSION` through the dialect's `diagnosticCodes`. Mesh keeps it as written (the message is pinned here, not parsed by Mesh).
       "Expected a single expression, but found `:` after it.",
       5,
     ],
