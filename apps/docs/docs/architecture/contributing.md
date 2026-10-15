@@ -42,9 +42,9 @@ The hold on development ([ADR-0063](./decisions/0063-user-docs-first-and-the-hol
 
 The sample checks run in `bun run verify`:
 
-- **Complete `.mx` samples** are checked by `packages/compiler/test/repository-checks.ts` and its stricter companion, `apps/docs/test/docs-mx-syntax.test.ts`. Both scan the user pages and ADR-0050's reference. For legacy fixtures only, the contracted path rewrites `entity=` to `resource=`; that is not the syntax-v4 path.
-- **Syntax v4 samples** (`entity :Todo`, `&title`, imported entities) first pass a bounded text guard: obsolete spellings, undeclared member heads, unimported `entity=X` values and unbound `self.` reads fail. Then each fence parses as authored through the compiler's own parse: `parseData` with the production contracts, Mesh's `&` syntax module (`packages/compiler/src/front-end/dialect.ts`), `structural: "reject"`, `unknownTags: "reject"` and `imports: "pass"`. Misplaced member lines and assignments in `input` are parse errors. The check prints the entity files checked and the findings. This guard is not full contract/type checking.
-- **MX highlighting** has one named, counted allowance, `MX_V4_INPUT_PENDING_SYNTAX_TABLE`: alpha.2 treats nested `input` as an HTML void tag, so same-width stand-ins let it parse while the renderer keeps the authored text. Other grammar errors still fail the build. [MX integration](./in-depth/mx-integration.md) records both bridges and the MX items that remove them.
+- **Complete `.mx` samples** are checked by `packages/compiler/test/repository-checks.ts` and its stricter companion, `apps/docs/test/docs-mx-syntax.test.ts`. Both scan the user pages and ADR-0050's reference, and a fence whose root is `resource` is an error.
+- **Syntax v4 samples** (`entity :Todo`, `&title`, imported entities) first pass a bounded text guard: obsolete spellings, undeclared member heads, unimported `entity=X` values and unbound `self.` reads fail. Then each fence parses as authored through the compiler's own parse, `parseEntitySource`, which calls MX's `lowerSource` with Mesh's dialect (`packages/compiler/src/front-end/dialect.ts`): the dialect carries the production contracts, `structural: "reject"`, `unknownTags: "reject"` and `imports: "pass"`. Misplaced member lines and assignments in `input` are parse errors. The check prints the entity files checked and the findings. This guard is not full contract/type checking.
+- **MX highlighting** has one named, counted allowance, `MX_V4_INPUT_PENDING_SYNTAX_TABLE`: alpha.2 treats nested `input` as an HTML void tag, so same-width stand-ins let it parse while the renderer keeps the authored text. Other grammar errors still fail the build. [The contract between Mesh and MX](./in-depth/mx-integration.md) records both bridges and the MX items that remove them.
 - **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
 
 None of these checks runs a sample. They are not a claim that Mesh exists as a runtime.
@@ -87,9 +87,9 @@ bun run test        # tests only
 bun run typecheck   # type checks only
 ```
 
-`bun install` at the repository root is all there is. The compiler's two MX dependencies, `@mxlang/core` and `@mxlang/data`, are pinned to an exact version and installed from the registry; there is no `bun link` step, no local MX checkout and no token. The install and `bun run verify` are also what a GitHub Actions run does for every pull request and every push to `main`; see [Continuous integration](#continuous-integration).
+`bun install` at the repository root is all there is. The compiler's MX dependency, `@mxlang/core`, is pinned to an exact version and installed from the registry; there is no `bun link` step, no local MX checkout and no token. The install and `bun run verify` are also what a GitHub Actions run does for every pull request and every push to `main`; see [Continuous integration](#continuous-integration).
 
-To work against an MX commit that is not published yet — the MX lead's own workflow, and useful when a change to MX has to land in Mesh the same day — run `bun link` inside the MX checkout once, then point the two `@mxlang` dependencies in `packages/compiler/package.json` at `link:@mxlang/core` and `link:@mxlang/data` and run `bun install`. That edit is local and never committed: a committed `link:` entry breaks every machine that has no MX checkout, including the CI runner. Revert it and re-run `bun install` before you commit or push. Never run `bun link @mxlang/...` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
+To work against an MX commit that is not published yet — the MX lead's own workflow, and useful when a change to MX has to land in Mesh the same day — run `bun link` inside the MX checkout once, then point the `@mxlang/core` dependency in `packages/compiler/package.json` at `link:@mxlang/core` and run `bun install`. That edit is local and never committed: a committed `link:` entry breaks every machine that has no MX checkout, including the CI runner. Revert it and re-run `bun install` before you commit or push. Never run `bun link @mxlang/...` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
 
 To try the example:
 
@@ -157,8 +157,8 @@ repository's `bunfig.toml` says so, once:
 
 It is read-only for everyone and has no uplink to the public registry, so an `@mxlang` version that is
 not published there cannot be installed by accident, and nothing outside the `@mxlang` scope is resolved
-from it: every other package comes from the default registry. `@mxlang/core` and `@mxlang/data` are
-published there as pre-release versions, and `packages/compiler` depends on them by exact version (no
+from it: every other package comes from the default registry. `@mxlang/core` is
+published there as pre-release versions, and `packages/compiler` depends on it by exact version (no
 range, so a new pre-release is never pulled in silently). `bun.lock` records the registry URL and the
 integrity hash of each tarball, which is what lets `bun install --frozen-lockfile` reproduce the
 install without asking the registry for a version range, on this machine and on a CI runner.

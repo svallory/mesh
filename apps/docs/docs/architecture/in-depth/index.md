@@ -20,7 +20,7 @@ Each page says what the thing is, how it works, and which code implements it. Li
 - [Expressions: one tree, two evaluators](./expressions.md)
 - [Extension host and composed contracts](./extension-host.md)
 - [Generated code and the guard](./generated-code-and-guard.md)
-- [How Mesh uses MX](./mx-integration.md)
+- [The contract between Mesh and MX](./mx-integration.md)
 - [Core, adapters and extensions](./three-rings.md)
 
 
