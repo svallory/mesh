@@ -218,6 +218,7 @@ test.each([
   ["a computed index", "&lines[0]"],
   ["a call", "&lines.amount()"],
   ["a space before the dot", "&lines .amount"],
+  ["a space after the dot", "&lines. amount"],
   ["a plain name", "lines"],
   ["an atom", ":lines"],
 ] as const)("of= with %s is not a member reference", (_, written) => {

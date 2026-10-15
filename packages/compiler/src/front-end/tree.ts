@@ -256,7 +256,7 @@ export function expression(
   );
   // A pattern with a rest element, or a plain parameter (`(s) => s.self.x`), can reach any name in the scope.
   const rest = (n.params ?? []).some((p) => p.type !== "ObjectPattern" || (p.properties ?? []).some((property) => !property.key?.name));
-  // Expr.code is printed (`self.x`); the authored text is the span's slice.
+  // Expr.code is the authored text with the triggers spliced in (`&title` lowered to its stand-in), and only a method shorthand's is printed; the model's `source` is the span's slice of the file.
   const data: DynamicAttr["value"] = a.value;
   const translated = convert
     ? translate(n, data.span, { ...convert, source, at })
