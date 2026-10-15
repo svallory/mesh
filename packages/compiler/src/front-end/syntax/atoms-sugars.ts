@@ -44,6 +44,7 @@ import type {
   TriggerContext,
   TriggerResult,
 } from "@mxlang/core";
+import { tagLabel } from "../tag-spelling.ts";
 
 /** An atom's name: an identifier, `-` between words (`:rename-all`). */
 const NAME = "[A-Za-z_$][\\w$]*(?:-[\\w$]+)*";
@@ -84,7 +85,7 @@ const SECOND_NAME =
 
 /** `{written}` and `{first}` are filled by core (`once`): the later default as written, the earlier one's line:column. */
 const SECOND_DEFAULT =
-  "`{written}` would set the default attribute (`value`), but the tag already has a default value (at {first}); a sugar followed by `=value` or `(params) { body }` sets it, so write `value=…` once";
+  "`{written}` would set the default option (`value`), but the tag already has a default value (at {first}); a sugar followed by `=value` or `(params) { body }` sets it, so write `value=…` once";
 
 const BOUND =
   "a bound value is not supported on name sugar; write name=... value:=...";
@@ -825,7 +826,7 @@ function checkAtom(
   declaration: AtomDeclaration,
   atom: { name: string; span: SourceSpan },
 ): void {
-  const owner = `${label}: attribute \`${attrName}\``;
+  const owner = `${label}: option \`${attrName}\``;
   const { values, pattern, ref } = declaration;
   if (values && !values.includes(atom.name)) {
     const near = nearestName(atom.name, values);
@@ -877,7 +878,7 @@ function checkStringForRef(
   const listed = names.length ? `one of ${atomList(names)}` : "none declared";
   const at = attr.value?.span ?? attr.nameSpan;
   unit.fail(
-    `${label}: attribute ${attr.label} must be atom, got string (${listed}); write it as \`:${text}\``,
+    `${label}: option ${attr.label} must be atom, got string (${listed}); write it as \`:${text}\``,
     at ? { at, code: "MESH_SYNTAX" } : { code: "MESH_SYNTAX" },
   );
 }
@@ -922,7 +923,7 @@ function queueAttrs(
   }
 }
 
-/** The same, for every attribute tag at any depth, labelled `<box>`: `<@row>`: .... */
+/** The same, for every attribute tag at any depth, labelled `box`: `@row`: .... */
 function queueAttributeTags(
   unit: LoweredUnit,
   call: ContractCall,
@@ -933,7 +934,7 @@ function queueAttributeTags(
 ): void {
   for (const tag of tags) {
     if (!tag.contract) continue;
-    const nested = `${label}: \`<@${tag.name}>\``;
+    const nested = `${label}: ${tagLabel(tag.name, "attributeTag")}`;
     queueAttrs(
       unit,
       call,
@@ -954,7 +955,7 @@ function checkAtomContracts(unit: LoweredUnit): void {
   const scopes = declare(unit);
   const refs: Array<() => void> = [];
   for (const call of calls) {
-    const label = `\`<${call.tag}>\``;
+    const label = tagLabel(call.tag);
     queueAttrs(
       unit,
       call,

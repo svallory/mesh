@@ -1702,7 +1702,7 @@ describe("review fixes (PR #63, round 1)", () => {
       const source = make('        run [after="write"] ({ self }) { console.log(self) }\n');
       const d = build(source).diagnostics;
       expect(d).toHaveLength(1);
-      expect(d[0]).toMatchObject({ severity: "error", message: expect.stringContaining("attribute `after` must be atom, got string (one of :write)") });
+      expect(d[0]).toMatchObject({ severity: "error", message: expect.stringContaining("option `after` must be atom, got string (one of :write)") });
       expect(d[0]!.position).toMatchObject(at(source, source.indexOf('"write"')));
     });
     test("only a run takes after: on set, load or when it is an error at the attribute", () => {
@@ -1724,7 +1724,7 @@ describe("review fixes (PR #63, round 1)", () => {
     test("the method after the attribute group is one value: no duplicate warning, while a duplicate the author wrote still warns", () => {
       expect(build(make("        run [after=:write] ({ self }) { console.log(self) }\n")).diagnostics).toEqual([]);
       const twice = make("        run [after=:write after=:write] ({ self }) { console.log(self) }\n");
-      expect(build(twice).diagnostics).toMatchObject([{ severity: "warning", message: expect.stringContaining("duplicate attribute `after`"), position: at(twice, twice.indexOf("after=")) }]);
+      expect(build(twice).diagnostics).toMatchObject([{ severity: "warning", message: expect.stringContaining("duplicate option `after`"), position: at(twice, twice.indexOf("after=")) }]);
     });
   });
   test("details: a comparison of non-null operands does not warn; one that can see a null does", () => {

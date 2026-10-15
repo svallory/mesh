@@ -74,7 +74,7 @@ describe("what a policy may name and read", () => {
   test("`actions=[]` fails the build, as `types=[]` does: an empty list covers no action", () => {
     const built = build(post("  policies\n    policy :none actions=[]\n      authorize-if=() => true\n"));
     expect(codes(built.diagnostics)).toEqual(["error:MESH_MEMBER_REFERENCE"]);
-    expect(built.diagnostics[0]!.message).toBe("`<policy>`: `actions` must name at least one action: an empty list covers none");
+    expect(built.diagnostics[0]!.message).toBe("`policy`: `actions` must name at least one action: an empty list covers none");
     expect(codes(build(post("  policies\n    policy :none types=[]\n      authorize-if=() => true\n")).diagnostics)).toEqual(["error:MESH_ATOM_LIST"]);
     // The same for an `always` block.
     const always = build(post("  policies\n    policy :all\n      authorize-if=() => true\n").replace("  actions auto=[:read]\n", "  actions auto=[:read]\n    always actions=[]\n      validate\n        check :fresh that=() => true code=\"stale\" message=\"stale\"\n"));

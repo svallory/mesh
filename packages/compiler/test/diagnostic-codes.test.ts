@@ -60,7 +60,7 @@ describe("a .mesh.mx file with an MX error builds to Mesh's code", () => {
     const result = buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source }] });
     expect(result.document).toBeNull();
     expect(result.diagnostics.map((d) => [d.severity, d.code, d.position.line, d.position.column, d.message])).toEqual([
-      ["error", "MESH_UNKNOWN_TAG", 2, 2, "`<mystery>` is not a known tag in the `mesh` dialect"],
+      ["error", "MESH_UNKNOWN_TAG", 2, 2, "`mystery` is not a known tag in the `mesh` dialect"],
     ]);
     // The control: the same file through the dialect without its map gives MX's own code at the same place.
     expect(codesOf(lowerSource(source, "/v/todo.mesh.mx", { dialect: unmapped(MESH_DIALECT) }).diagnostics)).toEqual([

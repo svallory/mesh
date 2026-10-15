@@ -37,14 +37,20 @@
  * `diagnosticCodes` (MX 0.1.0-alpha.27, decision MX-05) renames MX's codes to Mesh's on every Mesh file, in the
  * compiler and in every tool: `MX_UNKNOWN_TAG` is `MESH_UNKNOWN_TAG` (`diagnostic-codes.ts`).
  *
+ * `messageVocabulary` (MX 0.1.0-alpha.29, decisions MX-05 and MX-16) puts MX's messages in Mesh's words: an option, a Mesh file, a tag
+ * spelled as its line is written.
+ *
  * The syntax table sets `tagShorthands: false` (MX 0.1.0-alpha.28, `syntax/mesh.ts`): a line head has no `#id` or
  * `.class` shorthand, a `.` continues the tag name, and `#x`, `.x` or a `#` inside a head is `MESH_NO_TAG_SHORTHAND`.
  */
-import type { Dialect, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
+import type { Dialect, MessageVocabulary, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";
 import MESH_CONTRACTS from "./contracts.ts";
 import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { deepFreeze } from "./deep-freeze.ts";
+import { formatTag } from "./tag-spelling.ts";
+
+export { formatTag };
 
 /** The message, from the tag name alone: `uuid:id` is written `uuid :id`; `:x` has no kind, the parent's default tag names it. */
 function unspacedMessage(name: string, defaultTag: string | undefined): string {
@@ -74,6 +80,17 @@ function explainUnknownTag(tag: UnknownTag): UnknownTagExplanation | undefined {
   };
 }
 
+/**
+ * MX's words in its messages about a Mesh file (`Dialect.messageVocabulary`, `@unstable`, MX alpha.29; MX-05, MX-16).
+ * A `key=value` is an option, since an attribute is an entity's data member; MX's "data file" is a "Mesh file".
+ * `tree` stays unset: the operator wants the messages that use it reworded, not a substitute noun (MX-16), and that is MX's work.
+ */
+export const MESH_MESSAGE_VOCABULARY: MessageVocabulary = {
+  attribute: { one: "option", many: "options", article: "an" },
+  file: "Mesh file",
+  formatTag,
+};
+
 export const MESH_DIALECT: Dialect = deepFreeze({
   id: "mesh",
   name: "Mesh",
@@ -87,6 +104,8 @@ export const MESH_DIALECT: Dialect = deepFreeze({
   imports: "pass",
   // MX's codes as Mesh's. `Dialect.diagnosticCodes` is `@unstable` in MX (alpha.27).
   diagnosticCodes: MX_TO_MESH_CODES,
+  // MX's words in its messages: `option`, `Mesh file`, tags spelled as written. `@unstable` in MX (alpha.29).
+  messageVocabulary: MESH_MESSAGE_VOCABULARY,
   ...MESH_SYNTAX,
   explainUnknownTag,
 });

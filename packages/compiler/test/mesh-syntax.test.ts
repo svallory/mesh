@@ -203,7 +203,7 @@ describe("line heads under tagShorthands: false", () => {
     // Events, commands and the other sections that list references are not built (M6), so Mesh's contracts claim no dotted tag.
     const result = buildModel({ root: "/project", files: [{ file: "t/t.mesh.mx", source }] });
     expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column, d.message])).toEqual([
-      ["MESH_UNKNOWN_TAG", 4, 2, "`<billing.InvoiceVoided>` is not a known tag in the `mesh` dialect"],
+      ["MESH_UNKNOWN_TAG", 4, 2, "`billing.InvoiceVoided` is not a known tag in the `mesh` dialect"],
     ]);
   });
 });

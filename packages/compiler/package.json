@@ -21,7 +21,7 @@
   "dependencies": {
     "@jig-lang/jig": "1.0.1",
     "@meshfw/model": "workspace:*",
-    "@mxlang/core": "0.1.0-alpha.28",
+    "@mxlang/core": "0.1.0-alpha.29",
     "prettier": "3.6.2"
   },
   "peerDependencies": {

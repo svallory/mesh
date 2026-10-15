@@ -191,7 +191,7 @@ test("an unknown tag prints MX's diagnostic at MX's position", async () => {
   const result = run(root, "build");
   expect(result.code).toBe(1);
   expect(result.stdout).toBe("");
-  expect(result.stderr).toBe(`${sourcePath}:5:3 error MESH_UNKNOWN_TAG \`<mystery>\` is not a known tag in the \`mesh\` dialect\n1 error, 0 warnings\n`);
+  expect(result.stderr).toBe(`${sourcePath}:5:3 error MESH_UNKNOWN_TAG \`mystery\` is not a known tag in the \`mesh\` dialect\n1 error, 0 warnings\n`);
 }, 30_000);
 
 test("missing config is exit 1 with a diagnostic, with no upward search", async () => {

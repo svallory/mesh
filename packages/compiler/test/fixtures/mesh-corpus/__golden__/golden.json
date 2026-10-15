@@ -5891,7 +5891,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<audit>` is not a known tag in the `mesh` dialect",
+    "message": "`audit` is not a known tag in the `mesh` dialect",
     "line": 6,
     "column": 2,
     "offset": 133,
@@ -32882,7 +32882,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "the data tree is static; this file's consumer does not evaluate `<const>`",
+    "message": "the data tree is static; this file's consumer does not evaluate `const`",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -34177,7 +34177,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "tag variable `/x` on `<let>`: the data tree is static; a binding without evaluation means nothing",
+    "message": "tag variable `/x` on `let`: the data tree is static; a binding without evaluation means nothing",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -34190,7 +34190,7 @@
    },
    {
     "severity": "error",
-    "message": "`<let>` is not a known tag in the `mesh` dialect; did you mean `<set>`?",
+    "message": "`let` is not a known tag in the `mesh` dialect; did you mean `set`?",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -34607,7 +34607,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<arguments>` is not a known tag in the `mesh` dialect",
+    "message": "`arguments` is not a known tag in the `mesh` dialect",
     "line": 6,
     "column": 6,
     "offset": 86,
@@ -35969,7 +35969,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<record>` is not a known tag in the `mesh` dialect",
+    "message": "`record` is not a known tag in the `mesh` dialect",
     "line": 1,
     "column": 0,
     "offset": 0,
