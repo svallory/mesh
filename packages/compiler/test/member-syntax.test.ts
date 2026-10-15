@@ -341,8 +341,8 @@ describe("the unknown-tag scan takes the module too (PR 450's parseMxDocument)",
     });
     const messages = result.diagnostics.map((d) => d.message);
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toContain("attribute `asc` must be boolean");
-    expect(messages[1]).toContain("`<foo>`");
+    expect(messages[0]).toContain("option `asc` must be boolean");
+    expect(messages[1]).toContain("`foo`");
   });
 });
 
@@ -410,14 +410,14 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
   test("M5: a `member` slot refuses an expression around a member", () => {
     expect(slot("member", "sort load=(&visible && x)\n")).toEqual([
       expect.stringContaining(
-        "attribute `load` must be a member, got an expression",
+        "option `load` must be a member, got an expression",
       ),
     ]);
   });
 
   test("M5: an `atom` slot refuses the dynamic form too", () => {
     expect(slot("atom", "sort load=&visible\n")).toEqual([
-      expect.stringContaining("attribute `load` must be an atom, got a member"),
+      expect.stringContaining("option `load` must be an atom, got a member"),
     ]);
   });
 

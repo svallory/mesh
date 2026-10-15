@@ -69,7 +69,7 @@ test("MX loads the registered module: with no options, the vocabulary, tag rules
   expect(node.tag.name).toBe("entity");
   // The module carries the vocabulary: a tag outside it is refused with the dialect named, and a top-level input is misplaced.
   expect(lowerSource("bogus :x\n", file, {}).diagnostics.map((d) => [d.code, d.message])).toEqual([
-    ["MESH_UNKNOWN_TAG", "`<bogus>` is not a known tag in the `mesh` dialect"],
+    ["MESH_UNKNOWN_TAG", "`bogus` is not a known tag in the `mesh` dialect"],
   ]);
   // The same file under a project that does not register Mesh is plain MX, which rejects `:title` as a line.
   const plain = join(project("plain", {}), "domain/todo.mesh.mx");
@@ -157,7 +157,7 @@ test("a project's mx.tags, mx.contracts and tags/ directory do not reach a .mesh
     // Control: the project's own `.mx` file sees all three definitions (an open vocabulary, so no error at all).
     expect(callCodes(root, "page.mx", tag), `${tag} in .mx`).toEqual([]);
     expect(callCodes(root, "todo.mesh.mx", tag), `${tag} in .mesh.mx`).toEqual([
-      ["MESH_UNKNOWN_TAG", `\`<${tag}>\` is not a known tag in the \`mesh\` dialect`],
+      ["MESH_UNKNOWN_TAG", `\`${tag}\` is not a known tag in the \`mesh\` dialect`],
     ]);
   }
 });
@@ -206,10 +206,10 @@ test("lowering a .mesh.mx file with no options is as strict as the compiler was 
     expect(lowerSource(source, file, { dialect: MESH_DIALECT }).diagnostics, label).toEqual(bare);
   }
   const messages = (source: string) => lowerSource(source, file, {}).diagnostics.map((d) => d.message);
-  expect(messages("entity :T\n  bogus :x\n")).toEqual(["`<bogus>` is not a known tag in the `mesh` dialect"]);
+  expect(messages("entity :T\n  bogus :x\n")).toEqual(["`bogus` is not a known tag in the `mesh` dialect"]);
   const static_ = (what: string) => ["the data tree is static; this file's consumer does not evaluate " + what];
-  expect(messages("<if=true>\n</if>\n")).toEqual(static_("`<if>`"));
-  expect(messages("<const/x=1/>\n")).toEqual(static_("`<const>`"));
+  expect(messages("<if=true>\n</if>\n")).toEqual(static_("`if`"));
+  expect(messages("<const/x=1/>\n")).toEqual(static_("`const`"));
   expect(messages("export const x = 1\nentity :T\n")).toEqual(static_("`export`"));
   expect(messages("<div>hello</div>\n")).toHaveLength(2);
   expect(messages("entity :T\n  attributes\n    string :title\n")).toEqual([]);

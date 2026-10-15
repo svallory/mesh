@@ -134,7 +134,7 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     ["<x :a=1 :b=2/>", "`:b=2`", 11],
   ])("%s: a second default value is refused at the later one", (source, written, column) => {
     const [message, line, col] = firstError(source) ?? [];
-    expect(message).toContain(`${written} would set the default attribute (\`value\`), but the tag already has a default value`);
+    expect(message).toContain(`${written} would set the default option (\`value\`), but the tag already has a default value`);
     expect([line, col]).toEqual([1, column]);
   });
 
