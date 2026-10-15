@@ -9,7 +9,7 @@
     "test": "bun test test/",
     "dev": "docmd dev",
     "build": "rm -rf site .docmd && docmd build",
-    "validate": "docmd validate && bun check-docker-lock.ts"
+    "validate": "docmd validate && bun check-docker-lock.ts && bun check-fragments.ts"
   },
   "devDependencies": {
     "@docmd/core": "0.9.7",
