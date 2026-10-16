@@ -108,16 +108,18 @@ describe("what the atom rows refuse, in Mesh's words", () => {
   });
 
   test.each([
-    ["<x :a(p)/>", "arguments are not allowed on `:name`: `:a(…)` is name sugar, not an attribute method", 3],
-    ["<x :n:=y/>", "a bound value is not supported on name sugar; write name=... value:=...", 3],
+    ["<x :a(p)/>", "arguments are not allowed on `:name`: `:a(…)` is name sugar, not method shorthand", 3, "MESH_SYNTAX"],
+    ["<x :n:=y/>", "a bound value is not supported on name sugar; write name=... value:=...", 3, "MESH_SYNTAX"],
     [
       "<x=1 :n=2/>",
       // MX alpha.17 dropped its own error: a spaced `:n` after a value continues the value, so this is Marko's text,
       // with code `MX_EXPECTED_SINGLE_EXPRESSION` since alpha.18, `MESH_EXPECTED_SINGLE_EXPRESSION` through the dialect's `diagnosticCodes`. Mesh keeps it as written (the message is pinned here, not parsed by Mesh).
       "Expected a single expression, but found `:` after it.",
       5,
+      "MESH_EXPECTED_SINGLE_EXPRESSION",
     ],
-  ])("%s", (source, message, column) => {
+  ])("%s", (source, message, column, code) => {
+    expect(lower(source).diagnostics[0]?.code).toBe(code);
     const [text, line, at] = firstError(source) as [string, number, number];
     // The tail of core's hint ("or on the tag (`<input:email …>`)") recommends tag-head sugar, which Mesh refuses; not pinned.
     expect([text.slice(0, message.indexOf("; put it") > 0 ? message.indexOf("; put it") : message.length), line, at]).toEqual([

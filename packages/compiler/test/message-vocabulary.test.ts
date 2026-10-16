@@ -117,6 +117,13 @@ describe("Mesh's own contracts, each with an `analyze` hook, read in Mesh's word
     expect(diagnostics(source)).toEqual([[code, message]]);
   });
 
+  test("a bound option (`key:=value`) on a Mesh contract says \"option\", not \"attribute\": code, position and text", () => {
+    const source = "entity :T\n  attributes\n    string :name\n  policies\n    policy :p actions:=x\n";
+    const found = lowerSource(source, FILE, { dialect: MESH_DIALECT }).diagnostics.filter((d) => d.code === "MESH_SYNTAX");
+    expect(found.map((d) => d.message)).toEqual(["`policy`: bound options are not entity declarations"]);
+    expect([found[0]?.line, found[0]?.column]).toEqual([5, 14]);
+  });
+
   test("a Mesh hook's ctx.fail from `analyze` names its owner bare, as the line is written", () => {
     expect(diagnostics(k + "  policies\n    policy :p actions=[1]\n")).toEqual([
       ["MESH_MEMBER_REFERENCE", "`policy`: `actions` requires a list of member references"],
