@@ -1,4 +1,4 @@
-// PRJ-02, PRJ-12, EXP-12: a function's scope roots are typed. `context` is the project's merged `ActionContext` and
+// a function's scope roots are typed. `context` is the project's merged `ActionContext` and
 // `actor` is its `actor` member, so a read of a member the project did not declare fails tsc with TS2339 instead of
 // passing the build and failing at run time (`context.isStaff is not a function`, the PR #125 review, item 2); `self`,
 // `input` and `before` keep their exact types too. The fixture (`fixtures/scope-roots-typing`) declares `actor` in
@@ -77,7 +77,7 @@ async function entityWith(checks: string[], sets: string[], head = ""): Promise<
     .replace("      do\n        set\n", `      do\n        set\n${sets.map((line) => `          ${line}\n`).join("")}`);
 }
 
-describe("a function's scope roots are typed (PRJ-02, PRJ-12, EXP-12)", () => {
+describe("a function's scope roots are typed", () => {
   test("the fixture reads each root correctly, builds and passes tsc under the strictest flags", async () => {
     const root = await project();
     expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
@@ -111,7 +111,7 @@ describe("a function's scope roots are typed (PRJ-02, PRJ-12, EXP-12)", () => {
     expect(code).not.toBe(0);
     expect(messages.every((message) => message.startsWith("TS2339 "))).toBe(true);
     const named = (member: string) => messages.filter((message) => message.includes(`'${member}'`));
-    // `isStaff` is read twice (as the helper's root and through the namespace import's name, which is the root too, EXP-12).
+    // `isStaff` is read twice (as the helper's root and through the namespace import's name, which is the root too).
     expect(named("isStaff").map((message) => message.includes("'ActionContext'"))).toEqual([true, true]);
     expect(named("tenant").every((message) => message.includes("'ActionContext'"))).toBe(true);
     expect(named("tenant")).toHaveLength(2);

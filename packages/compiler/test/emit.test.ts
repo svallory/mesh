@@ -223,7 +223,7 @@ test.each(["", "sales/billing"])("module %j emits verbatim relative paths", asyn
   expect(files.map((file) => file.path)).toContain(`${prefix}/index.ts`);
 });
 
-test("an entity named Date with date attributes builds: generated code names the global as $Date (PRJ-20)", async () => {
+test("an entity named Date with date attributes builds: generated code names the global as $Date", async () => {
   const document = documentOf();
   const entity = todo(document);
   document.entities = [entity];

@@ -34,11 +34,11 @@
  * (`input` is a section of an action). The preset applies when the dialect is
  * passed directly; `test/dialect.test.ts` asserts it.
  *
- * `diagnosticCodes` (MX 0.1.0-alpha.27, decision MX-05) renames MX's codes to Mesh's on every Mesh file, in the
+ * `diagnosticCodes` (MX 0.1.0-alpha.27) renames MX's codes to Mesh's on every Mesh file, in the
  * compiler and in every tool: `MX_UNKNOWN_TAG` is `MESH_UNKNOWN_TAG` (`diagnostic-codes.ts`).
  *
- * `messageVocabulary` (MX 0.1.0-alpha.29, decisions MX-05 and MX-16) puts MX's messages in Mesh's words: an option, a Mesh file, a tag
- * spelled as its line is written.
+ * `messageVocabulary` (MX 0.1.0-alpha.29) puts MX's messages in Mesh's words: an option, a Mesh file, a tag
+ * spelled as its line is written (lead, MX-05).
  *
  * The syntax table sets `tagShorthands: false` (MX 0.1.0-alpha.28, `syntax/mesh.ts`): a line head has no `#id` or
  * `.class` shorthand, a `.` continues the tag name, and `#x`, `.x` or a `#` inside a head is `MESH_NO_TAG_SHORTHAND`.
@@ -81,10 +81,10 @@ function explainUnknownTag(tag: UnknownTag): UnknownTagExplanation | undefined {
 }
 
 /**
- * MX's words in its messages about a Mesh file (`Dialect.messageVocabulary`, `@unstable`, MX alpha.29, reworded in alpha.30; MX-05, MX-16).
+ * MX's words in its messages about a Mesh file (`Dialect.messageVocabulary`, `@unstable`, MX alpha.29, reworded in alpha.30).
  * A `key=value` is an option, since an attribute is an entity's data member; MX's "data file" is a "Mesh file".
  * `tree` is unset: since alpha.30 no message reads it. `file` is a string, whose plural is the string plus "s", so the static-file
- * messages read "Mesh files are static, so they do not evaluate `if`" (MX-16).
+ * messages read "Mesh files are static, so they do not evaluate `if`".
  */
 export const MESH_MESSAGE_VOCABULARY: MessageVocabulary = {
   attribute: { one: "option", many: "options", article: "an" },

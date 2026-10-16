@@ -9,9 +9,9 @@ import { DOMAIN_FOLDER, entityInputs, entitySegment, filterTypeName, hasRead, mo
 
 /**
  * What `module.ts.jig` renders: a barrel, `.mesh/domain/<path>/index.ts`, one per folder of the domain that holds an
- * entity or a folder below it that does, and one for the domain root (`.mesh/domain/index.ts`) (CMP-17, CMP-18).
+ * entity or a folder below it that does, and one for the domain root (`.mesh/domain/index.ts`).
  * Application code imports it as `#mesh/domain/<path>` (`#mesh/domain` for the root). It exports the entity value and
- * record type of each entity of the module (those of its `_name/` group folders included, PRJ-10), the entities' other
+ * record type of each entity of the module (those of its `_name/` group folders included), the entities' other
  * types and load functions, and one namespace per subfolder that has a barrel (`export * as billing from
  * "./billing/index"`). `bind`, `connect`, `disconnect`, `transaction` and the adapter's `tables` are `#mesh`'s. Every
  * string is final; the template prints, loops and branches on these fields and computes nothing. A project's own
@@ -48,7 +48,7 @@ export interface ModuleEntity {
 
 /** `export * as <name> from "./<folder>/index"`: a subfolder's barrel. */
 export interface ModuleNamespace {
-  /** The export name: the folder name with every character that is invalid in an identifier replaced by `_`, and `_` in front of a leading digit (PRJ-21). */
+  /** The export name: the folder name with every character that is invalid in an identifier replaced by `_`, and `_` in front of a leading digit. */
   readonly name: string;
   /** The subfolder's barrel from this file, quoted, e.g. `"./billing/index"`. */
   readonly fromLiteral: string;
@@ -102,7 +102,7 @@ export function barrelFolders(entities: readonly Entity[]): BarrelFolder[] {
 
 /**
  * One barrel's view. Pure and synchronous. Two exports with one name (an entity and a subfolder namespace, two
- * subfolders whose names normalise alike, a generated type and either) are `MESH_EMIT_NAME` naming both (CMP-05):
+ * subfolders whose names normalise alike, a generated type and either) are `MESH_EMIT_NAME` naming both:
  * an entity by FQN, a folder by its path in the project.
  */
 export function moduleView(input: EmitInput, module: string, entities: readonly Entity[], children: readonly BarrelFolder[] = []): ModuleView {

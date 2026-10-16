@@ -8,7 +8,7 @@ import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
 
 /**
- * Entity values and bindings (CMP-16, PRJ-13, PRJ-19). An action is called on its entity, `Task.complete(input,
+ * Entity values and bindings. An action is called on its entity, `Task.complete(input,
  * context)`: each entity's actions file defines its entity value with `entity(...)`, and the domain barrels export it.
  * The generated `bind(layer, options)` hands every barrel to `bindDomain`, which walks them, binds each entity value it
  * finds and returns a `Binding`. A method of an entity value runs on the binding in scope (the innermost `run` or
@@ -47,13 +47,13 @@ type BoundActions = Readonly<Record<string, BoundAction>>;
 type ReadBody = (input: unknown, context?: unknown, clock?: Clock, policies?: boolean) => Promise<unknown>;
 
 /**
- * How the generated actions of a binding tell it what runs (TXN-16, TXN-18, ACT-09): `bindDomain` makes one per binding
+ * How the generated actions of a binding tell it what runs: `bindDomain` makes one per binding
  * and hands it to every `bind<Entity>` and `bind<Entity>Reads`. An entity bound alone, by its own `bind<Entity>`, gets
  * `NO_FRAME`.
  */
 export interface ActionFrame {
   /**
-   * The instant an action call or a read reads (ACT-29: one transaction, one time): when the call joins a transaction of
+   * The instant an action call or a read reads (one transaction, one time): when the call joins a transaction of
    * this binding (an action calls it from a step, or the application calls it inside its `transaction(fn)`), the clock of
    * that transaction, pinned once by the call or the `transaction` that opened it; else `clock`, the binding's, pinned on
    * its first read (`pinClock`), so a call that opens its own transaction reads its own instant.
@@ -69,10 +69,10 @@ export interface ActionFrame {
   /**
    * Run `fn`, application code an action runs inside its transaction (the `afterWrite` seam), in the action's transaction
    * and at its instant but without its label: an entity call or a `privileged` read made in it resolves with plain
-   * values, as in the application's `transaction` (ACT-09).
+   * values, as in the application's `transaction`.
    */
   plain<T>(fn: () => Promise<T>): Promise<T>;
-  /** Run `fn` while `what` (`computed :lapsed of work.Claim`, `policy :member of work.Task`) is evaluated: `privileged` throws in it (TXN-18). */
+  /** Run `fn` while `what` (`computed :lapsed of work.Claim`, `policy :member of work.Task`) is evaluated: `privileged` throws in it. */
   marked<T>(what: string, fn: () => T): T;
 }
 
@@ -105,27 +105,26 @@ export type EntityValue<M extends object, P extends object = {}> = Readonly<M> &
 };
 
 /**
- * What `Mesh.privileged(Entity)` returns (TXN-16, TXN-17): one function per read action of the entity, named as on the entity,
- * each `(input, context?)`, resolving with what the read gives with no policy run (a `belongs-to` it loads is never null,
- * POL-17).
+ * What `Mesh.privileged(Entity)` returns: one function per read action of the entity, named as on the entity,
+ * each `(input, context?)`, resolving with what the read gives with no policy run (a `belongs-to` it loads is never null).
  */
 export type Privileged<E> = E extends { readonly [BIND_READS]: EntityReadsBind<infer P> | null } ? Readonly<P> : never;
 
 /**
  * What `bind(layer, options)` returns: the whole domain bound to one data layer, one clock and one seam set. It holds
- * nothing else; the caller owns the layer and closes it (PRJ-13).
+ * nothing else; the caller owns the layer and closes it.
  */
 export interface Binding {
   /**
-   * Run `fn` with this binding in scope (PRJ-19): every entity call made in it, and in everything it awaits, runs on this
+   * Run `fn` with this binding in scope: every entity call made in it, and in everything it awaits, runs on this
    * binding, and each opens its own transaction or joins a running one, as at the top level. Resolves with what `fn`
    * resolves with. A nested `run` puts its own binding in scope.
    */
   run<T>(fn: () => Promise<T>): Promise<T>;
   /**
    * Open a transaction on this binding's layer, or join the running one, and call `fn` inside it with this binding in
-   * scope (TXN-20): every entity call and `privileged` read made in it joins the transaction, and hands back plain results
-   * (ACT-09). `fn` is handed nothing. Resolves with what `fn` resolves with. A call that fails fails the transaction, even
+   * scope: every entity call and `privileged` read made in it joins the transaction, and hands back plain results.
+   * `fn` is handed nothing. Resolves with what `fn` resolves with. A call that fails fails the transaction, even
    * when `fn` catches it.
    */
   transaction<T>(fn: () => Promise<T>): Promise<T>;
@@ -149,7 +148,7 @@ interface BindingState {
 /**
  * What a binding keeps in the project's async frame: the binding, and the `run`, `transaction` or entity call this
  * belongs to (`scope`, live until it settles); inside an action's transaction, that transaction, its instant (`clock`,
- * ACT-29: the one the outermost call or `transaction` pinned) and the action's label; inside an application's
+ * the one the outermost call or `transaction` pinned) and the action's label; inside an application's
  * `transaction`, the transaction and its instant; in an entity call that joins a transaction, before the call runs its
  * own work, that transaction's instant; while a computed field or a read policy is evaluated, which one (`mark`).
  */
@@ -160,12 +159,12 @@ interface FrameStore {
   readonly clock?: Clock;
   readonly label?: string;
   readonly mark?: string;
-  /** Where the action call this belongs to stands in its chain of nested calls (TXN-21): carried by every store made inside it. */
+  /** Where the action call this belongs to stands in its chain of nested calls: carried by every store made inside it. */
   readonly calls?: CallChain;
 }
 
 /**
- * A chain of nested action calls (TXN-21): the calls an action, or its policies, steps, `set` and `validate` functions,
+ * A chain of nested action calls: the calls an action, or its policies, steps, `set` and `validate` functions,
  * helpers or seams, start while it runs, and the calls those start. The async context carries it, so it follows the chain
  * through the seams that run outside the action's transaction (`beforeTransaction`, `afterCommit`) and through an
  * application's `transaction(fn)`, not only through the data layer's transaction. A call started while the one before is
@@ -186,7 +185,7 @@ interface CallRoot {
   /**
    * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the chain: every call made under the root
    * throws it at entry, so a helper that catches it cannot keep a cycle going. Inside a transaction it also fails that
-   * transaction, like any failed nested call (TXN-01), so the root rejects with it and that transaction writes nothing
+   * transaction, like any failed nested call, so the root rejects with it and that transaction writes nothing
    * (a call that ran in no transaction, such as a seam's, keeps what it committed). The error sticks to work that outlives
    * its root as well: a job a seam left running under it is refused with this error, naming an action it never called;
    * the bound needs that.
@@ -195,7 +194,7 @@ interface CallRoot {
 }
 
 /**
- * How many action calls may be nested one inside another (TXN-21). A legitimate recursion over data (a comment thread, an
+ * How many action calls may be nested one inside another. A legitimate recursion over data (a comment thread, an
  * org chart, a category tree) can run deeper than the 32 of `MAX_QUESTION_DEPTH`, but not near this: a cycle in the data or
  * in the code would otherwise recurse until memory runs out.
  */
@@ -211,8 +210,8 @@ const connected = new WeakMap<object, BindingState>();
 const handles = new WeakMap<object, object>();
 /**
  * Each method of each entity value, by the function itself: its entity value, FQN and action name. `entity` fills it, so
- * `Mesh.checkPolicies(Todo.complete, ...)` knows the action from the function alone, and nothing is added to the function
- * (CMP-21). No other function is in it: a copy made with `.bind`, a `privileged` read or a plain function.
+ * `Mesh.checkPolicies(Todo.complete, ...)` knows the action from the function alone, and nothing is added to the function.
+ * No other function is in it: a copy made with `.bind`, a `privileged` read or a plain function.
  */
 const actions = new WeakMap<object, { readonly value: object; readonly fqn: string; readonly name: string }>();
 
@@ -287,7 +286,7 @@ const ENDED = "a call was made inside a transaction that has ended: await every 
 /**
  * Run `call` for a caller whose frame is `caller` on the binding `state`. Inside a transaction of that binding (an
  * action's or an application's), the call joins it and is refused once it has ended, since it would open a new one;
- * inside an action's function, what it resolves with is a read-only view (ACT-09). `layer` is the one the call joins
+ * inside an action's function, what it resolves with is a read-only view. `layer` is the one the call joins
  * through: the binding's, or inside a `Mesh.checkPolicies` the binding's probe's.
  */
 async function forCaller(state: BindingState, caller: FrameStore | undefined, call: () => Promise<unknown>, layer = state.layer): Promise<unknown> {
@@ -330,7 +329,7 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   const frame = frames.get(value);
   const caller = inScope(frame);
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
-  // In a store a question made (`Mesh.checkPolicies`, CMP-21), no write action starts, on any binding of the project: it
+  // In a store a question made (`Mesh.checkPolicies`), no write action starts, on any binding of the project: it
   // is refused here, before it casts its input or runs anything of its own. A read runs on the binding's probe, on the
   // question's layer over the binding's own, so it reads what it would read and what it rejects with fails no running
   // transaction. What stays out of reach is listed at `Question`.
@@ -340,9 +339,9 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   const fn = (probe ? probeEntry(probe, value) : entry).bound[action] as (input: unknown, ...context: unknown[]) => Promise<unknown>;
   // The action runs in a frame of its own: what it calls is its own work, not its caller's. Its scope is live: past
   // `bindingFor`, the caller is in a live scope of the binding, or the binding is connected. A call that joins its
-  // caller's transaction carries that transaction's instant, which the action reads (`ActionFrame.clock`, ACT-29).
+  // caller's transaction carries that transaction's instant, which the action reads (`ActionFrame.clock`).
   const joined = caller?.state === state && caller.tx !== undefined ? caller.clock : undefined;
-  // The chain it is nested in, if any (TXN-21): a call made past the cap throws at entry, before it runs anything, and
+  // The chain it is nested in, if any: a call made past the cap throws at entry, before it runs anything, and
   // fails the running transaction like any failed nested call.
   let calls: CallChain;
   try {
@@ -360,7 +359,7 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
 }
 
 /**
- * Reject with `error`, failing the binding's running transaction first when there is one (TXN-01), as `reject` in
+ * Reject with `error`, failing the binding's running transaction first when there is one, as `reject` in
  * `policy.ts` does: what a helper catches does not keep the transaction from rolling back. A cap thrown inside a question
  * fails the real transaction too, not the question's layer: it aborts the whole chain.
  */
@@ -385,13 +384,13 @@ function nested(caller: CallChain | undefined, label: string): CallChain {
 }
 
 /**
- * The reads of `value` with no policy run (TXN-16, TXN-17): `Mesh.privileged(Task).read(input, context?)` runs the read
+ * The reads of `value` with no policy run: `Mesh.privileged(Task).read(input, context?)` runs the read
  * action's body. `Mesh.privileged(Task)` only names the entity: each read finds its binding when it is called, the one in scope, else the
  * connected one, else it rejects as not connected, so a handle kept past `disconnect()` or carried into another binding's
  * `run` reads only through the binding where it is used. Inside an action, or an application's `transaction`, it joins
- * the transaction and reads its instant (`%.now` in what it loads, ACT-29), and inside an action it hands back read-only
+ * the transaction and reads its instant (`%.now` in what it loads), and inside an action it hands back read-only
  * views; it never takes the action's context: what it loads reads only the context the call passes. While a computed
- * field or a read policy is evaluated it throws (TXN-18):
+ * field or a read policy is evaluated it throws:
  * those read only the record and what it loads. A value that is not an entity value is a `FrameworkError`, and so is
  * one no binding has bound: nothing could run its reads.
  */
@@ -429,7 +428,7 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
         const probe = probeOf(caller, state);
         const body = (probe ? probeEntry(probe, value) : entry).reads[name];
         if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
-        // The transaction's instant (ACT-29), never the caller's context (TXN-16): what the read loads reads the context this
+        // The transaction's instant, never the caller's context (lead, TXN-16): what the read loads reads the context this
         // call passes.
         const clock = caller?.state === state ? caller.clock : undefined;
         return counted(state, () => forCaller(state, caller, () => body(input, context, clock, false), probe?.layer));
@@ -440,7 +439,7 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
 
 /**
  * The frame a binding hands its entities' bind functions. `question` is set for the frame of a binding's probe inside
- * one `Mesh.checkPolicies` (CMP-21): every store it puts in scope belongs to that question, so what runs there runs on
+ * one `Mesh.checkPolicies`: every store it puts in scope belongs to that question, so what runs there runs on
  * the question's probes. Any other frame's store belongs to the question in scope, if any, so a question's mark is
  * never lost (`questionOf`).
  */
@@ -502,21 +501,21 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
   const binding: Binding = Object.freeze({
     run<T>(fn: () => Promise<T>): Promise<T> {
       // Inside a question (a policy's helper calls it), the scope belongs to the question: a write is refused, and a read
-      // runs on the binding's probe, so it reads what the call would read (CMP-21).
+      // runs on the binding's probe, so it reads what the call would read.
       const outer = inScope(frame);
       return scoped(frame, kept({ state, scope: live(state, frame), ...(outer?.calls ? { calls: outer.calls } : {}) }, questionOf(outer)), fn);
     },
     transaction<T>(fn: () => Promise<T>): Promise<T> {
-      // The application's `transaction` is an outermost transaction like any action's (TXN-14): `afterCommit` runs once
+      // The application's `transaction` is an outermost transaction like any action's: `afterCommit` runs once
       // when it commits, with every change made inside it. One that joins a running transaction leaves that to the outer one.
-      // It has one instant (ACT-29): the binding's clock, read once, which every action and read made inside it reads; one
+      // It has one instant: the binding's clock, read once, which every action and read made inside it reads; one
       // that joins a running transaction of this binding reads that transaction's.
       const scope = live(state, frame);
       const outer = inScope(frame);
       const clock = outer?.state === state && outer.tx !== undefined && outer.clock !== undefined ? outer.clock : pinClock(options.clock);
       // Inside a question (`Mesh.checkPolicies`: a policy's helper calls it), no seam runs and no write action starts, and
       // it runs on the binding's probe: where it joins a running transaction, what `fn` rejects with (a refused write the
-      // helper catches) does not fail it (CMP-21).
+      // helper catches) does not fail it.
       const question = questionOf(outer);
       const on = question ? probeFor(question, state).layer : layer;
       const body = (tx: DataOperations) => frame.run(kept({ state, scope, tx, clock, ...(outer?.calls ? { calls: outer.calls } : {}) }, question), () => fn());
@@ -572,7 +571,7 @@ export async function settled(binding: Binding): Promise<void> {
   while (state.inFlight > 0) await new Promise<void>((resolve) => state.idle.push(resolve));
 }
 
-// ---- Mesh.checkPolicies (CMP-21) -------------------------------------------------------------------------------------
+// ---- Mesh.checkPolicies -------------------------------------------------------------------------------------
 
 /**
  * One `Mesh.checkPolicies`, a question: the call it asks about runs as itself, on the binding the call would use, with
@@ -654,7 +653,7 @@ interface Probe {
 /**
  * The question each frame store belongs to: only stores made in the async context of a `Mesh.checkPolicies` are in it.
  * Module-private, as `Answer` is: no code outside this file can mark a store or read the mark, so nothing can leave a
- * question's scope by forging one (CMP-21).
+ * question's scope by forging one.
  */
 const questions = new WeakMap<FrameStore, Question>();
 
@@ -831,9 +830,9 @@ function described(value: unknown): string {
 }
 
 /**
- * `Mesh.checkPolicies(Todo.complete, input, context)` (CMP-21, ADR-0022): the decision the call
+ * `Mesh.checkPolicies(Todo.complete, input, context)` (ADR-0022): the decision the call
  * `Todo.complete(input, context)` would reach, made the same way: on the binding the call would use, joining the
- * transaction it would join (and reading its instant, ACT-29) or in a transaction of its own that is rolled back, with
+ * transaction it would join (and reading its instant) or in a transaction of its own that is rolled back, with
  * the same checks in the same order, so a denial's `breakdown` is the one its `ForbiddenError` would carry. It changes
  * nothing: it runs no `validate`, no step and no seam, and a write action a policy starts, through any binding of the
  * project, is refused before it runs, and the question throws a `FrameworkError` (see `Question`). Where the call throws before its policies decide (`InvalidInputError` from the cast, `NotFoundError`
@@ -860,7 +859,7 @@ function askPolicies(member: "checkPolicies" | "can", action: unknown, input: un
     return Promise.reject(new FrameworkError(`Mesh.${member}() takes an action function of an entity value, such as Mesh.${member}(Todo.complete, input, context), and was given ${described(action)}`));
   const { value, fqn, name } = target;
   const where = `Mesh.${member}(${fqn}#${name})`;
-  // While a computed field or a read policy is evaluated, as for `Mesh.privileged` and an entity's action (TXN-18): an entity
+  // While a computed field or a read policy is evaluated, as for `Mesh.privileged` and an entity's action: an entity
   // file's computed field and read policy cannot call it, the build refuses them (`MESH_COMPUTED_COMPOSES`,
   // `MESH_POLICY_ASKS`), and this refuses one a helper hides. A write policy is not marked, so a call hidden there runs, as a
   // hidden `Mesh.privileged` read does: the build refuses a direct one in any policy, read or write (`MESH_POLICY_ASKS`).

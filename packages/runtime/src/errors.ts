@@ -79,7 +79,7 @@ export class InvalidInputError extends MeshError {
 }
 
 /**
- * A policy denied the call (POL-03), or no policy covers the action (deny by default, ADR-0055). The message names the
+ * A policy denied the call, or no policy covers the action (deny by default, ADR-0055). The message names the
  * entity, the action and each covering policy that failed; with no covering policy it shows an open policy to copy.
  */
 export class ForbiddenError extends MeshError {

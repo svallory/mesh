@@ -20,7 +20,7 @@ export interface SchemaView {
 export interface TableView {
   /** The entity's name as authored, e.g. `Post`. */
   readonly entity: string;
-  /** The entity's `tables` key as printed: its table name as stored (DAT-16), quoted when not an identifier, e.g. `posts` or `"late-result"`. */
+  /** The entity's `tables` key as printed: its table name as stored, quoted when not an identifier, e.g. `posts` or `"late-result"`. */
   readonly key: string;
   /** The SQL table name (the entity's `table`) as a string literal, e.g. `"posts"`. */
   readonly nameLiteral: string;

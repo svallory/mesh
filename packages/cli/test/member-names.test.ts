@@ -1,4 +1,4 @@
-// ENT-18 end to end: any member name but `__proto__`. Every name the build used to refuse (the members of
+// End to end: any member name but `__proto__`. Every name the build used to refuse (the members of
 // Object.prototype and of a function) names an attribute, an action and a policy, built by the real `mesh` command on
 // the SQLite adapter, type-checked by tsc under the strictest flags and run on SQLite in memory. The fixture
 // (`fixtures/member-names/domain/names`) has four entities:
@@ -18,7 +18,7 @@ const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/member-names/domain");
 const projects: string[] = [];
 
-/** The names the build refused before ENT-18; each names an attribute of Fields, an action of Calls and a policy of Guards. */
+/** The names the build refused before any member name but `__proto__` was accepted; each names an attribute of Fields, an action of Calls and a policy of Guards. */
 const NAMES = [
   "constructor", "prototype", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "toString",
   "valueOf", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
@@ -131,7 +131,7 @@ afterAll(async () => {
 
 const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 
-describe("members named like members of Object.prototype or of a function (ENT-18)", () => {
+describe("members named like members of Object.prototype or of a function", () => {
   test("each action is a method under its name as written, with its own input type and validator", async () => {
     const actions = await generated("domain/names/calls.actions.ts");
     for (const [method, type, validator] of [
@@ -168,7 +168,7 @@ describe("members named like members of Object.prototype or of a function (ENT-1
     const app = await import(join(root, ".mesh/index.ts"));
     const { names } = await import(join(root, ".mesh/domain/index.ts"));
     const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
-    // Mesh's functions, as the application imports them (PRJ-22).
+    // Mesh's functions, as the application imports them.
     const { Mesh } = await import(Bun.resolveSync("meshfw", root));
     const layer = sqlite({ file: ":memory:" });
     await createSchema(layer, app.tables);
@@ -180,7 +180,7 @@ describe("members named like members of Object.prototype or of a function (ENT-1
         const bare = await names.Fields.create({ ...REQUIRED }, anyone);
         expect(bare).toEqual({ id: bare.id, ...Object.fromEntries(NAMES.map((name) => [name, null])), ...REQUIRED });
         expect(Object.getPrototypeOf(bare)).toBe(Object.prototype);
-        // JavaScript calls a record's `toString` to make it a string, and here that is the column (the cost ENT-18 accepts).
+        // JavaScript calls a record's `toString` to make it a string, and here that is the column (the accepted cost) (lead, ENT-18).
         expect(() => String(bare)).toThrow(TypeError);
         expect(() => `${bare}`).toThrow(TypeError);
 

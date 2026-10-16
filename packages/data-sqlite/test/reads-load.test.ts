@@ -173,7 +173,7 @@ describe("the generated files", () => {
       "  });",
       "  // An entity with a relationship and nothing else takes `load` too; Task has both.",
       "  const [t] = await Task.read({ load: ['project', 'shout'] }, context);",
-      "  // A caller's load runs Project's read policies, so the project can be null (POL-17); through privileged it cannot.",
+      "  // A caller's load runs Project's read policies, so the project can be null; through privileged it cannot.",
       "  // @ts-expect-error a caller's belongs-to can be null",
       "  void t!.project.name;",
       "  const projectName: string | undefined = t!.project?.name;",
@@ -511,7 +511,7 @@ describe("the clock", () => {
       ticks = 0;
       const viaPrivileged = await mesh.transaction(async () => privilegedOf(clockDomain.Stamp).read({ load: ["seen"] }));
       expect(new Set(viaPrivileged.map((row: any) => row.seen.getTime())).size).toBe(1);
-      // A create's check: its `%.now` and the field its `privileged` read loaded are one instant (TXN-16), so the check passes
+      // A create's check: its `%.now` and the field its `privileged` read loaded are one instant, so the check passes
       // (it fails with `skewed` when the load takes a fresh reading of the clock).
       ticks = 0;
       await expect(mesh.addStamp({ at: new Date(2_500) }, ctx)).resolves.toBeDefined();

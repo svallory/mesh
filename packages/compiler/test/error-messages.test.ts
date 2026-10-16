@@ -149,7 +149,7 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
   test("the hint is for MESH_STRUCTURAL_CONSTRUCT only", () => {
     const message = "Mesh files are static, so they do not evaluate `for`";
     expect(staticFileFix({ code: "MESH_STRUCTURAL_CONSTRUCT", message })).toBe(FOR);
-    // MX's agreed rewording (MX-16) keeps the hint.
+    // MX's agreed rewording keeps the hint.
     expect(staticFileFix({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "Mesh files are static, so they do not evaluate `for`" })).toBe(FOR);
     expect(staticFileFix({ code: "MESH_TAG_NOT_ALLOWED", message })).toBeNull();
     expect(staticFileFix({ code: undefined, message })).toBeNull();

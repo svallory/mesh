@@ -1,8 +1,8 @@
 import { functionSpec, type Entity, type ExprNode } from "@meshfw/model";
 
 /**
- * What a create's new instance lacks before the input is applied (ACT-27). Mesh builds the instance with a `uuid` or
- * `string` key already filled, the defaults, the stamped timestamps, and null in every nullable member that has no
+ * What a create's new instance lacks before the input is applied. Mesh builds the instance with a `uuid` or
+ * `string` key already filled (lead, ACT-27), the defaults, the stamped timestamps, and null in every nullable member that has no
  * default; `validate` sees it so, and the member inputs are applied after it. What is left are the members the record
  * type says are set but that hold null until something fills them.
  */
@@ -43,7 +43,7 @@ export function newInstanceMembers(gaps: NewInstanceGaps, withRelationships: boo
 }
 
 /**
- * The computed fields that are null on a create's new instance (ACT-27), the one answer for the generated `<E>NewScope`
+ * The computed fields that are null on a create's new instance, the one answer for the generated `<E>NewScope`
  * type and for the build-time checks. The check loads a computed field onto the new instance and evaluates its body over
  * the nulls, so a translated body follows the null rule of each function (`FunctionSpec.nullResult`): `&qty * 2` is null
  * while `qty` is, `&publishedAt === null` is not (`isNull` is never unknown), `&a ?? 0` is not (`??` is null only when

@@ -1,4 +1,4 @@
-// `MESH_DIALECT.messageVocabulary` (MX 0.1.0-alpha.29; decisions MX-05 and MX-16): MX's messages about a Mesh file use Mesh's
+// `MESH_DIALECT.messageVocabulary` (MX 0.1.0-alpha.29): MX's messages about a Mesh file use Mesh's
 // words. An option is a `key=value` (an attribute is an entity's data member), the file is a "Mesh file", and a tag is spelled
 // as its line head is written (`&title`, `attributes`, `${x}`), never as `<member>`, `<attributes>` or `<${x}>`.
 //
@@ -28,7 +28,7 @@ const messages = (source: string, dialect: Dialect): string[] => lowerSource(sou
 const codes = (source: string, dialect: Dialect): (string | undefined)[] => lowerSource(source, FILE, { dialect }).diagnostics.map((d) => d.code);
 
 describe("the vocabulary Mesh sets", () => {
-  test("`attribute` is option/options with the article `an`, `file` is `Mesh file`, and `tree` is unset (MX-16: MX rewords those messages)", () => {
+  test("`attribute` is option/options with the article `an`, `file` is `Mesh file`, and `tree` is unset (MX rewords those messages)", () => {
     expect(MESH_MESSAGE_VOCABULARY.attribute).toEqual({ one: "option", many: "options", article: "an" });
     expect(MESH_MESSAGE_VOCABULARY.file).toBe("Mesh file");
     expect(MESH_MESSAGE_VOCABULARY.tree).toBeUndefined();

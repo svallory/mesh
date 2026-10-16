@@ -13,7 +13,7 @@ import { entityFileComment, txLoadTypes } from "./types.ts";
 /**
  * What `actions.ts.jig` renders for one entity: `bind<Entity>(layer, options)`, returning one
  * method per action with its whole body written out, phase by phase (roadmap principle 1, ADR-0003), and the entity
- * value (CMP-16): a frozen object with one method per action, `Post.publish(input, context)`, that runs the action on
+ * value: a frozen object with one method per action, `Post.publish(input, context)`, that runs the action on
  * the binding in scope, exported with the record type under the entity's name. Every
  * string is final, statements included; the template prints, loops and branches on
  * these fields and computes nothing. A project's own `actions.ts.jig` depends on this shape.
@@ -65,8 +65,8 @@ export interface ActionsView {
   /**
    * What `bind<Entity>` names its third parameter, the binding's frame (`ActionFrame`): `frame`, or `_frame` when no action
    * uses it. An action's transaction runs inside `frame.within`, so an entity call or `privileged` read made by one of its
-   * functions joins it, reads its instant and hands back read-only views (TXN-16, ACT-09); a computed field or a read
-   * policy runs marked with it (TXN-18).
+   * functions joins it, reads its instant and hands back read-only views; a computed field or a read
+   * policy runs marked with it.
    */
   readonly frameName: string;
   /** What `bind<Entity>Reads` names its third parameter, the binding's frame: `frame`, or `_frame` when no body loads. */
@@ -78,7 +78,7 @@ export interface ActionsView {
   readonly privilegedMembers: readonly string[];
   /** The same as a function of an entity file sees them (`$PrivilegedReadOnly`): every result deeply read-only. */
   readonly privilegedReadOnlyMembers: readonly string[];
-  /** The entity value's methods as a function of an entity file sees them (`$ReadOnly`, ACT-09): every result deeply read-only. */
+  /** The entity value's methods as a function of an entity file sees them (`$ReadOnly`): every result deeply read-only. */
   readonly readOnlyMembers: readonly string[];
   /** One method per effective action: declared actions in authored order, then the `auto` ones. */
   readonly methods: readonly ActionMethod[];
@@ -155,8 +155,8 @@ export interface ActionMethod {
   /** The resolved type, e.g. `Post`, `Post[]`, `void`, `PostWith<N>[]` for a read that takes `load`, or `PostWith<"comments">` when a `load` step names fields. */
   readonly returnType: string;
   /**
-   * What the same call returns through `privileged`, which runs no policy (TXN-16): for a read that takes `load`, the loaded record
-   * typed by `PostTxWith` when a `belongs-to` that is not nullable makes it differ (POL-17); `returnType` otherwise.
+   * What the same call returns through `privileged`, which runs no policy: for a read that takes `load`, the loaded record
+   * typed by `PostTxWith` when a `belongs-to` that is not nullable makes it differ; `returnType` otherwise.
    */
   readonly txReturnType: string;
   /** What the method names its context parameter: `context`, or `_context` when the statements do not read it. */
@@ -190,7 +190,7 @@ function fromLiteral(entity: Entity, target: string): string {
   return JSON.stringify(path);
 }
 
-/** `tables.posts`, or `tables["late-result"]` when the table name is not an identifier: `tables` is keyed by the table name as stored (DAT-16). */
+/** `tables.posts`, or `tables["late-result"]` when the table name is not an identifier: `tables` is keyed by the table name as stored. */
 export function tableAccess(entity: Entity): string {
   const printed = propertyName(entity.table);
   return printed === entity.table ? `tables.${entity.table}` : `tables[${printed}]`;
@@ -204,7 +204,7 @@ function read(object: string, name: string): string {
 
 /**
  * Whether the caller gave a member input: `$Object.hasOwn(parsed, "title") && parsed.title !== undefined`. The input is an
- * ordinary object, so a member named like a member of `Object.prototype` (`toString`, ENT-18) that the caller left out
+ * ordinary object, so a member named like a member of `Object.prototype` (`toString`) that the caller left out
  * reads as the inherited method; only an own member is the caller's. An own `undefined` is a member left out, as the
  * input type says (`title?: string | undefined`), and the validator keeps it.
  */
@@ -291,7 +291,7 @@ const KEY = "$key";
 
 /**
  * The head of a create: `$changes`, the row to insert, and `$record`, the new instance the checks and the steps see.
- * Both are typed with the record's own columns (ENT-18), so a column named like a member of `Object.prototype`
+ * Both are typed with the record's own columns, so a column named like a member of `Object.prototype`
  * (`toString`, `constructor`) is that column, never the inherited method. `pending` are the columns the input or a `set`
  * step fills later: both hold them as null until then. The row is not left without them: TypeScript gives every object
  * the members of `Object.prototype`, so an object without a `toString` key cannot be assigned to a type whose `toString`
@@ -343,7 +343,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       usesExpressions = true;
       return idOf(expression);
     }, action.kind === "read" ? "read" : "write");
-    // A read's policies run marked with the frame (TXN-18): a `privileged` read made while one is evaluated throws.
+    // A read's policies run marked with the frame: a `privileged` read made while one is evaluated throws.
     if (action.kind === "read") frameUsed = true;
     return `$authorizer(${JSON.stringify(entity.fqn)}, ${JSON.stringify(action.name)}, ${specs}${action.kind === "read" ? ", frame" : ""})`;
   };
@@ -383,7 +383,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
       const inputType = loads ? `$Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
       const generics = loads ? loadGenerics(entity, true) : "";
-      // A caller's load runs the read policies of what it reaches (POL-17), so a `belongs-to` it may not read is null; `privileged` runs none.
+      // A caller's load runs the read policies of what it reaches, so a `belongs-to` it may not read is null; `privileged` runs none.
       const tx = txLoadTypes(entity);
       const returnType = loads ? `(L extends unknown ? ${recordName}With<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
       const txReturnType = loads ? `(L extends unknown ? ${tx.with}<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
@@ -394,7 +394,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         extraTypes.add(`${recordName}LoadArg`);
         extraTypes.add(`${recordName}Loadable`);
       }
-      // `policies` is true only from the read action below: a `privileged` read loads everything (TXN-16).
+      // `policies` is true only from the read action below: a `privileged` read loads everything.
       // The read action casts the input for its policies and hands the result over as `cast` (R2-N4), so it is cast once.
       const castParam = `, cast?: $CastOutput<typeof ${validator}>`;
       const body = { name, inputType, generics,
@@ -408,7 +408,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them",
         "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
         "const $actor = $context.actor;",
-        // ACT-29: the instant of the transaction the read joins, else its own, pinned on its first read.
+        // the instant of the transaction the read joins, else its own, pinned on its first read.
         "const $clock = frame.clock(options.clock);",
         // The checks see the input as the action does, cast; an invalid input is reported as one, denied or not.
         `const $parsed = await $castInput(layer, ${validator}, input);`,
@@ -452,7 +452,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
               "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
               // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
               "const $clock = clock ?? $pinClock(options.clock);",
-              // From the read action, what the rows load runs the read policies of the entity it reaches (POL-17).
+              // From the read action, what the rows load runs the read policies of the entity it reaches.
               `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${txReturnType};`,
             ]
             : [`return (${select}) as ${recordName}[];`]),
@@ -468,7 +468,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const checks = blocks.flatMap((block) => block.validate);
     const writes = action.kind !== "destroy";
     const steps = stepsFor(action, blocks.flatMap((block) => block.steps));
-    // ---- policies (M8): the checks that read the record run inside the transaction, before validate (POL-08) ----
+    // ---- policies (M8): the checks that read the record run inside the transaction, before validate ----
     const recordPolicies = covering.flatMap((policy) => policyExpressions(policy).map(({ expression }) => expression)).filter((expression) => readsRecord(expression));
     const policyNeeds = [...new Set(recordPolicies.flatMap((expression) => expression.needs ?? []))].sort();
     // ---- end policies ------------------------------------------------------------------------------------------
@@ -522,10 +522,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     };
     flagWhens(steps);
 
-    // The member inputs (`&x`), applied to the record once the checks have passed (ACT-27): the checks see `self` as it is.
+    // The member inputs (`&x`), applied to the record once the checks have passed: the checks see `self` as it is.
     const applied: string[] = [];
     if (action.kind === "create") {
-      // the new instance: its key, the defaults, the stamped timestamps and null where nothing fills it yet (ACT-27)
+      // the new instance: its key, the defaults, the stamped timestamps and null where nothing fills it yet
       head.push("// plan: a create is one insert; nothing is read first");
       // With no check or step, nothing sees the instance before the input, so the row is built with the input in it.
       const seen = checks.length > 0 || steps.length > 0;
@@ -585,7 +585,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         head.push(`if ($wantsChanges(options.seams) && $before === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
       }
       if (reads) {
-        // The data layer returns an untyped row; it is the stored record, typed as one so that every column is itself (ENT-18).
+        // The data layer returns an untyped row; it is the stored record, typed as one so that every column is itself.
         head.push(`const $before = (await tx.selectByKeyForUpdate(${table}, ${KEY})) as $Record | undefined;`);
         head.push(`if ($before === undefined) throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`);
         // the stored record, as the checks see it; the accepted input is applied after them
@@ -601,7 +601,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
 
     // ---- policies (M8): the checks that read the record, before validate ------------------------------------
     if (recordPolicies.length > 0) {
-      emit("// policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails");
+      emit("// policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails");
       loadFor(policyNeeds, "$record", action.kind === "create" ? "{ ...$load, newInstance: true }" : "$load");
       used.scope = true;
       runtime.add("checkScope");
@@ -617,7 +617,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       runtime.add("checkScope");
       runtimeTypes.add("Issue");
       emit("const $issues: $Issue[] = [];");
-      // A check sees no `before` (ACT-01, ACT-27): `self` there is the record before the input.
+      // A check sees no `before`: `self` there is the record before the input.
       emit("const $checks = $checkScope($s);");
       // On a create the record is the new instance: a required relationship the input has not filled yet is null on it.
       loadFor(checkNeeds, "$record", action.kind === "create" ? "{ ...$load, newInstance: true }" : "$load");
@@ -792,7 +792,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           const present = loadNames.length ? `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>` : recordName;
           returnType = maybeLoadNames.length ? `${present} & $Partial<$Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
-        // The caller gets the result, so what it loads runs the read policies of the entity it reaches (POL-17).
+        // The caller gets the result, so what it loads runs the read policies of the entity it reaches.
         emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, [${result}], [...$loads], { ...$load, policies: true }))[0] as unknown as ${returnType};`);
       } else emit(`return ${result} as ${recordName};`);
     }
@@ -801,7 +801,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // the transaction opens, so they are declared there, and the transaction's functions read the same instant.
     const prelude: string[] = [];
     used.options = true;
-    // One instant per transaction (ACT-29): the policies, the scope's `%.now`, the `$now` stamps, the `load` step, every
+    // One instant per transaction: the policies, the scope's `%.now`, the `$now` stamps, the `load` step, every
     // `Mesh.privileged` read and every action the call makes inside its transaction read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
@@ -830,10 +830,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const statements = ["// transaction: opens here; what follows commits together or not at all", ...prelude, ...head, ...afterHead, ...body];
     // ---- policies (M8): the pre-check, before the transaction opens -------------------------------------------
     const preCheck = [
-      "// pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam",
+      "// pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam",
       "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       "const $actor = $context.actor;",
-      // ACT-29: the instant of the transaction the call joins, else its own, pinned on its first read.
+      // the instant of the transaction the call joins, else its own, pinned on its first read.
       "const $clock = frame.clock(options.clock);",
       `const $policies = ${authorizerCall(action, covering)};`,
       `await $policies.before(layer, ${preScope("parsed", where)});`,
@@ -847,7 +847,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     return { ...base, returnType, txReturnType: returnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: true, statements, isRead: false, seamTarget, readsCall: null, preCheck };
   });
   // What `Mesh.privileged(<Entity>)` returns, and the entity value and those reads as a function of an entity file sees them,
-  // every result deeply read-only (ACT-09). Written out, not mapped, because a read is generic in the names its `load`
+  // every result deeply read-only. Written out, not mapped, because a read is generic in the names its `load`
   // lists and a mapped type would erase that; a read's read-only result is the read-only record intersected with the
   // read-only loaded members, since a deep-readonly conditional type over the generic `L` cannot be related to its twin.
   const txTypes = txLoadTypes(entity);

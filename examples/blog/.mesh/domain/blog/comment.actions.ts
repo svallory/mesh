@@ -40,7 +40,7 @@ import { loadPlan as $loadPlan } from "../../load";
 import { $Date, $Object, type $Omit, type $Pick, type $Promise } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `Mesh.privileged(Comment)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Comment)` runs. The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindCommentReads(
@@ -87,7 +87,7 @@ export function bindCommentReads(
 /**
  * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): an action reads
  * the instant of the transaction it joins from it, and its own transaction runs inside it, so what its functions call
- * joins that transaction and reads its instant (ACT-29).
+ * joins that transaction and reads its instant.
  */
 export function bindComment(
   layer: $DataLayer,
@@ -149,7 +149,7 @@ export function bindComment(
 }
 
 /**
- * The entity value (CMP-16): `Comment.<action>(input, context)` runs the action on the binding in scope, the
+ * The entity value: `Comment.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
 const $entityValue = $entity(
@@ -169,7 +169,7 @@ export { $entityValue as Comment };
 /** The record type, under the entity value's name. */
 export type Comment = $Record;
 
-/** What `Mesh.privileged(Comment)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Comment)` returns: one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: $Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
@@ -177,7 +177,7 @@ export interface $Privileged {
   ): $Promise<L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never>;
 }
 
-/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only. */
 export interface $PrivilegedReadOnly {
   read<const L extends readonly (keyof CommentLoadable)[] = readonly []>(
     input: $Omit<ReadCommentInput, "load"> & CommentLoadArg<L>,
@@ -191,7 +191,7 @@ export interface $PrivilegedReadOnly {
 }
 
 /**
- * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * The entity value as a function of an entity file sees it: what each action resolves with is deeply read-only,
  * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<

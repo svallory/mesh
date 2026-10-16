@@ -1,5 +1,5 @@
 /**
- * Application code an entity file calls takes the instant as a parameter (SYN-29): the entity file passes the current
+ * Application code an entity file calls takes the instant as a parameter: the entity file passes the current
  * transaction's `%.now` or `%.today`, since application code has no transaction of its own to read it from.
  */
 export function stampOf(at: Date, label: string): string {

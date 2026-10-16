@@ -23,7 +23,7 @@ export type ExprNode = (
   | { kind: "call"; fn: FunctionId; args: ExprNode[] }
   /**
    * An imported pure function that does not read the record. `name` is the callee as written: the import's local
-   * (`isStaff`), or a member of a namespace import (`h.isStaff`, SYN-21).
+   * (`isStaff`), or a member of a namespace import (`h.isStaff`).
    */
   | { kind: "helper"; name: string; from: string; args: ExprNode[] }
   | { kind: "quantify"; op: QuantifierId; source: ExprNode; param: string; body: ExprNode }
@@ -56,10 +56,10 @@ export interface SourceEdit {
 
 /**
  * The names the printed function binds what the edits read under (`SourceEdit`): `self` for the record `&name` reads,
- * `now` and `today` for the current transaction's `%.now` and `%.today` (SYN-29). Each is `$self`, `$now` or `$today`, or
+ * `now` and `today` for the current transaction's `%.now` and `%.today`. Each is `$self`, `$now` or `$today`, or
  * that name with a number (`$now1`) when the authored text already spells it, in its code, types, strings or comments: no
  * binding of the author's can hide it, so `&name` is the record's member and `%.now` the transaction's whatever the author
- * names a local (`self`, `$`, `$s`). A name the author writes (`self.title`, `input.id`) keeps JavaScript's scoping (EXP-12).
+ * names a local (`self`, `$`, `$s`). A name the author writes (`self.title`, `input.id`) keeps JavaScript's scoping.
  */
 export interface InternalNames {
   self?: string;
@@ -78,23 +78,23 @@ export interface PlainReason {
    * record through `internal.self`.
    */
   roots: string[];
-  /** The members of the current transaction the authored text reads (`%.now`, `%.today`; SYN-29): `now` and `today`. */
+  /** The members of the current transaction the authored text reads (`%.now`, `%.today`): `now` and `today`. */
   clock?: ("now" | "today")[];
   /** The names the printed function binds the record `&name` reads and the transaction's `%.now` and `%.today` under. */
   internal?: InternalNames;
   /** The authored text reads `Mesh.isSystem` (`Mesh.isSystem(context)`). */
   isSystem?: true;
-  /** The authored text reads `Mesh.privileged` (`Mesh.privileged(Entity)`, TXN-16). */
+  /** The authored text reads `Mesh.privileged` (`Mesh.privileged(Entity)`). */
   privileged?: true;
-  /** The authored text reads `Mesh.checkPolicies` or `Mesh.can` (CMP-21): it asks another action's policies. */
+  /** The authored text reads `Mesh.checkPolicies` or `Mesh.can`: it asks another action's policies. */
   asks?: true;
   /**
-   * The names the file imports `Mesh` under (`import { Mesh } from "meshfw"`, PRJ-22) that the authored text reads, where
+   * The names the file imports `Mesh` under (`import { Mesh } from "meshfw"`) that the authored text reads, where
    * no binding of the function hides them, sorted. The expressions file imports `Mesh` under each, as it imports a helper.
    */
   mesh?: string[];
   /**
-   * The entities the authored text names (CMP-16): the file's own and the ones it imports, by the name the file gives
+   * The entities the authored text names: the file's own and the ones it imports, by the name the file gives
    * them, sorted. The printed function binds each to its entity value, typed so that what it resolves with is read-only.
    */
   entities?: string[];
@@ -102,15 +102,15 @@ export interface PlainReason {
   acts?: true;
   /**
    * The helpers the authored text reads as values (a call, a reference) that it imports from a helper module, by the name
-   * the file imports them under, sorted (POL-21: a policy that names one runs inside the transaction). The expressions file
-   * imports these. A free scope name (`input`, `context`) is the root, never a helper of that name (EXP-12). A helper
+   * the file imports them under, sorted (a policy that names one runs inside the transaction). The expressions file
+   * imports these. A free scope name (`input`, `context`) is the root, never a helper of that name. A helper
    * named only in a type (`const x: Money`, `typeof fmt`) is not here: MX strips the types from the node the front end
    * reads, so the TypeScript back end finds it in the printed function and imports it as a type.
    */
   helpers?: string[];
   /**
-   * The authored text calls the global `structuredClone`, which no binding of the function and no import of the file hides
-   * (PRJ-20). It cannot copy the read-only views the function is handed (they are proxies), so the printed function binds
+   * The authored text calls the global `structuredClone`, which no binding of the function and no import of the file hides.
+   * It cannot copy the read-only views the function is handed (they are proxies), so the printed function binds
    * it to `cloneValue`, which can.
    */
   structuredClone?: true;
@@ -142,7 +142,7 @@ export interface FunctionSpec {
    */
   nullResult: "propagates" | "never" | "all-operands" | "branches";
   /**
-   * The indexes of the operands the in-memory evaluation evaluates only when the others let it (EXP-03): the right side of
+   * The indexes of the operands the in-memory evaluation evaluates only when the others let it: the right side of
    * `&&`, `||` and `??`, and both branches of `?:`. The generated code passes each as a thunk (`() => ...`), so an imported
    * helper behind a guard runs only when the guard lets it. An unknown (`null`) guard still evaluates the operand, as SQL
    * would. Absent: every operand is evaluated first.

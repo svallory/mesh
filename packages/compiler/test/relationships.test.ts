@@ -91,7 +91,7 @@ describe("a relationship to an unknown entity (acceptance 6)", () => {
 // Membership with three belongs-to back to Collaborator, none named `collaborator`: the ladder cannot guess.
 const unnamed = () => membership().replace("belongs-to :collaborator", "belongs-to :holder");
 
-describe("inverse (acceptance 2, ADR-0070, DOM-32)", () => {
+describe("inverse (acceptance 2, ADR-0070)", () => {
   test("several candidates, one named after the entity: it is followed with no option", () => {
     const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": membership() });
     expect(result.diagnostics).toEqual([]);
@@ -199,7 +199,7 @@ entity :Membership
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_INVERSE_REQUIRED", message: expect.stringContaining("a has-one takes no inverse") })]);
   });
 
-  describe("a has-many or has-one needs a belongs-to back (DOM-34)", () => {
+  describe("a has-many or has-one needs a belongs-to back", () => {
     const bare = "entity :Membership\n  attributes\n    uuid :id primary-key\n";
     const expected = (kind: string) => [expect.objectContaining({
       code: "MESH_NO_INVERSE",
@@ -327,7 +327,7 @@ describe("helper names that collide with generated internals", () => {
     const result = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
     expect(codes(result as never)).toEqual(["MESH_HELPER_NAME"]);
   });
-  // CMP-06 holds for an entity's alias too: `$b$List$value` is the local generated code imports b.List's value under,
+  // The refusal of a `$` at the start of an import binding holds for an entity's alias too: `$b$List$value` is the local generated code imports b.List's value under,
   // so `import { List as $b$List$value }` would make the function bind the name to itself.
   test.each(["$b$List$value", "$List", "l$List"])("an entity import aliased %s is a build error at the alias", (alias) => {
     const list = "entity :List\n  attributes\n    uuid :id primary-key\n";

@@ -1,4 +1,4 @@
-// Lazy guards (EXP-03, operator 2026-10-14), end to end. The fixture (`fixtures/lazy-guards/domain/gate`) calls an imported
+// Lazy guards, end to end. The fixture (`fixtures/lazy-guards/domain/gate`) calls an imported
 // helper behind `&&`, `||`, `??` and `?:` in translated `set` expressions. The helper counts its calls and throws when it
 // should have been kept from running. The project is built by the real `mesh` command, type-checked by tsc under the
 // strictest flags, and run on SQLite in memory.

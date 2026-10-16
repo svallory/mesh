@@ -90,7 +90,7 @@ test("a rollup through a belongs-to needs a join too", () => {
   expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_NOT_IMPLEMENTED", message: expect.stringContaining("goes through a belongs-to") })]);
 });
 
-test("a rollup over a relationship that nothing points back at is the one MESH_NO_INVERSE, at the has-many line (DOM-34)", () => {
+test("a rollup over a relationship that nothing points back at is the one MESH_NO_INVERSE, at the has-many line", () => {
   const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :lineCount of=&lines\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
@@ -194,7 +194,7 @@ test.each([
   });
 });
 
-// SYN-28: `of=` is a member reference. The string form is one build error, with the fix in the message.
+// `of=` is a member reference. The string form is one build error, with the fix in the message.
 test.each([
   ["count", "lines", "of=&lines"],
   ["max", "lines.amount", "of=&lines.amount"],

@@ -5,7 +5,7 @@ import type { ActionFrame } from "./entity.ts";
 import { authorizer, type PolicySpec } from "./policy.ts";
 
 /**
- * The computed field being evaluated right now, synchronously (TXN-18): a computed body is a synchronous function, so an
+ * The computed field being evaluated right now, synchronously: a computed body is a synchronous function, so an
  * entity call or a `privileged` read made from it, directly or through a helper, starts while this is set, with or
  * without a binding's frame. `entity.ts` refuses such a call.
  */
@@ -36,10 +36,10 @@ function evaluating<T>(what: string, fn: () => T): T {
  * - A `count` or `max` rollup calls the data layer's `count` and `max` once per row. That is one query
  *   per row until M10 translates rollups into one statement.
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
- *   reaches, with the caller's scope (POL-17): a relationship to an entity they do not admit is `[]` (has-many) or `null`
+ *   reaches, with the caller's scope: a relationship to an entity they do not admit is `[]` (has-many) or `null`
  *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
  *   so a denied name is not queried at all. What a computed field's body reads, and anything read through `privileged`,
- *   runs no policy (POL-19, TXN-16): a body is the entity's own rule, so it sees every related row.
+ *   runs no policy: a body is the entity's own rule, so it sees every related row.
  */
 export interface BelongsToPlan {
   kind: "belongs-to";
@@ -76,7 +76,7 @@ export type ComputedPlan =
 export interface EntityPlan {
   table: TableHandle;
   /**
-   * The read policies a load of this entity runs (POL-17): those that cover its reads by type (`types=[:read]`, or no
+   * The read policies a load of this entity runs: those that cover its reads by type (`types=[:read]`, or no
    * scope). Left out or empty, no policy covers a load of it, and a caller's load of it gives nothing.
    */
   reads?: readonly PolicySpec[];
@@ -97,17 +97,17 @@ export interface LoadOptions {
   clock?: Clock | undefined;
   /**
    * `loadRows` only: the names are what a caller asked for, so each relationship and rollup runs the read policies of the
-   * entity it reaches, with `actor` and `context` (POL-17). A `privileged` read and a computed field's own loads leave it out.
+   * entity it reaches, with `actor` and `context`. A `privileged` read and a computed field's own loads leave it out.
    */
   policies?: boolean | undefined;
   /**
-   * The binding's frame (TXN-18): each computed body runs marked with it, so a `privileged` read made while one is
+   * The binding's frame: each computed body runs marked with it, so a `privileged` read made while one is
    * evaluated throws, and so do the read policies a load runs. Left out (a `load<Entity>Fields` call), a computed body is
    * still marked while it runs synchronously, which is all a computed body does.
    */
   frame?: Pick<ActionFrame, "marked"> | undefined;
   /**
-   * `loadInto` only: the record is a create's new instance before the input is applied (ACT-27), so a required
+   * `loadInto` only: the record is a create's new instance before the input is applied, so a required
    * `belongs-to` whose key the input has not filled yet is null on it instead of an error.
    */
   newInstance?: boolean | undefined;
@@ -139,7 +139,7 @@ export async function loadRows(
   // Decided before anything loads: a name the caller is not admitted to is not queried, so a denied caller learns
   // nothing from it, not even that a required belongs-to points at a row that is gone.
   const denied = options.policies ? await deniedNames(plan, entity, names, options) : new Map<string, unknown>();
-  // Unless a computed body the caller named reads it for itself (POL-19): it is loaded for the body, and taken off below.
+  // Unless a computed body the caller named reads it for itself: it is loaded for the body, and taken off below.
   const forBodies = denied.size ? readByBodies(entityPlan, names) : new Set<string>();
   if (rows.length) for (const name of names) if (denied.has(name) && !forBodies.has(name)) assertServable(plan, entity, entityPlan, name);
   const loads = names.filter((name) => !denied.has(name) || forBodies.has(name));
@@ -241,7 +241,7 @@ async function ensureField(
 ): Promise<void> {
   if (depth > MAX_DEPTH)
     throw new FrameworkError(`Loading ${entity}#${name} went more than ${MAX_DEPTH} levels deep: a computed field reads itself through rows that lead back to each other`);
-  // Own members only: a field may be named like a member of `Object.prototype` (`toString`, ENT-18), which every row inherits.
+  // Own members only: a field may be named like a member of `Object.prototype` (`toString`), which every row inherits.
   const todo = rows.filter((row) => !Object.hasOwn(row, name));
   if (todo.length === 0) return;
   const entityPlan = planOf(plan, entity);
@@ -311,7 +311,7 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
   };
   const guard: Work = new Proxy(row, {
     // A field is loaded when the row holds it as its own: a relationship or computed field named like a member of
-    // `Object.prototype` (`constructor`, `toString`: ENT-18) is not loaded because every row inherits that member.
+    // `Object.prototype` (`constructor`, `toString`) is not loaded because every row inherits that member.
     get(target, key, receiver) {
       if (typeof key !== "string") return Reflect.get(target, key, receiver);
       if (!Object.hasOwn(target, key)) {
@@ -428,7 +428,7 @@ function unwrapped(value: unknown, seen: Map<object, unknown>): unknown {
   if (prototype !== Object.prototype && prototype !== null) return original;
   const object: Record<string, unknown> = {};
   seen.set(original, object);
-  // `defineProperty`, not `object[key] = ...`: a `json` value may hold an own `__proto__` key (ENT-19), and assigning to that
+  // `defineProperty`, not `object[key] = ...`: a `json` value may hold an own `__proto__` key, and assigning to that
   // name on an ordinary object changes its prototype instead of making a property (and drops the key).
   for (const [key, member] of Object.entries(original))
     Object.defineProperty(object, key, { value: unwrapped(member, seen), writable: true, enumerable: true, configurable: true });
@@ -550,7 +550,7 @@ async function rollup(
  * Returns the filter to hand the data layer: the caller's, less every computed field whose comparison is `undefined`,
  * at any depth under `and` and `or`. Such a field is one left out: a generated filter type writes it as
  * `toString?: $Comparison<string> | undefined`, and a filter literal leaves out one named like a member of the Object
- * interface (`toString`, `valueOf`: ENT-18) only by giving it as `undefined`. The data layer has no column for it, so it
+ * interface (`toString`, `valueOf`) only by giving it as `undefined`. The data layer has no column for it, so it
  * never sees it. A stored column given as `undefined` stays: the data layer leaves it out (`Filter`). A filter with
  * nothing to take out is returned as it is.
  */

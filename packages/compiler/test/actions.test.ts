@@ -127,9 +127,9 @@ describe("actions view", () => {
     expect(create.statements.slice(1)).toEqual([
       "const $now = $clock();",
       "// plan: a create is one insert; nothing is read first",
-      // ENT-18: typed with the record's own columns, so a column named `toString` is that column, not the inherited method
+      // typed with the record's own columns, so a column named `toString` is that column, not the inherited method
       "const $changes: $Omit<$Record, \"title\" | \"authorId\"> & { title: $Record[\"title\"] | null; authorId: $Record[\"authorId\"] | null } = {",
-      // ACT-27: the uuid key is filled when the instance is built, not by the data layer at the write
+      // the uuid key is filled when the instance is built, not by the data layer at the write
       "id: $uuidv7(),",
       "body: null,",
       "views: 0,",
@@ -176,7 +176,7 @@ describe("actions view", () => {
     expect(text).toContain('if ($before === undefined) throw new $NotFoundError("blog.Article", $key);');
     expect(text).toContain('if ($Object.hasOwn(parsed, "title") && parsed.title !== undefined) $changes.title = $record.title = parsed.title;');
     expect(text).toContain('if ($Object.hasOwn(parsed, "editor") && parsed.editor !== undefined) $changes.editorId = $record.editorId = parsed.editor;');
-    // ACT-01: the checks see the stored record; the input is applied after them, before the steps and the write
+    // the checks see the stored record; the input is applied after them, before the steps and the write
     const at = (line: string) => rename!.statements.findIndex((statement) => statement.startsWith(line));
     expect(at("await $runCheck")).toBeGreaterThan(at("const $record: $Record = { ...$before };"));
     expect(at('if ($Object.hasOwn(parsed, "title") && parsed.title !== undefined)')).toBeGreaterThan(at("if ($issues.length > 0)"));
@@ -204,7 +204,7 @@ describe("actions view", () => {
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
-      // Through `tx` no policy runs, so the author is always there: the body is typed with `ArticleTxWith` (POL-17).
+      // Through `tx` no policy runs, so the author is always there: the body is typed with `ArticleTxWith`.
       "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       'const $clock = clock ?? $pinClock(options.clock);',
@@ -286,7 +286,7 @@ describe("build errors", () => {
     expect(purge.statements.join("\n")).toContain('label: "reasoned"');
   });
 
-  test("two entities of one name in two modules build: each actions file declares its own bindAb and value (PRJ-15)", () => {
+  test("two entities of one name in two modules build: each actions file declares its own bindAb and value", () => {
     // The whole case, built and run on SQLite, is the CLI's same-name fixture (packages/cli/test/same-name.test.ts).
     const a = "entity :Ab\n  attributes\n    uuid :id primary-key\n  actions\n    read :cd\n";
     const files = actionsGenerator.views(inputOf(documentOf({ "x/ab.mesh.mx": a, "y/ab.mesh.mx": a.replace("entity :Ab", "entity :Ab table=\"y_ab\"") })));
@@ -296,7 +296,7 @@ describe("build errors", () => {
     ]);
   });
 
-  test("actions that one flat name would have spelled alike build: an action is called on its entity (CMP-16)", () => {
+  test("actions that one flat name would have spelled alike build: an action is called on its entity", () => {
     const one = "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n";
     const two = "entity :ForUserItem\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const three = "entity :UserItem\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n";

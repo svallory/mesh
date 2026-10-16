@@ -6,9 +6,9 @@ import { orderedEntities, outputPrefix } from "./order.ts";
 /**
  * `<module>/<entity>.actions.ts` per entity: `bind<Entity>(layer)`, one method per
  * action with its steps written out, the entity value with the record type under the
- * entity's name (CMP-16) and the entity's load function. It imports the entity's types and
+ * entity's name and the entity's load function. It imports the entity's types and
  * validators, `tables` from the data adapter's `schema.ts`, the load plan and `@meshfw/runtime`.
- * Every name it declares is its own: the barrel that re-exports some of them keeps those unique (CMP-05).
+ * Every name it declares is its own: the barrel that re-exports some of them keeps those unique.
  */
 export const actionsGenerator: Generator<ActionsView> = {
   name: "actions",

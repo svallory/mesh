@@ -120,7 +120,7 @@ test.each([false, true])("parseInput propagates validator exceptions unchanged (
   await expect(parseInput(validator, {})).rejects.toBe(cause);
 });
 
-// ENT-18: a member input may be named like a member of Object.prototype. The validator must not read the inherited
+// a member input may be named like a member of Object.prototype. The validator must not read the inherited
 // method for a key the caller left out; the action gets ordinary objects, as the caller writes them.
 test("castInput hands the validator plain objects without a prototype, and the action ordinary ones", async () => {
   const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
@@ -145,8 +145,8 @@ test("castInput hands the validator plain objects without a prototype, and the a
   expect(parsed instanceof Object).toBe(true);
   expect(parsed.hasOwnProperty("label")).toBe(true);
   expect(String(parsed)).toBe("[object Object]");
-  // So a member named like a member of Object.prototype that the caller left out reads the inherited one (the cost
-  // ENT-18 accepts); generated code tells a given member by `Object.hasOwn`.
+  // So a member named like a member of Object.prototype that the caller left out reads the inherited one (the accepted cost);
+  // generated code tells a given member by `Object.hasOwn` (lead, ENT-18).
   expect(parsed.toString).toBe(Object.prototype.toString);
   expect(Object.hasOwn(parsed, "toString")).toBe(false);
   expect(Object.getPrototypeOf(parsed.filter)).toBe(Object.prototype);

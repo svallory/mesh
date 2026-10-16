@@ -1,4 +1,4 @@
-// M5, part 2: action composition (ADR-0068, CMP-16, TXN-16). A domain whose functions call other actions through the
+// M5, part 2: action composition (ADR-0068). A domain whose functions call other actions through the
 // entity values they import, each with the context it passes, read through `privileged`, run after the row is written
 // (`run [after=:write]`) and open an application transaction, built, generated, pushed to SQLite and called through the
 // generated functions. Account and Entry import each other.
@@ -359,7 +359,7 @@ export async function auditInTransaction(what: string): Promise<number> {
 }
 `;
 
-/** \`Audit\`'s computed field calls this: the privileged read it makes is refused while the field is evaluated (TXN-18). */
+/** \`Audit\`'s computed field calls this: the privileged read it makes is refused while the field is evaluated. */
 const peek = `import { Audit } from "../../.mesh/domain/index.ts";
 import { Mesh } from "@meshfw/runtime";
 export function peek(): boolean {
@@ -607,7 +607,7 @@ describe("after=:write", () => {
   });
 });
 
-describe("the afterWrite seam (ACT-09)", () => {
+describe("the afterWrite seam", () => {
   test("is application code: a privileged read and an entity call it makes resolve with plain values, while the action's steps still get read-only ones", async () => {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, app.tables);
@@ -719,7 +719,7 @@ describe("context", () => {
   });
 });
 
-describe("a computed field (TXN-18)", () => {
+describe("a computed field", () => {
   test("a privileged read made while it is evaluated, even from an imported function, throws and names the field", async () => {
     const world = await fresh();
     try {
@@ -823,7 +823,7 @@ describe("the application transaction", () => {
     } finally { await world.db.close(); }
   });
 
-  test("it carries no context: each call gets the one it passes, or none (TXN-20)", async () => {
+  test("it carries no context: each call gets the one it passes, or none", async () => {
     const world = await fresh();
     try {
       await world.mesh.transaction(async () => {

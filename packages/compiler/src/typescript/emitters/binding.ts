@@ -3,7 +3,7 @@ import { bindingView, type BindingView } from "../views/binding.ts";
 import { outputPrefix } from "./order.ts";
 
 /**
- * `<output>/binding.ts`, one per build: `bind`, which binds every entity value the root barrel reaches (PRJ-13), the
+ * `<output>/binding.ts`, one per build: `bind`, which binds every entity value the root barrel reaches, the
  * default binding `connect()` opens and `disconnect()` closes, `transaction`, and the `Binding` type (ADR-0047,
  * ADR-0068). `#mesh` re-exports them.
  */

@@ -108,7 +108,7 @@ describe("M1 test 3: guard differences", () => {
     expect(run(root, "build", "--check")).toEqual(expected);
     expect(await readFile(join(root, "generated/.old/stale.ts"), "utf8")).toBe("keep me");
   }, 30_000);
-  test("CMP-17: a new action leaves the module's barrel stale, and the guard names it", async () => {
+  test("a new action leaves the module's barrel stale, and the guard names it", async () => {
     const root = await builtProject();
     const index = "generated/domain/todos/index.ts";
     const before = await readFile(join(root, index), "utf8");
@@ -122,7 +122,7 @@ describe("M1 test 3: guard differences", () => {
     expect(await readFile(join(root, index), "utf8")).toContain("export type { CreateTodoInput, RenameTodoInput } from \"./todo.types\";");
     expect(run(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
   }, 30_000);
-  test("CMP-17: an entity moved to another module leaves the old module's index behind, which build and guard refuse until it is deleted", async () => {
+  test("an entity moved to another module leaves the old module's index behind, which build and guard refuse until it is deleted", async () => {
     const root = await builtProject();
     await mkdir(join(root, "domain/tasks"));
     await rename(join(root, sourcePath), join(root, "domain/tasks/todo.mesh.mx"));
@@ -227,7 +227,7 @@ test("inspect prints precisely the built model bytes or the named entity with th
   expect(run(root, "inspect")).toEqual({ code: 0, stdout: bytes, stderr: "0 errors, 0 warnings\n" });
   expect(run(root, "inspect", "Todo")).toEqual({ code: 0, stdout: `${stableJsonStringify(document.entities[0])}\n`, stderr: "0 errors, 0 warnings\n" });
   expect(run(root, "inspect", "todo").code).toBe(1);
-  // PRJ-16: the full FQN and the shortened name pick the same entity, case-sensitively; the output names it by FQN (PRJ-17).
+  // the full FQN and the shortened name pick the same entity, case-sensitively; the output names it by FQN.
   expect(run(root, "inspect", "todos.Todo").stdout).toBe(run(root, "inspect", "Todo").stdout);
   expect(JSON.parse(run(root, "inspect", "Todo").stdout)).toMatchObject({ name: "Todo", fqn: "todos.Todo", module: "todos" });
   expect(run(root, "inspect", "Todos.Todo").code).toBe(1);
@@ -694,7 +694,7 @@ test("importing meshfw loads the runtime's defineConfig and no compiler code (AD
 test.each([["build"], ["build", "--check"], ["inspect"], ["inspect", "Item"], ["explain", "Item", "forUser"]].map((args) => ({ args })))("MESH_EMIT_NAME exits 1 with the diagnostic on stderr: mesh $args", async ({ args }) => {
   const root = await project();
   await mkdir(join(root, "domain/todos/Item"), { recursive: true });
-  // An entity and a folder of one name in one barrel (CMP-05): both would be exported as Item from #mesh/domain/todos.
+  // An entity and a folder of one name in one barrel: both would be exported as Item from #mesh/domain/todos.
   await writeFile(join(root, "domain/todos/item.mesh.mx"), "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    read :forUser\n");
   await writeFile(join(root, "domain/todos/Item/part.mesh.mx"), "entity :Part\n  attributes\n    uuid :id primary-key\n  actions\n    read :for\n");
   const result = run(root, ...args);

@@ -1,4 +1,4 @@
-// ENT-19: a `json` value keeps every key it is given, an own `__proto__` key included, at any depth, from the caller to
+// a `json` value keeps every key it is given, an own `__proto__` key included, at any depth, from the caller to
 // the database and back; no prototype changes because of the data. The refusals of the old `z.json()` are pinned too.
 // A domain with json attributes is built, generated, pushed to SQLite and called through the generated functions.
 import { Database } from "bun:sqlite";

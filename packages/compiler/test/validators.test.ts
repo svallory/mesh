@@ -228,7 +228,7 @@ test("validator drift tripwires catch keys, requiredness, nullability and scalar
   );
 }, 60_000);
 
-// ENT-18: any member name but `__proto__`. The names of Object.prototype's members and of a function's build.
+// any member name but `__proto__`. The names of Object.prototype's members and of a function's build.
 const OBJECT_MEMBER_NAMES = [
   "constructor", "toString", "valueOf", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString",
   "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",

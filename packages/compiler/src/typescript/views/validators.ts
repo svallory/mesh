@@ -80,8 +80,8 @@ export const VALIDATOR_TYPES = {
   timestamp: "z.date()",
   enum: "z.string()",
   // Any JSON value, no shape; the cast gives the input type `unknown` (ADR-0069). `null` is JSON, and the model
-  // marks every json attribute and argument nullable (ENT-03), so the field adds `.nullable()` and `.optional()`.
-  // `jsonValue` (the runtime's) accepts what `z.json()` accepted and keeps every key, `__proto__` included (ENT-19),
+  // marks every json attribute and argument nullable, so the field adds `.nullable()` and `.optional()`.
+  // `jsonValue` (the runtime's) accepts what `z.json()` accepted and keeps every key, `__proto__` included,
   // which `z.json()` drops; the file imports it as `$jsonValue` (`ValidatorsView.json`).
   json: "(z.unknown().transform($jsonValue) as z.ZodType<unknown>)",
 } as const satisfies Record<AttributeType, string>;

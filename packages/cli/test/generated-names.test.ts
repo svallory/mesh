@@ -1,4 +1,4 @@
-// PRJ-20 end to end: entities named after the globals generated code uses (`Promise`, `Partial`, `Date` with a
+// End to end: entities named after the globals generated code uses (`Promise`, `Partial`, `Date` with a
 // `timestamp`, `Object`, `Record`, `Pick`, `Omit`, `Set`, `RegExp`, `Map`, `Boolean`), built by the real `mesh` command
 // on the SQLite adapter, type-checked by tsc under the strictest flags and run on SQLite in memory. The fixture
 // (`fixtures/generated-names/domain/globals`) gives each one a create with a `match=` attribute and a belongs-to to the
@@ -6,8 +6,8 @@
 // `Record` imports `Date` as `structuredClone` and `Set` imports `Map` as `isSystem`, and each counts that entity's rows
 // in a `set` step. Generated code reaches the globals it needs through `.mesh/$globals.ts` under `$` names,
 // `structuredClone` is shadowed by an import of that name, as a JavaScript global would be, and an import named like one of
-// Mesh's functions is only that import: Mesh's functions are members of `Mesh` (PRJ-22), which `Date` imports from meshfw.
-// `Boolean` imports `Map` as `context` and a helper named `input` (EXP-12): inside its functions the scope roots
+// Mesh's functions is only that import: Mesh's functions are members of `Mesh`, which `Date` imports from meshfw.
+// `Boolean` imports `Map` as `context` and a helper named `input`: inside its functions the scope roots
 // shadow both, as parameters would, and its `when` step, which holds an after-write `run`, keeps its condition in a flag.
 // Its computed field names two helpers only in types (`Count`, `typeof tally`), which the expressions file imports as types.
 // Its `typed` check imports a helper under an alias (`shout as loudly`), reads the root `input` only in a type (`typeof
@@ -37,7 +37,7 @@ const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
 export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
 `;
-/** The project's `src/context.ts` (PRJ-12): `context` and `actor` are typed by it, so a function reads only what it declares. */
+/** The project's `src/context.ts`: `context` and `actor` are typed by it, so a function reads only what it declares. */
 const CONTEXT = `import "@meshfw/runtime";
 
 declare module "@meshfw/runtime" {
@@ -161,7 +161,7 @@ describe("entities named after the globals generated code uses", () => {
     expect(await generated("domain/globals/date.expressions.ts")).toContain("$.now(");
   });
 
-  test("an import named like a scope root is the root inside a function, as a parameter of that name would be (EXP-12)", async () => {
+  test("an import named like a scope root is the root inside a function, as a parameter of that name would be", async () => {
     // Boolean imports Map as `context` and a helper named `input`: its `set` step reads both roots, binds them from the
     // scope only, and the file imports neither Map's value nor the helper `input`, which no function names.
     const expressions = await generated("domain/globals/boolean.expressions.ts");

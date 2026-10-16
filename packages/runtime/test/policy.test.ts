@@ -23,7 +23,7 @@ async function decide(policies: PolicySpec[]): Promise<ForbiddenError | "allowed
   }
 }
 
-describe("POL-03: policies combine without order", () => {
+describe("policies combine without order", () => {
   test("no policy: forbidden, and the error shows an open policy", async () => {
     const error = await decide([]);
     expect(error).toBeInstanceOf(ForbiddenError);
@@ -39,7 +39,7 @@ describe("POL-03: policies combine without order", () => {
     ["any authorize-if that holds is enough", [allow(false), allow(true)], true],
     ["only a forbid-if that does not hold: passes", [forbid(false)], true],
     ["a forbid-if that holds forbids", [forbid(true)], false],
-    ["an unknown forbid-if forbids (POL-04)", [forbid(null)], false],
+    ["an unknown forbid-if forbids", [forbid(null)], false],
     ["a forbid-if that holds beats an authorize-if that holds", [allow(true), forbid(true)], false],
     ["authorize-if holds and forbid-if does not", [allow(true), forbid(false)], true],
   ];
@@ -62,7 +62,7 @@ describe("POL-03: policies combine without order", () => {
     expect(await decide([policy("a", [allow(true)]), policy("b", [forbid(false)])])).toBe("allowed");
   });
 
-  test("POL-16: a policy with no check fails, so a policy object the compiler did not build opens nothing", async () => {
+  test("a policy with no check fails, so a policy object the compiler did not build opens nothing", async () => {
     for (const policies of [[policy("p", [])], [policy("p", [], when(true))], [policy("p", []), policy("q", [allow(true)])]]) {
       const error = (await decide(policies)) as ForbiddenError;
       expect(error).toBeInstanceOf(ForbiddenError);
@@ -206,7 +206,7 @@ describe("a read's policies are a filter", () => {
       expect(await authorizer("Post", "read", [policy("members", [allow(false)], w)]).filter(layer, {})).toBe(false);
   });
 
-  test("a load's policies (POL-17): admitted or not, never an error; none covering admits no one; one reading the record is the M10 error", async () => {
+  test("a load's policies: admitted or not, never an error; none covering admits no one; one reading the record is the M10 error", async () => {
     expect(await authorizer("Comment", "read", [policy("a", [allow(true)])]).admits({})).toBe(true);
     expect(await authorizer("Comment", "read", [policy("a", [allow(false)])]).admits({})).toBe(false);
     expect(await authorizer("Comment", "read", [policy("a", [allow(true)], when(false))]).admits({})).toBe(false);
@@ -221,7 +221,7 @@ describe("a read's policies are a filter", () => {
   });
 });
 
-test("TXN-18: a read policy's checks run marked, so a privileged read inside throws; a write's checks do not", async () => {
+test("a read policy's checks run marked, so a privileged read inside throws; a write's checks do not", async () => {
   const marks: string[] = [];
   const frame = { marked: <T>(what: string, fn: () => T): T => (marks.push(what), fn()) };
   const read = authorizer("blog.Post", "read", [policy("public", [allow(true)], when(true))], frame);

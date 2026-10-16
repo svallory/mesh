@@ -62,7 +62,7 @@ export type ReadSessionReferenceInput<N extends keyof SessionReferenceLoadable =
 /**
  * What a caller's `load` attaches to a SessionReference. The record has none of it, so reading one that was not loaded is a type error.
  * A caller's load runs the read policies of the entity it reaches: a related record the caller may not read is null, a list of them empty.
- * A computed field's body does not (POL-19): it is the entity's own rule, so it reads every related record, and what it
+ * A computed field's body does not: it is the entity's own rule, so it reads every related record, and what it
  * returns is shown to every caller who may read a SessionReference. Return only what each such caller may see.
  */
 export type SessionReferenceLoadable = {

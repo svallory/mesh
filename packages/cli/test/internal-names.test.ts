@@ -1,4 +1,4 @@
-// SYN-29 end to end, the PR #100 review: what Mesh's own edits read in plain code is bound under names the authored text
+// End to end, the PR #100 review: what Mesh's own edits read in plain code is bound under names the authored text
 // does not spell, so no local or parameter of the author's hides it. `&name` is the record's member and `%.now` and
 // `%.today` are the current transaction's instant and date whatever the author names a local: `$` or `$s` (the names
 // generated code gives the run-time functions and the scope), `self` (the root `&name` once read), or an `any`-typed

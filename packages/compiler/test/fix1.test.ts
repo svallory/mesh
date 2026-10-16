@@ -55,7 +55,7 @@ test("fix10: import diagnostics distinguish duplicates, forms and relative paths
   // A wrong imported name is positioned at the name, an alias is not what is wrong.
   const wrongAlias = buildModel(project('import { Usr as List } from "./list.mesh.mx"\n' + keyed));
   expect(wrongAlias.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_UNKNOWN_IMPORT", 1, 9]]);
-  // A default or side-effect import is neither form (SYN-21); a namespace import is one, and is accepted.
+  // A default or side-effect import is neither form; a namespace import is one, and is accepted.
   for (const declaration of ['import List from "./list.mesh.mx"', 'import "./list.mesh.mx"', 'import List, * as lists from "./list.mesh.mx"']) {
     expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace: `import { List } from …` or `import * as billing from …`" })]);
   }

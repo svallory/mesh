@@ -1,4 +1,4 @@
-// PRJ-22 packaging. Application code imports `Mesh` from meshfw at run time, so a project whose run-time code does needs
+// Packaging (lead, PRJ-22). Application code imports `Mesh` from meshfw at run time, so a project whose run-time code does needs
 // meshfw as a regular dependency. Every Mesh package that uses @meshfw/runtime (meshfw, the compiler and the data
 // packages, not only meshfw) must share the project's one copy of it: the entity symbol and the WeakMaps behind
 // `Mesh.privileged` are private to each copy, so a second copy makes `Mesh.privileged(Task)` throw.

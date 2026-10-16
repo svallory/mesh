@@ -14,15 +14,15 @@ export type { Decision } from "./answer.ts";
 export type ActionFunction<I = never> = (input: I, context: ActionContext) => Promise<unknown>;
 
 /**
- * Mesh's own functions (PRJ-22), one frozen object, so that no name an application or an entity file chooses can collide
+ * Mesh's own functions, one frozen object, so that no name an application or an entity file chooses can collide
  * with them: `import { Mesh } from "meshfw"`, then `Mesh.isSystem(context)` and `Mesh.privileged(Task)`. An entity file
  * imports it the same way, and the expressions Mesh generates from the file call the same functions. The instant is not
- * here (SYN-29): an entity file reads the current transaction's as `%.now` and `%.today`, and application code that needs
+ * here: an entity file reads the current transaction's as `%.now` and `%.today`, and application code that needs
  * it takes it as a parameter, which the entity file passes (`dueIn(%.today, 30)`).
  */
 export interface MeshFunctions {
   /**
-   * The reads of an entity with no policy run (TXN-16, TXN-17): `Mesh.privileged(Task).read(input, context?)`. Inside an
+   * The reads of an entity with no policy run: `Mesh.privileged(Task).read(input, context?)`. Inside an
    * action it joins the action's transaction and reads the transaction's instant.
    */
   readonly privileged: typeof privileged;
@@ -33,7 +33,7 @@ export interface MeshFunctions {
    */
   readonly isSystem: (context: unknown) => boolean;
   /**
-   * `Mesh.checkPolicies(Todo.complete, input, context)` (CMP-21, ADR-0022): resolves to `{ allowed, breakdown }`, the
+   * `Mesh.checkPolicies(Todo.complete, input, context)` (ADR-0022): resolves to `{ allowed, breakdown }`, the
    * decision the call `Todo.complete(input, context)` would reach, and changes nothing. The action function comes first,
    * then the call's own arguments, typed as the action's (a wrong input is a type error). The runtime recognises the
    * function through a registry of its own, so nothing is added to it; any other function is a `FrameworkError`. It runs

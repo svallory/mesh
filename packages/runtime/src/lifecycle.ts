@@ -4,7 +4,7 @@ import type { Seams } from "./seams.ts";
 
 /**
  * What `bind(layer, options)` takes. The clock is what `%.now` reads in a function of an entity file (ADR-0012, M4 D6):
- * read once per transaction (ACT-29), by the action call, read or application `transaction` that opens it. `seams` are
+ * read once per transaction, by the action call, read or application `transaction` that opens it. `seams` are
  * the lifecycle seams of every action (ADR-0075).
  */
 export interface BindOptions {
@@ -15,12 +15,12 @@ export interface BindOptions {
 /**
  * One `check` of an action, as the generated code declares it (M5, ADR-0053). The functions are the compiled
  * expressions of the entity (`<entity>.expressions.ts`); the scope is `{ self, input, actor, context }` with no
- * `before` (ACT-01, ACT-27): `self` is the record before the input is applied (see `checkScope`).
+ * `before`: `self` is the record before the input is applied (see `checkScope`).
  */
 export interface CheckSpec {
   label: string;
   code: string;
-  /** Fixed text, or (ACT-30) a function of the arguments `that` gets; it runs only for a failed check and must return a string that is not blank. */
+  /** Fixed text, or a function of the arguments `that` gets; it runs only for a failed check and must return a string that is not blank. */
   message: string | ((scope: never) => string | PromiseLike<string>);
   /** The entity the check belongs to, named by the error a `message` function causes. */
   entity?: string;
@@ -32,7 +32,7 @@ export interface CheckSpec {
 }
 
 /**
- * The scope the checks get: the action's scope without `before` (ACT-01, ACT-27). There `self` is already the record
+ * The scope the checks get: the action's scope without `before`. There `self` is already the record
  * before the input, so `before` would only repeat it. The build reports a check that names `before` as
  * `MESH_VALIDATE_BEFORE`; one that hands the rest of its scope to a helper (`({ context, ...rest }) => helper(rest)`)
  * passes the build, and finds nothing there rather than a value the rule forbids. The copy reads the action's one
@@ -50,7 +50,7 @@ export function checkScope<S extends Scope<object>>(scope: S): Omit<S, "before">
  * unknown result (`null`), because a rule over a missing value must not pass silently (ADR-0012, ruling D1). A `when`
  * that is not true, unknown included, skips the check. `details` and a `message` function are worked out only for a failed
  * check. A `message` function that throws or returns anything but a non-blank string is a `FrameworkError` naming the entity, the
- * check and its line (ACT-30): the failure is never swallowed and never replaced by other text.
+ * check and its line: the failure is never swallowed and never replaced by other text.
  */
 export async function runCheck(issues: Issue[], scope: object, spec: CheckSpec): Promise<void> {
   const s = scope as never;
@@ -67,7 +67,7 @@ export async function runCheck(issues: Issue[], scope: object, spec: CheckSpec):
   });
 }
 
-/** Run a check's `message` function; any failure of it names the check (ACT-30). */
+/** Run a check's `message` function; any failure of it names the check. */
 async function messageOf(spec: CheckSpec, scope: never, message: (scope: never) => unknown): Promise<string> {
   const where = `the message of check :${spec.label}${spec.entity ? ` of ${spec.entity}` : ""} (${spec.source.file}:${spec.source.line})`;
   let text: unknown;

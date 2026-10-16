@@ -1006,7 +1006,7 @@ describe("rules together, and the version rule on the other entities", () => {
   }));
 });
 
-// A translated check reads a value not sent as null, so `input.x ?? &x` cannot tell "sent null" from "not sent" (ACT-27).
+// A translated check reads a value not sent as null, so `input.x ?? &x` cannot tell "sent null" from "not sent".
 // The two rules where that differs are plain code (`taskChanges` and `movedParent` in work.helpers.ts); these pin both.
 describe("a value sent as null is not a value left out", () => {
   test("task.unchanged: an intent sent as null clears it, one left out keeps it", () => within(async (w) => {
@@ -1049,7 +1049,7 @@ describe("what the rules leave in place", () => {
     await expect(Invocation.record({ attempt: GHOST, usageSource: "runtime" }, as(w.bot))).rejects.toThrow("which does not exist");
   }));
 
-  test("a rule that reads the record a create names reads it through privileged, so an id that names no row fails the rule (ACT-27)", () => within(async (w) => {
+  test("a rule that reads the record a create names reads it through privileged, so an id that names no row fails the rule", () => within(async (w) => {
     // A caller's acquire of a Task that does not exist is not_found in the permission phase (PROTOCOL.md:110, PR #70 N4):
     // policy claimAssignee throws NotFoundError before any rule runs.
     await expect(Claim.acquire({ task: GHOST }, as(w.bot))).rejects.toBeInstanceOf(NotFoundError);

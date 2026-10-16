@@ -1,4 +1,4 @@
-// PRJ-15 end to end: two modules each declare `entity :List`, built by the real `mesh` command on the SQLite adapter and
+// End to end: two modules each declare `entity :List`, built by the real `mesh` command on the SQLite adapter and
 // run on SQLite in memory. The fixture (`fixtures/same-name/domain`) holds `a/list.mesh.mx`, which imports b's List as
 // `BList` and belongs to it, and `b/list.mesh.mx`, which sets `table="b_list"`. Each declares an `archive` action and a
 // policy that denies it to all but its own keeper. Nothing in the generated tree may be named after the bare entity name
@@ -19,7 +19,7 @@ const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
 export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
 `;
-/** The project's `src/context.ts` (PRJ-12): `context` and `actor` are typed by it, so a function reads only what it declares. */
+/** The project's `src/context.ts`: `context` and `actor` are typed by it, so a function reads only what it declares. */
 const CONTEXT = `import "@meshfw/runtime";
 
 declare module "@meshfw/runtime" {
@@ -127,7 +127,7 @@ describe("two entities named List in modules a and b", () => {
     expect(child.exitCode).toBe(0);
   }, 30_000);
 
-  test("mesh inspect tells a.List from b.List, and List alone is ambiguous (PRJ-16)", () => {
+  test("mesh inspect tells a.List from b.List, and List alone is ambiguous", () => {
     const a = mesh(root, "inspect", "a.List");
     const b = mesh(root, "inspect", "b.List");
     expect([a.code, b.code]).toEqual([0, 0]);
@@ -185,7 +185,7 @@ describe("two entities named List in modules a and b", () => {
   }, 30_000);
 });
 
-describe("ENT-17 without table= on b.List", () => {
+describe("without table= on b.List", () => {
   test("build fails naming both entities by FQN and the table they share, and writes nothing", async () => {
     const other = await project();
     const file = join(other, "domain/b/list.mesh.mx");

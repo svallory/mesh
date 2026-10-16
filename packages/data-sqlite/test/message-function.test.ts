@@ -1,4 +1,4 @@
-// A check's `message=` as a function (ACT-30): the function takes the arguments `that=` gets, runs only for a failed
+// A check's `message=` as a function: the function takes the arguments `that=` gets, runs only for a failed
 // check that `when=` did not skip, and the issue carries its text. One that throws or returns anything but a string is
 // a `FrameworkError` naming the entity, the check and its line.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

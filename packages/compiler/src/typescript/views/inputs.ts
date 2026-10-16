@@ -153,7 +153,7 @@ export function inputNames(action: Pick<Action, "name" | "position">, entity: En
  * Two actions whose inputs would get one generated name are `MESH_EMIT_NAME` naming both: PascalCase drops the
  * underscores inside and at the end of a name, so `fooBar` and `foo_bar`, or `archive` and `archive_`, give one type.
  * The build fails rather than spell the names apart, so that every generated name stays the PascalCase of the action
- * (PR #92, ENT-18).
+ * (PR #92).
  */
 function checkInputNames(entity: Entity, inputs: readonly PlannedInput[]): void {
   const taken = new Map<string, string>();
@@ -324,7 +324,7 @@ export function moduleSpecifier(module: string): string {
   return module === "" ? DOMAIN_SPECIFIER : `${DOMAIN_SPECIFIER}/${module}`;
 }
 /**
- * A folder name as an export name (PRJ-21): every character that cannot appear in a JavaScript identifier becomes `_`,
+ * A folder name as an export name: every character that cannot appear in a JavaScript identifier becomes `_`,
  * and `_` goes in front of a first character that cannot start one (`order-management` gives `order_management`,
  * `2024-reports` gives `_2024_reports`). A reserved word stays as it is: `export * as class` and `domain.class` are valid.
  */
@@ -333,7 +333,7 @@ export function namespaceName(folder: string): string {
   return /^[\p{ID_Start}$_]/u.test(name) ? name : `_${name}`;
 }
 /**
- * The one rule for a local that generated code derives from an entity in a file that may name other entities (CMP-05:
+ * The one rule for a local that generated code derives from an entity in a file that may name other entities (
  * generated locals never use a bare entity name): `$`, then the entity's path from the root barrel with `$` in place of
  * `.` (each module folder as its barrel's namespace name, `namespaceName`, then the entity's name as its barrel exports
  * it), then `$` and the local's role. `work.Task`'s expressions are `$work$Task$expressions` and its record type
@@ -342,8 +342,8 @@ export function namespaceName(folder: string): string {
  *
  * Two entities never get one local, and no local is one of Mesh's own. The last part is the role and the one before it
  * the entity's name, so two equal locals name entities with one name in folders whose namespace names are equal, and
- * each barrel refuses two folders that normalise alike (PRJ-21, `MESH_EMIT_NAME` in `moduleView`): those are one entity,
- * since FQNs are unique. `$` appears in no folder name (PRJ-20) and no entity name (`MESH_ENTITY_NAME`), and CMP-06 keeps
+ * each barrel refuses two folders that normalise alike (`MESH_EMIT_NAME` in `moduleView`): those are one entity,
+ * since FQNs are unique. `$` appears in no folder name and no entity name (`MESH_ENTITY_NAME`), and the refusal of a `$` at the start of an import binding keeps
  * it out of the front of every name an entity file imports, a helper or an entity's alias (`MESH_HELPER_NAME` in
  * `front-end/build.ts`), so no authored name is one of these locals; every such local has at least two `$`, where
  * Mesh's own imports (`$Comparison`) have one.

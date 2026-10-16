@@ -1,8 +1,8 @@
-// CMP-21 end to end: `Mesh.checkPolicies` and `Mesh.can`, imported from meshfw by application code, asked about the
+// End to end: `Mesh.checkPolicies` and `Mesh.can`, imported from meshfw by application code, asked about the
 // tutorial's todo domain. The fixture (`fixtures/check-policies/domain/todo`) is the tutorial's `List` and `Todo` with
 // the policies this version builds: a read policy that reads the record is the SQL evaluator's (M10), so `List` and `Todo`
 // are read by any signed-in caller; a todo is created by its list's owner (a create policy reads `input.list`, not `&list`,
-// which is empty before the input is applied, POL-08); and `Todo.complete`, `rename` and `destroy` are the list owner's. The project is built
+// which is empty before the input is applied); and `Todo.complete`, `rename` and `destroy` are the list owner's. The project is built
 // by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with an application
 // module that runs the two documented examples (using-your-domain.md, "Asking instead of calling", and testing.md), and
 // run on SQLite in memory.
@@ -149,7 +149,7 @@ afterAll(async () => {
 
 const OWNER = "({ actor }) => &list.ownerId === actor.id";
 
-describe("Mesh.checkPolicies and Mesh.can from application code (CMP-21)", () => {
+describe("Mesh.checkPolicies and Mesh.can from application code", () => {
   test("tsc type-checks the generated tree and the application module under the strictest flags", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     const child = Bun.spawnSync([
@@ -222,9 +222,9 @@ describe("Mesh.checkPolicies and Mesh.can from application code (CMP-21)", () =>
   });
 });
 
-// The todo's create policy (POL-08): a create has no stored list yet, so `Todo`'s `policy :ownerCreates` reads `input.list`
+// The todo's create policy: a create has no stored list yet, so `Todo`'s `policy :ownerCreates` reads `input.list`
 // and looks the list up. The owner policy keeps the writes on a todo that exists; read stays `signedIn` until M10.
-describe("the todo's create policy reads the list from the input (POL-08)", () => {
+describe("the todo's create policy reads the list from the input", () => {
   const MISSING = "00000000-0000-4000-8000-0000000000ff";
 
   /** Runs `work` on a fresh in-memory database that has alice's list "Groceries"; `todo` is the generated barrel. */

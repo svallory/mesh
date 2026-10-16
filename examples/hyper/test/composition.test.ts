@@ -243,7 +243,7 @@ describe("acceptance 3: claim.acquire assigns an unassigned task; two concurrent
     expect(await one(Claim.read({ filter: { id: { eq: first.id } } }, as(w.alice)))).toMatchObject({ state: "expired", endReason: "lease expired", endedAt: minutes(11) });
   }));
 
-  test("the lapsed claim ends at the instant the new claim is acquired: the nested claim.end reads acquire's %.now (ACT-29, PR #77 review N8)", () => within(async (w) => {
+  test("the lapsed claim ends at the instant the new claim is acquired: the nested claim.end reads acquire's %.now (PR #77 review N8)", () => within(async (w) => {
     const first = await Claim.acquire({ task: w.task.id }, as(w.bot));
     w.advance(11);
     // From here every read of the clock is a second later than the last, so a nested call that pinned an instant of its

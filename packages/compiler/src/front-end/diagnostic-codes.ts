@@ -1,5 +1,5 @@
 /**
- * MX's diagnostic codes as Mesh's (decision MX-05, ruled 2026-10-14): `MESH_DIALECT.diagnosticCodes`. MX applies the map
+ * MX's diagnostic codes as Mesh's: `MESH_DIALECT.diagnosticCodes`. MX applies the map
  * to every diagnostic `lowerSource` and `checkDialectFile` report on an entity file (since MX 0.1.0-alpha.27), so the
  * build and the editor show the same `MESH_*` code for one mistake. Only the code changes: message, position and
  * severity stay MX's. A code a Mesh hook gives (`ctx.fail(message, { code: "MESH_X" })`) is never renamed.

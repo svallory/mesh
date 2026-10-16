@@ -153,7 +153,7 @@ test("bun:sqlite: a handle that is not a Drizzle SQLite table is refused before 
   } finally { database.close(); }
 });
 
-// ENT-18: a column may be named like a member of `Object.prototype`. Drizzle reads `row[column]` for every column of the
+// a column may be named like a member of `Object.prototype`. Drizzle reads `row[column]` for every column of the
 // table, where a column the row leaves out would read as the method every object inherits.
 const named = sqliteTable("named", {
   constructor: text("constructor").primaryKey().notNull(),

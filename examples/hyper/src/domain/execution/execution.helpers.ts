@@ -1,7 +1,7 @@
 // Helpers for the execution entity files and functions. They take values (rows already loaded, ids), never the
 // model; each names the Hyper change it follows. The ones whose names end in `Of` read through `Mesh.privileged`: a create's check
-// sees its `self` before the input is applied (ACT-27), so it reads the run, the machine or the attempt the caller
-// names by the id in `input` (POL-08).
+// sees its `self` before the input is applied, so it reads the run, the machine or the attempt the caller
+// names by the id in `input`.
 import { Mesh } from "meshfw";
 import { Attempt, Invocation, Machine, Run } from "#mesh/domain/execution";
 import { Assignment } from "#mesh/domain/work";

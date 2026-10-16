@@ -1,5 +1,5 @@
-// M8a at build time: what a policy may read, what `actions=` may name, which checks run where (ACT-28, POL-08), the M10
-// refusal of a read or load policy that reads the record, a policy with no check (POL-16), `&x` on a create (S2 of the
+// M8a at build time: what a policy may read, what `actions=` may name, which checks run where, the M10
+// refusal of a read or load policy that reads the record, a policy with no check, `&x` on a create (S2 of the
 // review), `Mesh.isSystem(context)`, and what `mesh explain` says. The run-time side is
 // `packages/data-sqlite/test/policies.test.ts`.
 import { describe, expect, test } from "bun:test";
@@ -27,7 +27,7 @@ const post = (policies: string) => `entity :Post
     destroy :remove
 ${policies}`;
 
-/** The import an entity file needs to call Mesh's own functions (PRJ-22). */
+/** The import an entity file needs to call Mesh's own functions. */
 const MESH = 'import { Mesh } from "meshfw"\n';
 
 function build(source: string) {
@@ -58,7 +58,7 @@ describe("what a policy may name and read", () => {
     }
   });
 
-  test("a policy with no check fails the build (POL-16): it would pass every call it covers", () => {
+  test("a policy with no check fails the build: it would pass every call it covers", () => {
     for (const line of ["policy :open", "policy :open types=[:update]", "policy :open when=({ actor }) => actor.id !== null"]) {
       const built = build(post(`  policies\n    ${line}\n    policy :rest\n      authorize-if=() => true\n`));
       expect(codes(built.diagnostics)).toEqual(["error:MESH_POLICY_NO_CHECKS"]);
@@ -142,14 +142,14 @@ describe("a read policy that reads the record is refused until M10", () => {
     expect(codes(all)).toEqual(Array(3).fill("error:MESH_READ_POLICY_PRIVILEGED"));
     expect(all.map((d) => d.position.offset).sort((a, b) => a - b)).toEqual([...twice.matchAll(/Mesh\.privileged\(Post\)/g)].map((m) => m.index));
     expect(all.map((d) => d.message.split(" calls ")[0])).toEqual(["policy :all when", "policy :all authorize-if", "policy :all authorize-if"]);
-    // A write policy reads through `Mesh.privileged` (POL-21), and `Mesh` shadowed by a parameter is not Mesh's.
+    // A write policy reads through `Mesh.privileged`, and `Mesh` shadowed by a parameter is not Mesh's.
     expect(build(MESH + post(`  policies\n    policy :p types=[:update]\n      forbid-if=${that}\n    policy :rest types=[:create, :read, :destroy]\n      authorize-if=() => true\n`)).diagnostics).toEqual([]);
     expect(codes(build(MESH + post("  policies\n    policy :q types=[:read]\n      authorize-if=({ context: Mesh }) => Mesh.privileged !== null\n")).diagnostics)).toEqual([]);
     // A read policy that calls an entity's action stays MESH_POLICY_ACTS.
     expect(codes(build(post("  policies\n    policy :q types=[:read]\n      authorize-if=async ({ context }) => (await Post.draft({ authorId: \"a\" }, context)) !== null\n")).diagnostics)).toEqual(["error:MESH_POLICY_ACTS"]);
   });
 
-  test("a read policy that calls a helper which calls `Mesh.privileged` builds: the run time refuses the call (TXN-18)", async () => {
+  test("a read policy that calls a helper which calls `Mesh.privileged` builds: the run time refuses the call", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
     try {
       await mkdir(resolve(root, "blog"));
@@ -161,7 +161,7 @@ describe("a read policy that reads the record is refused until M10", () => {
     }
   });
 
-  test("a policy a caller's load runs (POL-17) that reads the record is refused too, with no read action to cover", () => {
+  test("a policy a caller's load runs that reads the record is refused too, with no read action to cover", () => {
     const comment = (policies: string) => ({ file: "blog/comment.mesh.mx", source: `entity :Comment
   attributes
     uuid :id primary-key
@@ -235,7 +235,7 @@ ${covered}` }] });
   });
 });
 
-describe("which checks read the record (ACT-28, POL-08)", () => {
+describe("which checks read the record", () => {
   const checks = (policy: string) => {
     const entity = entityOf(MESH + post(`  policies\n    policy :p types=[:update]\n      authorize-if=${policy}\n    policy :rest types=[:create, :read, :destroy]\n      authorize-if=() => true\n`));
     return readsRecord(policyExpressions(entity.policies[0]!)[0]!.expression);
@@ -246,7 +246,7 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
     expect(checks("() => true")).toBe(false);
     expect(checks("({ actor }) => { return typeof actor === \"object\" }")).toBe(false);
   });
-  test("self, a member, Mesh.privileged, an entity, or plain code the build cannot read: inside the transaction (POL-11, POL-21)", () => {
+  test("self, a member, Mesh.privileged, an entity, or plain code the build cannot read: inside the transaction", () => {
     expect(checks("() => &title !== null")).toBe(true);
     expect(checks("({ self }) => self.title !== null")).toBe(true);
     expect(checks("async () => (await Mesh.privileged(Post).read({})).length > 0")).toBe(true);
@@ -255,7 +255,7 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
     expect(checks("(scope) => scope.actor !== null")).toBe(true);
     expect(checks("({ ...scope }) => scope.actor !== null")).toBe(true);
   });
-  test("a write's check that calls an imported function runs inside the transaction, even when the build translates it (POL-21); a read policy's builds", async () => {
+  test("a write's check that calls an imported function runs inside the transaction, even when the build translates it; a read policy's builds", async () => {
     // The function may read anything through `Mesh.privileged`, which reads in the running transaction.
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
     try {
@@ -268,7 +268,7 @@ describe("which checks read the record (ACT-28, POL-08)", () => {
       expect(expression.tree).toBeDefined();
       expect(readsRecord(expression)).toBe(true);
       expect(recordReason(expression)).toBe("calls an imported function");
-      // In a read policy it is a pure call (EXP-03), not a read of the record: the policy builds, and runs before the query.
+      // In a read policy it is a pure call, not a read of the record: the policy builds, and runs before the query.
       const reader = `import { isStaff } from "./helpers"\n${post("  policies\n    policy :staff types=[:read]\n      authorize-if=({ actor }) => isStaff(actor)\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n")}`;
       const read = buildModel({ root, files: [{ file: "blog/post.mesh.mx", source: reader }] });
       expect(read.diagnostics).toEqual([]);
@@ -301,7 +301,7 @@ describe("Mesh.isSystem(context)", () => {
       const files = await generateFiles({ document, config: configOf("/project") });
       const expressions = files.find((file) => file.path.endsWith("post.expressions.ts"))!.contents;
       expect(expressions).toMatch(/\$\.isSystem\(|return Mesh\.isSystem\(context\)/);
-      // The file's `Mesh` is the runtime's, imported as a helper is: no per-evaluation `Mesh` is bound (SYN-29 removed it).
+      // The file's `Mesh` is the runtime's, imported as a helper is: no per-evaluation `Mesh` is bound (it was removed).
       expect(expressions).not.toMatch(/\$mesh|meshIn/);
       expect(expressions).toContain('"policy.internal.authorize-if.0"');
     }
@@ -313,7 +313,7 @@ describe("Mesh.isSystem(context)", () => {
     expect(built.diagnostics[0]!.position).toMatchObject({ line: 16, column: 36 });
     expect(codes(build(source("() => Mesh.isSystem()")).diagnostics)).toEqual(["error:MESH_EXPR_ARITY"]);
     expect(codes(build(source("({ context }) => { return Mesh.isSystem(context, 1) }")).diagnostics)).toEqual(["error:MESH_EXPR_ARITY"]);
-    // `%.now` is a value of the transaction, never a call: `%.now(1)` is refused as a call, not counted (SYN-29).
+    // `%.now` is a value of the transaction, never a call: `%.now(1)` is refused as a call, not counted.
     expect(codes(build(source("() => %.now(1) !== null")).diagnostics)).toEqual(["error:MESH_TRANSACTION_CALL"]);
     // A parameter named `Mesh` is the author's own, with its own arity.
     expect(build(source("() => [1].some((Mesh) => Mesh.isSystem(1, 2) === 1)")).diagnostics.filter((d) => d.code === "MESH_EXPR_ARITY")).toEqual([]);

@@ -44,7 +44,7 @@ interface Ty {
   atom?: string;
   /** The stored record (`before`): columns only, nothing is loaded for it. */
   stored?: boolean;
-  /** `self` where it may be a create's new instance (ACT-27): the members that hold null there until the input or a step fills them. */
+  /** `self` where it may be a create's new instance: the members that hold null there until the input or a step fills them. */
   fresh?: ReadonlySet<string>;
   /** A member of `self` that is nullable only because it may not be filled yet (one of `fresh`). */
   unfilled?: string;
@@ -72,9 +72,9 @@ interface Scope {
   beforeNullable: boolean;
   /** Names of the action's typed arguments: one that shares a member's name is not the member input. */
   args?: Set<string>;
-  /** Inside `validate`: `self` is the record before the input is applied, and there is no `before` (ACT-01, ACT-27). */
+  /** Inside `validate`: `self` is the record before the input is applied, and there is no `before`. */
   validate?: boolean;
-  /** In a policy, which sees `self` as `validate` does, before the input (POL-08): the policy's message name, `policy :owner`. */
+  /** In a policy, which sees `self` as `validate` does, before the input: the policy's message name, `policy :owner`. */
   policy?: string;
   /** When the function can run on a create: the members of `self` that may still be null there (see `newInstanceGaps`). */
   fresh?: ReadonlySet<string>;
@@ -483,7 +483,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     return new Set(acceptedBy(creates).flatMap((set) => [...set].flatMap((name) => [name, ...(keyColumn(name) ? [keyColumn(name)!] : [])])));
   }
   /**
-   * The checks see `self` before the input is applied and no `before` (ACT-01, ACT-27): on a create, the new instance, where
+   * The checks see `self` before the input is applied and no `before`: on a create, the new instance, where
    * a member with no default is still null. The steps before the write see the input applied; on a create the key the data
    * layer gives (an `integer` key) is null until the write.
    */
@@ -529,7 +529,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null }, creates);
     }
     for (const policy of entity.policies) {
-      // A policy sees `self` as `validate` does (POL-08): on a create it covers, `&x` of a member the create takes is the new
+      // A policy sees `self` as `validate` does: on a create it covers, `&x` of a member the create takes is the new
       // instance's value before the input, not the caller's.
       const pending = pendingOn(entity, every.filter((action) => action.kind === "create" && policyCovers(policy, action)));
       const scope: Scope = { ...base, inputs: null, policy: `policy :${policy.name}`, ...(pending.size ? { pending } : {}) };

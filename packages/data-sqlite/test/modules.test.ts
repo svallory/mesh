@@ -1,8 +1,8 @@
-// CMP-17 and CMP-18 at run time: a project whose application code imports `#mesh` for the framework and
+// Modules at run time: a project whose application code imports `#mesh` for the framework and
 // `#mesh/domain/<path>` for a folder's entity values, types and subfolder namespaces, through the package.json `imports`
 // mapping Mesh documents, on SQLite. The domain has a root entity, a module two folders deep below a folder that holds
 // no entity, modules named like Mesh's top-level files (and one named like the `composition.ts` it had), and two modules
-// whose entities import each other and call each other's actions through their entity values (CMP-16). Bun runs it and
+// whose entities import each other and call each other's actions through their entity values. Bun runs it and
 // tsc type-checks it, both resolving the specifiers.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
@@ -326,7 +326,7 @@ describe("entity values on the connected binding", () => {
   });
 
   test("an entity of a nested module bound alone calls the other entity as any code does: on the binding in scope, else the connected one", async () => {
-    // With no `actions` handle there are no stand-ins to fill (CMP-16): the step's `Invoice.issue` is an entity call.
+    // With no `actions` handle there are no stand-ins to fill: the step's `Invoice.issue` is an entity call.
     const { bindOrder } = await import(join(dir, ".mesh/domain/sales/orders/order.actions.ts"));
     const alone = bindOrder(app.config.data);
     const placed = await alone.place({ item: "solo", amount: 1 });

@@ -214,7 +214,7 @@ describe("afterWrite", () => {
   });
 });
 
-/** A binding of an empty domain: its `transaction` is the application's (TXN-20). */
+/** A binding of an empty domain: its `transaction` is the application's. */
 const bindingOn = (layer: DataLayer, seams: Seams) => bindDomain({}, layer, { seams }, new AsyncLocalStorage<unknown>());
 
 describe("the application's transaction", () => {

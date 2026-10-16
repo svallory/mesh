@@ -38,7 +38,7 @@ function stepLines(steps: readonly Step[], depth: number, into: string[], after 
 const checkLine = (check: Check) => `${check.label} (${check.code})${check.when ? " when " + squash(check.when.source) : ""}${check.details ? ", with details" : ""}${typeof check.message === "string" ? "" : ", with a message function"}`;
 
 /**
- * Each policy that covers the action, with each of its functions and where it runs (POL-08, lead ruling 1 of M8a): a
+ * Each policy that covers the action, with each of its functions and where it runs (lead ruling 1 of M8a): a
  * function that reads only `actor`, `context` and `input` runs once before the transaction opens; one that reads the
  * record runs inside it, before validate. A read's policies are a filter. With none, every call is forbidden. A read
  * with a `filter` or `sort` fails before them, as the SQL evaluator's (M10).

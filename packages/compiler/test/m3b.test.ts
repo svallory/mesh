@@ -177,7 +177,7 @@ describe("the key of a create", () => {
         &name
 `;
 
-  test.each([["uuid :id primary-key", "id"], ["string :code primary-key", "code"]])("%s is filled when the instance is built (ACT-27)", async (key, name) => {
+  test.each([["uuid :id primary-key", "id"], ["string :code primary-key", "code"]])("%s is filled when the instance is built", async (key, name) => {
     const { document } = await generated({ "m/item.mesh.mx": items(key) });
     const statements = actionsView({ document, config: configOf("/p") }, document.entities[0]!).methods.find((m) => m.name === "create")!.statements;
     // A UUIDv7, the value the data layer would give, made before the checks so `self.${name}` is known to them and to the steps.

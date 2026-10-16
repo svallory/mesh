@@ -2,10 +2,10 @@ import { dirname, relative } from "node:path";
 
 /**
  * The JavaScript globals generated code uses, each reached through `<output>/$globals.ts` under a `$` name. No name an
- * entity file declares or imports can be one: CMP-06 refuses a `$` at the start of every import binding (a helper or an
+ * entity file declares or imports can be one: the build refuses a `$` at the start of every import binding (a helper or an
  * entity's alias), and an entity's type name keeps only letters, digits and leading underscores. So an entity named
- * `Promise`, `Date`, `Pick` or `Set`, or an alias or helper so named, hides nothing the generated code reads (PRJ-20:
- * Mesh imposes no rule on a name because of the code it generates). `Record` is not among them: generated code writes
+ * `Promise`, `Date`, `Pick` or `Set`, or an alias or helper so named, hides nothing the generated code reads:
+ * Mesh imposes no rule on a name because of the code it generates. `Record` is not among them: generated code writes
  * an index signature instead, since the actions file already imports its entity's record type as `$Record`.
  */
 export const GLOBAL_ALIASES = Object.freeze([

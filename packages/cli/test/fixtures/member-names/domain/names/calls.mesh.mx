@@ -1,4 +1,4 @@
-// Every name ENT-18 accepts that names a member of Object.prototype or a function, as an action, and action names
+// Every name the build accepts that names a member of Object.prototype or a function, as an action, and action names
 // with a leading or trailing underscore, or leading underscores before a digit (`_1st`, `__2`, whose input type has no
 // lower-case letter for its validator to differ by): each is a method of the entity value under the name as written.
 entity :Calls

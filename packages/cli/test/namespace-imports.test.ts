@@ -1,4 +1,4 @@
-// SYN-21: an entity file imports another file as a namespace (`import * as entries from "../ledger/line.mesh.mx"`) and
+// an entity file imports another file as a namespace (`import * as entries from "../ledger/line.mesh.mx"`) and
 // names what it declares as a member (`entity=entries.Line`), or imports it by name (`entity=Invoice`); one project mixes
 // both, and one file imports the same file both ways. A helper module can be a namespace too (`money.format(...)`). The
 // fixture (`fixtures/namespace-imports/domain`) is built by the real `mesh` command, type-checked by tsc under the
@@ -58,7 +58,7 @@ afterAll(async () => {
   for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-describe("namespace imports of entity files and helper modules (SYN-21)", () => {
+describe("namespace imports of entity files and helper modules", () => {
   test("a function binds the alias to the values of what the file declares, and the file declares the alias's types", async () => {
     const invoice = await readFile(join(root, ".mesh/domain/billing/invoice.expressions.ts"), "utf8");
     // The helper module is imported as the entity file imports it, its namespace call kept as written.

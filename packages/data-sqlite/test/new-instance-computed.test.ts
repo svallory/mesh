@@ -1,4 +1,4 @@
-// What a create's check gets for a computed field on the new instance (ACT-27), the run-time half of the `<E>NewScope`
+// What a create's check gets for a computed field on the new instance, the run-time half of the `<E>NewScope`
 // type: the computed field is loaded onto the new instance and its body runs over the nulls, so a translated body follows
 // the null rule (null when it reads a member nothing has filled), a plain body returns what its own code makes of the
 // nulls, and a computed field over filled members has its value. On an update the stored record gives the stored values.

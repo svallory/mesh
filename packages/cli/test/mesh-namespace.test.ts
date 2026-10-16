@@ -1,11 +1,11 @@
-// PRJ-22 and SYN-29 end to end: Mesh's own functions are members of `Mesh`, which an entity file and application code
+// End to end: Mesh's own functions are members of `Mesh`, which an entity file and application code
 // import from meshfw, and the instant is the current transaction's, `%.now` and `%.today`, which needs no import. The
 // fixture (`fixtures/mesh-namespace/domain/work`) reads `%.now`, `%.today` and `Mesh.isSystem(context)` in computed fields,
 // a check, a set value, a policy and a step's body, calls `Mesh.privileged(Note)` in a step's body, passes `%.now` and
 // `%.today` to application helpers (`stampOf`, `dueIn`), and `Note` imports `Mesh` under an alias (`M`) for a plain check.
 // The project is built by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with
 // an application module that imports `Mesh` from meshfw, and run on SQLite in memory with a clock that advances on every
-// read, so each test of one instant (ACT-29) sees two reads differ unless they share a transaction.
+// read, so each test of one instant sees two reads differ unless they share a transaction.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
 export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
 `;
-/** The project's `src/context.ts` (PRJ-12): `context` and `actor` are typed by it, so a function reads only what it declares. */
+/** The project's `src/context.ts`: `context` and `actor` are typed by it, so a function reads only what it declares. */
 const CONTEXT = `import "@meshfw/runtime";
 
 declare module "@meshfw/runtime" {
@@ -51,7 +51,7 @@ export function refused(): void {
   Mesh.tomorrow();
   // @ts-expect-error Mesh.privileged takes an entity value
   Mesh.privileged({});
-  // @ts-expect-error the instant is not Mesh's (SYN-29): an entity file reads \`%.now\` and passes it as a parameter
+  // @ts-expect-error the instant is not Mesh's: an entity file reads \`%.now\` and passes it as a parameter
   Mesh.now();
   // @ts-expect-error the date is not Mesh's either: an entity file reads \`%.today\`
   Mesh.today();
@@ -106,7 +106,7 @@ afterAll(async () => {
 
 const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 
-describe("Mesh's own functions through the Mesh import (PRJ-22), the instant through %.now (SYN-29)", () => {
+describe("Mesh's own functions through the Mesh import, the instant through %.now", () => {
   test("translated code calls the run-time functions, %.now in plain code included; a plain body reads Mesh as the file imports it", async () => {
     const task = await generated("domain/work/task.expressions.ts");
     expect(task).toContain("$.lt($s.self.dueAt, $.now($s))");
@@ -139,7 +139,7 @@ describe("Mesh's own functions through the Mesh import (PRJ-22), the instant thr
     expect(child.exitCode).toBe(0);
   }, 60_000);
 
-  test("on SQLite every function reads the transaction's one instant, nested actions and privileged reads included (ACT-29), and application code reads with Mesh.privileged", async () => {
+  test("on SQLite every function reads the transaction's one instant, nested actions and privileged reads included, and application code reads with Mesh.privileged", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
     const { work } = await import(join(root, ".mesh/domain/index.ts"));
     const application = await import(join(root, "app.ts"));
@@ -173,7 +173,7 @@ describe("Mesh's own functions through the Mesh import (PRJ-22), the instant thr
 
         // The policy reads Mesh.isSystem(context). The set value and the step's body read the action's instant, and so do
         // the action the step calls (`Note.write`, whose `at` is its own `%.now`) and the privileged read the step makes
-        // (the notes' computed `stamp`, `%.now` again): one transaction, one instant (ACT-29).
+        // (the notes' computed `stamp`, `%.now` again): one transaction, one instant.
         await rejection(work.Task.close({ id: soon.id }, anyone), ForbiddenError);
         const lateClosed = await work.Task.close({ id: late.id }, { ...anyone, system: true });
         const soonClosed = await work.Task.close({ id: soon.id }, owner);

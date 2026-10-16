@@ -178,7 +178,7 @@ function forbidden(error: ForbiddenError, context: ActionContext | undefined): R
     seen.add(mapped.check);
     if (mapped.required) {
       // The role read when the call came in (`contextFactory`), outside the transaction. The policy reads it again
-      // inside the transaction (POL-20), so if an owner changed it in between, these details name the earlier role.
+      // inside the transaction, so if an owner changed it in between, these details name the earlier role.
       const role = context?.actor.role ?? null;
       failures.push({
         check: "role",
@@ -231,7 +231,7 @@ async function explainedFailure(failure: Failure, payload: unknown): Promise<Fai
  *   the submission the call's `payload` names. A policy's denial carries no details (PORTING.md).
  *
  * Any other error is returned as it is, without a read. (The reason of `task.children-settled`, which names the open
- * children, comes from the check's `message=` function in `task.mesh.mx`, ACT-30.) So is `error` when the read fails
+ * children, comes from the check's `message=` function in `task.mesh.mx`.) So is `error` when the read fails
  * (the layer closing under a shutdown, a busy database): the rejection is right without the extra facts, so the failure
  * is logged and the client still gets its code and checks, never `-32603`.
  */

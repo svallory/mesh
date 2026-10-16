@@ -1,4 +1,4 @@
-// PRJ-20: the committed generated trees of the two examples read no global by its own name outside `$globals.ts`, as
+// the committed generated trees of the two examples read no global by its own name outside `$globals.ts`, as
 // the TypeScript checker resolves their names (`free-globals.ts`). The fixture of entities named after globals is held
 // to the same check, and to a strict tsc run, in packages/cli/test/generated-names.test.ts.
 import { afterEach, describe, expect, test } from "bun:test";

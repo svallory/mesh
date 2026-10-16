@@ -20,10 +20,10 @@ export function checkLifecycleLimits(
     asynchronyOf?: (expression: Expression) => "async" | "await" | undefined;
   } = {},
 ): void {
-  // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies (POL-17).
+  // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies.
   const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
-  // A relationship to an entity whose policies leave out the read a load runs gives every caller's load of it nothing
-  // (POL-17), with no error: say so (R2-N2 of the PR #79 review). Legal, since `privileged` and a computed field's body still
+  // A relationship to an entity whose policies leave out the read a load runs gives every caller's load of it nothing,
+  // with no error: say so (R2-N2 of the PR #79 review). Legal, since `privileged` and a computed field's body still
   // read it. An entity with no policy at all is left out: it denies every caller everything (deny by default), loads
   // included, which its own actions show at once.
   const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
@@ -39,7 +39,7 @@ export function checkLifecycleLimits(
     }
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in:
-    // it reads the record and what it loads, never through `privileged`, and runs no action (TXN-18). A helper it calls
+    // it reads the record and what it loads, never through `privileged`, and runs no action. A helper it calls
     // that does either throws when the field is evaluated (`ActionFrame.marked` in the runtime).
     for (const field of entity.computed) {
       const body = field.body;
@@ -66,13 +66,13 @@ export function checkLifecycleLimits(
     for (const { expression, kind, what } of actionExpressions(entity)) {
       // In a step or `run`, `before` is legal: the stored record, null on a create (the docs' `do` steps and `run` keep it).
       if (kind !== "that" && kind !== "check-when" && kind !== "details" && kind !== "message") continue;
-      // A destructured `before`, or a rest parameter that can reach it, or a free one (the root, EXP-12).
+      // A destructured `before`, or a rest parameter that can reach it, or a free one (the root).
       const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source))
         || expression.plain?.roots.includes("before");
       if (!reads) continue;
       const end = expression.position.offset + expression.source.length;
       const reported = (code: string) => diagnostics.some((d) => d.code === code && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end);
-      // A check runs before the input is applied, on `self` as it is (ACT-01, ACT-27): `before` would be the same record.
+      // A check runs before the input is applied, on `self` as it is: `before` would be the same record.
       // The type pass reports a `before` it reads in a translated check; this catches a plain one, read free (the root) or
       // destructured, or one only destructured.
       if (!reported("MESH_VALIDATE_BEFORE"))
@@ -82,8 +82,8 @@ export function checkLifecycleLimits(
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
-    // A policy decides; it does not act, and it sees no `before` (it runs before `validate`, POL-08). A read policy that
-    // reads the record is a filter on the query, which the SQL evaluator folds in M10 (RDM-10).
+    // A policy decides; it does not act, and it sees no `before` (it runs before `validate`). A read policy that
+    // reads the record is a filter on the query, which the SQL evaluator folds in M10.
     for (const policy of entity.policies)
       for (const { expression, what } of policyExpressions(policy)) {
         const uses = (name: string) => expression.params.includes(name) || expression.plain?.roots.includes(name) || (expression.rest === true && new RegExp(`\\b${name}\\b`).test(expression.source));
@@ -108,7 +108,7 @@ export function checkLifecycleLimits(
                 ? "decide in the policy from what it can read through `Mesh.privileged(Entity)`, and ask in a step or a `validate` check"
                 : "decide in the policy from the record and what it loads, and ask in a step or a `validate` check of a write action"));
       }
-    // A policy with no check would pass every call it covers (POL-16): the build says so, and asks for it written out.
+    // A policy with no check would pass every call it covers: the build says so, and asks for it written out.
     for (const policy of entity.policies)
       if (!policy.authorizeIf.length && !policy.forbidIf.length)
         diagnostics.push(error("MESH_POLICY_NO_CHECKS",
@@ -119,7 +119,7 @@ export function checkLifecycleLimits(
       const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
       if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
       // A read policy is a filter on the query: it reads the row in hand and the caller, never another entity. A call
-      // hidden in a helper it calls is caught at run time instead, while the policy is evaluated (TXN-18).
+      // hidden in a helper it calls is caught at run time instead, while the policy is evaluated.
       if (covered.length)
         for (const { expression, what } of policyExpressions(policy)) {
           if (!expression.plain?.privileged) continue;

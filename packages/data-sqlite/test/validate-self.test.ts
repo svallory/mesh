@@ -1,4 +1,4 @@
-// ACT-01, ACT-27, POL-08 (the operator's rulings of 2026-10-11): `validate` sees `self` before the input is applied. On an
+// The operator's rulings of 2026-10-11: `validate` sees `self` before the input is applied. On an
 // update or destroy `self` is the stored record, read under the lock; on a create it is the new instance Mesh builds, with
 // its defaults, its stamps and a `uuid` or `string` key already filled, before the member inputs (`&x`). The caller's
 // values are in `input`, `before` is gone from `validate`, and the inputs are applied after the checks pass, so `do` and
@@ -244,7 +244,7 @@ beforeAll(async () => {
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   // `binding.ts` imports the project's config, which is not part of this fixture.
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
-  // The project declares its actor (PRJ-12), which the card's `set` reads.
+  // The project declares its actor, which the card's `set` reads.
   await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n  }\n}\nexport {};\n');
   app = await import(join(dir, ".mesh/index.ts"));
   domain = await import(join(dir, ".mesh/domain/index.ts"));
@@ -336,7 +336,7 @@ describe("create: validate sees the new instance, do sees the input applied", ()
     } finally { await world.db.close(); }
   });
 
-  test("a check that reads a related record goes through privileged with input.owner, since &owner is not there yet (POL-08)", async () => {
+  test("a check that reads a related record goes through privileged with input.owner, since &owner is not there yet", async () => {
     const world = await fresh();
     try {
       const error = await invalid(world.mesh.writeNote({ title: "t", owner: "00000000-0000-7000-8000-000000000000" }, world.ctx));

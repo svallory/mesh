@@ -5,9 +5,9 @@ import { outputPrefix } from "./order.ts";
 
 /**
  * `<output>/domain/<path>/index.ts`, a barrel per folder that holds an entity or a folder below it that does, and
- * `<output>/domain/index.ts` for the domain root: the file a project imports as `#mesh/domain/<path>` (CMP-17, CMP-18).
+ * `<output>/domain/index.ts` for the domain root: the file a project imports as `#mesh/domain/<path>`.
  * It exports its module's entity values, their types and load functions, and a namespace per subfolder. Two
- * exports of one barrel with one name are `MESH_EMIT_NAME` (CMP-05). Two folders that differ only in letter case would
+ * exports of one barrel with one name are `MESH_EMIT_NAME`. Two folders that differ only in letter case would
  * write one file on a case-insensitive file system: `MESH_EMIT_PATH`.
  */
 export const moduleGenerator: Generator<ModuleView> = {

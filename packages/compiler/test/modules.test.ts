@@ -1,8 +1,8 @@
-// CMP-17, CMP-18: generated imports follow folders. Every folder of the domain that holds an entity, or a folder below it
+// generated imports follow folders. Every folder of the domain that holds an entity, or a folder below it
 // that does, gets one barrel, `.mesh/domain/<path>/index.ts` (`.mesh/domain/index.ts` for the domain root, always
 // written), imported as `#mesh/domain/<path>`: each entity's value and types, and `export * as <name>` for each
-// subfolder (PRJ-21 names it). `#mesh` (`.mesh/index.ts`) keeps only the framework's names. These tests pin the layout,
-// each barrel's contents and the names that must never collide (CMP-05); packages/data-sqlite/test/modules.test.ts
+// subfolder (the folder's name with each character invalid in an identifier replaced by `_`). `#mesh` (`.mesh/index.ts`) keeps only the framework's names. These tests pin the layout,
+// each barrel's contents and the names that must never collide; packages/data-sqlite/test/modules.test.ts
 // runs it against SQLite through the package.json `imports` mapping.
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -190,7 +190,7 @@ describe("what each barrel holds", () => {
   });
 });
 
-describe("folder names as export names (PRJ-21)", () => {
+describe("folder names as export names", () => {
   test("a character invalid in an identifier becomes `_`, a leading digit gets `_` in front, and a reserved word stays", () => {
     expect(namespaceName("billing")).toBe("billing");
     expect(namespaceName("order-management")).toBe("order_management");
@@ -233,7 +233,7 @@ describe("folder names as export names (PRJ-21)", () => {
   }, 30_000);
 });
 
-describe("names in one barrel (CMP-05)", () => {
+describe("names in one barrel", () => {
   const failure = async (files: Record<string, string>) => {
     const error = await generateFiles({ document: documentOf(files), config: configOf("/project", ".mesh") }).then(() => undefined, (cause: unknown) => cause);
     expect(error).toBeInstanceOf(EmitError);
@@ -266,8 +266,8 @@ describe("names in one barrel (CMP-05)", () => {
 });
 
 describe("names across modules", () => {
-  // PRJ-15: nothing global in the syntax. Entities of one name in several folders build: each barrel keeps its own names
-  // unique (CMP-05), and every file that names another entity does so at module level by a local derived from the FQN
+  // nothing global in the syntax. Entities of one name in several folders build: each barrel keeps its own names
+  // unique, and every file that names another entity does so at module level by a local derived from the FQN
   // (`entityLocal`); the alias an entity file wrote is bound only inside the functions of its expressions file. The
   // whole case run on SQLite is the CLI's same-name fixture
   // (packages/cli/test/same-name.test.ts).
@@ -352,10 +352,10 @@ describe("names across modules", () => {
   });
 
   // No name is project-wide, no generated file imports under an authored name and generated code reaches every global
-  // it uses through `$globals.ts` under a `$` name (PRJ-20: an entity named `Promise`, `Partial` or `Date` builds,
+  // it uses through `$globals.ts` under a `$` name (an entity named `Promise`, `Partial` or `Date` builds,
   // index.test.ts), so an entity file reaches MESH_EMIT_NAME in two ways only: two exports of one barrel (above) and a
   // duplicate generated type (here). An invalid identifier cannot come from an entity file: every name atom is one.
-  test("MESH_EMIT_NAME is left for two exports of one barrel and a duplicate generated type: two actions whose input types are spelled alike name the entity by FQN (PRJ-17)", async () => {
+  test("MESH_EMIT_NAME is left for two exports of one barrel and a duplicate generated type: two actions whose input types are spelled alike name the entity by FQN", async () => {
     const item = "entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n    create :fooBar\n    create :foo_bar\n";
     const error = await generateFiles({ document: documentOf({ "sales/item.mesh.mx": item }), config: configOf("/project", ".mesh") })
       .then(() => undefined, (cause: unknown) => cause);
@@ -366,9 +366,9 @@ describe("names across modules", () => {
     });
   });
 
-  // ENT-18: an entity value's method is the action's name as written; the input type and validator are its PascalCase,
+  // an entity value's method is the action's name as written; the input type and validator are its PascalCase,
   // which drops every underscore but the leading ones, so names that differ only there fail the build naming both.
-  test("an action keeps its name as written; two whose input names merge fail naming the actions (ENT-18)", async () => {
+  test("an action keeps its name as written; two whose input names merge fail naming the actions", async () => {
     const generate = (actions: string) => generateFiles({
       document: documentOf({ "sales/item.mesh.mx": `entity :Item\n  attributes\n    uuid :id primary-key\n  actions\n${actions}` }),
       config: configOf("/project", ".mesh"),
@@ -394,7 +394,7 @@ describe("names across modules", () => {
     expect(first).toContain("$castInput(layer, _1stItemInputSchema, input)");
   });
 
-  test("two actions one flat name would have spelled alike, in two modules, build: an action is called on its entity (CMP-16)", async () => {
+  test("two actions one flat name would have spelled alike, in two modules, build: an action is called on its entity", async () => {
     // `:forUser` of Item and `:for` of UserItem were both `actions.forUserItem`.
     const document = documentOf({
       "a/item.mesh.mx": entity("Item", "  actions\n    read :forUser\n"),

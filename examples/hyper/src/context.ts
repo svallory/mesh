@@ -10,7 +10,7 @@ declare module "@meshfw/runtime" {
      * The collaborator the call acts for, and the role of its active membership (`null` when it has none), which the
      * application reads when the call comes in, as Hyper's router resolves the actor (`transport/router.ex:102-120`).
      * HA, the socket server, reads both from the database at call entry, refuses an unknown or retired actor there,
-     * and never copies them from the request's payload (decision POL-20). Only the read policies (`membersRead`) use
+     * and never copies them from the request's payload. Only the read policies (`membersRead`) use
      * `role`: a write policy reads the role through `Mesh.privileged`, inside the transaction, so a membership revoked a
      * moment ago is refused on the next write (ADR-0074); it never reads `actor.role`.
      */

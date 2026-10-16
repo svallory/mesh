@@ -78,7 +78,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `Mesh.privileged(Submission)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Submission)` runs. The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindSubmissionReads(
@@ -125,7 +125,7 @@ export function bindSubmissionReads(
 /**
  * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): an action reads
  * the instant of the transaction it joins from it, and its own transaction runs inside it, so what its functions call
- * joins that transaction and reads its instant (ACT-29).
+ * joins that transaction and reads its instant.
  */
 export function bindSubmission(
   layer: $DataLayer,
@@ -140,7 +140,7 @@ export function bindSubmission(
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, submitSubmissionInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -242,7 +242,7 @@ export function bindSubmission(
               },
               { clock: $clock },
             ) as unknown as $Scope<SubmitSubmissionInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
@@ -359,7 +359,7 @@ export function bindSubmission(
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, withdrawSubmissionInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -451,7 +451,7 @@ export function bindSubmission(
               },
               { clock: $clock },
             ) as unknown as $StoredScope<WithdrawSubmissionInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
@@ -527,7 +527,7 @@ export function bindSubmission(
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, settleSubmissionInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -647,7 +647,7 @@ export function bindSubmission(
     ): $Promise<Submission> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, recordAcceptedSubmissionInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -817,7 +817,7 @@ export function bindSubmission(
 }
 
 /**
- * The entity value (CMP-16): `Submission.<action>(input, context)` runs the action on the binding in scope, the
+ * The entity value: `Submission.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
 const $entityValue = $entity(
@@ -856,7 +856,7 @@ export { $entityValue as Submission };
 /** The record type, under the entity value's name. */
 export type Submission = $Record;
 
-/** What `Mesh.privileged(Submission)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Submission)` returns: one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
     input: $Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
@@ -864,7 +864,7 @@ export interface $Privileged {
   ): $Promise<L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never>;
 }
 
-/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only. */
 export interface $PrivilegedReadOnly {
   read<const L extends readonly (keyof SubmissionLoadable)[] = readonly []>(
     input: $Omit<ReadSubmissionInput, "load"> & SubmissionLoadArg<L>,
@@ -878,7 +878,7 @@ export interface $PrivilegedReadOnly {
 }
 
 /**
- * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * The entity value as a function of an entity file sees it: what each action resolves with is deeply read-only,
  * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<

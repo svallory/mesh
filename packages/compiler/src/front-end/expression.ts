@@ -27,12 +27,12 @@ export interface ConvertContext {
   /** Every name the file imports, helpers and entities. */
   imported: ReadonlySet<string>;
   /**
-   * The entities the file names: its own and the ones it imports, by the name the file gives them (CMP-16), and the alias
-   * of each namespace import of an entity file (`billing`, read as `billing.Invoice`; SYN-21).
+   * The entities the file names: its own and the ones it imports, by the name the file gives them, and the alias
+   * of each namespace import of an entity file (`billing`, read as `billing.Invoice`).
    */
   entities?: ReadonlySet<string>;
   /**
-   * The aliases of the file's namespace imports (SYN-21), of entity files (also in `entities`) and of helper modules (also
+   * The aliases of the file's namespace imports, of entity files (also in `entities`) and of helper modules (also
    * in `helpers`, whose functions a function calls as `h.isStaff(...)`).
    */
   namespaces?: ReadonlySet<string>;
@@ -40,7 +40,7 @@ export interface ConvertContext {
   reference?: (written: WrittenReference) => Resolution;
   /** The names two imports bind: `MESH_DUPLICATE_IMPORT` reports them, so a use of one reports nothing more. */
   duplicates?: ReadonlySet<string>;
-  /** The names the file imports `Mesh` under, from "meshfw" (PRJ-22): `Mesh`, or its alias. */
+  /** The names the file imports `Mesh` under, from "meshfw": `Mesh`, or its alias. */
   mesh?: ReadonlySet<string>;
   report: (diagnostic: Diagnostic) => void;
   /** A `run` step is plain by form. */
@@ -49,7 +49,7 @@ export interface ConvertContext {
 
 const ROOTS = new Set(["self", "input", "actor", "context", "before"]);
 /**
- * The names of the scope a function is handed. They behave as the function's parameters do (EXP-12): inside the function
+ * The names of the scope a function is handed. They behave as the function's parameters do: inside the function
  * a free `input` or `context` is the root, even when the file imports something under that name (a helper, or an entity
  * under an alias such as `import { List as context }`), which stays the import everywhere outside the function.
  */
@@ -61,24 +61,24 @@ const GLOBALS = new Set([
   "structuredClone",
 ]);
 /**
- * Mesh's own functions (PRJ-22), which a function in an entity file reads as members of `Mesh`, imported from "meshfw"
- * (`import { Mesh } from "meshfw"`, or under an alias). `privileged` (TXN-16) and `checkPolicies` and `can` (CMP-21) have no
+ * Mesh's own functions, which a function in an entity file reads as members of `Mesh`, imported from "meshfw"
+ * (`import { Mesh } from "meshfw"`, or under an alias). `privileged` and `checkPolicies` and `can` have no
  * `fn`: a function that calls one is plain code, since what it reads is not an expression over the record. `args` is what a call passes, for the examples.
- * The instant is not one of them (SYN-29): it is the current transaction's, `%.now` (`TRANSACTION_MEMBERS`).
+ * The instant is not one of them: it is the current transaction's, `%.now` (`TRANSACTION_MEMBERS`).
  */
 const MESH_FUNCTIONS: ReadonlyMap<string, { fn?: FunctionId; arity: number; args: string }> = new Map([
   ["isSystem", { fn: "isSystem", arity: 1, args: "context" }],
   ["privileged", { arity: 1, args: "Task" }],
-  // CMP-21: ask another action's policies. Plain code too: what they read is not an expression over the record.
+  // ask another action's policies. Plain code too: what they read is not an expression over the record.
   ["checkPolicies", { arity: 3, args: "Task.complete, input, context" }],
   ["can", { arity: 3, args: "Task.complete, input, context" }],
 ]);
-/** The functions of `MESH_FUNCTIONS` that ask another action's policies (`Mesh.checkPolicies`, `Mesh.can`; CMP-21). */
+/** The functions of `MESH_FUNCTIONS` that ask another action's policies (`Mesh.checkPolicies`, `Mesh.can`). */
 const ASKING = new Set(["checkPolicies", "can"]);
 /**
- * What `%.` reads (SYN-29): `%` is the current transaction, and these are its properties, values and not calls: `%.now`,
- * its instant, and `%.today`, that instant at 00:00 UTC: the registry's `now` and `today`, one instant per transaction
- * (ACT-29), read by translated and plain code alike.
+ * What `%.` reads: `%` is the current transaction, and these are its properties, values and not calls: `%.now`,
+ * its instant, and `%.today`, that instant at 00:00 UTC: the registry's `now` and `today`, one instant per transaction,
+ * read by translated and plain code alike.
  */
 const TRANSACTION_MEMBERS: ReadonlyMap<string, { fn: "now" | "today"; what: string }> = new Map([
   ["now", { fn: "now", what: "the current transaction's instant" }],
@@ -142,7 +142,7 @@ function ownArguments(name: string, parent: N | undefined, key: string | undefin
 /**
  * The member a node reads from the file's `Mesh` import (`isSystem` for `Mesh.isSystem`, `Mesh?.isSystem` or `Mesh["isSystem"]`), or undefined
  * when the node reads no named member of it. `shadowed` says whether a binding of the function in scope hides the name;
- * a scope name (`input`) is always the root (EXP-12), never an import of that name.
+ * a scope name (`input`) is always the root, never an import of that name.
  */
 function meshMember(n: N, ctx: ConvertContext, shadowed: (name: string) => boolean): { local: string; name: string } | undefined {
   if (n.type !== "MemberExpression" && n.type !== "OptionalMemberExpression") return undefined;
@@ -198,7 +198,7 @@ const FREE_VARIABLE = (name: string) =>
  * that is a scope name (`input`, refused at the import), is not one, and the fix says so instead of naming it.
  */
 function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
-  // A bare `now` or `today` is the transaction's (SYN-29).
+  // A bare `now` or `today` is the transaction's.
   if (TRANSACTION_MEMBERS.has(name)) return `write \`%.${name}\`, ${TRANSACTION_MEMBERS.get(name)!.what}, with no \`()\``;
   const locals = [...(ctx.mesh ?? [])];
   const local = locals.find((candidate) => isMeshImport(candidate, ctx, shadowed));
@@ -343,11 +343,11 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
   const entities = ctx.entities ?? new Set<string>();
   const known = (name: string) =>
     bound.has(name) || ctx.imported.has(name) || entities.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name);
-  /** Whether a free `name` read in `scope` is an entity the file names: no scope binds it and it is no scope name (EXP-12). */
+  /** Whether a free `name` read in `scope` is an entity the file names: no scope binds it and it is no scope name. */
   const namesEntity = (name: string, scope: ReadonlySet<string>) => entities.has(name) && !scope.has(name) && !SCOPE_NAMES.has(name);
   /**
    * Whether `n` names one entity: an entity's name (`Invoice`), or a member of an entity file's namespace import
-   * (`billing.Invoice`, SYN-21) that the file declares. A namespace alias alone names a file, not an entity.
+   * (`billing.Invoice`) that the file declares. A namespace alias alone names a file, not an entity.
    */
   const isEntity = (n: N | undefined, scope: ReadonlySet<string>): boolean => {
     if (n?.type === "Identifier") return namesEntity(n.name!, scope) && !ctx.namespaces?.has(n.name!);
@@ -362,7 +362,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     const n = value as N;
     if (typeof n.type === "string" && n.type.startsWith("TS")) return;
     if (n.type === "PrivateName") return; // `#x` names a class member, never a variable
-    // `%.now`: the current transaction's (SYN-29). It is read as a value, never called; its object, `%`, is no variable.
+    // `%.now`: the current transaction's. It is read as a value, never called; its object, `%`, is no variable.
     const mark = transactionMark(n);
     if (mark) {
       const member = TRANSACTION_MEMBERS.get(mark.name);
@@ -419,11 +419,11 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
       // The file's `Mesh` import, where no binding of the function hides it: the expressions file imports `Mesh` under
-      // that name, as it imports a helper, and a member it reads is one of Mesh's functions (PRJ-22).
+      // that name, as it imports a helper, and a member it reads is one of Mesh's functions.
       if (!property && !objectKey && !label && isMeshImport(n.name!, ctx, (name) => scope.has(name))) {
         names.mesh.add(n.name!);
         // A destructured member counts as a read of it, so `const { privileged } = Mesh` is still a call to `privileged`
-        // for MESH_COMPUTED_COMPOSES, MESH_READ_POLICY_PRIVILEGED and a check's timing (POL-21).
+        // for MESH_COMPUTED_COMPOSES, MESH_READ_POLICY_PRIVILEGED and a check's timing.
         for (const member of meshReads(n, parent, key, ctx, (name) => scope.has(name))) {
           if (MESH_FUNCTIONS.has(member.name)) {
             called.add(member.name);
@@ -433,7 +433,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           }
           if (OBJECT_MEMBERS.has(member.name)) continue;
           const at = member.at;
-          // `Mesh.now()` and `Mesh.today()` are gone (SYN-29): the instant is the current transaction's.
+          // `Mesh.now()` and `Mesh.today()` are gone: the instant is the current transaction's.
           const instant = TRANSACTION_MEMBERS.get(member.name);
           if (instant) {
             ctx.report({
@@ -454,11 +454,11 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           });
         }
       }
-      // A scope name is the root wherever no scope of the function binds it, so an import of that name is not named here (EXP-12).
+      // A scope name is the root wherever no scope of the function binds it, so an import of that name is not named here.
       if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
-        // `billing.Invoice`: what the namespace import's file declares (SYN-21), resolved as `entity=` resolves it.
+        // `billing.Invoice`: what the namespace import's file declares, resolved as `entity=` resolves it.
         // A computed member written as a string (`billing["Invoice"]`) names the same member.
         const member = parent?.property as N | undefined;
         const memberName = !parent?.computed && member?.type === "Identifier" ? member.name
@@ -469,7 +469,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           if (!resolved.ok && "code" in resolved)
             ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
         }
-        // The global `structuredClone`, unless the file imports something under its name (PRJ-20).
+        // The global `structuredClone`, unless the file imports something under its name.
         if (n.name === "structuredClone" && !ctx.imported.has(n.name) && !entities.has(n.name)) names.structuredClone = true;
       }
       if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
@@ -496,7 +496,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         position: ctx.at(start(n)),
         fix: `write \`${meshCall(member.local, member.name)}\``,
       });
-    // `Mesh.privileged(X)` takes an entity the file names (TXN-16): its own or an imported one, never a variable that holds one.
+    // `Mesh.privileged(X)` takes an entity the file names: its own or an imported one, never a variable that holds one.
     const argument = args[0];
     const argumentRoot = argument && chainRoot(argument)?.name;
     if (member?.name === "privileged" && argument && !isEntity(argument, scope)
@@ -508,8 +508,8 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         position: ctx.at(start(argument)),
         fix: `write \`${member.local}.privileged(Task)\`, naming the entity, and import it when it is another file's`,
       });
-    // `Task.touch(...)`: a call to an entity's action (CMP-16), through a namespace import too (`billing.Invoice.open(...)`,
-    // SYN-21). Any call on a member chain that starts at an entity the file names acts, whatever the member syntax
+    // `Task.touch(...)`: a call to an entity's action, through a namespace import too (`billing.Invoice.open(...)`).
+    // Any call on a member chain that starts at an entity the file names acts, whatever the member syntax
     // (`billing?.Invoice.open`, `billing["Invoice"].open`, `Task.touch.call`), so no spelling escapes `MESH_POLICY_ACTS`
     // and `MESH_COMPUTED_COMPOSES`.
     const root = callee && (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") ? chainRoot(callee) : undefined;
@@ -586,7 +586,7 @@ function internalNames(text: string, record: boolean, clock: readonly ("now" | "
  * The edits that turn the authored text into TypeScript: `&name` to the record's member (`$self.name`), `:atom` to a
  * string, and `%.now` and `%.today` to calls of the printed function's own `$now()` and `$today()`, which call the
  * run-time functions a translated expression calls over the scope the printed function is handed, so plain and
- * translated code read one instant (SYN-29), a fresh `Date` each read. The names are `internal`'s, which the authored text
+ * translated code read one instant, a fresh `Date` each read. The names are `internal`'s, which the authored text
  * does not spell. A `%.` name Mesh does not know is reported by `freeVariables` and left as written.
  */
 function editsFor(fn: N, base: number, internal: InternalNames): SourceEdit[] {
@@ -677,7 +677,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       throw new Plain("unsupported-construct", `the name \`${name}\``, n);
     }
     case "MemberExpression": case "OptionalMemberExpression": {
-      // `%.now`: the transaction's instant, the function `now` of the scope (SYN-29). An unknown name was reported.
+      // `%.now`: the transaction's instant, the function `now` of the scope. An unknown name was reported.
       const instant = transactionMark(n);
       if (instant) {
         const known = TRANSACTION_MEMBERS.get(instant.name);
@@ -728,7 +728,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
     case "CallExpression": {
       const callee = n.callee as N;
       const args = (n.arguments ?? []) as N[];
-      // `Mesh.isSystem(context)`: one of Mesh's functions, through the file's `Mesh` import that no parameter hides (PRJ-22).
+      // `Mesh.isSystem(context)`: one of Mesh's functions, through the file's `Mesh` import that no parameter hides.
       const member = meshMember(callee, ctx, (local) => env.roots.has(local) || env.locals.has(local));
       const spec = member && n.type === "CallExpression" ? MESH_FUNCTIONS.get(member.name) : undefined;
       if (member && spec) {
@@ -740,7 +740,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       }
       if (callee.type === "Identifier") {
         const name = callee.name!;
-        // A free scope name is the root, never a helper imported under that name (EXP-12).
+        // A free scope name is the root, never a helper imported under that name.
         // A namespace import (`h`) is the module, not one of its functions: `h.isStaff(...)` is the call.
         const from = SCOPE_NAMES.has(name) || ctx.namespaces?.has(name) ? undefined : ctx.helpers.get(name);
         if (from !== undefined) {
@@ -756,7 +756,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       if ((callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") && !callee.computed && !callee.optional && n.type === "CallExpression") {
         const op = String(callee.property.name);
         const object = callee.object as N;
-        // `h.isStaff(...)`: a function of a helper module the file imports as a namespace (SYN-21), called as an imported one is.
+        // `h.isStaff(...)`: a function of a helper module the file imports as a namespace, called as an imported one is.
         const local = object.type === "Identifier" ? object.name! : undefined;
         const from = local !== undefined && ctx.namespaces?.has(local) && !SCOPE_NAMES.has(local) && !env.roots.has(local) && !env.locals.has(local)
           ? ctx.helpers.get(local) : undefined;
@@ -834,7 +834,7 @@ function awaits(node: unknown): boolean {
 
 const PARAMETER_ERROR = (n: N) => new Plain("unsupported-parameter", "this parameter form is not translated; destructure { self, input, actor, context, before }", n);
 
-/** The names the scope of a function in an entity file no longer holds (TXN-16), each with what replaces it. */
+/** The names the scope of a function in an entity file no longer holds, each with what replaces it. */
 const REMOVED_SCOPE_NAMES: Readonly<Record<string, { message: string; fix: string }>> = {
   tx: {
     message: "`tx` is gone: a function in an entity file is no longer handed a transaction handle, and reads with no policy through `Mesh.privileged`",
@@ -898,9 +898,9 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const names: Names = { entities: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
   const free = freeVariables(f, ctx, called, names);
   removedScopeNames(f, ctx);
-  // `%.now` and `%.today` in code Mesh does not translate read the same instant as a translated expression (SYN-29), and
+  // `%.now` and `%.today` in code Mesh does not translate read the same instant as a translated expression, and
   // `Mesh.isSystem(context)` is the same function: the expressions file imports `Mesh` under each name the file gives it
-  // that a function reads (PRJ-22). The demotion keeps them for a tree the checker demotes. The record `&name` reads and
+  // that a function reads. The demotion keeps them for a tree the checker demotes. The record `&name` reads and
   // the instant are bound under names the authored text does not spell, which the edits read.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
   const internal = internalNames(ctx.source.slice(span.sourceStart, span.sourceEnd), names.record === true, clock);
@@ -912,7 +912,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     ...(names.mesh.size ? { mesh: [...names.mesh].sort() } : {}),
   };
   // `Mesh.privileged(...)`, the entities, the helpers and `structuredClone` the function names: the printed function binds
-  // the entities and `structuredClone`, and its file imports the helpers (CMP-16, TXN-16, PRJ-20).
+  // the entities and `structuredClone`, and its file imports the helpers.
   const named = {
     ...(called.has("privileged") ? { privileged: true as const } : {}),
     ...(called.has("checkPolicies") || called.has("can") ? { asks: true as const } : {}),

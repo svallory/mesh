@@ -1,4 +1,4 @@
-// CMP-21 in an entity file, end to end: `Mesh.checkPolicies` and `Mesh.can` called by a function of an entity file, the
+// In an entity file, end to end: `Mesh.checkPolicies` and `Mesh.can` called by a function of an entity file, the
 // docs' example (entities.md, "decide before you call"). The fixture (`fixtures/can-in-entities/domain/billing`) is an
 // `Invoice` whose steps ask `Receipt.record`'s policies (system only, no more than 100, never ahead of the transaction's
 // instant, and only for a paid invoice, read with `Mesh.privileged`) before they call it. `Ledger` hides the call in a
@@ -24,7 +24,7 @@ const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
 export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
 `;
-/** The project's `src/context.ts` (PRJ-12): `context` and `actor` are typed by it, so a function reads only what it declares. */
+/** The project's `src/context.ts`: `context` and `actor` are typed by it, so a function reads only what it declares. */
 const CONTEXT = `import "@meshfw/runtime";
 
 declare module "@meshfw/runtime" {
@@ -86,7 +86,7 @@ afterAll(async () => {
 
 const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 
-describe("Mesh.checkPolicies and Mesh.can in an entity file (CMP-21)", () => {
+describe("Mesh.checkPolicies and Mesh.can in an entity file", () => {
   test("the expressions file binds the entity it names, imports Mesh and calls the question as written", async () => {
     const invoice = await generated("domain/billing/invoice.expressions.ts");
     expect(invoice).toContain("const Receipt: $billing$Receipt$ReadOnly = $billing$Receipt$value;");

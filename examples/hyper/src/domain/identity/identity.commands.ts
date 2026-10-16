@@ -15,7 +15,7 @@ import { connected, type Binding } from "../binding";
  * (`tasks/claim/changes/end_claim.ex:15-21`, `revoke_all`). Hyper's `revoke_all` also revokes a lapsed claim; the port
  * leaves it to the lease sweeper, as `liveClaims` in `src/domain/work/work.helpers.ts` explains, and `Claim.revoke`
  * refuses it. Whether a claim has lapsed is the claim's `lapsed` field, read inside the command's transaction, so it
- * is decided at the transaction's instant (ACT-29), the one `Claim.revoke` checks: a lease that runs out while the
+ * is decided at the transaction's instant, the one `Claim.revoke` checks: a lease that runs out while the
  * command runs cannot pass this read and then fail the revoke. Each is a nested call (`system`): the actor's
  * permission was decided on the command, as Hyper's `nested_opts` skips the claims' policies.
  */

@@ -72,7 +72,7 @@ describe("backstop and holds", () => {
   });
 });
 
-describe("pure: an imported helper a translated expression calls must return a value, not a promise (EXP-03)", () => {
+describe("pure: an imported helper a translated expression calls must return a value, not a promise", () => {
   test("a value passes through unchanged, null and functions included", () => {
     const f = () => 1;
     for (const v of [true, 0, "", null, undefined, { then: 1 }, f]) expect(expr.pure(v, "h")).toBe(v);
@@ -100,7 +100,7 @@ describe("pure: an imported helper a translated expression calls must return a v
   });
 });
 
-describe("lazy operands: what a guard rules out is never called (EXP-03)", () => {
+describe("lazy operands: what a guard rules out is never called", () => {
   const counted = <T>(value: T) => { const f = Object.assign(() => { f.calls++; return value; }, { calls: 0 }); return f; };
   const boom = () => { throw new Error("must not run"); };
   const T = true, F = false, N = null;

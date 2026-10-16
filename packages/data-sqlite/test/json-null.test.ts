@@ -1,4 +1,4 @@
-// ENT-03: a json attribute or argument accepts any JSON value and null, whether or not it says `nullable`.
+// a json attribute or argument accepts any JSON value and null, whether or not it says `nullable`.
 // A domain with json attributes is built, generated, pushed to SQLite and called through the generated functions.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -117,7 +117,7 @@ describe("a create", () => {
       const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
       for (const value of [() => 1, new Date(), new Map(), Symbol("s"), 1n, Number.NaN, Number.POSITIVE_INFINITY, { a: undefined }, new (class X {})()])
         expect(await rejection(mesh.makeDoc({ title: "bad", payload: value }))).toBeInstanceOf(InvalidInputError);
-      // Pinned, as before ENT-03: the validator lets a cyclic object through; the data layer cannot serialise it, and the write fails.
+      // Pinned, as before a json accepted null: the validator lets a cyclic object through; the data layer cannot serialise it, and the write fails.
       expect(await rejection(mesh.makeDoc({ title: "bad", payload: cyclic }))).toBeInstanceOf(FrameworkError);
       expect(await mesh.readDoc({})).toEqual([]);
     } finally { await db.close(); }

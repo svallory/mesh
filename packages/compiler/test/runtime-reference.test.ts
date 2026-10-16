@@ -41,7 +41,7 @@ type OptionalIssue = Assert<Same<Docs.Issue, Omit<Actual.Issue, "label"> & { lab
 type OptionalPolicy = Assert<Same<Docs.PolicyCheck, Omit<Actual.PolicyCheck, "decisive"> & { decisive?: boolean }>>;
 // @ts-expect-error extra required runtime members must fail parity
 type ExtraIssue = Assert<Same<Docs.Issue, Actual.Issue & { extra: string }>>;
-// CMP-21: the answer, the action function type and Mesh's members match the runtime's, readonly modifiers included,
+// the answer, the action function type and Mesh's members match the runtime's, readonly modifiers included,
 // which mutual assignability ignores. \`Mesh.privileged\` and \`Mesh.isSystem\` are compared by name only: the sample's
 // \`EntityValue\` is deliberately smaller, and it types \`isSystem\`'s context as an \`ActionContext\`, which the runtime takes as \`unknown\`.
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;

@@ -62,7 +62,7 @@ function soleKey(table: Table): { name: string; column: Column } | undefined {
 /**
  * The row an insert hands Drizzle: every column the row leaves out is given as `undefined`, which Drizzle writes as the
  * column's default, as it does for a left-out column. Drizzle reads `row[column]` for every column of the table, so a
- * column named like a member of `Object.prototype` (`toString`, `constructor`: ENT-18) would otherwise read as the
+ * column named like a member of `Object.prototype` (`toString`, `constructor`) would otherwise read as the
  * method every object inherits.
  */
 function insertRow(table: Table, row: Row): Row {

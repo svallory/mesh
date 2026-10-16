@@ -612,7 +612,7 @@ export const a = post.author;
 export const b = post.answered;
 declare const loaded: PostTxWith<"author" | "answered">;
 export const author: string = loaded.author.name;
-// A caller's load runs Author's read policies, so the author it gets can be null (POL-17); through tx it cannot.
+// A caller's load runs Author's read policies, so the author it gets can be null; through tx it cannot.
 declare const called: PostWith<"author">;
 // @ts-expect-error a caller's belongs-to can be null
 export const calledAuthor: string = called.author.name;
