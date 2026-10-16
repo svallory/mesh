@@ -81,9 +81,10 @@ function explainUnknownTag(tag: UnknownTag): UnknownTagExplanation | undefined {
 }
 
 /**
- * MX's words in its messages about a Mesh file (`Dialect.messageVocabulary`, `@unstable`, MX alpha.29; MX-05, MX-16).
+ * MX's words in its messages about a Mesh file (`Dialect.messageVocabulary`, `@unstable`, MX alpha.29, reworded in alpha.30; MX-05, MX-16).
  * A `key=value` is an option, since an attribute is an entity's data member; MX's "data file" is a "Mesh file".
- * `tree` stays unset: the operator wants the messages that use it reworded, not a substitute noun (MX-16), and that is MX's work.
+ * `tree` is unset: since alpha.30 no message reads it. `file` is a string, whose plural is the string plus "s", so the static-file
+ * messages read "Mesh files are static, so they do not evaluate `if`" (MX-16).
  */
 export const MESH_MESSAGE_VOCABULARY: MessageVocabulary = {
   attribute: { one: "option", many: "options", article: "an" },

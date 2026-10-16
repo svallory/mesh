@@ -50,13 +50,13 @@ describe("MX's messages read in Mesh's words", () => {
 
   test("the file is a Mesh file, not a data file", () => {
     expect(messages("entity :T\n  <!doctype html>\n", MESH_DIALECT)).toEqual([
-      "`!doctype` means nothing in a Mesh file; the data tree describes tags and data, not a page",
+      "`!doctype` means nothing in a Mesh file; Mesh files describe tags and data, not a page",
     ]);
     expect(codes("entity :T\n  <!doctype html>\n", MESH_DIALECT)).toEqual(["MESH_NOT_IN_ENTITY_FILE"]);
   });
 
-  test("`tree` is unset, so the static-file message keeps MX's `data tree` until MX rewords it", () => {
-    expect(messages("<if=true>\n</if>\n", MESH_DIALECT)).toEqual(["the data tree is static; this file's consumer does not evaluate `if`"]);
+  test("the static-file message is worded by MX with the Mesh file, and reads no `tree`", () => {
+    expect(messages("<if=true>\n</if>\n", MESH_DIALECT)).toEqual(["Mesh files are static, so they do not evaluate `if`"]);
   });
 
   test("a tag is spelled as written: unknown, not allowed, repeated", () => {

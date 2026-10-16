@@ -907,11 +907,11 @@ export function meshDiagnostic(d: MxDiagnostic, file: string): Diagnostic {
 }
 
 /**
- * MX's message for a `for` or an `if` in an entity file says the tree is static and stops there. Mesh adds what to write
+ * MX's message for a `for` or an `if` in an entity file says the file is static and stops there. Mesh adds what to write
  * instead (the entity file page of the docs: no loops or conditions that add or remove declarations). MX owns the
  * message, so this is a `fix:` line beside it and not a rewording.
  */
-// Matches MX's wording today ("does not evaluate") and the agreed rewording ("they do not evaluate", MX-16).
+// Matches MX's wording since alpha.30: "Mesh files are static, so they do not evaluate `if`" (MX-16).
 const STATIC_CONSTRUCT = /\bevaluate `(for|if)`$/;
 export function staticFileFix(d: Pick<MxDiagnostic, "code" | "message">): string | null {
   if (d.code !== "MESH_STRUCTURAL_CONSTRUCT") return null;

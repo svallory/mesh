@@ -207,7 +207,7 @@ test("lowering a .mesh.mx file with no options is as strict as the compiler was 
   }
   const messages = (source: string) => lowerSource(source, file, {}).diagnostics.map((d) => d.message);
   expect(messages("entity :T\n  bogus :x\n")).toEqual(["`bogus` is not a known tag in the `mesh` dialect"]);
-  const static_ = (what: string) => ["the data tree is static; this file's consumer does not evaluate " + what];
+  const static_ = (what: string) => ["Mesh files are static, so they do not evaluate " + what];
   expect(messages("<if=true>\n</if>\n")).toEqual(static_("`if`"));
   expect(messages("<const/x=1/>\n")).toEqual(static_("`const`"));
   expect(messages("export const x = 1\nentity :T\n")).toEqual(static_("`export`"));

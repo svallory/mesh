@@ -59,11 +59,21 @@ function snapshot(rel: string, dialect: Dialect = MESH_DIALECT): unknown {
   );
 }
 
+/**
+ * MX alpha.30 reworded the static-file messages ("Mesh files are static, so they do not evaluate `if`"); the golden is MX's
+ * frozen file and keeps the old text, so the comparison rewrites the old wording to the new one.
+ */
+function meshMessage(message: string | undefined): string | undefined {
+  return message
+    ?.replace("the data tree is static; this file's consumer does not evaluate ", "Mesh files are static, so they do not evaluate ")
+    .replace("the data tree is static; a binding", "Mesh files are static, so a binding");
+}
+
 /** A golden entry with each MX code its diagnostics carry under the name `MESH_DIALECT` gives it; any other code stays. */
-function meshCodes(entry: { diagnostics: { code?: string }[] }): unknown {
+function meshCodes(entry: { diagnostics: { code?: string; message?: string }[] }): unknown {
   const map: Readonly<Record<string, string>> = MX_TO_MESH_CODES;
   const rename = (code: string | undefined) => (code !== undefined && Object.hasOwn(map, code) ? map[code] : code);
-  return { ...entry, diagnostics: entry.diagnostics.map((d) => ("code" in d ? { ...d, code: rename(d.code) } : d)) };
+  return { ...entry, diagnostics: entry.diagnostics.map((d) => ("code" in d ? { ...d, code: rename(d.code) } : d)).map((d) => ("message" in d ? { ...d, message: meshMessage((d as { message?: string }).message) } : d)) };
 }
 
 describe("Mesh's golden parse corpus", () => {
