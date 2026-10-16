@@ -84,13 +84,13 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
     ["in a validate", "  actions\n    create :c\n      validate\n        for|x| of=[1]\n          check :a that=() => true code=\"a\" message=\"m\"\n", 7, 8],
   ])("for|x| %s keeps its code and position and tells the author what to write", (_, body, line, column) => {
     const d = diagnostic(body);
-    expect(d).toMatchObject({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "the data tree is static; this file's consumer does not evaluate `for`", fix: FOR });
+    expect(d).toMatchObject({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "Mesh files are static, so they do not evaluate `for`", fix: FOR });
     expect([d.position.line, d.position.column]).toEqual([line, column]);
   });
 
   test("an if says to move the condition to the line", () => {
     const d = diagnostic("  actions\n    if=true\n      create :c\n");
-    expect(d).toMatchObject({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "the data tree is static; this file's consumer does not evaluate `if`", fix: IF });
+    expect(d).toMatchObject({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "Mesh files are static, so they do not evaluate `if`", fix: IF });
   });
 
   test("another structural construct gets no hint that does not fit it", () => {
@@ -99,7 +99,7 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
   });
 
   test("the hint is for MESH_STRUCTURAL_CONSTRUCT only", () => {
-    const message = "the data tree is static; this file's consumer does not evaluate `for`";
+    const message = "Mesh files are static, so they do not evaluate `for`";
     expect(staticFileFix({ code: "MESH_STRUCTURAL_CONSTRUCT", message })).toBe(FOR);
     // MX's agreed rewording (MX-16) keeps the hint.
     expect(staticFileFix({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "Mesh files are static, so they do not evaluate `for`" })).toBe(FOR);
