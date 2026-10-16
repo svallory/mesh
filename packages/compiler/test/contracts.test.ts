@@ -86,10 +86,10 @@ describe("v4 contracts", () => {
   ])("rejects old options or invalid shapes %s", (suffix) =>
     expect(parse(keyed + suffix).diagnostics.length).toBeGreaterThan(0),
   );
-  test("old-relationship: exact message and position (alpha.14's text, restored by the value-position atom row)", () => {
+  test("old-relationship: exact message and position (the value-position atom row ends the default at the spaced name; Mesh's words since MX alpha.31)", () => {
     const result = parseFixture("negative/old-relationship.mesh.mx");
     expect(result.diagnostics.map((d) => [d.code, d.message, d.line, d.column])).toEqual([
-      [ "MESH_UNKNOWN_OPTION", "`<belongs-to>`: unknown attribute `value`", 5, 14],
+      [ "MESH_UNKNOWN_OPTION", "`belongs-to`: unknown option `value`", 5, 14],
     ]);
   });
   test("every negative fixture fails with a positioned diagnostic", () => {

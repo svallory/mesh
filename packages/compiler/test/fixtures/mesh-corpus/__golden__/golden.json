@@ -5823,7 +5823,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<update>` must be inside `<actions>`; found at the top level",
+    "message": "`update` must be inside `actions`; found at the top level",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -5840,7 +5840,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<read>` must be inside `<actions>`; found at the top level",
+    "message": "`read` must be inside `actions`; found at the top level",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -5857,7 +5857,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<do>` must be inside `<create>`, `<read>`, `<update>`, `<destroy>`, `<always>`; found at the top level",
+    "message": "`do` must be inside `create`, `read`, `update`, `destroy`, `always`; found at the top level",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -5874,7 +5874,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<computed>` must be inside `<entity>`; found at the top level",
+    "message": "`computed` must be inside `entity`; found at the top level",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -32831,7 +32831,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<asc>`: unknown attribute `:id` (`name`)",
+    "message": "`asc`: unknown option `:id` (`name`)",
     "line": 7,
     "column": 12,
     "offset": 99,
@@ -32848,7 +32848,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<check>`: attribute `code` must be string, got atom",
+    "message": "`check`: option `code` must be string, got atom",
     "line": 7,
     "column": 39,
     "offset": 134,
@@ -32865,7 +32865,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<check>`: missing required attribute `that`",
+    "message": "`check`: missing required option `that`",
     "line": 7,
     "column": 8,
     "offset": 103,
@@ -32882,7 +32882,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "the data tree is static; this file's consumer does not evaluate `const`",
+    "message": "Mesh files are static, so they do not evaluate `const`",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -34143,7 +34143,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<has-many>`: unknown attribute `nullable`",
+    "message": "`has-many`: unknown option `nullable`",
     "line": 5,
     "column": 32,
     "offset": 99,
@@ -34160,7 +34160,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "Tag does not support arguments. Write the condition as a value attribute instead: `<if=condition>`.",
+    "message": "Tag does not support arguments. Write the condition as a value option instead.",
     "line": 1,
     "column": 4,
     "offset": 4,
@@ -34177,7 +34177,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "tag variable `/x` on `let`: the data tree is static; a binding without evaluation means nothing",
+    "message": "tag variable `/x` on `let`: Mesh files are static, so a binding without evaluation means nothing",
     "line": 1,
     "column": 0,
     "offset": 0,
@@ -34556,7 +34556,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<member>` (inline contract): unknown attribute `value`",
+    "message": "`&id` (inline contract): unknown option `value`",
     "line": 7,
     "column": 8,
     "offset": 100,
@@ -34590,7 +34590,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<create>`: unknown attribute `accept`",
+    "message": "`create`: unknown option `accept`",
     "line": 5,
     "column": 19,
     "offset": 80,
@@ -34624,7 +34624,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<entity>`: unknown attribute `module`",
+    "message": "`entity`: unknown option `module`",
     "line": 1,
     "column": 13,
     "offset": 13,
@@ -34641,7 +34641,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<belongs-to>`: unknown attribute `value`",
+    "message": "`belongs-to`: unknown option `value`",
     "line": 5,
     "column": 14,
     "offset": 81,
@@ -34658,7 +34658,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<boolean>`: unknown attribute `primary-key`",
+    "message": "`boolean`: unknown option `primary-key`",
     "line": 3,
     "column": 16,
     "offset": 42,
@@ -35952,7 +35952,7 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "`<entity>`: unknown attribute `typo`",
+    "message": "`entity`: unknown option `typo`",
     "line": 1,
     "column": 13,
     "offset": 13,

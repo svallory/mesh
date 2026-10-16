@@ -174,11 +174,11 @@ entity :Payment
 // Member placement is the parse's job now: MX lowers `&name` through MESH_SYNTAX
 // and the production contracts refuse a member line out of place.
 const placementFailures = [
-  ["input assignment", "  actions\n    create :create\n      input\n        &title=1", "unknown attribute `value`"],
+  ["input assignment", "  actions\n    create :create\n      input\n        &title=1", "`&title` (inline contract): unknown option `value`"],
   ["input member options", "  actions\n    create :create\n      input\n        &title min=2", "only whitespace may follow it"],
-  ["bare member in computed", "  computed\n    &title", "`<member>`"],
-  ["member nested beneath input argument", "  actions\n    create :create\n      input\n        string :argument\n          &title", "`<member>`"],
-  ["sort member outside sort", "  actions\n    read :read\n      asc &title", "`<asc>`"],
+  ["bare member in computed", "  computed\n    &title", "`computed`: `&title` is not allowed here"],
+  ["member nested beneath input argument", "  actions\n    create :create\n      input\n        string :argument\n          &title", "`string`: `&title` is not allowed here"],
+  ["sort member outside sort", "  actions\n    read :read\n      asc &title", "`read`: `asc` is not allowed here"],
 ] as const;
 for (const [rule, planted, message] of placementFailures) {
   test(`the parse, in both walkers, rejects ${rule}`, () => {

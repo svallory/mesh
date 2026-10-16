@@ -45,7 +45,7 @@ describe("a claimed default value ends at a terminating attribute row", () => {
   const source = "entity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to=:List :list\n";
 
   test("`belongs-to=:List :list` is the default `:List` and the name `:list`", () => {
-    expect(meshDiagnostics(source, MESH_DIALECT)).toEqual([["`<belongs-to>`: unknown attribute `value`", 5, 14]]);
+    expect(meshDiagnostics(source, MESH_DIALECT)).toEqual([["`belongs-to`: unknown option `value`", 5, 14]]);
   });
 
   test("with no value row the value runs on, as it did in Mesh's alpha.15 dialect", () => {
