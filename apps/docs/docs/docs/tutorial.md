@@ -6,7 +6,7 @@ description: "Two entities, a relationship, a validation, a policy, a computed f
 # Tutorial: a todo list
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 You will build a small program: lists of todos, where a list belongs to somebody and only that person may read or change its todos. Along the way you will use the main ideas Mesh has: relationships, validations, steps, policies and computed fields. Then you will run it, and write a test for it.

@@ -66,10 +66,10 @@ export function withV4InputLines(source) {
  * lexer finds operand and line-start members by token position, not test code.
  * Literal text (including templates), regexes and comments are opaque. A member
  * starts an operand or a bare/sort line; infix & and && are never members.
- * A value of the current transaction, `%.now` or `%.today` (SYN-29), gets the
+ * A value of the current transaction, `%.now` or `%.today`, gets the
  * same colour where it starts an operand only (a bare or sort line is never
  * one), and never after a value, where `%` is the modulo operator. That widens
- * the overlay by that one form, as the brief for SYN-29 asked.
+ * the overlay by that one form, as the syntax asks.
  * Offsets refer to authored text; neither the grammar nor source is changed.
  */
 export function memberSpans(source) {

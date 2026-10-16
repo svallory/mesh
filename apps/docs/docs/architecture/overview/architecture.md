@@ -5,15 +5,13 @@ description: "What Mesh is, its three rings, the build-time and run-time workflo
 
 # Architecture overview
 
-Status: design. M0 (the workspace), M1 (the build skeleton), the move to the documented names (merged in PR #47 and PR #48 on 2026-10-09) and the Jig port (PR #51) are done; part of M2 is merged. The operator approved the user docs and lifted the hold on 2026-10-09 ([ADR-0063](../decisions/0063-user-docs-first-and-the-hold.md)); next comes the rest of M2 ([roadmap](../roadmap/roadmap.md)).
-
-::: callout info "What the code does today"
-The code on `main` implements the names of the rulings of 2026-10-04 evening and 2026-10-05: `entity` in the entity syntax, `.mesh/` output, `ActionContext`, `meshfw` and `@meshfw/*` (PR #47, PR #48, 2026-10-09). MX lowers the authored `&` member positions (PR #50), and the `types` and `validators` files are rendered from typed views through Jig templates a project can override (PR #51, [ADR-0061](../decisions/0061-generators-are-jig-templates.md)). Pending: the action functions, `schema.ts` and `index.ts` ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
-:::
+Status: M0 to M5, M7 and M8 are done, and so is the first half of M6 (the lifecycle seams); the second half of M6 (domain events and the outbox) is designed and awaits review; the Hyper application track (HA) is in progress, then the port gate (HP), which is Mesh 1.0 ([roadmap](../roadmap/roadmap.md)).
 
 ## What Mesh is
 
 Mesh is a TypeScript framework modelled on Ash, a declarative framework for Elixir. A developer writes one *entity file* that declares a piece of data, the operations on it and the rules around them. Mesh derives types, input validators, action functions and the database schema from that file. Mesh runs on Bun only ([ADR-0025](../decisions/0025-bun-only.md)) and is open source under the MIT licence ([ADR-0042](../decisions/0042-open-source-mit.md)). The decision records call the project owner the *operator*.
+
+Mesh relies on established tools wherever it can, behind its own contracts ([ADR-0030](../decisions/0030-established-tools-first.md)). It is built regardless of any measurement of how well coding agents use it; a measurement is not a gate ([ADR-0004](../decisions/0004-no-measurement-gate.md)). The project owner's larger goal is Mesh Start, a meta-framework on Nitro: Mesh for the domain, MX for the user interface, probably Elysia as the glue. Mesh Start does not constrain Mesh's design yet.
 
 An entity file is a `.mesh.mx` file ([ADR-0051](../decisions/0051-mesh-mx-files-and-the-mesh-host.md)) in MX concise syntax, which is indentation-based ([ADR-0041](../decisions/0041-mx-concise-syntax.md)). MX is a separate project with its own parser for `.mx` files. Mesh invents tag names, not syntax, and reads the result as a static tree of tags and attributes ([ADR-0002](../decisions/0002-resource-files-are-mx.md)). MX is core, not an adapter ([ADR-0043](../decisions/0043-mx-is-core.md)). The vocabulary is Mesh's own, informed by Ash ([ADR-0049](../decisions/0049-vocabulary-is-meshs-own.md)): every declaration is `kind :name options`; members are `&name`, other entities are imports, and action input is one `input` section ([ADR-0067](../decisions/0067-members-imports-input-static-files.md)).
 
@@ -86,7 +84,9 @@ Adapted from [research synthesis](../research/synthesis.md) (section 14) and the
 |---|---|---|
 | Core | Mesh cannot run without it | `@meshfw/model`, `@meshfw/compiler`, `meshfw` (CLI, build time); `@meshfw/runtime` (run time); the MX host `mesh` |
 | Adapter | One replaceable implementation of a contract core owns | `@meshfw/data-drizzle`, `@meshfw/data-sqlite`, `@meshfw/data-postgres` |
-| Extension | Optional feature built on core's declared extension points | none first-party in v1; project-local extensions in `src/extensions/` |
+| Extension | Optional feature built on core's declared extension points | none first-party in 1.0; project-local extensions in `src/extensions/` |
+
+Application concerns never enter Mesh's architecture: core defines no feature flags, no tenant and no login. How a caller is identified is the application's business, carried in its own `ActionContext` keys. Elysia is not core; it stays a candidate HTTP adapter once the generic transport contract exists ([ADR-0038](../decisions/0038-elysia-is-not-core.md)). Extensions add to each other's part of the model only through contribution points that the owning extension publishes and the contributor declares; anything else is a build error ([ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md)).
 
 Authorization is core: an entity's `policies` section is part of the file, and an entity without one forbids every action ([ADR-0055](../decisions/0055-policies-are-core.md)).
 
@@ -136,26 +136,27 @@ caller --> generated function: enter > cast > plan > pre-check
 
 After Mesh 1.0, one tracing span per phase will go through the OpenTelemetry API ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
 
-## What is in v1 and what is not
+## What is in Mesh 1.0 and what is not
 
-v1 is milestones M0 to M9 ([ADR-0019](../decisions/0019-v1-scope.md)), with two tasks inserted before M2 resumes ([ADR-0064](../decisions/0064-order-of-work-after-approval.md)).
+Mesh 1.0 ships only when the Hyper engine can be written fully in Mesh; any number of 0.x betas may ship before ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)). No new construct is added before the port unless the port needs it, and as many planned constructs as possible are added before 1.0. A documented construct that is not built yet fails with a not-implemented error naming its milestone, at build time where the build can tell ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)).
 
 | Step | Delivers | State |
 |---|---|---|
 | M0 | Workspace and `verify` script | done |
-| M1 | Build skeleton: model, types, guard, `mesh build` and `inspect` | done (in the old vocabulary) |
-| Realignment | Syntax v2 and the new names across contracts, model, compiler, CLI, runtime and example | done (PR #47, PR #48) |
-| Jig port | Existing emitters split into a view and a Jig template; `mesh export generators` | done (PR #51) |
-| M2 | Generated action functions on SQLite (the walking skeleton ends in a function call) | part merged, rest held |
-| M3 | Data-layer contract, capabilities, conformance suite | planned |
-| M4 | Expressions: one tree, two evaluators | planned |
-| M5 | Action lifecycle, `validate` and `do`, atomic updates | planned |
-| M6 | Extension host, composed contracts | planned |
-| M7 | Relationships and computed fields | planned |
-| M8 | Policies, in core | planned |
-| M9 | Migrations and Postgres | planned |
+| M1 | Build skeleton: model, types, guard, `mesh build` and `inspect` | done |
+| M2 | Generated action functions on SQLite (the walking skeleton ends in a function call) | done |
+| M3 | Data-layer contract, capabilities, conformance suite | done |
+| M4 | Expressions, in memory | done |
+| M7 | Relationships and computed fields, the part Hyper uses | done |
+| M5 | Action lifecycle and action composition | done |
+| M6 | Lifecycle seams, domain events and the outbox | seams done; events designed, not built |
+| M8 | Policies, in core | done |
+| HA | The Hyper application, in `examples/hyper` | in progress |
+| HP | The port gate: Mesh 1.0 | after M6 |
 
-Not in v1 ([roadmap](../roadmap/roadmap.md), section 6): bulk actions, identities and upserts; step files and reusable steps (dropped: reuse is a TypeScript helper or a `mixin`, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)); the `lock` and `relate` steps (there is no `after-commit` step: an effect after commit is a `publish` and a listener, [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)); a raw-SQL escape hatch; the agent and test surface; a command-line adapter for agents (a reader of a `surface`, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md)); jobs and workflows (the outbox is core, in M6); an HTTP adapter and typed client; a single binary; multitenancy as an extension. Never planned: an MCP server ([ADR-0027](../decisions/0027-no-mcp-agent-surface.md)), Node support ([ADR-0025](../decisions/0025-bun-only.md)), `bypass` policies ([ADR-0055](../decisions/0055-policies-are-core.md)), GraphQL. Since M8a every action checks who calls it, and an action no policy covers is denied ([roadmap](../roadmap/roadmap.md), M8).
+After 1.0, in no fixed order: M9 (Postgres and migrations), M10 (SQL translation and atomic updates), M11 (the extension host).
+
+Not in 1.0 ([roadmap](../roadmap/roadmap.md), section 6): bulk actions, identities and upserts; step files and reusable steps (dropped: reuse is a TypeScript helper or a `mixin`, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)); the `lock` and `relate` steps (there is no `after-commit` step: an effect after commit is a `publish` and a listener, [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)); a raw-SQL escape hatch; the agent and test surface; a command-line adapter for agents (a reader of a `surface`, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md)); jobs and workflows (until then the workflow adapter interface stays a design document; the outbox is core, in M6); an HTTP adapter and typed client; a single binary; multitenancy as an extension. Never planned: an MCP server (the agent surface is the generated rules file, and later a command-line adapter generated from the action list, [ADR-0027](../decisions/0027-no-mcp-agent-surface.md)), Node support ([ADR-0025](../decisions/0025-bun-only.md)), `bypass` policies ([ADR-0055](../decisions/0055-policies-are-core.md)), GraphQL. Since M8a every action checks who calls it, and an action no policy covers is denied ([roadmap](../roadmap/roadmap.md), M8).
 
 ## Map of the Architecture pages
 

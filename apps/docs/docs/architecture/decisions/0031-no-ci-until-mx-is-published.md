@@ -5,7 +5,7 @@ description: "Decision record 0031: No continuous integration until MX is publis
 
 # 0031. No continuous integration until MX is published
 
-> **Amended** on 2026-10-05: the `@mxlang` packages are published, which is the condition this record set. `packages/compiler` installs them from the registry by exact version, and `.github/workflows/verify.yml` runs `bun run verify` on every pull request and every push to `main`. The body below is kept as history; see the amendment at the end of the record.
+> **Amended** on 2026-10-05: the `@mxlang` packages are published, which is the condition this record set. `packages/compiler` installs them from the registry by exact version, and `.github/workflows/verify.yml` runs `bun run verify` on every pull request and every push to `main`. `verify` is a required check on `main` (branch protection), so a pull request whose verify fails cannot merge. The body below is kept as history; see the amendment at the end of the record.
 
 ## Status
 

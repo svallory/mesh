@@ -6,7 +6,7 @@ description: "The mesh commands, their arguments and flags, exit codes, the buil
 # Command line
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 `mesh` builds and inspects your project. It does not run your application's actions. Run it from the project root containing `mesh.config.ts`, after [installation](./quick-start.md#install):
@@ -24,7 +24,7 @@ mesh <command> [options]
 | `mesh build --check` | The guard: rebuilds in memory, writes nothing, fails on any difference with what is committed |
 | `mesh inspect [entity]` | Prints the model as JSON, with the source position of every declaration. `entity` may be shortened to the fewest qualifiers that pick one entity |
 | `mesh explain <entity> <action>` | Prints the plan that action's handler follows. `entity` may be shortened the same way |
-| `mesh db push` | Pushes the schema straight to the database. Development only |
+| `mesh db push [--force]` | Pushes the schema straight to the database. Development only. The SQLite adapter adds this command; a change that would lose data needs `--force`. An adapter's command never takes a core command's word |
 | `mesh migrate generate [--allow <change>]` | Writes a SQL migration into `migrations/` |
 | `mesh migrate apply` | Applies the migrations that have not been applied |
 | `mesh export generators` | Copies the built-in templates into the project; see [Customising generated code](./customising-generated-code.md) |
@@ -34,7 +34,7 @@ Square brackets mark an optional argument; angle brackets mark one you must supp
 
 The `db` and `migrate` commands come from the data adapter, which is why `meshfw` never imports a query library. Enabled extensions can add commands too; `mesh --help` lists the commands for your project.
 
-Exit codes: `0` success, `1` errors were found, `2` usage error.
+Exit codes: `0` success, `1` errors were found, `2` usage error. A command that the installed version does not provide yet also exits with `2`, and its message names the release that brings it.
 
 ## init
 
@@ -86,7 +86,7 @@ mesh inspect Todo
 
 Prints the model as JSON: every attribute with its type and constraints, every action with what it accepts, every relationship, computed field and policy, each with the source position of the declaration it came from. Omit `Todo` to inspect the whole domain.
 
-**Naming an entity.** What you type is shortened as far as it stays unambiguous. With `school/homework/task.mesh.mx` and `work/project/task.mesh.mx` each declaring `Task`, `project.Task` is enough to pick the second, and `Task` alone is accepted while only one `Task` exists. When a name matches more than one entity, `mesh` picks none of them and lists the candidates: `Did you mean school.homework.Task or work.project.Task?`. A name that matches none lists the entities there are. What `mesh` prints is always the full name, the module's folders as written, a dot and the entity's name (`work.project.Task`), which is also what errors and seams carry. It is the first thing to look at when a build error mentions a rule you did not expect, and it is what to paste into a [bug report](https://github.com/svallory/mesh/issues).
+**Naming an entity.** Names are matched case-sensitively. What you type is shortened as far as it stays unambiguous. With `school/homework/task.mesh.mx` and `work/project/task.mesh.mx` each declaring `Task`, `project.Task` is enough to pick the second, and `Task` alone is accepted while only one `Task` exists. When a name matches more than one entity, `mesh` picks none of them and lists the candidates: `Did you mean school.homework.Task or work.project.Task?`. `mesh` never picks one, even when a name you used before becomes ambiguous because a same-named entity was added. The same shortening applies to every name you type outside an entity file (command arguments, agent tools, names written in configuration); inside an entity file a name comes from an import. A name that matches none lists the entities there are. What `mesh` prints is always the full name, the module's folders as written, a dot and the entity's name (`work.project.Task`), which is also what errors and seams carry. The full form is `[<package>:][<folder>.]...<Declaration>[#<member>]`: `work.Task`, `sales.billing.Invoice#pay`, `billing.InvoicePaid`, `meshfw:Email`. Folders are separated from each other and from the declaration by `.`, `#` introduces a member (an action, a field or a policy), and `<package>:` names a package other than your project. Mesh represents such a name with its `FQN` concept. Under zsh's `extendedglob` option `#` is a glob character, so quote an argument that holds one. It is the first thing to look at when a build error mentions a rule you did not expect, and it is what to paste into a [bug report](https://github.com/svallory/mesh/issues).
 
 ## explain
 

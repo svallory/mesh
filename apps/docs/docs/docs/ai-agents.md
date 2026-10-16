@@ -6,7 +6,7 @@ description: "Why one declarative file per entity is good for an agent, and the 
 # Working with AI agents
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 Most of the code a framework asks you to write is code an agent has to read before it can change anything. Mesh tries to keep that code small and fixed in shape. This page says what an agent gets, and what it still has to be told.

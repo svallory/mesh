@@ -6,7 +6,7 @@ description: "The generated functions, the action context, filters, sort, paging
 # Using your domain
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 An action is one named operation on an entity, and in Mesh it is an ordinary TypeScript function: a method of the entity you import. A command line, a worker, a cron job and an HTTP handler all call the same method with the same two arguments. There is no server, no route and no request object.
@@ -291,7 +291,7 @@ Every action throws on failure. All four classes come from `@meshfw/runtime`, ex
 | `InvalidInputError` | `invalid_input` | The input does not fit the action, or a `check` failed |
 | `NotFoundError` | `not_found` | The row the call names does not exist, or is not visible to this actor |
 | `ForbiddenError` | `forbidden` | A policy denied the call, no policy covers the action, or none of the policies that cover it applies (each one's `when` was false). Names the `entity`, the `action` and the `policies`, says which of the three in `reason` (`failed`, `not-covered` or `not-applied`), and carries a `breakdown` of the checks that ran |
-| `FrameworkError` | `framework` | A mistake in the program: an action called before `connect` and outside any `run` or `transaction`, a load that cannot be served, a check's `message=` function that throws or does not return a string |
+| `FrameworkError` | `framework` | A mistake in the program: an action called before `connect` and outside any `run` or `transaction`, a load that cannot be served, a check's `message=` function that throws or does not return non-blank text |
 
 `InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote (the text of the `message=`, or the string its function returned), the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
 
@@ -444,7 +444,7 @@ A call that another action makes to an entity runs the seams for its own writes,
 
 ## Asking instead of calling
 
-`Mesh.checkPolicies(Todo.complete, input, context)` takes the action function first and then the arguments of the call you are asking about. It resolves to `{ allowed, breakdown }` and changes nothing. `Mesh.can(Todo.complete, input, context)` is the shortcut for the yes or no: it resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. The name is `checkPolicies`, not `authorize`, because in Pundit, CanCanCan and Laravel `authorize` throws when the caller is denied, so `await Mesh.authorize(...)` written as a guard would look like one and let every call through; `checkPolicies` says it returns a result. Mesh recognises the action function in a registry it keeps itself, so the function carries nothing extra. A question asked more than 32 deep, each inside a policy of the one before, rejects with a `FrameworkError`.
+`Mesh.checkPolicies(Todo.complete, input, context)` takes the action function first and then the arguments of the call you are asking about. It resolves to `{ allowed, breakdown }` and changes nothing. `Mesh.can(Todo.complete, input, context)` is the shortcut for the yes or no: it resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. The name is `checkPolicies`, not `authorize`, because in Pundit, CanCanCan and Laravel `authorize` throws when the caller is denied, so `await Mesh.authorize(...)` written as a guard would look like one and let every call through; `checkPolicies` says it returns a result. Mesh recognises the action function in a registry it keeps itself, so the function carries nothing extra. A question asked more than 32 deep, each inside a policy of the one before, rejects with a `FrameworkError`. A question runs the call's own checks in the call's order and writes nothing; where it may be asked, and how it joins a transaction, is in [permission questions](../architecture/in-depth/action-lifecycle.md#permission-questions).
 
 ```ts "src/main.ts"
 import { Mesh } from "meshfw";

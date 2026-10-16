@@ -303,9 +303,9 @@ declare module "meshfw" {
   export { defineConfig, type MeshConfig } from "@meshfw/runtime";
 }
 
-// The generated entry points, as CMP-17 and CMP-18 lay them out: `#mesh` holds the framework's names only, and each
+// The generated entry points, as ADR-0086 lays them out: `#mesh` holds the framework's names only, and each
 // module of the domain gets its own specifier, `#mesh/domain/<module>`, which exports each of its entities as a value
-// (`Todo`, whose methods are the entity's actions, CMP-16) and the record type under the same name. The pages'
+// (`Todo`, whose methods are the entity's actions) and the record type under the same name. The pages'
 // entities live in two modules: `Todo` and `List` in `src/domain/todo/`, `Invoice` in `src/domain/billing/`.
 // The types below that no single module owns (`Condition`, `Filter`, `Decision`) are this file's shorthand for the
 // per-entity types the generator writes into each module.

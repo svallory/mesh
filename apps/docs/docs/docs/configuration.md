@@ -6,7 +6,7 @@ description: "Project configuration, the action context, data adapters, extensio
 # Configuration
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 `mesh.config.ts` configures the project; `src/context.ts` declares what each action call carries. The [tutorial](./tutorial.md) starts from the starter's configuration and builds a program around it. For commands, flags and exit codes, see [Command line](./command-line.md).
@@ -70,7 +70,7 @@ export default defineConfig({
 });
 ```
 
-Patterns match files, so write `src/legacy/**` rather than `src/legacy`. A pattern that matches no entity file produces a warning naming it, since it is usually a typo. `ignore` applies to a `domain` folder, glob or list alike. A glob that reaches outside the project, or one that excludes every entity file, is a configuration error. A file that a kept file imports must not be ignored. To organise files without excluding them, use a `_name/` folder; see [Project structure](./project-structure.md#the-domain).
+Patterns match files, so write `src/legacy/**` rather than `src/legacy`. A pattern that matches no entity file produces a warning naming it, `MESH_IGNORE_UNUSED`, since it is usually a typo. `ignore` applies to a `domain` folder, glob or list alike. A glob that reaches outside the project, or one that excludes every entity file, is a configuration error. A file that a kept file imports must not be ignored: importing an ignored file is the error `MESH_IGNORED_IMPORT`. To organise files without excluding them, use a `_name/` folder; see [Project structure](./project-structure.md#the-domain).
 
 `connect()` reads this file, which is why the build, the commands and your application can never disagree about where the data is. There is nowhere else to configure a connection.
 
@@ -90,7 +90,7 @@ declare module "@meshfw/runtime" {
 export const alice = { id: "00000000-0000-4000-8000-000000000001" };
 ```
 
-Two keys are reserved: `actor`, which policies read, and `system`, an optional boolean the application sets on a call it makes on its own behalf (see [internal writes](./using-your-domain.md#internal-writes)). The starter exports Alice for its demo. Your program supplies its own caller; [Using your domain](./using-your-domain.md#the-action-context) explains optional keys, tenants and the `actor` key Mesh reads.
+Two keys are reserved: `actor`, which policies read, and `system`, an optional boolean the application sets on a call it makes on its own behalf (see [internal writes](./using-your-domain.md#internal-writes)). They are the only keys Mesh reads. An extension states which keys it reads, and a key clash, between two extensions or with a key Mesh reads (`actor`, `system`), is a build error. The starter exports Alice for its demo. Your program supplies its own caller; [Using your domain](./using-your-domain.md#the-action-context) explains optional keys, tenants and the `actor` key Mesh reads.
 
 ## Choosing the database
 
@@ -124,6 +124,8 @@ If your entity file uses something your adapter cannot do, the build fails and n
 ## Seams
 
 A seam is a place in every generated action where your application may run code: `beforeTransaction` (before the transaction opens, for the call that opens it; throw to refuse the call), `afterWrite` (inside the transaction, right after each row is written; a throw rolls back the whole call) and `afterCommit` (once, after the outermost transaction commits; not called on rollback; a throw there does not fail the call, which has committed, and is reported with `console.error`). List them under `seams`; `connect()` reads them from this file, so the build, your application and your tests configure them in one place. In a test, pass the same object to `bind(dataLayer, { seams })`.
+
+`seams` is an object, here and in `bind`. A seam that needs generated code (`#mesh`, `#mesh/domain/...`) imports it inside its body (`const { Invoice } = await import("#mesh/domain/billing")`); a type-only import (`import type`) may stay at the top. The build lists the modules loaded while it imports this file and refuses any module under the output folder with `MESH_CONFIG_LOAD`, whose message says the config imports `#mesh` directly or through a file it imports, and whose fix is the import inside the function; the same message applies when a `#mesh` specifier fails to resolve. The check sees only what runs while the config loads. Why: `.mesh/` is built from the config, so a config that loads `#mesh` at its top level fails to resolve it on a fresh checkout or silently loads a stale tree.
 
 ```ts "mesh.config.ts (excerpt)"
 seams: {

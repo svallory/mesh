@@ -153,7 +153,7 @@ test("an entity names its own type in a relationship with no import, and no othe
   expect(oldSpellingInV4(own.replace("entity=Task nullable", "entity=Nope nullable"))).toContain("entity=Nope must name an import");
 });
 
-test("an entity named through a namespace import needs that import in the fence (SYN-21)", () => {
+test("an entity named through a namespace import needs that import in the fence", () => {
   const qualified = `import * as billing from "../billing/invoice.mesh.mx"
 import { Customer } from "./customer.mesh.mx"
 entity :Payment

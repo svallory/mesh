@@ -7,7 +7,7 @@ layout: "full"
 # Introduction
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 Mesh is a TypeScript framework: you describe each thing your program stores once, in one `.mesh.mx` file, and Mesh writes the TypeScript you call, the checks on what callers send, the rules about who may do it, and the database tables and migrations. The whole interface is one function call, and Mesh runs on [Bun](https://bun.sh).

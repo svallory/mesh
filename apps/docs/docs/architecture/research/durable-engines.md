@@ -16,9 +16,9 @@ and rules, and Mesh derives the rest. Its architecture proposal is in
 [`notes/research/00-synthesis.md`](./synthesis.md). That document says Mesh should "design the seams (stable step
 identity, events committed in the same transaction as state) and stop there" for durable workflows
 (section "Do not build yet"), and lists "Durable workflows: which engine, if any" as open question 7.
-On 2026-10-04 the operator ruled (`notes/decisions-2026-10-04.md`, row 7) to compare durable engines
+On 2026-10-04 the operator ruled to compare durable engines
 now, in order to define Mesh's **workflow adapter interface**, with the in-process runner as the
-first adapter. Row 8 of the same file makes the first transport a **CLI**, so nothing here may
+first adapter. A ruling of the same day makes the first transport a **CLI**, so nothing here may
 assume an HTTP request.
 
 A *durable workflow engine* runs a multi-step function so that it survives a crash, a deploy or a
@@ -536,8 +536,8 @@ and some child composition.
 From [`00-synthesis.md`](./synthesis.md): **(a)** "Step identity by content hash → Stable, declared step names;
 persisted sagas break on redeploy"; **(b)** "events committed in the same transaction as state";
 **(c)** "Explicit context value on every call" (actor and tenant are never ambient); **(d)** "Silent
-fallbacks → hard errors"; and from `decisions-2026-10-04.md` row 4, adapters declare capabilities
-and using one an adapter lacks is a build-time error. Row 8 adds **(e)**: a workflow may be started
+fallbacks → hard errors"; and from [ADR-0013](../decisions/0013-data-layer-contract-and-capabilities.md), adapters declare capabilities
+and using one an adapter lacks is a build-time error. The CLI ruling adds **(e)**: a workflow may be started
 from a CLI with no HTTP request.
 
 ## 6. Proposed adapter interface (proposal, not agreed)
@@ -554,7 +554,7 @@ from a CLI with no HTTP request.
    without I/O). So the generator emits each declared step as a named function with an explicit,
    serialisable input, and the workflow body calls `ctx.step("reserve-stock", input)`. This also
    fits the architecture decision that "generated code carries the behaviour; the shared engine
-   stays thin" (`decisions-2026-10-04.md`, row 2). For a loop, a **step family** is declared
+   stays thin" (an operator ruling of 2026-10-04). For a loop, a **step family** is declared
    (`charge[]`): its instances are named `charge[<key>]` where the key is a pure function of the
    workflow input and earlier recorded step results (an index, a record id). The verifier knows
    families, so the declared list stays finite while loops stay possible. What the verifier

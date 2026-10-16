@@ -67,7 +67,7 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. The rows equal the production contracts: options unavailable for a particular type have no row. MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
 “On main” records the delivered compiler/model coverage, not runtime execution. MX lowers authored `&` in every position through Mesh's syntax module; the production compiler never rewrites source.
 
@@ -239,7 +239,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `when` | `when=() => true` | `when` | on main |
 | `when.value` | `when=() => true` | `when.value` | on main |
 
-A `json` always accepts `null` (ENT-03, [ADR-0069](../decisions/0069-json-attribute-type.md)), so the `json.nullable` row is redundant and the build warns on it (`MESH_JSON_NULLABLE`).
+A `json` always accepts `null` ([ADR-0069](../decisions/0069-json-attribute-type.md)), so the `json.nullable` row is redundant and the build warns on it (`MESH_JSON_NULLABLE`).
 
 ## 4. Deviations
 
@@ -252,7 +252,7 @@ These are deliberate. Each has its record.
 | V1 | One line shape, `kind #name options`; the type, relationship kind or action type is the tag | Positional arguments and per-entity options | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
 | V2 | Attributes are required unless `nullable` | `allow_nil?` defaults to `true` | [ADR-0050](../decisions/0050-entity-file-syntax.md) |
 | V3 | One domain per app; folders are modules; no attribute names the domain | Many domains; each resource names its own | [ADR-0057](../decisions/0057-one-domain-modules-as-folders.md) |
-| V4 | `validate` runs before the steps; `self` is the record with the accepted input applied; one-field rules go on the attribute line, `check` only for cross-field or stored-state rules. **Changed 2026-10-11 (operator, ACT-27, POL-08):** in `validate` and in a policy, `self` is the record before the input, the stored record or a create's new instance, and the caller's values are in `input` | Changes and validations interleaved in one list | [ADR-0053](../decisions/0053-validate-then-do.md), amended 2026-10-11 |
+| V4 | `validate` runs before the steps; `self` is the record with the accepted input applied; one-field rules go on the attribute line, `check` only for cross-field or stored-state rules. **Changed 2026-10-11 (operator):** in `validate` and in a policy, `self` is the record before the input, the stored record or a create's new instance, and the caller's values are in `input` | Changes and validations interleaved in one list | [ADR-0053](../decisions/0053-validate-then-do.md), amended 2026-10-11 |
 | V5 | The write strategy is inferred and printed by `mesh explain` | `require_atomic?` declared per action | [ADR-0054](../decisions/0054-write-strategy-is-inferred.md) |
 | V6 | Policies are core; checks inside a policy combine without order; every covering policy must pass; no policies means forbidden; no `bypass` | The authorizer is opt-in per resource; bypass policies | [ADR-0055](../decisions/0055-policies-are-core.md) |
 | V7 | A function whose body is one expression is translated; anything else is plain code; the record is `self` | `expr(...)` with bare attribute names and `^actor` templates | [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) |
@@ -397,10 +397,10 @@ The source of truth is [`packages/compiler/src/contracts.ts`](https://github.com
 
 | Group | Current form | Where checked |
 |---|---|---|
-| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `actions`, `policies` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase (CMP-28) |
+| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `actions`, `policies` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase |
 | Stored attributes and arguments | `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp` | Type-specific options in contracts; defaults and scalar formats in the builder. Attributes are required unless `nullable` |
 | Primary keys | `primary-key` on `uuid`, `integer` or `string` only | Contracts reject other types; the builder requires exactly one non-null key |
-| Relationships | `belongs-to`, `has-many`, `has-one`, each with an imported entity identifier or a member of a namespace import (`billing.Invoice`, SYN-21) | Contracts check the written reference's shape; the builder resolves named imports, namespace members and their relative paths |
+| Relationships | `belongs-to`, `has-many`, `has-one`, each with an imported entity identifier or a member of a namespace import (`billing.Invoice`) | Contracts check the written reference's shape; the builder resolves named imports, namespace members and their relative paths |
 | Computed fields | A typed function body, or `count`, `sum`, `avg`, `min`, `max` with `of` | Function text is preserved; rollups resolve attributes through relationships, not computed fields |
 | Actions | `create`, `read`, `update`, `destroy`, plus shared `always` rules and `auto` | The builder resolves input members, rejects managed input fields and duplicate names, and preserves checks and ordered steps |
 | Checks and steps | `validate`/`check`, `do`/`set`/`when`/`load`/`run` | Checks retain labels, codes and messages. Literal assignments must fit the member's scalar type; functions are not evaluated |
@@ -426,7 +426,7 @@ This was the opening of the page while the vocabulary copied Ash ([ADR-0034](../
 
 **Decision record.** 2026-10-04, recorded in [rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), section "Lead decisions of the architecture-docs brief"; a working decision (not an operator ruling); the operator may overrule. Alternative considered: Ash's exact spelling with `_` where MX allows it (`belongs_to`) and a different spelling only for booleans, which would have renamed every tag on `main` and left two conventions. Kebab-case matches what is on `main`, avoids renaming twice, and the operator revisits naming for MX after v1 ([ADR-0034](../decisions/0034-vocabulary-copies-ash-dsl.md)). Consequence: names that differ from Ash only by this rule are not deviations and are not listed in Section 4.
 
-**Attribute-name safety (M2).** The builder refuses one member name, `__proto__`, for every attribute-declaring tag (`MESH_ATTRIBUTE_NAME`), because it sets an object's prototype instead of adding a property; every other name is accepted, `constructor`, `toString` and `valueOf` included (ENT-18). This is a restriction on author-chosen names, not a vocabulary spelling change.
+**Attribute-name safety (M2).** The builder refuses one member name, `__proto__`, for every attribute-declaring tag (`MESH_ATTRIBUTE_NAME`), because it sets an object's prototype instead of adding a property; every other name is accepted, `constructor`, `toString` and `valueOf` included. This is a restriction on author-chosen names, not a vocabulary spelling change.
 
 ### C.1 Introduction
 

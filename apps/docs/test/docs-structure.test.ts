@@ -29,7 +29,7 @@ test("user pages retain one release note and only the approved local-binary exce
   expect(names).toHaveLength(11);
   for (const name of names) {
     const text = readFileSync(join(docs, name), "utf8");
-    expect(text.match(/Mesh is not released yet\. These pages describe Mesh 1\.0\./g)).toHaveLength(1);
+    expect(text.match(/Mesh is not released yet\. These pages describe what Mesh will be\./g)).toHaveLength(1);
     expect(text).not.toMatch(/@meshfw\/cli|bun create mesh(?!fw)|calling-actions/);
     expect(text.match(/bunx mesh/g) ?? []).toHaveLength(name === "quick-start.md" ? 1 : 0);
   }
@@ -86,7 +86,7 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
   expect(solidStart).not.toMatch(/return[^\n]*(?:issues|breakdown|source)/);
 });
 
-test("a page imports entity values from their module, and only the framework's names from #mesh (CMP-17)", () => {
+test("a page imports entity values from their module, and only the framework's names from #mesh", () => {
   const framework = new Set(["bind", "connect", "disconnect", "transaction", "tables", "Binding", "Privileged"]);
   const modules = new Set<string>();
   let seen = 0;
