@@ -7,7 +7,7 @@ const lowerCamel = (name: string) => name.charAt(0).toLowerCase() + name.slice(1
 /**
  * Resolve every relationship against the model (M7), after all entities are built: a
  * `belongs-to` learns the type of its target's key, and a `has-many` or `has-one` learns which
- * `belongs-to` of the target it follows (ADR-0070, DOM-32: `inverse=`, else the only candidate, else the one named after
+ * `belongs-to` of the target it follows (ADR-0070: `inverse=`, else the only candidate, else the one named after
  * the entity). A target that is not in the model is
  * reported where the relationship is declared; this pass leaves it alone.
  */
@@ -60,7 +60,7 @@ export function resolveRelationships(
         continue;
       }
       // No belongs-to back: the has-many or has-one is what the other entity's key column hangs on, so the build fails
-      // (DOM-34, ADR-0018). This pass runs after every entity is built, so the target's relationships are all known.
+      // (ADR-0018). This pass runs after every entity is built, so the target's relationships are all known.
       if (candidates.length === 0) {
         // A belongs-to of the target whose entity is unknown may have been meant to point here; its own error is reported.
         if (target.relationships.some((other) => other.kind === "belongs-to" && !targetOf(target, other))) continue;
@@ -74,7 +74,7 @@ export function resolveRelationships(
         continue;
       }
       // The ladder: one candidate is the one; of several, the one named after this entity (Collaborator's
-      // `memberships` follows Membership's `collaborator`); otherwise the author must say (DOM-32).
+      // `memberships` follows Membership's `collaborator`); otherwise the author must say.
       const namedAfterEntity = names.find((name) => name === lowerCamel(entity.name));
       if (candidates.length === 1) relation.inverse = names[0]!;
       else if (namedAfterEntity !== undefined) relation.inverse = namedAfterEntity;

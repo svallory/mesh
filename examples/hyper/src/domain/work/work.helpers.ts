@@ -74,7 +74,7 @@ export function staleClaim<C extends ClaimFacts>(claims: readonly C[], fence: nu
 
 /**
  * `staleClaim` for a function outside the actions, which has no `%.now`: the claims carry their `lapsed` field, read
- * inside the function's transaction, so a lease is judged at the transaction's instant (ACT-29), the one the actions
+ * inside the function's transaction, so a lease is judged at the transaction's instant, the one the actions
  * it then calls check the fence at.
  */
 export function staleClaimWithLapsed<C extends ClaimFacts & { readonly lapsed: boolean }>(claims: readonly C[], fence: number | null | undefined, holderId: string): C | undefined {
@@ -361,9 +361,9 @@ export async function readinessOf(taskId: string): Promise<{ derivedState: Deriv
   return { derivedState: await derivedStateOf(taskId), reasons: await blockReasonsOf(taskId) };
 }
 
-// The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied
-// (ACT-27), so `&task` is not the Task the caller names yet: the check reads that Task through `Mesh.privileged`, by the id
-// in `input` (POL-08). A privileged read takes `load`, so the helpers below read the Task with the computed fields and
+// The reads a create's check makes. In `validate`, a create's `self` is the new instance before the input is applied,
+// so `&task` is not the Task the caller names yet: the check reads that Task through `Mesh.privileged`, by the id
+// in `input`. A privileged read takes `load`, so the helpers below read the Task with the computed fields and
 // rollups the checks need (`derivedState`, `maxFence`, `inReview`) instead of deriving them from rows.
 
 /** The Task `taskId`, or undefined when there is none. */
@@ -384,7 +384,7 @@ export async function parentOpenOf(parentId: string | null): Promise<boolean> {
 /**
  * The parent a `task.move` leaves the Task under: the one the caller sends, `null` to move it to the top, or the
  * stored one when the caller sends none. A translated `input.parent ?? &parent` cannot tell `null` from a missing
- * value, so the check is plain code (ACT-27).
+ * value, so the check is plain code.
  */
 export function movedParent(stored: { readonly parentId: string | null }, sent: string | null | undefined): string | null {
   return sent === undefined ? stored.parentId : sent;
@@ -393,7 +393,7 @@ export function movedParent(stored: { readonly parentId: string | null }, sent: 
 /**
  * `task.unchanged` (`tasks/task/rules.ex:16-22`): `task.update` changes the title or the intent. A field the caller
  * does not send keeps its stored value, and an intent sent as `null` clears it, so this is plain code: a translated
- * `input.intent ?? &intent` would read that `null` as "not sent" and refuse the change (ACT-27).
+ * `input.intent ?? &intent` would read that `null` as "not sent" and refuse the change.
  */
 export function taskChanges(stored: { readonly title: string; readonly intent: string | null }, sent: { readonly title?: string | undefined; readonly intent?: string | null | undefined }): boolean {
   const intent = sent.intent === undefined ? stored.intent : sent.intent;
@@ -502,7 +502,7 @@ export async function revokesClaimOf(taskId: string, actorId: string): Promise<b
 /**
  * Policy `claimHolder` on `task.complete`, the spec's `claim.holder` (PROTOCOL.md:326): a completion without a fence
  * is refused while someone else holds the Task's live claim. With a fence, the fence rules decide. Hyper's engine has
- * no such check (it answers `claim.current-fence`); the port follows the spec (decision POL-20).
+ * no such check (it answers `claim.current-fence`); the port follows the spec.
  */
 export async function noOtherHolderOf(taskId: string, fence: number | null | undefined, actorId: string, now: Date): Promise<boolean> {
   if (fence !== null && fence !== undefined) return true;
@@ -513,7 +513,7 @@ export async function noOtherHolderOf(taskId: string, fence: number | null | und
 /**
  * Policy `claimHolder` on `submission.submit`, the spec's `claim.holder` (PROTOCOL.md:249): a submission by someone
  * who never held a claim on the Task is refused. A Task that does not exist passes, and the content checks report it
- * (`task.open`). Hyper's engine has no such check; the port follows the spec (decision POL-20).
+ * (`task.open`). Hyper's engine has no such check; the port follows the spec.
  */
 export async function heldAClaimOf(taskId: string, actorId: string): Promise<boolean> {
   if ((await claimsOf(taskId)).some((claim) => claim.holderId === actorId)) return true;

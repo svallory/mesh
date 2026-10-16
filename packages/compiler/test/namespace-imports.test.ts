@@ -1,4 +1,4 @@
-// SYN-21: an entity file names another file's entity by an imported identifier (`entity=List`) or as a member of a
+// an entity file names another file's entity by an imported identifier (`entity=List`) or as a member of a
 // namespace import (`import * as billing from "../billing/invoice.mesh.mx"`, `entity=billing.Invoice`); the alias is
 // the author's, never a module name Mesh checks and never part of an FQN. A helper module can be a namespace import too,
 // and a function calls `h.isStaff(...)` as it calls an imported `isStaff(...)`. One function resolves every reference

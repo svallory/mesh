@@ -18,7 +18,7 @@ export const minutes = (n: number, from: Date = NOW) => new Date(from.getTime() 
 /**
  * Each collaborator's role as committed: the role of its active membership, or absent when it has none. Every world
  * keeps it current through an `afterCommit` seam (`trackRoles`), so `as()` reads committed state when a call is made,
- * as HA reads the membership from the database when a call comes in (decision POL-20). Collaborator ids are random,
+ * as HA reads the membership from the database when a call comes in. Collaborator ids are random,
  * so the worlds of one test run share the map without meeting.
  */
 const roles = new Map<string, Role>();

@@ -1,4 +1,4 @@
-// PRJ-20: generated code reaches every global it uses through `.mesh/$globals.ts`, under a `$` name, so an entity may
+// generated code reaches every global it uses through `.mesh/$globals.ts`, under a `$` name, so an entity may
 // take the name of any global (`Promise`, `Boolean`, `Date`) without hiding it. `freeGlobals` holds that to the
 // TypeScript checker instead of a list of names: it resolves every identifier a generated file reads and reports the
 // ones whose declaration is a global of the TypeScript library or of a global types package (`@types/bun`).

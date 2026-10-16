@@ -2,7 +2,7 @@ import type { DataLayer, DataOperations } from "./data-layer.ts";
 import type { PolicyCheck } from "./errors.ts";
 
 /**
- * How `Mesh.checkPolicies` (CMP-21) asks a call for its decision without letting it go further. The runtime runs the
+ * How `Mesh.checkPolicies` asks a call for its decision without letting it go further. The runtime runs the
  * call itself, on a layer made here for that one question (`answeringLayer`); the authorizer the call builds sees that
  * layer in `before` or `filter` (`answers`) and, once the policies have decided, throws an `Answer` carrying the
  * decision instead of resolving or throwing `ForbiddenError`. Neither is exported by the package (its `exports` map

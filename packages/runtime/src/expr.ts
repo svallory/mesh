@@ -6,7 +6,7 @@ import { FrameworkError } from "./errors.ts";
  * A value is `true`, `false` or unknown, and unknown is `null`; `undefined` is read as `null`.
  * Every function is total: it accepts null and never throws on one. The right side of `and`, `or`
  * and `coalesce` and both branches of `cond` are thunks (`FunctionSpec.lazy`), called only when the
- * left side lets them, so an imported helper behind a guard runs only then (EXP-03); an unknown
+ * left side lets them, so an imported helper behind a guard runs only then; an unknown
  * (null) guard still calls them, as SQL would. The meaning of each function is its table in
  * `EXPRESSION_TABLES` (`@meshfw/runtime/testing`), whose rows hold plain values; the M10 SQL
  * evaluator must give the same answers.
@@ -161,7 +161,7 @@ export function filter<T>(items: readonly T[] | null | undefined, p: (item: T) =
 /** A value used in a boolean position, from code Mesh does not control (an imported helper): booleans and null pass, anything else throws. */
 export const asBool = (v: unknown): boolean | null => bool(v, "helper");
 /**
- * What an imported function a translated expression calls returned (EXP-03): such a call is synchronous and pure, so a
+ * What an imported function a translated expression calls returned: such a call is synchronous and pure, so a
  * promise is refused. The type checker refuses it where the function's type says it returns one (the parameter is then
  * `never`); this refuses it at run time where its type does not (`any`, `unknown`). The promise's own outcome is dropped:
  * the expression has already failed.

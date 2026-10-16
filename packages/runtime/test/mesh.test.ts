@@ -3,9 +3,9 @@ import * as runtime from "../src/index.ts";
 import { expr, FrameworkError, Mesh } from "../src/index.ts";
 import { can, checkPolicies, entity, privileged } from "../src/entity.ts";
 
-// PRJ-22: Mesh's own functions are members of one frozen object, so no name an application chooses can collide with them.
-// SYN-29: the instant is not one of them; an entity file reads the current transaction's as `%.now` and `%.today`.
-// CMP-21: asking whether a call would be allowed is `Mesh.checkPolicies`, and `Mesh.can` for the yes or no.
+// Mesh's own functions are members of one frozen object, so no name an application chooses can collide with them.
+// the instant is not one of them; an entity file reads the current transaction's as `%.now` and `%.today`.
+// asking whether a call would be allowed is `Mesh.checkPolicies`, and `Mesh.can` for the yes or no.
 test("Mesh is a frozen object holding privileged, isSystem, checkPolicies and can, and nothing else", () => {
   expect(Object.isFrozen(Mesh)).toBe(true);
   expect(Object.keys(Mesh).sort()).toEqual(["can", "checkPolicies", "isSystem", "privileged"]);
@@ -19,9 +19,9 @@ test("Mesh is a frozen object holding privileged, isSystem, checkPolicies and ca
 test("Mesh has no now or today, at run time or in its type: application code takes the instant as a parameter", () => {
   for (const name of ["now", "today"]) expect(name in Mesh).toBe(false);
   // The type check of this file (strict tsc, `bun run typecheck`) fails if `Mesh` has either member again.
-  // @ts-expect-error `Mesh.now` is gone (SYN-29): an entity file reads `%.now` and passes it to the helper.
+  // @ts-expect-error `Mesh.now` is gone: an entity file reads `%.now` and passes it to the helper.
   expect(Mesh.now).toBeUndefined();
-  // @ts-expect-error `Mesh.today` is gone (SYN-29): an entity file reads `%.today`.
+  // @ts-expect-error `Mesh.today` is gone: an entity file reads `%.today`.
   expect(Mesh.today).toBeUndefined();
 });
 

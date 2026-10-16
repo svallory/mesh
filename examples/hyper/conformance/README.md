@@ -2,7 +2,7 @@
 
 This folder holds copies of the Hyper engine specification's conformance suite: its harness, its protocol schemas and the cases this daemon passes. They were copied from the specification at commit `ccc00f9` (`ccc00f9abf6f330877f393193a09c457b97056e7`, 2026-09-29).
 
-These copies are the gate for Mesh 1.0 (RDM-02, ruled on 2026-10-14). `bun run conformance` runs them against `main.ts`, and `bun run verify` runs that step on every pull request; it never skips. The specification repository is internal and will be deleted, so nothing here is ever synced back to it: a change to a copied file is a change to the gate, made and reviewed in this repository.
+These copies are the gate for Mesh 1.0 (ruled on 2026-10-14). `bun run conformance` runs them against `main.ts`, and `bun run verify` runs that step on every pull request; it never skips. The specification repository is internal and will be deleted, so nothing here is ever synced back to it: a change to a copied file is a change to the gate, made and reviewed in this repository.
 
 The bracketed references in the case names, such as `[PROTOCOL.md#transport]`, name sections of the specification's own documents, which are not copied.
 

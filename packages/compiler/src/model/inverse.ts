@@ -5,8 +5,8 @@ import type { Entity, ModelDocument, Relationship } from "@meshfw/model";
  * Why a relationship a rollup or computed field reads cannot be loaded, when `inverse` was not found: the target
  * has several `belongs-to` back and none was chosen (the relationship's own `MESH_INVERSE_REQUIRED` already says so
  * where it is declared; this says it where it is used, listing the candidates). Null when the declaration already
- * carries the one error: a target with no `belongs-to` back is `MESH_NO_INVERSE` at the `has-many` or `has-one` line
- * (DOM-34), and a bad `inverse=` is `MESH_INVERSE_UNKNOWN` or `MESH_INVERSE_ENTITY` there.
+ * carries the one error: a target with no `belongs-to` back is `MESH_NO_INVERSE` at the `has-many` or `has-one` line,
+ * and a bad `inverse=` is `MESH_INVERSE_UNKNOWN` or `MESH_INVERSE_ENTITY` there.
  */
 export function inverseProblem(
   document: ModelDocument,

@@ -327,9 +327,9 @@ describe("group 02.2: only owners manage memberships and collaborators", () => {
     const guest = await join(w, "self-guest", "guest");
     expect((await Collaborator.update({ id: guest.id, name: "self-guest-x" }, as(guest))).name).toBe("self-guest-x");
     expect(await deniedBy(Collaborator.update({ id: w.bob.id, name: "renamed" }, as(guest)))).toEqual(["collaboratorSelfOrOwner"]);
-    // Not with no membership: the spec checks every command against the actor's active membership (PROTOCOL.md:88,
-    // :246), and the self-update is "in any role" (:254), so isMember refuses. Hyper's Role check lets the collaborator
-    // itself through before its membership test (`role.ex:22-23`); the port follows the spec (POL-20).
+    // Not with no membership: the spec checks every command against the actor's active membership (PROTOCOL.md:88,:
+    // 246), and the self-update is "in any role" (:254), so isMember refuses. Hyper's Role check lets the collaborator
+    // itself through before its membership test (`role.ex:22-23`); the port follows the spec.
     const outsider = await join(w, "outsider");
     expect(await deniedBy(Collaborator.update({ id: outsider.id, name: "outsider-x" }, as(outsider)))).toEqual(["isMember"]);
     // Nor once its membership is revoked.
@@ -741,7 +741,7 @@ function specsOf(entity: string, action: string, expressions: object): PolicySpe
   const checks = (policy: ModelPolicy, kind: PolicyCheckSpec["kind"], list: readonly ModelCheck[] = []) => list.map((check, n): PolicyCheckSpec => ({
     kind,
     check: check.source,
-    // As M8a and POL-21 decide: a check that reads `self`, calls an imported function, or is plain code runs inside the
+    // As M8a and the rule for a write's checks decide: a check that reads `self`, calls an imported function, or is plain code runs inside the
     // transaction.
     record: check.params.includes("self") || check.plain !== undefined || JSON.stringify(check.tree ?? null).includes('"kind":"helper"'),
     run: functions[`policy.${policy.name}.${kind}.${n}`]!,

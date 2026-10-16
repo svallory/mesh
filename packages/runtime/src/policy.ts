@@ -5,22 +5,22 @@ import type { ActionFrame } from "./entity.ts";
 import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
 
 /**
- * The policy evaluator the generated actions call (M8, ADR-0055, POL-03). Policies combine without order: a policy passes
+ * The policy evaluator the generated actions call (M8, ADR-0055). Policies combine without order: a policy passes
  * when none of its `forbid-if` is true and, if it has any `authorize-if`, at least one is true; every policy that covers
- * the action must pass, and an action no policy covers is forbidden. An unknown `forbid-if` forbids (POL-04), an unknown
+ * the action must pass, and an action no policy covers is forbidden. An unknown `forbid-if` forbids, an unknown
  * `authorize-if` does not authorize, and an unknown `when` fails its policy: every unknown fails closed.
  *
  * A check that reads only `actor`, `context` and `input` runs once, before the transaction opens (`before`); one that reads
- * the record (`self`, a related record), calls `privileged` or calls an imported function (POL-21) runs inside it, on the locked row or a create's new instance (`inside`). The
+ * the record (`self`, a related record), calls `privileged` or calls an imported function runs inside it, on the locked row or a create's new instance (`inside`). The
  * build decides which is which and says so in each spec (`record`).
  *
- * The build refuses a policy with no check (POL-16); one that reaches the evaluator anyway fails, so that a policy object
+ * The build refuses a policy with no check; one that reaches the evaluator anyway fails, so that a policy object
  * not built by the compiler cannot open what it covers. Whether a policy covers the action is decided by its scope
  * (`types=`/`actions=`), at build time: `policies` holds the covering ones, and when it is empty no policy covers the
  * action. A covering policy whose `when=` is false does not apply to the call; when none applies, a write is forbidden
  * and a read gives no rows (S1 of the PR #79 review).
  *
- * `Mesh.checkPolicies` (CMP-21) runs the call itself on a layer that answers (`answer.ts`): `before` and `filter` see it,
+ * `Mesh.checkPolicies` runs the call itself on a layer that answers (`answer.ts`): `before` and `filter` see it,
  * and once the policies have decided they throw an `Answer` with the decision, which `inside` then does too, instead of
  * resolving, rejecting with `ForbiddenError` or failing a running transaction. The checks run exactly as for the call.
  */
@@ -62,7 +62,7 @@ export interface Authorizer {
    */
   filter(layer: DataLayer, scope: object): Promise<boolean>;
   /**
-   * A load's policies (POL-17): the read policies of the entity a caller loads, run with the caller's scope. True when they
+   * A load's policies: the read policies of the entity a caller loads, run with the caller's scope. True when they
    * admit the caller, false when one fails, none applies or none covers the load: a load no policy covers gives nothing,
    * never an error. Inside the transaction, so a throw fails it.
    */
@@ -77,7 +77,7 @@ const outcome = (value: unknown): Result => (value === true ? true : value === f
 
 /**
  * `entity` is the entity's FQN (e.g. `blog.Post`); a denial carries it. `frame` is the binding's: a read policy (`filter`,
- * `admits`) runs marked with it, so a `privileged` read made while it is evaluated throws (TXN-18).
+ * `admits`) runs marked with it, so a `privileged` read made while it is evaluated throws.
  */
 export function authorizer(entity: string, action: string, policies: readonly PolicySpec[], frame?: Pick<ActionFrame, "marked">): Authorizer {
   const results = new Map<Spec | PolicyCheckSpec, Result>();
@@ -102,7 +102,7 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   /** True when the policy has failed, false when it has passed, undefined while a check it needs has not run. */
   const fails = (policy: PolicySpec): boolean | undefined => {
     if (policy.when && results.get(policy.when) === null) return true;
-    // POL-16: a policy with no check is a build error; one that gets here anyway fails closed.
+    // a policy with no check is a build error; one that gets here anyway fails closed.
     if (policy.checks.length === 0) return true;
     const forbids = policy.checks.filter((check) => check.kind === "forbid-if");
     const authorizes = policy.checks.filter((check) => check.kind === "authorize-if");

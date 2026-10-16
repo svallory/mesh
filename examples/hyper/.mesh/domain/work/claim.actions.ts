@@ -83,7 +83,7 @@ import {
 } from "../../$globals";
 
 /**
- * The reads of this entity without their policies: what `Mesh.privileged(Claim)` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged(Claim)` runs. The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function bindClaimReads(
@@ -129,7 +129,7 @@ export function bindClaimReads(
 /**
  * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): an action reads
  * the instant of the transaction it joins from it, and its own transaction runs inside it, so what its functions call
- * joins that transaction and reads its instant (ACT-29).
+ * joins that transaction and reads its instant.
  */
 export function bindClaim(
   layer: $DataLayer,
@@ -141,7 +141,7 @@ export function bindClaim(
     async acquire(input: AcquireClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, acquireClaimInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -252,7 +252,7 @@ export function bindClaim(
               },
               { clock: $clock },
             ) as unknown as $Scope<AcquireClaimInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
@@ -351,7 +351,7 @@ export function bindClaim(
     async renew(input: RenewClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, renewClaimInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -439,7 +439,7 @@ export function bindClaim(
               },
               { clock: $clock },
             ) as unknown as $StoredScope<RenewClaimInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
@@ -527,7 +527,7 @@ export function bindClaim(
     async release(input: ReleaseClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, releaseClaimInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -619,7 +619,7 @@ export function bindClaim(
               },
               { clock: $clock },
             ) as unknown as $StoredScope<ReleaseClaimInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
@@ -708,7 +708,7 @@ export function bindClaim(
     async revoke(input: RevokeClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, revokeClaimInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -796,7 +796,7 @@ export function bindClaim(
               },
               { clock: $clock },
             ) as unknown as $StoredScope<RevokeClaimInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate (POL-08), so a caller who may not run the action is told so and never which check their input fails
+            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
@@ -871,7 +871,7 @@ export function bindClaim(
     async expire(input: ExpireClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, expireClaimInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -993,7 +993,7 @@ export function bindClaim(
     async end(input: EndClaimInput, ...[context]: $ContextArgument): $Promise<Claim> {
       // enter, cast: the call arrives with its context, and only the declared input passes; a failed cast inside a transaction fails it
       const parsed = await $castInput(layer, endClaimInputSchema, input);
-      // pre-check: every policy that covers the action must pass (POL-03); the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
+      // pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam
       const $context = (context ?? {}) as unknown as { [key: string]: unknown };
       const $actor = $context.actor;
       const $clock = frame.clock(options.clock);
@@ -1157,7 +1157,7 @@ export function bindClaim(
 }
 
 /**
- * The entity value (CMP-16): `Claim.<action>(input, context)` runs the action on the binding in scope, the
+ * The entity value: `Claim.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
 const $entityValue = $entity(
@@ -1201,7 +1201,7 @@ export { $entityValue as Claim };
 /** The record type, under the entity value's name. */
 export type Claim = $Record;
 
-/** What `Mesh.privileged(Claim)` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged(Claim)` returns: one function per read action, run with no policy. */
 export interface $Privileged {
   read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
     input: $Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
@@ -1209,7 +1209,7 @@ export interface $Privileged {
   ): $Promise<L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never>;
 }
 
-/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only. */
 export interface $PrivilegedReadOnly {
   read<const L extends readonly (keyof ClaimLoadable)[] = readonly []>(
     input: $Omit<ReadClaimInput, "load"> & ClaimLoadArg<L>,
@@ -1222,7 +1222,7 @@ export interface $PrivilegedReadOnly {
 }
 
 /**
- * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * The entity value as a function of an entity file sees it: what each action resolves with is deeply read-only,
  * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<

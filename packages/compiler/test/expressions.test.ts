@@ -33,7 +33,7 @@ describe("the function tables (acceptance test 1)", () => {
         expect(run(expr, s, ...c.args)).toEqual(c.result as never);
       }
     });
-  describe("lazy operands print as thunks (EXP-03)", () => {
+  describe("lazy operands print as thunks", () => {
     const call = (fn: FunctionId, ...args: ExprNode[]): ExprNode => ({ kind: "call", fn, args, position: at });
     const helper = (name: string, ...args: ExprNode[]): ExprNode => ({ kind: "helper", name, from: "./h", args, position: at });
     const lit = (value: boolean | number): ExprNode => ({ kind: "literal", value, position: at });
@@ -365,7 +365,7 @@ describe("type rules", () => {
     // A function that takes `Mesh` as its own parameter calls that, not Mesh's.
     expect(codes(entity(check("({ context: Mesh }) => Mesh.privileged(1) !== null")))).not.toContain("error:MESH_PRIVILEGED_ENTITY");
   });
-  test("a function that destructures `tx` or `actions` from its scope is MESH_REMOVED_SCOPE_NAME at the name, saying what replaces it (TXN-16)", () => {
+  test("a function that destructures `tx` or `actions` from its scope is MESH_REMOVED_SCOPE_NAME at the name, saying what replaces it", () => {
     const tx = { message: "`tx` is gone: a function in an entity file is no longer handed a transaction handle, and reads with no policy through `Mesh.privileged`", fix: "write `Mesh.privileged(<Entity>).<read>(input)`, naming the entity (import it when it is another file's) and importing `Mesh` from \"meshfw\"; it joins the running transaction" };
     const actions = { message: "`actions` is gone: a function in an entity file calls another action as a method of the entity value", fix: "write `<Entity>.<action>(input, context)`, naming the entity (import it when it is another file's), and pass the context explicitly" };
     const step = (fn: string) => check("() => true", `      do\n        ${fn}\n`);
@@ -437,7 +437,7 @@ describe("type rules", () => {
     const tree = ok.document!.entities[0]!.actions[0]!.validate[0]!.that.tree!;
     expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "isStaff", from: "./helpers" }, {}] });
     expect(ok.document!.entities[0]!.imports[0]).toMatchObject({ helper: true, identifiers: ["isStaff", "big"] });
-    // Through `$.pure`, which refuses a promise (EXP-03): by type where the helper's type says so, at run time otherwise.
+    // Through `$.pure`, which refuses a promise: by type where the helper's type says so, at run time otherwise.
     expect(printTree(tree, true)).toContain('$.asBool($.pure(isStaff($s.actor), "isStaff"))');
     if (tree.kind !== "call") throw new Error("expected a call");
     expect(printTree(tree.args[0]!, false)).toBe('$.pure(isStaff($s.actor), "isStaff")');
@@ -609,9 +609,9 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(built.document!.entities[0]!.computed[0]!.body?.plain?.mesh).toBeUndefined();
   });
 
-  test("a helper imported as now, called bare, is the helper in plain and translated code alike (PRJ-22)", async () => {
+  test("a helper imported as now, called bare, is the helper in plain and translated code alike", async () => {
     // PR #65 round 2, F2: plain code bound the clock over the import while translated code called the import. Since
-    // PRJ-22 a bare `now` is never Mesh's: the clock is the transaction's `%.now` (SYN-29).
+    // A bare `now` is never Mesh's: the clock is the transaction's `%.now`.
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-clock-import-"));
     roots.push(root);
     await writeFile(resolve(root, "clock.ts"), "export const now = (): Date => new Date(0);\n");
@@ -636,7 +636,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(5) } }, at))).toBe(false);
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
   });
-  test.each(["now", "today", "isSystem", "privileged", "structuredClone"])("an entity imported as %s is the entity: no bare name is Mesh's (PRJ-22), and an import hides a JavaScript global (PRJ-20)", async (alias) => {
+  test.each(["now", "today", "isSystem", "privileged", "structuredClone"])("an entity imported as %s is the entity: no bare name is Mesh's, and an import hides a JavaScript global", async (alias) => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-alias-names-"));
     roots.push(root);
     const source = entity(check("() => true") +
@@ -672,12 +672,12 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(codes(entity(check("() => toString() === \"\""))).filter((code) => code.startsWith("error:"))).toEqual(["error:MESH_EXPR_FREE_VARIABLE"]);
   });
 
-  // EXP-12: a scope root (`self`, `input`, `actor`, `context`, `before`) is like a parameter of every function. Inside one
+  // a scope root (`self`, `input`, `actor`, `context`, `before`) is like a parameter of every function. Inside one
   // it shadows an import of its name, which stays the import everywhere else in the file.
-  test.each(["self", "input", "actor", "context", "before"])("an entity imported as %s is that root inside a function, and the entity outside (EXP-12)", async (name) => {
+  test.each(["self", "input", "actor", "context", "before"])("an entity imported as %s is that root inside a function, and the entity outside", async (name) => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-root-alias-"));
     roots.push(root);
-    // Before EXP-12 the function bound both, `const { context } = $s; const context: ... = $Task$value;`, which Bun
+    // Before a scope root was bound like a parameter the function bound both, `const { context } = $s; const context: ... = $Task$value;`, which Bun
     // refuses to load ("context" has already been declared), and a check that read `self` became plain code.
     const source = entity(check("() => self.n > 1") + `      do\n        run () { console.log(${name}) }\n`)
       .replace("import { Task }", `import { Task as ${name} } from "./task.mesh.mx"\nimport { Task }`)
@@ -714,7 +714,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(logs).toEqual([[{ self: { n: 2 }, input: { id: "i" }, actor: { id: "a" }, context: { system: true }, before: { n: 1 } }[name]]]);
   }, 30_000);
 
-  test("a function binds structuredClone to cloneValue only where it reads the global, as the front end resolves the name (PRJ-20)", async () => {
+  test("a function binds structuredClone to cloneValue only where it reads the global, as the front end resolves the name", async () => {
     // PR #94 round 2: the binding was decided by a text search, so a function that declared its own `structuredClone`
     // got a second, unused one, TS6133 under `--noUnusedLocals`.
     const source = entity(check("() => true") + [
@@ -740,7 +740,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(logs).toEqual([[9, 5], [2], ["structuredClone", 1]]);
   }, 30_000);
 
-  test("a helper named like a scope root is hidden by the root in every function, and the file does not import it (EXP-12)", async () => {
+  test("a helper named like a scope root is hidden by the root in every function, and the file does not import it", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-root-helpers-"));
     roots.push(root);
     const names = ["self", "input", "actor", "context", "before"];
@@ -934,7 +934,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
   }
   const values = { self: { n: 2, title: "t" }, input: { id: "i" }, actor: { id: "a" }, context: { system: true }, before: { n: 1 } };
 
-  test("item 1: a helper named like a scope root that a function reads only in `typeof` is still hidden by the root (EXP-12)", async () => {
+  test("item 1: a helper named like a scope root that a function reads only in `typeof` is still hidden by the root", async () => {
     // Before, `typeNames` found `input` free in `typeof input.id`, the file imported the helper as a type, and no function
     // bound the root: the type was the helper's (here `{ id: number }`, so "x" failed TS2322; a looser helper passed tsc
     // silently with the wrong type). A type reference is still the helper: a root is a value, as a parameter is.
@@ -1038,7 +1038,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
 
   test("item 5: an entity a function names only in a type is bound as its record type, or as its value for `typeof`", async () => {
     // Before, `const t: List | null` printed no binding of `List`: tsc failed with TS2304 (cannot find name). The record
-    // type comes from the entity's actions file, which exports it with the value (CMP-17), under its FQN-derived local; the
+    // type comes from the entity's actions file, which exports it with the value, under its FQN-derived local; the
     // file's own entity's is already imported from its types file.
     const { printed, typeCheck, load } = await project("entity-type", {
       "list.mesh.mx": "entity :List\n  attributes\n    uuid :id primary-key\n    string :name\n  actions auto=[:read]\n",
@@ -1118,7 +1118,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
   });
 });
 
-describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
+describe("Mesh's own functions are members of the Mesh import", () => {
   /** The `entity()` source without its `import { Mesh } from "meshfw"`. */
   const unimported = (source: string) => source.replace('import { Mesh } from "meshfw"\n', "");
   const problems = (source: string) =>
@@ -1272,7 +1272,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
     source = withImport('import { Mesh as Task } from "meshfw"');
     expect(problems(source).map((p) => p.code)).toContain("MESH_DUPLICATE_IMPORT");
     expect(problems(withImport('import { Mesh } from "meshfw"\nimport { Task as Mesh } from "./task.mesh.mx"')).map((p) => p.code)).toEqual(["MESH_DUPLICATE_IMPORT"]);
-    // A `$` alias is generated code's (CMP-06).
+    // A `$` alias is generated code's.
     expect(problems(withImport('import { Mesh as $m } from "meshfw"')).map((p) => p.code)).toEqual(["MESH_HELPER_NAME"]);
   });
 
@@ -1324,7 +1324,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
       expect(d.map((x) => x.code), body).toEqual(["MESH_COMPUTED_COMPOSES"]);
       expect(d[0]!.message).toBe("computed :c of Task calls `Mesh.privileged`, which only a function that runs inside an action may: a computed field is worked out whenever a record is loaded, outside any action");
     }
-    // A read policy, at the destructured key; a write check that destructures it reads the record (POL-21).
+    // A read policy, at the destructured key; a write check that destructures it reads the record.
     const policy = entity(check("({ self }) => { const { privileged } = Mesh; return privileged(Task) !== null && self.n > 0 }")) +
       "  policies\n    policy :q types=[:read]\n      authorize-if=() => { const { privileged } = Mesh; return privileged(Task) !== null }\n    policy :w types=[:update]\n      authorize-if=() => true\n";
     const built = build(policy);
@@ -1416,7 +1416,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
       .toEqual(['write `import { Task, Task as T } from "./task.mesh.mx"`, the entity that file declares']);
     // A package other than "meshfw" is refused by its path, not advised on its form.
     expect(helper('import _ from "lodash"').map((p) => p[0])).toEqual(["MESH_UNKNOWN_IMPORT"]);
-    // A namespace import is one of the two forms (SYN-21); a default one with it keeps both bindings in the fix.
+    // A namespace import is one of the two forms; a default one with it keeps both bindings in the fix.
     expect(helper('import * as h from "./task.helpers"').filter((p) => p[0] === "MESH_IMPORT_FORM")).toEqual([]);
     expect(helper('import isStaff, * as h from "./task.helpers"').map((p) => p[2]))
       .toEqual(['write `import { isStaff } from "./task.helpers"` and `import * as h from "./task.helpers"`, naming the functions that helper file exports and this entity file uses']);
@@ -1434,7 +1434,7 @@ describe("Mesh's own functions are members of the Mesh import (PRJ-22)", () => {
   });
 });
 
-describe("%.now and %.today are the current transaction's instant and date (SYN-29)", () => {
+describe("%.now and %.today are the current transaction's instant and date", () => {
   const problems = (source: string) =>
     build(source).diagnostics.filter((d) => d.severity === "error").map((d) => ({ code: d.code, message: d.message, fix: d.fix, offset: d.position.offset }));
   const DAY = 86_400_000;
@@ -1611,7 +1611,7 @@ describe("the reference page", () => {
 
 describe("review fixes (PR #63, round 1)", () => {
   test("before.<relationship> and before.<computed> are build errors at the node; before.<attribute> is fine", () => {
-    // `before` lives in the steps (ACT-01): a `when` and a `set` value of an update.
+    // `before` lives in the steps: a `when` and a `set` value of an update.
     const steps = (body: string) => entity("").replace("      validate\n", "      do\n" + body);
     for (const body of ["        when=({ before }) => before.parent?.n > 1\n          set\n            &m=1\n", "        set\n          &m=({ before }) => before.parent?.n\n"]) {
       const found = build(steps(body)).diagnostics.filter((d) => d.code === "MESH_BEFORE_NOT_LOADED");
@@ -1738,7 +1738,7 @@ describe("review fixes (PR #63, round 1)", () => {
   });
 });
 
-describe("validate sees self before the input (ACT-01, ACT-27, POL-08)", () => {
+describe("validate sees self before the input", () => {
   // A required attribute with no default (`n`), one with a default (`state`), a nullable one (`m`) and a required belongs-to (`owner`).
   const item = (actions: string, key = "uuid :id primary-key") => `entity :Item
   attributes

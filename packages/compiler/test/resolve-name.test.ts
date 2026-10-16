@@ -15,7 +15,7 @@ const entity = (fqn: string): Entity => {
 const model = (...fqns: string[]) => ({ entities: fqns.map(entity) });
 const found = (result: ReturnType<typeof resolveName>) => (result.kind === "found" ? result.entity.fqn : result);
 
-describe("resolveName (PRJ-16)", () => {
+describe("resolveName", () => {
   const unique = model("work.project.Task", "work.Review", "identity.Membership", "Root");
 
   test("a bare name picks the one declaration while only one exists", () => {

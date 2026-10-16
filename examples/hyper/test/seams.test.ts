@@ -399,7 +399,7 @@ describe("acceptance 6: the context of a call reaches the seams of every row it 
     } finally { await w.db.close(); }
   });
 
-  test("through the application's transaction, which has no context of its own, a call carries the one it passes (TXN-20)", async () => {
+  test("through the application's transaction, which has no context of its own, a call carries the one it passes", async () => {
     const w = await world();
     try {
       await w.hyper.run(async () => {
@@ -474,7 +474,7 @@ describe("db", () => {
   });
 });
 
-describe("the binding in scope (PRJ-19)", () => {
+describe("the binding in scope", () => {
   /** The names of the collaborators whose writes a recorder saw. */
   const names = (rec: ReturnType<typeof recorder>) => rec.writes.map((event) => (event.after as { name: string }).name);
 

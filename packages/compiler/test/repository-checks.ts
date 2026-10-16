@@ -146,7 +146,7 @@ const runtimeForbidden = ["@meshfw/model", "@meshfw/compiler", "drizzle-orm", "d
 
 /**
  * The lines of the run-time library allowed past the web rule, each whole and in one file. None: the binding in scope
- * (PRJ-19) takes its async frame from the generated `binding.ts` (ADR-0025). Kept so an exception, if one is ever
+ * takes its async frame from the generated `binding.ts` (ADR-0025). Kept so an exception, if one is ever
  * ruled, is one line in one file and nothing more.
  */
 const WEB_EXCEPTIONS: readonly { readonly file: string; readonly line: string }[] = [];
@@ -337,7 +337,7 @@ function invalidMembersInV4(source: string): string | null {
     ? token.replace(/[^\r\n]/g, " ") : token);
   const members = new Set<string>();
   const imports = new Set<string>();
-  // SYN-21: `import * as billing from "…"` binds an alias; `entity=billing.Invoice` names a member of it.
+  // `import * as billing from "…"` binds an alias; `entity=billing.Invoice` names a member of it.
   const namespaces = new Set<string>();
   const uses: { name: string; line: number; imported: boolean }[] = [];
   const parents: { indent: number; kind: string; self: boolean }[] = [];

@@ -5,7 +5,7 @@ import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { checkTypes, configOf } from "./generated.ts";
 
-// ACT-30: a check's `message=` is fixed text or a function of the arguments `that=` gets.
+// a check's `message=` is fixed text or a function of the arguments `that=` gets.
 const entity = (message: string) => `entity :Task
   attributes
     uuid :id primary-key

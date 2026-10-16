@@ -1,4 +1,4 @@
-// Decision MX-05 (MX 0.1.0-alpha.27): Mesh's dialect renames every MX code but the four MX keeps through `diagnosticCodes`,
+// MX 0.1.0-alpha.27: Mesh's dialect renames every MX code but the four MX keeps through `diagnosticCodes`,
 // so a Mesh user sees `MESH_*` codes, in the build and in every tool that loads the dialect. The map is `MX_TO_MESH_CODES`
 // (`src/front-end/diagnostic-codes.ts`). The catalogue is MX's own list of every code core raises, so a new MX alpha that adds a
 // code fails the first test until the map names it.

@@ -28,7 +28,7 @@ describe("runCheck", () => {
     expect((await run({ that: () => false, details }))[0]!.details).toEqual({ n: 1 });
     expect((await run({ that: () => false, details: () => undefined }))[0]!.details).toBeNull();
   });
-  describe("a message function (ACT-30)", () => {
+  describe("a message function", () => {
     const named = { entity: "Order" };
     test("text is used as it is; a function's string replaces it, and it gets the scope `that` got", async () => {
       expect((await run({ that: () => false }))[0]!.message).toBe("m");

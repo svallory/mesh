@@ -1,4 +1,4 @@
-// Every name ENT-18 accepts that names a member of Object.prototype or a function, as an attribute.
+// Every name the build accepts that names a member of Object.prototype or a function, as an attribute.
 entity :Fields
   attributes
     uuid :id primary-key

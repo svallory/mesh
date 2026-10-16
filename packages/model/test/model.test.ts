@@ -15,7 +15,7 @@ describe("v4 model", () => {
     expect(entity.name).toBe("Invoice");
     expect(entity.module).toBe("billing");
     expect(entity.imports).toHaveLength(4);
-    // The file reads `%.today`, the current transaction's date (SYN-29), which needs no import of Mesh's functions.
+    // The file reads `%.today`, the current transaction's date, which needs no import of Mesh's functions.
     expect(entity.imports.filter((i) => i.mesh)).toEqual([]);
     expect(entity.attributes).toHaveLength(12);
     expect(entity.relationships.map((r) => r.kind)).toEqual([

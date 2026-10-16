@@ -35,7 +35,7 @@ test("acceptance 1: create, read, update, destroy, and a write after destroy is 
 
       await Post.destroy({ id: post.id }, as(author));
       expect(await Post.read({}, context)).toEqual([]);
-      // Not found comes before forbidden (POL-18): `context` is not the author, and the row is gone.
+      // Not found comes before forbidden: `context` is not the author, and the row is gone.
       await expect(Post.publish({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
       await expect(Post.destroy({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
       await expect(Post.archive({ id: post.id }, context)).rejects.toBeInstanceOf(NotFoundError);
@@ -56,7 +56,7 @@ function counting(layer: DataLayer, counter: { locked: number }): DataLayer {
   };
 }
 
-// What a destroy with no policy that reads the record does (no read without a seam, TXN-13) is in
+// What a destroy with no policy that reads the record does (no read without a seam) is in
 // packages/data-sqlite/test/lifecycle.test.ts. Here `:owner` reads the post's author, so every destroy reads the row.
 describe("a destroy the :owner policy covers reads the row once under the lock, and a seam that wants the change reads it no second time (M6 ruling 4)", () => {
   const destroyOne = async (seams: Seams | undefined) => {
@@ -194,7 +194,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
         await expect(Post.archive({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
         await expect(Post.destroy({ id: post.id }, context)).rejects.toMatchObject({ code: "forbidden", policies: ["owner"] });
         expect(await Post.read({}, context)).toEqual([post]);
-        // A post that does not exist is not found, whoever asks (POL-18): the row is read before the policy that reads it.
+        // A post that does not exist is not found, whoever asks: the row is read before the policy that reads it.
         await expect(Post.publish({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
         await expect(Post.destroy({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
       });
@@ -218,7 +218,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
     } finally { await db.close(); }
   });
 
-  test("what a caller loads runs the read policies of the entity it reaches (POL-17); through tx nothing is filtered", async () => {
+  test("what a caller loads runs the read policies of the entity it reaches; through tx nothing is filtered", async () => {
     const { db, blog } = await fresh();
     try {
       await blog.run(async () => {
@@ -233,7 +233,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
         expect(seen).toMatchObject({ id: post.id, comments: [], author: null, commentCount: 0 });
         const [signedIn] = await Post.read({ load }, context);
         expect(signedIn).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
-        // `Mesh.privileged(Post)` runs no policy (TXN-16): the read sees everything, whoever the caller is.
+        // `Mesh.privileged(Post)` runs no policy: the read sees everything, whoever the caller is.
         const [inside] = await blog.transaction(() => Mesh.privileged(Post).read({ load }));
         expect(inside).toMatchObject({ comments: [{ body: "First" }], author: { name: "Alice" }, commentCount: 1 });
         // The types say the same: a caller's author may be null, while through `Mesh.privileged` the key always finds it.
@@ -269,7 +269,7 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
   });
 });
 
-describe("ids (UUIDv7, filled when Mesh builds the new record, ACT-27)", () => {
+describe("ids (UUIDv7, filled when Mesh builds the new record)", () => {
   test("a create's id is a UUIDv7, and ids sort in creation order", async () => {
     const { db, posts } = await seeded(Array.from({ length: 25 }, (_, index) => `post ${index}`));
     try {

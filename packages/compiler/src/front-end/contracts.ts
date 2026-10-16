@@ -73,7 +73,7 @@ const isMember = (n: Node | null | undefined) =>
 const isPlainIdentifier = (n: Node | null | undefined) =>
   n?.type === "Identifier" && !n.extra?.mxMember && !n.extra?.mxAtom && !n.extra?.mxTransaction;
 /**
- * A reference to another file's declaration (SYN-21): an imported identifier (`List`), or a member of a namespace import
+ * A reference to another file's declaration: an imported identifier (`List`), or a member of a namespace import
  * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
  * Mesh's to resolve (`front-end/references.ts`). MX lowers `(List)`, `List!`, `List as T`, `List satisfies T` and
  * `<T>List` to `List`, so the node shows no wrapper: `isWrapped` finds one from the option's spans instead.
@@ -197,7 +197,7 @@ const contracts: ContractMap = {
       ...named(),
       that: fn(true),
       code: text(true),
-      // Text, or a function of the arguments `that` gets (ACT-30): the contract leaves the type open, `check` in the builder tells them apart.
+      // Text, or a function of the arguments `that` gets: the contract leaves the type open, `check` in the builder tells them apart.
       message: { required: true },
       when: fn(),
       details: fn(),
@@ -301,8 +301,8 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
         const a = get(call, "entity");
         if (!isReference(node(a)))
           ctx.fail("entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
-        // SYN-21: a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
-        // the value as written. One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
+        // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
+        // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
         // error above alone, which says what to write.
         else if (isWrapped(a))
           ctx.fail("entity must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`entity=List`, `entity=billing.Invoice`)", { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
@@ -322,7 +322,7 @@ for (const kind of ACTION_TYPES)
 for (const kind of ROLLUPS)
   contracts[kind] = closed({
     parents: ["computed"],
-    // `of=&lines.amount` (SYN-28): a member reference, a path of marked members through relationships. The string form is refused with its fix.
+    // `of=&lines.amount`: a member reference, a path of marked members through relationships. The string form is refused with its fix.
     attributes: { ...named(), of: { required: true } },
     analyze(calls, ctx) {
       for (const call of calls) {

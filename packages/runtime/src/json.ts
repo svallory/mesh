@@ -18,7 +18,7 @@ function isPlain(value: object): boolean {
   return Object.prototype.hasOwnProperty.call(prototype, "isPrototypeOf");
 }
 
-/** Write an own data property, whatever its name. An assignment `object[key] = value` with `key` `__proto__` would change the prototype instead (ENT-19). */
+/** Write an own data property, whatever its name. An assignment `object[key] = value` with `key` `__proto__` would change the prototype instead. */
 function define(object: object, key: string, value: unknown): void {
   Object.defineProperty(object, key, { value, writable: true, enumerable: true, configurable: true });
 }
@@ -56,7 +56,7 @@ function copy(value: unknown, seen: Map<object, unknown>): unknown {
 /**
  * The validator of a `json` attribute or argument, for Zod's `transform` (`z.unknown().transform(jsonValue)`). It accepts
  * what `z.json()` of Zod 4.6.5 accepted, and gives back a copy of the value in which every own key is kept, an own
- * `__proto__` key included, as data (ENT-19): strings, booleans, `null`, finite numbers, arrays and plain objects, at any
+ * `__proto__` key included, as data: strings, booleans, `null`, finite numbers, arrays and plain objects, at any
  * depth. Anything else (`undefined`, a function, a `Date`, a non-finite number, a hole in an array, a symbol key, an
  * instance of a class) is one issue, "Invalid input", at the path of the value itself, as `z.json()` reported it.
  * A cycle and a shared reference are kept in the copy, as `z.json()` kept them. Every object of the copy has the

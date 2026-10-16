@@ -168,7 +168,7 @@ describe("what Mesh's dialect does not read", () => {
 });
 
 // MX 0.1.0-alpha.28: Mesh's syntax table sets `tagShorthands: false`, so a line head has no `#id` or `.class` shorthand and no
-// implicit `div`. A `.` continues the tag name (`billing.InvoiceVoided` is one tag, SYN-21, DOM-17); a `#` anywhere in a head, or a
+// implicit `div`. A `.` continues the tag name (`billing.InvoiceVoided` is one tag); a `#` anywhere in a head, or a
 // head that starts with `.`, is `MESH_NO_TAG_SHORTHAND` at that character; an empty part of a dotted name is
 // `MESH_INVALID_TAG_NAME` at the dots. Each is an error of the build, at a position, with a Mesh code.
 describe("line heads under tagShorthands: false", () => {
@@ -208,7 +208,7 @@ describe("line heads under tagShorthands: false", () => {
   });
 });
 
-describe("the transaction row (SYN-29)", () => {
+describe("the transaction row", () => {
   test("`%.name` is an expression row only: the row the MX lead gave, an identifier stand-in of the same length", () => {
     expect(TRANSACTION).toEqual({
       id: "transaction",

@@ -71,7 +71,7 @@ import {
 } from "./tree.ts";
 
 /**
- * The one name no member (attribute, relationship, computed field, action, policy) may take (ENT-18): in an object
+ * The one name no member (attribute, relationship, computed field, action, policy) may take: in an object
  * literal, `__proto__: value` sets the object's prototype instead of adding a property, so the generated records,
  * schemas, row mappings and entity values could not hold it. Every other name, `constructor` and `toString` included,
  * is accepted and generated code works with it.
@@ -84,7 +84,7 @@ interface ParsedImport {
   bindings: { local: string; imported: string; offset: number; localOffset: number }[];
   from: string;
   offset: number;
-  /** `import * as billing from …` (SYN-21): `names` is its one alias, and `imported` is `*`. */
+  /** `import * as billing from …`: `names` is its one alias, and `imported` is `*`. */
   namespace: boolean;
 }
 interface ImportProblem {
@@ -93,16 +93,16 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-/** A relationship's `entity=` (SYN-21): an entity an entity file declares. */
+/** A relationship's `entity=`: an entity an entity file declares. */
 const ENTITY_REFERENCE: ReferenceKind = { noun: "entity", declares: hasMeshExtension, code: "MESH_UNKNOWN_ENTITY" };
-/** The package an entity file imports `Mesh` from (PRJ-22). */
+/** The package an entity file imports `Mesh` from. */
 const MESHFW = "meshfw";
 /**
- * Entity files import another file of the project by a relative path, in one of two forms (SYN-21): by name
+ * Entity files import another file of the project by a relative path, in one of two forms: by name
  * (`import { List } from "./list…"`, `import { isStaff } from "./task.helpers"`), or as a namespace
  * (`import * as billing from "../billing/invoice…"`), whose alias the file picks and reads members of
  * (`billing.Invoice`). A default, side-effect or type-only import is neither. The one package they import from is
- * "meshfw", for `Mesh` alone, by name (PRJ-22).
+ * "meshfw", for `Mesh` alone, by name.
  */
 function readImports(imports: readonly IrImport[]): {
   imports: ParsedImport[];
@@ -118,7 +118,7 @@ function readImports(imports: readonly IrImport[]): {
     // A package other than "meshfw" is refused by its path below, whatever its form: the form advice is for a relative import.
     const formed = from === MESHFW || from.startsWith("./") || from.startsWith("../");
     const typeOnly = entry.typeOnly || names.some((name) => name.typeOnly);
-    // `import * as billing from …`: one namespace binding and nothing else, from a file of the project (SYN-21).
+    // `import * as billing from …`: one namespace binding and nothing else, from a file of the project.
     const namespace = from !== MESHFW && names.length === 1 && names[0]!.kind === "namespace";
     if (
       formed && (
@@ -137,7 +137,7 @@ function readImports(imports: readonly IrImport[]): {
         ];
         return (statements.length ? statements : [`import { ${example} } from "${from}"`]).map((statement) => `\`${statement}\``).join(" and ");
       };
-      // From "meshfw" the one form is a named value import of `Mesh` (PRJ-22): a default, namespace or type import gets
+      // From "meshfw" the one form is a named value import of `Mesh`: a default, namespace or type import gets
       // that advice, not the entity's.
       problems.push(from === MESHFW
         ? {
@@ -167,7 +167,7 @@ function readImports(imports: readonly IrImport[]): {
           });
       continue;
     }
-    // `import { Mesh } from "meshfw"`: Mesh's own functions (PRJ-22), the one import an entity file takes from a package.
+    // `import { Mesh } from "meshfw"`: Mesh's own functions, the one import an entity file takes from a package.
     if (from === MESHFW) {
       const other = names.find((name) => name.imported !== "Mesh");
       if (other) {
@@ -324,7 +324,7 @@ function buildEntity(
     const helper = entry.helper === true;
     if (helper) helperImports.set(name, entry.from);
     if (entry.mesh) meshImports.add(name);
-    // A scope name (`input`) is the root in every function of the file (EXP-12), and a function is the one place a
+    // A scope name (`input`) is the root in every function of the file, and a function is the one place a
     // file reads `Mesh`: under that name the import could never be read.
     if (entry.mesh && SCOPE_NAMES.has(name)) {
       const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
@@ -336,7 +336,7 @@ function buildEntity(
       );
     }
     // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
-    // local as `l$...` (CMP-06): no name an import binds, a helper's or an entity's alias, may start with either.
+    // local as `l$...`: no name an import binds, a helper's or an entity's alias, may start with either.
     if (/^(\$|l\$)/.test(name)) {
       const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
       fail(
@@ -346,14 +346,14 @@ function buildEntity(
       );
     }
   }
-  // What a reference to another file's declaration resolves against (SYN-21): `entity=List`, `entity=billing.Invoice`.
+  // What a reference to another file's declaration resolves against: `entity=List`, `entity=billing.Invoice`.
   const references: ReferenceScope = { imports: importNames, duplicates, own: { name: entity.name, from: `./${basename(file)}` }, declared };
-  // The entities a function in this file can name (CMP-16): its own and each one it imports, by the name the file gives it.
+  // The entities a function in this file can name: its own and each one it imports, by the name the file gives it.
   const entities = new Set([entity.name, ...bindings.filter(({ entry }) => !entry.helper && !entry.mesh).map(({ name }) => name)]);
-  // Each namespace import's alias (SYN-21): a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
+  // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
   // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
   const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
-  // `Mesh` under the entity's own name would give one name two meanings in a function of the file (PRJ-22).
+  // `Mesh` under the entity's own name would give one name two meanings in a function of the file.
   for (const entry of entity.imports)
     if (entry.mesh && entry.identifiers.includes(entity.name))
       fail("MESH_DUPLICATE_IMPORT", `Duplicate import identifier ${entity.name}: the entity is named ${entity.name} too`, entry.position);
@@ -394,7 +394,7 @@ function buildEntity(
       Attribute,
       "nullable" | "default" | "values" | "min" | "max" | "match"
     > = { nullable: opt(tag, "nullable") === true };
-    // A json validates only that the value is JSON, and null is JSON (ENT-03, ADR-0069): it always accepts null,
+    // A json validates only that the value is JSON, and null is JSON (ADR-0069): it always accepts null,
     // so the model says nullable for it, and a `nullable` the author wrote is redundant.
     if (tag.name === "json") {
       const written = attr(tag, "nullable");
@@ -525,7 +525,7 @@ function buildEntity(
     entity.attributes.push(field);
   }
   for (const tag of tags(section("relationships")?.children ?? [])) {
-    // `entity=List` or `entity=billing.Invoice` (SYN-21); an entity relates to its own type by its own name, with no import.
+    // `entity=List` or `entity=billing.Invoice`; an entity relates to its own type by its own name, with no import.
     const written = writtenReference(nodeOf(attr(tag, "entity")));
     const target = written ? resolveReference(written, references, ENTITY_REFERENCE) : undefined;
     if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
@@ -583,7 +583,7 @@ function buildEntity(
       }
     }
   }
-  /** A check's `message=`: fixed text, or (ACT-30) a function of the arguments `that` gets. Anything else is refused. */
+  /** A check's `message=`: fixed text, or a function of the arguments `that` gets. Anything else is refused. */
   const message = (tag: Tag): string | Expression => {
     const a = attr(tag, "message");
     const text = textOf(a);
@@ -911,7 +911,7 @@ export function meshDiagnostic(d: MxDiagnostic, file: string): Diagnostic {
  * instead (the entity file page of the docs: no loops or conditions that add or remove declarations). MX owns the
  * message, so this is a `fix:` line beside it and not a rewording.
  */
-// Matches MX's wording since alpha.30: "Mesh files are static, so they do not evaluate `if`" (MX-16).
+// Matches MX's wording since alpha.30: "Mesh files are static, so they do not evaluate `if`".
 const STATIC_CONSTRUCT = /\bevaluate `(for|if)`$/;
 export function staticFileFix(d: Pick<MxDiagnostic, "code" | "message">): string | null {
   if (d.code !== "MESH_STRUCTURAL_CONSTRUCT") return null;
@@ -953,7 +953,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const virtualFiles = new Set(
     project.files.map((f) => resolveEntityFile(rootPath, f.file)?.absolute),
   );
-  // Every file is parsed before any is built: a reference through a namespace import (`billing.Invoice`, SYN-21) is
+  // Every file is parsed before any is built: a reference through a namespace import (`billing.Invoice`) is
   // checked against what the imported file declares.
   const parsedFiles: { input: (typeof project.files)[number]; path: NonNullable<ReturnType<typeof resolveEntityFile>>; ir: NonNullable<ReturnType<typeof parseEntitySource>["ir"]> }[] = [];
   const declaredByPath = new Map<string, string[]>();
@@ -1032,7 +1032,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
       if (hasMeshExtension(imported.from) && targetEntity) {
-        // A namespace import names the file, not what it declares (SYN-21): its references are checked where they are written.
+        // A namespace import names the file, not what it declares: its references are checked where they are written.
         for (const binding of imported.namespace ? [] : importDetails.get(imported)?.bindings ?? []) {
           if (binding.imported !== targetEntity.name) {
             const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;

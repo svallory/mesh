@@ -1,4 +1,4 @@
-/** Application code an entity file imports as a namespace (`import * as money from "./money"`, SYN-21). */
+/** Application code an entity file imports as a namespace (`import * as money from "./money"`). */
 export function isPositive(amount: number): boolean {
   return amount > 0;
 }

@@ -344,7 +344,7 @@ describe("the generated files", () => {
     expect(files.length).toBeGreaterThan(8);
     // `binding.ts` imports the project's config, which is not part of this fixture.
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
-    // The project declares the context keys its functions read (PRJ-12): a required actor, and the log a step pushes to.
+    // The project declares the context keys its functions read: a required actor, and the log a step pushes to.
     await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n  }\n}\nexport {};\n');
     const child = Bun.spawnSync([
       resolve(import.meta.dir, "../../../node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
@@ -357,7 +357,7 @@ describe("the generated files", () => {
 
   test("a load nested in when is typed as possibly absent; a top-level load as present", async () => {
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
-    // The project declares the context keys its functions read (PRJ-12): a required actor, and the log a step pushes to.
+    // The project declares the context keys its functions read: a required actor, and the log a step pushes to.
     await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n  }\n}\nexport {};\n');
     await Bun.write(join(dir, "check-types.ts"), [
       'import type { Task } from "./.mesh/domain/index.ts";',
@@ -366,7 +366,7 @@ describe("the generated files", () => {
       "// @ts-expect-error owner may be absent, because its load is under a when",
       "export const a: string = maybe.owner.name;",
       "export const b: string | undefined = maybe.owner?.name;",
-      "// A caller's top-level load is there, but runs the owner's read policies, so it can be null (POL-17).",
+      "// A caller's top-level load is there, but runs the owner's read policies, so it can be null.",
       "// @ts-expect-error a caller's belongs-to can be null",
       "export const c: string = always.owner.name;",
       "export const d: string | undefined = always.owner?.name;",
@@ -450,7 +450,7 @@ describe("create", () => {
     } finally { await world.db.close(); }
   });
 
-  test("a check reads a related record through the transaction: on a create `&owner` is not there yet, so the quota reads the caller's `input.owner` through `privileged`, and `when` limits it to the free plan (ACT-27, POL-08)", async () => {
+  test("a check reads a related record through the transaction: on a create `&owner` is not there yet, so the quota reads the caller's `input.owner` through `privileged`, and `when` limits it to the free plan", async () => {
     const world = await fresh();
     try {
       await world.mesh.openTask({ title: "1", owner: world.owner.id, reviewer: world.owner.id }, world.ctx);
@@ -530,7 +530,7 @@ describe("update", () => {
     } finally { await world.db.close(); }
   });
 
-  test("a check compares the caller's value with the stored record: `input.title ?? &title` against `&title` (ACT-27)", async () => {
+  test("a check compares the caller's value with the stored record: `input.title ?? &title` against `&title`", async () => {
     const world = await fresh();
     try {
       const row = await openTask(world, { title: "same" });
@@ -855,7 +855,7 @@ describe("destroy", () => {
     } finally { await world.db.close(); }
   });
 
-  // TXN-13 (M6 ruling 4): what reads the row is the body, a policy that reads the record, or a seam that wants the change.
+  // What reads the row is the body, a policy that reads the record, or a seam that wants the change.
   // The fixture's policy is open and reads only the actor, so here nothing but the seam does.
   test("a destroy nothing needs the row for reads none; a seam that wants the change reads it once under the lock", async () => {
     const wipeTwice = async (seams?: Record<string, unknown>) => {

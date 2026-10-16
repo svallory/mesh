@@ -56,7 +56,7 @@ async function taskOf(id: string): Promise<Task> {
  */
 export async function taskComplete(input: CompleteTaskInput, context: ActionContext, binding: Binding = connected): Promise<TaskCompleted | LateResultRecorded> {
   return binding.transaction(async () => {
-    // Read inside the transaction, with `lapsed`: a lease is judged at the transaction's instant (ACT-29), the one
+    // Read inside the transaction, with `lapsed`: a lease is judged at the transaction's instant, the one
     // `Task.complete` checks the fence at, so a lease that runs out while the call waits or runs records a late result.
     const stale = staleClaimWithLapsed(await claimsOfTask(input.id), input.fence, context.actor.id);
     if (stale) {

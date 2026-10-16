@@ -1,7 +1,7 @@
 import { authorizer, entity, NO_FRAME, type ActionFrame, type Clock, type DataLayer, type DataOperations } from "../../src/index.ts";
 
 /**
- * A domain for the call frame tests of `entity.test.ts` (TXN-16, TXN-18, ACT-09). `Account.act` runs its `step` inside its
+ * A domain for the call frame tests of `entity.test.ts`. `Account.act` runs its `step` inside its
  * transaction, through the binding's frame, as a generated action runs its checks and steps; its read runs `policy` as
  * the check of a read policy, through `authorizer`, and `computed` the way a load evaluates a computed field, both marked
  * through the frame.

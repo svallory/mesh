@@ -6,7 +6,7 @@
  *
  * Rows: `atom` (`:name` in an expression), `atom-value` (`:name` as a whole
  * attribute value, `belongs-to=:List`), `name` (spaced `kind :name`),
- * `member` (`&name`) and `transaction` (`%.now` in an expression, SYN-29;
+ * `member` (`&name`) and `transaction` (`%.now` in an expression;
  * `transaction.ts`, Mesh's own, not ported). One row per first character in
  * each list, so no two rows compete. MX's `#id` and `.class` rows are not
  * carried: Mesh writes neither. The table also turns the tag head's shorthands

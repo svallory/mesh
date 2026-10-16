@@ -176,7 +176,7 @@ describe("loadRows", () => {
   });
 });
 
-// ENT-18: a field may be named like a member of Object.prototype, which every row inherits; a row holds a loaded field
+// a field may be named like a member of Object.prototype, which every row inherits; a row holds a loaded field
 // as its own member, so an inherited one is never taken for it.
 describe("a relationship and computed fields named like members of Object.prototype", () => {
   // TypeScript reads `row.toString` as Object's member and gives a `constructor:` key of a literal no contextual type, so
@@ -253,7 +253,7 @@ describe("rejectComputedQuery", () => {
     expect(() => rejectComputedQuery("Doc", names, { filter: { and: [] }, sort: [] })).not.toThrow();
     expect(() => rejectComputedQuery("Doc", [], { filter: { total: { eq: 1 } } })).not.toThrow();
   });
-  // ENT-18: a filter literal leaves out a computed field named like a member of the Object interface only by giving it as
+  // a filter literal leaves out a computed field named like a member of the Object interface only by giving it as
   // undefined, which the generated filter type allows; the data layer has no column for it, so it must not see it.
   test("a computed field given as undefined is left out of the filter it returns, at any depth; a stored column stays", () => {
     const odd = ["toString", "valueOf"];
@@ -280,7 +280,7 @@ describe("rejectComputedQuery", () => {
   });
 });
 
-describe("what a caller loads runs the read policies of the entity it reaches (POL-17)", () => {
+describe("what a caller loads runs the read policies of the entity it reaches", () => {
   /** A read policy that admits a caller whose actor id is `admin`. */
   const adminOnly: PolicySpec = { name: "admins", when: null, checks: [{ kind: "authorize-if", check: "({ actor }) => actor.id === \"admin\"", record: false,
     run: ((s: { actor: { id?: string } }) => s.actor?.id === "admin") as never }] };
@@ -308,7 +308,7 @@ describe("what a caller loads runs the read policies of the entity it reaches (P
     expect(unfiltered[0]).toMatchObject({ owner: { id: 10 }, badge: { id: 7, nodeId: 1 } });
   });
 
-  test("POL-19: a rollup over an entity the caller may not read counts no row; a computed field's body still reads every related row", async () => {
+  test("a rollup over an entity the caller may not read counts no row; a computed field's body still reads every related row", async () => {
     const { tx, handle } = data();
     const withChildren = guarded(handle);
     const closed = { ...withChildren, Node: { ...withChildren.Node!, reads: [adminOnly] } } as LoadPlan;
@@ -329,7 +329,7 @@ describe("what a caller loads runs the read policies of the entity it reaches (P
     const guest = await loadRows(closed, "Node", tx, rows, ["owner", "badge", "children", "kids", "maxRank"], { actor: { id: "guest" }, policies: true });
     expect(guest[0]).toMatchObject({ owner: null, badge: null, children: [], kids: 0, maxRank: null });
     expect(calls).toEqual([]);
-    // `childCount` reads `children` for itself (POL-19): the children are selected once, for the body, and still taken off.
+    // `childCount` reads `children` for itself: the children are selected once, for the body, and still taken off.
     const counted = await loadRows(closed, "Node", tx, rows, ["childCount", "children"], { actor: { id: "guest" }, policies: true });
     expect(calls).toEqual(["select nodes"]);
     expect(counted[0]).toMatchObject({ childCount: 1, children: [] });

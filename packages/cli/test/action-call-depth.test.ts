@@ -1,4 +1,4 @@
-// A bound on nested action calls (TXN-21), end to end. The fixture (`fixtures/action-call-depth/domain/tree`) is a `Node`
+// A bound on nested action calls, end to end. The fixture (`fixtures/action-call-depth/domain/tree`) is a `Node`
 // with a `parentId`, whose actions call actions through a helper (`probe.ts`) from a step, a write policy that reads the
 // record, a pre-check, a `set` function, a `validate` check and an application `transaction`. A row whose parents form a
 // loop makes each of them recurse without end. The project is built by the real `mesh` command on the SQLite adapter,
@@ -157,7 +157,7 @@ async function bounded(call: () => Promise<unknown>): Promise<FrameworkError> {
 const capMessage = (called: string, root: string) =>
   `${called} was called more than ${CAP} nested calls deep, in a chain that began with ${root}: the calls probably form a cycle`;
 
-describe("a bound on nested action calls (TXN-21)", () => {
+describe("a bound on nested action calls", () => {
   test("tsc type-checks the generated tree and the helper under the strictest flags", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     const child = Bun.spawnSync([
@@ -263,7 +263,7 @@ describe("a bound on nested action calls (TXN-21)", () => {
     });
   }, 30_000);
 
-  test("TXN-01: a call made after a caught failure in the same transaction does not run", async () => {
+  test("a call made after a caught failure in the same transaction does not run", async () => {
     await withApp(async ({ Node, probe }) => {
       const row = await Node.add({ name: "after", parentId: null }, anyone);
       const error = await rejection(Node.afterFailure({ id: row.id }, anyone), FrameworkError);
@@ -325,7 +325,7 @@ describe("a bound on nested action calls (TXN-21)", () => {
     }));
   }, 20_000);
 
-  test("an afterCommit seam that calls an action in a cycle is bounded, the call resolves, and the seam's error is logged (TXN-12)", async () => {
+  test("an afterCommit seam that calls an action in a cycle is bounded, the call resolves, and the seam's error is logged", async () => {
     let seen = 0;
     const logged: unknown[][] = [];
     const log = console.error;

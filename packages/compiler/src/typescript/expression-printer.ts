@@ -66,7 +66,7 @@ export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedN
     }
     case "helper": {
       emitted.expr = true;
-      // Through `$.pure`: an imported function a translated expression calls must not return a promise (EXP-03).
+      // Through `$.pure`: an imported function a translated expression calls must not return a promise.
       const call = `$.pure(${n.name}(${n.args.map((a) => printTree(a, false, emitted)).join(", ")}), ${JSON.stringify(n.name)})`;
       return bool ? `$.asBool(${call})` : call;
     }
@@ -106,8 +106,8 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   const roots = ROOTS.filter((name) => plain.roots.includes(name) || inTypes.roots.includes(name));
   // What Mesh's own edits read, under names the authored text does not spell, so no local or parameter of the author's
   // (`self`, `$`, `$s`) hides them: `&name` reads the record (`$self.name`), and `%.now` and `%.today` call the functions
-  // a translated expression calls (`$now()`), so a plain function and a translated one read one instant (SYN-29), a fresh
-  // `Date` each read. `Mesh` is the file's import, as a helper is (PRJ-22).
+  // a translated expression calls (`$now()`), so a plain function and a translated one read one instant, a fresh
+  // `Date` each read. `Mesh` is the file's import, as a helper is.
   const internal = plain.internal ?? {};
   if (roots.length || internal.self || internal.now || internal.today || e.takesScope || e.params.length) emitted.scope = true;
   if (internal.now || internal.today) emitted.expr = true;
@@ -119,12 +119,12 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     // bound here, not at module level, so the file declares no name an entity file's helper import could also have.
     (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
     // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
-    // finished loading by then) and typed so that what its actions resolve with is read-only (CMP-16).
+    // finished loading by then) and typed so that what its actions resolve with is read-only.
     [...(plain.entities ?? []), ...inTypes.values].map((name) => {
       const { value, type } = entities(name);
       return `const ${name}: ${type} = ${value}; `;
     }).join("") +
-    // An entity named as a type is its record type, as the barrel exports it with the value (CMP-17).
+    // An entity named as a type is its record type, as the barrel exports it with the value.
     inTypes.types.map((name) => `type ${name} = ${entities(name).record}; `).join("");
   return withScope(`{ ${declare}return (${fn})(${e.takesScope || e.params.length ? SCOPE : ""}); }`);
 }
@@ -133,7 +133,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
 export const CLONE_VALUE = "$cloneValue";
 /**
  * The locals the expressions file imports an entity value, its read-only type and its record type under, by the name a
- * function of the entity file gives the entity (CMP-16): `List` (or the alias `BList`) to `{ value: "$b$List$value",
+ * function of the entity file gives the entity: `List` (or the alias `BList`) to `{ value: "$b$List$value",
  * type: "$b$List$ReadOnly", record: "$b$List$Record" }`.
  */
 export type EntityLocals = (name: string) => { readonly value: string; readonly type: string; readonly record: string };

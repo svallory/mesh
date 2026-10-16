@@ -25,7 +25,7 @@ import { Account, joiningLayer } from "./entity-domain/framed.ts";
 import * as other from "./entity-domain/other.ts";
 
 /**
- * Entity values and bindings (CMP-16, PRJ-13, PRJ-19) over a fake domain whose actions report what they ran on. The
+ * Entity values and bindings over a fake domain whose actions report what they ran on. The
  * generated code calls the same functions: an actions file defines its entity value with `entity`, and `binding.ts`'s
  * `bind` is `bindDomain` over the root barrel, with the project's one `AsyncLocalStorage` as its frame.
  */
@@ -82,7 +82,7 @@ describe("bindDomain", () => {
     expect(Object.keys(await binding.run(async () => Mesh.privileged(domain.sales.Order)))).toEqual([]);
   });
 
-  test("transaction(fn) hands fn nothing (TXN-20)", async () => {
+  test("transaction(fn) hands fn nothing", async () => {
     const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     expect(await binding.transaction(async (...args: unknown[]) => args.length)).toBe(0);
   });
@@ -263,7 +263,7 @@ describe("bindDomain", () => {
   });
 });
 
-describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
+describe("the call frame", () => {
   const ENDED = new FrameworkError("a call was made inside a transaction that has ended: await every entity call and privileged read before the function or the transaction callback returns");
 
   test("inside an action's function, an entity call and a privileged read join its transaction and resolve with read-only views", async () => {
@@ -392,7 +392,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     }
   });
 
-  test("privileged and an entity call throw while a computed field is evaluated, naming the field (TXN-18)", async () => {
+  test("privileged and an entity call throw while a computed field is evaluated, naming the field", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
     const message = (what: string) => `${what} was called while computed :balance of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
     await expect(binding.run(() => Account.read({ computed: () => Mesh.privileged(Account) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account)")));
@@ -410,7 +410,7 @@ describe("the call frame (TXN-16, TXN-18, ACT-09)", () => {
     expect((await binding.run(() => Account.read({ computed: () => "plain" })))[0]!.computed).toBe("plain");
   });
 
-  test("privileged and an entity call throw while a read policy is evaluated, naming the policy (TXN-18)", async () => {
+  test("privileged and an entity call throw while a read policy is evaluated, naming the policy", async () => {
     const binding = bindDomain(framed, joiningLayer().layer, {}, frame);
     const message = (what: string) => `${what} was called while policy :mine of bank.Account is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`;
     await expect(binding.run(() => Account.read({ policy: () => Mesh.privileged(Account) }))).rejects.toThrow(new FrameworkError(message("Mesh.privileged(bank.Account)")));

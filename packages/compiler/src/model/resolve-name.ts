@@ -6,7 +6,7 @@ export type NameResolution =
   | { readonly kind: "ambiguous"; readonly candidates: readonly string[]; readonly message: string }
   | { readonly kind: "unknown"; readonly known: readonly string[]; readonly message: string };
 
-/** "a, b or c" (PRJ-16's sentence form for candidates). */
+/** "a, b or c" (the sentence form for candidates). */
 function orList(items: readonly string[]): string {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} or ${items.at(-1)}`;
 }
@@ -14,7 +14,7 @@ function orList(items: readonly string[]): string {
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Resolves an input name to one entity (PRJ-16). Input may be shortened to the fewest trailing qualifiers that pick one
+ * Resolves an input name to one entity. Input may be shortened to the fewest trailing qualifiers that pick one
  * declaration: `project.Task` for `work.project.Task`, and `Task` alone while only one exists. An exact match on the
  * FQN wins; otherwise the input matches segment-wise from the end, case-sensitively. One match wins; two or more is
  * an error that lists every candidate's FQN, and Mesh never picks one; none lists the known FQNs.

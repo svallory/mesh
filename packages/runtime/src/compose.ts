@@ -4,7 +4,7 @@ import { parseInput } from "./input.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 
 /**
- * What the generated actions share when one action calls another inside its transaction (M5, CMP-16): a failed cast or
+ * What the generated actions share when one action calls another inside its transaction (M5): a failed cast or
  * denial fails the running transaction (`failJoined`, `castInput`), and an update re-reads its row before its write when
  * a call made during its earlier phases wrote (`noteWrite`, `checkUnchanged`). A nested call is an entity value's
  * method (`Task.touch(input, context)`), which `entity.ts` runs on the binding in scope.
@@ -29,7 +29,7 @@ function isPlain(value: object): boolean {
 /**
  * A copy of a caller's input for the validator, in which every plain object, at any depth, has no prototype; arrays are
  * copied around their items and anything else (a `Date`) is kept. A member input may be named like a member of
- * `Object.prototype` (`toString`, `constructor`: ENT-18), and so may a key of a read's `filter`. On a plain object a key
+ * `Object.prototype` (`toString`, `constructor`), and so may a key of a read's `filter`. On a plain object a key
  * the caller left out reads as the inherited method, which the validator would refuse ("expected string, received
  * function"); on the copy it reads `undefined`, as any other name does.
  */
@@ -45,7 +45,7 @@ function withoutPrototypes(value: unknown, seen = new Map<object, unknown>()): u
   if (!isPlain(value)) return value;
   const copy: Record<string, unknown> = Object.create(null);
   seen.set(value, copy);
-  // `defineProperty`, not `copy[key] = ...`: a `json` value may hold an own `__proto__` key (ENT-19), and on an object that
+  // `defineProperty`, not `copy[key] = ...`: a `json` value may hold an own `__proto__` key, and on an object that
   // has a prototype an assignment to that name would change the prototype instead of making a property. This copy has
   // none, so the assignment would be safe here today; the definition stays safe whatever the copy becomes.
   for (const [key, member] of Object.entries(value))
@@ -59,7 +59,7 @@ function withoutPrototypes(value: unknown, seen = new Map<object, unknown>()): u
  * validators use, already rebuilds every object it hands back with that prototype, `z.strictObject` and a `json` value
  * (`jsonValue`) alike, so for them this changes nothing. It is a safety net for a validator that hands back objects of the copy
  * `withoutPrototypes` made, which have none. Those are the cast's own copies, so they are changed in place, with no copy.
- * Only prototypes change, never keys; an own `__proto__` key of a `json` value (ENT-19) stays the data property it is, and
+ * Only prototypes change, never keys; an own `__proto__` key of a `json` value stays the data property it is, and
  * `Object.setPrototypeOf` sets the object's prototype, never that key.
  */
 function ordinary(value: unknown, seen = new Set<object>()): unknown {
@@ -85,7 +85,7 @@ function ordinary(value: unknown, seen = new Set<object>()): unknown {
  *
  * The validator sees the input's own members only (`withoutPrototypes`); the action gets ordinary objects (`ordinary`).
  * There a member input named like a member of `Object.prototype` that the caller left out reads as the inherited member
- * (ENT-18's accepted cost), so generated code tells a given member by `$Object.hasOwn`.
+ * (the accepted cost), so generated code tells a given member by `$Object.hasOwn` (lead, ENT-18).
  */
 export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown): Promise<T> {
   const joined = layer.refuseIfFailed();

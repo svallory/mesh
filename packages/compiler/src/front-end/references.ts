@@ -3,7 +3,7 @@ import { nearestName } from "./nearest-name.ts";
 import type { SyntaxNode } from "./tree.ts";
 
 /**
- * A reference to a declaration of another file (SYN-21), as the entity file writes it: an imported identifier (`List`), or
+ * A reference to a declaration of another file, as the entity file writes it: an imported identifier (`List`), or
  * a member of a namespace import (`billing.Invoice`), whose qualifier is the alias the file gives that file. The alias is
  * the author's choice and never part of an FQN.
  */
@@ -54,7 +54,7 @@ export interface ReferenceScope {
   declared: (from: string) => readonly string[] | undefined;
 }
 
-/** What a position references: `entity=` takes an entity, and `on=` will take a command or an event (DOM-17). */
+/** What a position references: `entity=` takes an entity, and `on=` will take a command or an event. */
 export interface ReferenceKind {
   /** What the position takes, for messages: `entity`. */
   noun: string;
@@ -71,7 +71,7 @@ export type Resolution =
   | { ok: false; reported: true };
 
 /**
- * Resolves a reference (SYN-21): `List` to the file whose import binds it (or to the file itself, by its own name), and
+ * Resolves a reference: `List` to the file whose import binds it (or to the file itself, by its own name), and
  * `billing.Invoice` to the file the namespace import `billing` names, when that file declares `Invoice`. The one function
  * every reference position calls, so each says the same thing about the same mistake. `identifier` is the reference as
  * written (`billing.Invoice`); the target is what `from` declares.

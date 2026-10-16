@@ -32,7 +32,7 @@ export interface TypesView {
   readonly entityFile: string;
   /**
    * Type-only imports of other entities' record types, ordered as they are first referenced, each under its FQN-derived
-   * local (CMP-05, `entityLocal`), which cannot clash with another entity's or with a name the file uses.
+   * local (`entityLocal`), which cannot clash with another entity's or with a name the file uses.
    */
   readonly imports: readonly TypeImport[];
   /** The entity's stored record: its attributes, then one key column per relationship that has one. */
@@ -55,7 +55,7 @@ export interface TypesView {
 export interface LoadableDeclaration {
   /**
    * The map's name, e.g. `TaskLoadable`: what a caller's `load` attaches. A caller's load runs the read policies of the
-   * entity it reaches (POL-17), so a relationship to a record the caller may not read is `[]` or `null`: a `belongs-to`
+   * entity it reaches, so a relationship to a record the caller may not read is `[]` or `null`: a `belongs-to`
    * is `| null` here even when its column is not.
    */
   readonly name: string;
@@ -149,7 +149,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
       if (declared.has(name)) throw emitError("MESH_EMIT_NAME", `Entity ${entity.fqn} would generate the type ${name} twice`, entity.position);
       declared.add(name);
     }
-  // Another entity's types are imported under its FQN-derived locals (`$b$List$Record`, `$b$List$Loaded`; CMP-05:
+  // Another entity's types are imported under its FQN-derived locals (`$b$List$Record`, `$b$List$Loaded`:
   // generated locals never use a bare entity name, and never the alias the entity file's import wrote, which could
   // hide a global the file uses, such as `Pick`). No such local is one of this file's own names or another entity's.
   const imported = new Map<string, { target: Entity; local: string; loadedLocal: string; loaded: boolean }>();
@@ -215,7 +215,7 @@ export function relationTarget(document: EmitInput["document"], entity: Entity, 
   return target;
 }
 
-/** Does a caller's load type a relationship differently from a load through `privileged`? Where a `belongs-to` is not nullable (POL-17). */
+/** Does a caller's load type a relationship differently from a load through `privileged`? Where a `belongs-to` is not nullable. */
 export const hasTxLoadable = (entity: Entity): boolean => entity.relationships.some((relation) => relation.kind === "belongs-to" && !relation.nullable);
 
 /** The `Loadable` and `With` names that type a load through `privileged`, which runs no policy: the `Tx` pair, or the caller's when they are the same. */
@@ -233,7 +233,7 @@ function loadableDeclaration(document: EmitInput["document"], entity: Entity, re
   const loadedMembers: TypeMember[] = [];
   const related = (relation: Entity["relationships"][number], target: string) =>
     relation.kind === "has-many" ? `${target}[]` : relation.kind === "has-one" || relation.nullable ? `${target} | null` : target;
-  // A caller's load gives null for a record the caller may not read (POL-17).
+  // A caller's load gives null for a record the caller may not read.
   const forCaller = (relation: Entity["relationships"][number], target: string) => relation.kind === "has-many" ? `${target}[]` : `${target} | null`;
   for (const relation of entity.relationships) {
     const entityTarget = relationTarget(document, entity, relation);
@@ -266,7 +266,7 @@ function queryDeclaration(entity: Entity): QueryDeclaration {
     filterMembers: columns
       .filter((column) => column.name !== "and" && column.name !== "or")
       // `| undefined`, as on an optional input field: a filter literal may leave out a member named like a member of
-      // `Object.prototype` (`toString`, ENT-18) only by giving it as `undefined`, since TypeScript reads the inherited one.
+      // `Object.prototype` (`toString`) only by giving it as `undefined`, since TypeScript reads the inherited one.
       .map((column): TypeMember => ({ name: column.name, optional: true, key: propertyName(column.name), type: `$Comparison<${baseType(column)}> | undefined` })),
     sortName: sortTypeName(entity),
     sortKeys: columns.flatMap((column) => [JSON.stringify(column.name), JSON.stringify(`-${column.name}`)]),

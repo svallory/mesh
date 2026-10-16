@@ -1,6 +1,6 @@
 // M8a: policies run, and an action no policy covers is denied. A domain with policies of every shape (actor-only,
 // record-reading, through `privileged`, `Mesh.isSystem(context)`, unknown results), built, generated, pushed to SQLite and called
-// through the generated functions. Lead rulings of M8a: where each check runs (ACT-28, POL-08), reads filtered, TXN-06
+// through the generated functions. Lead rulings of M8a: where each check runs, reads filtered, the application's `transaction(fn)`
 // as built, `system` as a reserved boolean, the error, deny by default.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
@@ -170,7 +170,7 @@ function typeCheck(dir: string, files: string[]): string {
 
 /**
  * The same domain with every policies section written in the reverse order, and the checks of each policy reversed:
- * POL-03 says the order changes no decision.
+ * Policies combine without order, so the order changes no decision.
  */
 function reversed(source: string): string {
   const at = source.indexOf("\n  policies\n");
@@ -254,7 +254,7 @@ describe("deny by default", () => {
   });
 });
 
-describe("authorize-if and forbid-if combine (POL-03)", () => {
+describe("authorize-if and forbid-if combine", () => {
   test("types= and actions= say what a policy covers, and every covering policy must pass", async () => {
     const { db, mesh } = await fresh();
     try {
@@ -360,7 +360,7 @@ describe("authorize-if and forbid-if combine (POL-03)", () => {
   });
 });
 
-describe("where each check runs (ACT-28, POL-08)", () => {
+describe("where each check runs", () => {
   test("an actor-only denial comes before the transaction: no transaction opens, nothing is written, no row is locked", async () => {
     const { db, mesh, counts } = await fresh();
     try {
@@ -483,7 +483,7 @@ describe("where each check runs (ACT-28, POL-08)", () => {
   });
 });
 
-describe("a nested call is checked against the nested action's policies (TXN-06)", () => {
+describe("a nested call is checked against the nested action's policies", () => {
   test("a direct call without system is forbidden; with system, Mesh.isSystem(context) admits it", async () => {
     const { db, mesh } = await fresh();
     try {
@@ -523,10 +523,10 @@ describe("a nested call is checked against the nested action's policies (TXN-06)
   });
 });
 
-// POL-17: a relationship the caller loads, and a rollup the caller reads, run the target entity's read policies, actor
+// a relationship the caller loads, and a rollup the caller reads, run the target entity's read policies, actor
 // only, with the caller's context. Not admitted: a has-many is [], a belongs-to null, a count 0, a max null. Through
-// `privileged` no policy runs (TXN-16).
-describe("what a caller loads runs the read policies of the entity it reaches (POL-17)", () => {
+// `privileged` no policy runs.
+describe("what a caller loads runs the read policies of the entity it reaches", () => {
   const shelf = `import { Keeper } from "./keeper.mesh.mx"
 import { Item } from "./item.mesh.mx"
 
@@ -701,7 +701,7 @@ export async function direct(ops: DataOperations, given: LoadOptions): Promise<s
 });
 
 /**
- * Imported functions in policies (EXP-03; POL-21 holds for a write's checks only, lead ruling on PR #91): a read policy
+ * Imported functions in policies (the rule that an imported call reads the record holds for a write's checks only, lead ruling on PR #91) (lead, POL-21): a read policy
  * may call a pure one, which it calls with no record, and filters with it. A translated check calls an imported function
  * synchronously, so one that returns a promise is refused: by the type checker where its type says so, and at run time,
  * naming it, where its type does not.
@@ -742,7 +742,7 @@ entity :Shelf table="shelves"
       authorize-if=({ actor }) => vaguely(actor.id)
 `;
 
-describe("imported functions in policies (EXP-03, POL-21)", () => {
+describe("imported functions in policies", () => {
   let shelfDir: string;
   let shelfApp: any;
   beforeAll(async () => {

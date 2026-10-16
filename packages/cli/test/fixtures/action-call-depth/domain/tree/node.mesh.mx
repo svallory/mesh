@@ -72,7 +72,7 @@ entity :Node
           try {
             await recurse("fail")
           } catch {
-            // the transaction is failed all the same (TXN-01)
+            // the transaction is failed all the same
           }
           await recurse("count")
         }

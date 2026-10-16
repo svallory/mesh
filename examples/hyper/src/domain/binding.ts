@@ -5,8 +5,8 @@ import { transaction } from "#mesh";
 
 export interface Binding {
   /**
-   * The application transaction: `transaction` from `#mesh`, or the one `bind(layer)` returns. It has one instant
-   * (ACT-29), which every action and read inside it reads, so a function judges a lease the way the actions it calls
+   * The application transaction: `transaction` from `#mesh`, or the one `bind(layer)` returns. It has one instant,
+   * which every action and read inside it reads, so a function judges a lease the way the actions it calls
    * do: through a field that reads `%.now`, such as Claim's `lapsed`, never through a clock of its own.
    */
   readonly transaction: typeof transaction;

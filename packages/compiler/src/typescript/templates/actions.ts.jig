@@ -52,7 +52,7 @@ import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
 
 @if(readsBindName)
 /**
- * The reads of this entity without their policies: what `Mesh.privileged({{ entityName }})` runs (TXN-16). The read actions
+ * The reads of this entity without their policies: what `Mesh.privileged({{ entityName }})` runs. The read actions
  * below evaluate the read's policies, then call these. `frame` is the binding's: a computed field they load runs marked with it.
  */
 export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $BindOptions = {}, {{ readsFrameName }}: $ActionFrame = $NO_FRAME) {
@@ -87,7 +87,7 @@ export function {{ readsBindName }}(layer: $DataLayer, {{ readsOptionsName }}: $
 /**
  * Every action of this entity, bound to `layer`. `frame` is the binding's (the project's `bind` passes it): an action reads
  * the instant of the transaction it joins from it, and its own transaction runs inside it, so what its functions call
- * joins that transaction and reads its instant (ACT-29).
+ * joins that transaction and reads its instant.
  */
 export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOptions = {}, {{ frameName }}: $ActionFrame = $NO_FRAME) {
   @if(readsBindName)
@@ -133,7 +133,7 @@ export function {{ bindName }}(layer: $DataLayer, {{ optionsName }}: $BindOption
 }
 
 /**
- * The entity value (CMP-16): `{{ entityName }}.<action>(input, context)` runs the action on the binding in scope, the
+ * The entity value: `{{ entityName }}.<action>(input, context)` runs the action on the binding in scope, the
  * innermost `run` or `transaction` of a binding the call is made inside, else on the binding `connect()` opened.
  */
 const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, {{ readsBindValue }}, ($call) => ({
@@ -148,14 +148,14 @@ export { $entityValue as {{ entityName }} };
 /** The record type, under the entity value's name. */
 export type {{ entityName }} = $Record;
 
-/** What `Mesh.privileged({{ entityName }})` returns (TXN-16): one function per read action, run with no policy. */
+/** What `Mesh.privileged({{ entityName }})` returns: one function per read action, run with no policy. */
 export interface $Privileged {
   @each(member in privilegedMembers)
   {{ member }}
   @end
 }
 
-/** `$Privileged` as a function of an entity file sees it: every result deeply read-only (ACT-09). */
+/** `$Privileged` as a function of an entity file sees it: every result deeply read-only. */
 export interface $PrivilegedReadOnly {
   @each(member in privilegedReadOnlyMembers)
   {{ member }}
@@ -163,7 +163,7 @@ export interface $PrivilegedReadOnly {
 }
 
 /**
- * The entity value as a function of an entity file sees it (ACT-09): what each action resolves with is deeply read-only,
+ * The entity value as a function of an entity file sees it: what each action resolves with is deeply read-only,
  * and so is what `Mesh.privileged` of it resolves with. The expressions files bind the entity value under this type.
  */
 export type $ReadOnly = $EntityValue<{
@@ -200,7 +200,7 @@ export function {{ bindName }}(_layer: $DataLayer, _options: $BindOptions = {}, 
   return $Object.freeze({});
 }
 
-/** The entity value (CMP-16). The entity has no action, so it has no method. */
+/** The entity value. The entity has no action, so it has no method. */
 const $entityValue = $entity({{ fqnLiteral }}, {{ bindName }}, null, () => ({}));
 export { $entityValue as {{ entityName }} };
 /** The record type, under the entity value's name. */

@@ -44,7 +44,7 @@ export interface Comparison<T extends Exclude<Scalar, null> = Exclude<Scalar, nu
  * `and` or `or` therefore cannot be filtered. An attribute whose comparison is `undefined`
  * is the same as one left out, as for an optional field of a generated filter type
  * (`toString?: Comparison<string> | undefined`: a caller leaves out an attribute named like
- * a member of `Object.prototype` by giving it as `undefined`, ENT-18); an operator whose
+ * a member of `Object.prototype` by giving it as `undefined`); an operator whose
  * value is `undefined` is still an error.
  */
 export type Filter =

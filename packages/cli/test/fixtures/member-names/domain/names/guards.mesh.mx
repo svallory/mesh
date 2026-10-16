@@ -1,4 +1,4 @@
-// Every name ENT-18 accepts that names a member of Object.prototype or a function, as a policy. Each denies a call
+// Every name the build accepts that names a member of Object.prototype or a function, as a policy. Each denies a call
 // whose label is its own name: half a create, before the transaction (reading the input), half an update, inside it
 // (reading the stored record).
 entity :Guards

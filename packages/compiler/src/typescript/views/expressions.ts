@@ -36,14 +36,14 @@ export interface ExpressionsView {
    */
   readonly typeImports: readonly string[];
   /**
-   * The entity file's `Mesh` import (PRJ-22) as the file imports it from `@meshfw/runtime`, one entry per name the entity
+   * The entity file's `Mesh` import as the file imports it from `@meshfw/runtime`, one entry per name the entity
    * file gives it that a function reads, as printed inside the runtime import's braces: `Mesh`, `Mesh as M`, or `type Mesh`
    * when the functions name it only in a type (`typeof Mesh.isSystem`). Empty when no function reads it. It is a constant,
    * the same object application code imports from `meshfw`, so the functions read it as they read a helper.
    */
   readonly meshImports: readonly string[];
   /**
-   * The entity values the functions name (CMP-16), one import per entity's actions file: the value as
+   * The entity values the functions name, one import per entity's actions file: the value as
    * `entityLocal(target, "value")` and its read-only type as `entityLocal(target, "ReadOnly")` (`Task as $work$Task$value,
    * type $ReadOnly as $work$Task$ReadOnly`), so that two entities with one name never share a local. A function binds
    * each under the name the entity file gives it, the alias its import wrote included (`const BList: ... = $b$List$value`).
@@ -53,7 +53,7 @@ export interface ExpressionsView {
    */
   readonly entityImports: readonly { keyword: "import" | "import type"; names: string; fromLiteral: string }[];
   /**
-   * The namespace imports of entity files (SYN-21) that the functions name in a type (`billing.Invoice | null`), each a
+   * The namespace imports of entity files that the functions name in a type (`billing.Invoice | null`), each a
    * module-level `declare namespace billing { export type Invoice = $billing$Invoice$Record; }`: a function cannot declare
    * a namespace, and the value a function binds under the alias (`const billing = { Invoice: ... }`) has no types. `name`
    * is the alias, `members` the printed body, one `export type` per entity the file declares.
@@ -75,7 +75,7 @@ export interface ExpressionsView {
   /** The scope of an expression that only runs on a stored record (an update or a destroy): the same, with `before` not null. */
   readonly storedScopeName: string;
   /**
-   * The scope of a check, which sees `self` before the input is applied and has no `before` (ACT-01, ACT-27); null when no
+   * The scope of a check, which sees `self` before the input is applied and has no `before`; null when no
    * check uses it.
    */
   readonly checkScope: ScopeDeclaration | null;
@@ -98,7 +98,7 @@ export interface HelperImport {
    * What the import binds, as printed between `import` and `from`: the names in braces, sorted by the name the entity file
    * gives each, `{ fmt, type Money }`, where `type` marks a helper the functions name only in a type (`const x: Money`,
    * `typeof fmt`), or `{ Money }` alone when `keyword` is `import type`. A helper the entity file imports under an alias
-   * keeps it: `{ fmt as format }`. A namespace import (SYN-21) is its own import: `* as h`.
+   * keeps it: `{ fmt as format }`. A namespace import is its own import: `* as h`.
    */
   readonly bindings: string;
   /** The helper module from the expressions file, a quoted string literal, e.g. `"../../../domain/work/money"`. */
@@ -188,7 +188,7 @@ function collect(entity: Entity): Found[] {
     checks(`always.${i}`, block.validate);
     steps(`always.${i}`, block.do, "");
   });
-  // A policy sees what a check sees (POL-08): `self` before the input, no `before`; the new instance when it covers a create.
+  // A policy sees what a check sees: `self` before the input, no `before`; the new instance when it covers a create.
   phase = "check";
   for (const policy of entity.policies) {
     actions = covers(policy);
@@ -201,7 +201,7 @@ function collect(entity: Entity): Found[] {
 }
 
 function helpersIn(n: ExprNode, into: Set<string>): void {
-  // `h.isStaff`: the import is the namespace's, `h` (SYN-21).
+  // `h.isStaff`: the import is the namespace's, `h`.
   if (n.kind === "helper") { into.add(n.name.split(".")[0]!); n.args.forEach((a) => helpersIn(a, into)); }
   else if (n.kind === "call") n.args.forEach((a) => helpersIn(a, into));
   else if (n.kind === "member") helpersIn(n.object, into);
@@ -237,7 +237,7 @@ export function hasExpressions(entity: Entity): boolean {
 
 export function expressionsView({ document }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
   const recordName = typeName(entity.name, entity.position);
-  // Every module-level name the file takes from generated code is a `$` local (CMP-05, CMP-06): Mesh's own imports have
+  // Every module-level name the file takes from generated code is a `$` local: Mesh's own imports have
   // one `$`, and the entity's own types and scopes, like the entity values it imports, are `entityLocal`s. The only
   // names without one are the entity file's helper imports, which cannot start with `$`.
   const recordLocal = entityLocal(entity, "Record");
@@ -250,15 +250,15 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
   const loaded = hasLoader(entity);
   const selfType = loaded ? entityLocal(entity, "Loaded") : recordLocal;
-  // `context` is the project's `ActionContext` (PRJ-02, PRJ-12) and `actor` its `actor` member, so a read of a member the
-  // project did not declare fails tsc (EXP-12: a root is like a parameter, and a parameter has a type). A project that
+  // `context` is the project's `ActionContext` and `actor` its `actor` member, so a read of a member the
+  // project did not declare fails tsc (a root is like a parameter, and a parameter has a type). A project that
   // declares no `actor` gets `undefined`, which is what the runtime binds (`options.actor`), so a read fails at the read,
   // not at this alias, and `actor` is assignable to nothing. The test is on `keyof`, so an optional `actor?: User`
   // is `User | undefined` (an `infer` pattern on `{ actor: infer A }` would miss it). `$ActionContext extends infer C` makes
   // `C` a type variable: TypeScript 7 refuses the index `C["actor"]` on the concrete interface in the branch of a conditional.
   const scopeType = `$Scope<{ self: $DeepReadonly<${selfType}>; input: $DeepReadonly<I>; actor: $ActionContext extends infer C ? "actor" extends keyof C ? { [K in keyof C]-?: C[K] }["actor"] | (C extends { actor: unknown } ? never : undefined) : undefined : never; context: $ActionContext; before: $DeepReadonly<${recordLocal}> | null }>`;
   const found = collect(entity);
-  // On a create, `self` is the new instance (ACT-27): the members nothing has filled yet are null there, so the scopes
+  // On a create, `self` is the new instance: the members nothing has filled yet are null there, so the scopes
   // of the functions that can run on one say so.
   const gaps = newInstanceGaps(entity);
   const withNulls = (members: readonly string[]) => {
@@ -305,9 +305,9 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (expression.tree) helpersIn(expression.tree, used);
     else for (const name of expression.plain!.helpers ?? []) used.add(name);
   }
-  // The entities the functions can name, each under the name the entity file gives it (CMP-16): its own and the imported
+  // The entities the functions can name, each under the name the entity file gives it: its own and the imported
   // ones. Each is imported from its actions file under FQN-derived locals and bound in each function under that name.
-  // A namespace import of an entity file (SYN-21) names that file's entities under its alias, `billing` for
+  // A namespace import of an entity file names that file's entities under its alias, `billing` for
   // `billing.Invoice`: a function binds the alias to an object of their values, and the file declares a namespace of
   // their record types.
   const targets = new Map<string, Entity>();
@@ -345,7 +345,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   let usesExpr = false;
   // What a plain function names only in a type: the front end never sees it (MX strips the types from the node it reads),
   // so the printed function is parsed for it (`typeNames`). A helper is imported as a type. A scope root read in a
-  // `typeof` is bound as a root read as a value is (EXP-12: a root is like a parameter, so it hides a helper of its name
+  // `typeof` is bound as a root read as a value is (a root is like a parameter, so it hides a helper of its name
   // there), while a type reference never names a root (a root is a value) and is the helper of that name. An entity is
   // bound to its record type where it is named as a type, and to its value where it is read in a `typeof`.
   const unread = new Set([...helperFrom.keys()].filter((name) => !used.has(name)));
@@ -421,7 +421,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       const { imported } = helperFrom.get(name)!;
       return imported === name ? name : `${IDENTIFIER.test(imported) ? imported : JSON.stringify(imported)} as ${name}`;
     };
-    // A namespace import (SYN-21) cannot share braces: `import * as h from …`, a type import when the functions name `h`
+    // A namespace import cannot share braces: `import * as h from …`, a type import when the functions name `h`
     // only in a type.
     const namespaces = all.filter((name) => helperFrom.get(name)!.namespace).map((name): HelperImport => ({
       keyword: typed.has(name) && !used.has(name) ? "import type" : "import",

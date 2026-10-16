@@ -55,7 +55,7 @@ const checks = (refused: { failures: { check: string }[] }) => refused.failures.
 
 /**
  * From here on the world's clock advances 1 ms on every read, starting at `start`: two readings in one command differ,
- * unless they are its transaction's instant (ACT-29), which is read once.
+ * unless they are its transaction's instant, which is read once.
  */
 function ticking(w: World, start: Date): void {
   let at = start.getTime();
@@ -259,7 +259,7 @@ describe("submission.withdraw and the review methods", () => {
 });
 
 describe("what a failure carries", () => {
-  test("task.children-settled names each open child by title in the reason (the check's message function, ACT-30), and its details keep the ids alone", () => inWorld(async (w) => {
+  test("task.children-settled names each open child by title in the reason (the check's message function), and its details keep the ids alone", () => inWorld(async (w) => {
     const open = await send("task.create", as(w.alice), { title: "Open child", parentId: w.task.id });
     const other = await send("task.create", as(w.alice), { title: "Other \"quoted\" child", parentId: w.task.id });
     const refused = await refusal(send("task.complete", as(w.alice), { taskId: w.task.id }));

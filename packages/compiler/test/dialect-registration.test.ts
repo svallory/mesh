@@ -114,7 +114,7 @@ test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS",
   expect(renamed.stderr.toString()).toContain('mx.dialect.id must be "mesh"');
 }, 30_000);
 
-// The manifest closes Mesh files to the project (since MX 0.1.0-alpha.21; decision MX-15): `mxConfigTags: false` takes `mx.tags` and
+// The manifest closes Mesh files to the project (since MX 0.1.0-alpha.21): `mxConfigTags: false` takes `mx.tags` and
 // `mx.contracts` away, `tagDirs: []` closes `tags/`, and `reservedTags` names the vocabulary so a project cannot redefine it.
 // https://github.com/svallory/mx docs: apps/docs/docs/custom-tags/dialects.md ("mxConfigTags", "The manifest fields", "Reserved names").
 const manifest = async () => (await Bun.file(join(cli, "package.json")).json()).mx.dialect;

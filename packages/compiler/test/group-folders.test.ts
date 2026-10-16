@@ -188,7 +188,7 @@ test("an ignore pattern that matches nothing is a warning naming the pattern, no
   expect(loaded.config!.entityFiles).toEqual([resolve(root, "src/domain/a.mesh.mx")]);
 });
 
-test("an entity's fqn is its module's folders joined by dots, then its name; a root entity's fqn is its name (PRJ-18)", () => {
+test("an entity's fqn is its module's folders joined by dots, then its name; a root entity's fqn is its name", () => {
   const fqns = (files: Record<string, string>) => Object.fromEntries((build(files).document?.entities ?? []).map((e) => [e.name, e.fqn]));
   expect(fqns({
     [`${D}/work/project/task.mesh.mx`]: entity("Task"),
@@ -198,7 +198,7 @@ test("an entity's fqn is its module's folders joined by dots, then its name; a r
   })).toEqual({ Task: "work.project.Task", Review: "work.Review", Root: "Root", Top: "Top" });
 });
 
-test("fqn segments are the folders as written (PRJ-21): hyphens, a leading digit and capitals are kept", () => {
+test("fqn segments are the folders as written: hyphens, a leading digit and capitals are kept", () => {
   const fqns = Object.fromEntries((build({
     [`${D}/order-management/invoice.mesh.mx`]: entity("Invoice"),
     [`${D}/2024-reports/report.mesh.mx`]: entity("Report"),

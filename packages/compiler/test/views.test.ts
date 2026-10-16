@@ -90,7 +90,7 @@ describe("typesView", () => {
 
   test("imports: each referenced entity in another file once, with a relative quoted specifier", () => {
     const document = documentOf();
-    // Under its FQN-derived locals (CMP-05): the import wrote no alias.
+    // Under its FQN-derived locals: the import wrote no alias.
     expect(types(document, "Todo").imports).toEqual([{ name: "$todo$List$Record", names: "List as $todo$List$Record, ListLoaded as $todo$List$Loaded", fromLiteral: '"./list.types"' }]);
     entityOf(document, "List").module = "lists";
     entityOf(document, "Todo").module = "todos";
@@ -190,7 +190,7 @@ describe("typesView", () => {
     expect(() => types(document, "Todo")).toThrow(EmitError);
   });
 
-  test("an entity named Date with a date attribute is a view: the attribute's type is the global's `$` alias (PRJ-20)", () => {
+  test("an entity named Date with a date attribute is a view: the attribute's type is the global's `$` alias", () => {
     const document = documentOf();
     const list = entityOf(document, "List");
     list.name = "Date";

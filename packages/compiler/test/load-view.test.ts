@@ -62,7 +62,7 @@ describe("the load view", () => {
     expect(view.entities[1]).toMatchObject({ relations: [], computed: [] });
   });
 
-  test("the table handle is read by the stored table name, quoted when it is not an identifier (DAT-16)", () => {
+  test("the table handle is read by the stored table name, quoted when it is not an identifier", () => {
     const view = loadView(input(documentOf({
       "late.mesh.mx": 'entity :LateResult table="late-result"\n  attributes\n    uuid :id primary-key\n',
       "claim.mesh.mx": 'entity :Claim table="claim"\n  attributes\n    uuid :id primary-key\n',
@@ -97,7 +97,7 @@ describe("the load view", () => {
     expect(view.schemaFromLiteral).toBe('"./schema"');
   });
 
-  test("the loader is typed from the actions file: a load through `privileged`, so Post's belongs-to is never null there (POL-17)", () => {
+  test("the loader is typed from the actions file: a load through `privileged`, so Post's belongs-to is never null there", () => {
     const document = documentOf();
     const [authorView, postView] = ["Author", "Post"].map((name) => actionsView(input(document), document.entities.find((entity) => entity.name === name)!));
     expect(authorView!.loader).toEqual({ name: "loadAuthorFields", loadable: "AuthorLoadable", with: "AuthorWith", entityLiteral: '"app.Author"' });
@@ -146,7 +146,7 @@ describe("the load generator", () => {
 
   test("a loader named like another entity's action function builds: action functions live in their entity's file", async () => {
     // An action function is `<action><Entity>`: the action `load` of an entity called AuthorFields is `loadAuthorFields`,
-    // the name of Author's load function too. With no project-wide `actions` and `tx` (CMP-16) the two never meet.
+    // the name of Author's load function too. With no project-wide `actions` and `tx` the two never meet.
     const fields = "entity :AuthorFields table=\"author_fields\"\n  attributes\n    uuid :id primary-key\n  actions\n    read :load\n";
     const document = documentOf({ author, post, lonely, "author-fields": fields });
     const files = await generateFiles(input(document));
@@ -198,11 +198,11 @@ describe("the types and the read views name what is loadable", () => {
         { name: "extra", optional: false, key: "extra", type: "unknown" },
       ],
     });
-    // Another entity's types come in under its FQN-derived locals (CMP-05), never its bare name.
+    // Another entity's types come in under its FQN-derived locals, never its bare name.
     expect(authorView.imports).toEqual([{ name: "$app$Post$Record", names: "Post as $app$Post$Record, PostLoaded as $app$Post$Loaded", fromLiteral: '"./post.types"' }]);
   });
 
-  test("a nullable belongs-to is nullable, a self-reference imports nothing for itself; a caller's belongs-to is nullable too (POL-17)", () => {
+  test("a nullable belongs-to is nullable, a self-reference imports nothing for itself; a caller's belongs-to is nullable too", () => {
     const document = documentOf();
     const postView = typesView(input(document), document.entities.find((e) => e.name === "Post")!);
     // A caller's load runs the read policies of what it reaches: an author it may not read is null.

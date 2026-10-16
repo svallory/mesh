@@ -26,7 +26,7 @@ export interface MemberRef {
 }
 export interface EntityRef {
   /**
-   * The reference as the entity file writes it (SYN-21): an imported identifier (`List`), a member of a namespace import
+   * The reference as the entity file writes it: an imported identifier (`List`), a member of a namespace import
    * (`billing.Invoice`), or the entity's own name. Only messages read it; the target is the entity `from` declares.
    */
   identifier: string;
@@ -45,13 +45,13 @@ export interface Import {
   /** Present (true) when the import is a helper module and not an entity file. */
   helper?: true;
   /**
-   * Present (true) for a namespace import, `import * as billing from "../billing/invoice.mesh.mx"` (SYN-21): `identifiers`
+   * Present (true) for a namespace import, `import * as billing from "../billing/invoice.mesh.mx"`: `identifiers`
    * holds its one local, the alias the file gives that file, and a reference through it is a member access
    * (`billing.Invoice`, or `h.isStaff(...)` for a helper module). The alias is never part of an FQN.
    */
   namespace?: true;
   /**
-   * Present (true) when the import is Mesh's own functions, `import { Mesh } from "meshfw"` (PRJ-22): neither a helper
+   * Present (true) when the import is Mesh's own functions, `import { Mesh } from "meshfw"`: neither a helper
    * module nor an entity file. It binds `Mesh` alone, or its alias.
    */
   mesh?: true;
@@ -138,7 +138,7 @@ export interface Check {
   label: string;
   that: Expression;
   code: string;
-  /** The text the failed check reports, or (ACT-30) a function of the arguments `that` gets that returns it. */
+  /** The text the failed check reports, or a function of the arguments `that` gets that returns it. */
   message: string | Expression;
   when?: Expression;
   /** A function returning data the caller receives on the failed check's issue (`details`, G22). */

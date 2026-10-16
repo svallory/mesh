@@ -41,7 +41,7 @@ export interface LoadEntity {
   /** One entry per computed field, in authored order. */
   readonly computed: readonly { readonly key: string; readonly plan: string }[];
   /**
-   * The policies a caller's load of the entity runs (POL-17), as the array literal `authorizer` takes, or `null` when none
+   * The policies a caller's load of the entity runs, as the array literal `authorizer` takes, or `null` when none
    * covers its `read`: a caller then loads none of its records.
    */
   readonly reads: string | null;
@@ -83,8 +83,8 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     const expressionsOf = () => {
       let local = locals.get(entity.file);
       if (!local) {
-        // This one file holds every entity's local, so a local never uses the bare entity name (CMP-05): it is `$`, the
-        // entity's path from the root barrel with `$` for `.` (each folder as its namespace name, PRJ-21), then `$expressions`:
+        // This one file holds every entity's local, so a local never uses the bare entity name: it is `$`, the
+        // entity's path from the root barrel with `$` for `.` (each folder as its namespace name), then `$expressions`:
         // `work.Task` gives `$work$Task$expressions`, a root `List` gives `$List$expressions` (`entityLocal`).
         local = entityLocal(entity, "expressions");
         locals.set(entity.file, local);

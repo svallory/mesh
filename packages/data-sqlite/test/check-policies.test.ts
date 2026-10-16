@@ -1,4 +1,4 @@
-// CMP-21: `Mesh.checkPolicies(action, input, context)` resolves to the decision the call would reach, `{ allowed,
+// `Mesh.checkPolicies(action, input, context)` resolves to the decision the call would reach, `{ allowed,
 // breakdown }`, and changes nothing; `Mesh.can` is its `allowed === true`. A domain with every kind of check (`authorize-if`,
 // `forbid-if`, `when`; reading only the caller and the input, or reading the record), unknown results, policies that
 // call helpers which read or write through an entity (directly, or through a binding's `run` or `transaction`, the
@@ -452,7 +452,7 @@ describe("checks that read only the caller and the input: decided before any tra
         entry("writers", "authorize-if", WRITERS_AUTHORIZE, true, false),
         entry("writers", "forbid-if", WRITERS_FORBID, true, true),
       ));
-      // No actor id: the authorize-if is false and the forbid-if unknown, which forbids (POL-04) and is what decides.
+      // No actor id: the authorize-if is false and the forbid-if unknown, which forbids and is what decides.
       await compare(world, (d) => d.Doc.draft, { ownerId: "x", title: "new", level: 1 }, anonymous, 0, denied(
         entry("writers", "authorize-if", WRITERS_AUTHORIZE, false, false),
         entry("writers", "forbid-if", WRITERS_FORBID, null, true),
@@ -469,7 +469,7 @@ describe("checks that read only the caller and the input: decided before any tra
         entry("sketchers", "authorize-if", "() => true", true, true),
         entry("sketchers", "forbid-if", "({ actor }) => actor.id === \"mallory\"", false, false),
       ));
-      // `actor.id` is missing, so the forbid-if is unknown, which forbids (POL-04).
+      // `actor.id` is missing, so the forbid-if is unknown, which forbids.
       await compare(world, (d) => d.Doc.sketch, { ownerId: "alice", title: "fine" }, anonymous, 0, denied(
         entry("sketchers", "authorize-if", "() => true", true, false),
         entry("sketchers", "forbid-if", "({ actor }) => actor.id === \"mallory\"", null, true),

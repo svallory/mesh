@@ -43,16 +43,16 @@ function callsHelper(n: ExprNode): boolean {
 }
 
 /**
- * Why the function reads the record (ACT-28, POL-08, POL-11, POL-21, lead ruling 1 of M8a), or undefined when it does
+ * Why the function reads the record (lead ruling 1 of M8a), or undefined when it does
  * not. A function that reads `self` or a related record through it reads the record, and so does a plain function the
  * build cannot analyse (a parameter that is not destructured, a rest pattern). One that reads only `actor`, `context` and
  * `input` does not.
  *
  * `on` is the kind of action the policy check guards. A write's check that reads the record runs inside the transaction,
  * on the locked row or a create's new instance, and so does one that calls `privileged` or any imported function, or
- * names an entity, since what those read the build cannot tell (POL-21, which extends POL-11's timing). A read policy
- * is a filter with no such timing: an imported call there is a pure call (EXP-03), and a `privileged` read made while it
- * is evaluated throws at run time (TXN-18), so only reading the record counts.
+ * names an entity, since what those read the build cannot tell (an imported call counts as reading the record, so it runs when a record-reading check runs). A read policy
+ * is a filter with no such timing: an imported call there is a pure call, and a `privileged` read made while it
+ * is evaluated throws at run time, so only reading the record counts (lead, POL-21).
  */
 export function recordReason(expression: Expression, on: "write" | "read" = "write"): string | undefined {
   const reads = "reads the record";
@@ -81,7 +81,7 @@ export function policyCovers(policy: Policy, action: { kind: ActionType; name: s
 }
 
 /**
- * The policies a caller's load of the entity runs (POL-17): those that cover its `read`, by type (`types=[:read]`, or no
+ * The policies a caller's load of the entity runs: those that cover its `read`, by type (`types=[:read]`, or no
  * scope) or by name (`actions=[&read]`). A relationship or a rollup that reaches a record runs them as its `read` would,
  * actor only; none covering, it gives nothing.
  */

@@ -1,4 +1,4 @@
-// The context each call runs with (decision POL-20, PORTING.md "Permissions"): HA reads the actor and the role of its
+// The context each call runs with (PORTING.md "Permissions"): HA reads the actor and the role of its
 // active membership from the database when the call comes in, and never takes either from the request.
 import type { Call } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
@@ -26,7 +26,7 @@ function noMembership(reason: string) {
  * name to reason, from `unserved` in `src/rpc/methods.ts`) is answered `-32010` first, before anything is read, so it
  * never runs with any context. A method named in `actorless` gets the engine's context. Every other call names its
  * actor: an unknown or retired collaborator, or one with no active membership, is refused before the method runs, with
- * the spec's `membership` check, which also closes POL-18's gap (a non-member could otherwise tell a missing record
+ * the spec's `membership` check, which also closes the gap (a non-member could otherwise tell a missing record
  * from a hidden one).
  *
  * `leaseMs` (`--lease-ms`) goes on every context the factory returns, the engine's included, so Claim `acquire` and

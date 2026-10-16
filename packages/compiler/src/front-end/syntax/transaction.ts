@@ -1,5 +1,5 @@
 /**
- * Mesh's `%.` sigil (SYN-29): `%` is the current transaction, and `%.now` and `%.today` are its instant and its date,
+ * Mesh's `%.` sigil: `%` is the current transaction, and `%.now` and `%.today` are its instant and its date,
  * properties, not calls. An expression row only, modeled on the `&name` row (`member.ts`), with `%\.` in front: the match
  * keeps the `.`, so `%`, `%now` and `%.` with no name stay the TypeScript errors they are, and the stand-in is an
  * identifier of the same length, so `%.now.getTime()` reads as a member access on it. Expression rows arm only where an

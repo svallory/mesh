@@ -192,7 +192,7 @@ describe("the generated index", () => {
     expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
-    // With no action, the binding is still `run` and `transaction`, whose callback is handed nothing (TXN-20).
+    // With no action, the binding is still `run` and `transaction`, whose callback is handed nothing.
     const bound = mesh.bind({ transaction: async (run: (tx: object) => Promise<unknown>) => run({}), refuseIfFailed: () => false, close: async () => {} });
     expect(Object.keys(bound)).toEqual(["run", "transaction"]);
     expect(await bound.run(async () => "ran")).toBe("ran");
@@ -265,7 +265,7 @@ describe("entity names never break the generated files", () => {
     expect(rows).toHaveLength(names.length);
   }, 30_000);
 
-  test("an action named toString or constructor builds as a method of the entity value; __proto__ is refused for every member kind (ENT-18)", async () => {
+  test("an action named toString or constructor builds as a method of the entity value; __proto__ is refused for every member kind", async () => {
     // The entity value has no prototype, so such an action is a plain member (packages/runtime/test/entity.test.ts shows
     // it; packages/cli/test/member-names.test.ts builds, type-checks and runs one for every name).
     const odd = "entity :Odd\n  attributes\n    uuid :id primary-key\n  actions\n    read :toString\n    read :constructor\n";
@@ -288,7 +288,7 @@ describe("entity names never break the generated files", () => {
     }
   });
 
-  // PRJ-20: generated code reaches every global through `$globals.ts` (`$Promise`, `$Date`), so an entity may take the
+  // generated code reaches every global through `$globals.ts` (`$Promise`, `$Date`), so an entity may take the
   // name of one. That no generated file names a global itself is checked by the TypeScript checker
   // (`free-globals.test.ts`, and packages/cli/test/generated-names.test.ts, which builds, type-checks and runs such entities).
   test.each(["Promise", "Partial", "ReturnType", "Date", "Object", "Pick", "Omit", "Record", "Set", "RegExp", "Map", "Boolean"])("an entity named %s builds and is exported under its name", async (name) => {

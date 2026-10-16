@@ -1,4 +1,4 @@
-// CMP-21 at build time: `Mesh.checkPolicies` and `Mesh.can` in an entity file. They run another action's policies, so
+// At build time: `Mesh.checkPolicies` and `Mesh.can` in an entity file. They run another action's policies, so
 // they follow `Mesh.privileged`'s rules: allowed wherever a function runs inside an action (a step, a check, a set value,
 // a helper those call), refused in a computed field (MESH_COMPUTED_COMPOSES), and refused in every policy, read or write
 // (MESH_POLICY_ASKS: a policy that asks can be asked back, and the build cannot see where that ends). The run-time side, and the real
