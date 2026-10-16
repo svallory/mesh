@@ -6,7 +6,7 @@ description: "Exporting Mesh's generator templates into your project, overriding
 # Customising generated code
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 Mesh's generators are [Jig](https://jig.saulo.engineer/docs/introduction) templates, the template engine for code generation. Out of the box they emit ordinary TypeScript: one handler per action, with the lifecycle written out, so the code you run is code you can read and a bug in your application is a stack trace in your own generated file.

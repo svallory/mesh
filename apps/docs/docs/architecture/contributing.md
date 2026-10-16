@@ -11,23 +11,25 @@ The site is a [docmd](https://docmd.io) project in `apps/docs`. Pages are Markdo
 
 **Docs** is for people who will use Mesh. **Architecture** is for contributors: what cannot be understood by looking at a single code file.
 
-**Docs** is written as if Mesh 1.0 were released. There is no "exists today", no milestone number, no "not decided yet" callout and no link to a decision record in the flow of a page. Every Docs page carries one short callout, identical on every page:
+**Docs** describes what Mesh will become eventually: not 1.0, and not today's code. The [roadmap](./roadmap/roadmap.md) gives the timing. A page is never trimmed to match built behaviour, and nothing leaves the Docs pages because the roadmap moved it: Postgres, `mesh migrate` and extensions stay. Pages are written in the voice of a released product. There is no "exists today", no milestone number, no "not decided yet" callout and no link to a decision record in the flow of a page. Every Docs page carries one short callout, identical on every page:
 
 ```markdown
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 ```
 
 The same line on every page is deliberate: a per-page reworded warning is what made the earlier pages contradict each other.
 
-**Architecture** documents everything else, in particular what a Docs page could not say. If a change adds a contract, a pipeline stage or a cross-package rule, its Architecture page is updated in the same pull request.
+**Architecture** documents everything else, in particular what a Docs page could not say and what no single code file explains: the roadmap, decision records, overviews, in-depth pages and research. Contributor material, such as open decisions and what exists today, goes here and never in Docs. The repository's pages are the source of truth for the design. If a change adds a contract, a pipeline stage or a cross-package rule, its Architecture page is updated in the same pull request.
 
 Where a decision is Proposed or open, a page takes the option the decision record recommends and never picks silently. Where nothing is decided at all, design the simplest thing a TypeScript developer would expect, write it into the page, and record it on [Open questions and findings](./open-questions.md) with the alternative you rejected: that list is the most valuable output of the work. Anything the Docs pages removed as "not decided", and every point where writing a page forced an invention, belongs on [Open questions and findings](./open-questions.md) with the record it touches. A contributor-only page may also say what exists today; a user page may not.
 
-The practice: **user docs are written first, in the 1.0 voice, and the code follows them or changes them in the same pull request** ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)). A pull request that adds behaviour adds or edits the Docs page for it. A pull request that finds the page wrong changes the page and the design together, or records on the open-questions page that the page is now wrong and why.
+The practice: **user docs are written first, in the voice of a released product, and the code follows them or changes them in the same pull request** ([ADR-0063](./decisions/0063-user-docs-first-and-the-hold.md)). A pull request that adds behaviour adds or edits the Docs page for it. A pull request that finds the page wrong changes the page and the design together, or records on the open-questions page that the page is now wrong and why.
 
 The reason is that writing the page is a test of the design. A page that has to say "the architecture does not say what this command is called" has found a gap; a page that has to contradict two architecture pages has found a contradiction. Neither shows up by reading the architecture.
+
+A third section is planned: a formal specification of the `.mesh.mx` language, in `apps/docs/docs/spec/`. It covers the file kinds, the line form, every declaration and its options, the value kinds (atom, reference, string, expression), the expression subset, names, imports and scope, and each build error with its code. It is published once the operator has reviewed it. The generated TypeScript API (`#mesh`, `Mesh.*`) and `mesh.config.ts` get reference pages of their own.
 
 ## The hold, and who decides
 
@@ -45,7 +47,7 @@ The sample checks run in `bun run verify`:
 - **Complete `.mx` samples** are checked by `packages/compiler/test/repository-checks.ts` and its stricter companion, `apps/docs/test/docs-mx-syntax.test.ts`. Both scan the user pages and ADR-0050's reference, and a fence whose root is `resource` is an error.
 - **Syntax v4 samples** (`entity :Todo`, `&title`, imported entities) first pass a bounded text guard: obsolete spellings, undeclared member heads, unimported `entity=X` values and unbound `self.` reads fail. Then each fence parses as authored through the compiler's own parse, `parseEntitySource`, which calls MX's `lowerSource` with Mesh's dialect (`packages/compiler/src/front-end/dialect.ts`): the dialect carries the production contracts, `structural: "reject"`, `unknownTags: "reject"` and `imports: "pass"`. Misplaced member lines and assignments in `input` are parse errors. The check prints the entity files checked and the findings. This guard is not full contract/type checking.
 - **MX highlighting** has one named, counted allowance, `MX_V4_INPUT_PENDING_SYNTAX_TABLE`: alpha.2 treats nested `input` as an HTML void tag, so same-width stand-ins let it parse while the renderer keeps the authored text. Other grammar errors still fail the build. [The contract between Mesh and MX](./in-depth/mx-integration.md) records both bridges and the MX items that remove them.
-- **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled.
+- **TypeScript samples** are type-checked by `apps/docs/test/docs-samples.test.ts` against `apps/docs/samples/mesh-api.d.ts`, the declarations of the API the pages describe. Every `ts` block must be a complete file: it declares what it uses and its calls match the documented signatures. A fence titled `excerpt` is a signature shown in prose and is not compiled. `samples/mesh-api.d.ts` is the reference for the run-time API; `packages/compiler/test/runtime-reference.test.ts` checks the code against it.
 
 None of these checks runs a sample. They are not a claim that Mesh exists as a runtime.
 
@@ -67,16 +69,20 @@ Run `bun run build` and `bun run validate` before you open a pull request. From 
 
 ## What exists today
 
-This section is for contributors. Nothing under [Docs](../docs/index.md) says any of it, because those pages are written as if 1.0 were released.
+This section is for contributors. Nothing under [Docs](../docs/index.md) says any of it, because those pages describe what Mesh will be.
 
 - **`packages/compiler`** (`@meshfw/compiler`) holds the closed entity tag contracts for entity files (`src/front-end/contracts.ts`), the loader, the model builder, the `types` and `validators` generators (views in `src/typescript/views/`, Jig templates in `templates/`) and the `model.json` emitter. Its tests include the Docs `.mx` sample check described above.
 - **`packages/model`** holds the plain-data entity model: fields, actions, relationships, the type registries and the diagnostic type. It imports nothing.
 - **`packages/runtime`** holds the run-time library generated code will import: the flat, project-augmented `ActionContext` (the second argument's type), the errors (`MeshError`, `InvalidInputError`, `NotFoundError(entity, key)`, and `ForbiddenError` with its `breakdown`, built on the documented `Issue`), Standard Schema input validation, the `DataAdapter` descriptors and the data-layer contract v1 (plain-data reads, read for update, aggregates, re-entrant transactions, generated keys, the capability manifest), with conformance checks under its `testing` entry. It has no run-time dependencies.
-- **`packages/cli`** (`meshfw`) holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`, which takes `{ domain, output, data, extensions? }`, from `@meshfw/runtime`; a project's `mesh.config.ts` imports it from `@meshfw/runtime`, because `connect()` loads the config at run time and `meshfw` is a dev dependency.
-- **`packages/data-sqlite`** (`@meshfw/data-sqlite`, private) returns a frozen `sqlite({ file })` descriptor and opens no connection.
+- **`packages/cli`** (`meshfw`) holds the Bun-only `mesh` developer command, still a thin compiler shell. It re-exports `defineConfig`, which takes `{ domain, output, data, extensions? }`, from `@meshfw/runtime`; a project's `mesh.config.ts` imports it from `@meshfw/runtime`, because `connect()` loads the config at run time. A project lists `meshfw` in `dependencies`, not `devDependencies`, since application code imports `Mesh` from it; loading it at run time loads only the runtime, and `meshfw` takes `@meshfw/runtime` as a peer dependency, so `Mesh` and the generated code share one copy of the runtime.
+- **`packages/data-sqlite`** (`@meshfw/data-sqlite`) returns from `sqlite({ file })` one frozen value, the adapter descriptor and a data layer that opens its connection on first use, and holds `createSchema(db, tables)`; its build half, `@meshfw/data-sqlite/build`, holds the schema generator and `mesh db push` ([data layer](./in-depth/data-layer.md)).
+- **`packages/data-drizzle`** (`@meshfw/data-drizzle`) holds the operations the SQL adapters share.
+- **`packages/jsonrpc`** (`@meshfw/jsonrpc`) is the JSON-RPC transport the Hyper application uses.
 - **`packages/create-meshfw`** (`create-meshfw`) is the starter behind `bun create meshfw`; today a placeholder bin that prints "Mesh is coming soon".
 - **`examples/blog`** is the fixture project: entity files under `src/domain/blog/`. `mesh build` there writes `.mesh/` (`model.json`, `schema.ts`, `binding.ts` and `index.ts`, which `#mesh` maps to, and under `.mesh/domain/blog/` the `types`, `validators` and `actions` files per entity and the folder's barrel `index.ts`, which `#mesh/domain/blog` maps to), which is committed.
 - **`apps/docs`** is this site.
+
+The repository is a Bun workspace (`packages/*`, `apps/*`, `examples/*`). Bun 1.4.2 is the minimum version Mesh supports, and the root `package.json` pins `packageManager` to `bun@1.4.2`: Bun 1.3.14 loses the generated action's stack frame inside `AsyncLocalStorage.run`.
 
 From the repository root:
 
@@ -101,6 +107,8 @@ mesh build
 With `meshfw` installed, the command runs from the project root containing `mesh.config.ts`, with no upward search. For another project in this checkout, invoke it as `bun /absolute/path/to/packages/cli/src/bin.ts` from that project. `mesh build` never deletes files; move stray output yourself. Exit codes: `0` success, `1` build, configuration or guard errors, `2` usage errors.
 
 ## Vocabulary and what is pending
+
+The docs call the language of entity files "MX syntax" and link nothing external for it.
 
 The Docs pages, the Architecture section and the code use the same terms and the entity syntax (`entity`, `.mesh.mx`, modules under `src/domain/`, `.mesh/` imported as `#mesh`, the `ActionContext`, `@meshfw/*`); PR #47 and PR #48 (merged 2026-10-09) brought the code there. What is pending is the remaining generators (the action functions, `schema.ts`, `index.ts` and the rest); see the [roadmap](./roadmap/roadmap.md). Architecture pages that describe design the code does not implement yet say so once, in a callout at the top.
 
@@ -175,7 +183,8 @@ install from either is reproducible without asking the registry for a version ra
 every push to `main`. One job on `ubuntu-latest`: check out the repository, install Bun 1.4.2 (the
 version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run verify`. The
 same script contributors run locally is the whole check; nothing in it needs a browser or a Docker
-daemon, so nothing is skipped or split out on the runner.
+daemon, so nothing is skipped or split out on the runner. `verify` is a required check on `main` (branch protection), so a pull
+request whose verify fails cannot merge.
 
 What the workflow deliberately does not do:
 
@@ -233,8 +242,9 @@ description: "One sentence."
 
 1. Copy [the template](./decisions/_template.md) to `decisions/NNNN-short-title.md`, with the next free number.
 2. Replace the template's frontmatter `title` and `description`, and delete its `noindex: true` and `llms: false` lines. Fill in every heading. Write "none" rather than deleting one.
-3. Set the status to `Proposed`. Change it to `Accepted`, `Rejected` or `Superseded by NNNN` when it is settled; never delete a record.
-4. Add it to `navigation` under **Decisions** and to the list in `decisions/index.md`.
+3. A decision record is never rewritten. A changed decision gets a new record, and the old one is marked Superseded or Amended, with a link to its successor. An amendment is a dated note at the top of the old record; its decision text below stays as it was.
+4. Set the status to `Proposed`. Change it to `Accepted`, `Rejected` or `Superseded by NNNN` when it is settled; never delete a record.
+5. Add it to `navigation` under **Decisions** and to the list in `decisions/index.md`.
 
 ## Add a research document
 

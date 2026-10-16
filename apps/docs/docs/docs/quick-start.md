@@ -6,7 +6,7 @@ description: "Check the requirements, create a project, build it and call your f
 # Quick start
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 Create a runnable project, then call one action. You do not need to write an entity file to check that your setup works.

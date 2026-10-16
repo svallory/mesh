@@ -6,7 +6,7 @@ description: "Where entity files, generated code, configuration, extensions and 
 # Project structure
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 Mesh does not own your project. It reads the entity files you write and writes the code you call; everything else is yours. This page shows how a project grows beyond the starter, what each part is for, and what belongs in version control. The starter has one List entity, `src/context.ts` and `src/demo.ts`; the [tutorial](./tutorial.md) adds Todo, `src/main.ts` and a test.
@@ -45,7 +45,7 @@ Two folder rules decide a file's module:
 - **A nested folder is a submodule.** `src/domain/todo/reminders/reminder.mesh.mx` belongs to module `todo/reminders`, its generated code goes to `.mesh/domain/todo/reminders/`, and your code imports it as `#mesh/domain/todo/reminders`.
 - **A folder whose name starts with `_` only organises files.** A file's module is its folder path with every segment that starts with `_` removed (a segment that is only `_` is an error). `src/domain/todo/_scheduling/schedule.mesh.mx` belongs to module `todo`, and its generated code goes to `.mesh/domain/todo/`. A group directly under `src/domain/`, such as `src/domain/_misc/`, belongs to the domain root. A group inside a submodule stays in that submodule: `todo/reminders/_x/` is module `todo/reminders`.
 
-`_name/` is the only folder marker; a folder named only `_` is a build error. A group changes the module, not the file: imports still use the real path (`import { List } from "../list.mesh.mx"`), and a name stays in one place, so `entity :Task` in `tasks/` and again in `tasks/_x/` is a duplicate-entity error.
+`_name/` is the only folder marker; a folder named only `_` is a build error. A group changes the module, not the file: imports still use the real path (`import { List } from "../list.mesh.mx"`), and a name stays in one place, so `entity :Task` in `tasks/` and again in `tasks/_x/` is a duplicate entity, `MESH_DUPLICATE_ENTITY`. A folder name uses letters, digits, `-` and `_`; any other character is `MESH_MODULE_NAME`. An entity is made private to its module by an option in its file or by an architecture rule, never by its folder.
 
 To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.ts`. It takes globs relative to the project root, and ignored files are not read, so errors in them are not reported. See [Configuration](./configuration.md#ignoring-files).
 
@@ -80,7 +80,7 @@ import { List, Todo } from "#mesh/domain/todo";
 
 Every folder of `src/domain/` that is a module, or that holds one below it, has a generated `index.ts`: its entities and one namespace per module folder in it. A folder of submodules alone (`src/domain/sales/` holding only `billing/`) has an index with namespaces only, so `#mesh/domain/sales` works. The modules live under `.mesh/domain/`, apart from Mesh's own files, so a module may be called `schema` or `load` and still be `#mesh/domain/schema`. Never import a path into `.mesh` any other way: the paths behind the specifiers are an implementation detail and the specifiers are what stays stable.
 
-**Folder names.** Your folder names are yours: Mesh imposes no case or style on them. A folder's name is written as it is in an import path (`#mesh/domain/order-management`) and in an entity's fully qualified name (`order-management.Invoice`). Only the namespace in a barrel needs a name that is a valid JavaScript identifier, so each character that is not valid in one becomes `_`, and a name that starts with a digit gets `_` in front: `order-management` is `domain.order_management` and `2024-reports` is `domain._2024_reports`. A folder named like a reserved word needs nothing: `domain.class` and `domain.default` work. Two sibling folders that come out the same (`order-management` and `order_management`) are a build error naming both, as is an entity and a folder of the same folder that would export one name (`entity :Billing` in `sales/billing.mesh.mx` beside a folder `sales/Billing/`).
+**Folder names.** Your folder names are yours: Mesh imposes no case or style on them. A folder's name is written as it is in an import path (`#mesh/domain/order-management`) and in an entity's fully qualified name (`order-management.Invoice`). Only the namespace in a barrel needs a name that is a valid JavaScript identifier, so each character that is not valid in one becomes `_`, and a name that starts with a digit gets `_` in front: `order-management` is `domain.order_management` and `2024-reports` is `domain._2024_reports`. A folder named like a reserved word needs nothing: `domain.class` and `domain.default` work. Two sibling folders that come out the same (`order-management` and `order_management`) are a build error naming both, as is an entity and a folder of the same folder that would export one name (`entity :Billing` in `sales/billing.mesh.mx` beside a folder `sales/Billing/`). Two sibling folders whose names differ only in letter case are `MESH_EMIT_PATH`.
 
 What is inside, for the tutorial's two entities:
 
@@ -105,7 +105,7 @@ That is the whole of it. You should not have to think about any of it day to day
 - **A reviewer reads what runs.** An entity file is a small declarative change. The TypeScript beside it is what the program actually executes, and reading the two diffs together is how you review a change to a rule.
 - **`git diff` is the record of behaviour.** Adding an attribute shows up as a new column, a new type field and a new input key in one diff, in the file you changed.
 
-Entity references are scoped to the importing file, not a project-wide index of names. A folder stays the module, and no top-level application name is needed: an entity's fully qualified name is its module's folders as written, a dot, and its name (`todo.List`, `sales.billing.Invoice`), and it is what Mesh prints in errors and seams.
+Nothing is global in an entity file. A `.mesh.mx` file sees only its own declarations and what it imports; concepts are the one exception, shared across the project by nature. No name has to be unique across the project, every reference to a declaration in another file is an import plus its identifier, and `use` is the one form that copies declarations. This is about scope in your entity files; the generated code and the runtime may still keep registries that reach every entity. Entity references are scoped to the importing file, not a project-wide index of names. A folder stays the module, and no top-level application name is needed: an entity's fully qualified name is its module's folders as written, a dot, and its name (`todo.List`, `sales.billing.Invoice`), and it is what Mesh prints in errors and seams.
 
 ## Configuration
 
@@ -138,7 +138,7 @@ Everything else under `src/` is yours, and Mesh never reads it. In the tutorial:
 | `mesh.config.ts`, `package.json`, `bun.lock` | yes |
 | `src/**` (your TypeScript) | yes |
 | `test/**` | yes |
-| `*.db`, `*.db-journal` | no |
+| `*.db`, `*.db-wal`, `*.db-shm`, `*.db-journal` | no |
 | `node_modules/` | no |
 | `.env` | no |
 

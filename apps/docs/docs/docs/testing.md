@@ -6,7 +6,7 @@ description: "Bind a real database in memory, call actions, and assert on what c
 # Testing
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 A Mesh test calls the same entities your program calls, against a real SQL database that lives in memory for the length of the test. There is no fake repository, no stubbed adapter and no interface to reimplement, so a test can pass while the database would have refused the query.

@@ -64,7 +64,7 @@ test('member lexer leaves strings, templates, regexes, comments and infix operat
   expect(textOf(html)).toBe(literal.trimEnd());
 });
 
-test('a value of the current transaction (%.now, SYN-29) is coloured as a member where it starts an operand, never as modulo', () => {
+test('a value of the current transaction (%.now) is coloured as a member where it starts an operand, never as modulo', () => {
   const source = [
     'filter=() => &dueOn < %.today',
     'filter=() => %.now.getTime() > 0 && !%.today',

@@ -6,7 +6,7 @@ description: "Every declaration an entity file may use: attributes, relationship
 # Entities
 
 ::: callout warning "Not released"
-Mesh is not released yet. These pages describe Mesh 1.0.
+Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
 An entity file is one `.mesh.mx` file in your project's domain folder. It holds one entity: its data, the operations on it, and the rules around those operations. This page is the reference for the whole file, in the order you would write it.
@@ -690,7 +690,7 @@ export async function isActiveOwner(actor: { id: string }) {
 }
 ```
 
-A helper that reads data is `async`, so the check awaits it inside an `async` arrow, as above. That check is plain code: it runs in memory inside the transaction, after the locked read (POL-21). Calling an `async` helper without `await` is a mistake: the check would get a promise instead of a boolean. Type-check the project including `.mesh/` (`tsc --noEmit`) and the compiler refuses it for a typed helper (TS2345, in the generated expressions file); an untyped helper throws a `FrameworkError` that names the helper at run time.
+A helper that reads data is `async`, so the check awaits it inside an `async` arrow, as above. That check is plain code: it runs in memory inside the transaction, after the locked read. Calling an `async` helper without `await` is a mistake: the check would get a promise instead of a boolean. Type-check the project including `.mesh/` (`tsc --noEmit`) and the compiler refuses it for a typed helper (TS2345, in the generated expressions file); an untyped helper throws a `FrameworkError` that names the helper at run time.
 
 A read policy reads no other entity: it is a filter on the query. An imported function there is a pure call, evaluated once and bound as a parameter, with no lock to wait for, and a helper there that calls `Mesh.privileged` throws at run time (`Mesh.privileged` called directly in the policy is a build error). It also decides what a caller loads from another entity: a relationship or a rollup that reaches this entity runs its read policies, and a caller they do not admit gets `[]`, `null` or `0` there, never an error.
 

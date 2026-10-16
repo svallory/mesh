@@ -11,7 +11,7 @@ toc: false
 <p class="mh-lede">Your domain is what your program keeps, what can be done to it, and who may do it. In Mesh you write it down as one small <code>.mesh.mx</code> file per entity.</p>
 <p class="mh-lede">From those files Mesh builds your core domain and business logic as a module of typed TypeScript functions, with the input validation, the authorization, the database tables and the migrations. Connect that module to anything: an HTTP API, a command line, a worker, a user interface, an agent. Change a file and the module is rebuilt from it, so nothing drifts.</p>
 <p class="mh-actions"><a class="mh-btn mh-btn-main" href="/docs/">Read the introduction</a><a class="mh-btn" href="/docs/quick-start/">Quick start</a></p>
-<p class="mh-status">Mesh is not released yet. These pages describe Mesh 1.0.</p>
+<p class="mh-status">Mesh is not released yet. These pages describe what Mesh will be.</p>
 </section>
 
 ::: grids

@@ -5,15 +5,13 @@ description: "Core, adapters and extensions: the test for each ring and where ev
 
 # Core, adapters and extensions
 
-Status: the ring split is applied from M0 and fully exercised by M6 (extension host). `model`, `compiler` and `cli` exist since M1; `runtime` since M2 (the action context's type, errors, input validation and [data-layer contract v0](./data-layer.md)). The remaining package roles below are the design ([roadmap](../roadmap/roadmap.md), section 3).
-
-::: callout info "What the code does today"
-The workspace packages on `main` are `meshfw` (the `mesh` command and `defineConfig`), `@meshfw/compiler`, `@meshfw/model`, `@meshfw/runtime` (with its `testing` entry) and the private `@meshfw/data-sqlite`, which returns a descriptor only ([ADR-0060](../decisions/0060-meshfw-package-scope.md)). This page shortens them to the part after the scope.
-:::
+Status: the ring split is applied from M0. `model`, `compiler`, `cli`, `runtime`, `data-drizzle`, `data-sqlite` and `jsonrpc` exist; `data-postgres` comes with M9 and the extension host with M11, both after Mesh 1.0 ([roadmap](../roadmap/roadmap.md), section 3).
 
 ## Why rings
 
 Mesh's rule is that only what Mesh cannot run without is hardcoded, and "it was in the plan" is never a reason to hardcode something ([roadmap](../roadmap/roadmap.md), section 2, principle 4; [ADR-0001](../decisions/0001-three-rings.md)). The rule was set after the first proposal classed tools as "integral" because their names would appear in generated code, which the operator judged the wrong test ([research synthesis](../research/synthesis.md), Step 2 preamble).
+
+The core is split by when its code runs: `compiler` and `model` at build time, `runtime` in the deployed program. Types that cross a run-time contract live in `runtime`, so the deployed half depends on nothing from the build half ([ADR-0033](../decisions/0033-core-split-build-time-run-time.md)). Mesh runs on Bun only, not on Node, and the run-time library keeps to web-standard APIs where it can ([ADR-0025](../decisions/0025-bun-only.md)).
 
 ## Definitions and tests
 
@@ -39,6 +37,7 @@ All packages are published under the npm scope `@meshfw` ([ADR-0060](../decision
 | `data-drizzle` | adapter | run | Shared code of the SQL adapters: turns Mesh queries and expression trees into Drizzle's builder when a query runs (M3, M4). |
 | `data-sqlite` | adapter | both | Data layer on SQLite. A build-time half emits Drizzle table definitions; a run-time half implements the contract (M2). |
 | `data-postgres` | adapter | both | Data layer on Postgres (M9); `mesh migrate generate` needs its schema emitted at build time. |
+| `jsonrpc` | adapter | run | Newline-delimited JSON-RPC 2.0 over a Unix socket, dispatching to a method table given as plain data ([ADR-0077](../decisions/0077-surfaces-and-file-kinds.md)). It does its own envelope validation and dispatch and has no run-time dependency: Bun supplies the socket and JSON, and `@meshfw/runtime` is a peer dependency. The one candidate library, `json-rpc-2.0`, covers about 60 of some 400 lines, answers batches, which Hyper's protocol forbids, and would add a public dependency to an adapter whose contract is small and fixed. |
 
 ([roadmap](../roadmap/roadmap.md), section 3 and the milestones cited.)
 
@@ -54,17 +53,17 @@ The research proposed "front end" and "expression parser" adapter slots ([resear
 
 ## Adapter slots with no package
 
-| Slot | Why no package in v1 |
+| Slot | Why no package in 1.0 |
 |---|---|
-| Transport (command line, HTTP, server) | The core interface is a function call; a transport is built when something needs it ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)). |
+| Transport (command line, HTTP, server) | The core interface is an in-process function call, and every transport is an optional adapter over it, so Mesh serves a command-line tool, a daemon, a web app or an API equally. One transport is built before 1.0, `@meshfw/jsonrpc`; the others are built when something needs them ([ADR-0005](../decisions/0005-core-interface-is-a-function-call.md)). |
 | Tracer | After Mesh 1.0: generated code will call the OpenTelemetry API directly ([ADR-0029](../decisions/0029-tracing-opentelemetry-api.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)). |
 | Runtime host | Bun only ([ADR-0025](../decisions/0025-bun-only.md)). |
 
-([roadmap](../roadmap/roadmap.md), section 3.) There is no actor-resolver slot: the caller passes the action context as an argument ([ADR-0059](../decisions/0059-action-context.md)). A job runner is deferred past v1 ([ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md)).
+([roadmap](../roadmap/roadmap.md), section 3.) There is no actor-resolver slot: the caller passes the action context as an argument ([ADR-0059](../decisions/0059-action-context.md)). Jobs and workflows, with a job runner, come after 1.0 ([ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md)).
 
-## Extensions in v1
+## Extensions in 1.0
 
-No first-party extension ships in v1. The host exists from M6 for project-local extensions in `src/extensions/` ([ADR-0057](../decisions/0057-one-domain-modules-as-folders.md)) and for later first-party ones (multitenancy, for example, which reads a key of the action context it declares, [ADR-0059](../decisions/0059-action-context.md)). See [extension host](./extension-host.md).
+No first-party extension ships in 1.0. The extension host comes after 1.0, in M11, for project-local extensions in `src/extensions/` ([ADR-0057](../decisions/0057-one-domain-modules-as-folders.md)) and for later first-party ones (multitenancy, for example, which reads a key of the action context it declares, [ADR-0059](../decisions/0059-action-context.md)). See [extension host](./extension-host.md).
 
 ## Where does new code go
 
@@ -72,7 +71,7 @@ A procedure derived from the three tests above, not a separate rule.
 
 1. Does it run when `mesh build` runs, or inside the deployed program? Build-time code goes to `model`, `compiler`, `cli` or an adapter's build half. Run-time code goes to `runtime` or an adapter's run-time half.
 2. Can Mesh not function without it? Then it is core. If it is one way to do a core job, it is an adapter behind a contract core owns; write the contract first.
-3. Is it a feature some projects will not use? Then it is an extension and may touch the model only through a declared contribution point ([ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md)). Until M6 there is no extension host.
+3. Is it a feature some projects will not use? Then it is an extension and may touch the model only through a declared contribution point ([ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md)). Until M11 there is no extension host.
 4. Is it an application concern: how a caller is identified, how a program is exposed, login? Then it is not Mesh ([roadmap](../roadmap/roadmap.md), section 2, principle 8). The application puts what it needs into its own `ActionContext` keys.
 5. Does a well-established tool do it? Put that tool behind a Mesh contract ([ADR-0030](../decisions/0030-established-tools-first.md)).
 
