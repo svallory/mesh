@@ -59,21 +59,11 @@ function snapshot(rel: string, dialect: Dialect = MESH_DIALECT): unknown {
   );
 }
 
-/**
- * MX alpha.30 reworded the static-file messages ("Mesh files are static, so they do not evaluate `if`"); the golden is MX's
- * frozen file and keeps the old text, so the comparison rewrites the old wording to the new one.
- */
-function meshMessage(message: string | undefined): string | undefined {
-  return message
-    ?.replace("the data tree is static; this file's consumer does not evaluate ", "Mesh files are static, so they do not evaluate ")
-    .replace("the data tree is static; a binding", "Mesh files are static, so a binding");
-}
-
 /** A golden entry with each MX code its diagnostics carry under the name `MESH_DIALECT` gives it; any other code stays. */
 function meshCodes(entry: { diagnostics: { code?: string; message?: string }[] }): unknown {
   const map: Readonly<Record<string, string>> = MX_TO_MESH_CODES;
   const rename = (code: string | undefined) => (code !== undefined && Object.hasOwn(map, code) ? map[code] : code);
-  return { ...entry, diagnostics: entry.diagnostics.map((d) => ("code" in d ? { ...d, code: rename(d.code) } : d)).map((d) => ("message" in d ? { ...d, message: meshMessage((d as { message?: string }).message) } : d)) };
+  return { ...entry, diagnostics: entry.diagnostics.map((d) => ("code" in d ? { ...d, code: rename(d.code) } : d)) };
 }
 
 describe("Mesh's golden parse corpus", () => {
@@ -104,14 +94,14 @@ describe("Mesh's golden parse corpus", () => {
   // The column-21 refusal (`Expected a single expression, but found `:` after it.` at 5:21) is what a
   // dialect with no value row gives: the default value `:List :list` runs on as one expression. The
   // `atom-value` row claims `:List`, and the claimed default ends at the spaced `:list`.
-  test("the old-relationship fixture is the unknown attribute `value` at 5:14", () => {
+  test("the old-relationship fixture is the unknown option `value` at 5:14", () => {
     const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
     expect(golden["entities/packages/compiler/test/fixtures/negative/old-relationship.mesh.mx"]).toEqual({
       diagnostics: [
         {
           severity: "error",
           code: "MX_UNKNOWN_ATTRIBUTE",
-          message: "`<belongs-to>`: unknown attribute `value`",
+          message: "`belongs-to`: unknown option `value`",
           line: 5,
           column: 14,
           offset: 81,

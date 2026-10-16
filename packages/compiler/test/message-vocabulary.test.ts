@@ -2,9 +2,9 @@
 // words. An option is a `key=value` (an attribute is an entity's data member), the file is a "Mesh file", and a tag is spelled
 // as its line head is written (`&title`, `attributes`, `${x}`), never as `<member>`, `<attributes>` or `<${x}>`.
 //
-// Contracts with an `analyze` hook (most of `MESH_CONTRACTS`) are still worded by MX in `<name>` and "attribute" form: core does
-// not hand the vocabulary to that path (reported to the MX lead). The cases below therefore use plain contracts on
-// `SYNTAX_DIALECT` (the dialect without Mesh's contracts), and the real dialect for the messages that need no contract.
+// Since MX alpha.31 the vocabulary also reaches a contract with an `analyze` hook (every one of `MESH_CONTRACTS`) and the messages
+// about MX's built-in tags (`const`, `if`, `define`, ...). The first cases use plain contracts on `SYNTAX_DIALECT` (the dialect
+// without Mesh's contracts); "Mesh's own contracts" and "MX's built-in tags" below use the real dialect.
 import { lowerSource, type Dialect, type MessageTag } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
 import { MESH_DIALECT, MESH_MESSAGE_VOCABULARY, formatTag } from "../src/front-end/dialect.ts";
@@ -85,6 +85,103 @@ describe("MX's messages read in Mesh's words", () => {
   });
 });
 
+describe("Mesh's own contracts, each with an `analyze` hook, read in Mesh's words (MX alpha.31)", () => {
+  const k = "entity :T\n  attributes\n    uuid :id primary-key\n    integer :n\n";
+  const diagnostics = (source: string) => lowerSource(source, FILE, { dialect: MESH_DIALECT }).diagnostics.map((d) => [d.code, d.message]);
+
+  test.each([
+    ["an unknown option", "entity :T module=1\n", "MESH_UNKNOWN_OPTION", "`entity`: unknown option `module`"],
+    ["a mistyped option", "entity :T\n  attributes\n    string :t min=\"a\"\n", "MESH_OPTION_VALUE", "`string`: option `min` must be number, got string"],
+    ["a missing required option", k + "  relationships\n    belongs-to :l\n", "MESH_MISSING_OPTION", "`belongs-to`: missing required option `entity`"],
+    [
+      "a child the section does not allow",
+      "entity :T\n  attributes\n    belongs-to :x entity=T\n",
+      "MESH_TAG_NOT_ALLOWED",
+      "`attributes`: `belongs-to` is not allowed here; allowed children: `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp`, `json`",
+    ],
+    ["a tag outside its parents", "attributes\n", "MESH_PARENT_NOT_ALLOWED", "`attributes` must be inside `entity`; found at the top level"],
+    ["a repeated section", "entity :T\n  attributes\n  attributes\n", "MESH_REPEATED_CHILD", "`entity`: `attributes` may not be repeated"],
+    [
+      "a CDATA section (\"or in an option value\")",
+      "entity :T\n  <![CDATA[x]]>\n",
+      "MESH_UNSUPPORTED_CONSTRUCT",
+      "`<![CDATA[…]]>` is not supported: write the text inline, as `${\"…\"}` when it must stay raw, or in an option value",
+    ],
+    [
+      "a string where an option name goes",
+      "entity :T\n  computed\n    string :t \"hello\"\n",
+      "MESH_INVALID_OPTION",
+      "Invalid option name `\"hello\"` — an option name may use letters, digits and `._:-`",
+    ],
+  ])("%s", (_label, source, code, message) => {
+    expect(diagnostics(source)).toEqual([[code, message]]);
+  });
+
+  test("a Mesh hook's ctx.fail from `analyze` names its owner bare, as the line is written", () => {
+    expect(diagnostics(k + "  policies\n    policy :p actions=[1]\n")).toEqual([
+      ["MESH_MEMBER_REFERENCE", "`policy`: `actions` requires a list of member references"],
+    ]);
+    expect(diagnostics(k + "  actions\n    create :c\n      input\n        string|x| :y\n")).toEqual([
+      ["MESH_SYNTAX", "`string`: tag parameters and variable bindings are not entity declarations"],
+    ]);
+  });
+
+  test("a spaced `#id` or `.class` gets no shorthand hint: Mesh's dialect has no shorthands (tagShorthands: false)", () => {
+    expect(diagnostics("entity :T\n  attributes\n    string :name #a\n")).toEqual([
+      ["MESH_INVALID_OPTION", "Invalid option name `#a` — this file's dialect has no `#id` shorthand; write `id=` as an option"],
+    ]);
+    expect(diagnostics("entity :T\n  attributes\n    string :name .a\n")).toEqual([
+      ["MESH_INVALID_OPTION", "Invalid option name `.a` — this file's dialect has no `.class` shorthand; write `class=` as an option"],
+    ]);
+  });
+});
+
+describe("MX's built-in tags are spelled as written, with no MX-syntax example (MX alpha.31)", () => {
+  const diagnostics = (source: string) => lowerSource(source, FILE, { dialect: MESH_DIALECT }).diagnostics.map((d) => [d.code, d.message]);
+
+  test.each([
+    ["a bare `const`", "const x = 1\n", "MESH_INVALID_CONST", "`const` without a variable name"],
+    ["a `const` under `entity`", "entity :T\n  const x = 1\n", "MESH_INVALID_CONST", "`const` without a variable name"],
+    ["`if` with arguments", "entity :T\n  if(true)\n    attributes\n", "MESH_UNSUPPORTED_CONSTRUCT", "Tag does not support arguments. Write the condition as a value option instead."],
+    ["`define`", "entity :T\n  define :x\n", "MESH_NOT_IN_ENTITY_FILE", "`define` is a render-time macro: Mesh files are static, so they cannot expand it; inline the content at each use"],
+    ["`try` under `entity`", "entity :T\n  try\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `try` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `actions`, `policies`"],
+    ["`return` under `entity`", "entity :T\n  return=1\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `return` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `actions`, `policies`"],
+    ["a `$ statement`", "entity :T\n  $ const x = 1\n", "MESH_UNSUPPORTED_CONSTRUCT", "scriptlets (`$ statement`) are not supported in Mesh; declare a value with `const`"],
+  ])("%s", (_label, source, code, message) => {
+    expect(diagnostics(source)).toEqual([[code, message]]);
+  });
+
+  test("`else` names the tag bare", () => {
+    const [d] = diagnostics("entity :T\n  else\n");
+    expect(d![0]).toBe("MESH_NOT_IN_ENTITY_FILE");
+    expect(d![1]).toStartWith("`else` cannot name a data tag: it is reserved");
+  });
+
+  test("no message about a built-in carries a `<tag>` spelling, an MX-syntax example or MX_DIALECT_HOOK_ERROR", () => {
+    const sources = [
+      "const x = 1\n",
+      "entity :T\n  const x = 1\n",
+      "entity :T\n  if(true)\n    attributes\n",
+      "entity :T\n  <if(true)>\n  </if>\n",
+      "entity :T\n  if=true\n",
+      "entity :T\n  for|x| of=[1]\n",
+      "entity :T\n  else\n",
+      "entity :T\n  define :x\n",
+      "entity :T\n  return=1\n",
+      "entity :T\n  try\n",
+      "entity :T\n  $ const x = 1\n",
+    ];
+    for (const source of sources) {
+      for (const [code, message] of diagnostics(source)) {
+        expect(code, source).not.toBe("MX_DIALECT_HOOK_ERROR");
+        expect(message, source).not.toMatch(/`<[a-z]/);
+        expect(message, source).not.toMatch(/<const\/|<for\||<else if>|<return value=|<if=/);
+        expect(message, source).not.toContain(" in MX");
+      }
+    }
+  });
+});
+
 describe("formatTag", () => {
   const tag = (name: string, form: MessageTag["form"], trigger?: string): MessageTag =>
     ({
@@ -104,6 +201,9 @@ describe("formatTag", () => {
     ["a dynamic head", tag("x", "dynamic"), "${x}"],
     ["a dynamic head with a call", tag("pick(a, b)", "dynamic"), "${pick(a, b)}"],
     ["a dotted name", tag("billing.InvoiceVoided", "tag"), "billing.InvoiceVoided"],
+    ["MX's built-in `if` (MX alpha.31), as written", tag("if", "tag"), "if"],
+    ["MX's built-in `const`, as written", tag("const", "tag"), "const"],
+    ["MX's built-in `else-if`, as written", tag("else-if", "tag"), "else-if"],
   ])("%s", (_label, input, expected) => {
     expect(formatTag(input)).toBe(expected);
   });

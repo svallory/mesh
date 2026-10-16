@@ -1707,9 +1707,9 @@ describe("review fixes (PR #63, round 1)", () => {
     });
     test("only a run takes after: on set, load or when it is an error at the attribute", () => {
       for (const [step, message] of [
-        ["        set [after=:write]\n          &n=1\n", "`<set>`: accepts no attributes"],
-        ["        load [after=:write] &parent\n", "`<load>`: unknown attribute `after`"],
-        ["        when [after=:write value=() => true]\n          run () { }\n", "`<when>`: unknown attribute `after`"],
+        ["        set [after=:write]\n          &n=1\n", "`set`: accepts no options"],
+        ["        load [after=:write] &parent\n", "`load`: unknown option `after`"],
+        ["        when [after=:write value=() => true]\n          run () { }\n", "`when`: unknown option `after`"],
       ] as const) {
         const source = make(step);
         const d = build(source).diagnostics.filter((x) => x.severity === "error");
@@ -2026,5 +2026,37 @@ export const after: number = written.self.seq;
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     }, 30_000);
+  });
+});
+
+// mx-mesh-delete-member-rule: no decision row covers `delete` on a member, and `delete self.name` is accepted, so `delete &name` is
+// accepted alike. Before MX alpha.31, `delete &name` gave MESH_PARSE_EXPRESSION "Deleting local variable in strict mode." (Babel's
+// message about the stand-in a trigger lowers to, not about what the author wrote).
+describe("`delete &name` in a computed method behaves as `delete self.name`", () => {
+  const source = (body: string) =>
+    `entity :T\n  attributes\n    uuid :id primary-key\n    string :name nullable\n  computed\n    boolean :gone() { return ${body} }\n`;
+  const built = (body: string) => buildModel({ root: "/project", files: [{ file: "t.mesh.mx", source: source(body) }] });
+  const generated = async (body: string) => {
+    const result = built(body);
+    const files = await generateFiles({ document: result.document!, config: configOf("/project") });
+    const text = files.find((file) => file.path.endsWith("/t.expressions.ts"))!.contents;
+    return text.slice(text.indexOf('"computed.gone"'), text.indexOf("})();", text.indexOf('"computed.gone"')));
+  };
+
+  test.each(["delete &name", "delete self.name"])("`%s` builds with no diagnostic, as plain code (unary `delete`)", (body) => {
+    const result = built(body);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document!.entities[0]!.computed[0]!.body!.plain).toMatchObject({ why: "unsupported-construct", detail: "unary `delete`" });
+  });
+
+  test("both delete the same property of the record; the code differs only in how the body names it, as for any `&x` against `self.x`", async () => {
+    const member = await generated("delete &name");
+    const self = await generated("delete self.name");
+    expect(member).toContain("const $self = $s.self;");
+    expect(member).toContain("return delete $self.name;");
+    expect(self).toContain("const { self } = $s;");
+    expect(self).toContain("return delete self.name;");
+    const normalized = (code: string) => code.replace("const $self = $s.self;", "const { self } = $s;").replaceAll("$self.", "self.");
+    expect(normalized(member)).toBe(normalized(self));
   });
 });

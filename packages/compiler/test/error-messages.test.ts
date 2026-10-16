@@ -2,8 +2,10 @@
 // own syntax and never an internal name, `for` and `if` in an entity file say what to write instead,
 // and every code Mesh raises has a test that reaches it (or is documented as a guard no source file reaches).
 import { describe, expect, test } from "bun:test";
+import { lowerSource, type Dialect } from "@mxlang/core";
 import type { Entity } from "@meshfw/model";
 import { buildModel, staticFileFix } from "../src/front-end/build.ts";
+import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import { EmitError, generateFiles } from "../src/typescript/emit.ts";
 import { configOf } from "./generated.ts";
 import { build, keyed, project } from "./v4.ts";
@@ -91,6 +93,52 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
   test("an if says to move the condition to the line", () => {
     const d = diagnostic("  actions\n    if=true\n      create :c\n");
     expect(d).toMatchObject({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "Mesh files are static, so they do not evaluate `if`", fix: IF });
+  });
+
+  // MX alpha.31 (mx-mesh-for-if-under-entity): under `structural: "reject"` a `for` or `if` under a closed parent is the one error,
+  // at the construct; what it holds is not checked against the parent's children until the construct is gone. Before, the
+  // contract looked through it and reported its first child (`MESH_TAG_NOT_ALLOWED`, `MESH_REPEATED_CHILD`).
+  test.each([
+    ["for, holding a tag entity does not allow", "  for|x| of=[1]\n    string :t\n", "for", 4, 2],
+    ["for, holding a second attributes section", "  for|x| of=[1]\n    attributes\n", "for", 4, 2],
+    ["for, with no body", "  for|x| of=[1]\n", "for", 4, 2],
+    ["if, holding a tag entity does not allow", "  if=true\n    string :t\n", "if", 4, 2],
+    ["if, holding a second attributes section", "  if=true\n    attributes\n", "if", 4, 2],
+    ["if, with no body", "  if=true\n", "if", 4, 2],
+  ])("directly under entity: %s is MESH_STRUCTURAL_CONSTRUCT at the construct, with the fix and no error for its child", (_, body, construct, line, column) => {
+    const result = build(keyed + body);
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(1);
+    const d = result.diagnostics[0]!;
+    expect(d).toMatchObject({
+      severity: "error",
+      code: "MESH_STRUCTURAL_CONSTRUCT",
+      message: `Mesh files are static, so they do not evaluate \`${construct}\``,
+      fix: construct === "for" ? FOR : IF,
+    });
+    expect([d.position.line, d.position.column]).toEqual([line, column]);
+  });
+
+  // No Mesh contract has a `transform` (contracts.test.ts pins it), so the tag here is a test contract added to Mesh's dialect.
+  // MX lowers such a tag's body while the transform runs, and reports a construct in it then, with the same code and message.
+  describe("under a tag with a transform (a test contract on MESH_DIALECT)", () => {
+    const dialect = Object.freeze({
+      ...MESH_DIALECT,
+      contracts: { ...MESH_DIALECT.contracts, box: { attributes: {}, children: { sub: {} }, transform: () => [] }, sub: { attributes: {} } },
+    }) as Dialect;
+    const lowered = (source: string) =>
+      lowerSource(source, "/v/box.mesh.mx", { dialect }).diagnostics.map((d) => ({ code: d.code, message: d.message, line: d.line, column: d.column, fix: staticFileFix(d) }));
+    test.each([
+      ["for, holding an allowed child", "box\n  for|x| of=[1]\n    sub\n", "for", 2, 2],
+      ["if, holding a tag box does not allow", "box\n  if=true\n    string :t\n", "if", 2, 2],
+      ["if, with no body", "box\n  if=true\n", "if", 2, 2],
+      ["for, one level further down", "box\n  sub\n    for|x| of=[1]\n      sub\n", "for", 3, 4],
+    ])("%s is MESH_STRUCTURAL_CONSTRUCT at the construct, with the fix and no error for its child", (_, source, construct, line, column) => {
+      expect(lowered(source)).toEqual([
+        { code: "MESH_STRUCTURAL_CONSTRUCT", message: `Mesh files are static, so they do not evaluate \`${construct}\``, line, column, fix: construct === "for" ? FOR : IF },
+      ]);
+    });
+    test("without a construct the tag lowers clean", () => expect(lowered("box\n  sub\n")).toEqual([]));
   });
 
   test("another structural construct gets no hint that does not fit it", () => {
