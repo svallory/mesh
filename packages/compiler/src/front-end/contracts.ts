@@ -360,7 +360,7 @@ for (const contract of Object.values(contracts)) {
         const a = get(call, key);
         if (!a) continue;
         if (a.kind === "bound")
-          ctx.fail("bound attributes are not entity declarations", { at: a.loc, code: "MESH_SYNTAX" });
+          ctx.fail("bound options are not entity declarations", { at: a.loc, code: "MESH_SYNTAX" });
         const n = node(a);
         if (
           declaration.type === "function" &&

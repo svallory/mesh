@@ -166,7 +166,7 @@ function nameSugar(
   if (ctx.valueForm === "async-method") ctx.fail(asyncMethod(name), { at, code: "MESH_SYNTAX" });
   if (ctx.valueForm === "arguments") {
     ctx.fail(
-      `arguments are not allowed on \`:name\`: \`:${name}(…)\` is name sugar, not an attribute method`,
+      `arguments are not allowed on \`:name\`: \`:${name}(…)\` is name sugar, not method shorthand`,
       { at, code: "MESH_SYNTAX" },
     );
   }
