@@ -9,6 +9,8 @@ description: "Decision record 0085: a dialect manifest declares tag directories,
 
 Accepted as a target design. Nothing is built. Row: DOM-07.
 
+> **Amendment, 2026-10-17:** a project's concept never takes the name of a concept Mesh ships: such a file is `MESH_RESERVED_TAG` at the project's file, as for any reserved Mesh tag. A nearer `concepts/` folder may declare a concept with the name of one in a farther folder: the nearer one wins for the files under it, with no message, as for every tag MX discovers.
+
 ## Date
 
 2026-10-11

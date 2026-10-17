@@ -89,7 +89,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0043](./0043-mx-is-core.md) | MX is core, not an adapter; no front-end adapter slot | Accepted | operator |
 | [0044](./0044-folding-record-reading-validations.md) | Folding record-reading checks into the atomic statement (after v1) | Proposed | lead and operator |
 | [0045](./0045-has-one-uniqueness.md) | How `has-one` is kept to one row | Proposed | operator |
-| [0046](./0046-denied-atomic-write-outcome.md) | What a denied write reports on an atomic action | Proposed | operator |
+| [0046](./0046-denied-atomic-write-outcome.md) | What a denied write reports on an atomic action | Accepted | operator |
 | [0047](./0047-actions-are-bound-to-a-data-layer.md) | Actions are bound to a data layer: `bind` and `connect` | Accepted, amended by 0059, 0086 | operator |
 | [0048](./0048-schema-inside-the-process-for-tests.md) | Schema inside the process for tests; the stable Drizzle pin | Accepted | lead |
 | [0049](./0049-vocabulary-is-meshs-own.md) | The vocabulary is Mesh's own; `resource` becomes `entity` | Accepted | operator |
@@ -150,4 +150,4 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 ## Open decisions at a glance
 
-Five records are Proposed. [ADR-0012](./0012-expression-semantics.md) (expression semantics) was ruled by the lead on 2026-10-10 and awaits the operator's review. [ADR-0037](./0037-vocabulary-source-of-truth.md) now also decides where attribute-type tag names come from ([ADR-0050](./0050-entity-file-syntax.md)) and should be ruled in the realignment task. [ADR-0039](./0039-run-time-error-positions.md) (before M5), [ADR-0045](./0045-has-one-uniqueness.md) (before M7) and [ADR-0046](./0046-denied-atomic-write-outcome.md) (before M8) have a working assumption in the roadmap. [ADR-0044](./0044-folding-record-reading-validations.md) is for after v1. [ADR-0078](./0078-services-and-where-effects-go.md) leaves two items open (the service construct and general publish-subscribe) and [ADR-0084](./0084-architecture-rules-are-core.md) one (when the architecture rules are built).
+Four records are Proposed. [ADR-0012](./0012-expression-semantics.md) (expression semantics) was ruled by the lead on 2026-10-10 and awaits the operator's review. [ADR-0037](./0037-vocabulary-source-of-truth.md) now also decides where attribute-type tag names come from ([ADR-0050](./0050-entity-file-syntax.md)) and should be ruled in the realignment task. [ADR-0039](./0039-run-time-error-positions.md) (before M5) and [ADR-0045](./0045-has-one-uniqueness.md) (before M7) have a working assumption in the roadmap. [ADR-0044](./0044-folding-record-reading-validations.md) is for after v1. [ADR-0078](./0078-services-and-where-effects-go.md) leaves two items open (the service construct and general publish-subscribe) and [ADR-0084](./0084-architecture-rules-are-core.md) one (when the architecture rules are built).

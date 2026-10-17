@@ -1,13 +1,15 @@
 ---
 title: "0046. What a denied write reports on an atomic action"
-description: "Decision record 0046: What a denied write reports on an atomic action. Status: Proposed."
+description: "Decision record 0046: What a denied write reports on an atomic action. Status: Accepted (option B, not built)."
 ---
 
 # 0046. What a denied write reports on an atomic action
 
 ## Status
 
-Proposed
+Accepted. The operator chose option B on 2026-10-17. Not built.
+
+> **Amendment, 2026-10-17:** the operator chose option B: when a write action runs as one statement, its policy check compiles into the statement as an expression that raises, so a denied caller is told forbidden, as on an action that loads the row first. Each data adapter supplies the raising expression. Not built: today a denied row reports not found. The text below is the record as it stood before the ruling.
 
 ## Date
 
