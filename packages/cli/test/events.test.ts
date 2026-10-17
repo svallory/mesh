@@ -330,12 +330,14 @@ describe("the outbox", () => {
   });
 
   test("acceptance 8: an event exists if and only if its transaction commits", async () => {
-    const { layer, binding } = await open({ seams: { afterWrite: (_db: unknown, write: { action: string; after: { total?: number } | null }) => {
-      if (write.action === "pay" && write.after?.total === 13) throw new Error("the seam fails");
+    // The afterWrite seam runs before a write's own after-write steps, so it is made to throw on a nested write that comes
+    // after `chain`'s first publish has appended its row.
+    let seamFails = false;
+    const { layer, binding } = await open({ seams: { afterWrite: (_db: unknown, write: { action: string }) => {
+      if (seamFails && write.action === "open") throw new Error("the seam fails");
     } } });
     try {
       await stored(layer, ID);
-      await stored(layer, ID2, { total: 13 });
       // a later step throws, after the publish
       probe.hooks.step = async () => { throw new Error("a later step fails"); };
       expect(((await failure(binding.run(() => billing.Invoice.chain({ id: ID }, {})))) as Error).message).toBe("a later step fails");
@@ -346,13 +348,22 @@ describe("the outbox", () => {
       expect(joined).toBeInstanceOf(FrameworkError);
       expect((joined as Error).cause).toBeInstanceOf(NotFoundError);
       expect(await rows(layer)).toEqual([]);
-      // the afterWrite seam throws
-      expect(((await failure(binding.run(() => billing.Invoice.pay({ id: ID2 }, {})))) as Error).message).toBe("the seam fails");
+      // the afterWrite seam throws on a nested write, after the publish appended its row
+      let seen: string[] = [];
+      seamFails = true;
+      probe.hooks.step = async () => {
+        seen = (app.published() as { name: string }[]).map((record) => record.name);
+        await billing.Invoice.open({}, {});
+      };
+      const seam = await failure(binding.run(() => billing.Invoice.chain({ id: ID }, {}))) as Error;
+      expect(seam.message).toBe("the seam fails");
+      expect(seen).toEqual(["billing.InvoicePaid"]);
       expect(await rows(layer)).toEqual([]);
+      seamFails = false;
       // the application's transaction throws after the action returned
       expect(((await failure(binding.transaction(async () => { await billing.Invoice.pay({ id: ID }, {}); throw new Error("the application fails"); }))) as Error).message).toBe("the application fails");
       expect(await rows(layer)).toEqual([]);
-      expect(await binding.run<unknown>(() => billing.Invoice.read({}, {}))).toEqual([expect.objectContaining({ id: ID, paid: false }), expect.objectContaining({ id: ID2, paid: false })]);
+      expect(await binding.run<unknown>(() => billing.Invoice.read({}, {}))).toEqual([expect.objectContaining({ id: ID, paid: false })]);
       // and the same calls commit their events once nothing fails
       probe.hooks.step = async () => undefined;
       await binding.run(() => billing.Invoice.chain({ id: ID }, {}));
