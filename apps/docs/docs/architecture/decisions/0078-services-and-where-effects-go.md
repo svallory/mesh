@@ -1,6 +1,6 @@
 ---
 title: "0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies"
-description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct itself (DOM-09) and general publish-subscribe (DOM-08) are Open."
+description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct (DOM-09) and general publish-subscribe (DOM-08), open when written, are decided (amended 2026-10-17)."
 ---
 
 # 0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies
