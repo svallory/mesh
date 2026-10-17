@@ -1,5 +1,6 @@
 import type { Decision } from "./answer.ts";
 import { can, checkPolicies, privileged } from "./entity.ts";
+import { fqnOf, type Declared } from "./declarations.ts";
 import { isSystem } from "./expr.ts";
 import type { ActionContext } from "./index.ts";
 
@@ -47,6 +48,12 @@ export interface MeshFunctions {
   readonly checkPolicies: <A extends ActionFunction>(action: A, input: Parameters<A>[0], context: ActionContext) => Promise<Decision>;
   /** `Mesh.can(Todo.complete, input, context)`: resolves to `true` exactly when `Mesh.checkPolicies` for the same arguments resolves with `allowed` `true`. */
   readonly can: <A extends ActionFunction>(action: A, input: Parameters<A>[0], context: ActionContext) => Promise<boolean>;
+  /**
+   * `Mesh.fqnOf(InvoicePaid)` (M6): the fully qualified name, `<module>.<Name>` (`billing.InvoicePaid`), of the event or
+   * command a generated class declares: the stored and wire name. The class carries it under a symbol the runtime owns
+   * (`DECLARATION`); any other value is a `FrameworkError`.
+   */
+  readonly fqnOf: (declared: Declared) => string;
 }
 
-export const Mesh: MeshFunctions = Object.freeze({ privileged, isSystem, checkPolicies, can });
+export const Mesh: MeshFunctions = Object.freeze({ privileged, isSystem, checkPolicies, can, fqnOf });

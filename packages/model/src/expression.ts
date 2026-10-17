@@ -32,6 +32,7 @@ export type ExprNode = (
 export type PlainWhy =
   | "block-body"
   | "run-step"
+  | "publish-step"
   | "unsupported-construct"
   | "reads-record-in-helper"
   | "uses-privileged"
@@ -100,6 +101,12 @@ export interface PlainReason {
   entities?: string[];
   /** The authored text calls a method of an entity it names (`Task.touch(...)`): it runs another action. */
   acts?: true;
+  /**
+   * The events and commands the authored text names, by the name the file gives the import that binds one (a named
+   * import's local, or a namespace import's alias), sorted. The printed function binds each to its generated class,
+   * which the expressions file imports from the declaration's module.
+   */
+  events?: string[];
   /**
    * The helpers the authored text reads as values (a call, a reference) that it imports from a helper module, by the name
    * the file imports them under, sorted (a policy that names one runs inside the transaction). The expressions file

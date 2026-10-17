@@ -29,6 +29,9 @@ import type {
   {{ name }},
   @end
 } from {{ typesFromLiteral }};
+@if(domainEventFromLiteral)
+import type { DomainEvent as $DomainEvent } from {{ domainEventFromLiteral }};
+@end
 @if(globals)
 {{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
 @end

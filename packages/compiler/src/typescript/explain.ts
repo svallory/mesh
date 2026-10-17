@@ -16,7 +16,7 @@ function stepsAt(steps: readonly Step[], after: boolean): Step[] {
     if (step.kind === "when") {
       const inner = stepsAt(step.steps, after);
       if (inner.length) out.push({ ...step, steps: inner });
-    } else if ((step.kind === "run" && step.after === "write") === after) out.push(step);
+    } else if (((step.kind === "run" && step.after === "write") || step.kind === "publish") === after) out.push(step);
   }
   return out;
 }
@@ -31,6 +31,7 @@ function stepLines(steps: readonly Step[], depth: number, into: string[], after 
       into.push(`${pad}when ${squash(step.condition.source)}${after ? " (as it held before the write)" : ""}`);
       stepLines(step.steps, depth + 1, into, after);
     } else if (step.kind === "load") into.push(`${pad}load ${step.members.map((member) => `&${member.name}`).join(", ")}`);
+    else if (step.kind === "publish") into.push(`${pad}publish ${squash(step.fn.source)} (plain, ${step.fn.plain?.why ?? "publish-step"}: it raises the event after the write)`);
     else into.push(`${pad}run ${squash(step.fn.source)}`);
   }
 }

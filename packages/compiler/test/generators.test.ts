@@ -32,11 +32,12 @@ async function renderError(contents: string): Promise<EmitError> {
 }
 
 describe("generators", () => {
-  test("the core build is model.json plus the types, validators, expressions, load, actions, binding, module, index and globals generators, each with its template", async () => {
-    expect(EMITTERS.map((entry) => entry.name)).toEqual(["model-json", "types", "validators", "expressions", "load", "actions", "binding", "module", "index", "globals"]);
+  test("the core build is model.json plus the types, validators, declarations, expressions, load, actions, binding, module, index and globals generators, each with its template", async () => {
+    expect(EMITTERS.map((entry) => entry.name)).toEqual(["model-json", "types", "validators", "declarations", "expressions", "load", "actions", "binding", "module", "index", "globals"]);
     expect(GENERATORS.map((generator) => [generator.name, generator.template])).toEqual([
       ["types", "types.ts.jig"],
       ["validators", "validators.ts.jig"],
+      ["declarations", "declaration.ts.jig"],
       ["expressions", "expressions.ts.jig"],
       ["load", "load.ts.jig"],
       ["actions", "actions.ts.jig"],
@@ -45,7 +46,7 @@ describe("generators", () => {
       ["index", "index.ts.jig"],
       ["globals", "globals.ts.jig"],
     ]);
-    expect((await readdir(MESH_TEMPLATES_DIR)).sort()).toEqual(["actions.ts.jig", "binding.ts.jig", "expressions.ts.jig", "globals.ts.jig", "index.ts.jig", "load.ts.jig", "module.ts.jig", "types.ts.jig", "validators.ts.jig"]);
+    expect((await readdir(MESH_TEMPLATES_DIR)).sort()).toEqual(["actions.ts.jig", "binding.ts.jig", "declaration.ts.jig", "expressions.ts.jig", "globals.ts.jig", "index.ts.jig", "load.ts.jig", "module.ts.jig", "types.ts.jig", "validators.ts.jig"]);
     expect(MESH_TEMPLATES_DIR).toBe(resolve(import.meta.dir, "../src/typescript/templates"));
     const manifest = JSON.parse(await readFile(resolve(import.meta.dir, "../package.json"), "utf8")) as { files: string[] };
     expect(manifest.files).toContain("src");

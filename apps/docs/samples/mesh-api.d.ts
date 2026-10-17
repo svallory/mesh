@@ -73,6 +73,24 @@ declare module "@meshfw/runtime" {
     readonly breakdown: readonly PolicyCheck[];
   };
 
+  const declaration: unique symbol;
+
+  /**
+   * What a generated event or command class tells the runtime about itself, under a symbol the runtime owns: its kind, its
+   * FQN, and a test that is true for its instances and nothing else (the check of the class's private field).
+   */
+  export type Declaration<Instance extends object = object> = {
+    readonly kind: "event" | "command";
+    /** `<module>.<Name>`, the stored and wire name: `billing.InvoicePaid`. */
+    readonly fqn: string;
+    readonly is: (value: unknown) => value is Instance;
+  };
+
+  /** The class of an event or a command, as `mesh build` generates it into its module's barrel (`#mesh/domain/billing`). */
+  export type Declared<Instance extends object = object> = {
+    readonly [declaration]: Declaration<Instance>;
+  };
+
   /** An action function as the entity value exposes it: the input, then the context. `ActionFunction` alone is any of them. */
   export type ActionFunction<I = never> = (input: I, context: ActionContext) => Promise<unknown>;
 
@@ -102,6 +120,11 @@ declare module "@meshfw/runtime" {
     privileged<E extends EntityValue>(entity: E): Privileged<E>;
     /** True only when `context.system` is the boolean `true`. */
     isSystem(context: Readonly<ActionContext>): boolean;
+    /**
+     * The fully qualified name of the event or command a generated class declares: `Mesh.fqnOf(InvoicePaid)` is
+     * `"billing.InvoicePaid"`, the module's folders as written, then the class's name. Any other value throws `FrameworkError`.
+     */
+    fqnOf(declared: Declared): string;
   };
 
   /** What `bind` returns: the whole domain on one data layer, one seam set and one clock. */

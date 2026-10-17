@@ -9,6 +9,7 @@ import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
+import { classLocal, className, declarationFile, declarationsOf, type Declaration } from "./declarations.ts";
 import { effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, typeName } from "./inputs.ts";
 
 /**
@@ -83,6 +84,11 @@ export interface ExpressionsView {
   readonly newScope: ScopeDeclaration | null;
   /** The scope of a step that can run on a create before the write, where the integer key is still null; null when none uses it. */
   readonly createScope: ScopeDeclaration | null;
+  /**
+   * The import of `DomainEvent`, the return type of a `publish` function (`DomainEvent | Promise<DomainEvent>`), from the
+   * project's `#mesh` file as a quoted string literal; null when no function is a `publish` step.
+   */
+  readonly domainEventFromLiteral: string | null;
   /** Imports of the helpers the expressions name, one per module. */
   readonly helperImports: readonly HelperImport[];
   /** One function per expression, in the order of the entity file. */
@@ -130,18 +136,18 @@ const IDENTIFIER = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u;
  */
 type ScopeKind = "base" | "stored" | "check" | "new" | "create";
 /** `actions`: the actions whose input the expression reads as `input`; none (a computed field) reads no input. */
-interface Found { id: string; what: string; expression: Expression; boolean: boolean; run?: true; scope: ScopeKind; actions: readonly Action[] }
+interface Found { id: string; what: string; expression: Expression; boolean: boolean; run?: true; publish?: true; scope: ScopeKind; actions: readonly Action[] }
 
 function collect(entity: Entity): Found[] {
   const found: Found[] = [];
   let stored = false;
   let actions: readonly Action[] = [];
   let phase: "other" | "check" | "step" = "other";
-  const add = (id: string, what: string, expression: Expression, boolean: boolean, run?: "before" | "after") => {
+  const add = (id: string, what: string, expression: Expression, boolean: boolean, run?: "before" | "after", publish?: true) => {
     const scope: ScopeKind = phase === "check" ? (stored ? "check" : "new")
       : phase === "step" ? (stored ? "stored" : run === "after" ? "base" : "create")
         : "base";
-    found.push({ id, what, expression, boolean, actions, scope, ...(run ? { run: true as const } : {}) });
+    found.push({ id, what, expression, boolean, actions, scope, ...(run && !publish ? { run: true as const } : {}), ...(publish ? { publish: true as const } : {}) });
   };
   const covers = (scope: { types?: readonly string[]; actions?: readonly { name: string }[] }) => effectiveActions(entity).filter((action) => action.kind !== "read"
     && ((!scope.types && !scope.actions) || scope.types?.includes(action.kind) || scope.actions?.some((ref) => ref.name === action.name)));
@@ -167,6 +173,8 @@ function collect(entity: Entity): Found[] {
         add(`${prefix}.step.${here}.when`, "step when", step.condition, true);
         steps(prefix, step.steps, here);
       } else if (step.kind === "run") add(`${prefix}.step.${here}.run`, "run", step.fn, false, step.after === "write" ? "after" : "before");
+      // A `publish` runs after the write, as an `after=:write` step does, and sees what such a step sees.
+      else if (step.kind === "publish") add(`${prefix}.step.${here}.publish`, "publish", step.fn, false, "after", true);
     });
   };
   for (const action of entity.actions) {
@@ -319,9 +327,25 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     if (target && imported?.namespace) namespaceTargets.set(local, [target]);
     else if (target) targets.set(local, target); // else the front end reported the import
   }
+  // The events and commands the functions can name, by the name the file's imports bind (a named import's local, or a
+  // namespace import's alias): each is a class, imported from its own generated file under a local derived from its FQN.
+  const declared = declarationsOf(document);
+  const eventTargets = new Map<string, Declaration>();
+  const eventNamespaces = new Map<string, Declaration>();
+  for (const entry of entity.imports) {
+    if (entry.helper || entry.mesh) continue;
+    const file = posix.normalize(posix.join(dirname(entity.file), entry.from));
+    const target = declared.find((candidate) => candidate.file === file);
+    if (target) for (const local of entry.identifiers) (entry.namespace ? eventNamespaces : eventTargets).set(local, target);
+  }
   /** The entities a name the functions read stands for: the one it names, or each one of a namespace import's file. */
   const entitiesOf = (name: string): readonly Entity[] => namespaceTargets.get(name) ?? (targets.has(name) ? [targets.get(name)!] : []);
   const locals: EntityLocals = (name) => {
+    // A class: bound to itself, typed as the class (`typeof`), and as a type it is its instance type, the class name.
+    const event = eventTargets.get(name);
+    if (event) return { value: classLocal(event), type: `typeof ${classLocal(event)}`, record: classLocal(event) };
+    const namespace = eventNamespaces.get(name);
+    if (namespace) return { value: `{ ${className(namespace)}: ${classLocal(namespace)} }`, type: `{ readonly ${className(namespace)}: typeof ${classLocal(namespace)} }`, record: "" };
     const members = namespaceTargets.get(name);
     if (members) {
       const named = (local: (target: Entity) => string) => members.map((target) => `${typeName(target.name, target.position)}: ${local(target)}`);
@@ -340,7 +364,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   let emitted = emittedNothing();
   const print = (f: Found, inTypes?: NamedInTypes) => {
     emitted = emittedNothing();
-    return printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, inTypes, emitted);
+    return printExpression(f.expression, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`, f.boolean, f.run === true, locals, inTypes, emitted, f.publish ? "$DomainEvent | $Promise<$DomainEvent>" : "");
   };
   let usesExpr = false;
   // What a plain function names only in a type: the front end never sees it (MX strips the types from the node it reads),
@@ -350,11 +374,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // bound to its record type where it is named as a type, and to its value where it is read in a `typeof`.
   const unread = new Set([...helperFrom.keys()].filter((name) => !used.has(name)));
   const typed = new Set<string>();
-  const valued = new Set<string>(found.flatMap(({ expression }) => expression.plain?.entities ?? []));
+  const valued = new Set<string>(found.flatMap(({ expression }) => [...(expression.plain?.entities ?? []), ...(expression.plain?.events ?? [])]));
   const recordTypes = new Set<string>();
   const meshLocals = new Set(entity.imports.filter((entry) => entry.mesh).flatMap((entry) => entry.identifiers));
   const namespaceTypes = new Set<string>();
-  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...namespaceTargets.keys(), ...meshLocals]);
+  const candidates = new Set([...unread, ...SCOPE_NAMES, ...targets.keys(), ...namespaceTargets.keys(), ...eventTargets.keys(), ...eventNamespaces.keys(), ...meshLocals]);
   // The names of the file's `Mesh` import the functions read as values, as the front end found them, and those `typeNames`
   // finds only in a type, never from the printed text, where a string could spell `Mesh`: the file imports each.
   const meshValues = new Set<string>(found.flatMap(({ expression }) => expression.plain?.mesh ?? []));
@@ -366,11 +390,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       const roots = SCOPE_NAMES.filter((name) => values.has(name));
       const inTypes: NamedInTypes = {
         roots,
-        values: [...values].filter((name) => (targets.has(name) || namespaceTargets.has(name)) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
-        types: [...types].filter((name) => targets.has(name) && !helperFrom.has(name)).sort(),
+        values: [...values].filter((name) => (targets.has(name) || namespaceTargets.has(name) || eventTargets.has(name) || eventNamespaces.has(name)) && !SCOPE_NAMES.includes(name) && !helperFrom.has(name)).sort(),
+        types: [...types].filter((name) => (targets.has(name) || eventTargets.has(name)) && !helperFrom.has(name)).sort(),
       };
       // `billing.Invoice` as a type: the alias is the file's namespace, declared once at module level.
-      for (const name of types) if (namespaceTargets.has(name) && !helperFrom.has(name)) namespaceTypes.add(name);
+      for (const name of types) if ((namespaceTargets.has(name) || eventNamespaces.has(name)) && !helperFrom.has(name)) namespaceTypes.add(name);
       for (const name of values) if (meshLocals.has(name) && !SCOPE_NAMES.includes(name)) meshTypes.add(name);
       for (const name of [...types, ...[...values].filter((name) => !SCOPE_NAMES.includes(name))]) if (unread.has(name)) typed.add(name);
       if (roots.includes("before") && (f.scope === "check" || f.scope === "new")) {
@@ -409,6 +433,20 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       entityFrom.set(from, entry);
     }
   }
+  // The classes the functions name, each imported from its generated file: a value import when a function reads it as a
+  // value (`new InvoicePaid(...)`, `typeof InvoicePaid`), a type import when it only names it as a type.
+  const classFrom = new Map<string, { local: string; exported: string; value: boolean }>();
+  const classOf = (target: Declaration, asValue: boolean) => {
+    let from = relative(dirname(entityPath(entity)), `${entityPath(target)}${declarationFile(target)}`).replace(/\\/g, "/");
+    if (!from.startsWith(".")) from = `./${from}`;
+    const found = classFrom.get(from) ?? { local: classLocal(target), exported: className(target), value: false };
+    found.value ||= asValue;
+    classFrom.set(from, found);
+  };
+  for (const name of [...new Set([...valued, ...recordTypes, ...namespaceTypes])].sort()) {
+    const target = eventTargets.get(name) ?? eventNamespaces.get(name);
+    if (target) classOf(target, valued.has(name));
+  }
   const byModule = new Map<string, string[]>();
   for (const name of [...used, ...typed].filter((n) => helperFrom.has(n)).sort()) {
     const absolute = posix.join(dirname(entity.file), helperFrom.get(name)!.from);
@@ -440,6 +478,10 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // `structuredClone` cannot copy the read-only views a function is handed (they are proxies), so a function that calls
   // the global binds it to `cloneValue`. The front end decided which functions do: not one that binds the name itself,
   // nor one whose file imports something under it, as a JavaScript global is hidden by either.
+  // A `publish` function returns `DomainEvent | Promise<DomainEvent>`, `DomainEvent` being `#mesh`'s: the file imports it as a type.
+  const publishes = found.some((f) => f.publish);
+  let indexFrom = relative(dirname(entityPath(entity)), "index").replace(/\\/g, "/");
+  if (!indexFrom.startsWith(".")) indexFrom = `./${indexFrom}`;
   const shadowsStructuredClone = found.some(({ expression }) => expression.plain?.structuredClone === true);
   return {
     entityFile: entityFileComment(entity),
@@ -455,15 +497,24 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     ],
     meshImports: [...new Set([...meshValues, ...meshTypes])].sort()
       .map((name) => `${meshValues.has(name) ? "" : "type "}Mesh${name === "Mesh" ? "" : ` as ${name}`}`),
-    entityImports: [...entityFrom].map(([from, { names, value }]) => ({
-      keyword: value ? "import" as const : "import type" as const,
-      names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),
-      fromLiteral: JSON.stringify(from),
-    })),
+    entityImports: [
+      ...[...entityFrom].map(([from, { names, value }]) => ({
+        keyword: value ? "import" as const : "import type" as const,
+        names: [...names].map((name) => (value ? name : name.replace(/^type /, ""))).join(", "),
+        fromLiteral: JSON.stringify(from),
+      })),
+      ...[...classFrom].map(([from, { local, exported, value }]) => ({
+        keyword: value ? "import" as const : "import type" as const,
+        names: `${exported} as ${local}`,
+        fromLiteral: JSON.stringify(from),
+      })),
+    ],
     entityNamespaces: [...namespaceTypes].sort().map((name) => ({
       name,
-      members: namespaceTargets.get(name)!
-        .map((target) => `export type ${typeName(target.name, target.position)} = ${entityLocal(target, "Record")};`).join(" "),
+      members: eventNamespaces.has(name)
+        ? `export type ${className(eventNamespaces.get(name)!)} = ${classLocal(eventNamespaces.get(name)!)};`
+        : namespaceTargets.get(name)!
+          .map((target) => `export type ${typeName(target.name, target.position)} = ${entityLocal(target, "Record")};`).join(" "),
     })),
     shadowsStructuredClone,
     scopeName,
@@ -472,9 +523,10 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     checkScope,
     newScope,
     createScope,
+    domainEventFromLiteral: publishes ? JSON.stringify(indexFrom) : null,
     helperImports,
     entries,
     // Only the scope types: the functions' code is authored, and a `$Omit` in a string there is no reference.
-    globals: globalsImport(`${entityPath(entity)}.expressions`, { checkScope, newScope, createScope }),
+    globals: globalsImport(`${entityPath(entity)}.expressions`, { checkScope, newScope, createScope }, publishes ? ["Promise"] : []),
   };
 }

@@ -6,9 +6,9 @@ import { can, checkPolicies, entity, privileged } from "../src/entity.ts";
 // Mesh's own functions are members of one frozen object, so no name an application chooses can collide with them.
 // the instant is not one of them; an entity file reads the current transaction's as `%.now` and `%.today`.
 // asking whether a call would be allowed is `Mesh.checkPolicies`, and `Mesh.can` for the yes or no.
-test("Mesh is a frozen object holding privileged, isSystem, checkPolicies and can, and nothing else", () => {
+test("Mesh is a frozen object holding privileged, isSystem, checkPolicies, can and fqnOf, and nothing else", () => {
   expect(Object.isFrozen(Mesh)).toBe(true);
-  expect(Object.keys(Mesh).sort()).toEqual(["can", "checkPolicies", "isSystem", "privileged"]);
+  expect(Object.keys(Mesh).sort()).toEqual(["can", "checkPolicies", "fqnOf", "isSystem", "privileged"]);
   expect(Mesh.privileged).toBe(privileged);
   expect(Mesh.isSystem).toBe(expr.isSystem);
   expect(Mesh.checkPolicies).toBe(checkPolicies);

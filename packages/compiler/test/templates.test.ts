@@ -31,6 +31,7 @@ describe("template lookup", () => {
     expect([...templates].map(([name, t]) => [name, t.path])).toEqual([
       ["types.ts.jig", join(MESH_TEMPLATES_DIR, "types.ts.jig")],
       ["validators.ts.jig", join(MESH_TEMPLATES_DIR, "validators.ts.jig")],
+      ["declaration.ts.jig", join(MESH_TEMPLATES_DIR, "declaration.ts.jig")],
       ["expressions.ts.jig", join(MESH_TEMPLATES_DIR, "expressions.ts.jig")],
       ["load.ts.jig", join(MESH_TEMPLATES_DIR, "load.ts.jig")],
       ["actions.ts.jig", join(MESH_TEMPLATES_DIR, "actions.ts.jig")],

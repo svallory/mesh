@@ -1,9 +1,11 @@
 ---
 title: "0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it"
-description: "Decision record 0079: `command` and `event` files, `on=`, `publish` and the outbox in core, no `after-commit` step, `project` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows), 2026-10-12 and 2026-10-13 (DOM-43: how long it keeps them is configured by the application, and by default a delivered row is deleted) and 2026-10-13 (DOM-05: a read-model handler is `project`, not `apply`) and 2026-10-15 (DOM-17: an action answers a command with `on=`, not `handles=`) and 2026-10-17 (the third handler kind is `listen`)."
+description: "Decision record 0079: `command` and `event` files, `on=`, `publish` and the outbox in core, no `after-commit` step, `process` and `listen` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows), 2026-10-12 and 2026-10-13 (DOM-43: how long it keeps them is configured by the application, and by default a delivered row is deleted) and 2026-10-13 (DOM-05: a read-model handler is `project`, not `apply`) and 2026-10-15 (DOM-17: an action answers a command with `on=`, not `handles=`) and 2026-10-17 (the third handler kind is `listen`; then, the same day, `project` leaves core for the event-sourcing extension, a subscription acknowledges rows, errors carry `retryable`, `renamedFrom`)."
 ---
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
+
+> **Amendment, 2026-10-17 (the events-spec review; DOM-17, DOM-19, DOM-42, DOM-43, DOM-08).** An action raises an event with a `publish` step whose value is a function returning the event's instance, `publish=() => new TaskCompleted({ taskId: &id })`; events and commands are referenced by imported identifiers (PRJ-15); an action answers at most one command, named by `on=`; one process delivers per database in M6; handlers are registered in TypeScript. Core has two handler kinds, `process` and `listen`; `project`, a read model replayed from history, belongs to the event-sourcing extension ([ADR-0081](./0081-event-sourcing-and-cqrs-are-extensions.md)), with the partial-history check. Every handler starts from now; a renamed handler carries its progress over with `renamedFrom`. A live subscription is opened under a name, its client acknowledges rows, and a row is deleted only once acknowledged. Every run-time error carries `retryable`, and a handler whose error is not retryable stops at once. Items 1, 2 and 7 and the illustration below are updated; where the amendment below says three kinds, read two in core.
 
 > **Amendment, 2026-10-17 (outbox pruning and `publish`).** Only core's deliverer deletes outbox rows, and pruning is not a bus capability; this overrides the amendment of 2026-10-12 and 2026-10-13 below, which says whether an adapter can prune rows is one of its capabilities, and its sentence "The delivery adapter honours the setting": only core deletes rows, and it reads `keep` at run time. A `publish` step is a function returning an event instance (`publish=() => new TaskCompleted({ ... })`), as in the specification's section on publishing; the `publish :task-completed` example in Decision item 2 is superseded and kept as history.
 
@@ -37,32 +39,31 @@ Hyper's engine keeps an event table by hand and delivers events from application
 
 ## Decision
 
-1. **`command` and `event` declarations live in their own files**, and an action names the command it answers with `on=` (DOM-17). A command is a serialised request to run a write action; a query is a serialised read request.
-2. **Declaring and raising are separate syntax** (DOM-19). An action raises an event with `publish :task-completed` (superseded, 2026-10-17: see the amendment at the top).
+1. **`command` and `event` declarations live in their own files**, and an action answers at most one command, named by `on=` (`update on=CompleteTask`), and is named after it when its name is left out (DOM-17). A command is a serialised request to run a write action; a query is a serialised read request.
+2. **Declaring and raising are separate syntax** (DOM-19). An action raises an event with a `publish` step whose value is a function returning the event's instance: `publish=() => new TaskCompleted({ taskId: &id })`.
 3. **`publish` writes the event to the outbox**, in the action's transaction, and an event bus delivers it from there (DOM-02, DOM-06). A surface lists what it sends out with `publishes` ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
 4. **The outbox is core** (DOM-06). It is a permanent, ordered log of the events, not a table emptied after delivery (see the amendment at the top). It comes with domain events in M6 (DOM-18), so [ADR-0023](./0023-workflows-and-jobs-deferred.md)'s "after 1.0" no longer covers it. Jobs and workflows stay after 1.0 (ARC-14).
 5. **HA's hand-written event table is dropped** (DOM-18). HA keeps `@meshfw/jsonrpc` with a hand-written method table ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
 6. **There is no `after-commit` step**, and the `afterCommit` seam is not used for it either (DOM-25). An effect after commit is a `publish` and a listener.
-7. **Handler words** (DOM-05): a handler that updates a read-model row is `apply`; a handler that runs commands is `process`.
+7. **Handler words** (DOM-05): core's handler kinds are `process`, which runs commands, and `listen`, which makes an effect outside the database; a read-model handler, `project`, is the event-sourcing extension's (amended 2026-10-17).
 
-An illustration. The files, `on=` and `publish` are ruled; the lines inside them are the study's sketch:
+An illustration. The files, `on=` and `publish` are ruled:
 
 ```mx "An event file and an action that raises it (illustration)"
-event :task-completed
-  &taskId
-  &workspaceId
+event :TaskCompleted
+  uuid :taskId
+  uuid :workspaceId
 ```
 
-The `publish :task-completed` step in the next example is superseded (amendment of 2026-10-17): a `publish` step is `publish=() => new TaskCompleted({ ... })`.
-
 ```mx "src/domain/work/task.mesh.mx (illustration)"
+import { TaskCompleted } from "./task-completed.mesh.mx"
 import { CompleteTask } from "./complete-task.mesh.mx"
 
 entity :Task
   actions
     update :complete on=CompleteTask
       do
-        publish :task-completed
+        publish=() => new TaskCompleted({ taskId: &id, workspaceId: &workspaceId })
 ```
 
 ## Options considered

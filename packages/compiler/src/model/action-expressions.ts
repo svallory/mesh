@@ -1,7 +1,7 @@
 import type { Check, Entity, Expression, Step } from "@meshfw/model";
 
 /** Where an action's function sits: a part of a check, or a kind of step. */
-export type ActionExpressionKind = "that" | "check-when" | "details" | "message" | "step-when" | "set" | "run";
+export type ActionExpressionKind = "that" | "check-when" | "details" | "message" | "step-when" | "set" | "run" | "publish";
 
 export interface ActionExpression {
   expression: Expression;
@@ -20,6 +20,7 @@ function stepExpressions(steps: readonly Step[], into: ActionExpression[]): void
       into.push({ expression: step.condition, kind: "step-when", what: "when" });
       stepExpressions(step.steps, into);
     } else if (step.kind === "run") into.push({ expression: step.fn, kind: "run", what: "run" });
+    else if (step.kind === "publish") into.push({ expression: step.fn, kind: "publish", what: "publish" });
   }
 }
 

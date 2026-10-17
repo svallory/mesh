@@ -5,6 +5,8 @@ description: "Decision record 0081: `@meshfw/event-sourcing` and `@meshfw/cqrs` 
 
 # 0081. Event sourcing and CQRS are two extensions
 
+> **Amendment, 2026-10-17.** The `project` handler kind (a read model built by replaying every event it lists from the beginning of history), the `from` option, the deleted-names record and the partial-history check belong to this extension, not to core. The operator's guidance: design it from Greg Young's work on event sourcing, and expect that it may need a dedicated event store such as Kurrent (formerly EventStoreDB).
+
 ## Status
 
 Accepted. Row: DOM-24. No row is open.

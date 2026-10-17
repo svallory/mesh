@@ -45,8 +45,11 @@ export interface ReferenceScope {
    * resolves to nothing and reports nothing more.
    */
   duplicates: ReadonlySet<string>;
-  /** The file's own declaration, which the file names without an import (an entity relates to itself), and its path. */
-  own: { name: string; from: string };
+  /**
+   * The file's own declaration, which the file names without an import (an entity relates to itself), and its path. Absent
+   * for a kind the file's own declaration is not (an entity file declares no event, so `own` is not an event).
+   */
+  own?: { name: string; from: string };
   /**
    * The names the file at `from` (as an import of this file writes the path) declares, or undefined when the project has
    * no such file: the import itself is reported then, so a reference through it is not.
@@ -54,7 +57,7 @@ export interface ReferenceScope {
   declared: (from: string) => readonly string[] | undefined;
 }
 
-/** What a position references: `entity=` takes an entity, and `on=` will take a command or an event. */
+/** What a position references: `entity=` takes an entity, a `publish` function's `new` an event, and `on=` will take a command. */
 export interface ReferenceKind {
   /** What the position takes, for messages: `entity`. */
   noun: string;
@@ -95,7 +98,7 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
   };
   if (!qualifier) {
     const imported = scope.imports.get(name);
-    if (!imported) return name === scope.own.name ? { ok: true, identifier, from: scope.own.from } : unknown();
+    if (!imported) return scope.own && name === scope.own.name ? { ok: true, identifier, from: scope.own.from } : unknown();
     if (!imported.namespace) return kind.declares(imported.from) ? { ok: true, identifier, from: imported.from } : unknown();
     // `entity=billing`: the file, not what it declares.
     const members = kind.declares(imported.from) ? scope.declared(imported.from) : undefined;
@@ -130,7 +133,7 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
 
 /** Every reference the scope resolves, for advice: the own name, each named import of a declaring file and each namespace member. */
 function candidates(scope: ReferenceScope, kind: ReferenceKind): string[] {
-  const names = [scope.own.name];
+  const names = scope.own ? [scope.own.name] : [];
   for (const [local, imported] of scope.imports) {
     if (!kind.declares(imported.from)) continue;
     if (!imported.namespace) names.push(local);

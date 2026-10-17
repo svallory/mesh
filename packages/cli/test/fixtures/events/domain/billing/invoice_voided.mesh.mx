@@ -1,0 +1,3 @@
+event :invoice_voided
+  uuid :invoiceId
+  decimal :total

@@ -18,10 +18,13 @@ import {
   type Attribute,
   type AttributeType,
   type Check,
+  type CommandDeclaration,
   type Computed,
   type Diagnostic,
   type Entity,
+  type EventDeclaration,
   type Expression,
+  type Field,
   type Import,
   type InputField,
   type MemberRef,
@@ -46,6 +49,8 @@ import {
 } from "./rollups.ts";
 import { resolveRelationships } from "./relationships.ts";
 import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
+import { checkPublishSteps } from "../model/publish-steps.ts";
+import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import {
   atomList,
@@ -93,8 +98,24 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-/** A relationship's `entity=`: an entity an entity file declares. */
-const ENTITY_REFERENCE: ReferenceKind = { noun: "entity", declares: hasMeshExtension, code: "MESH_UNKNOWN_ENTITY" };
+/** What a file of the project declares: the kind of its root line (`entity`, `event` or `command`) and the name it gives it. */
+interface DeclaredFile {
+  kind: "entity" | "event" | "command";
+  names: string[];
+}
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command"]);
+/** Where the file's own declaration is named without an import: only an entity file's own entity is (an entity relates to itself). */
+/**
+ * What a reference position takes, for the files of `kind`: `entity=` an entity, a `publish` function's `new` an event. A
+ * path that no file of the project answers (the import itself is reported) matches every kind, so that a reference through
+ * it reports nothing more.
+ */
+const referenceKind = (kind: DeclaredFile["kind"], declared: (from: string) => DeclaredFile | undefined): ReferenceKind => ({
+  noun: kind,
+  declares: (from) => hasMeshExtension(from) && (declared(from)?.kind ?? kind) === kind,
+  // An event's unknown name is a failed `publish` check (`notes/spec/events-and-commands.md`, "Errors").
+  code: kind === "entity" ? "MESH_UNKNOWN_ENTITY" : "MESH_PUBLISH",
+});
 /** The package an entity file imports `Mesh` from. */
 const MESHFW = "meshfw";
 /**
@@ -220,18 +241,12 @@ export function moduleOfFolder(folder: string): { module: string; bareUnderscore
   };
 }
 
-function buildEntity(
-  root: Tag,
-  irImports: readonly IrImport[],
-  source: string,
-  file: string,
-  diagnostics: Diagnostic[],
-  rollups: PendingRollup[],
-  importDetails: Map<Import, ParsedImport>,
-  inversePositions: Map<Relationship, SourcePosition>,
-  folder: string,
-  declared: ReferenceScope["declared"],
-): Entity {
+/**
+ * What reading an attribute line takes, shared by an entity's attributes and arguments and by the fields of an event and a
+ * command: where a tag and an offset are in the file, how an error is reported, the options an attribute line takes
+ * (`shape`) and the checks on them (`checkShape`).
+ */
+function attributeReaders(source: string, file: string, diagnostics: Diagnostic[]) {
   const at = (offset: number) => positionAt(source, file, offset);
   const pos = (tag: Tag) => at(tag.nameSpan.sourceStart);
   const fail = (code: string, message: string, tag: Tag | SourcePosition, fix?: string) =>
@@ -240,155 +255,6 @@ function buildEntity(
     const a = attr(tag, key);
     return a ? valueOf(a) : undefined;
   };
-  const sections = tags(root.children);
-  const section = (name: string) => sections.find((t) => t.name === name);
-  const entity: Entity = {
-    name: declaredName(root),
-    fqn: declaredName(root),
-    table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
-    file,
-    module: "",
-    imports: [],
-    attributes: [],
-    relationships: [],
-    computed: [],
-    actions: [],
-    auto: [],
-    always: [],
-    policies: [],
-    position: pos(root),
-  };
-  if (!/^[A-Z][A-Za-z0-9]*$/.test(entity.name))
-    fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
-  const { module, bareUnderscore } = moduleOfFolder(folder);
-  entity.module = module;
-  entity.fqn = [...module.split("/").filter(Boolean), entity.name].join(".");
-  if (bareUnderscore)
-    fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
-  for (const segment of module ? module.split("/") : []) {
-    if (!/^[A-Za-z0-9_-]+$/.test(segment))
-      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
-  }
-  const imports = readImports(irImports);
-  for (const problem of imports.problems)
-    fail(problem.code, problem.message, at(problem.offset), problem.fix);
-  entity.imports = imports.imports.map(
-    (i): Import => {
-      const renames = !i.namespace && i.bindings.some((binding) => binding.imported !== binding.local);
-      const value: Import = {
-        identifiers: i.names,
-        ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
-        from: i.from,
-        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
-        ...(i.namespace ? { namespace: true as const } : {}),
-        position: at(i.offset),
-      };
-      importDetails.set(value, i);
-      return value;
-    },
-  );
-  // Each name to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
-  // nothing: no name set below holds it, and a reference through the name reports nothing more (`duplicates`).
-  const importNames = new Map<string, Import>();
-  const duplicates = new Set<string>();
-  const bindings: { entry: Import; index: number; name: string }[] = [];
-  for (const entry of entity.imports)
-    for (const [index, name] of entry.identifiers.entries()) {
-      if (importNames.has(name)) {
-        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-        fail(
-          "MESH_DUPLICATE_IMPORT",
-          `Duplicate import identifier ${name}`,
-          localOffset === undefined ? entry.position : at(localOffset),
-        );
-        duplicates.add(name);
-        continue;
-      }
-      importNames.set(name, entry);
-      bindings.push({ entry, index, name });
-    }
-  const pending: {
-    ref: MemberRef;
-    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter";
-  }[] = [];
-  const checkRef = (
-    ref: MemberRef,
-    scope: (typeof pending)[number]["scope"],
-  ) => {
-    pending.push({ ref, scope });
-    return ref;
-  };
-  const helperImports = new Map<string, string>();
-  const meshImports = new Set<string>();
-  for (const { entry, index, name } of bindings) {
-    const helper = entry.helper === true;
-    if (helper) helperImports.set(name, entry.from);
-    if (entry.mesh) meshImports.add(name);
-    // A scope name (`input`) is the root in every function of the file, and a function is the one place a
-    // file reads `Mesh`: under that name the import could never be read.
-    if (entry.mesh && SCOPE_NAMES.has(name)) {
-      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-      fail(
-        "MESH_HELPER_NAME",
-        `The Mesh import name ${name} is a scope name: in every function of the file \`${name}\` is the scope's \`${name}\`, so \`Mesh\` imported as ${name} could never be read`,
-        localOffset === undefined ? entry.position : at(localOffset),
-        `import it as \`Mesh\`, or under a name other than ${[...SCOPE_NAMES].map((root) => `\`${root}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
-      );
-    }
-    // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
-    // local as `l$...`: no name an import binds, a helper's or an entity's alias, may start with either.
-    if (/^(\$|l\$)/.test(name)) {
-      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-      fail(
-        "MESH_HELPER_NAME",
-        `The ${helper ? "helper" : entry.mesh ? "Mesh import" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
-        localOffset === undefined ? entry.position : at(localOffset),
-      );
-    }
-  }
-  // What a reference to another file's declaration resolves against: `entity=List`, `entity=billing.Invoice`.
-  const references: ReferenceScope = { imports: importNames, duplicates, own: { name: entity.name, from: `./${basename(file)}` }, declared };
-  // The entities a function in this file can name: its own and each one it imports, by the name the file gives it.
-  const entities = new Set([entity.name, ...bindings.filter(({ entry }) => !entry.helper && !entry.mesh).map(({ name }) => name)]);
-  // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
-  // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
-  const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
-  // `Mesh` under the entity's own name would give one name two meanings in a function of the file.
-  for (const entry of entity.imports)
-    if (entry.mesh && entry.identifiers.includes(entity.name))
-      fail("MESH_DUPLICATE_IMPORT", `Duplicate import identifier ${entity.name}: the entity is named ${entity.name} too`, entry.position);
-  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", runStep = false): Expression =>
-    expression(
-      a,
-      source,
-      at,
-      (ref) => checkRef(ref, scope),
-      ({ ref, position }) =>
-        fail(
-          "MESH_MEMBER_ASSIGN",
-          `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
-          position,
-        ),
-      {
-        helpers: helperImports,
-        imported: new Set(importNames.keys()),
-        entities,
-        namespaces,
-        reference: (written) => resolveReference(written, references, ENTITY_REFERENCE),
-        duplicates,
-        mesh: meshImports,
-        report: (d) => {
-          if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
-        },
-        ...(runStep ? { runStep } : {}),
-      },
-    );
-  const authoredMember = (line: Tag) =>
-    fail(
-      "MESH_SYNTAX",
-      "`<member>` is not a known tag: write a member line as `&name`",
-      line,
-    );
   const applyOptions = (tag: Tag) => {
     const result: Pick<
       Attribute,
@@ -505,6 +371,185 @@ function buildEntity(
         );
     }
   };
+  return { at, pos, fail, opt, shape, checkShape };
+}
+
+function buildEntity(
+  root: Tag,
+  irImports: readonly IrImport[],
+  source: string,
+  file: string,
+  diagnostics: Diagnostic[],
+  rollups: PendingRollup[],
+  importDetails: Map<Import, ParsedImport>,
+  inversePositions: Map<Relationship, SourcePosition>,
+  folder: string,
+  declaredFile: (from: string) => DeclaredFile | undefined,
+): Entity {
+  const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const sections = tags(root.children);
+  const section = (name: string) => sections.find((t) => t.name === name);
+  const entity: Entity = {
+    name: declaredName(root),
+    fqn: declaredName(root),
+    table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
+    file,
+    module: "",
+    imports: [],
+    attributes: [],
+    relationships: [],
+    computed: [],
+    actions: [],
+    auto: [],
+    always: [],
+    policies: [],
+    position: pos(root),
+  };
+  if (!/^[A-Z][A-Za-z0-9]*$/.test(entity.name))
+    fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
+  const { module, bareUnderscore } = moduleOfFolder(folder);
+  entity.module = module;
+  entity.fqn = [...module.split("/").filter(Boolean), entity.name].join(".");
+  if (bareUnderscore)
+    fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
+  for (const segment of module ? module.split("/") : []) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment))
+      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
+  }
+  const imports = readImports(irImports);
+  for (const problem of imports.problems)
+    fail(problem.code, problem.message, at(problem.offset), problem.fix);
+  entity.imports = imports.imports.map(
+    (i): Import => {
+      const renames = !i.namespace && i.bindings.some((binding) => binding.imported !== binding.local);
+      const value: Import = {
+        identifiers: i.names,
+        ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
+        from: i.from,
+        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
+        ...(i.namespace ? { namespace: true as const } : {}),
+        position: at(i.offset),
+      };
+      importDetails.set(value, i);
+      return value;
+    },
+  );
+  // Each name to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
+  // nothing: no name set below holds it, and a reference through the name reports nothing more (`duplicates`).
+  const importNames = new Map<string, Import>();
+  const duplicates = new Set<string>();
+  const bindings: { entry: Import; index: number; name: string }[] = [];
+  for (const entry of entity.imports)
+    for (const [index, name] of entry.identifiers.entries()) {
+      if (importNames.has(name)) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+        fail(
+          "MESH_DUPLICATE_IMPORT",
+          `Duplicate import identifier ${name}`,
+          localOffset === undefined ? entry.position : at(localOffset),
+        );
+        duplicates.add(name);
+        continue;
+      }
+      importNames.set(name, entry);
+      bindings.push({ entry, index, name });
+    }
+  const pending: {
+    ref: MemberRef;
+    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter";
+  }[] = [];
+  const checkRef = (
+    ref: MemberRef,
+    scope: (typeof pending)[number]["scope"],
+  ) => {
+    pending.push({ ref, scope });
+    return ref;
+  };
+  const helperImports = new Map<string, string>();
+  const meshImports = new Set<string>();
+  for (const { entry, index, name } of bindings) {
+    const helper = entry.helper === true;
+    if (helper) helperImports.set(name, entry.from);
+    if (entry.mesh) meshImports.add(name);
+    // A scope name (`input`) is the root in every function of the file, and a function is the one place a
+    // file reads `Mesh`: under that name the import could never be read.
+    if (entry.mesh && SCOPE_NAMES.has(name)) {
+      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+      fail(
+        "MESH_HELPER_NAME",
+        `The Mesh import name ${name} is a scope name: in every function of the file \`${name}\` is the scope's \`${name}\`, so \`Mesh\` imported as ${name} could never be read`,
+        localOffset === undefined ? entry.position : at(localOffset),
+        `import it as \`Mesh\`, or under a name other than ${[...SCOPE_NAMES].map((root) => `\`${root}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
+      );
+    }
+    // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
+    // local as `l$...`: no name an import binds, a helper's or an entity's alias, may start with either.
+    if (/^(\$|l\$)/.test(name)) {
+      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+      fail(
+        "MESH_HELPER_NAME",
+        `The ${helper ? "helper" : entry.mesh ? "Mesh import" : "entity import"} name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`,
+        localOffset === undefined ? entry.position : at(localOffset),
+      );
+    }
+  }
+  // What a reference to another file's declaration resolves against: `entity=List`, `entity=billing.Invoice`.
+  const declared = (from: string) => declaredFile(from)?.names;
+  const references: ReferenceScope = { imports: importNames, duplicates, own: { name: entity.name, from: `./${basename(file)}` }, declared };
+  const entityKind = referenceKind("entity", declaredFile);
+  // An event is never the file's own declaration (the file declares an entity), so only an import names one.
+  const eventReferences: ReferenceScope = { imports: importNames, duplicates, declared };
+  const eventKind = referenceKind("event", declaredFile);
+  // The kind of file each import binds: an entity's, an event's or a command's (an import no file of the project answers is an entity's, and reported).
+  const importedKind = (entry: Import): DeclaredFile["kind"] | undefined => (entry.helper || entry.mesh ? undefined : declaredFile(entry.from)?.kind ?? "entity");
+  const boundTo = (kind: DeclaredFile["kind"]) => bindings.filter(({ entry }) => importedKind(entry) === kind).map(({ name }) => name);
+  // The entities a function in this file can name: its own and each one it imports, by the name the file gives it.
+  const entities = new Set([entity.name, ...boundTo("entity")]);
+  // The events and commands it can name: each one it imports (an event file's name is never an entity's), by the name the file gives it.
+  const events = new Set(boundTo("event"));
+  const commands = new Set(boundTo("command"));
+  // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
+  // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
+  const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
+  // `Mesh` under the entity's own name would give one name two meanings in a function of the file.
+  for (const entry of entity.imports)
+    if (entry.mesh && entry.identifiers.includes(entity.name))
+      fail("MESH_DUPLICATE_IMPORT", `Duplicate import identifier ${entity.name}: the entity is named ${entity.name} too`, entry.position);
+  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish"): Expression =>
+    expression(
+      a,
+      source,
+      at,
+      (ref) => checkRef(ref, scope),
+      ({ ref, position }) =>
+        fail(
+          "MESH_MEMBER_ASSIGN",
+          `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
+          position,
+        ),
+      {
+        helpers: helperImports,
+        imported: new Set(importNames.keys()),
+        entities,
+        namespaces,
+        reference: (written) => resolveReference(written, references, entityKind),
+        events,
+        commands,
+        eventReference: (written) => resolveReference(written, eventReferences, eventKind),
+        duplicates,
+        mesh: meshImports,
+        report: (d) => {
+          if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
+        },
+        ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : {}),
+      },
+    );
+  const authoredMember = (line: Tag) =>
+    fail(
+      "MESH_SYNTAX",
+      "`<member>` is not a known tag: write a member line as `&name`",
+      line,
+    );
   for (const tag of tags(section("attributes")?.children ?? [])) {
     const on = attr(tag, "on");
     const field: Attribute = {
@@ -527,7 +572,7 @@ function buildEntity(
   for (const tag of tags(section("relationships")?.children ?? [])) {
     // `entity=List` or `entity=billing.Invoice`; an entity relates to its own type by its own name, with no import.
     const written = writtenReference(nodeOf(attr(tag, "entity")));
-    const target = written ? resolveReference(written, references, ENTITY_REFERENCE) : undefined;
+    const target = written ? resolveReference(written, references, entityKind) : undefined;
     if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
     const name = declaredName(tag);
     const kind = tag.name as Relationship["kind"];
@@ -591,17 +636,32 @@ function buildEntity(
     if (nodeOf(a)?.type === "ArrowFunctionExpression" || nodeOf(a)?.type === "FunctionExpression") return expr(a);
     throw new Error("A check's `message=` is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)");
   };
+  /**
+   * `publish` is no `validate` line and no part of a `check`: it raises an event after the row is written, and a check only
+   * decides (`MESH_PUBLISH`). The contract admits it there so that the build can say so; it builds nothing.
+   */
+  const refusePublish = (tag: Tag, where: string) =>
+    fail("MESH_PUBLISH", `a \`publish\` step is not allowed ${where}: it raises an event after the action's row is written, in the action's \`do\``, tag, "move it under `do`");
   const checks = (holder: Tag): Check[] => {
     const names = new Set<string>();
-    return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).map((tag) => {
+    return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).filter((tag) => {
+      if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return false; }
+      for (const inner of tags(tag.children)) if (inner.name === "publish") refusePublish(inner, "in a `check`");
+      return true;
+    }).map((tag) => {
       const label = declaredName(tag);
       if (names.has(label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${label}`, tag);
       names.add(label);
       return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
     });
   };
-  const steps = (holder: Tag): Step[] =>
-    tags(holder.children).map((tag): Step => {
+  /** The steps under a `do` or a `when`; `inRead` says the action is a read, which has no row to write and raises nothing. */
+  const steps = (holder: Tag, inRead = false): Step[] =>
+    tags(holder.children).flatMap((tag): Step[] => {
+      const step = buildStep(tag, inRead);
+      return step ? [step] : [];
+    });
+  const buildStep = (tag: Tag, inRead: boolean): Step | undefined => {
       const position = pos(tag);
       const assigned = new Set<string>();
       if (tag.name === "set")
@@ -646,7 +706,7 @@ function buildEntity(
         return {
           kind: "when",
           condition: expr(attr(tag, "value")),
-          steps: steps(tag),
+          steps: steps(tag, inRead),
           position,
         };
       if (tag.name === "load")
@@ -660,13 +720,19 @@ function buildEntity(
       if (tag.name === "run") {
         // The contract admits `:write` only (ADR-0068 decision 2); MX reports any other value at the attribute.
         const after = atomOf(attr(tag, "after"))?.name === "write";
-        return { kind: "run", fn: expr(attr(tag, "value"), "expression", true), ...(after ? { after: "write" as const } : {}), position };
+        return { kind: "run", fn: expr(attr(tag, "value"), "expression", "run"), ...(after ? { after: "write" as const } : {}), position };
+      }
+      if (tag.name === "publish") {
+        // A read has no row to write, so nothing to raise an event about (`MESH_PUBLISH`). The fourth case of that code, an
+        // event that owners list and the action's owner does not, is vacuous until owner sections exist (aggregates).
+        if (inRead) { refusePublish(tag, "in a read action"); return undefined; }
+        return { kind: "publish", fn: expr(attr(tag, "value"), "expression", "publish"), position };
       }
       throw new Error(`Unexpected step ${tag.name}`);
-    });
+  };
   const body = (holder: Tag) => {
     const block = tags(holder.children).find((t) => t.name === "do");
-    return { validate: checks(holder), do: block ? steps(block) : [] };
+    return { validate: checks(holder), do: block ? steps(block, holder.name === "read") : [] };
   };
   const types = (a: Attr) =>
     atomList(a).map((value): ActionType => {
@@ -877,6 +943,70 @@ function buildEntity(
 }
 
 /**
+ * An event or a command: a file of its own whose root line declares it and whose children are field lines
+ * (`notes/spec/events-and-commands.md`, "Events" and "Commands"). A field line is an attribute line with the options that
+ * constrain a value only: `nullable`, `values`, `min`, `max` and `match`. What concerns storage or creation, `default`,
+ * `unique`, `primary-key` and `on`, is `MESH_UNKNOWN_OPTION`, since the declaration is a message that carries what its
+ * sender put in it, with no row behind it (and `value`, a computed field's body, is no option of one either). A contract
+ * is per tag and the field kinds are the attribute types, so the contract cannot tell a field from an attribute, and the
+ * builder reports it. An event file takes no import: its field kinds are attribute types.
+ */
+const FIELD_OPTIONS_REFUSED = ["default", "unique", "primary-key", "on", "value"] as const;
+function buildDeclaration(
+  root: Tag,
+  irImports: readonly IrImport[],
+  source: string,
+  file: string,
+  diagnostics: Diagnostic[],
+  folder: string,
+): EventDeclaration | CommandDeclaration {
+  const { at, pos, fail, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const name = declaredName(root);
+  const { module, bareUnderscore } = moduleOfFolder(folder);
+  // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
+  // `invoice_paid` is the class `InvoicePaid` (`notes/spec/names.md`); a name that makes no identifier (`_1`) is an error.
+  if (!isClassName(classNameOf(name)))
+    fail("MESH_NAME", `${root.name === "event" ? "Event" : "Command"} :${name} makes no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter, such as :${root.name === "event" ? "InvoicePaid" : "PayInvoice"}`, root);
+  if (bareUnderscore)
+    fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
+  for (const segment of module ? module.split("/") : []) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment))
+      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
+  }
+  for (const entry of irImports)
+    fail("MESH_UNKNOWN_IMPORT", `${root.name === "event" ? "An event" : "A command"} file takes no import: its fields are attribute lines, whose kinds are attribute types`, at(entry.span.sourceStart), "remove the import");
+  const fields: Field[] = [];
+  const names = new Set<string>();
+  for (const tag of tags(root.children)) {
+    for (const key of FIELD_OPTIONS_REFUSED) {
+      const refused = attr(tag, key);
+      if (refused)
+        fail("MESH_UNKNOWN_OPTION", `\`${key}\` is not an option of a field of ${root.name === "event" ? "an event" : "a command"}: a field has no row behind it, so it takes the options that constrain a value (\`nullable\`, \`values\`, \`min\`, \`max\`, \`match\`) and none that concern storage or creation`, at(attrOffset(refused)), `remove \`${key}\``);
+    }
+    const field = shape(tag);
+    // `default` is refused above; what it holds is not checked against the type as well.
+    checkShape({ ...field, default: undefined });
+    if (names.has(field.name)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${field.name}`, tag);
+    // The generated class has a property per field: `__proto__` would set the prototype, and a class cannot have a field named `constructor`.
+    if (field.name === PROTOTYPE_SETTING_NAME || field.name === "constructor")
+      fail("MESH_ATTRIBUTE_NAME", `:${field.name} cannot be a field name: ${field.name === "constructor" ? "the generated class has its constructor under that name" : "__proto__ sets an object's prototype instead of adding a property"}. Choose another name.`, tag);
+    names.add(field.name);
+    // `default`, which `shape` reads, is no part of a field.
+    const { name: fieldName, type, nullable, values, min, max, match, position } = field;
+    fields.push({ name: fieldName, type, nullable, ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
+  }
+  return {
+    name,
+    // The FQN carries the generated class's name (`billing.InvoicePaid`), so it is the path and the export one imports.
+    fqn: [...module.split("/").filter(Boolean), classNameOf(name)].join("."),
+    file,
+    module,
+    fields,
+    position: pos(root),
+  };
+}
+
+/**
  * The compiler's one MX call (`lowerSource`) with Mesh's dialect, which carries the closed
  * contracts, the tag rules and the strictness (rejection on). It never throws; every problem is a positioned diagnostic.
  */
@@ -956,7 +1086,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
   // Every file is parsed before any is built: a reference through a namespace import (`billing.Invoice`) is
   // checked against what the imported file declares.
   const parsedFiles: { input: (typeof project.files)[number]; path: NonNullable<ReturnType<typeof resolveEntityFile>>; ir: NonNullable<ReturnType<typeof parseEntitySource>["ir"]> }[] = [];
-  const declaredByPath = new Map<string, string[]>();
+  const declaredByPath = new Map<string, DeclaredFile>();
+  const events: EventDeclaration[] = [];
+  const commands: CommandDeclaration[] = [];
   for (const input of project.files) {
     const path = resolveEntityFile(rootPath, input.file);
     if (!path) {
@@ -975,7 +1107,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
     );
     if (!parsed.ir) continue;
     parsedFiles.push({ input, path, ir: parsed.ir });
-    declaredByPath.set(resolve(rootPath, path.file), tags(parsed.ir.body).flatMap((root) => atomOf(attr(root, "name"))?.name ?? []));
+    // The root line decides what the file declares (`notes/spec/file-kinds.md`): its kind, and the names of the roots of that kind.
+    const roots = tags(parsed.ir.body);
+    const kind = DECLARING_ROOTS.has(roots[0]?.name ?? "") ? roots[0]!.name as DeclaredFile["kind"] : "entity";
+    declaredByPath.set(resolve(rootPath, path.file), { kind, names: roots.filter((root) => root.name === kind).flatMap((root) => atomOf(attr(root, "name"))?.name ?? []).map((name) => (kind === "entity" ? name : classNameOf(name))) });
   }
   for (const { input, path, ir } of parsedFiles) {
     const file = path.file;
@@ -985,12 +1120,17 @@ export function buildModel(project: ProjectDescription): BuildResult {
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          "An entity file must contain exactly one entity",
+          `${roots[0]?.name === "event" ? "An event" : roots[0]?.name === "command" ? "A command" : "An entity"} file must contain exactly one ${roots[0]?.name ?? "entity"}`,
           positionAt(input.source, file, roots[1]?.nameSpan.sourceStart ?? 0),
         ),
       );
     for (const root of roots) {
       try {
+        if (root.name === "event" || root.name === "command") {
+          const declaration = buildDeclaration(root, ir.imports, input.source, file, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute))));
+          (root.name === "event" ? events : commands).push(declaration);
+          continue;
+        }
         document.entities.push(
           buildEntity(
             root,
@@ -1016,6 +1156,19 @@ export function buildModel(project: ProjectDescription): BuildResult {
       }
     }
   }
+  // An event and a command are identified by their FQN as an entity is: two files of one module declaring one name are one error.
+  for (const [kind, list] of [["event", events], ["command", commands]] as const) {
+    const first = new Map<string, string>();
+    for (const declaration of list) {
+      if (first.has(declaration.fqn))
+        diagnostics.push(error("MESH_DUPLICATE_ENTITY", `Duplicate ${kind} ${declaration.fqn}; first declared in ${first.get(declaration.fqn)}`, declaration.position));
+      else first.set(declaration.fqn, declaration.file);
+    }
+  }
+  if (events.length) document.events = events;
+  if (commands.length) document.commands = commands;
+  // What each file of the project declares, for an import to check its name against.
+  const declarations: { name: string; file: string }[] = [...document.entities, ...[...events, ...commands].map(({ name, file }) => ({ name: classNameOf(name), file }))];
   const identities = new Map<string, string>();
   for (const entity of document.entities) {
     if (identities.has(entity.fqn))
@@ -1030,7 +1183,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     for (const imported of entity.imports) {
       if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
-      const targetEntity = document.entities.find((candidate) => resolve(rootPath, candidate.file) === target);
+      const targetEntity = declarations.find((candidate) => resolve(rootPath, candidate.file) === target);
       if (hasMeshExtension(imported.from) && targetEntity) {
         // A namespace import names the file, not what it declares: its references are checked where they are written.
         for (const binding of imported.namespace ? [] : importDetails.get(imported)?.bindings ?? []) {
@@ -1075,6 +1228,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   checkExpressions(document, diagnostics, { demotionOf });
   computeNeeds(document, diagnostics);
   checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, askCallsOf, asynchronyOf });
+  checkPublishSteps(document, diagnostics);
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(
