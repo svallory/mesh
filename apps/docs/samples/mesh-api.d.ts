@@ -175,6 +175,11 @@ declare module "@meshfw/runtime" {
 
   export class MeshError extends Error {
     code: string;
+    /**
+     * Whether the same call may succeed if repeated unchanged. Set on each error when it is made (the constructor's
+     * options take `retryable`); the class gives the default: `true` for `DatabaseBusyError`, `false` for the others.
+     */
+    readonly retryable: boolean;
   }
 
   export class InvalidInputError extends MeshError {

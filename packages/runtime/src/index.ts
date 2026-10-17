@@ -15,7 +15,7 @@ export interface ActionContext {
 export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
 export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError } from "./errors.ts";
-export type { DenialReason, Issue, IssueSource, PolicyCheck, PolicyDenial } from "./errors.ts";
+export type { DenialReason, Issue, IssueSource, MeshErrorOptions, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
