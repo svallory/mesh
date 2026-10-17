@@ -129,7 +129,7 @@ A rule written on an attribute line, such as `string :title min=1`, fails the sa
 
 ## Asserting on what another actor may see
 
-An action that no policy covers is forbidden, and a policy that reads the stored row becomes part of the query, so a row the caller may not change is reported as not found today. The target is forbidden, as on an action that loads the row first: the policy check compiles into the statement as an expression that raises ([ADR-0046](../architecture/decisions/0046-denied-atomic-write-outcome.md), option B; not built). For a read, the same policy simply narrows the result: the call succeeds and returns fewer rows.
+An action that no policy covers is forbidden, and a caller denied by a policy that reads the stored row is told forbidden. On a one-statement write (M10, not built) the check compiles into the statement as an expression that raises, as ADR-0046 rules ([option B](../architecture/decisions/0046-denied-atomic-write-outcome.md)); the caller is told forbidden there too. For a read, the same policy simply narrows the result: the call succeeds and returns fewer rows.
 
 ```ts "test/todo.test.ts"
 import { expect, test } from "bun:test";
