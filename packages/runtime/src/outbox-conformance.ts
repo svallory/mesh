@@ -40,7 +40,7 @@ async function rejects(run: () => Promise<unknown>, test: (error: unknown) => bo
 
 /**
  * The outbox checks (spec, Events and commands, "The outbox"): the three operations every adapter of a project that
- * declares an event has, and, when `manifest` declares `gapless-positions`, the checks of that capability. Named,
+ * declares an event has, never reusing a position among them, and, when `manifest` declares `gapless-positions`, the checks of that capability. Named,
  * runner-independent asynchronous checks, like `dataLayerConformanceV1`; each owns and closes its layer.
  */
 export function outboxConformance(makeLayer: () => Promise<OutboxFixture>, manifest: CapabilityManifest): Record<string, () => Promise<void>> {
@@ -112,6 +112,16 @@ export function outboxConformance(makeLayer: () => Promise<OutboxFixture>, manif
       const page = await layer.readOutbox(0, 10);
       assert(page.rows.length === 2 && page.deletedThrough === 0, `read ${JSON.stringify(page)}`);
     }),
+    "a delete that empties the outbox never lets a position be reused": withLayer(async (layer) => {
+      await append(layer, outboxRow(1), outboxRow(2), outboxRow(3));
+      await layer.transaction(async (tx) => tx.deleteOutboxThrough!(3));
+      const empty = await layer.readOutbox(0, 10);
+      assert(empty.rows.length === 0 && empty.deletedThrough === 3 && empty.highest === 3, `read ${JSON.stringify(empty)}`);
+      const [next] = await append(layer, outboxRow(4));
+      assert(next! > 3, `the append after an emptying delete got position ${next}, which a deleted row had`);
+      const page = await layer.readOutbox(3, 10);
+      assert(JSON.stringify(positions(page)) === JSON.stringify([next]) && page.highest === next, `read ${JSON.stringify(page)}`);
+    }),
   };
   if (!manifest.capabilities.includes("gapless-positions")) return checks;
   return {
@@ -134,16 +144,6 @@ export function outboxConformance(makeLayer: () => Promise<OutboxFixture>, manif
       });
       const page = await layer.readOutbox(0, 10);
       assert(JSON.stringify(positions(page)) === "[1,2]" && JSON.stringify(payloads(page)) === "[1,3]", `positions ${JSON.stringify(positions(page))}`);
-    }),
-    "gapless-positions: a delete that empties the outbox never lets a position be reused": withLayer(async (layer) => {
-      await append(layer, outboxRow(1), outboxRow(2), outboxRow(3));
-      await layer.transaction(async (tx) => tx.deleteOutboxThrough!(3));
-      const empty = await layer.readOutbox(0, 10);
-      assert(empty.rows.length === 0 && empty.deletedThrough === 3 && empty.highest === 3, `read ${JSON.stringify(empty)}`);
-      const [next] = await append(layer, outboxRow(4));
-      assert(next === 4, `the append after an emptying delete got position ${next}`);
-      const page = await layer.readOutbox(3, 10);
-      assert(JSON.stringify(positions(page)) === "[4]" && page.highest === 4, `read ${JSON.stringify(page)}`);
     }),
   };
 }

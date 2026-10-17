@@ -2,7 +2,7 @@ import { relative } from "node:path";
 import { EmitError, type EmitInput } from "@meshfw/compiler";
 import type { AttributeType, Entity, SourcePosition } from "@meshfw/model";
 import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
-import { OUTBOX_STATE_TABLE, OUTBOX_TABLE } from "./outbox.ts";
+import { coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
 
 /**
  * What `schema.ts.jig` renders: the Drizzle SQLite table of every entity, the
@@ -99,35 +99,19 @@ function column(name: string, type: AttributeType, nullable: boolean, primaryKey
   };
 }
 
+// Core's column types must stay attribute types, so each maps through `SQLITE_COLUMNS` as an attribute would.
+const coreTypeIsAttributeType: CoreColumnType extends AttributeType ? true : never = true;
+void coreTypeIsAttributeType;
+
 /**
- * Core's outbox tables (spec, Events and commands, "The outbox"). `mesh_outbox` holds one row per published event,
- * never updated; `position` uses `AUTOINCREMENT`, so a position is never reused. `mesh_outbox_state` has one row,
- * `id` 1, written by the first delete: the deleted-through position. The deliverer's claim (M6 PR 3) adds nullable
- * columns to it, which a push adds without loss.
+ * One of core's tables (`CORE_TABLES` in `@meshfw/runtime`) as a table view: each column is stored as an attribute of
+ * its type, and a `neverReuse` key is `AUTOINCREMENT`, so SQLite never hands out a position again.
  */
-function coreTables(): TableView[] {
-  const plain = (name: string, type: AttributeType, nullable = false) => column(name, type, nullable, false, []);
-  return [
-    {
-      entity: OUTBOX_TABLE, key: OUTBOX_TABLE, nameLiteral: JSON.stringify(OUTBOX_TABLE),
-      columns: [
-        { ...column("position", "integer", false, true, []), autoIncrement: true },
-        plain("id", "uuid"),
-        plain("name", "string"),
-        plain("entity", "string"),
-        plain("action", "string"),
-        plain("key", "json"),
-        plain("caused_by", "uuid", true),
-        plain("metadata", "json"),
-        plain("occurred_at", "timestamp"),
-        plain("payload", "json"),
-      ],
-    },
-    {
-      entity: OUTBOX_STATE_TABLE, key: OUTBOX_STATE_TABLE, nameLiteral: JSON.stringify(OUTBOX_STATE_TABLE),
-      columns: [column("id", "integer", false, true, []), plain("deleted_through", "integer")],
-    },
-  ];
+function coreTableView(core: CoreTable): TableView {
+  return {
+    entity: core.name, key: propertyKey(core.name), nameLiteral: JSON.stringify(core.name),
+    columns: core.columns.map((spec) => ({ ...column(spec.name, spec.type, spec.nullable, spec.primaryKey, []), autoIncrement: spec.neverReuse })),
+  };
 }
 
 function checkName(name: string, kind: "table" | "column", position: SourcePosition): void {
@@ -178,16 +162,14 @@ export function schemaView({ document }: EmitInput): SchemaView {
     tableOwners.set(sqliteNameKey(entity.table), entity);
     tables.push(view);
   }
-  if (document.events?.length) {
-    for (const core of coreTables()) {
-      const entity = tableOwners.get(sqliteNameKey(core.entity));
-      if (entity) {
-        fail("MESH_SCHEMA_DUPLICATE_TABLE",
-          `Entity ${describe(entity)} uses the SQLite table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
-          entity.position, 'Set table="..." on the entity to another name');
-      }
-      tables.push(core);
+  for (const core of coreTablesFor(document)) {
+    const entity = tableOwners.get(sqliteNameKey(core.name));
+    if (entity) {
+      fail("MESH_SCHEMA_DUPLICATE_TABLE",
+        `Entity ${describe(entity)} uses the SQLite table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
+        entity.position, 'Set table="..." on the entity to another name');
     }
+    tables.push(coreTableView(core));
   }
   const builders = [...new Set(tables.flatMap((table) => table.columns.map((column) => column.builder)))].sort(compare);
   return { builders, tables };

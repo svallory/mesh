@@ -7,17 +7,17 @@ export interface ActionContext {
   system?: boolean;
 }
 /**
- * The second parameter of every generated action, spread as a rest tuple:
- * `createPost(input, ...[context]: ContextArgument)`. Optional while every key the
- * project merged into `ActionContext` is optional (or none is declared), required
- * once one key is required (ADR-0059).
- */
-/**
  * What the project's `metadata` function returns for each published event, stored as the event's `metadata`. Projects
  * declare its keys by merging this interface, in `src/context.ts` as for `ActionContext`.
  */
 export interface EventMetadata {}
 
+/**
+ * The second parameter of every generated action, spread as a rest tuple:
+ * `createPost(input, ...[context]: ContextArgument)`. Optional while every key the
+ * project merged into `ActionContext` is optional (or none is declared), required
+ * once one key is required (ADR-0059).
+ */
 export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
 export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError } from "./errors.ts";
@@ -30,6 +30,8 @@ export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, Da
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
 export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";
+export { CORE_TABLES, CORE_TABLE_NAMES, OUTBOX_STATE_TABLE, OUTBOX_TABLE, coreTablesFor } from "./core-tables.ts";
+export type { CoreColumn, CoreColumnType, CoreTable } from "./core-tables.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
 export { expr, pinClock, rescope, scope, systemClock } from "./expr.ts";

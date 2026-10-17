@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
-  CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
-  publishEvent, published, readEvents, rows,
+  CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
+  OUTBOX_STATE_TABLE, OUTBOX_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
 } from "@meshfw/runtime";
 import type { DataLayer, DataOperations, Declaration, EventsConfig, OutboxRow } from "@meshfw/runtime";
 
@@ -327,5 +327,38 @@ describe("published() and readEvents through a binding", () => {
   test("two event classes with one FQN cannot be bound", () => {
     class Twin { static readonly [DECLARATION] = { ...InvoicePaid[DECLARATION] }; }
     expect(() => bindDomain({ InvoicePaid, Twin }, memoryLayer().layer, {}, new AsyncLocalStorage())).toThrow("Two event classes in the domain have the FQN billing.InvoicePaid");
+  });
+
+  test("bind refuses a data layer without the outbox when the domain declares an event, and accepts one without events", () => {
+    const { readOutbox: _readOutbox, ...noOutbox } = memoryLayer().layer;
+    expect(() => bindDomain({ InvoiceVoided, InvoicePaid }, noOutbox as DataLayer, {}, new AsyncLocalStorage())).toThrow(
+      "The project declares the event billing.InvoicePaid, and the data layer has no outbox (no readOutbox): a project that declares an event needs a data adapter with the outbox operations appendEvent, readOutbox and deleteOutboxThrough",
+    );
+    expect(() => bindDomain({ notAClass: 1 }, noOutbox as DataLayer, {}, new AsyncLocalStorage())).not.toThrow();
+  });
+});
+
+describe("core's tables", () => {
+  test("the outbox and its state table, declared once, needed only when the project declares an event", () => {
+    expect(CORE_TABLES.map((table) => table.name)).toEqual([OUTBOX_TABLE, OUTBOX_STATE_TABLE]);
+    expect([...CORE_TABLE_NAMES]).toEqual(["mesh_outbox", "mesh_outbox_state"]);
+    expect(coreTablesFor({})).toEqual([]);
+    expect(coreTablesFor({ events: [] })).toEqual([]);
+    expect(coreTablesFor({ events: [{}] }).map((table) => table.name)).toEqual(["mesh_outbox", "mesh_outbox_state"]);
+    const [outbox, state] = CORE_TABLES;
+    expect(outbox!.columns.map(({ name, type, nullable, primaryKey, neverReuse }) => [name, type, nullable, primaryKey, neverReuse])).toEqual([
+      ["position", "integer", false, true, true],
+      ["id", "uuid", false, false, false],
+      ["name", "string", false, false, false],
+      ["entity", "string", false, false, false],
+      ["action", "string", false, false, false],
+      ["key", "json", false, false, false],
+      ["caused_by", "uuid", true, false, false],
+      ["metadata", "json", false, false, false],
+      ["occurred_at", "timestamp", false, false, false],
+      ["payload", "json", false, false, false],
+    ]);
+    expect(state!.columns.map(({ name, primaryKey, neverReuse }) => [name, primaryKey, neverReuse])).toEqual([["id", true, false], ["deleted_through", false, false]]);
+    expect(Object.isFrozen(CORE_TABLES) && Object.isFrozen(outbox) && Object.isFrozen(outbox!.columns) && Object.isFrozen(outbox!.columns[0])).toBe(true);
   });
 });

@@ -507,6 +507,15 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
     }
   };
   walk(domain);
+  // A project that declares an event writes the outbox: a layer without it is refused here, not at the first publish.
+  // Only `readOutbox` is the layer's own; `appendEvent` and `deleteOutboxThrough` belong to the operations a transaction
+  // hands out, which bind cannot see without opening the database, and `outboxConformance` checks that a layer with
+  // `readOutbox` hands them to every transaction.
+  if (events.size > 0 && typeof layer.readOutbox !== "function") {
+    throw new FrameworkError(
+      `The project declares the event ${[...events.keys()].sort()[0]}, and the data layer has no outbox (no readOutbox): a project that declares an event needs a data adapter with the outbox operations appendEvent, readOutbox and deleteOutboxThrough`,
+    );
+  }
   for (const { value } of entities.values()) frames.set(value, frame);
   const binding: Binding = Object.freeze({
     run<T>(fn: () => Promise<T>): Promise<T> {

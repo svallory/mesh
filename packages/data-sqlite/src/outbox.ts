@@ -1,14 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { FrameworkError, type OutboxAppend, type OutboxPage, type OutboxRow } from "@meshfw/runtime";
-
-/**
- * The outbox's two tables, which core declares when the project declares an event (spec, Events and commands, "The
- * outbox"); the schema emitter writes them into `tables` beside the entities' tables. Their names are core's: an
- * entity whose table has one of them is `MESH_SCHEMA_DUPLICATE_TABLE`, and no data operation reaches them.
- */
-export const OUTBOX_TABLE = "mesh_outbox";
-export const OUTBOX_STATE_TABLE = "mesh_outbox_state";
-export const CORE_TABLES: ReadonlySet<string> = new Set([OUTBOX_TABLE, OUTBOX_STATE_TABLE]);
+import { FrameworkError, OUTBOX_STATE_TABLE, OUTBOX_TABLE, type OutboxAppend, type OutboxPage, type OutboxRow } from "@meshfw/runtime";
 
 interface StoredRow {
   position: number;

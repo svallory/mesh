@@ -4,8 +4,8 @@ import { count, getTableName, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
-import { DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle } from "@meshfw/runtime";
-import { CORE_TABLES, appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
+import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle } from "@meshfw/runtime";
+import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
 export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions"]);
@@ -60,7 +60,7 @@ export function sqliteTable(handle: TableHandle): SQLiteTable {
 function entityTable(handle: TableHandle): SQLiteTable {
   const table = sqliteTable(handle);
   const name = getTableName(table);
-  if (CORE_TABLES.has(name)) throw new FrameworkError(`The table ${name} is Mesh's own: the outbox is written by publish and read through rows() and readEvents, never through data operations`);
+  if (CORE_TABLE_NAMES.has(name)) throw new FrameworkError(`The table ${name} is Mesh's own: the outbox is written by publish and read through rows() and readEvents, never through data operations`);
   return table;
 }
 

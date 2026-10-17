@@ -99,8 +99,13 @@ for (const kind of ["memory", "file"] as const) {
       return layer;
     };
     const checks = outboxConformance(make, capabilities);
-    test("the manifest declares gapless-positions, so its checks run", () => {
-      expect(Object.keys(checks).filter((name) => name.startsWith("gapless-positions"))).toHaveLength(3);
+    test("the manifest declares gapless-positions, so its checks run beside the 8 every adapter passes", () => {
+      expect(Object.keys(checks).filter((name) => name.startsWith("gapless-positions"))).toHaveLength(2);
+      expect(Object.keys(checks)).toHaveLength(10);
+      // never reusing a position is the spec's rule for every adapter, not part of gapless-positions
+      const without = Object.keys(outboxConformance(make, { ...capabilities, capabilities: capabilities.capabilities.filter((c) => c !== "gapless-positions") }));
+      expect(without).toHaveLength(8);
+      expect(without).toContain("a delete that empties the outbox never lets a position be reused");
     });
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
