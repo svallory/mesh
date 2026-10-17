@@ -717,13 +717,15 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           loadFor(step.fn.needs ?? [], record);
           emit(`await ${call(step.fn, "$after")};`);
         } else if (step.kind === "publish") {
-          // M6 PR 1: the function is built and called, so a wrong field fails at its line; the outbox write is PR 2's.
+          // The function builds the event; `$publishEvent` checks it is an instance of a declared event, runs the
+          // project's `metadata` and appends the row in this transaction. Application code (`metadata`) runs in it, so
+          // what it calls resolves with plain values, as in the afterWrite seam.
           loadFor(step.fn.needs ?? [], record);
-          runtime.add("FrameworkError");
-          runtime.add("failJoined");
-          emit(`await ${call(step.fn, "$after")};`);
-          // Awaited, not thrown: the code after it stays reachable for the type checker, and the transaction is failed as a nested call's would be.
-          emit(`await $failJoined(layer, new $FrameworkError(${JSON.stringify(`${entity.fqn}#${action.name} cannot run in this version: its publish step writes the event to the outbox, which arrives in M6`)}));`);
+          runtime.add("publishEvent");
+          optionsUsed = true;
+          const where = `${step.fn.position.file}:${step.fn.position.line}:${step.fn.position.column + 1}`;
+          const publishTarget = `{ entity: ${JSON.stringify(entity.fqn)}, action: ${JSON.stringify(action.name)}, key: { ${propertyName(key.name)}: ${read(record, key.name)} }, at: ${JSON.stringify(where)} }`;
+          emit(`{ const $event = await ${call(step.fn, "$after")}; await frame.plain(() => $publishEvent(tx, options.events, ${publishTarget}, $event, $context, $clock)); }`);
         }
       }
     };

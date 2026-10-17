@@ -25,6 +25,7 @@ export class RefundIssued {
     fqn: "sales.refunds.RefundIssued",
     is: (value: unknown): value is RefundIssued =>
       typeof value === "object" && value !== null && #brand in value,
+    dates: [],
   };
   readonly invoiceId: string;
   readonly cents: number;

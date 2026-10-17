@@ -21,9 +21,21 @@ import {
   type Binding as $Binding,
   type DataLayer as $DataLayer,
   type Seams as $Seams,
+@if(events)
+  loadEvents as $loadEvents,
+  published as $published,
+  readEvents as $readEvents,
+  type EventRecord as $EventRecord,
+  type EventsConfig as $EventsConfig,
+  type ReadEventsPage as $ReadEventsPage,
+  type ReadEventsQuery as $ReadEventsQuery,
+@end
 } from "@meshfw/runtime";
 import * as $domain from {{ domainFromLiteral }};
 import type { $Partial, $Promise } from "./$globals";
+@if(events)
+import type { DomainEvent } from "./index";
+@end
 
 /**
  * The whole domain bound to one data layer: `run(fn)` runs `fn` with the binding in scope, so every entity call in it
@@ -71,9 +83,18 @@ export async function connect(): $Promise<void> {
     throw new $FrameworkError(
       `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction(), refuseIfFailed() and close()`,
     );
+@if(events)
+  // The events module is loaded now, so that a `load` that fails fails here and not at the first publish.
+  const events = (config as { readonly events?: $EventsConfig }).events;
+  await $loadEvents(events);
+@end
   if ($defaultLayer) throw new $FrameworkError("connect() was called while connected; call disconnect() first");
   // `config` is read as the project wrote it, so a configuration that is not typed with `defineConfig` still binds.
+@if(events)
+  const binding = bind(data, { seams: (config as { readonly seams?: $Seams }).seams, events });
+@else
   const binding = bind(data, { seams: (config as { readonly seams?: $Seams }).seams });
+@end
   $connectBinding(binding);
   $defaultBinding = binding;
   $defaultLayer = data;
@@ -122,3 +143,24 @@ export async function transaction<T>(fn: () => $Promise<T>): $Promise<T> {
     throw new $FrameworkError("transaction was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own");
   return binding.transaction(fn);
 }
+@if(events)
+
+/**
+ * The events published so far in the running outermost transaction, in order, with their positions: to return an
+ * endpoint's events, store them with an idempotency record inside the transaction, or assert them in a test. Outside a
+ * transaction it throws `FrameworkError`.
+ */
+export function published(): readonly $EventRecord<DomainEvent>[] {
+  return $published($frame) as readonly $EventRecord<DomainEvent>[];
+}
+
+/**
+ * A page of the events the outbox keeps, after the cursor `after` (default 0), on the binding in scope, else on the
+ * connected one: `{ events, cursor }`, where `cursor` is what to pass as `after` next. `limit` (default 100) bounds the rows read,
+ * filtered ones included. A cursor behind the deleted rows is `MESH_EVENTS_DELETED`; inside a transaction it throws
+ * `FrameworkError`, since a transaction's own events come from `published()`.
+ */
+export function readEvents(query?: $ReadEventsQuery): $Promise<$ReadEventsPage<DomainEvent>> {
+  return $readEvents($frame, $defaultBinding, query) as $Promise<$ReadEventsPage<DomainEvent>>;
+}
+@end

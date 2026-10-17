@@ -1,4 +1,4 @@
-import type { CommandDeclaration, EventDeclaration } from "@meshfw/model";
+import { attributeTypeInfo, type CommandDeclaration, type EventDeclaration } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
 import { classNameOf } from "../../model/class-name.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
@@ -64,6 +64,8 @@ export interface DeclarationView {
   /** The kind as a quoted string literal, `"event"` or `"command"`. */
   readonly kindLiteral: string;
   readonly fields: readonly DeclarationField[];
+  /** The names of the fields that hold a date, as an array literal (`["paidAt"]`): stored as text in JSON, revived by `readEvents`. */
+  readonly datesLiteral: string;
   /** True when a field is `json`: the file imports `jsonValue` as `$jsonValue`. */
   readonly json: boolean;
   /** The globals the file names (`$Date`, `$RegExp`), from `$globals.ts`; null when it names none. */
@@ -93,6 +95,7 @@ export function declarationView(declaration: Declaration): DeclarationView {
     fqnLiteral: JSON.stringify(declaration.fqn),
     kindLiteral: JSON.stringify(declaration.kind),
     fields,
+    datesLiteral: JSON.stringify(declaration.fields.filter((field) => attributeTypeInfo(field.type).tsType === "Date").map((field) => field.name)),
     json: declaration.fields.some((field) => field.type === "json"),
   };
   // The template prints `$Object.freeze` itself.

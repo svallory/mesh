@@ -28,6 +28,7 @@ export class InvoicePaid {
     fqn: "billing.InvoicePaid",
     is: (value: unknown): value is InvoicePaid =>
       typeof value === "object" && value !== null && #brand in value,
+    dates: ["paidAt"],
   };
   readonly invoiceId: string;
   readonly amount: number;

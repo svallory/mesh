@@ -2,6 +2,7 @@ import { InvoicePaid } from "./invoice-paid.mesh.mx"
 import { InvoiceOpened } from "./invoice_opened.mesh.mx"
 import { InvoiceVoided } from "./invoice_voided.mesh.mx"
 import * as refunds from "../sales/refunds/refund-issued.mesh.mx"
+import { made, step } from "./probe"
 
 entity :Invoice
   attributes
@@ -27,6 +28,18 @@ entity :Invoice
             if (&total < 5) return new refunds.RefundIssued({ invoiceId: &id, cents: 1 })
             return new refunds.RefundIssued({ invoiceId: &id, cents: 500 })
           }
+    update :publishMade
+      do
+        publish=() => made()
+    update :chain
+      do
+        set
+          &paid=true
+        publish=() => new InvoicePaid({ invoiceId: &id, amount: &total, method: "wire", paidAt: %.now, extra: null })
+        run [after=:write] async ({ self }) {
+          await step("chain", self.id)
+        }
+        publish=() => new refunds.RefundIssued({ invoiceId: &id, cents: 2 })
   policies
     policy :anyone types=[:create, :read, :update, :destroy]
       authorize-if=() => true
