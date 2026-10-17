@@ -1,0 +1,25 @@
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import * as refunds from "../sales/refunds/refund-issued.mesh.mx"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    boolean :paid default=false
+    decimal :total default=10
+  actions auto=[:read]
+    create :open
+    update :pay
+      do
+        set
+          &paid=true
+        publish=() => new InvoicePaid({ invoiceId: &id, amount: &total, reference: null, method: "card", paidAt: %.now, extra: { by: "test" } })
+    update :refund
+      do
+        when=() => &paid
+          publish=async () => {
+            if (&total < 5) return new refunds.RefundIssued({ invoiceId: &id, cents: 1 })
+            return new refunds.RefundIssued({ invoiceId: &id, cents: 500 })
+          }
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true

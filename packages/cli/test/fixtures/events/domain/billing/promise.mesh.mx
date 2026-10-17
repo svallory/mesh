@@ -1,0 +1,4 @@
+event :Promise
+  datetime :at
+  string :why match=/^[a-z]+$/
+  boolean :kept

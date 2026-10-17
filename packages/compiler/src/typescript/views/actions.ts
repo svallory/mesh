@@ -494,7 +494,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const anyNeeds = [...recordPolicies, ...checks.flatMap((check) => [check.that, check.when, check.details, typeof check.message === "string" ? undefined : check.message]), ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
       if (step.kind === "set") return step.assignments.map(({ value }) => (isExpression(value) ? value : undefined));
       if (step.kind === "when") return [step.condition, ...step.steps.flatMap(expressionsOf)];
-      return step.kind === "run" ? [step.fn] : [];
+      return step.kind === "run" || step.kind === "publish" ? [step.fn] : [];
     })].some((expression) => (expression?.needs?.length ?? 0) > 0);
 
     // What the body ends up using decides what is declared before it; the statements come first and the declarations after.
@@ -700,7 +700,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           emit("}");
         } else if (step.kind === "load") {
           emit(step.members.map((member) => `$loads.add(${JSON.stringify(member.name)});`).join(" "));
-        } else if (step.after !== "write") {
+        } else if (step.kind === "run" && step.after !== "write") {
           loadFor(step.fn.needs ?? []);
           emit(`await ${call(step.fn)};`);
         }
@@ -716,6 +716,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         } else if (step.kind === "run" && step.after === "write") {
           loadFor(step.fn.needs ?? [], record);
           emit(`await ${call(step.fn, "$after")};`);
+        } else if (step.kind === "publish") {
+          // M6 PR 1: the function is built and called, so a wrong field fails at its line; the outbox write is PR 2's.
+          loadFor(step.fn.needs ?? [], record);
+          runtime.add("FrameworkError");
+          runtime.add("failJoined");
+          emit(`await ${call(step.fn, "$after")};`);
+          // Awaited, not thrown: the code after it stays reachable for the type checker, and the transaction is failed as a nested call's would be.
+          emit(`await $failJoined(layer, new $FrameworkError(${JSON.stringify(`${entity.fqn}#${action.name} cannot run in this version: its publish step writes the event to the outbox, which arrives in M6`)}));`);
         }
       }
     };
@@ -905,14 +913,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   return { ...view, globals: globalsImport(`${entityPath(entity)}.actions`, view, fixed) };
 }
 
-/** True when a `run [after=:write]` is among the steps, at any depth. */
+/** True when a `run [after=:write]` or a `publish` is among the steps, at any depth: both run after the write. */
 export function hasAfterWrite(steps: readonly Step[]): boolean {
-  return steps.some((step) => (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
+  return steps.some((step) => step.kind === "publish" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
 }
 
 /** True when something among the steps runs before the write: a `set`, a `load`, a plain `run`, or a `when` holding one. */
 function hasBeforeWrite(steps: readonly Step[]): boolean {
-  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
+  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "publish" ? false : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
 }
 
 /** True when `name` is a typed input argument of the action, which is not stored. */

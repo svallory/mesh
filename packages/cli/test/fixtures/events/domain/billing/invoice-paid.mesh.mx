@@ -1,0 +1,7 @@
+event :InvoicePaid
+  uuid :invoiceId
+  decimal :amount min=0
+  string :reference nullable min=3 max=12 match=/^INV-/
+  enum :method values=[:card, :wire]
+  datetime :paidAt
+  json :extra

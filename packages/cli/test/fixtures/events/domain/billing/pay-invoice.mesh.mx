@@ -1,0 +1,3 @@
+command :PayInvoice
+  uuid :id
+  datetime :paidAt

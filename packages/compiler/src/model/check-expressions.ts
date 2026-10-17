@@ -471,6 +471,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         steps(step.steps, entity, scope);
         // After the write, `self` is the stored record: on a create the data layer has given it its key.
       } else if (step.kind === "run") visit(step.fn, step.after === "write" ? { ...scope, fresh: undefined } : scope, false);
+      // A `publish` runs after the write, so it reads the stored record as an `after=:write` step does.
+      else if (step.kind === "publish") visit(step.fn, { ...scope, fresh: undefined }, false);
     }
   }
   /** For each create, the members it takes as member inputs. */

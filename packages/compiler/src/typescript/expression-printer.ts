@@ -90,9 +90,10 @@ export interface NamedInTypes {
 const NOTHING: NamedInTypes = { roots: [], values: [], types: [] };
 
 /** The whole function of one expression: `(s: Scope) => ...`. */
-export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING, emitted: Emitted = emittedNothing()): string {
+export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING, emitted: Emitted = emittedNothing(), returns = ""): string {
   // The parameter is `_$s` unless the printed body reads it: an unused parameter fails `noUnusedParameters`.
-  const withScope = (body: string) => `(${emitted.scope ? SCOPE : `_${SCOPE}`}: ${scopeType}) => ${body}`;
+  // `returns` is the return type a function must have (a `publish` step: `DomainEvent | Promise<DomainEvent>`).
+  const withScope = (body: string) => `(${emitted.scope ? SCOPE : `_${SCOPE}`}: ${scopeType})${returns ? `: ${returns}` : ""} => ${body}`;
   if (e.tree) return withScope(printTree(e.tree, boolean, emitted));
   const plain = e.plain!;
   let text = e.source;
@@ -120,7 +121,7 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
     // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
     // finished loading by then) and typed so that what its actions resolve with is read-only.
-    [...(plain.entities ?? []), ...inTypes.values].map((name) => {
+    [...(plain.entities ?? []), ...(plain.events ?? []), ...inTypes.values].map((name) => {
       const { value, type } = entities(name);
       return `const ${name}: ${type} = ${value}; `;
     }).join("") +

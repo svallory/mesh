@@ -1,0 +1,3 @@
+event :refundIssued
+  uuid :invoiceId
+  integer :cents min=1

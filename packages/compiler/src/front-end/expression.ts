@@ -9,7 +9,7 @@ import type {
   SourcePosition,
 } from "@meshfw/model";
 import type { At, SyntaxNode } from "./tree.ts";
-import type { Resolution, WrittenReference } from "./references.ts";
+import { writtenReference, type Resolution, type WrittenReference } from "./references.ts";
 
 /**
  * Babel node to Mesh's expression tree (M4, ADR-0056). The only code that reads the Babel
@@ -42,9 +42,25 @@ export interface ConvertContext {
   duplicates?: ReadonlySet<string>;
   /** The names the file imports `Mesh` under, from "meshfw": `Mesh`, or its alias. */
   mesh?: ReadonlySet<string>;
+  /**
+   * The names the file's imports bind to an event file: a named import's local, or a namespace import's alias (a function
+   * names `InvoicePaid`, or `billing.InvoicePaid` through the alias `billing`). Never in `entities`.
+   */
+  events?: ReadonlySet<string>;
+  /** The same for command files. A function may name a command (`new PayInvoice({ ... })`); only an event may be published. */
+  commands?: ReadonlySet<string>;
+  /** Resolves `billing.InvoicePaid` or `InvoicePaid` as an event, as `entity=` resolves an entity (`resolveReference`; `MESH_PUBLISH` is its code). */
+  eventReference?: (written: WrittenReference) => Resolution;
   report: (diagnostic: Diagnostic) => void;
   /** A `run` step is plain by form. */
   runStep?: boolean;
+  /** A `publish` step is plain by form, and its value is checked: what it returns must be an event of the file (`MESH_PUBLISH`). */
+  publishStep?: boolean;
+  /**
+   * Identifiers a `publish` function names as the callee of a `new` it returns: `checkPublished` reports a name that is no
+   * event as `MESH_PUBLISH` with the suggestion `entity=` gives, so the free-variable error does not report it too.
+   */
+  exemptFree?: ReadonlySet<unknown>;
 }
 
 const ROOTS = new Set(["self", "input", "actor", "context", "before"]);
@@ -457,6 +473,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       // A scope name is the root wherever no scope of the function binds it, so an import of that name is not named here.
       if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
+        if (ctx.events?.has(n.name!) || ctx.commands?.has(n.name!)) names.events.add(n.name!);
         if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
         // `billing.Invoice`: what the namespace import's file declares, resolved as `entity=` resolves it.
         // A computed member written as a string (`billing["Invoice"]`) names the same member.
@@ -472,7 +489,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         // The global `structuredClone`, unless the file imports something under its name.
         if (n.name === "structuredClone" && !ctx.imported.has(n.name) && !entities.has(n.name)) names.structuredClone = true;
       }
-      if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined) {
+      if (!property && !objectKey && !label && !known(n.name!) && n.start !== undefined && !ctx.exemptFree?.has(n)) {
         ctx.report({
           severity: "error",
           code: "MESH_EXPR_FREE_VARIABLE",
@@ -482,6 +499,19 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         });
       }
       return;
+    }
+    // `new InvoicePaid(...)` in a function that is no `publish` step raises nothing: only a `publish` step raises an event.
+    if (n.type === "NewExpression" && !ctx.publishStep) {
+      const written = writtenReference(n.callee as N);
+      const rootName = written?.qualifier?.name ?? written?.name;
+      if (written && rootName !== undefined && ctx.events?.has(rootName) && !scope.has(rootName) && !SCOPE_NAMES.has(rootName) && ctx.eventReference?.(written).ok !== false)
+        ctx.report({
+          severity: "warning",
+          code: "MESH_EVENT_NOT_PUBLISHED",
+          message: `\`new ${referenceTextOf(written)}(...)\` constructs an event here, and constructing one raises nothing: only a \`publish\` step raises an event`,
+          position: ctx.at(start(n)),
+          fix: `raise it with a \`publish\` step in the action's \`do\`: \`publish=() => new ${referenceTextOf(written)}({ ... })\``,
+        });
     }
     // One of Mesh's functions called with the wrong number of arguments is an error, translated or plain (N3 of the M8a review).
     const callee = n.type === "CallExpression" || n.type === "OptionalCallExpression" ? n.callee as N : undefined;
@@ -531,7 +561,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
  * node has no types (MX strips them), so a helper named only in a type is left to the TypeScript back end (`typeNames` in
  * `typescript/type-names.ts`).
  */
-interface Names { entities: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true }
+interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -892,12 +922,104 @@ export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
   return own((fn as N).body) ? "await" : undefined;
 }
 
+/** The identifier a callee starts with: `InvoicePaid`, or `billing` in `billing.InvoicePaid`. */
+const rootIdentifier = (callee: N | undefined): N | undefined => {
+  let at = unwrapped(callee);
+  while (at && (at.type === "MemberExpression" || at.type === "OptionalMemberExpression")) at = unwrapped(at.object as N);
+  return at?.type === "Identifier" ? at : undefined;
+};
+const referenceTextOf = (written: WrittenReference): string => (written.qualifier ? `${written.qualifier.name}.${written.name}` : written.name);
+/** The node a wrapper leaves around an expression: parentheses and the type assertions MX strips from its own tree. */
+const unwrapped = (n: N | undefined): N | undefined => {
+  let at = n;
+  while (at && CHAIN_WRAPPERS.has(at.type)) at = at.expression as N;
+  return at;
+};
+/**
+ * The `new` expressions a `publish` function can return, where the build can see one (`notes/spec/events-and-commands.md`,
+ * "Publishing"): an expression body, each `return` of a block body (not one of a function nested in it), and each branch
+ * of a conditional. A helper's result, a variable and anything else are checked at run time only.
+ */
+function returnedNews(fn: N): N[] {
+  const found: N[] = [];
+  const value = (n: N | undefined): void => {
+    const at = unwrapped(n);
+    if (!at) return;
+    if (at.type === "NewExpression") found.push(at);
+    else if (at.type === "ConditionalExpression") { value(at.consequent as N); value(at.alternate as N); }
+  };
+  const returns = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { node.forEach(returns); return; }
+    const n = node as N;
+    if (typeof n.type === "string" && n.type.startsWith("TS")) return;
+    if (FUNCTION_NODES.has(n.type)) return;
+    if (n.type === "ReturnStatement") { value(n.argument as N | undefined); return; }
+    for (const [key, child] of Object.entries(n)) if (key !== "loc" && key !== "extra" && typeof child === "object") returns(child);
+  };
+  const body = fn.body as N;
+  if (body?.type === "BlockStatement") returns(body.body);
+  else value(body);
+  return found;
+}
+/**
+ * `MESH_PUBLISH` for a `new` a `publish` function returns that names no event the file imports: a command, an entity, a
+ * helper, a local, anything but a declared event. (The fourth case of the spec, an event the action's owner does not list,
+ * is vacuous until owner sections exist, which wait for aggregates.) A name no scope binds and no import gives is a free
+ * variable, which is reported already.
+ */
+function checkPublished(fn: N, ctx: ConvertContext): void {
+  const bound = bindings(fn);
+  for (const made of returnedNews(fn)) {
+    const callee = unwrapped(made.callee as N);
+    const written = callee ? writtenReference(callee) : undefined;
+    const root = written?.qualifier?.name ?? written?.name;
+    if (!written || root === undefined) {
+      ctx.report({
+        severity: "error",
+        code: "MESH_PUBLISH",
+        message: "a `publish` function returns `new` of an event the file imports, as in `new InvoicePaid({ ... })`: this `new` names no event",
+        position: ctx.at(start((callee ?? made) as N)),
+        fix: "write `new` followed by the imported event's name",
+      });
+      continue;
+    }
+    if (ctx.duplicates?.has(root)) continue;
+    // A binding of the function hides the import: that name is no event.
+    if (bound.has(root)) {
+      ctx.report({
+        severity: "error",
+        code: "MESH_PUBLISH",
+        message: `\`${referenceTextOf(written)}\` is a variable of this function, not an imported event: a \`publish\` function returns \`new\` of an event the file imports`,
+        position: ctx.at(start(callee as N)),
+        fix: "name the imported event",
+      });
+      continue;
+    }
+    const resolved = ctx.eventReference?.(written);
+    if (ctx.commands?.has(root) && !(resolved?.ok)) {
+      ctx.report({
+        severity: "error",
+        code: "MESH_PUBLISH",
+        message: `\`${referenceTextOf(written)}\` is a command, not an event: a \`publish\` function returns \`new\` of an event the file imports, and a command asks for a write instead of recording a fact`,
+        position: ctx.at(start(callee as N)),
+        fix: "publish an event that records what the action did",
+      });
+      continue;
+    }
+    if (resolved && !resolved.ok && "code" in resolved)
+      ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
+  }
+}
+
 export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] } {
   const f = fn as N;
   const called = new Set<string>();
-  const names: Names = { entities: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
+  const names: Names = { entities: new Set(), events: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
+  if (ctx.publishStep) ctx = { ...ctx, exemptFree: new Set(returnedNews(f).map((made) => rootIdentifier(unwrapped(made.callee as N)))) };
   const free = freeVariables(f, ctx, called, names);
   removedScopeNames(f, ctx);
+  if (ctx.publishStep) checkPublished(f, ctx);
   // `%.now` and `%.today` in code Mesh does not translate read the same instant as a translated expression, and
   // `Mesh.isSystem(context)` is the same function: the expressions file imports `Mesh` under each name the file gives it
   // that a function reads. The demotion keeps them for a tree the checker demotes. The record `&name` reads and
@@ -917,6 +1039,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     ...(called.has("privileged") ? { privileged: true as const } : {}),
     ...(called.has("checkPolicies") || called.has("can") ? { asks: true as const } : {}),
     ...(names.entities.size ? { entities: [...names.entities].sort() } : {}),
+    ...(names.events.size ? { events: [...names.events].sort() } : {}),
     ...(names.acts ? { acts: true as const } : {}),
     ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}),
     ...(names.structuredClone ? { structuredClone: true as const } : {}),
@@ -951,6 +1074,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   };
   try {
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);
+    if (ctx.publishStep) throw new Plain("publish-step", "a publish step is plain code", f);
     // A function that reads through `Mesh.privileged` or names an entity is plain code as a whole, whatever else it does: what
     // it reads is not an expression over the record, so its `await` or its comparisons are no reason to warn.
     if (called.has("privileged")) throw new Plain("uses-privileged", "reads through `Mesh.privileged`", f);
