@@ -27,12 +27,12 @@ declare module "@meshfw/runtime" {
   };
 
   /** The `events` key of `mesh.config.ts`, and the `events` option of `bind`. */
-  export type EventsConfig = {
+  export interface EventsConfig {
     /** Loads the events module at run time; the build never imports it. */
     load?: () => Promise<{ metadata?: MetadataFunction<never> }>;
     /** How long the outbox keeps a row: until every reader has passed it (the default), or always. */
     keep?: "until-delivered" | "all";
-  };
+  }
 
   /** What the project's `metadata` function returns for each event; a project declares its fields by augmenting this interface. */
   export interface EventMetadata {}
@@ -54,10 +54,12 @@ declare module "@meshfw/runtime" {
   }
 
   /** The events module's `metadata` function: once per publish, in the transaction; returns plain JSON. */
-  export type MetadataFunction<E extends object = object> = (args: {
-    readonly event: Omit<EventRecord<E>, "position" | "metadata" | "causedBy">;
-    readonly context: Readonly<ActionContext>;
-  }) => EventMetadata | Promise<EventMetadata>;
+  export interface MetadataFunction<E extends object = object> {
+    (args: {
+      readonly event: Omit<EventRecord<E>, "position" | "metadata" | "causedBy">;
+      readonly context: Readonly<ActionContext>;
+    }): EventMetadata | Promise<EventMetadata>;
+  }
 
   /** The query of `readEvents`: every field optional. */
   export interface ReadEventsQuery {
@@ -601,7 +603,10 @@ declare module "#mesh" {
   export type { EventMetadata, ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
   /** The events the running transaction has published so far, in order; outside a transaction it throws. */
   export function published(): readonly EventRecord[];
-  /** A page of the events the outbox keeps, after `query.after`; inside a transaction it throws. */
+  /**
+   * A page of the events the outbox keeps, after `query.after`; inside a transaction it throws. Exported in every
+   * project that declares an event until the event bus lands; from then on, only when the configured bus declares `replay`.
+   */
   export function readEvents(query?: ReadEventsQuery): Promise<ReadEventsPage<DomainEvent>>;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`, keyed by table name as stored (`table=` included). */

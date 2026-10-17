@@ -125,7 +125,7 @@ await disconnect();
 
 ## Reading the outbox
 
-`readEvents(query)`, from `#mesh`, reads a page of the events the outbox keeps, committed ones only, on the binding in scope or the connected one. It resolves with `{ events, cursor }`: each event an `EventRecord` whose `payload` is an instance of its class (dates are `Date` again), and `cursor`, the position to pass as `after` next.
+`readEvents(query)`, from `#mesh`, reads a page of the events the outbox keeps, committed ones only, on the binding in scope or the connected one. Until the event bus exists, `#mesh` exports it in every project that declares an event; once it does, only when the configured bus can replay events (its `replay` capability). It resolves with `{ events, cursor }`: each event an `EventRecord` whose `payload` is an instance of its class (dates are `Date` again), and `cursor`, the position to pass as `after` next.
 
 | Field of `query` | Default | What it does |
 |:--|:--|:--|
