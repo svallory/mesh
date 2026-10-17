@@ -21,9 +21,19 @@ The pages under Docs describe what Mesh will be: no open questions, no milestone
 - **Whether a nearer `concepts/` folder may shadow a project-wide concept.** Nothing is global in an entity file: a file sees only its own declarations and what it imports, and concepts are the one exception, shared across the project. Not decided: whether a `concepts/` folder nearer to a file may shadow a shared concept of the same name, as the nearest-wins walk of tag discovery ([ADR-0085](decisions/0085-tag-discovery-for-dialect-tags.md)) would allow, or whether a concept's name is unique across the project.
 - **What a denied write reports when the action runs as one statement.** When a write action runs as one SQL statement, whether a caller denied by a policy receives not found or forbidden, and whether a re-read tells the two apart, is the choice between the options of [ADR-0046](decisions/0046-denied-atomic-write-outcome.md). The build follows option A today: no extra read, and a denied caller learns nothing about the row.
 
+## Open tooling findings
+
+These are tooling work, not language questions. They keep the numbers they had among the findings below.
+
+| # | Finding |
+|:--|:--|
+| 7 | Adapter commands wrap drizzle-kit, which is a development dependency, so a user who skips it meets a confusing failure at `mesh db push`. |
+| 10 | No `mesh` watch mode, so every edit needs a manual `mesh build`. MX's own tools do check `.mesh.mx` files as you type (the language server and the TypeScript plugin; `mx-tsc` is not released) and report Mesh's `MESH_*` codes, as [the MX contract](in-depth/mx-integration.md#37-mxs-tools-for-meshmx-files) says; only the build step is manual. |
+| 12 | Whether committed migrations are covered by `mesh build --check` is not stated, so a hand-edited migration and a stale `.mesh/schema.ts` can drift. The Docs pages do not claim the guard covers `migrations/`. See [generated code and the guard](in-depth/generated-code-and-guard.md). |
+
 ## DX findings
 
-The findings below came from writing the Docs pages against the design. Each names what a user would have had to work out alone, and the record it touches. Only the settled findings are kept here; the numbers are stable, so the gaps are findings that are no longer open.
+The findings below came from writing the Docs pages against the design. Each names what a user would have had to work out alone, and the record it touches. Only the settled findings are kept here; the numbers are stable, and the missing numbers were settled or made obsolete by later rulings.
 
 | # | Finding | Status |
 |:--|:--|:--|
@@ -60,7 +70,7 @@ Measured on `@mxlang/data` alpha.5 with `structural: "reject"`, before the pin m
 
 A declaration name and atom value still have separate colours (`ts-name`, `ts-atom`). A check label and declaration name still share a capture. The `mesh` host package remains necessary for `.mesh.mx` tooling, and its target design is `builtOn: "tree"`. The target is static: no conditional declarations, loops, `let`, `const` or `define`.
 
-**Planned, not v1.** (Reusable step files and the `after-commit` step are no longer planned: [ADR-0082](./decisions/0082-named-checks-and-mixins.md), [ADR-0079](./decisions/0079-commands-events-and-the-outbox.md).) Not in the Docs pages, because a reader would plan on them: `lock="version"` and `relate=…` steps; a raw-SQL escape hatch like Ash's `fragment`; and `bypass` on a policy, which the operator removed because it fails open and is order-dependent (write `isStaff(actor) || …` with a helper instead). Two more items the syntax reference does not settle and the docs therefore do not show: an `increment` step (`set` with an expression covers it), and a cap declared on the entity (a read declares `filter` and `sort`; `limit` and `offset` arrive in the caller's input).
+**Planned, not v1.** (Reusable step files and the `after-commit` step are no longer planned: [ADR-0082](./decisions/0082-named-checks-and-mixins.md), [ADR-0079](./decisions/0079-commands-events-and-the-outbox.md).) Not in the Docs pages, because a reader would plan on them: `lock="version"` and `relate=…` steps; a raw-SQL escape hatch like Ash's `fragment`; and `bypass` on a policy, which the operator removed because it fails open and is order-dependent (write `isStaff(actor) || …` with a helper instead). Two more items the docs do not show: a cap declared on the entity is planned (a read declares `filter` and `sort`; `limit` and `offset` arrive in the caller's input); an `increment` step is not planned: `set` with an expression covers it.
 
 **Static by ruling, not just by parser limitation.** Declaration and member names are written out; entities use explicit imports. A condition is `when=` on its policy or check, or part of the expression. The future evaluated `data` target is not Mesh's target (MX decision 187 addendum 2).
 

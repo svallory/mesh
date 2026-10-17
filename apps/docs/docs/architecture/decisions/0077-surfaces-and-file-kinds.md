@@ -36,9 +36,11 @@ The [study](../research/domain-concepts.md) (sections 4 and 6) proposed one file
 
 An illustration of the shape (only the lines named above are ruled; the other options are the study's proposals, and each adapter contributes its own):
 
-```mx "src/surfaces/admin.mesh.mx (illustration)"
-import { Task } from "../domain/work/task.mesh.mx"
-import { TaskCompleted } from "../domain/work/events/task-completed.mesh.mx"
+Updated 2026-10-17; the earlier form was `publishes events=[:completed]`.
+
+```mx "src/surfaces/admin/admin.mesh.mx (illustration)"
+import { Task } from "../../domain/work/task.mesh.mx"
+import { TaskCompleted } from "../../domain/work/events/task-completed.mesh.mx"
 
 surface :admin
   expose :tasks entity=Task label="Tasks" fields=[:title, :state]
