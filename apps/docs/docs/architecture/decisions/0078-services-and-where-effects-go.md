@@ -7,6 +7,8 @@ description: "Decision record 0078: where an effect across entities goes, where 
 
 ## Status
 
+> **Amendment, 2026-10-17 (the events-spec review).** Core has two handler kinds, `process` and `listen`; `project` belongs to the event-sourcing extension ([ADR-0079](./0079-commands-events-and-the-outbox.md), amended). Where the amendment below says the third kind, read the second.
+
 > **Amendment, 2026-10-17.** Both open items are decided. DOM-08 is ruled: the third handler kind is `listen`, so the handler kinds of [ADR-0079](./0079-commands-events-and-the-outbox.md) cover publish-subscribe. DOM-09 is decided: a service's shape is decided after 1.0, and enforcing `uses` comes with it. The "Open" section and the text that calls these items open are kept as history.
 
 Accepted, with two Open items (DOM-08 and DOM-09 below). Amends [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) (what `actions` in an entity file is for).

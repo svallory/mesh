@@ -284,7 +284,7 @@ Three things meet in `load`, and they are not one thing:
 
 ## Errors
 
-Every action throws on failure. All five classes come from `@meshfw/runtime`, extend `MeshError` and carry a `code` and a `retryable` boolean, which says whether the same call may succeed if repeated unchanged; it is set on each error, and the class gives the default. A program can switch on the code without importing the class.
+Every action throws on failure. All five classes come from `@meshfw/runtime`, extend `MeshError` and carry a `code` and a `retryable` boolean, which says whether the same call may succeed if repeated unchanged; it is set on each error, and the class gives the default (`retryable` is not built: M6 PR 2). A program can switch on the code without importing the class.
 
 | Class | `code` | Default `retryable` | Thrown when |
 |:--|:--|:--|:--|
