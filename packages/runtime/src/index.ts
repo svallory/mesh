@@ -20,7 +20,7 @@ export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow } from "./data-layer.ts";
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
 export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";

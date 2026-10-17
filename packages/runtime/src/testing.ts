@@ -4,6 +4,7 @@ import type { CapabilityManifest } from "./capabilities.ts";
 import { FrameworkError } from "./errors.ts";
 
 export type { DataLayerFixtureV1 } from "./conformance-v1.ts";
+export { outboxConformance, outboxRow, type OutboxFixture } from "./outbox-conformance.ts";
 
 function gate(): { promise: Promise<void>; release: () => void } {
   let release!: () => void;

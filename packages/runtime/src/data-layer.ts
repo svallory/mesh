@@ -106,6 +106,73 @@ export interface DataOperations {
   max(table: TableHandle, attribute: string, filter?: Filter): Promise<Exclude<Scalar, boolean> | null>;
   /** How many matching rows have a value (not null) in `attribute`. Requires `aggregates`. */
   count(table: TableHandle, attribute: string, filter?: Filter): Promise<number>;
+  /** The outbox append; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
+  appendEvent?: OutboxOperations["appendEvent"];
+  /** The outbox delete; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
+  deleteOutboxThrough?: OutboxOperations["deleteOutboxThrough"];
+}
+
+/**
+ * One row of `mesh_outbox`: an event record as stored. Rows are never updated. `key`, `metadata` and `payload` are JSON
+ * (the payload is the event instance's fields; a date field is stored as its ISO text and read back as a `Date` by
+ * core, which knows the declaration). `occurredAt` is the transaction's instant at the `publish`.
+ */
+export interface OutboxRow {
+  /** Order in the outbox, assigned by the adapter at the append, from 1, never reused (even after a delete). */
+  readonly position: number;
+  /** A time-ordered UUID: the event's identity. */
+  readonly id: string;
+  /** The event's FQN, `billing.InvoicePaid`. */
+  readonly name: string;
+  /** The publishing entity's FQN. */
+  readonly entity: string;
+  /** The publishing action's name. */
+  readonly action: string;
+  /** The publishing record's key. */
+  readonly key: Key;
+  /** The id of the event whose handler was running, or null. */
+  readonly causedBy: string | null;
+  /** What the project's metadata function returned (`{}` without one). */
+  readonly metadata: unknown;
+  readonly occurredAt: Date;
+  /** The event's fields as JSON. */
+  readonly payload: unknown;
+}
+
+/** What `appendEvent` takes: a row without its position, which the adapter assigns. */
+export type OutboxAppend = Omit<OutboxRow, "position">;
+
+/** One read of the outbox: its rows and both positions, taken from one state of the database. */
+export interface OutboxPage {
+  /** Committed rows with `position > after`, in order, at most `limit`. */
+  readonly rows: readonly OutboxRow[];
+  /** The highest deleted position, from `mesh_outbox_state`; 0 before the first delete. */
+  readonly deletedThrough: number;
+  /** The highest position ever assigned; 0 before the first append. */
+  readonly highest: number;
+}
+
+/**
+ * The three outbox operations, mandatory once a project declares an event (spec, Events and commands, "The outbox").
+ * `appendEvent` and `deleteOutboxThrough` are members of `DataOperations`, so they run in the caller's transaction;
+ * `readOutbox` is a member of `DataLayer`, since it runs outside any transaction. No reader calls `readOutbox`
+ * directly: core's `rows(after, limit)` checks its answer.
+ */
+export interface OutboxOperations {
+  /** Insert one row in the running transaction and return its position. */
+  appendEvent(row: OutboxAppend): Promise<number>;
+  /**
+   * The committed rows after `after`, in an order that never skips (once position p was returned, no row that commits
+   * later is below p), with both positions, in one statement, outside any transaction. Inside a transaction it is
+   * refused with a `FrameworkError`: a transaction's own events come from `published()`.
+   */
+  readOutbox(after: number, limit: number): Promise<OutboxPage>;
+  /**
+   * In the running transaction, delete every row at or below `position` and record it as the deleted-through
+   * position; returns the rows deleted. A position at or below the recorded one deletes nothing and returns 0; one
+   * above the highest position ever assigned is a `FrameworkError`.
+   */
+  deleteOutboxThrough(position: number): Promise<number>;
 }
 
 /** A bound data adapter; handlers always open a transaction before operations. */
@@ -145,6 +212,8 @@ export interface DataLayer {
    * waits for nothing, and it answers for the caller's async context only, never from layer-wide state.
    */
   refuseIfFailed(): boolean;
+  /** The outbox read; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
+  readOutbox?: OutboxOperations["readOutbox"];
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

@@ -1,13 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Database } from "bun:sqlite";
-import { count, max, sql } from "drizzle-orm";
+import { count, getTableName, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
-import { DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
+import { DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle } from "@meshfw/runtime";
+import { CORE_TABLES, appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
-export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill"]);
+export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions"]);
 
 // A type alias, not an interface, so it satisfies `DataAdapter.options` (an index signature).
 export type SQLiteOptions = { readonly file: string };
@@ -18,6 +19,11 @@ export type SQLiteOptions = { readonly file: string };
  * first transaction (or `createSchema`).
  */
 export interface SQLiteLayer extends DataAdapter, DataLayer {
+  /**
+   * The outbox read: one statement, run as one job in this layer's queue after any running transaction, without
+   * `BEGIN IMMEDIATE`, so it takes no write lock and sees committed rows only. Inside a transaction it is refused.
+   */
+  readOutbox: OutboxOperations["readOutbox"];
   readonly kind: "data-adapter";
   readonly name: "sqlite";
   readonly build: "@meshfw/data-sqlite/build";
@@ -48,6 +54,14 @@ export interface SQLiteLayer extends DataAdapter, DataLayer {
 
 export function sqliteTable(handle: TableHandle): SQLiteTable {
   return drizzleTable(handle, SQLiteTable, "SQLite");
+}
+
+/** An entity's table; the outbox's tables are core's and reached through the outbox operations only. */
+function entityTable(handle: TableHandle): SQLiteTable {
+  const table = sqliteTable(handle);
+  const name = getTableName(table);
+  if (CORE_TABLES.has(name)) throw new FrameworkError(`The table ${name} is Mesh's own: the outbox is written by publish and read through rows() and readEvents, never through data operations`);
+  return table;
 }
 
 /** The running transaction: `operations` is set once BEGIN succeeded, and `active` ends with the outer call. */
@@ -220,6 +234,14 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
   const layer: SQLiteLayer = {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
     transaction(run) { return transactionWith(run, undefined); },
+    readOutbox(after, limit) {
+      // A statement sent on this connection while a transaction is open would see that transaction's uncommitted rows;
+      // inside one, the read is refused rather than queued behind the transaction that is waiting for it.
+      if (context.getStore()?.token.active) {
+        return Promise.reject(new FrameworkError("The outbox cannot be read inside a transaction: the read sees committed rows only, and a transaction's own events come from published() (from #mesh)"));
+      }
+      return state.exclusive(async (database) => busy(() => readOutbox(connection!, after, limit)));
+    },
     refuseIfFailed() {
       // The same test as the join in `transaction`: true exactly when a call made here would join.
       const token = context.getStore()?.token;
@@ -270,8 +292,9 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       try { await retryWhileBusy(configured.file, deadline, () => database.run(sql.raw("BEGIN IMMEDIATE"))); }
       catch (cause) { throw connectionError("run BEGIN IMMEDIATE", configured.file, cause); }
       let active = true;
-      const operations = drizzleOperations({
-        table: sqliteTable,
+      const guard = () => { if (!active) throw new FrameworkError("Transaction operations are no longer active"); };
+      const operations: DataOperations = { ...drizzleOperations({
+        table: entityTable,
         insert: (table, row) => busy(() => database.insert(table).values(row).returning().get()!),
         select: (table, options) => busy(() => {
           let query = database.select().from(table).$dynamic();
@@ -288,7 +311,10 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
         }),
         update: (table, condition, changes) => busy(() => database.update(table).set(changes).where(condition).returning().all()),
         delete: (table, condition) => busy(() => database.delete(table).where(condition).returning().all()),
-      }, () => { if (!active) throw new FrameworkError("Transaction operations are no longer active"); });
+      }, guard),
+        appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
+        deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
+      };
       token.operations = operations;
       try {
         const result = await run(operations);

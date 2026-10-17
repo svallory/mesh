@@ -50,7 +50,7 @@ describe("the capability manifest", () => {
   test("is static data on the descriptor and the entry point, readable without opening a connection", () => {
     const layer = sqlite({ file: join(tmpdir(), "mesh-never-created.db") });
     expect(layer.capabilities).toBe(capabilities);
-    expect(capabilities).toEqual({ adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] });
+    expect(capabilities).toEqual({ adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill", "gapless-positions"] });
     expect(Object.isFrozen(capabilities)).toBe(true);
     for (const name of capabilities.capabilities) expect(CAPABILITIES).toContain(name);
   });
