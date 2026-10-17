@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { DatabaseBusyError } from "@meshfw/runtime";
+import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { DatabaseBusyError, FrameworkError } from "@meshfw/runtime";
 import { createSchema, sqlite } from "../src/index.ts";
 import { sqliteState, sqliteWith } from "../src/layer.ts";
 
@@ -74,9 +74,10 @@ describe("waiting for a lock", () => {
 
   test("a lock held past the wait fails with MESH_DATABASE_BUSY, and the layer works once the lock is gone", async () => {
     const layer = sqliteWith({ file }, { waitMs: 300 });
+    let lock: ReturnType<typeof holder> | undefined;
     try {
       await createSchema(layer, { table });
-      const lock = holder(file);
+      lock = holder(file);
       const started = performance.now();
       const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
       expect(error).toBeInstanceOf(DatabaseBusyError);
@@ -88,7 +89,7 @@ describe("waiting for a lock", () => {
       expect(performance.now() - started).toBeLessThan(1500);
       lock.release();
       await layer.transaction(async (tx) => { await tx.insert(table, { id: "late", n: 1 }); });
-    } finally { await layer.close(); }
+    } finally { lock?.release(); await layer.close(); }
   });
 
   test("the default wait is 5 s", async () => {
@@ -131,22 +132,44 @@ describe("waiting for a lock", () => {
     } finally { await layer.close(); }
   });
 
-  test("two processes writing one file at once both commit every row", async () => {
+  test("two processes writing one file at once both commit every row, and one waits for the other's lock", async () => {
     const layer = sqlite({ file });
+    const count = 60;
+    const worker = Bun.spawn([process.execPath, join(import.meta.dir, "busy-worker.ts"), file, "child", String(count)], { stdin: "pipe", stdout: "pipe", stderr: "inherit", env: { ...process.env } });
     try {
       await createSchema(layer, { table });
-      const worker = Bun.spawn([process.execPath, join(import.meta.dir, "busy-worker.ts"), file, "child", "40"], { stdout: "inherit", stderr: "inherit", env: { ...process.env } });
-      for (let i = 0; i < 40; i++) {
+      // The child has opened its layer before either side writes, so the two write loops overlap.
+      const reader = worker.stdout.getReader();
+      let seen = "";
+      const until = async (word: string) => {
+        while (!seen.includes(word)) {
+          const { done, value } = await reader.read();
+          if (done) throw new Error(`the worker ended before ${word}: ${seen}`);
+          seen += new TextDecoder().decode(value);
+        }
+      };
+      await until("READY");
+      worker.stdin.write("GO\n");
+      await worker.stdin.flush();
+      // The child's first transaction holds the write lock for 300 ms and says so from inside it.
+      await until("LOCKED");
+      let longest = 0;
+      for (let i = 0; i < count; i++) {
+        const began = performance.now();
         await layer.transaction(async (tx) => {
           await tx.insert(table, { id: `parent-${i}`, n: i });
           await sleep(5);
         });
+        longest = Math.max(longest, performance.now() - began);
       }
       expect(await worker.exited).toBe(0);
       const rows = await layer.transaction(async (tx) => tx.select(table));
-      expect(rows).toHaveLength(80);
-      expect(new Set(rows.map((row) => row.id)).size).toBe(80);
-    } finally { await layer.close(); }
+      expect(rows).toHaveLength(count * 2);
+      expect(new Set(rows.map((row) => row.id)).size).toBe(count * 2);
+      // The parent's first write met the child's 300 ms lock and waited it out (SQLite does not queue fairly, so the later
+      // commits need not alternate).
+      expect(longest).toBeGreaterThan(150);
+    } finally { worker.kill(); await layer.close(); }
   }, 60_000);
 });
 
@@ -212,6 +235,8 @@ describe("WAL", () => {
     const layer = sqliteWith({ file }, { waitMs: 300 });
     try {
       const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      // Still in the rollback journal: the failure came from the switch, never from BEGIN.
+      expect(mode(file)).toBe("delete");
       expect(error).toBeInstanceOf(DatabaseBusyError);
       expect((error as DatabaseBusyError).file).toBe(file);
       expect((error as DatabaseBusyError).waitedMs).toBeGreaterThanOrEqual(300);
@@ -225,9 +250,10 @@ describe("WAL", () => {
 describe("a busy statement that is not retried", () => {
   test("schema preparation that meets a lock fails at once with MESH_DATABASE_BUSY, never the raw error", async () => {
     const layer = sqliteWith({ file }, { waitMs: 3000 });
+    let lock: ReturnType<typeof holder> | undefined;
     try {
       await createSchema(layer, { table });
-      const lock = holder(file);
+      lock = holder(file);
       const started = performance.now();
       const error = await createSchema(layer, { table, other }).catch((cause: unknown) => cause);
       lock.release();
@@ -236,6 +262,70 @@ describe("a busy statement that is not retried", () => {
       expect((error as DatabaseBusyError).code).toBe("MESH_DATABASE_BUSY");
       expect(performance.now() - started).toBeLessThan(1500);
       await createSchema(layer, { table, other });
+    } finally { lock?.release(); await layer.close(); }
+  });
+});
+
+describe("one deadline for a call", () => {
+  test("the WAL switch and BEGIN IMMEDIATE share the wait: the total stays within it", async () => {
+    const old = new Database(file);
+    old.run("CREATE TABLE records (id text PRIMARY KEY NOT NULL, n integer NOT NULL)");
+    old.close();
+    const first = holder(file);
+    let second: ReturnType<typeof holder> | undefined;
+    // After 250 ms the first holder commits and its connection moves the file to WAL and takes the lock again, in one
+    // tick: the layer's switch then succeeds (the file is WAL already) and its BEGIN meets a lock that does not go.
+    const handover = setTimeout(() => {
+      first.release();
+      const next = new Database(file);
+      next.query("PRAGMA journal_mode=WAL").get();
+      next.run("BEGIN IMMEDIATE");
+      second = { release() { next.run("COMMIT"); next.close(); } };
+    }, 250);
+    const layer = sqliteWith({ file }, { waitMs: 500 });
+    try {
+      const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(DatabaseBusyError);
+      const waited = (error as DatabaseBusyError).waitedMs;
+      expect(waited).toBeGreaterThanOrEqual(500);
+      // Two clocks would have waited about 250 + 500 ms.
+      expect(waited).toBeLessThan(650);
+    } finally { clearTimeout(handover); first.release(); second?.release(); await layer.close(); }
+  });
+});
+
+describe("busy errors inside a transaction", () => {
+  test("a COMMIT that meets a lock is reported as MESH_DATABASE_BUSY, and the transaction rolls back", async () => {
+    const layer = sqlite({ file });
+    try {
+      await createSchema(layer, { table });
+      const db = await sqliteState(layer).exclusive(async (db) => db);
+      const original = db.run.bind(db);
+      const spy = spyOn(db, "run").mockImplementation((statement) => {
+        const text = new SQLiteSyncDialect().sqlToQuery(typeof statement === "string" ? sql.raw(statement) : statement.getSQL()).sql;
+        if (text === "COMMIT") throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+        return original(statement);
+      });
+      let error: unknown;
+      try { error = await layer.transaction(async (tx) => { await tx.insert(table, { id: "c", n: 1 }); }).catch((cause: unknown) => cause); }
+      finally { spy.mockRestore(); db.run = original; }
+      expect(error).toBeInstanceOf(DatabaseBusyError);
+      expect((error as DatabaseBusyError).waitedMs).toBe(0);
+      expect((error as DatabaseBusyError).cause).toMatchObject({ code: "SQLITE_BUSY" });
+      await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([]));
+    } finally { await layer.close(); }
+  });
+
+  test("a Mesh error whose cause is a busy error passes through unchanged; a raw busy error from a callback is reported", async () => {
+    const layer = sqlite({ file });
+    try {
+      await createSchema(layer, { table });
+      const busy = Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+      const mine = new FrameworkError("my own message", { cause: busy });
+      expect(await layer.transaction(async () => { throw mine; }).catch((cause: unknown) => cause)).toBe(mine);
+      const raw = await layer.transaction(async () => { throw busy; }).catch((cause: unknown) => cause);
+      expect(raw).toBeInstanceOf(DatabaseBusyError);
+      expect((raw as DatabaseBusyError).cause).toBe(busy);
     } finally { await layer.close(); }
   });
 });
