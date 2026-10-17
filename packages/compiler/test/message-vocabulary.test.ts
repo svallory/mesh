@@ -149,7 +149,7 @@ describe("MX's built-in tags are spelled as written, with no MX-syntax example (
   test.each([
     ["a bare `const`", "const x = 1\n", "MESH_INVALID_CONST", "`const` without a variable name"],
     ["a `const` under `entity`", "entity :T\n  const x = 1\n", "MESH_INVALID_CONST", "`const` without a variable name"],
-    ["`if` with arguments", "entity :T\n  if(true)\n    attributes\n", "MESH_UNSUPPORTED_CONSTRUCT", "Tag does not support arguments. Write the condition as a value option instead."],
+    ["`if` with arguments", "entity :T\n  if(true)\n    attributes\n", "MESH_STRUCTURAL_CONSTRUCT", "Mesh files are static, so they do not evaluate `if`"],
     ["`define`", "entity :T\n  define :x\n", "MESH_NOT_IN_ENTITY_FILE", "`define` is a render-time macro: Mesh files are static, so they cannot expand it; inline the content at each use"],
     ["`try` under `entity`", "entity :T\n  try\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `try` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `actions`, `policies`"],
     ["`return` under `entity`", "entity :T\n  return=1\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `return` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `actions`, `policies`"],
@@ -161,7 +161,27 @@ describe("MX's built-in tags are spelled as written, with no MX-syntax example (
   test("`else` names the tag bare", () => {
     const [d] = diagnostics("entity :T\n  else\n");
     expect(d![0]).toBe("MESH_NOT_IN_ENTITY_FILE");
-    expect(d![1]).toStartWith("`else` cannot name a data tag: it is reserved");
+    expect(d![1]).toBe("`else` must come right after `if` or `else-if`");
+  });
+
+  // MX alpha.32: an orphan `else` or `else-if`, and a `try`, read in the dialect's words (code unchanged).
+  test.each([
+    ["an orphan `else`", "entity :T\n  else\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
+    ["an orphan `else(x)`", "entity :T\n  else(x)\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
+    ["an orphan `else-if`", "entity :T\n  else-if=1\n", "MESH_NOT_IN_ENTITY_FILE", "`else-if` must come right after `if` or `else-if`"],
+    ["a top-level orphan `else`", "else\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
+    ["a top-level `try`", "try\n", "MESH_NOT_IN_ENTITY_FILE", "`try` cannot be used in a Mesh file: Mesh files are static, so they have no render errors to catch; write its content directly"],
+  ])("%s (MX alpha.32)", (_label, source, code, message) => {
+    expect(diagnostics(source)).toEqual([[code, message]]);
+  });
+
+  // MX alpha.32: every authored form of `for` and `if` is one MESH_STRUCTURAL_CONSTRUCT at the construct.
+  test.each([
+    ["if(x)", "if"], ["if|x|=a", "if"], ["if", "if"], ["for(x)", "for"], ["for|x|(y)", "for"], ["for", "for"], ["for|x| of=[1]", "for"],
+  ])("`%s` is one MESH_STRUCTURAL_CONSTRUCT, bare and under entity (MX alpha.32)", (head, construct) => {
+    const expected = [["MESH_STRUCTURAL_CONSTRUCT", `Mesh files are static, so they do not evaluate \`${construct}\``]];
+    expect(diagnostics(`${head}\n`)).toEqual(expected);
+    expect(diagnostics(`entity :T\n  ${head}\n`)).toEqual(expected);
   });
 
   test("no message about a built-in carries a `<tag>` spelling, an MX-syntax example or MX_DIALECT_HOOK_ERROR", () => {

@@ -34160,15 +34160,15 @@
   "diagnostics": [
    {
     "severity": "error",
-    "message": "Tag does not support arguments. Write the condition as a value option instead.",
+    "message": "Mesh files are static, so they do not evaluate `if`",
     "line": 1,
-    "column": 4,
-    "offset": 4,
-    "code": "MX_UNSUPPORTED_CONSTRUCT",
+    "column": 0,
+    "offset": 0,
+    "code": "MX_STRUCTURAL_CONSTRUCT",
     "end": {
      "line": 1,
-     "column": 8,
-     "offset": 8
+     "column": 3,
+     "offset": 3
     }
    }
   ]
