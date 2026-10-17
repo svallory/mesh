@@ -171,6 +171,7 @@ describe("MX's built-in tags are spelled as written, with no MX-syntax example (
     ["an orphan `else-if`", "entity :T\n  else-if=1\n", "MESH_NOT_IN_ENTITY_FILE", "`else-if` must come right after `if` or `else-if`"],
     ["a top-level orphan `else`", "else\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
     ["a top-level `try`", "try\n", "MESH_NOT_IN_ENTITY_FILE", "`try` cannot be used in a Mesh file: Mesh files are static, so they have no render errors to catch; write its content directly"],
+    ["an orphan `else-if(x)`", "entity :T\n  else-if(x)\n", "MESH_NOT_IN_ENTITY_FILE", "`else-if` must come right after `if` or `else-if`"],
   ])("%s (MX alpha.32)", (_label, source, code, message) => {
     expect(diagnostics(source)).toEqual([[code, message]]);
   });
