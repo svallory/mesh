@@ -122,7 +122,8 @@ build time through `web-tree-sitter` 0.26.9, which the package depends on. TypeS
 function body, an attribute value) is injected and highlighted with the TypeScript grammar, so a lambda
 in a `check` is coloured the same way the `ts` fence above it is. Every other language is highlighted by
 docmd itself, with highlight.js and the light and dark stylesheets docmd ships
-([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)).
+([ADR-0065](./decisions/0065-mx-highlighting-on-the-docs-site.md)). Mesh keeps no grammar of its own for
+Mesh code (no TextMate grammar, no Shiki): `mx` is highlighted by MX's tree-sitter grammar and nothing else.
 
 Two files, two jobs:
 
