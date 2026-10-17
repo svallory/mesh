@@ -24,6 +24,7 @@ export class PayInvoice {
     fqn: "billing.PayInvoice",
     is: (value: unknown): value is PayInvoice =>
       typeof value === "object" && value !== null && #brand in value,
+    dates: [],
   };
   readonly id: string;
   constructor(fields: { id: string }) {

@@ -16,6 +16,7 @@ test("Docs navigation follows the structural review with a nested first-project 
     { title: "Project structure", path: "/docs/project-structure/" },
     { title: "Entities", path: "/docs/entities/" },
     { title: "Using your domain", path: "/docs/using-your-domain/" },
+    { title: "Events", path: "/docs/events/" },
     { title: "Testing", path: "/docs/testing/" },
     { title: "Configuration", path: "/docs/configuration/" },
   ]);
@@ -26,7 +27,7 @@ test("Docs navigation follows the structural review with a nested first-project 
 
 test("user pages retain one release note and only the approved local-binary exception", () => {
   const names = readdirSync(docs).filter((name) => name.endsWith(".md"));
-  expect(names).toHaveLength(11);
+  expect(names).toHaveLength(12);
   for (const name of names) {
     const text = readFileSync(join(docs, name), "utf8");
     expect(text.match(/Mesh is not released yet\. These pages describe what Mesh will be\./g)).toHaveLength(1);
@@ -87,7 +88,8 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
 });
 
 test("a page imports entity values from their module, and only the framework's names from #mesh", () => {
-  const framework = new Set(["bind", "connect", "disconnect", "transaction", "tables", "Binding", "Privileged"]);
+  const framework = new Set(["bind", "connect", "disconnect", "transaction", "tables", "Binding", "Privileged",
+    "DomainEvent", "eventClasses", "EventRecord", "MetadataFunction", "EventMetadata", "ReadEventsPage", "ReadEventsQuery", "published", "readEvents"]);
   const modules = new Set<string>();
   let seen = 0;
   for (const name of readdirSync(docs).filter((name) => name.endsWith(".md"))) {
@@ -103,9 +105,12 @@ test("a page imports entity values from their module, and only the framework's n
         modules.add(match[2]!);
       }
     }
-    // A dynamic import of an action function goes to its module too.
-    for (const match of text.matchAll(/const \{([^}]*)\} = await import\("#mesh"\)/g))
-      expect({ page: name, names: match[1]!.trim() }).toEqual({ page: name, names: "" });
+    // A dynamic import of an action function goes to its module too; one of `#mesh` takes only the framework's names
+    // (a seam's `const { tables } = await import("#mesh")`).
+    for (const match of text.matchAll(/const \{([^}]*)\} = await import\("#mesh"\)/g)) {
+      const names = match[1]!.split(",").map((n) => n.trim()).filter(Boolean);
+      expect({ page: name, outside: names.filter((n) => !framework.has(n)) }).toEqual({ page: name, outside: [] });
+    }
   }
   expect(seen).toBeGreaterThan(20);
   expect([...modules].sort()).toEqual(["#mesh/domain/billing", "#mesh/domain/todo"]);

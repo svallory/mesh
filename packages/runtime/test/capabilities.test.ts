@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { CAPABILITIES, FrameworkError, defineCapabilities, validateCapabilityManifest } from "@meshfw/runtime";
 
 test("the closed set names the optional capabilities", () => {
-  expect([...CAPABILITIES]).toEqual(["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions"]);
+  expect([...CAPABILITIES]).toEqual(["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions"]);
 });
 
 test("defineCapabilities returns a frozen manifest and keeps the literal names", () => {

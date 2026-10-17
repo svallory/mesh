@@ -5,7 +5,7 @@ description: "What Mesh is, its three rings, the build-time and run-time workflo
 
 # Architecture overview
 
-Status: M0 to M5, M7 and M8 are done, and so is the first half of M6 (the lifecycle seams); the second half of M6 (domain events and the outbox) is designed and awaits review; the Hyper application track (HA) is in progress, then the port gate (HP), which is Mesh 1.0 ([roadmap](../roadmap/roadmap.md)).
+Status: M0 to M5, M7 and M8 are done, and so is the first half of M6 (the lifecycle seams); of the second half, domain events, `publish` and the outbox are built ([Events](../../docs/events.md)) and the event bus that delivers them is next; the Hyper application track (HA) is in progress, then the port gate (HP), which is Mesh 1.0 ([roadmap](../roadmap/roadmap.md)).
 
 ## What Mesh is
 
@@ -149,7 +149,7 @@ Mesh 1.0 ships only when the Hyper engine can be written fully in Mesh; any numb
 | M4 | Expressions, in memory | done |
 | M7 | Relationships and computed fields, the part Hyper uses | done |
 | M5 | Action lifecycle and action composition | done |
-| M6 | Lifecycle seams, domain events and the outbox | seams done; events designed, not built |
+| M6 | Lifecycle seams, domain events and the outbox | seams, events, `publish` and the outbox done; event bus next |
 | M8 | Policies, in core | done |
 | HA | The Hyper application, in `examples/hyper` | in progress |
 | HP | The port gate: Mesh 1.0 | after M6 |

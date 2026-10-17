@@ -10,8 +10,11 @@ import { FrameworkError } from "./errors.ts";
  * - `integer-key-fill`: an insert without an integer primary key gets the next integer.
  * - `joins`, `upserts`, `atomic-expressions`: declared so a build can refuse an entity
  *   that needs them; no adapter has them before 1.0.
+ * - `gapless-positions`: the outbox's positions have no gap after a rollback or a failed insert, and deleting a
+ *   prefix of rows leaves none above the deleted-through position (spec, Events and commands, "The outbox"). Only a
+ *   client that audits a stream for holes needs it; the never-skip order of the read is mandatory for every adapter.
  */
-export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions"] as const;
+export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions"] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
 

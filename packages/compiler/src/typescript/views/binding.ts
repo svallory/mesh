@@ -15,6 +15,11 @@ export interface BindingView {
   readonly configFromLiteral: string;
   /** The root barrel from the output folder, quoted: `"./domain/index"`. */
   readonly domainFromLiteral: string;
+  /**
+   * True when the project declares an event (M6): the file then exports `published` and `readEvents`, and `connect()`
+   * passes the config's `events` to the binding and loads the events module; false leaves the file as it was.
+   */
+  readonly events: boolean;
 }
 
 /** A module specifier relative to the output folder, quoted: `"./domain/blog/post.actions"`. */
@@ -27,5 +32,6 @@ export function bindingView(input: EmitInput): BindingView {
   return {
     configFromLiteral: quote(configModule),
     domainFromLiteral: quote(`${DOMAIN_FOLDER}/index`),
+    events: (input.document.events?.length ?? 0) > 0,
   };
 }

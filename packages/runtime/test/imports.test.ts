@@ -49,7 +49,7 @@ test("no runtime source imports Drizzle, a driver, bun:* or a Mesh package that 
 test("the seam types are runtime sources, so the same scan covers them: seams.ts imports only runtime files, and index.ts exports the types", () => {
   const seams = join(root, "src/seams.ts");
   expect(files(join(root, "src"))).toContain(seams);
-  expect(specifiers(readFileSync(seams, "utf8")).sort()).toEqual(["./data-layer.ts", "./errors.ts", "./index.ts", "./load.ts"]);
+  expect(specifiers(readFileSync(seams, "utf8")).sort()).toEqual(["./data-layer.ts", "./errors.ts", "./events.ts", "./index.ts", "./load.ts"]);
   const index = readFileSync(join(root, "src/index.ts"), "utf8");
   for (const name of ["Seams", "SeamDb", "AfterWriteEvent", "AfterCommitEvent", "BeforeTransactionEvent", "Change"]) expect(index).toContain(name);
 });

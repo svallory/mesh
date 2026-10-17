@@ -28,6 +28,29 @@ test("DatabaseBusyError carries the file and the wait, and words a statement tha
   expect(new DatabaseBusyError("a.db", 0).message).toBe('The database file "a.db" is locked by another connection, and this statement is not retried');
 });
 
+test.each([
+  ["FrameworkError", (options?: runtime.MeshErrorOptions) => new FrameworkError("misconfigured", options), false],
+  ["InvalidInputError", (options?: runtime.MeshErrorOptions) => new InvalidInputError([issue([], "bad")], options), false],
+  ["NotFoundError", (options?: runtime.MeshErrorOptions) => new NotFoundError("work.Task", 1, options), false],
+  ["ForbiddenError", (options?: runtime.MeshErrorOptions) => new ForbiddenError({ entity: "a.B", action: "c", policies: [], breakdown: [] }, options), false],
+  ["DatabaseBusyError", (options?: runtime.MeshErrorOptions) => new DatabaseBusyError("a.db", 5000, options), true],
+] as const)("%s: retryable defaults by class and is settable on each error", (_name, make, byDefault) => {
+  expect(make().retryable).toBe(byDefault);
+  expect(make({ cause }).retryable).toBe(byDefault);
+  expect(make({ retryable: !byDefault }).retryable).toBe(!byDefault);
+  expect(make({ retryable: byDefault, cause }).cause).toBe(cause);
+});
+
+test("a subclass outside Mesh inherits the default of its parent, and may set its own", () => {
+  class Mine extends FrameworkError {}
+  class Flaky extends FrameworkError { static override readonly retryableByDefault = true; }
+  class Busy extends DatabaseBusyError {}
+  expect(new Mine("x").retryable).toBe(false);
+  expect(new Flaky("x").retryable).toBe(true);
+  expect(new Flaky("x", { retryable: false }).retryable).toBe(false);
+  expect(new Busy("a.db", 1).retryable).toBe(true);
+});
+
 test("InvalidInputError copies and freezes its issues array and preserves declared source", () => {
   const source = { file: "src/domain/blog/post.mesh.mx", line: 14, column: 7 };
   const issues: Issue[] = [{ ...issue(["title"], "required"), label: "titlePresent", code: "required", source }];

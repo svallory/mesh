@@ -1,8 +1,8 @@
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
-import { FrameworkError, validateCapabilityManifest, type DataAdapter, type ExtensionDescriptor } from "@meshfw/runtime";
+import { FrameworkError, KEEP_VALUES, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
@@ -20,6 +20,8 @@ export interface ResolvedConfig {
   output: string;
   data: DataAdapter;
   extensions?: readonly ExtensionDescriptor[];
+  /** The `events` key as the project wrote it, checked: `keep` and `load` (M6). Absent when the config has none. */
+  events?: EventsConfig;
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
@@ -32,6 +34,30 @@ function manifestProblem(adapter: DataAdapter): string | null {
   if (adapter.capabilities === undefined) return `The data adapter "${adapter.name}" declares no capabilities; its descriptor needs \`capabilities\`, a manifest made by defineCapabilities(...)`;
   try { validateCapabilityManifest(adapter.capabilities); return null; }
   catch (cause) { return `The data adapter "${adapter.name}" declares invalid capabilities: ${cause instanceof FrameworkError ? cause.message : String(cause)}`; }
+}
+
+/** The fix every `MESH_CONFIG_LOAD` for `#mesh` gives (spec, Events and commands, "Configuration and the events module"). */
+const MESH_IMPORT_FIX = "Import it inside the function that uses it: `const { tables } = await import(\"#mesh\")`. A type-only import (`import type`) is fine.";
+/** The message of a config that loads `#mesh` while it loads, naming the specifier. */
+const meshImportMessage = (specifier: string) =>
+  `mesh.config.ts imports \`${specifier}\` (directly or through a file it imports). \`#mesh\` is the code Mesh generates from this config, so the build cannot load it first.`;
+/**
+ * The `#mesh` specifier an import error is about, if it is about one. Bun's resolve error carries the full specifier as
+ * `specifier` while its text names only the package ("Cannot find package '#mesh'" for `#mesh/domain/billing`), so the
+ * property wins and the text is the fallback.
+ */
+function meshSpecifierIn(cause: unknown, detail: string): string | undefined {
+  const specifier = typeof cause === "object" && cause !== null ? (cause as { specifier?: unknown }).specifier : undefined;
+  if (typeof specifier === "string" && /^#mesh(?:\/|$)/.test(specifier)) return specifier;
+  return /['"`](#mesh(?:\/[^'"`\s]*)?)['"`]/.exec(detail)?.[1];
+}
+/**
+ * The `#mesh` specifier of a generated module, from its path below the output folder: `index.ts` is `#mesh`,
+ * `domain/billing/index.ts` is `#mesh/domain/billing`, and any other file is `#mesh/<path>` without its extension.
+ */
+function meshSpecifierOf(relativePath: string): string {
+  const path = relativePath.replace(/\\/g, "/").replace(/\.(?:[cm]?[jt]sx?)$/, "").replace(/(?:^|\/)index$/, "");
+  return path === "" ? "#mesh" : `#mesh/${path}`;
 }
 
 /** mesh.config.ts is trusted executable project code, not an entity declaration.
@@ -62,6 +88,10 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   };
   const fail = (field: string, message: string, fix = `Fix the ${field} field in mesh.config.ts`) => diagnostics.push(error("MESH_CONFIG", message, at(field), fix));
   let value: unknown;
+  // The modules loaded before the config: whatever the import adds is what the config loaded (`require.cache` lists the
+  // ES modules `import()` loads on Bun; `test/config-load.test.ts` pins it). A module already loaded in this process
+  // before the build is not seen again, which keeps a test or a watcher that imported `#mesh` itself from a false report.
+  const loadedBefore = new Set(Object.keys(require.cache));
   try {
     // Bun shares ESM and require.cache; query strings do not invalidate a file.
     delete require.cache[configFile];
@@ -70,14 +100,20 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   } catch (cause) {
     // Preserve exception text from executable configuration verbatim.
     const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : `Thrown value: ${String(cause)}`;
-    return { config: null, diagnostics: [error("MESH_CONFIG_LOAD", `Cannot load mesh.config.ts: ${detail}`, start, "Fix the config module and export default defineConfig({...})")] };
+    // A `#mesh` that does not resolve (no output folder yet, or a module the entity files have only just added) is the
+    // config loading the code the build is about to generate: said so, never "Cannot find package", which reads as a
+    // missing dependency.
+    const specifier = meshSpecifierIn(cause, detail);
+    if (specifier) return { config: null, diagnostics: [error("MESH_CONFIG_LOAD", meshImportMessage(specifier), start, MESH_IMPORT_FIX)] };
+    return { config: null, diagnostics: [error("MESH_CONFIG_LOAD", `Cannot load mesh.config.ts: ${detail}`, start, "Fix the error in mesh.config.ts, or in the file it imports that threw it")] };
   }
+  const loadedNow = Object.keys(require.cache).filter((key) => !loadedBefore.has(key));
   if (!record(value)) {
     fail("default", "mesh.config.ts must default-export a configuration object");
     return { config: null, diagnostics };
   }
   const config = value;
-  const keys = new Set(["domain", "output", "data", "extensions", "ignore", "seams"]);
+  const keys = new Set(["domain", "output", "data", "extensions", "ignore", "seams", "events"]);
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
   const domain = config.domain;
   if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
@@ -110,6 +146,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       else if (typeof seam !== "function") fail("seams", `Seam \`${name}\` in configuration field \`seams\` must be a function`);
     }
   }
+  if (Object.hasOwn(config, "events")) checkEvents(config.events, at, diagnostics);
   if (diagnostics.length) return { config: null, diagnostics };
 
   const outputInput = normalizePath(config.output as string);
@@ -128,6 +165,14 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       } else {
         const canonicalOutput = await canonicalFuturePath(output);
         if (!inside(canonicalRoot, canonicalOutput) || canonicalOutput === canonicalRoot) fail("output", "Configuration field `output` resolves outside the project");
+        else {
+          // A config that loaded `#mesh` while it loaded, from a stale output folder: refused, as an unresolved one is.
+          const generated = loadedNow.find((key) => inside(output, key) || inside(canonicalOutput, key));
+          if (generated !== undefined) {
+            const relativePath = relative(inside(output, generated) ? output : canonicalOutput, generated);
+            diagnostics.push(error("MESH_CONFIG_LOAD", meshImportMessage(meshSpecifierOf(relativePath)), start, MESH_IMPORT_FIX));
+          }
+        }
       }
     } catch (cause) { fail("output", `Cannot resolve generated directory (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
@@ -200,7 +245,34 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   return { config: diagnostics.some((d) => d.severity === "error") ? null : {
     root, configFile, domainRoot, entityFiles: files, ignoredFiles, output, data: data as DataAdapter,
     ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
+    ...(Object.hasOwn(config, "events") ? { events: config.events as EventsConfig } : {}),
   }, diagnostics };
+}
+
+/**
+ * The checks of the `events` key (spec, Events and commands, "Configuration and the events module"), each a
+ * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values and whose `load` is a function. `bus` and `requires`
+ * come with the event bus and are refused until then.
+ */
+function checkEvents(events: unknown, at: (field: string) => Diagnostic["position"], diagnostics: Diagnostic[]): void {
+  const fail = (field: string, message: string, fix: string) => diagnostics.push(error("MESH_EVENTS_CONFIG", message, at(field), fix));
+  if (!record(events)) {
+    fail("events", "Configuration field `events` must be an object", "Set events: { load, keep }, each optional");
+    return;
+  }
+  for (const [key, value] of Object.entries(events)) {
+    if (key === "keep") {
+      if (!(KEEP_VALUES as readonly unknown[]).includes(value))
+        fail("keep", `\`events.keep\` must be ${KEEP_VALUES.map((keep) => JSON.stringify(keep)).join(" or ")}, and is ${JSON.stringify(value) ?? String(value)}`, "Set keep: \"until-delivered\" (the default: a row is deleted once delivered) or keep: \"all\" (every row is kept)");
+    } else if (key === "load") {
+      if (typeof value !== "function")
+        fail("load", "`events.load` must be a function that imports the events module", "Set load: () => import(\"./src/events.ts\")");
+    } else if (key === "bus" || key === "requires") {
+      fail(key, `\`events.${key}\` is not built yet: it comes with the event bus (M6 PR 3)`, `Remove events.${key}`);
+    } else {
+      fail(key, `Unknown field "${key}" in configuration field \`events\`; its fields are load and keep`, "Remove the unknown field");
+    }
+  }
 }
 
 export async function loadProject(config: ResolvedConfig): Promise<BuildResult> {

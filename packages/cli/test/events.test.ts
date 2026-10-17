@@ -1,15 +1,18 @@
-// End to end for M6 PR 1: an event and a command in files of their own, `publish` under `do` and under `when`, built by
-// the real `mesh` command on the SQLite adapter. The fixture (`fixtures/events/domain`) holds `billing/invoice-paid.mesh.mx`
-// (an event with every field option), `billing/pay-invoice.mesh.mx` (a command), `sales/refunds/refund-issued.mesh.mx` (an
-// event declared as `:refundIssued`, imported through a namespace) and `billing/invoice.mesh.mx`, whose `pay` publishes
-// `InvoicePaid` and whose `refund` publishes `refunds.RefundIssued` inside a `when`. Everything the PR builds is checked
-// through the specifiers an application uses: the classes of each module's barrel, `DomainEvent` and the table `eventClasses` of
-// `#mesh`, and `Mesh.fqnOf`. A `publish` runs after the write and then fails naming M6, until PR 2 writes the outbox.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+// End to end for M6 PR 1 and PR 2: an event and a command in files of their own, `publish` under `do` and under `when`,
+// built by the real `mesh` command on the SQLite adapter, and the outbox that a publish writes. The fixture
+// (`fixtures/events/domain`) holds `billing/invoice-paid.mesh.mx` (an event with every field option),
+// `billing/pay-invoice.mesh.mx` (a command), `sales/refunds/refund-issued.mesh.mx` (an event declared as `:refundIssued`,
+// imported through a namespace), `billing/probe.ts` (helpers that call back into the test) and `billing/invoice.mesh.mx`,
+// whose `pay` publishes `InvoicePaid`, whose `refund` publishes `refunds.RefundIssued` inside a `when`, whose
+// `publishMade` publishes whatever the test hands it and whose `chain` publishes, calls back into the test, and publishes
+// again. Everything is checked through the specifiers an application uses: the classes of each module's barrel,
+// `DomainEvent`, `eventClasses`, `published` and `readEvents` of `#mesh`, and `Mesh.fqnOf`; the outbox rows through the
+// data layer's own `readOutbox` too.
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FrameworkError, InvalidInputError, Mesh } from "@meshfw/runtime";
+import { CursorAheadError, EventsDeletedError, FrameworkError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -32,7 +35,7 @@ const TSCONFIG = {
 const CHECK = `import { InvoicePaid, PayInvoice } from "#mesh/domain/billing";
 import { RefundIssued } from "#mesh/domain/sales/refunds";
 import * as domain from "#mesh/domain";
-import { eventClasses, type DomainEvent } from "#mesh";
+import { eventClasses, published, readEvents, type DomainEvent, type EventRecord, type MetadataFunction } from "#mesh";
 import { Mesh } from "meshfw";
 
 const paid = new InvoicePaid({ invoiceId: "0190a000-0000-7000-8000-000000000000", amount: 1, method: "card", paidAt: new Date(), extra: null });
@@ -57,6 +60,17 @@ export const table: typeof InvoicePaid = eventClasses["billing.InvoicePaid"];
 export const tableRefund: typeof RefundIssued = eventClasses["sales.refunds.RefundIssued"];
 // @ts-expect-error a command is in no event table
 export const none = eventClasses["billing.PayInvoice"];
+export const metadata: MetadataFunction = ({ event, context }) => ({ name: event.name, system: context.system === true });
+export function own(): readonly EventRecord[] { return published(); }
+export async function amounts(): Promise<number[]> {
+  const page = await readEvents({ after: 0, limit: 10, names: ["billing.InvoicePaid"] });
+  const next: number = page.cursor;
+  void next;
+  return page.events.flatMap((record) => record.payload instanceof InvoicePaid ? [record.payload.amount] : []);
+}
+export const paidRecord = (record: EventRecord<InvoicePaid>): Date => record.payload.paidAt;
+// @ts-expect-error a command is no event record's payload
+export const commandRecord = (record: EventRecord<PayInvoice>) => record;
 `;
 
 async function project(): Promise<string> {
@@ -224,44 +238,271 @@ describe("events and commands in files of their own", () => {
     expect(refund.stdout).toContain("publish async () =>");
   }, 30_000);
 
-  test("a publish runs after the write, inside the transaction, and fails naming M6: nothing is stored", async () => {
-    const app = await import(join(root, ".mesh/index.ts"));
-    const domain = await import(join(root, ".mesh/domain/index.ts"));
-    const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
-    const layer = sqlite({ file: ":memory:" });
-    await createSchema(layer, app.tables);
-    const written: string[] = [];
-    const binding = app.bind(layer, { seams: { afterWrite: (_db: unknown, write: { entity: string; action: string }) => { written.push(`${write.entity}#${write.action}`); } } });
+});
+
+describe("the outbox", () => {
+  type Layer = {
+    transaction<T>(fn: (tx: { insert(table: unknown, row: unknown): Promise<unknown>; deleteOutboxThrough(position: number): Promise<number> }) => Promise<T>): Promise<T>;
+    readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number }>;
+    close(): Promise<void>;
+  };
+  const failure = (promise: Promise<unknown>) => promise.then(() => { throw new Error("expected a rejection"); }, (cause: unknown) => cause);
+  let app: Record<string, any>;
+  let billing: Record<string, any>;
+  let refunds: Record<string, any>;
+  let probe: { hooks: { made: (() => unknown) | undefined; step: ((kind: string, id: string) => Promise<unknown>) | undefined } };
+  let data: { sqlite(options: { file: string }): Layer; createSchema(layer: Layer, tables: unknown): Promise<void> };
+  beforeAll(async () => {
+    app = await import(join(root, ".mesh/index.ts"));
+    billing = (await import(join(root, ".mesh/domain/index.ts"))).billing;
+    refunds = await import(join(root, ".mesh/domain/sales/refunds/index.ts"));
+    probe = await import(join(root, "domain/billing/probe.ts"));
+    data = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+  });
+  /** A fresh in-memory database with the project's tables, the outbox's included, and a binding on it. */
+  async function open(options: Record<string, unknown> = {}) {
+    const layer = data.sqlite({ file: ":memory:" });
+    await data.createSchema(layer, app.tables);
+    const binding = app.bind(layer, options) as { run<T>(fn: () => Promise<T>): Promise<T>; transaction<T>(fn: () => Promise<T>): Promise<T> };
+    return { layer, binding };
+  }
+  const rows = async (layer: Layer) => (await layer.readOutbox(0, 100)).rows;
+  const names = async (layer: Layer) => (await rows(layer)).map((row) => row.name);
+  /** A stored invoice to update, written without an action, so no event comes with it. */
+  async function stored(layer: Layer, id: string, row: Record<string, unknown> = {}) {
+    const table = (app.tables as Record<string, unknown>).invoice;
+    await layer.transaction(async (tx) => { await tx.insert(table, { id, paid: false, total: 10, ...row }); });
+    return id;
+  }
+  const ID = "00000000-0000-4000-8000-000000000001";
+  const ID2 = "00000000-0000-4000-8000-000000000002";
+  afterEach(() => { probe.hooks.made = undefined; probe.hooks.step = undefined; });
+
+  test("the schema creates the outbox and its state table, both empty", async () => {
+    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state"]);
+    const { layer } = await open();
     try {
-      await binding.run(async () => {
-        // a create publishes too: the row is written, the seam sees it, and the transaction fails naming M6, so nothing is stored
-        const opened = await domain.billing.Invoice.open({}, {}).then(() => undefined, (cause: unknown) => cause);
-        expect(opened).toBeInstanceOf(FrameworkError);
-        expect((opened as Error).message).toBe("billing.Invoice#open cannot run in this version: its publish step writes the event to the outbox, which arrives in M6");
-        expect(written).toEqual(["billing.Invoice#open"]);
-        expect(await domain.billing.Invoice.read({}, {})).toEqual([]);
-        // a row stored without an action, to update and destroy
-        const [table] = Object.values(app.tables);
-        const id = "00000000-0000-4000-8000-000000000001";
-        await layer.transaction(async (tx: { insert: (table: unknown, row: unknown) => Promise<unknown> }) => { await tx.insert(table, { id, paid: false, total: 10 }); });
-        const [invoice] = await domain.billing.Invoice.read({}, {});
-        expect(invoice).toMatchObject({ id, paid: false });
-        written.length = 0;
-        const failure = await domain.billing.Invoice.pay({ id }, {}).then(() => undefined, (cause: unknown) => cause);
-        expect(failure).toBeInstanceOf(FrameworkError);
-        expect((failure as Error).message).toBe("billing.Invoice#pay cannot run in this version: its publish step writes the event to the outbox, which arrives in M6");
-        // a destroy publishes after the row is deleted (`self` is the deleted row), then the transaction rolls back and the row is still there
-        const voided = await domain.billing.Invoice.void({ id }, {}).then(() => undefined, (cause: unknown) => cause);
-        expect(voided).toBeInstanceOf(FrameworkError);
-        expect((voided as Error).message).toBe("billing.Invoice#void cannot run in this version: its publish step writes the event to the outbox, which arrives in M6");
-        // the writes happened (the seam saw them, the function ran after them), and each transaction rolled back
-        expect(written).toEqual(["billing.Invoice#pay", "billing.Invoice#void"]);
-        expect(await domain.billing.Invoice.read({}, {})).toEqual([invoice]);
-        // `refund` publishes only when the condition held before the write: it did not, so the action succeeds
-        expect(await domain.billing.Invoice.refund({ id: invoice.id }, {})).toEqual(invoice);
+      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 0, highest: 0 });
+    } finally { await layer.close(); }
+  });
+
+  test("a committed publish is one outbox row: the envelope, the key, {} as metadata and the event as JSON", async () => {
+    const { layer, binding } = await open();
+    try {
+      await stored(layer, ID);
+      const before = Date.now();
+      await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
+      const [row, ...rest] = await rows(layer);
+      expect(rest).toEqual([]);
+      expect(row).toMatchObject({
+        position: 1, name: "billing.InvoicePaid", entity: "billing.Invoice", action: "pay", key: { id: ID }, causedBy: null, metadata: {},
+        payload: { invoiceId: ID, amount: 10, reference: null, method: "card", extra: { by: "test" } },
       });
-    } finally {
-      await layer.close();
-    }
-  }, 30_000);
+      expect(row!.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      expect(row!.occurredAt.getTime()).toBeGreaterThanOrEqual(before - 1);
+      // the payload is the event as JSON: the date is its ISO text, and readEvents turns it back into a Date
+      expect((row!.payload as { paidAt: string }).paidAt).toBe(row!.occurredAt.toISOString());
+    } finally { await layer.close(); }
+  });
+
+  test("a create publishes with the new key, a destroy with the deleted row's, both committed", async () => {
+    const { layer, binding } = await open();
+    try {
+      const created = await binding.run(() => billing.Invoice.open({}, {})) as { id: string };
+      await binding.run(() => billing.Invoice.void({ id: created.id }, {}));
+      const [opened, voided] = await rows(layer);
+      expect([opened!.name, opened!.action, opened!.key, opened!.payload]).toEqual(["billing.InvoiceOpened", "open", { id: created.id }, { invoiceId: created.id }]);
+      expect([voided!.name, voided!.action, voided!.key, voided!.payload]).toEqual(["billing.InvoiceVoided", "void", { id: created.id }, { invoiceId: created.id, total: 10 }]);
+      expect(await binding.run<unknown>(() => billing.Invoice.read({}, {}))).toEqual([]);
+    } finally { await layer.close(); }
+  });
+
+  test("a publish inside a when writes only when the condition held before the write, and a failed when= writes nothing", async () => {
+    const { layer, binding } = await open();
+    try {
+      await stored(layer, ID);
+      await stored(layer, ID2, { paid: true, total: 3 });
+      expect(await binding.run(() => billing.Invoice.refund({ id: ID }, {}))).toMatchObject({ id: ID, paid: false });
+      expect(await rows(layer)).toEqual([]);
+      await binding.run(() => billing.Invoice.refund({ id: ID2 }, {}));
+      expect((await rows(layer)).map((row) => [row.name, row.payload])).toEqual([["sales.refunds.RefundIssued", { invoiceId: ID2, cents: 1 }]]);
+    } finally { await layer.close(); }
+  });
+
+  test("acceptance 8: an event exists if and only if its transaction commits", async () => {
+    // The afterWrite seam runs before a write's own after-write steps, so it is made to throw on a nested write that comes
+    // after `chain`'s first publish has appended its row.
+    let seamFails = false;
+    const { layer, binding } = await open({ seams: { afterWrite: (_db: unknown, write: { action: string }) => {
+      if (seamFails && write.action === "open") throw new Error("the seam fails");
+    } } });
+    try {
+      await stored(layer, ID);
+      // a later step throws, after the publish
+      probe.hooks.step = async () => { throw new Error("a later step fails"); };
+      expect(((await failure(binding.run(() => billing.Invoice.chain({ id: ID }, {})))) as Error).message).toBe("a later step fails");
+      expect(await rows(layer)).toEqual([]);
+      // a joined call fails, and the step catches it: the transaction fails all the same
+      probe.hooks.step = async () => { await billing.Invoice.pay({ id: "00000000-0000-4000-8000-0000000000ff" }, {}).catch(() => undefined); };
+      const joined = await failure(binding.run(() => billing.Invoice.chain({ id: ID }, {})));
+      expect(joined).toBeInstanceOf(FrameworkError);
+      expect((joined as Error).cause).toBeInstanceOf(NotFoundError);
+      expect(await rows(layer)).toEqual([]);
+      // the afterWrite seam throws on a nested write, after the publish appended its row
+      let seen: string[] = [];
+      seamFails = true;
+      probe.hooks.step = async () => {
+        seen = (app.published() as { name: string }[]).map((record) => record.name);
+        await billing.Invoice.open({}, {});
+      };
+      const seam = await failure(binding.run(() => billing.Invoice.chain({ id: ID }, {}))) as Error;
+      expect(seam.message).toBe("the seam fails");
+      expect(seen).toEqual(["billing.InvoicePaid"]);
+      expect(await rows(layer)).toEqual([]);
+      seamFails = false;
+      // the application's transaction throws after the action returned
+      expect(((await failure(binding.transaction(async () => { await billing.Invoice.pay({ id: ID }, {}); throw new Error("the application fails"); }))) as Error).message).toBe("the application fails");
+      expect(await rows(layer)).toEqual([]);
+      expect(await binding.run<unknown>(() => billing.Invoice.read({}, {}))).toEqual([expect.objectContaining({ id: ID, paid: false })]);
+      // and the same calls commit their events once nothing fails
+      probe.hooks.step = async () => undefined;
+      await binding.run(() => billing.Invoice.chain({ id: ID }, {}));
+      await binding.transaction(async () => { await billing.Invoice.pay({ id: ID }, {}); });
+      // positions have no gap after the failed transactions
+      expect((await rows(layer)).map((row) => [row.position, row.name])).toEqual([
+        [1, "billing.InvoicePaid"], [2, "sales.refunds.RefundIssued"], [3, "billing.InvoicePaid"],
+      ]);
+    } finally { await layer.close(); }
+  });
+
+  test("a publish that returns no instance of a declared event, or whose constructor throws, fails the action and writes nothing", async () => {
+    const { layer, binding } = await open();
+    try {
+      await stored(layer, ID);
+      const { InvoicePaid, PayInvoice } = await import(join(root, ".mesh/domain/billing/index.ts"));
+      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:33:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
+      const cases: [() => unknown, string][] = [
+        [() => null, "null"],
+        [() => undefined, "undefined"],
+        [() => "InvoicePaid", "a string"],
+        [() => [new InvoicePaid({ invoiceId: ID, amount: 1, method: "card", paidAt: new Date(), extra: null })], "an array"],
+        [() => ({ invoiceId: ID, amount: 1, method: "card", paidAt: new Date(), extra: null }), "a plain object"],
+        [() => new PayInvoice({ id: ID, paidAt: new Date() }), "an instance of the command billing.PayInvoice"],
+        [() => Object.create(InvoicePaid.prototype), "an object that is not an instance of the event billing.InvoicePaid, though its constructor is that class"],
+        [() => new Date(0), "an instance of Date, not of a declared event"],
+      ];
+      for (const [made, returned] of cases) {
+        probe.hooks.made = made;
+        const cause = await failure(binding.run(() => billing.Invoice.publishMade({ id: ID }, {})));
+        expect(cause).toBeInstanceOf(FrameworkError);
+        expect((cause as Error).message).toBe(refused(returned));
+      }
+      probe.hooks.made = () => new InvoicePaid({ invoiceId: ID, amount: -1, method: "card", paidAt: new Date(), extra: null });
+      expect(await failure(binding.run(() => billing.Invoice.publishMade({ id: ID }, {})))).toBeInstanceOf(InvalidInputError);
+      expect(await rows(layer)).toEqual([]);
+      probe.hooks.made = () => new InvoicePaid({ invoiceId: ID, amount: 2, method: "card", paidAt: new Date(0), extra: [1, "two"] });
+      await binding.run(() => billing.Invoice.publishMade({ id: ID }, {}));
+      expect((await rows(layer)).map((row) => [row.position, row.name, row.action, row.payload])).toEqual([
+        [1, "billing.InvoicePaid", "publishMade", { invoiceId: ID, amount: 2, reference: null, method: "card", paidAt: new Date(0).toISOString(), extra: [1, "two"] }],
+      ]);
+    } finally { await layer.close(); }
+  });
+
+  test("a nested call's events take their place in written order; published() is the transaction's own, so far, with positions", async () => {
+    const seen: string[][] = [];
+    const { layer, binding } = await open();
+    try {
+      await stored(layer, ID);
+      probe.hooks.step = async () => {
+        seen.push((app.published() as { name: string }[]).map((record) => record.name));
+        await billing.Invoice.open({}, {});
+        seen.push((app.published() as { name: string; position: number }[]).map((record) => `${record.position} ${record.name}`));
+      };
+      let atEnd: unknown[] = [];
+      await binding.transaction(async () => {
+        await billing.Invoice.chain({ id: ID }, {});
+        atEnd = app.published() as unknown[];
+      });
+      expect(seen).toEqual([["billing.InvoicePaid"], ["1 billing.InvoicePaid", "2 billing.InvoiceOpened"]]);
+      expect(await names(layer)).toEqual(["billing.InvoicePaid", "billing.InvoiceOpened", "sales.refunds.RefundIssued"]);
+      const stored_ = await rows(layer);
+      expect(atEnd).toHaveLength(3);
+      const [first] = atEnd as { id: string; position: number; payload: unknown; metadata: unknown }[];
+      expect([first!.id, first!.position]).toEqual([stored_[0]!.id, 1]);
+      expect(first!.payload).toBeInstanceOf((await import(join(root, ".mesh/domain/billing/index.ts"))).InvoicePaid);
+      expect(Object.isFrozen(first)).toBe(true);
+      // a new transaction starts with none; outside one, published() throws
+      expect(await binding.transaction(async () => app.published())).toEqual([]);
+      expect(() => app.published()).toThrow(FrameworkError);
+      expect(() => app.published()).toThrow("published() was called outside a transaction");
+    } finally { await layer.close(); }
+  });
+
+  test("the events module's metadata function gets each publishing call's own context, a nested call's included", async () => {
+    let loads = 0;
+    const events = { load: async () => { loads++; return { metadata: ({ event, context }: { event: { name: string; action: string }; context: Record<string, unknown> }) => ({ requestId: context.requestId ?? null, by: `${event.action}:${event.name}` }) }; } };
+    const { layer, binding } = await open({ events });
+    try {
+      await stored(layer, ID);
+      probe.hooks.step = async () => { await billing.Invoice.open({}, { requestId: "nested" }); };
+      await binding.run(() => billing.Invoice.chain({ id: ID }, { requestId: "outer" }));
+      expect((await rows(layer)).map((row) => row.metadata)).toEqual([
+        { requestId: "outer", by: "chain:billing.InvoicePaid" }, { requestId: "nested", by: "open:billing.InvoiceOpened" }, { requestId: "outer", by: "chain:sales.refunds.RefundIssued" },
+      ]);
+      expect(loads).toBe(1);
+      // a metadata function that returns no object fails the action
+      const bad = await open({ events: { load: async () => ({ metadata: () => "no" }) } });
+      try {
+        await stored(bad.layer, ID);
+        const cause = await failure(bad.binding.run(() => billing.Invoice.pay({ id: ID }, {})));
+        expect(cause).toBeInstanceOf(FrameworkError);
+        expect((cause as Error).message).toStartWith("The events module's metadata function returned");
+        expect(await rows(bad.layer)).toEqual([]);
+      } finally { await bad.layer.close(); }
+    } finally { await layer.close(); }
+  });
+
+  test("readEvents pages the kept events as instances, filters them, and refuses a deleted or a future cursor", async () => {
+    const { layer, binding } = await open();
+    try {
+      await stored(layer, ID);
+      await stored(layer, ID2, { paid: true });
+      await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
+      await binding.run(() => billing.Invoice.refund({ id: ID2 }, {}));
+      await binding.run(() => billing.Invoice.pay({ id: ID2 }, {}));
+      const read = (query?: Record<string, unknown>) => binding.run(() => app.readEvents(query)) as Promise<{ events: { position: number; name: string; key: unknown; payload: any }[]; cursor: number }>;
+      const all = await read();
+      expect(all.events.map((record) => [record.position, record.name, record.key])).toEqual([
+        [1, "billing.InvoicePaid", { id: ID }], [2, "sales.refunds.RefundIssued", { id: ID2 }], [3, "billing.InvoicePaid", { id: ID2 }],
+      ]);
+      expect(all.cursor).toBe(3);
+      const { InvoicePaid } = await import(join(root, ".mesh/domain/billing/index.ts"));
+      expect(all.events[0]!.payload).toBeInstanceOf(InvoicePaid);
+      expect(all.events[0]!.payload.paidAt).toBeInstanceOf(Date);
+      expect(all.events[1]!.payload).toBeInstanceOf(refunds.RefundIssued);
+      expect((await read({ after: 1, limit: 1 })).events.map((record) => record.position)).toEqual([2]);
+      expect((await read({ names: ["billing.InvoicePaid"] })).events.map((record) => record.position)).toEqual([1, 3]);
+      expect((await read({ entity: "billing.Invoice", key: { id: ID2 } })).events.map((record) => record.position)).toEqual([2, 3]);
+      expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3 });
+      // inside a transaction it is refused: the transaction's own events come from published()
+      expect(((await failure(binding.transaction(() => app.readEvents()))) as Error).message).toContain("published()");
+      // a cursor past the highest position
+      const ahead = await failure(read({ after: 9 }));
+      expect(ahead).toBeInstanceOf(CursorAheadError);
+      expect(ahead).toMatchObject({ code: "MESH_CURSOR_AHEAD", retryable: false });
+      // rows deleted between two reads: a cursor behind them is refused, one at them reads on
+      await layer.transaction(async (tx) => tx.deleteOutboxThrough(2));
+      const deleted = await failure(read({ after: 1 }));
+      expect(deleted).toBeInstanceOf(EventsDeletedError);
+      expect(deleted).toMatchObject({ code: "MESH_EVENTS_DELETED", retryable: false });
+      expect((await read({ after: 2 })).events.map((record) => record.position)).toEqual([3]);
+      // the next publish takes the next position, never a deleted one
+      await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
+      expect((await read({ after: 2 })).events.map((record) => record.position)).toEqual([3, 4]);
+    } finally { await layer.close(); }
+  });
+
+  test("readEvents with no binding in scope and none connected throws", async () => {
+    expect(await failure(app.readEvents())).toBeInstanceOf(FrameworkError);
+  });
 });

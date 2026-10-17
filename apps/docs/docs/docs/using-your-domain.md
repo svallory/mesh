@@ -284,7 +284,7 @@ Three things meet in `load`, and they are not one thing:
 
 ## Errors
 
-Every action throws on failure. All five classes come from `@meshfw/runtime`, extend `MeshError` and carry a `code` and a `retryable` boolean, which says whether the same call may succeed if repeated unchanged; it is set on each error, and the class gives the default (`retryable` is not built: M6 PR 2). A program can switch on the code without importing the class.
+Every action throws on failure. All five classes come from `@meshfw/runtime`, extend `MeshError` and carry a `code` and a `retryable` boolean, which says whether the same call may succeed if repeated unchanged; it is set on each error, and the class gives the default. A program can switch on the code without importing the class.
 
 | Class | `code` | Default `retryable` | Thrown when |
 |:--|:--|:--|:--|
@@ -293,6 +293,8 @@ Every action throws on failure. All five classes come from `@meshfw/runtime`, ex
 | `ForbiddenError` | `forbidden` | `false` | A policy denied the call, no policy covers the action, or none of the policies that cover it applies (each one's `when` was false). Names the `entity`, the `action` and the `policies`, says which of the three in `reason` (`failed`, `not-covered` or `not-applied`), and carries a `breakdown` of the checks that ran |
 | `FrameworkError` | `framework` | `false` | A mistake in the program: an action called before `connect` and outside any `run` or `transaction`, a load that cannot be served, a check's `message=` function that throws or does not return non-blank text |
 | `DatabaseBusyError` | `MESH_DATABASE_BUSY` | `true` | Another connection held the database's write lock and a transaction was still blocked after 5 seconds of retries, or schema preparation met a lock (once the database is open it does not wait; the open's switch to WAL does). Names the `file` and the wait in `waitedMs`. Unlike the other classes, its `code` is in capitals with a `MESH_` prefix |
+
+`readEvents` adds three classes of its own, each with `retryable` false: `EventsDeletedError`, `CursorAheadError` and `EventUndeclaredError` (see [Events](./events.md#reading-the-outbox)).
 
 `InvalidInputError.issues` holds every failure it collected, one entry each. An entry has a `label` (the label you gave the `check`), the `code` and `message` you wrote (the text of the `message=`, or the string its function returned), the `details` the check returned (or `null`), a `path` into the input, and, when the failure came from a rule you declared, the file, line and column of the declaration that carried it. The code you declared is on the issue rather than on the error because several checks can fail in one call, and one code on the error could only name one of them.
 
@@ -399,7 +401,7 @@ A **seam** is a place in every generated action where your application may run c
 | `afterWrite` | Inside the transaction, right after each row is written, before any `run [after=:write]` step | `db` and `{ entity, action, before, after, input, context }` | Write through `db`; a throw rolls back the whole call |
 | `afterCommit` | Once, after the outermost transaction commits | `{ changes }`, every row written, in order, each `{ entity, action, before, after }` | Observe or log what committed; it is not called when the call rolls back. It is not the way to run an effect after commit: that is a `publish` plus a listener |
 
-Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test:
+Register them under `seams` in `mesh.config.ts`, and pass the same object to `bind` in a test. A seam that uses the generated code imports `#mesh` inside its body, because the build loads `mesh.config.ts` before it generates `#mesh`.
 
 ```ts "mesh.config.ts"
 import { defineConfig } from "@meshfw/runtime";
@@ -425,13 +427,26 @@ export default defineConfig({
 
 `entity` is the entity's fully qualified name: the folders of its module as written, a dot, and its name (`work.Review`, `sales.billing.Invoice`; an entity at the domain root is just `Review`). `action` is the action's name as written in the entity file (`accept`). `input` is the call's validated input and `context` its context (`{}` when the call passed none). A seam sees only plain data, never the read handle, the data layer or a function of your entity files.
 
-In `afterWrite`, `db` is the transaction's data operations, only the four that work on one row by key (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`), so a seam can write a row of its own, such as an audit row for each write, without calling an action. (It is not the place for Hyper's idempotency record, which holds a command's whole result and is written in the application `transaction` after the action returns.) A write through `db` runs no seams and is not a change in `afterCommit`. Domain events do not go through a seam: an action raises one with `publish`, which writes it to the outbox in the same transaction, and an event bus delivers it after commit. (The outbox is a permanent, ordered log of the events, not a table emptied after delivery; see the [amendment to ADR-0079](../architecture/decisions/0079-commands-events-and-the-outbox.md).) `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy. A destroy's `before` is never `null`: while an `afterWrite` or `afterCommit` seam is registered, a destroy reads the locked row first, even when nothing in its body could see it, so the seam gets the row that was deleted (with none registered the delete is one statement by key, as before). A read runs no seam.
+In `afterWrite`, `db` is the transaction's data operations, only the four that work on one row by key (`insert`, `selectByKey`, `updateByKey`, `deleteByKey`, with the tables exported as `tables` from `#mesh`, imported inside the seam, as below), so a seam can write a row of its own, such as an audit row for each write, without calling an action. (It is not the place for Hyper's idempotency record, which holds a command's whole result and is written in the application `transaction` after the action returns.) A write through `db` runs no seams and is not a change in `afterCommit`. Domain events do not go through a seam: an action raises one with `publish`, which writes it to the outbox in the same transaction, and an event bus delivers it after commit (see [Events](./events.md)). How long the outbox keeps a row is the application's setting; by default a row is deleted once delivered (DOM-43). `before` is the row as it was, or `null` for a create; `after` is the row as written, or `null` for a destroy. A destroy's `before` is never `null`: while an `afterWrite` or `afterCommit` seam is registered, a destroy reads the locked row first, even when nothing in its body could see it, so the seam gets the row that was deleted (with none registered the delete is one statement by key, as before). A read runs no seam.
 
 ```ts "src/seams.ts (excerpt)"
-async afterWrite(db, { entity, action, after }) {
-  await db.insert(tables.write_log, { type: `${entity}#${action}`, payload: after });
-},
+import type { Seams } from "@meshfw/runtime";
+
+export const seams: Seams = {
+  async afterWrite(db, { entity, action, after }) {
+    const { tables } = await import("#mesh");
+    await db.insert(tables.write_log, { type: `${entity}#${action}`, payload: after });
+  },
+};
 ```
+
+```ts "mesh.config.ts (excerpt)"
+import { seams } from "./src/seams.ts";
+
+export default defineConfig({ /* domain, output, data */ seams });
+```
+
+The build checks for `#mesh` imports that run while it loads `mesh.config.ts`; an import inside a function is not checked, and is the one to use. One that runs while the config loads, at the top of `mesh.config.ts` or of a file it imports, fails the build with `MESH_CONFIG_LOAD` (see [Configuration](./configuration.md)).
 
 What a throw does:
 
@@ -639,4 +654,5 @@ Your server start-up connects once, and your `requireActor()` helper reads the a
 
 - [Testing](./testing.md) — binding a database in memory.
 - [Entities](./entities.md) — the declarations behind these functions, and [what `self` holds](./entities.md#what-self-holds).
+- [Events](./events.md) — what `publish` writes, `published()` and `readEvents`.
 - [Command line](./command-line.md) — `mesh explain Todo complete`, which prints the plan a call follows.

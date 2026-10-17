@@ -26,6 +26,7 @@ export class {{ className }} {
     kind: {{ kindLiteral }},
     fqn: {{ fqnLiteral }},
     is: (value: unknown): value is {{ className }} => typeof value === "object" && value !== null && #brand in value,
+    dates: {{ datesLiteral }},
   };
   @each(field in fields)
   readonly {{ field.key }}: {{ field.type }};

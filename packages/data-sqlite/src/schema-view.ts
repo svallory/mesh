@@ -2,6 +2,7 @@ import { relative } from "node:path";
 import { EmitError, type EmitInput } from "@meshfw/compiler";
 import type { AttributeType, Entity, SourcePosition } from "@meshfw/model";
 import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
+import { coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
 
 /**
  * What `schema.ts.jig` renders: the Drizzle SQLite table of every entity, the
@@ -12,13 +13,16 @@ import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
 export interface SchemaView {
   /** The column builders the tables use, sorted, for the `drizzle-orm/sqlite-core` import. */
   readonly builders: readonly string[];
-  /** One table per entity, sorted by entity name, module and file. */
+  /**
+   * One table per entity, sorted by entity name, module and file; then, when the project declares an event, core's
+   * `mesh_outbox` and `mesh_outbox_state`.
+   */
   readonly tables: readonly TableView[];
 }
 
 /** `<key>: _meshSqlite(<nameLiteral>, { ...columns }),`, one entry of the `tables` map. */
 export interface TableView {
-  /** The entity's name as authored, e.g. `Post`. */
+  /** The entity's name as authored, e.g. `Post`; for one of core's tables, the table's name, e.g. `mesh_outbox`. */
   readonly entity: string;
   /** The entity's `tables` key as printed: its table name as stored, quoted when not an identifier, e.g. `posts` or `"late-result"`. */
   readonly key: string;
@@ -28,7 +32,7 @@ export interface TableView {
   readonly columns: readonly ColumnView[];
 }
 
-/** `<key>: <builder>(<nameLiteral>[, <options>])[.notNull()][.primaryKey()][.unique()],` */
+/** `<key>: <builder>(<nameLiteral>[, <options>])[.notNull()][.primaryKey([{ autoIncrement: true }])][.unique()],` */
 export interface ColumnView {
   /** The property key as printed: the attribute name, JSON-quoted when it is not an identifier. */
   readonly key: string;
@@ -42,6 +46,12 @@ export interface ColumnView {
   readonly notNull: boolean;
   /** True for the entity's primary key; the template prints `.primaryKey()`. */
   readonly primaryKey: boolean;
+  /**
+   * True for an integer primary key whose values SQLite assigns with `AUTOINCREMENT`, never reusing one even after the
+   * highest row is deleted; the template prints `.primaryKey({ autoIncrement: true })`. Only the outbox's `position`
+   * has it: an entity's integer key is filled by the data layer (`integer-key-fill`).
+   */
+  readonly autoIncrement: boolean;
   /** True for an attribute declared `unique`; the template prints `.unique()`. */
   readonly unique: boolean;
 }
@@ -84,7 +94,23 @@ function column(name: string, type: AttributeType, nullable: boolean, primaryKey
     options: options === "enum" ? `{ enum: ${JSON.stringify(values)} }` : options,
     notNull: !nullable,
     primaryKey,
+    autoIncrement: false,
     unique,
+  };
+}
+
+// Core's column types must stay attribute types, so each maps through `SQLITE_COLUMNS` as an attribute would.
+const coreTypeIsAttributeType: CoreColumnType extends AttributeType ? true : never = true;
+void coreTypeIsAttributeType;
+
+/**
+ * One of core's tables (`CORE_TABLES` in `@meshfw/runtime`) as a table view: each column is stored as an attribute of
+ * its type, and a `neverReuse` key is `AUTOINCREMENT`, so SQLite never hands out a position again.
+ */
+function coreTableView(core: CoreTable): TableView {
+  return {
+    entity: core.name, key: propertyKey(core.name), nameLiteral: JSON.stringify(core.name),
+    columns: core.columns.map((spec) => ({ ...column(spec.name, spec.type, spec.nullable, spec.primaryKey, []), autoIncrement: spec.neverReuse })),
   };
 }
 
@@ -135,6 +161,15 @@ export function schemaView({ document }: EmitInput): SchemaView {
     }
     tableOwners.set(sqliteNameKey(entity.table), entity);
     tables.push(view);
+  }
+  for (const core of coreTablesFor(document)) {
+    const entity = tableOwners.get(sqliteNameKey(core.name));
+    if (entity) {
+      fail("MESH_SCHEMA_DUPLICATE_TABLE",
+        `Entity ${describe(entity)} uses the SQLite table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
+        entity.position, 'Set table="..." on the entity to another name');
+    }
+    tables.push(coreTableView(core));
   }
   const builders = [...new Set(tables.flatMap((table) => table.columns.map((column) => column.builder)))].sort(compare);
   return { builders, tables };

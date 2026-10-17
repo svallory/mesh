@@ -20,7 +20,9 @@ export const tables = {
   @if(column.notNull)~
       .notNull()
   @end~
-  @if(column.primaryKey)~
+  @if(column.autoIncrement)~
+      .primaryKey({ autoIncrement: true })
+  @elseif(column.primaryKey)~
       .primaryKey()
   @end~
   @if(column.unique)~

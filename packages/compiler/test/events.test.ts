@@ -393,9 +393,10 @@ entity :Invoice
     expect(at('$expressions["pay.step.3.publish"]($after)')).toBeLessThan(at("const $result = await tx.selectByKey("));
     // none of them runs before the write
     expect(pay.slice(0, at("await tx.updateByKey("))).not.toContain("publish");
-    // the failure naming M6 follows each publish, awaited so the code after it stays reachable
-    expect([...pay.matchAll(/cannot run in this version: its publish step writes the event to the outbox, which arrives in M6/g)].length).toBe(3);
-    expect(pay).toContain('await $failJoined(\n');
+    // each publish hands its value to publishEvent, which checks it and appends the row in this transaction
+    expect([...pay.matchAll(/\$publishEvent\(\n\s*tx,\n\s*options\.events,\n\s*\{\n\s*entity: "billing\.Invoice",\n\s*action: "pay",\n\s*key: \{ id: \$written\.id \},\n\s*at: "billing\/invoice\.mesh\.mx:\d+:\d+",\n\s*\},\n\s*\$event,\n\s*\$context,\n\s*\$clock,/g)].length).toBe(3);
+    expect(pay).not.toContain("$failJoined");
+    expect(pay).not.toContain("M6");
     // inside a when, the publish runs only if the condition held before the write
     const refund = actions.slice(actions.indexOf("async refund("), actions.indexOf("async named("));
     expect(refund).toMatch(/\$when0 = !!\(await \$expressions\["refund\.step\.0\.when"\]\(\$s\)\);/);
@@ -413,11 +414,12 @@ entity :Invoice
     expect(at(open, "await tx.insert(")).toBeLessThan(at(open, '$expressions["open.step.1.publish"]($after)'));
     expect(at(open, '$expressions["open.step.1.publish"]($after)')).toBeLessThan(at(open, '$expressions["open.step.2.run"]($after)'));
     expect(open.slice(0, at(open, "await tx.insert(")).includes("publish")).toBe(false);
-    expect(open).toContain("billing.Invoice#open cannot run in this version");
+    expect(at(open, '$expressions["open.step.1.publish"]($after)')).toBeLessThan(at(open, "$publishEvent("));
     const destroy = actions.slice(actions.indexOf("async void("), actions.indexOf("async pay("));
     expect(at(destroy, "await tx.deleteByKey(")).toBeLessThan(at(destroy, '$expressions["void.step.0.publish"]($after)'));
     expect(destroy.slice(0, at(destroy, "await tx.deleteByKey(")).includes("publish")).toBe(false);
-    expect(destroy).toContain("billing.Invoice#void cannot run in this version");
+    expect(at(destroy, '$expressions["void.step.0.publish"]($after)')).toBeLessThan(at(destroy, "$publishEvent("));
+    expect(destroy).toContain('action: "void",');
   });
 
   test("the generated tree passes the project's own type check, a publish function included", async () => {

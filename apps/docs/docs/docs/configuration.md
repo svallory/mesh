@@ -55,6 +55,7 @@ export default defineConfig({
 | `data` | yes | The data adapter for this project. Exactly one |
 | `extensions` | no | The enabled extensions, each one a call that returns an extension |
 | `seams` | no | Code your application runs before a transaction, after each write and after a commit; see [Seams](#seams) |
+| `events` | no | How the outbox keeps a row (`keep`) and where the events module is (`load`); see [Events](#events) |
 
 `domain` may also be a glob or a list of relative paths, when a project has entity files outside the main folder. A folder is read recursively and every `.mesh.mx` file beneath it is an entity file.
 
@@ -137,6 +138,24 @@ seams: {
 
 [Using your domain](./using-your-domain.md#seams) lists what each seam receives.
 
+## Events
+
+A project that declares an event configures it under `events`, and every field is optional:
+
+```ts "mesh.config.ts (excerpt)"
+events: {
+  load: () => import("./src/events.ts"),
+  keep: "all",
+},
+```
+
+| Field | What it is |
+|:--|:--|
+| `load` | A function that imports the events module, whose `metadata` function adds your fields to each event. `connect()` calls it; the build never does, so the module may import `#mesh` at its top |
+| `keep` | How long the outbox keeps a row: `"until-delivered"`, the default, deletes a row once every reader has passed it; `"all"` keeps every row, for an application that reads its history. A deploy that drops `"all"` deletes the delivered history at its first deletion pass |
+
+Any other field, a `keep` that is neither value, or a `load` that is not a function fails the build with `MESH_EVENTS_CONFIG`. `bus` and `requires` come with the event bus. [Events](./events.md) explains the outbox and the events module.
+
 ## Enabling extensions
 
 An extension adds to Mesh through declared points: the tags an entity file may use, transforms and verifiers, emitted files, expression functions, field types, `mesh` subcommands and named run-time behaviour. Extensions are listed here explicitly, each one a call that returns an extension:
@@ -162,4 +181,5 @@ Mesh has no `.env` loader of its own and does not read `tsconfig.json` paths to 
 
 - [Command line](./command-line.md) — every command, the build guard and migrations.
 - [Using your domain](./using-your-domain.md) — connecting and passing a context.
+- [Events](./events.md) — declaring events, `publish` and the outbox.
 - [Testing](./testing.md) — binding a database in memory instead of connecting.

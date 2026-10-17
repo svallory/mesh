@@ -1,11 +1,28 @@
+/** What every Mesh error's constructor accepts beside its own arguments: the cause, and whether a retry makes sense. */
+export interface MeshErrorOptions extends ErrorOptions {
+  /** Overrides the class default for this one error. */
+  retryable?: boolean;
+}
+
 /** Base class for failures reported by Mesh. */
 export abstract class MeshError extends Error {
+  /**
+   * The default of `retryable` for a class's errors: `false` here, since repeating a call unchanged cannot fix a
+   * validation, policy, not-found or framework error; a class whose failure is transient (`DatabaseBusyError`) sets `true`.
+   */
+  static readonly retryableByDefault: boolean = false;
   /** Stable machine-readable failure category. */
   abstract readonly code: string;
+  /**
+   * Whether the same call may succeed if repeated unchanged. Set on each error when it is made; the class gives only
+   * the default. A caller that retries, an event handler's bus among them, reads this instead of guessing from the class.
+   */
+  readonly retryable: boolean;
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: MeshErrorOptions) {
     super(message, options);
     this.name = new.target.name;
+    this.retryable = options?.retryable ?? (new.target as unknown as typeof MeshError).retryableByDefault;
   }
 }
 
@@ -68,7 +85,7 @@ export class InvalidInputError extends MeshError {
   /** A frozen copy of the supplied issue array. */
   readonly issues: readonly Issue[];
 
-  constructor(issues: readonly Issue[], options?: ErrorOptions) {
+  constructor(issues: readonly Issue[], options?: MeshErrorOptions) {
     if (issues.length === 0) {
       throw new FrameworkError("InvalidInputError requires at least one issue", options);
     }
@@ -98,7 +115,7 @@ export class ForbiddenError extends MeshError {
   /** Every check that ran, of every covering policy, as frozen plain data. */
   readonly breakdown: readonly PolicyCheck[];
 
-  constructor(denial: PolicyDenial, options?: ErrorOptions) {
+  constructor(denial: PolicyDenial, options?: MeshErrorOptions) {
     super(denialMessage(denial), options);
     this.entity = denial.entity;
     this.action = denial.action;
@@ -133,7 +150,7 @@ export class NotFoundError extends MeshError {
     readonly entity: string,
     /** The requested key, whether scalar or composite. */
     readonly key: unknown,
-    options?: ErrorOptions,
+    options?: MeshErrorOptions,
   ) {
     super(`Entity ${entity} not found for ${describeKey(key)}`, options);
   }
@@ -145,13 +162,15 @@ export class NotFoundError extends MeshError {
  * The code is `MESH_*`, unlike the lowercase category codes of the other classes, as the specification names it.
  */
 export class DatabaseBusyError extends MeshError {
+  /** A lock that was held may be free on the next try. */
+  static override readonly retryableByDefault: boolean = true;
   readonly code = "MESH_DATABASE_BUSY";
   /** The database file that was locked. */
   readonly file: string;
   /** How long the call waited, in milliseconds; 0 for a statement that is not retried. */
   readonly waitedMs: number;
 
-  constructor(file: string, waitedMs: number, options?: ErrorOptions) {
+  constructor(file: string, waitedMs: number, options?: MeshErrorOptions) {
     super(
       waitedMs > 0
         ? `The database file ${JSON.stringify(file)} stayed locked by another connection for ${waitedMs} ms, so the call gave up`
@@ -160,5 +179,73 @@ export class DatabaseBusyError extends MeshError {
     );
     this.file = file;
     this.waitedMs = waitedMs;
+  }
+}
+
+/**
+ * A read of the outbox from behind its deleted-through position (`MESH_EVENTS_DELETED`): the rows between the cursor and
+ * the oldest kept one were deleted once delivered, so reading on would skip them silently. The remedy is to reload current
+ * state and read from the newest position; an application that reads history sets `events.keep` to `"all"`.
+ */
+export class EventsDeletedError extends MeshError {
+  readonly code = "MESH_EVENTS_DELETED";
+  /** The cursor the read was given. */
+  readonly after: number;
+  /** The oldest position still kept: one above the deleted-through position. */
+  readonly oldestKept: number;
+
+  constructor(after: number, oldestKept: number, options?: MeshErrorOptions) {
+    super(
+      `Cannot read the outbox after position ${after}: the rows up to position ${oldestKept - 1} were deleted, so the oldest kept position is ${oldestKept}. `
+        + "Reload current state and read from the newest position, or set events.keep to \"all\" to keep every row",
+      options,
+    );
+    this.after = after;
+    this.oldestKept = oldestKept;
+  }
+}
+
+/**
+ * A read of the outbox from above the highest position it ever assigned (`MESH_CURSOR_AHEAD`): the cursor was kept outside
+ * the database, which has since gone back (a restored backup), so it names rows this outbox never had.
+ */
+export class CursorAheadError extends MeshError {
+  readonly code = "MESH_CURSOR_AHEAD";
+  /** The cursor the read was given. */
+  readonly after: number;
+  /** The highest position the outbox ever assigned. */
+  readonly highest: number;
+
+  constructor(after: number, highest: number, options?: MeshErrorOptions) {
+    super(
+      `Cannot read the outbox after position ${after}: the highest position it ever assigned is ${highest}. `
+        + "A cursor above it was kept outside the database, which has gone back (a restored backup), so the cursor is void: read from a position the outbox has",
+      options,
+    );
+    this.after = after;
+    this.highest = highest;
+  }
+}
+
+/**
+ * An outbox row whose stored name matches no declared event (`MESH_EVENT_UNDECLARED`): its declaration moved or was
+ * renamed. The read stops at it rather than skip it; the remedy, until the rename map exists, is to move the declaration
+ * back until its rows are delivered.
+ */
+export class EventUndeclaredError extends MeshError {
+  readonly code = "MESH_EVENT_UNDECLARED";
+  /** The stored name, e.g. `billing.InvoicePaid`. */
+  readonly eventName: string;
+  /** The row's position. */
+  readonly position: number;
+
+  constructor(eventName: string, position: number, options?: MeshErrorOptions) {
+    super(
+      `The outbox row at position ${position} names the event ${eventName}, which the project no longer declares (it moved or was renamed). `
+        + "The read stops here rather than skip it: move the declaration back until its rows are delivered",
+      options,
+    );
+    this.eventName = eventName;
+    this.position = position;
   }
 }

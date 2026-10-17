@@ -25,7 +25,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     const emitted = compile(["--declaration", "--emitDeclarationOnly", "--outDir", join(root, "actual"), join(repo, "packages/runtime/src/index.ts")], root);
     expect(emitted).toEqual({ code: 0, output: "" });
     const names = [...section.matchAll(/export (?:interface|class) (\w+)/g)].map((match) => match[1]!);
-    expect(names).toEqual(["ActionContext", "Issue", "PolicyCheck", "MeshError", "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError"]);
+    expect(names).toEqual(["EventsConfig", "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError", "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError", "EventUndeclaredError"]);
     // Check every documented member. Real errors additionally expose entity/key;
     // that extra API is not promised by the sample's deliberately smaller shape.
     const probe = `import type * as Docs from "mesh-runtime-reference";\nimport type * as Actual from "./actual/index";\n${names.map((name) => `declare const ${name}: Docs.${name};\n${name} satisfies Pick<Actual.${name}, keyof Docs.${name}>;`).join("\n")}
@@ -34,6 +34,12 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Assert<T extends true> = T;
 type IssueParity = Assert<Same<Docs.Issue, Actual.Issue>>;
 type PolicyParity = Assert<Same<Docs.PolicyCheck, Actual.PolicyCheck>>;
+// The events configuration and the metadata function: \`Pick\` of a callable interface checks nothing, so both are compared whole.
+type EventsConfigParity = Assert<Same<Docs.EventsConfig, Actual.EventsConfig>>;
+type MetadataFunctionParity = Assert<Same<Docs.MetadataFunction, Actual.MetadataFunction>>;
+type MetadataFunctionOfParity = Assert<Same<Docs.MetadataFunction<{ n: number }>, Actual.MetadataFunction<{ n: number }>>>;
+// @ts-expect-error a metadata function that may return undefined must fail parity
+type LooseMetadata = Assert<Same<Docs.MetadataFunction, (...args: Parameters<Actual.MetadataFunction>) => Actual.EventMetadata | undefined>>;
 // Negative tripwires pin both directions of the comparator.
 // @ts-expect-error optional Issue metadata must fail parity
 type OptionalIssue = Assert<Same<Docs.Issue, Omit<Actual.Issue, "label"> & { label?: string | null }>>;

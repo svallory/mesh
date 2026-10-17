@@ -11,13 +11,25 @@ export { bind, connect, disconnect, transaction, type Binding } from "./binding"
 export type { Privileged } from "@meshfw/runtime";
 export { tables } from "./schema";
 
-// The project's events: the type `DomainEvent` and the table `eventClasses`; the event and command classes come from their module.
+// The project's events: the types `DomainEvent`, `EventRecord` and `MetadataFunction`, the table `eventClasses`, `published`
+// and `readEvents`; the event and command classes come from their module.
 import { InvoicePaid as $billing$InvoicePaid$class } from "./domain/billing/invoicePaid.event";
 import { RefundIssued as $sales$refunds$RefundIssued$class } from "./domain/sales/refunds/refundIssued.event";
 import { $Object } from "./$globals";
+import type {
+  EventRecord as $EventRecord,
+  MetadataFunction as $MetadataFunction,
+} from "@meshfw/runtime";
 
 /** The instance type of every event class of the project: what a delivered event is. */
 export type DomainEvent = $billing$InvoicePaid$class | $sales$refunds$RefundIssued$class;
+/** A published event as a reader gets it: the envelope, the project's metadata and the event itself (`payload`). */
+export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
+/** The type of the events module's `metadata` function: `export const metadata: MetadataFunction = ({ event, context }) => ({ ... })`. */
+export type MetadataFunction = $MetadataFunction<DomainEvent>;
+export type { EventMetadata, ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
+/** `published()`, the running transaction's own events, and `readEvents(query)`, a page of the outbox's kept events. */
+export { published, readEvents } from "./binding";
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   "billing.InvoicePaid": $billing$InvoicePaid$class,

@@ -7,6 +7,12 @@ export interface ActionContext {
   system?: boolean;
 }
 /**
+ * What the project's `metadata` function returns for each published event, stored as the event's `metadata`. Projects
+ * declare its keys by merging this interface, in `src/context.ts` as for `ActionContext`.
+ */
+export interface EventMetadata {}
+
+/**
  * The second parameter of every generated action, spread as a rest tuple:
  * `createPost(input, ...[context]: ContextArgument)`. Optional while every key the
  * project merged into `ActionContext` is optional (or none is declared), required
@@ -14,16 +20,18 @@ export interface ActionContext {
  */
 export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
-export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError } from "./errors.ts";
-export type { DenialReason, Issue, IssueSource, PolicyCheck, PolicyDenial } from "./errors.ts";
+export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError } from "./errors.ts";
+export type { DenialReason, Issue, IssueSource, MeshErrorOptions, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow } from "./data-layer.ts";
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
 export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";
+export { CORE_TABLES, CORE_TABLE_NAMES, OUTBOX_STATE_TABLE, OUTBOX_TABLE, coreTablesFor } from "./core-tables.ts";
+export type { CoreColumn, CoreColumnType, CoreTable } from "./core-tables.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
 export { expr, pinClock, rescope, scope, systemClock } from "./expr.ts";
@@ -38,5 +46,7 @@ export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, Comput
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export { Mesh, type ActionFunction, type Decision, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
-export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, releaseBinding, settled } from "./entity.ts";
+export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, published, readEvents, releaseBinding, settled } from "./entity.ts";
+export { KEEP_VALUES, loadEvents, publishEvent, rows } from "./events.ts";
+export type { EventClass, EventRecord, EventsConfig, EventsModule, MetadataArguments, MetadataFunction, PublishTarget, ReadEventsPage, ReadEventsQuery } from "./events.ts";
 export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged } from "./entity.ts";
