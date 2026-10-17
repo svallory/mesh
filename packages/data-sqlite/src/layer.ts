@@ -4,7 +4,7 @@ import { count, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
-import { DatabaseBusyError, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
+import { DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
 export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill"]);
@@ -66,8 +66,11 @@ function refusal(failed: { cause: unknown }): FrameworkError {
 }
 
 interface State {
-  /** Runs `run` alone on the connection, opening it first. Schema preparation uses it and never waits for a lock. */
-  exclusive<T>(run: (db: BunSQLiteDatabase, token: Token, waitMs: number) => Promise<T>, options?: WaitOptions): Promise<T>;
+  /**
+   * Runs `run` alone on the connection, opening it first. The open's switch to WAL waits for a lock, within the one
+   * deadline of the call, which `run` receives; schema preparation does not use it and fails at once on a lock.
+   */
+  exclusive<T>(run: (db: BunSQLiteDatabase, token: Token, deadline: Deadline) => Promise<T>, options?: WaitOptions): Promise<T>;
   /** `layer.transaction` with an internal option: how long to wait for the write lock. */
   transaction<T>(run: (tx: DataOperations) => Promise<T>, options?: WaitOptions): Promise<T>;
 }
@@ -96,11 +99,18 @@ export interface WaitOptions {
   readonly waitMs?: number;
 }
 
-/** True when the error, or anything in its cause chain, is SQLite saying another connection holds a lock. */
+/** One clock for everything a call waits for: the WAL switch of an open and then `BEGIN IMMEDIATE` share it. */
+interface Deadline { readonly started: number; readonly at: number }
+
+/**
+ * True when the error is SQLite saying another connection holds a lock, or wraps one that does (Drizzle wraps what
+ * `bun:sqlite` throws). The walk stops at a Mesh error: whatever Mesh already reports is not rewritten.
+ */
 function isBusy(cause: unknown): boolean {
   const seen = new Set<object>();
   let current = cause;
   while (current !== null && typeof current === "object" && !seen.has(current)) {
+    if (current instanceof MeshError) return false;
     seen.add(current);
     if ("code" in current && typeof current.code === "string" && (current.code.startsWith("SQLITE_BUSY") || current.code.startsWith("SQLITE_LOCKED"))) return true;
     current = "cause" in current ? current.cause : undefined;
@@ -108,31 +118,32 @@ function isBusy(cause: unknown): boolean {
   return false;
 }
 
-/** The error a caller gets for a raw busy failure that is not retried: `MESH_DATABASE_BUSY`, never the SQLite error. */
+/** The error a caller gets for a raw busy failure that is not retried: `MESH_DATABASE_BUSY`, never the SQLite error. A Mesh error passes unchanged. */
 function reportBusy(cause: unknown, file: string): unknown {
-  return cause instanceof DatabaseBusyError || !isBusy(cause) ? cause : new DatabaseBusyError(file, 0, { cause });
+  return isBusy(cause) ? new DatabaseBusyError(file, 0, { cause }) : cause;
 }
 
 function connectionError(operation: string, file: string, cause: unknown): unknown {
-  if (cause instanceof DatabaseBusyError) return cause;
+  if (cause instanceof MeshError) return cause;
   if (isBusy(cause)) return new DatabaseBusyError(file, 0, { cause });
   return new FrameworkError(`Cannot ${operation} for SQLite file ${JSON.stringify(file)}. Check the database path, permissions and connection state.`, { cause });
 }
 
 /**
- * Runs `attempt`, and while it fails with SQLITE_BUSY awaits a short sleep and runs it again, for `waitMs` in all. The
- * sleep is a timer, so the process's other work goes on; a synchronous SQLite wait would stop all of it.
+ * Runs `attempt`, and while it fails with SQLITE_BUSY awaits a short sleep and runs it again until the deadline. The
+ * sleep is a timer, so the process's other work goes on; a synchronous SQLite wait would stop all of it. The
+ * error's wait is the time since the deadline's start, so it is the total of the call.
  */
-async function retryWhileBusy<T>(file: string, waitMs: number, attempt: () => T): Promise<T> {
-  const started = performance.now();
+async function retryWhileBusy<T>(file: string, deadline: Deadline, attempt: () => T): Promise<T> {
   let sleep = FIRST_SLEEP_MS;
   for (;;) {
     try { return attempt(); }
     catch (cause) {
       if (!isBusy(cause)) throw cause;
-      const waited = performance.now() - started;
-      if (waited >= waitMs) throw new DatabaseBusyError(file, Math.round(waited), { cause });
-      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(sleep, waitMs - waited)));
+      const now = performance.now();
+      // At least 1 ms, so a wait is never worded as "not retried" (0 is for statements that are not retried).
+      if (now >= deadline.at) throw new DatabaseBusyError(file, Math.max(1, Math.round(now - deadline.started)), { cause });
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(sleep, deadline.at - now)));
       sleep = Math.min(sleep * 2, LONGEST_SLEEP_MS);
     }
   }
@@ -161,12 +172,12 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
   let tail: Promise<void> = Promise.resolve();
   const context = new AsyncLocalStorage<Frame>();
   /** Opens the connection; a file database is put in WAL mode, which is a write, so it waits for a lock like BEGIN does. */
-  const open = async (waitMs: number) => {
+  const open = async (deadline: Deadline) => {
     let opened: Database | undefined;
     try {
       opened = new Database(configured.file);
       if (configured.file !== ":memory:") {
-        const mode = await retryWhileBusy(configured.file, waitMs, () => opened!.query("PRAGMA journal_mode=WAL").get() as { journal_mode?: string } | null);
+        const mode = await retryWhileBusy(configured.file, deadline, () => opened!.query("PRAGMA journal_mode=WAL").get() as { journal_mode?: string } | null);
         if (mode?.journal_mode?.toLowerCase() !== "wal") {
           throw new FrameworkError(`Cannot switch SQLite file ${JSON.stringify(configured.file)} to WAL mode: the database answered ${JSON.stringify(mode?.journal_mode ?? null)}. Mesh runs file databases in WAL mode only`);
         }
@@ -180,7 +191,6 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
   };
   const state: State = {
     exclusive(run, waitOptions) {
-      const waitMs = waitOptions?.waitMs ?? defaultWaitMs;
       const fatal = healthError();
       if (fatal) return Promise.reject(fatal);
       if (context.getStore()?.token.active) throw new FrameworkError("nested transactions are not supported");
@@ -189,11 +199,14 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
         queued--;
         running++;
         const token: Token = { active: true };
+        // One clock for the open's WAL switch and BEGIN IMMEDIATE, from when this call reaches the front of the queue.
+        const started = performance.now();
+        const deadline: Deadline = { started, at: started + (waitOptions?.waitMs ?? defaultWaitMs) };
         try {
           const fatal = healthError();
           if (fatal) throw fatal;
-          if (!db) await open(waitMs);
-          try { return await context.run({ token, tail: Promise.resolve() }, () => run(db!, token, waitMs)); }
+          if (!db) await open(deadline);
+          try { return await context.run({ token, tail: Promise.resolve() }, () => run(db!, token, deadline)); }
           catch (cause) { throw reportBusy(cause, configured.file); }
         } finally { token.active = false; running--; }
       });
@@ -227,6 +240,10 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       unusable = undefined;
     },
   };
+  /** A statement of a running transaction: a lock it meets is reported as `MESH_DATABASE_BUSY` where it happens, not retried. */
+  function busy<T>(statement: () => T): T {
+    try { return statement(); } catch (cause) { throw reportBusy(cause, configured.file); }
+  }
   function transactionWith<T>(run: (tx: DataOperations) => Promise<T>, waitOptions: WaitOptions | undefined): Promise<T> {
     const frame = context.getStore();
     if (frame?.token.active && frame.token.operations) {
@@ -248,15 +265,15 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       frame.tail = work.then(() => undefined, () => undefined);
       return work;
     }
-    return state.exclusive(async (database, token, waitMs) => {
+    return state.exclusive(async (database, token, deadline) => {
       // The queue is held while this waits, so a write begins only after the one before it has committed.
-      try { await retryWhileBusy(configured.file, waitMs, () => database.run(sql.raw("BEGIN IMMEDIATE"))); }
+      try { await retryWhileBusy(configured.file, deadline, () => database.run(sql.raw("BEGIN IMMEDIATE"))); }
       catch (cause) { throw connectionError("run BEGIN IMMEDIATE", configured.file, cause); }
       let active = true;
       const operations = drizzleOperations({
         table: sqliteTable,
-        insert: (table, row) => database.insert(table).values(row).returning().get()!,
-        select: (table, options) => {
+        insert: (table, row) => busy(() => database.insert(table).values(row).returning().get()!),
+        select: (table, options) => busy(() => {
           let query = database.select().from(table).$dynamic();
           if (options?.where) query = query.where(options.where);
           if (options?.orderBy?.length) query = query.orderBy(...options.orderBy);
@@ -264,13 +281,13 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
           if (options?.limit !== undefined || options?.offset !== undefined) query = query.limit(options.limit ?? Number.MAX_SAFE_INTEGER);
           if (options?.offset !== undefined) query = query.offset(options.offset);
           return query.all();
-        },
-        aggregate: (table, kind, column, where) => {
+        }),
+        aggregate: (table, kind, column, where) => busy(() => {
           const query = database.select({ value: kind === "max" ? max(column) : count(column) }).from(table).$dynamic();
           return (where ? query.where(where) : query).get()?.value ?? null;
-        },
-        update: (table, condition, changes) => database.update(table).set(changes).where(condition).returning().all(),
-        delete: (table, condition) => database.delete(table).where(condition).returning().all(),
+        }),
+        update: (table, condition, changes) => busy(() => database.update(table).set(changes).where(condition).returning().all()),
+        delete: (table, condition) => busy(() => database.delete(table).where(condition).returning().all()),
       }, () => { if (!active) throw new FrameworkError("Transaction operations are no longer active"); });
       token.operations = operations;
       try {
@@ -280,7 +297,7 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
         if (token.failed) {
           throw new FrameworkError("A call joined to this transaction failed, so the transaction is rolled back even though its callback caught the error", { cause: token.failed.cause });
         }
-        database.run(sql.raw("COMMIT"));
+        busy(() => database.run(sql.raw("COMMIT")));
         return result;
       } catch (cause) {
         active = false;
