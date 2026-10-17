@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { SQLiteSyncDialect, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { pgTable, text as pgText } from "drizzle-orm/pg-core";
-import { FrameworkError, type DataOperations } from "@meshfw/runtime";
+import { DatabaseBusyError, FrameworkError, type DataOperations } from "@meshfw/runtime";
 import { dataLayerConformance } from "@meshfw/runtime/testing";
 import { createSchema, sqlite } from "../src/index.ts";
-import { sqliteState } from "../src/layer.ts";
+import { sqliteState, sqliteWith } from "../src/layer.ts";
 import { missingDrizzleKit, planSchemaPush } from "../src/push-schema.ts";
 
 const table = sqliteTable("records", {
@@ -319,8 +319,8 @@ test("closing a fatally failed layer releases the write lock for a new layer on 
     }
     finally { spy.mockRestore(); db.run = original; }
     // The transaction never rolled back, so the write lock is still held.
-    const blocked = sqlite({ file });
-    await expect(blocked.transaction(async () => {})).rejects.toThrow("another connection holds the write lock");
+    const blocked = sqliteWith({ file }, { waitMs: 50 });
+    await expect(blocked.transaction(async () => {})).rejects.toBeInstanceOf(DatabaseBusyError);
     await blocked.close();
     // close() drops the native handle and the Drizzle references that keep its
     // prepared statements alive; the deferred close then completes. One explicit
@@ -368,6 +368,14 @@ async function frameworkFailure(promise: Promise<unknown>): Promise<FrameworkErr
   throw new Error("expected FrameworkError");
 }
 
+async function busyFailure(promise: Promise<unknown>): Promise<DatabaseBusyError> {
+  try { await promise; } catch (error) {
+    if (!(error instanceof DatabaseBusyError)) throw error;
+    return error;
+  }
+  throw new Error("expected DatabaseBusyError");
+}
+
 test("lazy-open failure names the operation and file, retains cause, and permits later recovery", async () => {
   const dir = mkdtempSync(join(tmpdir(), "mesh-open-failure-"));
   const parent = join(dir, "missing");
@@ -391,11 +399,11 @@ test("lazy-open failure names the operation and file, retains cause, and permits
   } finally { await layer.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("BEGIN busy failure explains the per-layer lock boundary and the queue recovers", async () => {
+test("a BEGIN that stays blocked fails with MESH_DATABASE_BUSY naming the file and the wait, and the queue recovers", async () => {
   const dir = mkdtempSync(join(tmpdir(), "mesh-busy-"));
   const file = join(dir, "shared.db");
   const first = sqlite({ file });
-  const second = sqlite({ file });
+  const second = sqliteWith({ file }, { waitMs: 100 });
   let release!: () => void;
   let started!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -407,12 +415,15 @@ test("BEGIN busy failure explains the per-layer lock boundary and the queue reco
     await entered;
     let calls = 0;
     const failures = await Promise.all([
-      frameworkFailure(second.transaction(async () => { calls++; })),
-      frameworkFailure(second.transaction(async () => { calls++; })),
+      busyFailure(second.transaction(async () => { calls++; })),
+      busyFailure(second.transaction(async () => { calls++; })),
     ]);
     for (const error of failures) {
-      expect(error.message).toBe(`Cannot run BEGIN IMMEDIATE for SQLite file ${JSON.stringify(file)}. The queue serialises one layer only; another connection holds the write lock. The caller decides whether to retry.`);
-      expect(error.cause).toBeInstanceOf(Error);
+      expect(error.code).toBe("MESH_DATABASE_BUSY");
+      expect(error.file).toBe(file);
+      expect(error.waitedMs).toBeGreaterThanOrEqual(100);
+      expect(error.message).toContain(JSON.stringify(file));
+      expect(error.message).toContain(`${error.waitedMs} ms`);
       expect(error.cause).toMatchObject({ cause: { code: "SQLITE_BUSY" } });
     }
     expect(calls).toBe(0);
