@@ -1,8 +1,9 @@
 import type { CommandDeclaration, EventDeclaration } from "@meshfw/model";
 import type { EmitInput } from "../emit.ts";
+import { classNameOf } from "../../model/class-name.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityFileComment } from "./types.ts";
-import { entityLocal, entityPath, propertyName, typeName, valueType } from "./inputs.ts";
+import { entityLocal, entityPath, propertyName, valueType } from "./inputs.ts";
 import { fieldSchema } from "./validators.ts";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -23,10 +24,10 @@ export function declarationsOf(document: EmitInput["document"]): Declaration[] {
 export const declarationFile = (declaration: Pick<Declaration, "kind">): string => `.${declaration.kind}`;
 /** A declaration's generated file below the output directory, without its extension: `domain/billing/invoicePaid.event`. */
 export const declarationPath = (declaration: Declaration): string => `${entityPath(declaration)}${declarationFile(declaration)}`;
-/** The name of the class: the declared name with its first letter in upper case (`invoicePaid` is `InvoicePaid`), `typeName` as an entity's record type is. */
-export const className = (declaration: Pick<Declaration, "name" | "position">): string => typeName(declaration.name, declaration.position);
+/** The name of the class: the declared name with its first letter in upper case (`invoicePaid` and `invoice_paid` are `InvoicePaid`; `model/class-name.ts`). */
+export const className = (declaration: Pick<Declaration, "name">): string => classNameOf(declaration.name);
 /** The local another generated file imports the class under: `$billing$InvoicePaid$class`, by the rule every entity local follows. */
-export const classLocal = (declaration: Pick<Declaration, "module" | "name" | "position">): string => entityLocal(declaration, "class");
+export const classLocal = (declaration: Pick<Declaration, "module" | "name" | "position">): string => entityLocal({ ...declaration, name: className(declaration) }, "class");
 
 /** One field of the generated class. */
 export interface DeclarationField {

@@ -8,6 +8,7 @@
 export { Invoice } from "./invoice.actions";
 export type {
   OpenInvoiceInput,
+  VoidInvoiceInput,
   PayInvoiceInput,
   RefundInvoiceInput,
   NamedInvoiceInput,
@@ -15,5 +16,6 @@ export type {
   InvoiceFilter,
   InvoiceSort,
 } from "./invoice.types";
+// The module's event and command classes: `new <Class>({ ... })` makes an instance, `Mesh.fqnOf` names its declaration.
 export { InvoicePaid } from "./invoicePaid.event";
 export { PayInvoice } from "./payInvoice.command";

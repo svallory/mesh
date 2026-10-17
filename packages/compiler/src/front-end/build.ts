@@ -50,6 +50,7 @@ import {
 import { resolveRelationships } from "./relationships.ts";
 import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
 import { checkPublishSteps } from "../model/publish-steps.ts";
+import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import {
   atomList,
@@ -950,8 +951,6 @@ function buildEntity(
  * is per tag and the field kinds are the attribute types, so the contract cannot tell a field from an attribute, and the
  * builder reports it. An event file takes no import: its field kinds are attribute types.
  */
-/** The name of the class an event or a command makes: the declared name, its first letter in upper case (`invoicePaid` is `InvoicePaid`). */
-const classNameOf = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
 const FIELD_OPTIONS_REFUSED = ["default", "unique", "primary-key", "on", "value"] as const;
 function buildDeclaration(
   root: Tag,
@@ -965,8 +964,9 @@ function buildDeclaration(
   const name = declaredName(root);
   const { module, bareUnderscore } = moduleOfFolder(folder);
   // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
-  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name))
-    fail("MESH_NAME", `${root.name === "event" ? "Event" : "Command"} :${name} must have a name of letters and digits that starts with a letter, such as :${root.name === "event" ? "InvoicePaid" : "PayInvoice"}, since Mesh makes its class from it`, root);
+  // `invoice_paid` is the class `InvoicePaid` (`notes/spec/names.md`); a name that makes no identifier (`_1`) is an error.
+  if (!isClassName(classNameOf(name)))
+    fail("MESH_NAME", `${root.name === "event" ? "Event" : "Command"} :${name} makes no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter, such as :${root.name === "event" ? "InvoicePaid" : "PayInvoice"}`, root);
   if (bareUnderscore)
     fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
   for (const segment of module ? module.split("/") : []) {

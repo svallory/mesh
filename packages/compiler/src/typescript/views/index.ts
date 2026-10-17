@@ -9,7 +9,7 @@ import { modulesOf } from "./module.ts";
  * What `index.ts.jig` renders: `.mesh/index.ts`, which a project imports as `#mesh` (ADR-0047, ADR-0058). It holds
  * only the framework's exports: `bind`, `connect`, `disconnect`, `transaction` and the `Binding` type from `./binding`,
  * the type `Privileged` from `@meshfw/runtime` (`Mesh.privileged` itself comes from `meshfw`), and the adapter's `tables` from `./schema`,
- * and, in a project that declares an event, the type `DomainEvent` and the table `events` (M6). An entity's value and
+ * and, in a project that declares an event, the type `DomainEvent` and the table `eventClasses` (M6). An entity's value and
  * types are its module's (`#mesh/domain/<module>`), never re-exported here. Every string is final; the
  * template prints and loops. A project's own `index.ts.jig` depends on this shape.
  */

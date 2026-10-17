@@ -93,9 +93,14 @@ describe("an event and a command file", () => {
 
   test("the name, the fields and the file are checked", () => {
     const one = (source: string, file = "billing/bad.mesh.mx") => buildModel({ root: "/project", files: [{ file, source }] }).diagnostics;
-    expect(brief(one("event :invoice_x\n  uuid :id\n"))).toEqual([["billing/bad.mesh.mx", 1, 0, "error", "MESH_NAME",
-      "Event :invoice_x must have a name of letters and digits that starts with a letter, such as :InvoicePaid, since Mesh makes its class from it", null]]);
-    expect(brief(one("command :pay_it\n  uuid :id\n"))[0]![5]).toBe("Command :pay_it must have a name of letters and digits that starts with a letter, such as :PayInvoice, since Mesh makes its class from it");
+    // `_` is dropped and the next letter capitalised (`notes/spec/names.md`): no error, and the FQN carries the class's name.
+    const snake = buildModel({ root: "/project", files: [{ file: "billing/x.mesh.mx", source: "event :invoice_paid\n  uuid :id\n" }, { file: "billing/y.mesh.mx", source: "command :_pay__it_now\n  uuid :id\n" }] });
+    expect(snake.diagnostics).toEqual([]);
+    expect(snake.document!.events!.map((event) => event.fqn)).toEqual(["billing.InvoicePaid"]);
+    expect(snake.document!.commands!.map((command) => command.fqn)).toEqual(["billing.PayItNow"]);
+    expect(brief(one("event :_1\n  uuid :id\n"))).toEqual([["billing/bad.mesh.mx", 1, 0, "error", "MESH_NAME",
+      "Event :_1 makes no class name: Mesh drops each `_` and capitalises the letter after it, so the name needs a letter, such as :InvoicePaid", null]]);
+    expect(brief(one("command :__\n  uuid :id\n"))[0]![5]).toBe("Command :__ makes no class name: Mesh drops each `_` and capitalises the letter after it, so the name needs a letter, such as :PayInvoice");
     expect(brief(one("event :E\n  string :x\n  string :x\n"))).toEqual([["billing/bad.mesh.mx", 3, 2, "error", "MESH_DUPLICATE_MEMBER", "Duplicate member :x", null]]);
     expect(brief(one("event :E\n  string :constructor\n"))).toEqual([["billing/bad.mesh.mx", 2, 2, "error", "MESH_ATTRIBUTE_NAME",
       ":constructor cannot be a field name: the generated class has its constructor under that name. Choose another name.", null]]);
@@ -309,6 +314,14 @@ entity :Invoice
     decimal :total default=10
   actions auto=[:read]
     create :open
+      do
+        set
+          &paid=false
+        ${PUBLISH_PAID}
+        run [after=:write] ({ self }) { return self.id }
+    destroy :void
+      do
+        ${PUBLISH_PAID}
     update :pay
       do
         set
@@ -358,7 +371,7 @@ entity :Invoice
     const expressions = text(generated, ".mesh/domain/billing/invoice.expressions.ts");
     await golden("invoice.expressions.ts.golden", expressions);
     expect(expressions).toContain("// publish, plain (publish-step) (billing/invoice.mesh.mx:");
-    expect([...expressions.matchAll(/\): \$DomainEvent \| \$Promise<\$DomainEvent> => \{/g)].length).toBe(5);
+    expect([...expressions.matchAll(/\): \$DomainEvent \| \$Promise<\$DomainEvent> => \{/g)].length).toBe(7);
     expect(expressions).toContain('import type { DomainEvent as $DomainEvent } from "../../index";');
     expect(expressions).toContain('import { InvoicePaid as $billing$InvoicePaid$class } from "./invoicePaid.event";');
     expect(expressions).toContain('import { RefundIssued as $sales$refunds$RefundIssued$class } from "../sales/refunds/refundIssued.event";');
@@ -390,6 +403,21 @@ entity :Invoice
     expect(refund.indexOf('["refund.step.0.0.publish"]($after)')).toBeLessThan(refund.indexOf('["refund.step.0.1.run"]($after)'));
     expect(refund.indexOf("$when0 = ")).toBeLessThan(refund.indexOf("await tx.updateByKey("));
     expect(refund.indexOf('["refund.step.0.0.publish"]($after)')).toBeGreaterThan(refund.indexOf("await tx.updateByKey("));
+  });
+
+  test("a publish on a create runs after the insert, and one on a destroy after the delete, each before the result", async () => {
+    const actions = text(await generate(), ".mesh/domain/billing/invoice.actions.ts");
+    const open = actions.slice(actions.indexOf("async open("), actions.indexOf("async void("));
+    const at = (slice: string, needle: string) => { const index = slice.indexOf(needle); expect(index).toBeGreaterThan(-1); return index; };
+    // a create has no stored row before the write, so only after the insert does `self` exist for the function to read
+    expect(at(open, "await tx.insert(")).toBeLessThan(at(open, '$expressions["open.step.1.publish"]($after)'));
+    expect(at(open, '$expressions["open.step.1.publish"]($after)')).toBeLessThan(at(open, '$expressions["open.step.2.run"]($after)'));
+    expect(open.slice(0, at(open, "await tx.insert(")).includes("publish")).toBe(false);
+    expect(open).toContain("billing.Invoice#open cannot run in this version");
+    const destroy = actions.slice(actions.indexOf("async void("), actions.indexOf("async pay("));
+    expect(at(destroy, "await tx.deleteByKey(")).toBeLessThan(at(destroy, '$expressions["void.step.0.publish"]($after)'));
+    expect(destroy.slice(0, at(destroy, "await tx.deleteByKey(")).includes("publish")).toBe(false);
+    expect(destroy).toContain("billing.Invoice#void cannot run in this version");
   });
 
   test("the generated tree passes the project's own type check, a publish function included", async () => {

@@ -1,0 +1,2 @@
+event :invoice_opened
+  uuid :invoiceId

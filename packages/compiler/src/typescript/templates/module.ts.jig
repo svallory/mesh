@@ -19,6 +19,9 @@ export type {
 } from {{ entity.typesFromLiteral }};
 @end
 @end
+@if(declarations.length)
+// The module's event and command classes: `new <Class>({ ... })` makes an instance, `Mesh.fqnOf` names its declaration.
+@end
 @each(declaration in declarations)
 export { {{ declaration.name }} } from {{ declaration.fromLiteral }};
 @end

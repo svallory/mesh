@@ -3,7 +3,7 @@
 // (an event with every field option), `billing/pay-invoice.mesh.mx` (a command), `sales/refunds/refund-issued.mesh.mx` (an
 // event declared as `:refundIssued`, imported through a namespace) and `billing/invoice.mesh.mx`, whose `pay` publishes
 // `InvoicePaid` and whose `refund` publishes `refunds.RefundIssued` inside a `when`. Everything the PR builds is checked
-// through the specifiers an application uses: the classes of each module's barrel, `DomainEvent` and the table `events` of
+// through the specifiers an application uses: the classes of each module's barrel, `DomainEvent` and the table `eventClasses` of
 // `#mesh`, and `Mesh.fqnOf`. A `publish` runs after the write and then fails naming M6, until PR 2 writes the outbox.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -32,7 +32,7 @@ const TSCONFIG = {
 const CHECK = `import { InvoicePaid, PayInvoice } from "#mesh/domain/billing";
 import { RefundIssued } from "#mesh/domain/sales/refunds";
 import * as domain from "#mesh/domain";
-import { events, type DomainEvent } from "#mesh";
+import { eventClasses, type DomainEvent } from "#mesh";
 import { Mesh } from "meshfw";
 
 const paid = new InvoicePaid({ invoiceId: "0190a000-0000-7000-8000-000000000000", amount: 1, method: "card", paidAt: new Date(), extra: null });
@@ -53,10 +53,10 @@ paid.amount = 2;
 export const reference: string | null = paid.reference;
 export const namespaced: typeof RefundIssued = domain.sales.refunds.RefundIssued;
 export const fqn: string = Mesh.fqnOf(InvoicePaid);
-export const table: typeof InvoicePaid = events["billing.InvoicePaid"];
-export const tableRefund: typeof RefundIssued = events["sales.refunds.RefundIssued"];
+export const table: typeof InvoicePaid = eventClasses["billing.InvoicePaid"];
+export const tableRefund: typeof RefundIssued = eventClasses["sales.refunds.RefundIssued"];
 // @ts-expect-error a command is in no event table
-export const none = events["billing.PayInvoice"];
+export const none = eventClasses["billing.PayInvoice"];
 `;
 
 async function project(): Promise<string> {
@@ -102,7 +102,7 @@ describe("events and commands in files of their own", () => {
     expect(files).toEqual([
       "$globals.ts", "binding.ts", "domain/billing/index.ts", "domain/billing/invoice.actions.ts", "domain/billing/invoice.expressions.ts",
       "domain/billing/invoice.types.ts", "domain/billing/invoice.validators.ts", "domain/billing/invoicePaid.event.ts",
-      "domain/billing/payInvoice.command.ts", "domain/billing/promise.event.ts", "domain/index.ts", "domain/sales/index.ts", "domain/sales/refunds/index.ts",
+      "domain/billing/invoice_opened.event.ts", "domain/billing/invoice_voided.event.ts", "domain/billing/payInvoice.command.ts", "domain/billing/promise.event.ts", "domain/index.ts", "domain/sales/index.ts", "domain/sales/refunds/index.ts",
       "domain/sales/refunds/refundIssued.event.ts", "index.ts", "schema.ts",
     ]);
     const billing = await readFile(join(root, ".mesh/domain/billing/index.ts"), "utf8");
@@ -114,7 +114,7 @@ describe("events and commands in files of their own", () => {
     expect(await readFile(join(root, ".mesh/domain/sales/refunds/index.ts"), "utf8")).toContain('export { RefundIssued } from "./refundIssued.event";');
     expect(await readFile(join(root, ".mesh/domain/sales/index.ts"), "utf8")).toContain('export * as refunds from "./refunds/index";');
     const index = await readFile(join(root, ".mesh/index.ts"), "utf8");
-    expect(index.replace(/\s+/g, " ")).toContain("export type DomainEvent = | $billing$InvoicePaid$class | $billing$Promise$class | $sales$refunds$RefundIssued$class;");
+    expect(index.replace(/\s+/g, " ")).toContain("export type DomainEvent = | $billing$InvoicePaid$class | $billing$InvoiceOpened$class | $billing$InvoiceVoided$class | $billing$Promise$class | $sales$refunds$RefundIssued$class;");
     expect(index).toContain('"billing.InvoicePaid": $billing$InvoicePaid$class,');
     expect(index).toContain('"sales.refunds.RefundIssued": $sales$refunds$RefundIssued$class,');
     expect(index).not.toContain("PayInvoice");
@@ -123,7 +123,7 @@ describe("events and commands in files of their own", () => {
   test("mesh build --check finds the committed tree current, and mesh inspect shows the declarations in the model", () => {
     expect(mesh(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
     const model = JSON.parse(mesh(root, "inspect").stdout) as { events: { fqn: string; module: string; fields: { name: string; type: string }[] }[]; commands: { fqn: string }[] };
-    expect(model.events.map((event) => [event.fqn, event.module])).toEqual([["billing.InvoicePaid", "billing"], ["billing.Promise", "billing"], ["sales.refunds.RefundIssued", "sales/refunds"]]);
+    expect(model.events.map((event) => [event.fqn, event.module])).toEqual([["billing.InvoicePaid", "billing"], ["billing.InvoiceOpened", "billing"], ["billing.InvoiceVoided", "billing"], ["billing.Promise", "billing"], ["sales.refunds.RefundIssued", "sales/refunds"]]);
     expect(model.events[0]!.fields.map((field) => [field.name, field.type])).toEqual([
       ["invoiceId", "uuid"], ["amount", "decimal"], ["reference", "string"], ["method", "enum"], ["paidAt", "datetime"], ["extra", "json"],
     ]);
@@ -196,10 +196,10 @@ describe("events and commands in files of their own", () => {
     expect(Mesh.fqnOf(PayInvoice)).toBe("billing.PayInvoice");
     expect(Mesh.fqnOf(RefundIssued)).toBe("sales.refunds.RefundIssued");
     expect(() => Mesh.fqnOf(class {} as never)).toThrow(FrameworkError);
-    expect(Object.keys(app.events)).toEqual(["billing.InvoicePaid", "billing.Promise", "sales.refunds.RefundIssued"]);
-    expect(app.events["billing.InvoicePaid"]).toBe(InvoicePaid);
-    expect(Object.isFrozen(app.events)).toBe(true);
-    for (const [fqn, declared] of Object.entries(app.events as Record<string, never>)) expect(Mesh.fqnOf(declared)).toBe(fqn);
+    expect(Object.keys(app.eventClasses)).toEqual(["billing.InvoicePaid", "billing.InvoiceOpened", "billing.InvoiceVoided", "billing.Promise", "sales.refunds.RefundIssued"]);
+    expect(app.eventClasses["billing.InvoicePaid"]).toBe(InvoicePaid);
+    expect(Object.isFrozen(app.eventClasses)).toBe(true);
+    for (const [fqn, declared] of Object.entries(app.eventClasses as Record<string, never>)) expect(Mesh.fqnOf(declared)).toBe(fqn);
     const fields = { invoiceId: "0190a000-0000-7000-8000-000000000000", amount: 1, method: "card", paidAt: new Date(0), extra: null };
     const instance = new InvoicePaid(fields);
     const symbol = Object.getOwnPropertySymbols(InvoicePaid)[0]!;
@@ -234,13 +234,28 @@ describe("events and commands in files of their own", () => {
     const binding = app.bind(layer, { seams: { afterWrite: (_db: unknown, write: { entity: string; action: string }) => { written.push(`${write.entity}#${write.action}`); } } });
     try {
       await binding.run(async () => {
-        const invoice = await domain.billing.Invoice.open({}, {});
-        expect(invoice).toMatchObject({ paid: false });
-        const failure = await domain.billing.Invoice.pay({ id: invoice.id }, {}).then(() => undefined, (cause: unknown) => cause);
+        // a create publishes too: the row is written, the seam sees it, and the transaction fails naming M6, so nothing is stored
+        const opened = await domain.billing.Invoice.open({}, {}).then(() => undefined, (cause: unknown) => cause);
+        expect(opened).toBeInstanceOf(FrameworkError);
+        expect((opened as Error).message).toBe("billing.Invoice#open cannot run in this version: its publish step writes the event to the outbox, which arrives in M6");
+        expect(written).toEqual(["billing.Invoice#open"]);
+        expect(await domain.billing.Invoice.read({}, {})).toEqual([]);
+        // a row stored without an action, to update and destroy
+        const [table] = Object.values(app.tables);
+        const id = "00000000-0000-4000-8000-000000000001";
+        await layer.transaction(async (tx: { insert: (table: unknown, row: unknown) => Promise<unknown> }) => { await tx.insert(table, { id, paid: false, total: 10 }); });
+        const [invoice] = await domain.billing.Invoice.read({}, {});
+        expect(invoice).toMatchObject({ id, paid: false });
+        written.length = 0;
+        const failure = await domain.billing.Invoice.pay({ id }, {}).then(() => undefined, (cause: unknown) => cause);
         expect(failure).toBeInstanceOf(FrameworkError);
         expect((failure as Error).message).toBe("billing.Invoice#pay cannot run in this version: its publish step writes the event to the outbox, which arrives in M6");
-        // the write happened (the seam saw it, the function ran after it), and the transaction rolled back
-        expect(written).toEqual(["billing.Invoice#open", "billing.Invoice#pay"]);
+        // a destroy publishes after the row is deleted (`self` is the deleted row), then the transaction rolls back and the row is still there
+        const voided = await domain.billing.Invoice.void({ id }, {}).then(() => undefined, (cause: unknown) => cause);
+        expect(voided).toBeInstanceOf(FrameworkError);
+        expect((voided as Error).message).toBe("billing.Invoice#void cannot run in this version: its publish step writes the event to the outbox, which arrives in M6");
+        // the writes happened (the seam saw them, the function ran after them), and each transaction rolled back
+        expect(written).toEqual(["billing.Invoice#pay", "billing.Invoice#void"]);
         expect(await domain.billing.Invoice.read({}, {})).toEqual([invoice]);
         // `refund` publishes only when the condition held before the write: it did not, so the action succeeds
         expect(await domain.billing.Invoice.refund({ id: invoice.id }, {})).toEqual(invoice);

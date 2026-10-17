@@ -1,4 +1,6 @@
 import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import { InvoiceOpened } from "./invoice_opened.mesh.mx"
+import { InvoiceVoided } from "./invoice_voided.mesh.mx"
 import * as refunds from "../sales/refunds/refund-issued.mesh.mx"
 
 entity :Invoice
@@ -8,6 +10,11 @@ entity :Invoice
     decimal :total default=10
   actions auto=[:read]
     create :open
+      do
+        publish=() => new InvoiceOpened({ invoiceId: &id })
+    destroy :void
+      do
+        publish=() => new InvoiceVoided({ invoiceId: &id, total: &total })
     update :pay
       do
         set
@@ -21,5 +28,5 @@ entity :Invoice
             return new refunds.RefundIssued({ invoiceId: &id, cents: 500 })
           }
   policies
-    policy :anyone types=[:create, :read, :update]
+    policy :anyone types=[:create, :read, :update, :destroy]
       authorize-if=() => true

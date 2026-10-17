@@ -13,8 +13,10 @@ import { RefundIssued as $sales$refunds$RefundIssued$class } from "../sales/refu
 import type {
   Invoice as $billing$Invoice$Record,
   NamedInvoiceInput as $billing$Invoice$NamedInvoiceInput,
+  OpenInvoiceInput as $billing$Invoice$OpenInvoiceInput,
   PayInvoiceInput as $billing$Invoice$PayInvoiceInput,
   RefundInvoiceInput as $billing$Invoice$RefundInvoiceInput,
+  VoidInvoiceInput as $billing$Invoice$VoidInvoiceInput,
 } from "./invoice.types";
 import type { DomainEvent as $DomainEvent } from "../../index";
 import type { $Promise } from "../../$globals";
@@ -40,7 +42,33 @@ export type $billing$Invoice$StoredScope<I = unknown> = $billing$Invoice$Scope<I
 };
 
 export const $expressions = {
-  // publish, plain (publish-step) (billing/invoice.mesh.mx:14:17)
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:13:17)
+  "open.step.1.publish": (
+    $s: $billing$Invoice$Scope<$billing$Invoice$OpenInvoiceInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const $now = () => $.now($s);
+    const InvoicePaid: typeof $billing$InvoicePaid$class = $billing$InvoicePaid$class;
+    return (() =>
+      new InvoicePaid({ invoiceId: $self.id, amount: 1, method: "card", paidAt: $now() }))();
+  },
+  // run, plain (run-step) (billing/invoice.mesh.mx:14:28)
+  "open.step.2.run": ($s: $billing$Invoice$Scope<$billing$Invoice$OpenInvoiceInput>) => {
+    return (async function ({ self }) {
+      return self.id;
+    })($s);
+  },
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:17:17)
+  "void.step.0.publish": (
+    $s: $billing$Invoice$StoredScope<$billing$Invoice$VoidInvoiceInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const $now = () => $.now($s);
+    const InvoicePaid: typeof $billing$InvoicePaid$class = $billing$InvoicePaid$class;
+    return (() =>
+      new InvoicePaid({ invoiceId: $self.id, amount: 1, method: "card", paidAt: $now() }))();
+  },
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:22:17)
   "pay.step.1.publish": (
     $s: $billing$Invoice$StoredScope<$billing$Invoice$PayInvoiceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -50,13 +78,13 @@ export const $expressions = {
     return (() =>
       new InvoicePaid({ invoiceId: $self.id, amount: 1, method: "card", paidAt: $now() }))();
   },
-  // run, plain (run-step) (billing/invoice.mesh.mx:15:28)
+  // run, plain (run-step) (billing/invoice.mesh.mx:23:28)
   "pay.step.2.run": ($s: $billing$Invoice$StoredScope<$billing$Invoice$PayInvoiceInput>) => {
     return (async function ({ self }) {
       return self.id;
     })($s);
   },
-  // publish, plain (publish-step) (billing/invoice.mesh.mx:16:17)
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:24:17)
   "pay.step.3.publish": (
     $s: $billing$Invoice$StoredScope<$billing$Invoice$PayInvoiceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -66,10 +94,10 @@ export const $expressions = {
     };
     return (async () => new refunds.RefundIssued({ invoiceId: $self.id, cents: 1 }))();
   },
-  // step when, translated (billing/invoice.mesh.mx:19:14)
+  // step when, translated (billing/invoice.mesh.mx:27:14)
   "refund.step.0.when": ($s: $billing$Invoice$StoredScope<$billing$Invoice$RefundInvoiceInput>) =>
     $s.self.paid,
-  // publish, plain (publish-step) (billing/invoice.mesh.mx:20:19)
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:28:19)
   "refund.step.0.0.publish": (
     $s: $billing$Invoice$StoredScope<$billing$Invoice$RefundInvoiceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -84,7 +112,7 @@ export const $expressions = {
         paidAt: $now(),
       }))();
   },
-  // run, plain (run-step) (billing/invoice.mesh.mx:21:30)
+  // run, plain (run-step) (billing/invoice.mesh.mx:29:30)
   "refund.step.0.1.run": (
     $s: $billing$Invoice$StoredScope<$billing$Invoice$RefundInvoiceInput>,
   ) => {
@@ -92,7 +120,7 @@ export const $expressions = {
       return self.id;
     })($s);
   },
-  // publish, plain (publish-step) (billing/invoice.mesh.mx:24:17)
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:32:17)
   "named.step.0.publish": (
     $s: $billing$Invoice$StoredScope<$billing$Invoice$NamedInvoiceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -109,7 +137,7 @@ export const $expressions = {
       return made;
     })($s);
   },
-  // publish, plain (publish-step) (billing/invoice.mesh.mx:27:17)
+  // publish, plain (publish-step) (billing/invoice.mesh.mx:35:17)
   "always.0.step.0.publish": (
     $s: $billing$Invoice$StoredScope<
       $SharedInput<
