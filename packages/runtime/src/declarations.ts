@@ -15,6 +15,11 @@ export interface Declaration<Instance extends object = object> {
   readonly fqn: string;
   /** True for an instance of this class and nothing else: the check of its private field, which no object literal passes. */
   readonly is: (value: unknown) => value is Instance;
+  /**
+   * The fields that hold a date: an event's payload is stored as JSON, where a date is text, so `readEvents` turns these
+   * back into dates before it calls the constructor. Absent on a class generated before M6 PR 2.
+   */
+  readonly dates?: readonly string[];
 }
 
 /** The class of an event or a command, as `mesh build` generates it. */

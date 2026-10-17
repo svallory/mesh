@@ -2,6 +2,7 @@ import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import type { ActionContext } from "./index.ts";
 import { FrameworkError } from "./errors.ts";
 import { cloneValue } from "./load.ts";
+import { forgetPublished } from "./events.ts";
 
 /**
  * The three lifecycle seams (M6, ADR-0075): code the application runs before an action's transaction, after each row an
@@ -123,14 +124,16 @@ function readOnly(value: unknown): unknown {
  * Run the outermost transaction of a call: `body` runs inside `layer.transaction`, and the changes its writes recorded
  * are taken inside that callback, once every call joined to it has settled, so a layer that hands every transaction the
  * same operations object cannot mix the changes of two calls. `afterCommit` then runs once, after the commit, when the
- * transaction wrote something. A throw in `body` rolls back and rejects without running it.
+ * transaction wrote something. A throw in `body` rolls back and rejects without running it. The events the transaction
+ * publishes are kept for `published()` from the moment it opens until it settles.
  */
 export async function outermost<T>(layer: DataLayer, seams: Seams | undefined, body: (tx: DataOperations) => Promise<T>): Promise<T> {
   let taken: Change[] | undefined;
   const result = await layer.transaction(async (tx) => {
     changesOf.delete(tx);
+    forgetPublished(tx);
     try { return await body(tx); }
-    finally { taken = changesOf.get(tx); changesOf.delete(tx); }
+    finally { taken = changesOf.get(tx); changesOf.delete(tx); forgetPublished(tx); }
   });
   await report(taken, seams);
   return result;

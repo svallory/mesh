@@ -1,5 +1,6 @@
 import type { DataAdapter } from "./data-adapter.ts";
 import type { Seams } from "./seams.ts";
+import type { EventsConfig } from "./events.ts";
 
 /** Only the extension's identity is understood before M6. */
 export interface ExtensionDescriptor { readonly name: string }
@@ -18,6 +19,8 @@ export interface MeshConfig {
   data: DataAdapter;
   /** Code the application runs before a transaction, after each write and after a commit (ADR-0075); `connect()` binds them. */
   seams?: Seams;
+  /** Events (M6): `load`, the events module loaded at run time, and `keep`, how long the outbox keeps a row. */
+  events?: EventsConfig;
   /** Kept opaque beyond identity; extensions are not activated here. */
   extensions?: readonly ExtensionDescriptor[];
 }

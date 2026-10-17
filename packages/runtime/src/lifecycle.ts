@@ -1,15 +1,18 @@
 import { FrameworkError, type Issue, type IssueSource } from "./errors.ts";
 import { now, type Clock, type Scope } from "./expr.ts";
 import type { Seams } from "./seams.ts";
+import type { EventsConfig } from "./events.ts";
 
 /**
  * What `bind(layer, options)` takes. The clock is what `%.now` reads in a function of an entity file (ADR-0012, M4 D6):
  * read once per transaction, by the action call, read or application `transaction` that opens it. `seams` are
- * the lifecycle seams of every action (ADR-0075).
+ * the lifecycle seams of every action (ADR-0075). `events` is the `events` key of `mesh.config.ts`: its `load` gives the
+ * `metadata` function a `publish` runs.
  */
 export interface BindOptions {
   clock?: Clock | undefined;
   seams?: Seams | undefined;
+  events?: EventsConfig | undefined;
 }
 
 /**

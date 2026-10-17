@@ -181,3 +181,71 @@ export class DatabaseBusyError extends MeshError {
     this.waitedMs = waitedMs;
   }
 }
+
+/**
+ * A read of the outbox from behind its deleted-through position (`MESH_EVENTS_DELETED`): the rows between the cursor and
+ * the oldest kept one were deleted once delivered, so reading on would skip them silently. The remedy is to reload current
+ * state and read from the newest position; an application that reads history sets `events.keep` to `"all"`.
+ */
+export class EventsDeletedError extends MeshError {
+  readonly code = "MESH_EVENTS_DELETED";
+  /** The cursor the read was given. */
+  readonly after: number;
+  /** The oldest position still kept: one above the deleted-through position. */
+  readonly oldestKept: number;
+
+  constructor(after: number, oldestKept: number, options?: MeshErrorOptions) {
+    super(
+      `Cannot read the outbox after position ${after}: the rows up to position ${oldestKept - 1} were deleted, so the oldest kept position is ${oldestKept}. `
+        + "Reload current state and read from the newest position, or set events.keep to \"all\" to keep every row",
+      options,
+    );
+    this.after = after;
+    this.oldestKept = oldestKept;
+  }
+}
+
+/**
+ * A read of the outbox from above the highest position it ever assigned (`MESH_CURSOR_AHEAD`): the cursor was kept outside
+ * the database, which has since gone back (a restored backup), so it names rows this outbox never had.
+ */
+export class CursorAheadError extends MeshError {
+  readonly code = "MESH_CURSOR_AHEAD";
+  /** The cursor the read was given. */
+  readonly after: number;
+  /** The highest position the outbox ever assigned. */
+  readonly highest: number;
+
+  constructor(after: number, highest: number, options?: MeshErrorOptions) {
+    super(
+      `Cannot read the outbox after position ${after}: the highest position it ever assigned is ${highest}. `
+        + "A cursor above it was kept outside the database, which has gone back (a restored backup), so the cursor is void: read from a position the outbox has",
+      options,
+    );
+    this.after = after;
+    this.highest = highest;
+  }
+}
+
+/**
+ * An outbox row whose stored name matches no declared event (`MESH_EVENT_UNDECLARED`): its declaration moved or was
+ * renamed. The read stops at it rather than skip it; the remedy, until the rename map exists, is to move the declaration
+ * back until its rows are delivered.
+ */
+export class EventUndeclaredError extends MeshError {
+  readonly code = "MESH_EVENT_UNDECLARED";
+  /** The stored name, e.g. `billing.InvoicePaid`. */
+  readonly eventName: string;
+  /** The row's position. */
+  readonly position: number;
+
+  constructor(eventName: string, position: number, options?: MeshErrorOptions) {
+    super(
+      `The outbox row at position ${position} names the event ${eventName}, which the project no longer declares (it moved or was renamed). `
+        + "The read stops here rather than skip it: move the declaration back until its rows are delivered",
+      options,
+    );
+    this.eventName = eventName;
+    this.position = position;
+  }
+}

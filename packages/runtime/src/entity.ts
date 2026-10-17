@@ -6,6 +6,8 @@ import { pinClock, type Clock } from "./expr.ts";
 import type { BindOptions } from "./lifecycle.ts";
 import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
+import { DECLARATION, type Declaration } from "./declarations.ts";
+import { publishedIn, readEventsFrom, type EventClass, type EventRecord, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
 
 /**
  * Entity values and bindings. An action is called on its entity, `Task.complete(input,
@@ -138,6 +140,8 @@ interface BindingState {
   readonly options: BindOptions;
   /** Each entity's value, bound actions and read bodies (what its `privileged` reads run on this binding), by FQN. */
   readonly entities: Map<string, { readonly value: object; readonly bound: BoundActions; readonly reads: Readonly<Record<string, ReadBody>> }>;
+  /** The domain's event classes by FQN: what `readEvents` turns a stored row back into. */
+  readonly events: Map<string, EventClass>;
   /** Calls on this binding that have not settled; `settled` waits for them. */
   inFlight: number;
   readonly idle: (() => void)[];
@@ -477,7 +481,8 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
  */
 export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding {
   const entities: BindingState["entities"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, inFlight: 0, idle: [], released: false };
+  const events: BindingState["events"] = new Map();
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, inFlight: 0, idle: [], released: false };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -493,6 +498,11 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
         const reads = (value[BIND_READS]?.(layer, options, handle) ?? {}) as Readonly<Record<string, ReadBody>>;
         entities.set(fqn, { value, bound, reads });
         if (!handles.has(value)) handles.set(value, privilegedHandle(value, fqn, Object.keys(reads)));
+      } else if (isEventClass(value)) {
+        const fqn = value[DECLARATION].fqn;
+        const seen = events.get(fqn);
+        if (seen !== undefined && seen !== value) throw new FrameworkError(`Two event classes in the domain have the FQN ${fqn}`);
+        events.set(fqn, value);
       } else if (isNamespace(value)) walk(value);
     }
   };
@@ -532,6 +542,38 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
   state.binding = binding;
   states.set(binding, state);
   return binding;
+}
+
+/** True for an event class `mesh build` generated: a function carrying an event's declaration. */
+function isEventClass(value: unknown): value is EventClass {
+  return typeof value === "function" && (value as { [DECLARATION]?: Declaration })[DECLARATION]?.kind === "event";
+}
+
+/**
+ * `published()` of `#mesh`, for the project whose async frame is `frame`: the events published so far in the outermost
+ * transaction this call is made inside, in order, with their positions. Outside a transaction it throws a
+ * `FrameworkError`.
+ */
+export function published(frame: AsyncFrame): readonly EventRecord[] {
+  const tx = inScope(frame)?.tx;
+  if (tx === undefined)
+    throw new FrameworkError("published() was called outside a transaction: it returns the events the running transaction has published so far, "
+      + "so call it inside transaction(fn), in an action's function, or in the afterWrite seam");
+  return publishedIn(tx);
+}
+
+/**
+ * `readEvents(query)` of `#mesh`, for the project whose async frame is `frame`: a page of kept events, read on the
+ * binding in scope, else on `connected` (the binding `connect()` opened). Inside a transaction it throws a
+ * `FrameworkError`: the read sees committed rows only, and the transaction's own events come from `published()`.
+ */
+export async function readEvents(frame: AsyncFrame, connected: Binding | undefined, query?: ReadEventsQuery): Promise<ReadEventsPage> {
+  const store = inScope(frame);
+  if (store?.tx !== undefined)
+    throw new FrameworkError("readEvents was called inside a transaction: it reads committed rows only, and a transaction's own events come from published() (from #mesh)");
+  const state = store?.state ?? (connected === undefined ? undefined : stateOf(connected));
+  if (!state) throw notConnected("readEvents");
+  return counted(state, () => readEventsFrom(state.layer, state.events, query));
 }
 
 function stateOf(binding: Binding): BindingState {
