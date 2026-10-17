@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import * as runtime from "@meshfw/runtime";
-import { castInput, ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
+import { castInput, DatabaseBusyError, ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
 import type { DataLayer, Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
 
 const cause = new Error("original");
@@ -10,6 +10,7 @@ test.each([
   [new InvalidInputError([issue(["items", 0, "name"], "required"), issue([], "bad input")], { cause }), "InvalidInputError", "invalid_input", "items.0.name: required\n(input): bad input"],
   [new NotFoundError("work.Task", { tenant: "one", id: 2 }, { cause }), "NotFoundError", "not_found", 'Entity work.Task not found for {"tenant":"one","id":2}'],
   [new ForbiddenError({ entity: "blog.Post", action: "publish", policies: ["owner"], breakdown: [] }, { cause }), "ForbiddenError", "forbidden", "blog.Post#publish is forbidden by policy :owner"],
+  [new DatabaseBusyError("/data/app.db", 5000, { cause }), "DatabaseBusyError", "MESH_DATABASE_BUSY", 'The database file "/data/app.db" stayed locked by another connection for 5000 ms, so the call gave up'],
 ] as const)("errors preserve name, code, message, cause and inheritance: %s", (error, name, code, message) => {
   expect(error.name).toBe(name);
   expect(error.code).toBe(code);
@@ -18,6 +19,13 @@ test.each([
   expect(error).toBeInstanceOf(MeshError);
   expect(error).toBeInstanceOf(Error);
   expect(error).toBeInstanceOf(runtime[name]);
+});
+
+test("DatabaseBusyError carries the file and the wait, and words a statement that is not retried", () => {
+  const waited = new DatabaseBusyError("a.db", 5001);
+  expect(waited.file).toBe("a.db");
+  expect(waited.waitedMs).toBe(5001);
+  expect(new DatabaseBusyError("a.db", 0).message).toBe('The database file "a.db" is locked by another connection, and this statement is not retried');
 });
 
 test("InvalidInputError copies and freezes its issues array and preserves declared source", () => {
