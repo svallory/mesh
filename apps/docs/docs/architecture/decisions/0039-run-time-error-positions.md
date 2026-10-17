@@ -1,13 +1,15 @@
 ---
 title: "0039. Run-time errors carry `.mx` positions as embedded data"
-description: "Decision record 0039: Run-time errors carry `.mx` positions as embedded data. Status: Proposed."
+description: "Decision record 0039: Run-time errors carry `.mx` positions as embedded data. Status: Accepted."
 ---
 
 # 0039. Run-time errors carry `.mx` positions as embedded data
 
 ## Status
 
-Proposed
+Accepted
+
+> **Amendment, 2026-10-17.** Accepted: run-time errors carry positions embedded as data in the generated code; there are no source maps.
 
 ## Date
 

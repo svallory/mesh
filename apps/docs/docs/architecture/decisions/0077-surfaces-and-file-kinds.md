@@ -31,18 +31,22 @@ The [study](../research/domain-concepts.md) (sections 4 and 6) proposed one file
 2. **The root tag decides a file's kind, and every file keeps the `.mesh.mx` extension** (DOM-12). `entity :Task` and `surface :admin` are both `.mesh.mx` files. There is no `.surface.mesh.mx` suffix and no kind folder.
 3. **Core owns the surface format, its view and its manifest** (DOM-21). Readers (Elysia, oclif, JSON-RPC, an admin UI) are adapters that read the generated manifest at run time; they import the generated folder and `@meshfw/runtime`, never the model ([ADR-0033](./0033-core-split-build-time-run-time.md)).
 4. **Fields that leave through a surface fail closed** (DOM-22). A surface says `fields=[:title, :state]` or, explicitly, `fields=:all`. This replaces [ADR-0035](./0035-meaning-of-public.md)'s proposed per-attribute `public` flag. It is the rule that made policies fail closed ([ADR-0055](./0055-policies-are-core.md)).
-5. **A surface lists the events it sends out** with `publishes events=[:completed, :updated]` (DOM-02, first half). The events are declared once, in their own files, and raised with `publish` ([ADR-0079](./0079-commands-events-and-the-outbox.md)); `publishes` says which of them leave through this audience.
+5. **A surface lists the events it sends out** with a `publishes` section, one imported event identifier per child line (DOM-02, first half; the earlier `publishes events=[:completed, :updated]` is superseded, 2026-10-17). The events are declared once, in their own files, and raised with `publish` ([ADR-0079](./0079-commands-events-and-the-outbox.md)); `publishes` says which of them leave through this audience.
 6. **`@meshfw/jsonrpc` comes before the gate** (DOM-20): newline-delimited JSON-RPC 2.0 over a Unix socket that takes a hand-written method table as plain data. Hyper's envelope mapping (`commandId`, `actor`, `caller`, phases) stays application code. After 1.0, surfaces generate that table.
 
 An illustration of the shape (only the lines named above are ruled; the other options are the study's proposals, and each adapter contributes its own):
 
-```mx "src/surfaces/admin.mesh.mx (illustration)"
-import { Task } from "../domain/work/task.mesh.mx"
+Updated 2026-10-17; the earlier form was `publishes events=[:completed]`.
+
+```mx "src/surfaces/admin/admin.mesh.mx (illustration)"
+import { Task } from "../../domain/work/task.mesh.mx"
+import { TaskCompleted } from "../../domain/work/events/task-completed.mesh.mx"
 
 surface :admin
   expose :tasks entity=Task label="Tasks" fields=[:title, :state]
     action :complete
-  publishes events=[:completed]
+  publishes
+    TaskCompleted
 ```
 
 ## Options considered

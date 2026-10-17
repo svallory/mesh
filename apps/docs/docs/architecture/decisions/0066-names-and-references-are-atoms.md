@@ -38,7 +38,7 @@ An entity file writes **`:name` for a name, an atom for anything chosen from a f
 | It is | Written | Examples |
 |:--|:--|:--|
 | The name of a declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `policy :staffWrites`, `check :invoiceIsSent` |
-| A reference to something declared | an atom, or a list of atoms | `accept=[:number, :amount]`, `require=[:dueOn]`, `asc :dueOn` under `sort`, `load=[:customer]`, `actions=[:pay]`, `on:load=:visible`, `belongs-to=:Customer` |
+| A reference to something declared | an atom, or a list of atoms | `accept=[:number, :amount]`, `require=[:dueOn]` (an example from before [ADR-0067](./0067-members-imports-input-static-files.md) removed `require`), `asc :dueOn` under `sort`, `load=[:customer]`, `actions=[:pay]`, `on:load=:visible`, `belongs-to=:Customer` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
 | An enum value | an atom | `values=[:draft, :sent]`, `default=:draft`, `self.status === :sent`, `:status=:paid` |
 | Text | a string | `table="invoices"`, `message="…"`, `code="invalid_state"` |

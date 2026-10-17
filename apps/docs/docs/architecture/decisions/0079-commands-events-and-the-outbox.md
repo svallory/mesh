@@ -5,6 +5,8 @@ description: "Decision record 0079: `command` and `event` files, `on=`, `publish
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
 
+> **Amendment, 2026-10-17 (outbox pruning and `publish`).** Only core's deliverer deletes outbox rows, and pruning is not a bus capability; this overrides the amendment of 2026-10-12 and 2026-10-13 below, which says whether an adapter can prune rows is one of its capabilities, and its sentence "The delivery adapter honours the setting": only core deletes rows, and it reads `keep` at run time. A `publish` step is a function returning an event instance (`publish=() => new TaskCompleted({ ... })`), as in the specification's section on publishing; the `publish :task-completed` example in Decision item 2 is superseded and kept as history.
+
 > **Amendment, 2026-10-17.** Events have three handler kinds: `project` updates read-model rows, `process` runs commands, and `listen` makes an effect outside the database: its body runs outside any transaction, at least once, with `event.id` as the idempotency key where the service accepts one. "Handler" is the general word and a listener is a `listen` handler. `publish` and `publishes` are the sending side and do not change. Where the text below says "a listener" for an effect after commit, it means a `listen` handler.
 
 > **Amendment, 2026-10-15 (DOM-17).** An action names the command it answers with `on=` and the command's imported identifier, one command per action (`update on=CompleteTask`); `handles=[...]` is not the option. When the action has `on=` and no name, it is named after the command (`update on=CompleteTask` is `completeTask`); `update :complete on=CompleteTask` names it `complete`. A command may also live in an owner's `commands` section, not only in its own file. The Decision item 1 and the illustration below are corrected to `on=`. The operator ruled this on 2026-10-11 and 2026-10-14.
@@ -36,7 +38,7 @@ Hyper's engine keeps an event table by hand and delivers events from application
 ## Decision
 
 1. **`command` and `event` declarations live in their own files**, and an action names the command it answers with `on=` (DOM-17). A command is a serialised request to run a write action; a query is a serialised read request.
-2. **Declaring and raising are separate syntax** (DOM-19). An action raises an event with `publish :task-completed`.
+2. **Declaring and raising are separate syntax** (DOM-19). An action raises an event with `publish :task-completed` (superseded, 2026-10-17: see the amendment at the top).
 3. **`publish` writes the event to the outbox**, in the action's transaction, and an event bus delivers it from there (DOM-02, DOM-06). A surface lists what it sends out with `publishes` ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
 4. **The outbox is core** (DOM-06). It is a permanent, ordered log of the events, not a table emptied after delivery (see the amendment at the top). It comes with domain events in M6 (DOM-18), so [ADR-0023](./0023-workflows-and-jobs-deferred.md)'s "after 1.0" no longer covers it. Jobs and workflows stay after 1.0 (ARC-14).
 5. **HA's hand-written event table is dropped** (DOM-18). HA keeps `@meshfw/jsonrpc` with a hand-written method table ([ADR-0077](./0077-surfaces-and-file-kinds.md)).
@@ -50,6 +52,8 @@ event :task-completed
   &taskId
   &workspaceId
 ```
+
+The `publish :task-completed` step in the next example is superseded (amendment of 2026-10-17): a `publish` step is `publish=() => new TaskCompleted({ ... })`.
 
 ```mx "src/domain/work/task.mesh.mx (illustration)"
 import { CompleteTask } from "./complete-task.mesh.mx"

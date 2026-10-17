@@ -30,7 +30,7 @@ Concepts (and later other tags) should be files the user writes, not code in the
 
 - A dialect's static `mx.dialect` manifest declares `tagDirs` (scanned in the usual upward walk; Mesh's include `concepts`, and Mesh may add others), optional `tagExtensions`, whether its tags accept `.tag.ts` sidecars, and `reservedTags`.
 - Scoping is MX's usual: per file, the nearest wins.
-- A tag's name is its file name minus the claimed extension: `concepts/money.mesh.mx` is `money`.
+- A tag's name is its file name minus the claimed extension: `concepts/Money.mesh.mx`, which declares `concept :Money`, is `Money` (corrected 2026-10-17; was `concepts/money.mesh.mx` is `money`).
 - Overriding a reserved tag gets a positioned, branded diagnostic, never a throw.
 - A generic, synchronous dialect hook turns a tag file into a contract.
 - In the user docs, `concepts` is a folder Mesh loads by itself: concepts are found and loaded automatically, so you do not import them.

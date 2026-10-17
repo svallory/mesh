@@ -57,4 +57,5 @@ A file puts the boundary in one place and lets a reader see a whole aggregate. I
 
 ## Action items
 
-- [ ] Syntax detail for `entities` (the MX side) and `concept` fields, when built.
+- [ ] Syntax detail for `entities` (the MX side), when built.
+- [x] Syntax of `concept` fields, done 2026-10-17: a concept file's root line is `concept :Name`, and its fields are field lines written as an event's (a kind, a name, options), for example `concepts/Money.mesh.mx`.

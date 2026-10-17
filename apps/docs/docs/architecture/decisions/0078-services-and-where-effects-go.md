@@ -1,11 +1,13 @@
 ---
 title: "0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies"
-description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct itself (DOM-09) and general publish-subscribe (DOM-08) are Open."
+description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct (DOM-09) and general publish-subscribe (DOM-08), open when written, are decided (amended 2026-10-17)."
 ---
 
 # 0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies
 
 ## Status
+
+> **Amendment, 2026-10-17.** Both open items are decided. DOM-08 is ruled: the third handler kind is `listen`, so the handler kinds of [ADR-0079](./0079-commands-events-and-the-outbox.md) cover publish-subscribe. DOM-09 is decided: a service's shape is decided after 1.0, and enforcing `uses` comes with it. The "Open" section and the text that calls these items open are kept as history.
 
 Accepted, with two Open items (DOM-08 and DOM-09 below). Amends [ADR-0068](./0068-actions-compose-through-actions-and-tx.md) (what `actions` in an entity file is for).
 
@@ -17,7 +19,7 @@ Rows: DOM-01, DOM-13, DOM-14, DOM-15, DOM-16 (ruled); DOM-08, DOM-09 (open).
 
 ## Deciders
 
-operator (Saulo Vallory): DOM-13 and DOM-14 on 2026-10-10; DOM-16 on 2026-10-10 and 2026-10-11; DOM-01 on 2026-10-11 (06:40); DOM-15 on 2026-10-11. DOM-08 and DOM-09 are open.
+operator (Saulo Vallory): DOM-13 and DOM-14 on 2026-10-10; DOM-16 on 2026-10-10 and 2026-10-11; DOM-01 on 2026-10-11 (06:40); DOM-15 on 2026-10-11. DOM-08 and DOM-09 were open when this was written; both are decided (amendment, 2026-10-17).
 
 ## Context
 
