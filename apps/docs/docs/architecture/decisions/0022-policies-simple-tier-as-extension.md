@@ -11,6 +11,8 @@ description: "Decision record 0022: Policies start as a simple tier, in a first-
 
 ## Status
 
+> **Amendment, 2026-10-17:** ADR-0046 is Accepted, option B (a denied one-statement write reports forbidden); not built.
+
 Accepted, amended by [ADR-0055](./0055-policies-are-core.md)
 
 Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) (2026-10-10): Until the SQL translator exists a read policy that reads the record is a loud error, and a write policy may read other entities through `tx`.

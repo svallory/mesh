@@ -11,6 +11,8 @@ description: "Decision record 0055: policy scope by `types=` and `actions=`, how
 
 ## Status
 
+> **Amendment, 2026-10-17:** ADR-0046 is Accepted, option B (a denied one-statement write reports forbidden); not built.
+
 Accepted. Supersedes [ADR-0036](./0036-deny-by-default-arrives-with-policies.md). Amends [ADR-0022](./0022-policies-simple-tier-as-extension.md) (packaging and policy scope).
 
 Amended by [ADR-0071](./0071-system-key-on-the-action-context.md), [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0074](./0074-write-policies-may-read-through-tx.md) (2026-10-10): Internal writes pass through a reserved `system` context key and still no `bypass`; record-reading read policies wait for the SQL translator; a write policy may read through `tx`.

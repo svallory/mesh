@@ -72,7 +72,7 @@ entity :Todo table="todos"
       sort
         asc &insertedAt
 
-// @who: Who may do it — an action no policy covers is forbidden, and a todo in someone else's list is simply not found.
+// @who: Who may do it — an action no policy covers is forbidden, and a todo in someone else's list is not found when read and forbidden to change.
   policies
     policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id

@@ -1,6 +1,6 @@
 ---
 title: "Open questions and findings"
-description: "Everything the user docs deliberately do not say: the three questions still open, the DX findings, and what the docs had to invent."
+description: "Everything the user docs deliberately do not say: the open tooling findings, the DX findings, and what the docs had to invent."
 ---
 
 # Open questions and findings
@@ -13,13 +13,11 @@ The rest of this section was brought to the same vocabulary in [PR #24](https://
 **The code and the Docs now share one vocabulary.** PR #47 and PR #48 (merged 2026-10-09) moved `packages/`, `examples/blog` and the compiler's fixtures to `entity`, `src/domain`, `.mesh/` and the action context. What differs from the Docs is what is not built yet; the [roadmap](./roadmap/roadmap.md) says which milestones are done. Where a Docs page and a source file disagree, the Docs page states the target.
 :::
 
-The pages under Docs describe what Mesh will be: no open questions, no milestones, no hedges. Everything below is what those pages had to leave out. Three questions are still open, listed first; the rest of the page is the record of what writing the Docs found and settled. A page under Docs that has to say "this is not decided" has found a gap, which is the point of writing it first.
+The pages under Docs describe what Mesh will be: no open questions, no milestones, no hedges. Everything below is what those pages had to leave out. No question is open; the open tooling findings come first, and the rest of the page is the record of what writing the Docs found and settled. A page under Docs that has to say "this is not decided" has found a gap, which is the point of writing it first.
 
 ## Open questions
 
-- **Whether a project's concept may shadow a concept Mesh ships.** When a project declares `concepts/Email.mesh.mx` and Mesh ships a concept named `Email`, which one `Email :email` means is not decided. Mesh reserves its whole vocabulary, which points to a build error, as for any reserved Mesh tag, but the other answers (the project's concept wins, with or without a warning) are not ruled out.
-- **Whether a nearer `concepts/` folder may shadow a project-wide concept.** Nothing is global in an entity file: a file sees only its own declarations and what it imports, and concepts are the one exception, shared across the project. Not decided: whether a `concepts/` folder nearer to a file may shadow a shared concept of the same name, as the nearest-wins walk of tag discovery ([ADR-0085](decisions/0085-tag-discovery-for-dialect-tags.md)) would allow, or whether a concept's name is unique across the project.
-- **What a denied write reports when the action runs as one statement.** When a write action runs as one SQL statement, whether a caller denied by a policy receives not found or forbidden, and whether a re-read tells the two apart, is the choice between the options of [ADR-0046](decisions/0046-denied-atomic-write-outcome.md). The build follows option A today: no extra read, and a denied caller learns nothing about the row.
+No question is open.
 
 ## Open tooling findings
 

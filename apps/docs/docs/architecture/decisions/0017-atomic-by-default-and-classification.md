@@ -11,6 +11,8 @@ description: "Decision record 0017: Updates are atomic by default; changes and v
 
 ## Status
 
+> **Amendment, 2026-10-17:** ADR-0046 is Accepted, option B (a denied one-statement write reports forbidden); not built.
+
 Accepted, amended by [ADR-0053](./0053-validate-then-do.md) and [ADR-0054](./0054-write-strategy-is-inferred.md)
 
 Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): Atomic one-statement updates come after Mesh 1.0; until then every update reads the row first, locked, and then writes.
