@@ -1,9 +1,11 @@
 ---
 title: "0050. Entity file syntax: `kind #name options` (amended by ADR-0066)"
-description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted. Amended 2026-10-11 (DOM-04, DOM-25, DOM-28). Amended 2026-10-13 (SYN-29)."
+description: "Decision record 0050: the line shape, sections, attributes, relationships and computed fields of an entity file, with the reference file. Status: Accepted. Amended 2026-10-11 (DOM-04, DOM-25, DOM-28). Amended 2026-10-13 (SYN-29). Amended 2026-10-17 (a rollup's `of=` is a member path only)."
 ---
 
 # 0050. Entity file syntax: `kind #name options`
+
+> **Amendment, 2026-10-17.** A rollup's `of=` is a member path (`&relationship` or `&relationship.attribute`) and nothing else; there is no function form, and a value a path cannot express is a calculation. The build enforces this (`MESH_ROLLUP_PATH`). The Computed fields item below says `of` is a path string with a function form; read it this way.
 
 > **Amendment, 2026-10-13 (SYN-29).** An expression reads a value of the current transaction as `%.` and a name: `%.now` is its instant (a `Date`) and `%.today` its date (a `Date` at 00:00 UTC). `%` stands for the current transaction, not the running action, and only values are exposed, never the transaction or its clock. They are properties, not calls, because the value is fixed for the transaction ([ADR-0012](./0012-expression-semantics.md), amended the same day: one instant per transaction). They replace `Mesh.now()` and `Mesh.today()` ([ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md), amended the same day), which threw when application TypeScript called them. A row of Mesh's dialect lowers `%.name` in an expression, as one lowers `&name`; `%` where a value is expected is a TypeScript syntax error, so the row changes no legal code, and after a value (`a %.now`) it stays the syntax error it is, never a modulo by `now`. `%`, `%now` and `%.` with no name stay errors. Anything of this kind Mesh adds later is another `%.` name. The reference file reads `%.today` and no longer imports `Mesh`; rule 6 says where `%.` is read.
 

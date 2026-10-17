@@ -1,9 +1,11 @@
 ---
 title: "0083. Names for the new constructs: the name-clash table is accepted"
-description: "Decision record 0083: the accepted name-clash resolutions for the port, and the words changed from the study. Status: Accepted (DOM-29)."
+description: "Decision record 0083: the accepted name-clash resolutions for the port, and the words changed from the study. Status: Accepted (DOM-29). Amended 2026-10-17 (the third handler kind is `listen`)."
 ---
 
 # 0083. Names for the new constructs: the name-clash table is accepted
+
+> **Amendment, 2026-10-17.** The third handler kind is `listen`, beside `project` and `process` ([ADR-0079](./0079-commands-events-and-the-outbox.md)). Where the table below says "a listener", it means a `listen` handler.
 
 ## Status
 

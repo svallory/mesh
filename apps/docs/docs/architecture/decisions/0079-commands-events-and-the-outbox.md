@@ -1,9 +1,11 @@
 ---
 title: "0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it"
-description: "Decision record 0079: `command` and `event` files, `on=`, `publish` and the outbox in core, no `after-commit` step, `project` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows), 2026-10-12 and 2026-10-13 (DOM-43: how long it keeps them is configured by the application, and by default a delivered row is deleted) and 2026-10-13 (DOM-05: a read-model handler is `project`, not `apply`) and 2026-10-15 (DOM-17: an action answers a command with `on=`, not `handles=`)."
+description: "Decision record 0079: `command` and `event` files, `on=`, `publish` and the outbox in core, no `after-commit` step, `project` and `process` handlers. Status: Accepted (DOM-02 in part, DOM-05, DOM-06, DOM-17, DOM-18, DOM-19, DOM-25). Amended 2026-10-11 (the outbox keeps its rows), 2026-10-12 and 2026-10-13 (DOM-43: how long it keeps them is configured by the application, and by default a delivered row is deleted) and 2026-10-13 (DOM-05: a read-model handler is `project`, not `apply`) and 2026-10-15 (DOM-17: an action answers a command with `on=`, not `handles=`) and 2026-10-17 (the third handler kind is `listen`)."
 ---
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
+
+> **Amendment, 2026-10-17.** Events have three handler kinds: `project` updates read-model rows, `process` runs commands, and `listen` makes an effect outside the database: its body runs outside any transaction, at least once, with `event.id` as the idempotency key where the service accepts one. "Handler" is the general word and a listener is a `listen` handler. `publish` and `publishes` are the sending side and do not change. Where the text below says "a listener" for an effect after commit, it means a `listen` handler.
 
 > **Amendment, 2026-10-15 (DOM-17).** An action names the command it answers with `on=` and the command's imported identifier, one command per action (`update on=CompleteTask`); `handles=[...]` is not the option. When the action has `on=` and no name, it is named after the command (`update on=CompleteTask` is `completeTask`); `update :complete on=CompleteTask` names it `complete`. A command may also live in an owner's `commands` section, not only in its own file. The Decision item 1 and the illustration below are corrected to `on=`. The operator ruled this on 2026-10-11 and 2026-10-14.
 

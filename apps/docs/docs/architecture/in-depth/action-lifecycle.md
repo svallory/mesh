@@ -60,7 +60,7 @@ enter -> cast -> plan -> pre-check ->
 | 7 | Commit | The transaction closes. | none in v1 |
 | 8 | After commit | The typed result, with anything named by `load`, or a classed error. | Tracer |
 
-([research synthesis](../research/synthesis.md), section 17; [roadmap](../roadmap/roadmap.md), M2 and M5.) There is no `after-commit` step: an effect after commit is a `publish` plus a listener ([ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)).
+([research synthesis](../research/synthesis.md), section 17; [roadmap](../roadmap/roadmap.md), M2 and M5.) There is no `after-commit` step: an effect after commit is a `publish` plus a `listen` handler (a listener), the third handler kind beside `project` and `process` ([ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)).
 
 Inside the transaction the order is fixed ([ADR-0053](../decisions/0053-validate-then-do.md), amended 2026-10-11):
 

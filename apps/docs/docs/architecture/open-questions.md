@@ -54,7 +54,6 @@ The findings below came from writing the Docs pages against the design. Each nam
 - **Generator templates.** Settled ([ADR-0061](decisions/0061-generators-are-jig-templates.md)): generators are [Jig](https://jig.saulo.engineer/docs/introduction) templates; `mesh export generators` copies them into the project, where a template overrides Mesh's own one by one. TypeScript computes a typed view of the model, and the template only renders it. The user page [Customising generated code](../docs/customising-generated-code.md) still proposes a named mixin hook in each template as a smaller escape hatch than a copy; that part is not decided.
 - **Whether a nearer `concepts/` folder may shadow a shared concept.** Nothing is global in an entity file: a file sees only its own declarations and what it imports, and concepts are the one exception, shared across the project. Not decided: whether a `concepts/` folder nearer to a file may shadow a shared concept of the same name, as the nearest-wins walk of tag discovery ([ADR-0085](decisions/0085-tag-discovery-for-dialect-tags.md)) would allow.
 - **What "what exists today" covers.** The contributor page holds it, but nothing states when it is rewritten as each milestone lands.
-- **The highlighter for code other than `mx`.** The site highlights non-`mx` code with docmd's built-in highlight.js; the ruling named Shiki. Not decided: move to Shiki or keep highlight.js.
 
 ## Decided by the lead, awaiting the operator
 
