@@ -8,7 +8,7 @@ description: "What Mesh gives MX, what MX gives Mesh, who checks each rule, what
 This page is the contract between Mesh and MX, the language project that parses Mesh's entity files. It replaces the site's earlier MX integration page, and MX may keep a mirror of it. Mesh's lead wrote Mesh's side: sections 1 and 2, Mesh's rows of section 4 and Mesh's items in section 5. MX's lead wrote MX's side: section 3, MX's rows of section 4 and MX's items in section 5, checked against MX's code. A change on either side is checked against this page, so that a broken promise is found in review rather than by a broken build. A Mesh change that alters a statement here updates the page in the same pull request. An MX change that alters one gives a `Contract:` line in its pull request, and the Mesh pull request that moves to the MX release carrying it updates the page.
 
 ::: callout info "Versions this page describes"
-`@mxlang/core` `0.1.0-alpha.31`, IR version 5. Section 5 lists everything still open on either side.
+`@mxlang/core` `0.1.0-alpha.32`, IR version 5. Section 5 lists everything still open on either side.
 :::
 
 ## Why there is a contract
@@ -155,7 +155,7 @@ A caller's option overrides the dialect's, which is why Mesh passes none (2.3).
 - every parse error, since the parser recovers: two broken expressions give two parse errors (`MESH_PARSE_EXPRESSION` under Mesh's dialect);
 - every contract error on independent tags: a missing required option, a bad enum value and an unknown option in one file give three errors;
 - every unknown tag under `unknownTags: "reject"`;
-- every structural hit under `structural: "reject"`. Since alpha.31 a `for` or `if` under a tag with a contract is reported as the construct (`MESH_STRUCTURAL_CONSTRUCT`), at the construct, as it is everywhere else. What it holds is not checked against the parent's `children` or its own `parents` until the construct is removed, so it gives no second error. This holds anywhere under a tag with a `transform`, too, where the construct is reported while the tag lowers.
+- every structural hit under `structural: "reject"`. Since alpha.31 a `for` or `if` under a tag with a contract is reported as the construct (`MESH_STRUCTURAL_CONSTRUCT`), at the construct, as it is everywhere else; since alpha.32 that holds for every authored form: `if(x)`, `else-if(x)`, `else(x)`, `for(x)`, `for|x|(y)`, `if|x|=a`, and an `if` or `for` with no condition or params, each reported once. A shape hint ("Tag does not support arguments...") stays only where the construct is legal. What it holds is not checked against the parent's `children` or its own `parents` until the construct is removed, so it gives no second error. This holds anywhere under a tag with a `transform`, too, where the construct is reported while the tag lowers.
 
 The one exception: a tag that fails its own lowering, such as one a closed `children` refuses, is skipped with its subtree. Errors inside that subtree are reported once the refusal is fixed; its siblings are still checked.
 
@@ -250,6 +250,7 @@ A contract, `CustomTag`, has `defaultTag`, `parseOptions`, `attributes`, `attrib
 - **Text tags** (`parseOptions.text: true`): the body is not parsed as tags (`<b>x</b>` stays text), but `${}` is still an interpolation. `children` cannot be combined with `parseOptions.text` or `openTagOnly` (`MX_INVALID_DIALECT_CONTRACT`). Under `structural: "reject"`, text and `${}` are refused even inside a text tag, so Mesh cannot use text tags while it rejects structure.
 - **`tagRules: "none"`**: no native element rules; `script`, `input` and `title` are ordinary names.
 - **Reserved core names**, which no contract can define: `if`, `else`, `else-if`, `for`, `const`, `define`, `return`, `import`, `export`, `static` and `try`.
+- **A `for` or `if` under a closed parent is reported as the construct**, in every authored form (3.1, 3.12): under `structural: "reject"` it is `MX_STRUCTURAL_CONSTRUCT`, at the construct, and what it holds is not checked until it is removed.
 - **A closed vocabulary.** Under `unknownTags: "reject"`, any tag without a contract is `MX_UNKNOWN_TAG`, or the error the dialect's `explainUnknownTag` gives. An unknown tag inside a closed parent reports only the unknown-tag error: the `MX_TAG_NOT_ALLOWED` for the same tag is dropped.
 - **Duplicate options.** The last one wins, with an `MX_DUPLICATE_ATTRIBUTE` warning at each dropped one; never an error.
 - **Module scope under `none`.** Duplicate import bindings are not checked under `tagRules: "none"` (under `"html"` they are `MX_DUPLICATE_DECLARATION`). Mesh checks imports itself.
@@ -331,6 +332,14 @@ The release fixes five things Mesh asked for. `IR_VERSION` stays 5, no signature
 - **No MX-syntax examples for a dialect that spells the tag otherwise.** The examples in built-in tag messages (`<const/name=value/>`, `<for|item| of=…>`, `<else if>`) are dropped when the dialect does not spell the tag as MX does, so a Mesh message states the rule alone (`const` without a variable name).
 - **A `for` or `if` under a closed parent is reported as the construct.** Under `structural: "reject"` it is `MX_STRUCTURAL_CONSTRUCT` (`MESH_STRUCTURAL_CONSTRUCT` for Mesh), at the construct; what it holds is not checked against the parent's children or parents until the construct is removed (3.1). This includes a `for` or `if` anywhere under a tag with a `transform`, which before passed silently or reported only the child.
 - **Also in the release.** A spaced `#a` or `.a` in a file whose table sets `tagShorthands: false` no longer gets the advice to write the shorthand on the tag name; the message says the dialect has no `#id` (or `.class`) shorthand and to write `id=` (or `class=`) as an option. MX pull requests #608, #610 and #611 need no contract change (#611 is a type-check fix for the html target only).
+
+### 3.12 New in alpha.32
+
+The release fixes two things Mesh asked for. `IR_VERSION` stays 5, no signature Mesh uses changes, and the release adds no diagnostic code.
+
+- **Every authored form of `for` and `if` is the construct.** Under `structural: "reject"`, `if(x)`, `else-if(x)`, `else(x)`, `for(x)`, `for|x|(y)`, `if|x|=a`, and an `if` or `for` with no condition or params are each reported once as `MX_STRUCTURAL_CONSTRUCT` (`MESH_STRUCTURAL_CONSTRUCT` for Mesh), at the construct. Before, a form with arguments or params got a shape hint instead, such as "Tag does not support arguments. Write the condition as a value option instead." (`MESH_UNSUPPORTED_CONSTRUCT`) at the argument. The shape hints stay only where the construct is legal. This closes 3.1 and 3.5 for every form. Mesh's `fix:` for `for` and `if` (`staticFileFix` in `src/front-end/build.ts`) is unchanged: it keys on the code and the construct named in the message, and MX still gives no advice on what to write instead.
+- **Orphan `else`, `else-if` and `try` read in the dialect's words.** In a file whose dialect sets `messageVocabulary.attribute`, `file` or `formatTag`, an orphan `else` or `else-if` is "`else` must come right after `if` or `else-if`" (before, "`else` cannot name a data tag: it is reserved..."), and a `try` is "`try` cannot be used in a Mesh file: Mesh files are static, so they have no render errors to catch; write its content directly". The code stays `MX_NOT_IN_DATA_FILE` (`MESH_NOT_IN_ENTITY_FILE`). A later release will report an orphan `else` under `structural: "reject"` as `MX_STRUCTURAL_CONSTRUCT`; Mesh's map already covers that code.
+- **Also in the release.** Core exports `flattenErrors` (`@unstable`; Mesh does not use it); a `<script>` with args, params, a tag variable or a duplicate value is refused; the Solid shorthand class merges with a static `class=`. None reaches Mesh.
 
 ## 4. Who checks what
 

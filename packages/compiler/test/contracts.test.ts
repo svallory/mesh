@@ -122,7 +122,7 @@ describe("v4 contracts", () => {
       "read-input-member": ["MESH_READ_INPUT_MEMBER", 7, 8],
       "unknown-import": ["MESH_UNKNOWN_IMPORT", 1, 0],
       "duplicate-input": ["MESH_DUPLICATE_INPUT", 8, 8],
-      if: ["MESH_UNSUPPORTED_CONSTRUCT", 1, 4],
+      if: ["MESH_STRUCTURAL_CONSTRUCT", 1, 0],
       "check-code-atom": ["MESH_OPTION_VALUE", 7, 39],
       for: ["MESH_PARSE_MISSING_END_TAG", 1, 0],
     };
