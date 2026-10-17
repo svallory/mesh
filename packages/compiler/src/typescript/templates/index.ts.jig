@@ -11,3 +11,19 @@
 export { bind, connect, disconnect, transaction, type Binding } from "./binding";
 export type { Privileged } from "@meshfw/runtime";
 export { tables } from "./schema";
+@if(events)
+
+@each(imported in events.imports)
+import { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
+@end
+{{ events.globals.keyword }} { {{ events.globals.names }} } from {{ events.globals.fromLiteral }};
+
+/** The instance type of every event class of the project: what a delivered event is. */
+export type DomainEvent = {{ events.union }};
+/** Every event class of the project by its FQN, which turns a stored row back into an instance: `new events["billing.InvoicePaid"](payload)`. */
+export const events = $Object.freeze({
+  @each(entry in events.table)
+  {{ entry.fqnLiteral }}: {{ entry.local }},
+  @end
+});
+@end

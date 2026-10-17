@@ -19,6 +19,9 @@ export type {
 } from {{ entity.typesFromLiteral }};
 @end
 @end
+@each(declaration in declarations)
+export { {{ declaration.name }} } from {{ declaration.fromLiteral }};
+@end
 @each(namespace in namespaces)
 export * as {{ namespace.name }} from {{ namespace.fromLiteral }};
 @end

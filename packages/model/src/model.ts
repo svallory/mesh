@@ -154,6 +154,12 @@ export type Step = (
   | { kind: "load"; members: MemberRef[] }
   /** `after: "write"` (`run [after=:write]`) runs the step after the action's own row is written, with the stored record as `self` (ADR-0068). */
   | { kind: "run"; fn: Expression; after?: "write" }
+  /**
+   * `publish=() => new InvoicePaid({ ... })` raises the event the function returns (M6): plain code, whatever it holds
+   * (`PlainReason.why` is `publish-step`), run after the action's row is written, in written order among the `run
+   * [after=:write]` steps.
+   */
+  | { kind: "publish"; fn: Expression }
 ) & { position: SourcePosition };
 export interface Action {
   kind: ActionType;
@@ -202,8 +208,33 @@ export interface Entity {
   policies: Policy[];
   position: SourcePosition;
 }
+/**
+ * One field of an event or a command: an attribute line without what concerns storage or creation, so it has no
+ * `primaryKey`, `unique`, `default` or `on`.
+ */
+export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "position">;
+/**
+ * An event declaration: the fields of a fact the domain records (`event :InvoicePaid`, a file of its own). Plain data;
+ * the generated class and its checks come from it.
+ */
+export interface EventDeclaration {
+  /** The declared name, as written (`InvoicePaid`). */
+  name: string;
+  /** `<module>.<Name>` (`billing.InvoicePaid`), the module's folders joined by `.`; the name alone at the domain root. The stored and wire name. */
+  fqn: string;
+  file: string;
+  module: string;
+  fields: Field[];
+  position: SourcePosition;
+}
+/** A command declaration: the fields of a request to run a write action (`command :PayInvoice`, a file of its own). */
+export type CommandDeclaration = EventDeclaration;
 export interface ModelDocument {
   entities: Entity[];
+  /** Present only when the project declares an event, so a project with none keeps its `model.json` as it was. */
+  events?: EventDeclaration[];
+  /** Present only when the project declares a command. */
+  commands?: CommandDeclaration[];
   /** Selected adapter identity only; options may contain secrets and never serialize. */
   data?: { name: string };
 }

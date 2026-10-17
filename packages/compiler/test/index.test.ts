@@ -55,16 +55,16 @@ describe("binding, module and index views", () => {
     expect(root).toEqual({
       module: "", specifier: "#mesh/domain", description: "the domain root",
       entities: [{ name: "Tag", values: ["Tag"], actionsFromLiteral: '"./tag.actions"', types: [], hasTypes: false, typesFromLiteral: '"./tag.types"' }],
-      namespaces: [{ name: "notes", fromLiteral: '"./notes/index"' }] });
+      declarations: [], namespaces: [{ name: "notes", fromLiteral: '"./notes/index"' }] });
     expect(notes).toEqual({
       module: "notes", specifier: "#mesh/domain/notes", description: 'module "notes"',
       entities: [{ name: "Note", values: ["Note"], actionsFromLiteral: '"./note.actions"', hasTypes: true, typesFromLiteral: '"./note.types"',
         types: ["CreateNoteInput", "EditNoteInput", "ReadNoteInput", "DestroyNoteInput", "NoteFilter", "NoteSort"] }],
-      namespaces: [] });
+      declarations: [], namespaces: [] });
   });
 
   test("the index view names every module's specifier and nothing of an entity", () => {
-    expect(indexView({ document: documentOf(), config: configOf("/project", ".mesh") })).toEqual({ modules: ["#mesh/domain", "#mesh/domain/notes"] });
+    expect(indexView({ document: documentOf(), config: configOf("/project", ".mesh") })).toEqual({ modules: ["#mesh/domain", "#mesh/domain/notes"], events: null });
   });
 
   test("an action whose handle in `actions` spells a table handle (`noteTable`) builds: #mesh re-exports no table handle, only `tables`", async () => {

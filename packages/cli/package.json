@@ -23,6 +23,8 @@
       "tagDirs": [],
       "reservedTags": [
         "entity",
+        "event",
+        "command",
         "attributes",
         "relationships",
         "computed",
@@ -36,6 +38,7 @@
         "when",
         "load",
         "run",
+        "publish",
         "filter",
         "sort",
         "policies",

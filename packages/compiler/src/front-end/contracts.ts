@@ -130,7 +130,7 @@ const options = (type: string) => ({
   ...(["string", "integer", "float", "decimal"].includes(type) ? { min: number(), max: number() } : {}),
   ...(type === "string" ? { match: { type: "expression" as const } } : {}),
 });
-const steps = children("set", "when", "load", "run");
+const steps = children("set", "when", "load", "run", "publish");
 const body = { validate: {}, do: {} };
 // The `member` child MX lowers a tagless `&name` line to (`MESH_DIALECT`). An
 // inline wildcard contract, so no `member` tag is authorable at large; under
@@ -153,6 +153,20 @@ const contracts: ContractMap = {
       actions: {},
       policies: {},
     },
+  }),
+  // An event and a command are files of their own (M6): the root line declares one, and its children are field lines,
+  // written as attribute lines are (`uuid :invoiceId`). The field kinds are the attribute types, whose contracts also
+  // list these two as parents; `default`, `unique`, `primary-key`, `on` and `value` are not options of a field, which the
+  // builder reports as `MESH_UNKNOWN_OPTION` (a contract is per tag, so it cannot tell a field from an attribute).
+  event: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: children(...ATTRIBUTE_TYPES),
+  }),
+  command: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: children(...ATTRIBUTE_TYPES),
   }),
   attributes: closed({
     parents: ["entity"],
@@ -189,10 +203,13 @@ const contracts: ContractMap = {
   }),
   validate: closed({
     parents: [...ACTION_TYPES, "always"],
-    children: children("check"),
+    // `publish` is no `validate` line: the contract admits it where it is written wrongly, so that the build says why
+    // (`MESH_PUBLISH`, `front-end/build.ts`) instead of calling it an unknown tag.
+    children: children("check", "publish"),
   }),
   check: closed({
     parents: ["validate"],
+    children: children("publish"),
     attributes: {
       ...named(),
       that: fn(true),
@@ -242,6 +259,23 @@ const contracts: ContractMap = {
     // `after=:write` moves the step after the action's own row is written (ADR-0068 decision 2).
     attributes: { value: fn(true), after: { type: "atom", values: ["write"] } },
   }),
+  // `publish=() => new InvoicePaid({ ... })` raises an event (M6, `notes/spec/events-and-commands.md`, "Publishing"): the
+  // function's value is the event's instance. It is a step of `do`, and of a `when` in one; `validate` and a `check` take
+  // it only to refuse it, `MESH_PUBLISH`. The value is untyped here so that a value that is no function is `MESH_PUBLISH`
+  // alone, from the hook below, and not also `MESH_EXPRESSION`.
+  publish: closed({
+    parents: ["do", "when", "validate", "check"],
+    attributes: { value: { required: true } },
+    analyze(calls, ctx) {
+      for (const call of calls) {
+        const a = get(call, "value");
+        if (!a) continue;
+        const type = node(a)?.type;
+        if (type !== "ArrowFunctionExpression" && type !== "FunctionExpression")
+          ctx.fail("this value is no function: a `publish` raises the event its function returns, as in `publish=() => new InvoicePaid({ ... })`", { at: a.loc, code: "MESH_PUBLISH" });
+      }
+    },
+  }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
   sort: closed({ parents: ["read"], children: children("asc", "desc") }),
   policies: closed({ parents: ["entity"], children: children("policy") }),
@@ -265,7 +299,7 @@ const contracts: ContractMap = {
 };
 for (const type of ATTRIBUTE_TYPES)
   contracts[type] = closed({
-    parents: ["attributes", "input", "computed"],
+    parents: ["attributes", "input", "computed", "event", "command"],
     attributes: {
       ...named(),
       ...options(type),

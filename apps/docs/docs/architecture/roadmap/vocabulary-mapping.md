@@ -104,6 +104,8 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `check.message` | `check :valid that=() => true code="invalid" message=() => "Invalid input"` | `check.message` | on main |
 | `check.when` | `check :valid that=() => true code="invalid" message="Invalid input" when=() => true` | `check.when` | on main |
 | `check.details` | `check :valid that=() => true code="invalid" message="Invalid input" details=() => ({ reason: "none" })` | `check.details` | on main |
+| `command` | `command :Paid` | `command` | on main |
+| `command.name` | `command :Paid` | `command.name` | on main |
 | `computed` | `computed` | `computed` | on main |
 | `count` | `count :total of=&lines` | `count` | on main |
 | `count.name` | `count :total of=&lines` | `count.name` | on main |
@@ -145,6 +147,8 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `enum.values` | `enum :field values=[:draft, :sent]` | `enum.values` | on main |
 | `enum.unique` | `enum :field values=[:draft, :sent] unique` | `enum.unique` | on main |
 | `enum.value` | `enum :field() { return :draft }` | `enum.value` | on main |
+| `event` | `event :Paid` | `event` | on main |
+| `event.name` | `event :Paid` | `event.name` | on main |
 | `filter` | `filter=() => true` | `filter` | on main |
 | `filter.value` | `filter=() => true` | `filter.value` | on main |
 | `float` | `float :field` | `float` | on main |
@@ -196,6 +200,8 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `policy.when` | `policy :rule when=() => true authorize-if=() => true` | `policy.when` | on main |
 | `policy.authorize-if` | `policy :rule authorize-if=() => true` | `policy.authorize-if` | on main |
 | `policy.forbid-if` | `policy :rule forbid-if=() => true` | `policy.forbid-if` | on main |
+| `publish` | `publish=() => new Paid({ id: &id })` | `publish` | on main |
+| `publish.value` | `publish=() => new Paid({ id: &id })` | `publish.value` | on main |
 | `read` | `read :work` | `read` | on main |
 | `read.name` | `read :work` | `read.name` | on main |
 | `read.filter` | `read :work filter=() => true` | `read.filter` | on main |

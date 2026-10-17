@@ -299,7 +299,7 @@ export function entityInputs(
   checkInputNames(entity, inputs);
   return inputs;
 }
-export function entitySegment(entity: Entity): string {
+export function entitySegment(entity: Pick<Entity, "name" | "position">): string {
   return pathSegment({
     value: entity.name[0]!.toLowerCase() + entity.name.slice(1),
     position: entity.position,
@@ -348,11 +348,11 @@ export function namespaceName(folder: string): string {
  * `front-end/build.ts`), so no authored name is one of these locals; every such local has at least two `$`, where
  * Mesh's own imports (`$Comparison`) have one.
  */
-export function entityLocal(entity: Entity, role: string): string {
+export function entityLocal(entity: Pick<Entity, "module" | "name" | "position">, role: string): string {
   const segments = entity.module === "" ? [] : entity.module.split("/").map(namespaceName);
   return `$${[...segments, typeName(entity.name, entity.position), role].join("$")}`;
 }
 /** An entity's generated files below the output directory, without the kind and extension: `domain/work/task`. */
-export function entityPath(entity: Entity): string {
+export function entityPath(entity: Pick<Entity, "module" | "name" | "position">): string {
   return `${modulePath(entity.module, entity.position)}/${entitySegment(entity)}`;
 }

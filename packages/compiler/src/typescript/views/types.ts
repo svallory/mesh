@@ -274,7 +274,7 @@ function queryDeclaration(entity: Entity): QueryDeclaration {
 }
 
 /** The entity file name as it may appear inside a `//` comment: a line terminator would end the comment. */
-export function entityFileComment(entity: Entity): string {
+export function entityFileComment(entity: { readonly file: string }): string {
   return entity.file.replace(/[\r\n\u2028\u2029]/g, (s) => `\\u${s.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
