@@ -19,9 +19,9 @@ Each row is one proposed decision. The last column is the record to read.
 | D4 | Services (options A to D) | **Partly ruled:** services follow Vernon's definition (domain service, application service). The construct's shape and when it is built are **open**; no new construct comes before the port unless the port needs it, and as many planned constructs as possible come before 1.0 | [ADR-0078](../decisions/0078-services-and-where-effects-go.md), [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md) |
 | D5 | Cascade or service command | **Ruled, differently:** a three-way split. The root writes its own parts in the entity file; an effect across aggregates is a service (plain code over `transaction` until services exist); effects that may happen later are publish and listen. A core rule warns when an entity action calls another aggregate's action. Whether Mesh supports publish-subscribe in general is **open** | [ADR-0078](../decisions/0078-services-and-where-effects-go.md), [ADR-0068](../decisions/0068-actions-compose-through-actions-and-tx.md) (amended) |
 | D6 | The single-entity check | **Ruled as proposed, with a new keyword:** declared dependencies stay (they narrow the handles and `tsc` enforces them), the warning can be switched off, and the dependency line starts with `uses`, not `call` | [ADR-0078](../decisions/0078-services-and-where-effects-go.md) |
-| D7 | Command in core | **Ruled, differently:** `command` and `event` are declarations in their own files, and an action names the commands it answers with `handles=[...]`. A command is a serialised request to run a write action; a query is a serialised read request | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md) |
+| D7 | Command in core | **Ruled, differently:** `command` and `event` are declarations in their own files, and an action answers at most one command, named by `on=`. A command is a serialised request to run a write action; a query is a serialised read request | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md) |
 | D8 | Domain events: form and timing | **Ruled, differently:** domain events are built in milestone M6, before the gate, and the Hyper application's hand-written event table is dropped | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md) |
-| D9 | Seam payloads and declared events | **Ruled, differently:** declaring events and publishing them are separate syntax. An action says `publish :task-completed`; a surface lists what leaves with `publishes events=[...]`. Option (a), an `events` field on the seams, was not taken; with events delivered from the outbox the seams need no such field (a consequence, not a ruling; the payloads are settled in M6's design) | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md), [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
+| D9 | Seam payloads and declared events | **Ruled, differently:** declaring events and publishing them are separate syntax. An action raises one with `publish=() => new TaskCompleted({ ... })`; a surface lists what leaves with `publishes events=[...]`. Option (a), an `events` field on the seams, was not taken; with events delivered from the outbox the seams need no such field (a consequence, not a ruling; the payloads are settled in M6's design) | [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md), [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D10 | The JSON-RPC adapter and surfaces | **Ruled as proposed:** option (c), `@meshfw/jsonrpc` before the gate with a hand-written method table; surfaces generate the table after 1.0 | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D11 | The surface format in core | **Ruled as proposed:** core owns the format, view and manifest; readers are adapters | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
 | D12 | Fields through a surface | **Ruled as proposed:** fail closed (`fields=[...]` or `fields=:all`); replaces the proposed `public` flag of [ADR-0035](../decisions/0035-meaning-of-public.md) | [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md) |
@@ -329,7 +329,7 @@ This reverses §6's "manual and generic actions: not planned" (decision D4).
     seam, the outbox extension or the event-sourcing extension.
   - **One way.** After D8, declared events are *the* way to produce typed events. A mapping table on
     the seam stays legal application code, as any seam code is, and the docs say so.
-  - **Replaced by a ruling.** Events are declared in `event` files, separate from the action that raises one, and an action raises one with `publish :task-completed`; `publish` writes the event to the outbox in the action's transaction, and an event bus delivers from there. There is no `emit` step and no `events` section in the entity. With events delivered from the outbox, the seam payloads need no `events` field (a consequence of these rows, not a ruling of its own; the payloads are settled in M6's design). Domain events and the outbox are built in M6. See [ADR-0079]. The timing analysis above (which row write records an event, and in what order the events of a call come out) is the reasoning the Hyper event order must still satisfy.
+  - **Replaced by a ruling.** Events are declared in `event` files, separate from the action that raises one, and an action raises one with a `publish` step that returns the event's instance (DOM-19, as ruled 2026-10-14); `publish` writes the event to the outbox in the action's transaction, and an event bus delivers from there. There is no `emit` step and no `events` section in the entity. With events delivered from the outbox, the seam payloads need no `events` field (a consequence of these rows, not a ruling of its own; the payloads are settled in M6's design). Domain events and the outbox are built in M6. See [ADR-0079]. The timing analysis above (which row write records an event, and in what order the events of a call come out) is the reasoning the Hyper event order must still satisfy.
   - **Names.** Events would be members (`&completed`), beside attributes, relationships, computed
     fields, actions, checks and policies, so an event cannot share a name with an action. Past-tense
     names (`complete`/`completed`) avoid it; `cancel`/`canceled` too. Decision D8 includes this.
@@ -424,7 +424,7 @@ entity :Task
   action is the command's definition. The `command` *member* of a service (section 3) is a write
   operation no single entity owns.
 
-  > **Replaced by a ruling.** `command` and `event` are declarations in their own files, and an action names the commands it answers with `handles=[...]`. See [ADR-0079].
+  > **Replaced by a ruling.** `command` and `event` are declarations in their own files, and an action answers at most one command, named by `on=`. See [ADR-0079].
 - **Ring.** Core (generated). **Hyper.** v0 is commands with an envelope (`commandId`, `actor`,
   `caller`, `expectedVersion`, `payload`; §4.1) and idempotency in the command's transaction (§4.3),
   done in application code. **When.** After 1.0, with surfaces.
@@ -455,7 +455,7 @@ entity :Task
   Domain events, outbox or event store. **Hyper.** No (the Task view is computed in memory, M7).
   **When.** After 1.0.
 
-  > **Names.** The block that updates a read-model row is called `project`, not `handle` (first ruled as `apply`; on 2026-10-13 `apply` was reserved for event-sourced folding), and the one that runs commands is `process` ([ADR-0083]). The syntax inside a projection is still the extension's to settle ([ADR-0081]).
+  > **Names.** The block that updates a read-model row is called `project`, not `handle` (first ruled as `apply`; on 2026-10-13 `apply` was reserved for event-sourced folding), and the one that runs commands is `process` ([ADR-0083]). On 2026-10-17 `project` left core for the event-sourcing extension: core has `process` and `listen`. The syntax inside a projection is still the extension's to settle ([ADR-0081]).
 
 ```mx "src/domain/work/open-work.mesh.mx (sketch; extension @meshfw/cqrs)"
 import { Task } from "./task.mesh.mx"
@@ -1141,7 +1141,7 @@ The list below is the study's text, kept as proposed. The table at the top says 
    *Outcome: Ruled as recommended, with `uses` as the keyword and the warning switchable off ([ADR-0078]).*
 7. **D7. Command in core.** (a) generated only (`Command`/`Query` unions, `dispatch()` per surface); (b)
    a `command` declaration per entity action. Recommendation: (a).
-   *Outcome: Ruled differently: `command` and `event` declarations in their own files, `handles=[...]` on the action ([ADR-0079]).*
+   *Outcome: Ruled differently: `command` and `event` declarations in their own files, `on=` on the action ([ADR-0079]).*
 8. **D8. Domain events.** Form: (a) `events` section and `emit` step, events as members (`&completed`,
    sharing the member namespace), delivered to seams, not stored by core, so §6's "no event log in
    Mesh" stands; (b) an `emits=` option on the action line; (c) application code on seams only.

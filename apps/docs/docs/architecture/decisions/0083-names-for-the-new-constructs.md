@@ -1,9 +1,11 @@
 ---
 title: "0083. Names for the new constructs: the name-clash table is accepted"
-description: "Decision record 0083: the accepted name-clash resolutions for the port, and the words changed from the study. Status: Accepted (DOM-29). Amended 2026-10-17 (the third handler kind is `listen`)."
+description: "Decision record 0083: the accepted name-clash resolutions for the port, and the words changed from the study. Status: Accepted (DOM-29). Amended 2026-10-17 (the third handler kind is `listen`) and 2026-10-17 (the events-spec review: core has two)."
 ---
 
 # 0083. Names for the new constructs: the name-clash table is accepted
+
+> **Amendment, 2026-10-17 (the events-spec review).** Core's handler kinds are `process` and `listen`; `project`, a read-model handler, is the event-sourcing extension's word (ADR-0079, amended 2026-10-17). Where the amendment and the policy row below name three kinds, read two in core.
 
 > **Amendment, 2026-10-17.** The third handler kind is `listen`, beside `project` and `process` ([ADR-0079](./0079-commands-events-and-the-outbox.md)). Where the table below says "a listener", it means a `listen` handler.
 
@@ -29,7 +31,7 @@ The study's name-clash table (section 5) is accepted for the port, with the word
 
 | Word | Resolution |
 |:--|:--|
-| policy | Authorization only. The study's `react` is `publish` plus a listener; a read-model handler is `project` (first ruled as `apply`; DOM-05, 2026-10-13), a command runner `process` ([ADR-0079](./0079-commands-events-and-the-outbox.md)) |
+| policy | Authorization only. The study's `react` is `publish` plus a listener; a read-model handler is `project`, the event-sourcing extension's word since 2026-10-17 (first ruled as `apply`; DOM-05, 2026-10-13), a command runner `process` ([ADR-0079](./0079-commands-events-and-the-outbox.md)) |
 | repository | A pattern; no construct ([ADR-0080](./0080-aggregates-and-concepts.md)) |
 | app | The file kind is `surface` ([ADR-0077](./0077-surfaces-and-file-kinds.md)); "application" stays the user's program |
 | service | A domain service as Vernon defines it ([ADR-0078](./0078-services-and-where-effects-go.md)); the dependency keyword is `uses` |
