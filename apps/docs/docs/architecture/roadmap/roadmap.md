@@ -248,7 +248,7 @@ The acceptance tests of this task and of the Jig port below are the lead's desig
 
 ### M6 — Lifecycle seams, domain events and the outbox (S to M, not yet re-estimated for the outbox)
 
-- **Status.** The seams are done (first half, acceptance tests 1 to 7). Domain events, `publish`, the outbox and the event bus are open (acceptance tests 8 and 9).
+- **Status.** The seams are done (first half, acceptance tests 1 to 7). Domain events, `publish` and the outbox are done (acceptance test 8; see [Events](../../docs/events.md)). The event bus is open (acceptance test 9).
 
 - **Goal.** The application can run code at three named points of every generated action, and an action can raise a domain event that is written to an outbox and delivered by an event bus. The seams are the points Hyper's plugin hook (`beforeTransaction`) and its per-row work stand on; HA (the Hyper application) writes the idempotency record itself, in the application `transaction`, after the action returns and in the same transaction, because the record holds the command's whole result (PROTOCOL section 4.3), which exists only when the command ends and not after each row, when `afterWrite` runs; domain events and the outbox replace the event table Hyper's application would write by hand ([ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)). The size estimate is carried over from revision 5 and is probably too small now; revisit it when the outbox is designed.
 - **Needs.** M5's phase structure.

@@ -23,7 +23,61 @@ declare module "@meshfw/runtime" {
     data: SqliteDataLayer | PostgresDataLayer;
     extensions?: unknown[];
     seams?: Seams;
+    events?: EventsConfig;
   };
+
+  /** The `events` key of `mesh.config.ts`, and the `events` option of `bind`. */
+  export type EventsConfig = {
+    /** Loads the events module at run time; the build never imports it. */
+    load?: () => Promise<{ metadata?: MetadataFunction<never> }>;
+    /** How long the outbox keeps a row: until every reader has passed it (the default), or always. */
+    keep?: "until-delivered" | "all";
+  };
+
+  /** What the project's `metadata` function returns for each event; a project declares its fields by augmenting this interface. */
+  export interface EventMetadata {}
+
+  /** A published event as a reader gets it: the envelope, the project's metadata and the event itself (`payload`). */
+  export interface EventRecord<E extends object = object> {
+    readonly id: string;
+    readonly position: number;
+    /** The event's FQN, `billing.InvoicePaid`. */
+    readonly name: string;
+    /** The publishing entity's FQN. */
+    readonly entity: string;
+    readonly action: string;
+    readonly key: Readonly<Record<string, unknown>>;
+    readonly causedBy: string | null;
+    readonly metadata: EventMetadata;
+    readonly occurredAt: Date;
+    readonly payload: E;
+  }
+
+  /** The events module's `metadata` function: once per publish, in the transaction; returns plain JSON. */
+  export type MetadataFunction<E extends object = object> = (args: {
+    readonly event: Omit<EventRecord<E>, "position" | "metadata" | "causedBy">;
+    readonly context: Readonly<ActionContext>;
+  }) => EventMetadata | Promise<EventMetadata>;
+
+  /** The query of `readEvents`: every field optional. */
+  export interface ReadEventsQuery {
+    /** The cursor: the position of the last row read before; `0`, the default, reads from the start. */
+    after?: number;
+    /** How many outbox rows to read, filtered ones included; default 100. */
+    limit?: number;
+    /** Only events with these FQNs. */
+    names?: readonly string[];
+    /** Only events published by this entity (its FQN). */
+    entity?: string;
+    /** Only events published for the record with this key. */
+    key?: Readonly<Record<string, unknown>>;
+  }
+
+  /** A page of `readEvents`: its events, and the cursor to pass as `after` next. */
+  export interface ReadEventsPage<E extends object = object> {
+    readonly events: readonly EventRecord<E>[];
+    readonly cursor: number;
+  }
 
   /** The storage operations a seam gets, by table handle (`tables` from `#mesh`): the four by key. Writes through it run no seams. */
   export type SeamDb = {
@@ -218,6 +272,31 @@ declare module "@meshfw/runtime" {
     readonly file: string;
     /** How long the call waited, in milliseconds; 0 for a statement that is not retried. */
     readonly waitedMs: number;
+  }
+
+  /** A `readEvents` cursor behind the deleted rows: reading on would skip them. Its code is `MESH_EVENTS_DELETED`. */
+  export class EventsDeletedError extends MeshError {
+    override code: "MESH_EVENTS_DELETED";
+    /** The cursor the read was given. */
+    readonly after: number;
+    /** The oldest position the outbox still keeps. */
+    readonly oldestKept: number;
+  }
+
+  /** A `readEvents` cursor above the highest position the outbox ever assigned (a restored backup). Its code is `MESH_CURSOR_AHEAD`. */
+  export class CursorAheadError extends MeshError {
+    override code: "MESH_CURSOR_AHEAD";
+    readonly after: number;
+    /** The highest position the outbox ever assigned. */
+    readonly highest: number;
+  }
+
+  /** An outbox row whose stored name matches no declared event; the read stops at it. Its code is `MESH_EVENT_UNDECLARED`. */
+  export class EventUndeclaredError extends MeshError {
+    override code: "MESH_EVENT_UNDECLARED";
+    /** The stored FQN. */
+    readonly eventName: string;
+    readonly position: number;
   }
 }
 
@@ -479,16 +558,27 @@ declare module "#mesh/domain/billing" {
     load?: readonly string[];
   }
 
+  /** The event `billing.InvoicePaid`, declared in `src/domain/billing/invoice-paid.mesh.mx`. */
+  export class InvoicePaid {
+    constructor(fields: { invoiceId: string; amount: number; paidAt: Date });
+    readonly invoiceId: string;
+    readonly amount: number;
+    readonly paidAt: Date;
+  }
+
   /** The entity value of `Invoice`. */
   export const Invoice: {
+    pay(input: { id: string }, context: ActionContext): Promise<Invoice>;
     forCustomer(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
   } & EntityValue<{
       forCustomer(input: ReadInvoiceInput, context?: ActionContext): Promise<Invoice[]>;
+      pay(input: { id: string }, context?: ActionContext): Promise<Invoice>;
   }>;
 }
 
 declare module "#mesh" {
-  import type { Seams } from "@meshfw/runtime";
+  import type { EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams } from "@meshfw/runtime";
+  import type { InvoicePaid } from "#mesh/domain/billing";
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
 
@@ -502,7 +592,17 @@ declare module "#mesh" {
 
   export function connect(): Promise<void>;
   export function disconnect(): Promise<void>;
-  export function bind(dataLayer: DataLayer, options?: { seams?: Seams; clock?: () => Date }): Binding;
+  export function bind(dataLayer: DataLayer, options?: { seams?: Seams; clock?: () => Date; events?: EventsConfig }): Binding;
+
+  /** Every event class's instance type: what a publish returns and what a reader gets as `payload`. */
+  export type DomainEvent = InvoicePaid;
+  export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
+  export type MetadataFunction = $MetadataFunction<DomainEvent>;
+  export type { EventMetadata, ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
+  /** The events the running transaction has published so far, in order; outside a transaction it throws. */
+  export function published(): readonly EventRecord[];
+  /** A page of the events the outbox keeps, after `query.after`; inside a transaction it throws. */
+  export function readEvents(query?: ReadEventsQuery): Promise<ReadEventsPage<DomainEvent>>;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`, keyed by table name as stored (`table=` included). */
   export const tables: { readonly lists: object; readonly todos: object };

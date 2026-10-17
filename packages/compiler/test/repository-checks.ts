@@ -245,13 +245,16 @@ function docsMxBlocks(dir: string): DocsBlock[] {
  */
 export const DOCS_SYNTAX = "syntax v4";
 
-/** A complete v4 entity file: comments and imports may come first, then `entity :Name`. */
+/**
+ * A complete v4 file of the domain: comments and imports may come first, then `entity :Name`, or `event :Name` or
+ * `command :Name` for an event or a command, which are files of their own (spec, Events and commands).
+ */
 export function isV4EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^entity\s+:\w+/.test(text);
+    return /^(?:entity|event|command)\s+:\w+/.test(text);
   }
   return false;
 }
@@ -440,7 +443,7 @@ export function checkDocsSyntaxV4(dir: string) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
-      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\``);
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\` or \`command :Name\`)`);
       continue;
     }
     checked++;

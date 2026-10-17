@@ -544,7 +544,7 @@ Steps run top to bottom after validation, on the record with the member inputs a
 | Step | What it does |
 |:--|:--|
 | `set` | Assigns fields with `&field=value` lines; a value is a literal or a one-expression arrow. A line may name a relationship, `&creator=({ actor }) => actor.id`, and stores its key |
-| `publish=() => new X({ ... })` | Raises the event the function returns, after the action's row is written, in written order; it is written to the outbox in the action's transaction (not built: M6 PR 2; until then the action fails naming M6; see Events) |
+| `publish=() => new X({ ... })` | Raises the event the function returns, after the action's row is written, in written order; it is written to the outbox in the action's transaction (see [Events](./events.md)) |
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
 | `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other entities' actions |
