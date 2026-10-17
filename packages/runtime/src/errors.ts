@@ -138,3 +138,27 @@ export class NotFoundError extends MeshError {
     super(`Entity ${entity} not found for ${describeKey(key)}`, options);
   }
 }
+
+/**
+ * A database call stayed blocked by another connection and was given up (`MESH_DATABASE_BUSY`): a transaction that
+ * waited out its retries, or a statement that met a lock and is not retried. data-sqlite is the adapter that raises it.
+ * The code is `MESH_*`, unlike the lowercase category codes of the other classes, as the specification names it.
+ */
+export class DatabaseBusyError extends MeshError {
+  readonly code = "MESH_DATABASE_BUSY";
+  /** The database file that was locked. */
+  readonly file: string;
+  /** How long the call waited, in milliseconds; 0 for a statement that is not retried. */
+  readonly waitedMs: number;
+
+  constructor(file: string, waitedMs: number, options?: ErrorOptions) {
+    super(
+      waitedMs > 0
+        ? `The database file ${JSON.stringify(file)} stayed locked by another connection for ${waitedMs} ms, so the call gave up`
+        : `The database file ${JSON.stringify(file)} is locked by another connection, and this statement is not retried`,
+      options,
+    );
+    this.file = file;
+    this.waitedMs = waitedMs;
+  }
+}

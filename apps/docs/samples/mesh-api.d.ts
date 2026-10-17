@@ -179,6 +179,18 @@ declare module "@meshfw/runtime" {
   export class FrameworkError extends MeshError {
     override code: "framework";
   }
+
+  /**
+   * A database call that stayed blocked by another connection and was given up: a transaction still blocked after 5 s of
+   * retries, or a statement that met a lock and is not retried. Its code is `MESH_DATABASE_BUSY`.
+   */
+  export class DatabaseBusyError extends MeshError {
+    override code: "MESH_DATABASE_BUSY";
+    /** The database file that was locked. */
+    readonly file: string;
+    /** How long the call waited, in milliseconds; 0 for a statement that is not retried. */
+    readonly waitedMs: number;
+  }
 }
 
 declare module "@meshfw/data-sqlite" {

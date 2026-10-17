@@ -25,7 +25,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     const emitted = compile(["--declaration", "--emitDeclarationOnly", "--outDir", join(root, "actual"), join(repo, "packages/runtime/src/index.ts")], root);
     expect(emitted).toEqual({ code: 0, output: "" });
     const names = [...section.matchAll(/export (?:interface|class) (\w+)/g)].map((match) => match[1]!);
-    expect(names).toEqual(["ActionContext", "Issue", "PolicyCheck", "MeshError", "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError"]);
+    expect(names).toEqual(["ActionContext", "Issue", "PolicyCheck", "MeshError", "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError"]);
     // Check every documented member. Real errors additionally expose entity/key;
     // that extra API is not promised by the sample's deliberately smaller shape.
     const probe = `import type * as Docs from "mesh-runtime-reference";\nimport type * as Actual from "./actual/index";\n${names.map((name) => `declare const ${name}: Docs.${name};\n${name} satisfies Pick<Actual.${name}, keyof Docs.${name}>;`).join("\n")}
