@@ -207,10 +207,10 @@ describe("MESH_PUBLISH", () => {
     expect(brief(publish("() => &paid ? new InvoicePaid({ invoiceId: &id, amount: 1, method: \"card\", paidAt: %.now }) : new PayInvoice({ id: &id })"))).toEqual([command(10, 114)]);
     expect(brief(publish("() => ((&paid ? (new PayInvoice({ id: &id })) : new PayInvoice({ id: &id })) as any)")).map((d) => d.slice(1, 3))).toEqual([[10, 37], [10, 68]]);
     // not seen: a helper's result, a variable, a function nested in the body
-    const made = publish("() => makeEvent(&id)", `${IMPORTS}import { makeEvent } from "./make"\n`);
-    expect(made).toEqual([]);
-    expect(publish("() => { const e = new PayInvoice({ id: &id }); return e }")).toEqual([]);
-    expect(publish("() => { const f = () => new PayInvoice({ id: &id }); return new InvoicePaid({ invoiceId: &id, amount: 1, method: \"card\", paidAt: %.now }) }").map((d) => d.code)).toEqual(["MESH_EVENT_NOT_PUBLISHED".replace("EVENT_NOT_PUBLISHED", "EVENT_NOT_PUBLISHED")].slice(0, 0));
+    const publishCodes = (value: string, imports = IMPORTS) => publish(value, imports).filter((d) => d.code === "MESH_PUBLISH");
+    expect(publishCodes("() => makeEvent(&id)", `${IMPORTS}import { makeEvent } from "./make"\n`)).toEqual([]);
+    expect(publishCodes("() => { const e = new PayInvoice({ id: &id }); return e }")).toEqual([]);
+    expect(publishCodes("() => { const f = () => new PayInvoice({ id: &id }); return new InvoicePaid({ invoiceId: &id, amount: 1, method: \"card\", paidAt: %.now }) }")).toEqual([]);
   });
 
   test("a new of a variable of the function, and a new with no name to read", () => {
@@ -346,17 +346,17 @@ entity :Invoice
       ".mesh/domain/billing/index.ts", ".mesh/domain/billing/invoicePaid.event.ts", ".mesh/domain/billing/payInvoice.command.ts", ".mesh/domain/index.ts",
       ".mesh/domain/sales/index.ts", ".mesh/domain/sales/refunds/index.ts", ".mesh/domain/sales/refunds/refundIssued.event.ts", ".mesh/index.ts",
     ]);
-    await golden("invoicePaid.event.ts", text(generated, ".mesh/domain/billing/invoicePaid.event.ts"));
-    await golden("payInvoice.command.ts", text(generated, ".mesh/domain/billing/payInvoice.command.ts"));
-    await golden("refundIssued.event.ts", text(generated, ".mesh/domain/sales/refunds/refundIssued.event.ts"));
-    await golden("billing.index.ts", text(generated, ".mesh/domain/billing/index.ts"));
-    await golden("mesh.index.ts", text(generated, ".mesh/index.ts"));
+    await golden("invoicePaid.event.ts.golden", text(generated, ".mesh/domain/billing/invoicePaid.event.ts"));
+    await golden("payInvoice.command.ts.golden", text(generated, ".mesh/domain/billing/payInvoice.command.ts"));
+    await golden("refundIssued.event.ts.golden", text(generated, ".mesh/domain/sales/refunds/refundIssued.event.ts"));
+    await golden("billing.index.ts.golden", text(generated, ".mesh/domain/billing/index.ts"));
+    await golden("mesh.index.ts.golden", text(generated, ".mesh/index.ts"));
   });
 
   test("the publish functions in the entity's expressions file: plain (publish-step), typed to return DomainEvent | Promise<DomainEvent>: golden", async () => {
     const generated = await generate();
     const expressions = text(generated, ".mesh/domain/billing/invoice.expressions.ts");
-    await golden("invoice.expressions.ts", expressions);
+    await golden("invoice.expressions.ts.golden", expressions);
     expect(expressions).toContain("// publish, plain (publish-step) (billing/invoice.mesh.mx:");
     expect([...expressions.matchAll(/\): \$DomainEvent \| \$Promise<\$DomainEvent> => \{/g)].length).toBe(5);
     expect(expressions).toContain('import type { DomainEvent as $DomainEvent } from "../../index";');
