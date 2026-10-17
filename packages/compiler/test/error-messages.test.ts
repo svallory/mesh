@@ -119,6 +119,30 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
     expect([d.position.line, d.position.column]).toEqual([line, column]);
   });
 
+  // MX alpha.32: every authored form is the one error at the construct. An `else` or `else-if` that follows an `if` is folded
+  // into that `if`'s error, so the error is on the `if`.
+  test.each([
+    ["if(x)", "  if(x)\n", "if", 4, 2],
+    ["if|x|=a", "  if|x|=a\n", "if", 4, 2],
+    ["a bare if", "  if\n", "if", 4, 2],
+    ["for(x)", "  for(x)\n", "for", 4, 2],
+    ["for|x|(y)", "  for|x|(y)\n", "for", 4, 2],
+    ["if=true then else(x)", "  if=true\n  else(x)\n", "if", 4, 2],
+    ["if=true then else-if(x)", "  if=true\n  else-if(x)\n", "if", 4, 2],
+  ])("directly under entity, authored as %s: one MESH_STRUCTURAL_CONSTRUCT with the fix (MX alpha.32)", (_, body, construct, line, column) => {
+    const result = build(keyed + body);
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(1);
+    const d = result.diagnostics[0]!;
+    expect(d).toMatchObject({
+      severity: "error",
+      code: "MESH_STRUCTURAL_CONSTRUCT",
+      message: `Mesh files are static, so they do not evaluate \`${construct}\``,
+      fix: construct === "for" ? FOR : IF,
+    });
+    expect([d.position.line, d.position.column]).toEqual([line, column]);
+  });
+
   // No Mesh contract has a `transform` (contracts.test.ts pins it), so the tag here is a test contract added to Mesh's dialect.
   // MX lowers such a tag's body while the transform runs, and reports a construct in it then, with the same code and message.
   describe("under a tag with a transform (a test contract on MESH_DIALECT)", () => {
