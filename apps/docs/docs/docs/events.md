@@ -91,6 +91,7 @@ export default defineConfig({
   data: sqlite({ file: "app.db" }),
   events: {
     bus: localBus(),
+    load: () => import("./src/events.ts"),
     requires: ["replay", "subscribe"],
   },
 });
@@ -247,7 +248,7 @@ export default defineConfig({
 });
 ```
 
-A wrong option, such as a `pollInterval` of 0 or a negative delay, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
+`pollInterval` and each delay are whole milliseconds, at most 2147483647 (about 24.8 days, the longest wait a timer keeps); `pollInterval` is at least 1. A wrong option, such as a `pollInterval` of 0 or a negative delay, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
 
 **Rounds.** Each round feeds every handler from its own progress row, in position order, one event at a time, then every live subscription from its own position, then deletes what every reader has passed. Once delivery is started (`connect()` or `startDelivery()`), a round runs at once, after each transaction in this process that published commits, and every `pollInterval`. Creating the bus starts nothing, and `disconnect()` or `delivery.stop()` waits for the running round and leaves no timer behind.
 

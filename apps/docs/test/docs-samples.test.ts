@@ -35,6 +35,17 @@ export const alice = { id: "00000000-0000-4000-8000-000000000001" };
 export const bob = { id: "00000000-0000-4000-8000-000000000002" };
 `;
 
+/** The events module a config sample's `events.load` names: one listen handler, typed as a project's would be. */
+const eventsModule = `import { Mesh } from "meshfw";
+import { InvoicePaid } from "#mesh/domain/billing";
+
+export const handlers = {
+  listen: {
+    log: Mesh.handler({ events: [InvoicePaid], run: async (event) => { console.log(event.position); } }),
+  },
+};
+`;
+
 const tsconfig = {
   compilerOptions: {
     strict: true,
@@ -42,6 +53,8 @@ const tsconfig = {
     module: "esnext",
     moduleResolution: "bundler",
     noEmit: true,
+    // A config sample loads its events module as `import("./src/events.ts")`, as a Bun project writes it.
+    allowImportingTsExtensions: true,
     noUncheckedIndexedAccess: true,
     noUnusedLocals: true,
     skipLibCheck: true,
@@ -122,6 +135,13 @@ test("every TypeScript sample on the Docs pages type-checks against the proposed
         mkdirSync(join(caseDir, "src"), { recursive: true });
         writeFileSync(join(caseDir, "src/context.ts"), actorModule);
         files.push("src/context.ts");
+      }
+      // A config sample that loads the events module gets a small one beside it at `src/events.ts`, as it gets a
+      // context module; the page's own `src/events.ts` samples are checked on their own.
+      if (/import\("\.\/src\/events\.ts"\)/.test(sample.code) && samplePath !== "src/events.ts") {
+        mkdirSync(join(caseDir, "src"), { recursive: true });
+        writeFileSync(join(caseDir, "src/events.ts"), eventsModule);
+        files.push("src/events.ts");
       }
       writeFileSync(join(caseDir, "tsconfig.json"), JSON.stringify({ ...tsconfig, files: [...files, "../../samples/mesh-api.d.ts"] }));
       let out = "";
