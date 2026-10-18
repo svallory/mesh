@@ -55,21 +55,43 @@ async function until(check: () => boolean, what: string, ms = 3000): Promise<voi
 const rejection = (promise: Promise<unknown>) => promise.then(() => undefined, (error: unknown) => error);
 
 /** Timers that keep the set of those still live, so a test can say none is left. */
-function countingTimers(): { live: Set<unknown>; timers: LocalBusTimers; made: () => number } {
+function countingTimers(): { live: Set<unknown>; timers: LocalBusTimers; made: () => number; timeouts: () => number; polls: () => number } {
   const live = new Set<unknown>();
   let made = 0;
+  let timeouts = 0;
+  let polls = 0;
   const timers: LocalBusTimers = {
     setTimeout(run, ms) {
       made++;
+      timeouts++;
       const timer = setTimeout(() => { live.delete(timer); run(); }, ms);
       live.add(timer);
       return timer;
     },
     clearTimeout(timer) { live.delete(timer); clearTimeout(timer as ReturnType<typeof setTimeout>); },
-    setInterval(run, ms) { made++; const timer = setInterval(run, ms); live.add(timer); return timer; },
+    setInterval(run, ms) { made++; const timer = setInterval(() => { polls++; run(); }, ms); live.add(timer); return timer; },
     clearInterval(timer) { live.delete(timer); clearInterval(timer as ReturnType<typeof setInterval>); },
   };
-  return { live, timers, made: () => made };
+  return { live, timers, made: () => made, timeouts: () => timeouts, polls: () => polls };
+}
+
+/** A promise and the function that resolves it. */
+function gate(): { promise: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => { open = resolve; });
+  return { promise, open };
+}
+
+/** A core with only what a test names, for the round loop's own behaviour; any other member throws when called. */
+function fakeCore(members: Partial<Record<keyof BusCore, unknown>>): BusCore {
+  const base: Partial<Record<keyof BusCore, unknown>> = {
+    handlers: [], subscriptions: () => [], deletionPass: async () => undefined,
+    onPublished: () => () => undefined, onClaimLost: () => () => undefined,
+  };
+  const all = { ...base, ...members };
+  return new Proxy({} as BusCore, {
+    get: (_target, key) => key in all ? all[key as keyof BusCore] : () => { throw new Error(`core.${String(key)} was called`); },
+  });
 }
 
 /** A handler that records the positions it is handed, then runs `body`. */
@@ -99,6 +121,8 @@ describe("localBus(options)", () => {
     [{ pollInterval: 0 }, "pollInterval"], [{ pollInterval: -1 }, "pollInterval"], [{ pollInterval: Number.NaN }, "pollInterval"],
     [{ pollInterval: Number.POSITIVE_INFINITY }, "pollInterval"], [{ pollInterval: "1000" }, "pollInterval"],
     [{ retryDelays: [-1] }, "retryDelays"], [{ retryDelays: "100" }, "retryDelays"], [{ retryDelays: [Number.NaN] }, "retryDelays"], [{ retryDelays: [100, "x"] }, "retryDelays"],
+    [{ pollInterval: 0.5 }, "pollInterval"], [{ pollInterval: 2_147_483_648 }, "pollInterval"],
+    [{ retryDelays: [1.5] }, "retryDelays"], [{ retryDelays: [2_147_483_648] }, "retryDelays"],
     [{ maxQueue: 0 }, "maxQueue"], [{ maxQueue: 1.5 }, "maxQueue"], [{ maxQueue: "10" }, "maxQueue"],
     [{ poll: 10 }, '"poll"'], [null, "takes"], [[], "takes"], ["fast", "takes"],
   ])("a wrong option %p is a FrameworkError naming it", (options, named) => {
@@ -109,7 +133,8 @@ describe("localBus(options)", () => {
   });
 
   test("an empty retryDelays and the edges of each option are accepted", () => {
-    expect(() => localBus({ retryDelays: [], pollInterval: 0.5, maxQueue: 1 })).not.toThrow();
+    expect(() => localBus({ retryDelays: [], pollInterval: 1, maxQueue: 1 })).not.toThrow();
+    expect(() => localBus({ retryDelays: [0, 2_147_483_647], pollInterval: 2_147_483_647 })).not.toThrow();
     expect(() => localBus({})).not.toThrow();
   });
 
@@ -197,7 +222,8 @@ describe("started delivery", () => {
     const a: number[] = [];
     const b: number[] = [];
     let broken = true;
-    const bus = createLocalBus({ pollInterval: 20 }, { report: (error) => { reports.push(error); } });
+    const counting = countingTimers();
+    const bus = createLocalBus({ pollInterval: 20 }, { timers: counting.timers, report: (error) => { reports.push(error); } });
     const { layer, binding } = await open(bus, { process: {
       a: recorder(a, () => { if (broken) throw Object.assign(new Error("refused"), { retryable: false }); }),
       b: recorder(b),
@@ -205,11 +231,10 @@ describe("started delivery", () => {
     const delivery = await binding.startDelivery();
     try {
       await sleep(30);
-      const published = Date.now();
       await publish(binding);
       await until(() => reports.length === 1, "the stop is reported");
-      // well under the first default delay, 100 ms
-      expect(Date.now() - published).toBeLessThan(90);
+      // stopped at once: no back-off timer was ever set
+      expect(counting.timeouts()).toBe(0);
       expect(a).toEqual([1]);
       const report = reports[0] as HandlerStoppedError;
       expect(report).toBeInstanceOf(HandlerStoppedError);
@@ -326,13 +351,152 @@ describe("started delivery", () => {
     } finally { await layer.close(); }
   });
 
+  test("stop() waits for the round in flight, and a retryable failure that ends after it sets no timer and reports nothing", async () => {
+    const counting = countingTimers();
+    const reports: unknown[] = [];
+    const entered = gate();
+    const release = gate();
+    const { layer, binding } = await open(createLocalBus({ pollInterval: 60_000 }, { timers: counting.timers, report: (error) => { reports.push(error); } }), {
+      listen: { slow: { events: [InvoicePaid], run: async () => { entered.open(); await release.promise; throw new Error("upstream down"); } } },
+    });
+    const delivery = await binding.startDelivery();
+    try {
+      await publish(binding);
+      await entered.promise;
+      let stopped = false;
+      const stopping = delivery.stop().then(() => { stopped = true; });
+      await sleep(30);
+      expect(stopped).toBe(false);
+      release.open();
+      await stopping;
+      expect(counting.timeouts()).toBe(0);
+      expect(counting.live.size).toBe(0);
+      expect(reports).toEqual([]);
+    } finally {
+      release.open();
+      await layer.close();
+    }
+  });
+
+  test("a wake-up that comes as a round ends starts another round at once, whichever microtask it lands in", async () => {
+    for (let depth = 0; depth < 12; depth++) {
+      const counting = countingTimers();
+      let listener: (() => void) | undefined;
+      let passes = 0;
+      const core = fakeCore({
+        deletionPass: async () => {
+          passes++;
+          if (passes !== 1) return;
+          let later = Promise.resolve();
+          for (let i = 0; i < depth; i++) later = later.then(() => undefined);
+          void later.then(() => listener?.());
+        },
+        onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
+      });
+      const instance = createLocalBus({ pollInterval: 60_000 }, { timers: counting.timers }).create(core, { keep: "until-delivered" });
+      await instance.start();
+      await until(() => passes === 2, `a second round for the wake-up ${depth} microtasks after the first round's deletion pass`, 1000);
+      await instance.stop();
+      expect(counting.polls()).toBe(0);
+      expect(counting.live.size).toBe(0);
+    }
+  });
+
+  test("a commit while a round runs is delivered by the next round, not by the poll", async () => {
+    const counting = countingTimers();
+    const seen: number[] = [];
+    const entered = gate();
+    const release = gate();
+    const { layer, binding } = await open(createLocalBus({ pollInterval: 60_000 }, { timers: counting.timers }), {
+      listen: { h: recorder(seen, async (event) => { if (event.position === 1) { entered.open(); await release.promise; } }) },
+    });
+    const delivery = await binding.startDelivery();
+    try {
+      await publish(binding);
+      await entered.promise;
+      await publish(binding);
+      release.open();
+      await until(() => seen.length === 2, "the event committed during the round");
+      expect(seen).toEqual([1, 2]);
+      expect(counting.polls()).toBe(0);
+    } finally {
+      release.open();
+      await delivery.stop();
+      await layer.close();
+    }
+  });
+
+  test("a handler whose cursor cannot be read stops alone: the other handler, the subscriptions and the deletion pass go on", async () => {
+    const reports: unknown[] = [];
+    const reads: string[] = [];
+    let passes = 0;
+    const deleted = Object.assign(new Error("the events after 0 were deleted"), { code: "MESH_EVENTS_DELETED" });
+    const handlers = [{ name: "a" }, { name: "b" }];
+    const core = fakeCore({
+      handlers,
+      position: async (handler: { name: string }) => { reads.push(handler.name); return handler.name === "a" ? 0 : 5; },
+      rows: async (after: number) => { if (after === 0) throw deleted; return { rows: [], deletedThrough: 5, highest: 5 }; },
+      deletionPass: async () => { passes++; },
+      onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
+    });
+    let listener: (() => void) | undefined;
+    const counting = countingTimers();
+    const started = createLocalBus({ pollInterval: 60_000 }, { timers: counting.timers, report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+    await started.start();
+    await until(() => passes === 1, "the first round's deletion pass");
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toBeInstanceOf(HandlerStoppedError);
+    expect((reports[0] as HandlerStoppedError).stopped).toMatchObject([{ handler: "a", position: 1, cause: deleted }]);
+    expect(reads).toEqual(["a", "b"]);
+    // the next round skips the stopped handler; the next start feeds it again
+    listener!();
+    await until(() => passes === 2, "the next round");
+    expect(reads).toEqual(["a", "b", "b"]);
+    await started.stop();
+    await started.start();
+    await until(() => passes === 3, "the round after the restart");
+    expect(reads).toEqual(["a", "b", "b", "a", "b"]);
+    expect(reports).toHaveLength(2);
+    await started.stop();
+    expect(counting.live.size).toBe(0);
+
+    passes = 0;
+    const once = createLocalBus({}, { timers: counting.timers }).create(core, { keep: "until-delivered" });
+    const error = await rejection(once.deliver());
+    expect(error).toBeInstanceOf(HandlerStoppedError);
+    expect((error as HandlerStoppedError).stopped).toMatchObject([{ handler: "a", position: 1, cause: deleted }]);
+    expect(passes).toBe(1);
+  });
+
+  test("a reporter that throws ends nothing: the next round still runs", async () => {
+    let passes = 0;
+    let listener: (() => void) | undefined;
+    const core = fakeCore({
+      deletionPass: async () => { passes++; throw new Error("deletion failed"); },
+      onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
+    });
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      const instance = createLocalBus({ pollInterval: 60_000 }, { report: () => { throw new Error("reporter broke"); } }).create(core, { keep: "until-delivered" });
+      await instance.start();
+      await until(() => passes === 1, "the first round");
+      await sleep(5);
+      listener!();
+      await until(() => passes === 2, "the next round");
+      await instance.stop();
+      expect(errors.length).toBeGreaterThanOrEqual(1);
+    } finally { console.error = original; }
+  });
+
   test("resumeHandler is a FrameworkError on a started bus whose instance cannot resume", async () => {
     const { layer, binding } = await open(testBus({ pollMs: 20 }), { process: { h: recorder([]) } });
     const delivery = await binding.startDelivery();
     try {
       const refused = await rejection(resumeHandler(binding as never, "h"));
       expect(refused).toBeInstanceOf(FrameworkError);
-      expect((refused as Error).message).toContain("the bus test cannot resume a handler");
+      expect((refused as Error).message).toContain("the bus \"test\" cannot resume a handler");
     } finally {
       await delivery.stop();
       await layer.close();

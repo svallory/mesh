@@ -63,6 +63,10 @@ function describe(value: unknown): string {
   return `a value of type ${typeof value}`;
 }
 
+/** The longest delay a timer keeps: `setTimeout` runs a longer one at once. */
+const MAX_DELAY = 2_147_483_647;
+const isDelay = (value: unknown, least: number): boolean => typeof value === "number" && Number.isInteger(value) && value >= least && value <= MAX_DELAY;
+
 /** The options, checked: a `FrameworkError` names the first one that is wrong. */
 function checked(options: LocalBusOptions | undefined): { pollInterval: number; retryDelays: readonly number[] | undefined; maxQueue: number | undefined } {
   if (options === undefined) return { pollInterval: POLL_INTERVAL, retryDelays: undefined, maxQueue: undefined };
@@ -71,10 +75,10 @@ function checked(options: LocalBusOptions | undefined): { pollInterval: number; 
   for (const key of Object.keys(options))
     if (!OPTION_NAMES.has(key)) throw new FrameworkError(`localBus has no option ${JSON.stringify(key)}; its options are pollInterval, retryDelays and maxQueue`);
   const { pollInterval, retryDelays, maxQueue } = options;
-  if (pollInterval !== undefined && (typeof pollInterval !== "number" || !Number.isFinite(pollInterval) || pollInterval <= 0))
-    throw new FrameworkError(`localBus: pollInterval is how often a round runs after start(), in milliseconds, a number above 0, and is ${describe(pollInterval)}`);
-  if (retryDelays !== undefined && (!Array.isArray(retryDelays) || retryDelays.some((delay) => typeof delay !== "number" || !Number.isFinite(delay) || delay < 0)))
-    throw new FrameworkError(`localBus: retryDelays is the delay before each retry, in milliseconds, an array of numbers each 0 or more (such as [100, 1000, 10000]), and is ${describe(retryDelays)}`);
+  if (pollInterval !== undefined && !isDelay(pollInterval, 1))
+    throw new FrameworkError(`localBus: pollInterval is how often a round runs after start(), in milliseconds, a whole number from 1 to ${MAX_DELAY}, and is ${describe(pollInterval)}`);
+  if (retryDelays !== undefined && (!Array.isArray(retryDelays) || retryDelays.some((delay) => !isDelay(delay, 0))))
+    throw new FrameworkError(`localBus: retryDelays is the delay before each retry, in milliseconds, an array of whole numbers from 0 to ${MAX_DELAY} (such as [100, 1000, 10000]), and is ${describe(retryDelays)}`);
   if (maxQueue !== undefined && (typeof maxQueue !== "number" || !Number.isSafeInteger(maxQueue) || maxQueue < 1))
     throw new FrameworkError(`localBus: maxQueue is how many rows a subscription may have waiting for its callback, a whole number of 1 or more, and is ${describe(maxQueue)}`);
   return { pollInterval: pollInterval ?? POLL_INTERVAL, retryDelays: retryDelays === undefined ? undefined : Object.freeze([...retryDelays]), maxQueue };
@@ -125,7 +129,11 @@ interface InstanceSettings {
 }
 
 function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
-  const { timers, report } = settings;
+  const { timers } = settings;
+  /** A reporter that throws must not end the round loop or leave a rejected promise behind. */
+  const report = (error: unknown): void => {
+    try { settings.report(error); } catch (thrown) { console.error("Mesh (localBus): the reporter threw:", thrown); }
+  };
   let started = false;
   /** Set once core says the claim is lost: the instance is over and calls core no more. */
   let lost: Error | undefined;
@@ -165,6 +173,9 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
       lane.backoff = undefined;
       return true;
     } catch (error) {
+      // After stop() or a lost claim the instance schedules and reports nothing: its timers are already cleared.
+      if (lost) throw lost;
+      if (!started) return false;
       // Busy ends the round and is not a try: the backoff is left as it was, so the next round tries again.
       if (error instanceof DatabaseBusyError || error instanceof DelivererLostError) throw error;
       const tries = lane.backoff?.position === row.position ? lane.backoff.tries : 0;
@@ -187,14 +198,36 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
     }
   };
 
-  /** Feed `handler` from its own cursor; resolves with its stop in a `deliver()` round, else null. */
+  /**
+   * Feed `handler` from its own cursor; resolves with its stop in a `deliver()` round, else null. A read of its cursor
+   * that fails (`MESH_EVENTS_DELETED`, `MESH_CURSOR_AHEAD`, `MESH_EVENT_UNDECLARED`) stops this handler alone, at the
+   * position after its cursor: the reader that asked ends, with that error, and the round goes on.
+   */
   const feedHandler = async (handler: RegisteredHandler, mode: "started" | "deliver"): Promise<StoppedHandler | null> => {
     const lane = mode === "started" ? laneOf(handler) : undefined;
-    let cursor = await core.position(handler);
+    let cursor: number | undefined;
+    try {
+      cursor = await core.position(handler);
+      return await feedFrom(handler, lane, cursor, (position) => { cursor = position; });
+    } catch (error) {
+      if (lost) throw lost;
+      if (error instanceof DelivererLostError || error instanceof DatabaseBusyError) throw error;
+      if (mode === "started" && !started) return null;
+      const stop: StoppedHandler = { handler: handler.name, position: (cursor ?? 0) + 1, event: "(the read failed)", cause: error };
+      if (!lane) return stop;
+      lane.backoff = undefined;
+      lane.stopped = true;
+      report(new HandlerStoppedError([stop]));
+      return null;
+    }
+  };
+
+  const feedFrom = async (handler: RegisteredHandler, lane: Lane | undefined, from: number, passed: (position: number) => void): Promise<StoppedHandler | null> => {
+    let cursor = from;
     for (;;) {
       const page = await core.rows(cursor, PAGE);
       for (const row of page.rows) {
-        if (mode === "started" && !started) return null;
+        if (lane && !started) return null;
         if (core.lists(handler, row)) {
           if (lane) {
             if (!(await tryStarted(handler, lane, row))) return null;
@@ -204,6 +237,7 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
           }
         }
         cursor = row.position;
+        passed(cursor);
       }
       if (page.rows.length < PAGE) return null;
     }
@@ -246,16 +280,22 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
     if (!started || lost) return;
     if (running) { again = true; return; }
     running = (async () => {
-      do {
-        again = false;
-        try {
-          await round("started");
-        } catch (error) {
-          // A lost claim ends the instance; a busy database ends the round, and the next one runs at the next wake-up.
-          if (!(error instanceof DelivererLostError) && !(error instanceof DatabaseBusyError) && !lost) report(error);
-        }
-      } while (again && started && !lost);
-    })().finally(() => { running = undefined; });
+      try {
+        do {
+          again = false;
+          try {
+            await round("started");
+          } catch (error) {
+            // A lost claim ends the instance; a busy database ends the round, and the next one runs at the next wake-up.
+            if (!(error instanceof DelivererLostError) && !(error instanceof DatabaseBusyError) && !lost) report(error);
+          }
+        } while (again && started && !lost);
+      } finally {
+        // Cleared in the same turn as the loop's last check: a commit or a back-off timer that wakes the bus after it
+        // starts a new round, instead of setting `again` for a loop that already ended.
+        running = undefined;
+      }
+    })();
   };
 
   return Object.freeze({
@@ -274,6 +314,8 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
       offPublished?.();
       offPublished = undefined;
       await running;
+      // The round may have scheduled a back-off before it saw `started` false; nothing outlives stop().
+      clearBackoffs();
       lanes.clear();
     },
     async deliver() {
