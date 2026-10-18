@@ -78,9 +78,13 @@ const member: NodeType<MemberNode> = {
 };
 export const Member: NodeType<MemberNode> = Object.freeze(member);
 
-/** The message of a second member after one kind (`sort asc &c &d`), at the second. */
+/**
+ * The message of a second member after one kind (`sort asc &c &d`), at the second. `once` fills only `{written}` (the
+ * second member as written) and `{first}` (the first one's `line:column`), so it cannot name the tag; only `asc` and
+ * `desc` take a member (`notes/spec/actions.md`: each `asc` and `desc` line takes one member reference).
+ */
 export const SECOND_MEMBER =
-  "one member per slot: `{written}` cannot also set `member`, which the member at {first} already holds";
+  "a line takes one member reference: `{written}` follows the one at {first}";
 
 /** Lowers the `member` row in the attribute and line lists. */
 export function lowerMember(text: string, span: SourceSpan, ctx: TriggerContext): TriggerResult {
@@ -131,7 +135,7 @@ export function checkMemberSlots(unit: LoweredUnit): void {
       const expression = attr.value as ContractExpression;
       const [only, ...rest] = expression.nodes ?? [];
       if (only?.type === "mesh:Member" && rest.length === 0 && only.forward === unwrapped(expression.node)) continue;
-      unit.fail(`${tagLabel(call.tag)}: option ${attr.label} must be a member, got an expression`, {
+      unit.fail(`${tagLabel(call.tag)}: option ${attr.label} must be member, got expression`, {
         code: "MESH_OPTION_VALUE",
         ...(expression.span ? { at: expression.span } : {}),
       });

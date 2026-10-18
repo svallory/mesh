@@ -88,13 +88,16 @@ const isPlainIdentifier = (n: Node | null | undefined) =>
  * A reference to another file's declaration: an imported identifier (`List`), or a member of a namespace import
  * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
  * Mesh's to resolve (`front-end/references.ts`). MX lowers `(List)`, `List!`, `List as T`, `List satisfies T` and
- * `<T>List` to `List`, so the node shows no wrapper: `isWrapped` finds one from the option's spans instead.
+ * `<T>List` to `List`, so the node shows no wrapper: `isWrapped` finds one from the option's spans instead. A member
+ * (`&list`) lowers to the forward `self.list`, which has the same shape as `billing.Invoice`: it is told apart by
+ * identity (`membersOf`), since core sets no mark on it, and is no reference.
  */
-const isReference = (n: Node | null | undefined): boolean => {
+const isReference = (a: Attr | undefined): boolean => {
+  const n = node(a);
   if (isPlainIdentifier(n)) return true;
   const access = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
   return access?.type === "MemberExpression" && !access.computed && !access.extra?.mxTransaction
-    && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
+    && !membersOf(a).has(access) && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
 };
 /**
  * A dynamic option whose value is written inside a wrapper, `(x)`, `x!`, `x as T`, `x satisfies T` or `<T>x` (nested ones
@@ -346,7 +349,7 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
     analyze(calls, ctx) {
       for (const call of calls) {
         const a = get(call, "entity");
-        if (!isReference(node(a)))
+        if (!isReference(a))
           ctx.fail("entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
         // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
         // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
@@ -369,7 +372,7 @@ function answers(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
     if (!a && !get(call, "name"))
       ctx.fail(`an action needs a name or \`on=\`: write \`${call.name} :name\`, or \`${call.name} on=PayInvoice\` to take the name from the command`, { at: call.loc, code: "MESH_NAME" });
     if (!a) continue;
-    if (!isReference(node(a)))
+    if (!isReference(a))
       ctx.fail("on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", { at: a.loc, code: "MESH_UNKNOWN_COMMAND" });
     else if (isWrapped(a))
       ctx.fail("on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=PayInvoice`, `on=billing.PayInvoice`)", { at: a.valueSpan, code: "MESH_UNKNOWN_COMMAND" });

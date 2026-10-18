@@ -186,6 +186,8 @@ describe("MESH_UNKNOWN_COMMAND", () => {
     ["an atom", ":PayInvoice"],
     ["an element access", "pay[0]"],
     ["an optional access", "pay?.PayInvoice"],
+    ["a member", "&pay"],
+    ["a member path", "&pay.PayInvoice"],
   ])("a value that is no reference (%s) is refused by the contract, at the option", (_label, value) => {
     const result = build(`    update on=${value}\n`, `${IMPORT}import * as pay from "./pay-invoice.mesh.mx"\n`);
     expect(unknown(result)).toEqual([["billing/invoice.mesh.mx", 9, 11, "error", "MESH_UNKNOWN_COMMAND", "`update`: on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", null]]);

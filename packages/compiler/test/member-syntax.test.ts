@@ -399,7 +399,7 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
   test("M5: a `member` slot refuses an expression around a member", () => {
     expect(slot("mesh:Member", "sort load=(&visible && x)\n")).toEqual([
       expect.stringContaining(
-        "option `load` must be a member, got an expression",
+        "option `load` must be member, got expression",
       ),
     ]);
   });
@@ -440,7 +440,7 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
       {
         severity: "error",
         code: "MESH_SYNTAX",
-        message: "one member per slot: `&d` cannot also set `member`, which the member at 1:10 already holds",
+        message: "a line takes one member reference: `&d` follows the one at 1:10",
         line: 1,
         column: 12,
         offset: 12,

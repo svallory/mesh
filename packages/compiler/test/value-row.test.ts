@@ -31,7 +31,7 @@ describe("the atom value row", () => {
     expect(Object.keys(MESH_DIALECT.nodeTypes ?? {})).toEqual(["Atom", "Member"]);
   });
 
-  test("`Atom` parses `:name`, prints it back and lowers to an atom-marked string literal", () => {
+  test("`Atom` parses `:name`, prints it back and lowers to the string literal of its name", () => {
     const type = MESH_DIALECT.nodeTypes?.Atom as NodeType<Atom>;
     const node = type.parse(":rename-all", { sourceStart: 0, sourceEnd: 11 }, {} as never);
     expect(node).toEqual({ name: "rename-all" });
