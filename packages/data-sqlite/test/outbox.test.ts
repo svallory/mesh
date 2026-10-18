@@ -47,8 +47,8 @@ beforeAll(async () => {
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 describe("the emitted outbox tables", () => {
-  test("a project that declares an event gets mesh_outbox and mesh_outbox_state after its entities' tables", () => {
-    expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state"]);
+  test("a project that declares an event gets core's tables after its entities' tables", () => {
+    expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
     expect(schema).toMatch(/position: integer\("position"\)\s*\.notNull\(\)\s*\.primaryKey\(\{ autoIncrement: true \}\)/);
     expect(schema.match(/autoIncrement/g)).toHaveLength(1);
   });
@@ -165,11 +165,11 @@ describe("data-sqlite's outbox", () => {
     } finally { await layer.close(); }
   });
 
-  test("the outbox tables are not reachable through data operations", async () => {
+  test("core's tables are not reachable through data operations", async () => {
     const layer = sqlite({ file: ":memory:" });
     try {
       await createSchema(layer, tables);
-      for (const name of ["mesh_outbox", "mesh_outbox_state"]) {
+      for (const name of ["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]) {
         await expect(layer.transaction((tx) => tx.select(tables[name]!))).rejects.toThrow(`The table ${name} is Mesh's own`);
         await expect(layer.transaction((tx) => tx.insert(tables[name]!, { id: 1, deleted_through: 9 }))).rejects.toBeInstanceOf(FrameworkError);
       }

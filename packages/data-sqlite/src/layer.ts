@@ -4,7 +4,9 @@ import { count, getTableName, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle } from "@meshfw/runtime";
+import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { resolve } from "node:path";
+import { deliveryOperations } from "./delivery.ts";
 import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
@@ -233,7 +235,10 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
   };
   const layer: SQLiteLayer = {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
-    transaction(run) { return transactionWith(run, undefined); },
+    // Every layer object over one file names it alike, so core keeps one deliverer and one subscription registry per
+    // file; a `:memory:` database is private to its connection and names nothing.
+    ...(configured.file === ":memory:" ? {} : { database: resolve(configured.file) }),
+    transaction(run, options?: TransactionOptions) { return transactionWith(run, options?.waitMs === undefined ? undefined : { waitMs: options.waitMs }); },
     readOutbox(after, limit) {
       // A statement sent on this connection while a transaction is open would see that transaction's uncommitted rows;
       // inside one, the read is refused rather than queued behind the transaction that is waiting for it.
@@ -314,6 +319,7 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       }, guard),
         appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
         deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
+        ...deliveryOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
       };
       token.operations = operations;
       try {
