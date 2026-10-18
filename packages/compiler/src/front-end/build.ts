@@ -1044,6 +1044,10 @@ function buildDeclaration(
 /**
  * The compiler's one MX call (`lowerSource`) with Mesh's dialect, which carries the closed
  * contracts, the tag rules and the strictness (rejection on). It never throws; every problem is a positioned diagnostic.
+ * `file` is absolute in a build: MX compares the dialect's marks with those of every dialect the project installs only
+ * when the file name is absolute and its nearest `package.json` is found (MX 0.1.0-alpha.34), so a build fails on a
+ * clash exactly where the editor reports it. A diagnostic of the parsed file carries no file name, so the caller
+ * positions it in the project-relative file.
  */
 export function parseEntitySource(source: string, file: string) {
   return lowerSource(source, file, {
@@ -1136,7 +1140,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       );
       continue;
     }
-    const parsed = parseEntitySource(input.source, path.file);
+    const parsed = parseEntitySource(input.source, path.absolute);
     diagnostics.push(
       ...parsed.diagnostics.map((d) => meshDiagnostic(d, path.file)),
     );
