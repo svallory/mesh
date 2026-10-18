@@ -140,21 +140,27 @@ seams: {
 
 ## Events
 
-A project that declares an event configures it under `events`, and every field is optional:
+A project that declares an event configures it under `events`. `bus` is required in such a project; the other fields are optional:
 
 ```ts "mesh.config.ts (excerpt)"
+import { localBus } from "@meshfw/bus-local";
+
 events: {
+  bus: localBus(),
   load: () => import("./src/events.ts"),
   keep: "all",
+  requires: ["replay"],
 },
 ```
 
 | Field | What it is |
 |:--|:--|
-| `load` | A function that imports the events module, whose `metadata` function adds your fields to each event. `connect()` calls it; the build never does, so the module may import `#mesh` at its top |
-| `keep` | How long the outbox keeps a row: `"until-delivered"`, the default, deletes a row once every reader has passed it; `"all"` keeps every row, for an application that reads its history. A deploy that drops `"all"` deletes the delivered history at its first deletion pass |
+| `bus` | The event bus that delivers events to handlers and subscriptions, such as `localBus()`. There is no default: a project that declares an event and sets no bus fails the build |
+| `load` | A function that imports the events module, which exports the handlers, the `metadata` function and the handlers' `context`. `connect()` calls it; the build never does, so the module may import `#mesh` at its top |
+| `keep` | How long the outbox keeps a row: `"until-delivered"`, the default, deletes a row once every reader has passed it; `"all"` keeps every row, for an application that reads its history. Only the deliverer deletes, by its own `keep`, from its next claim, so a deploy that drops `"all"` deletes the delivered history at its first deletion pass |
+| `requires` | The capabilities the application needs, from the bus's list (`ordered-delivery`, `replay`, `subscribe`, `dead-letters`, `multi-process`) and the data adapter's. One the configured adapters lack fails the build with `MESH_CAPABILITY`, naming the adapter that lacks it |
 
-Any other field, a `keep` that is neither value, or a `load` that is not a function fails the build with `MESH_EVENTS_CONFIG`. `bus` and `requires` come with the event bus. [Events](./events.md) explains the outbox and the events module.
+The build checks the section: a project that declares an event with no `bus`, a `bus` that is not an event-bus descriptor (a manifest naming the adapter and its capabilities from the closed list, and a `create` function), a `requires` entry that is no capability, any other field, a `keep` that is neither value, or a `load` that is not a function fails it with `MESH_EVENTS_CONFIG`. The build reads the bus's manifest and never starts it. [Events](./events.md) explains the outbox, the bus, handlers and the events module.
 
 ## Enabling extensions
 

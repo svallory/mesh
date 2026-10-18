@@ -27,6 +27,7 @@ mesh <command> [options]
 | `mesh db push [--force]` | Pushes the schema straight to the database. Development only. The SQLite adapter adds this command; a change that would lose data needs `--force`. An adapter's command never takes a core command's word |
 | `mesh migrate generate [--allow <change>]` | Writes a SQL migration into `migrations/` |
 | `mesh migrate apply` | Applies the migrations that have not been applied |
+| `mesh events forget <name>` | Drops the progress row of a handler, or the row of a subscription, that no longer runs, so it stops holding outbox rows; see [events forget](#events-forget) |
 | `mesh export generators` | Copies the built-in templates into the project; see [Customising generated code](./customising-generated-code.md) |
 | `mesh --help` | Lists the available commands, including those added by enabled adapters and extensions |
 
@@ -140,6 +141,16 @@ mesh migrate generate --allow drop:Todo.title
 The name after the colon is the entity and the column, without the colon the entity file writes them with.
 
 The migration is a plain SQL file in `migrations/`, and you commit it. Generating never applies anything; applying is a separate, explicit command. So a new machine, and your production environment, reach the same shape with `mesh migrate apply`.
+
+## events forget
+
+```bash
+mesh events forget receipt
+```
+
+A handler that was removed, or renamed without `renamedFrom`, leaves its progress row behind, and a subscription whose client never comes back leaves its row too; under `keep: "until-delivered"` each holds every outbox row above its position for ever. The deliverer logs such a row (see [Events](./events.md#orphan-rows)); this command drops it, from any process, and prints `forgot the handler receipt, which was at position 41`. It opens the data layer the configuration names and claims nothing.
+
+It refuses a handler the running deliverer registered and a subscription that is open under the running deliverer's claim, so a typo cannot drop live progress; a subscription left open by a process that crashed, whose claim has since lapsed or been taken over, may be forgotten. A name held by both a handler and a subscription is refused, naming both. A name that matches no row is an error, exit `1`; a missing or extra argument is a usage error, exit `2`.
 
 ## Next
 
