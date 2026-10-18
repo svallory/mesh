@@ -161,16 +161,20 @@ export async function disconnect(): $Promise<void> {
   const layer = $defaultLayer;
   const binding = $defaultBinding;
   if (!layer || !binding) return;
-  $releaseBinding(binding);
-  $defaultBinding = undefined;
-  $defaultLayer = undefined;
 @if(events)
   const delivery = $delivery;
   $delivery = undefined;
-@end
   $disconnecting = (async () => {
-@if(events)
+    // Delivery stops while the binding is still connected, so the running round's handlers finish on it.
     if (delivery) await delivery.stop();
+    $releaseBinding(binding);
+    $defaultBinding = undefined;
+    $defaultLayer = undefined;
+@else
+  $releaseBinding(binding);
+  $defaultBinding = undefined;
+  $defaultLayer = undefined;
+  $disconnecting = (async () => {
 @end
     await $settled(binding);
     try {

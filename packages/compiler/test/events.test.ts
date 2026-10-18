@@ -477,10 +477,25 @@ entity :Invoice
     const binding = text(generated, "generated/binding.ts");
     expect(binding).toContain("export function subscribe(");
     expect(binding).toContain("export function readEvents(");
+    // disconnect stops delivery before it releases the binding, so the running round's handlers finish on it
+    expect(binding.indexOf("await delivery.stop()")).toBeGreaterThan(-1);
+    expect(binding.indexOf("await delivery.stop()")).toBeLessThan(binding.indexOf("$releaseBinding(binding)"));
     await writeGeneratedFiles(generated, config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
-    const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    // Mesh.handler infers run's event from events; the bus declares no dead-letters, so onFailure "skip" is a type error
+    await writeFile(resolve(root, "handlers.ts"), [
+      'import { handler } from "@meshfw/runtime";',
+      'import { eventClasses } from "./generated/index";',
+      'const InvoicePaid = eventClasses["billing.InvoicePaid"];',
+      "export const inferred = handler({ events: [InvoicePaid], run: (event) => { const id: string = event.payload.invoiceId; void id; } });",
+      "// @ts-expect-error the payload is the listed class's instance, which has no field named nothing",
+      "export const unknownField = handler({ events: [InvoicePaid], run: (event) => { void event.payload.nothing; } });",
+      '// @ts-expect-error onFailure "skip" needs a bus that declares dead-letters',
+      'export const skips = handler({ events: [InvoicePaid], onFailure: "skip", run: () => {} });',
+      "",
+    ].join("\n"));
+    const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "handlers.ts")]);
     expect(checked).toEqual({ code: 0, output: "" });
   }, 30_000);
 
