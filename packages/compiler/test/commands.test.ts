@@ -3,13 +3,13 @@
 // checks the command against the action: `MESH_NAME`, `MESH_UNKNOWN_COMMAND`, `MESH_DUPLICATE_MEMBER`,
 // `MESH_COMMAND_INPUT`, `MESH_COMMAND_ANSWERED_TWICE` and `MESH_COMMAND_UNANSWERED`. What `dispatch` does at run time, and
 // `mesh explain`, are `packages/cli/test/events.test.ts`.
-import { describe, expect, test } from "bun:test";
-import { readFile, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
-import { generateFiles } from "../src/typescript/emit.ts";
-import { configOf } from "./generated.ts";
+import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
+import { checkTypes, configOf } from "./generated.ts";
 
 const PAY = `command :PayInvoice
   uuid :id
@@ -131,7 +131,7 @@ describe("MESH_NAME", () => {
   test.each(["create", "update", "destroy"])("a bare %s names neither itself nor a command, at the action line, and the message names on=", (kind) => {
     const result = build(`    ${kind}\n`);
     expect(brief(result.diagnostics.filter((d) => d.code === "MESH_NAME"))).toEqual([
-      ["billing/invoice.mesh.mx", 8, 4, "error", "MESH_NAME", `\`${kind}\`: an action needs a name or \`on=\`: write \`update :pay\`, or \`update on=PayInvoice\` to take the name from the command`, null],
+      ["billing/invoice.mesh.mx", 8, 4, "error", "MESH_NAME", `\`${kind}\`: an action needs a name or \`on=\`: write \`${kind} :name\`, or \`${kind} on=PayInvoice\` to take the name from the command`, null],
     ]);
   });
 });
@@ -168,6 +168,14 @@ describe("MESH_UNKNOWN_COMMAND", () => {
     expect(unknown(byName).map((d) => d[5])).toEqual([expect.stringContaining("PayInvoice.Other is not an imported command: PayInvoice is imported by name")]);
   });
 
+  test("a helper import is no command: on= naming a function or a helper namespace", () => {
+    const helper = { "billing/helpers.ts": "export const isStaff = () => true;\n" };
+    const byName = build("    update on=isStaff\n", `${IMPORT}import { isStaff } from "./helpers"\n`, helper);
+    expect(unknown(byName).map((d) => [d[1], d[2], d[5]])).toEqual([[9, 14, "isStaff is not an imported command."]]);
+    const namespaced = build("    update on=h.isStaff\n", `${IMPORT}import * as h from "./helpers"\n`, helper);
+    expect(unknown(namespaced).map((d) => [d[1], d[2], d[5]])).toEqual([[9, 14, expect.stringContaining("h.isStaff is not an imported command")]]);
+  });
+
   test("on= naming the namespace import itself says to name the command it declares", () => {
     const result = build("    update on=pay\n", `import * as pay from "./pay-invoice.mesh.mx"\n`);
     expect(unknown(result).map((d) => d[5])).toEqual(["pay is a namespace import of ./pay-invoice.mesh.mx, not a command: name the command it declares, `pay.PayInvoice`"]);
@@ -178,7 +186,7 @@ describe("MESH_UNKNOWN_COMMAND", () => {
     ["an atom", ":PayInvoice"],
     ["an element access", "pay[0]"],
     ["an optional access", "pay?.PayInvoice"],
-  ])("a value that is no reference (%s) is refused by the contract, at the value", (_label, value) => {
+  ])("a value that is no reference (%s) is refused by the contract, at the option", (_label, value) => {
     const result = build(`    update on=${value}\n`, `${IMPORT}import * as pay from "./pay-invoice.mesh.mx"\n`);
     expect(unknown(result)).toEqual([["billing/invoice.mesh.mx", 9, 11, "error", "MESH_UNKNOWN_COMMAND", "`update`: on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", null]]);
   });
@@ -354,5 +362,40 @@ describe("the generated #mesh", () => {
     const contents = files.find((file) => file.path === ".mesh/index.ts")!.contents;
     expect(contents).not.toContain("dispatch");
     expect(contents).not.toContain("DomainCommand");
+  });
+
+  const roots: string[] = [];
+  afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+  /** Builds the project, writes the generated tree under the package (so `@meshfw/runtime` resolves) and type-checks it under the strictest flags. */
+  async function typeCheck(command: string) {
+    const result = build(PAY_ACTION, IMPORT, {}, command);
+    expect(result.diagnostics).toEqual([]);
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-commands-"));
+    roots.push(root);
+    const config = configOf(root);
+    const generated = await generateFiles({ document: result.document!, config });
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    return checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+  }
+
+  test("a command field of the action's input type type-checks: dispatch builds the input from the fields, with no cast", async () => {
+    expect(await typeCheck(PAY)).toEqual({ code: 0, output: "" });
+  }, 30_000);
+
+  test("a command field of another type than the action's input fails the project's type check, at the generated index.ts", async () => {
+    // `paidAt` is a datetime in the command's and the action's declarations alike; here the command declares a string
+    const checked = await typeCheck(PAY.replace("datetime :paidAt", "string :paidAt"));
+    expect(checked.code).toBe(1);
+    expect(checked.output).toContain("generated/index.ts");
+    expect(checked.output).toContain("Type 'string' is not assignable to type 'Date");
+  }, 30_000);
+
+  test("the generated dispatch builds each input from the command's fields and imports the classes as types", async () => {
+    const contents = await index({});
+    expect(contents.replace(/\s+/g, " ")).toContain("run: (command: $billing$PayInvoice$class, context) => $billing$Invoice$value.payInvoice({ id: command.id, paidAt: command.paidAt }, context)");
+    expect(contents).toContain('import type { PayInvoice as $billing$PayInvoice$class } from "./domain/billing/payInvoice.command";');
+    expect(contents).not.toContain("as never");
   });
 });

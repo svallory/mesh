@@ -354,7 +354,7 @@ function answers(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
   for (const call of calls) {
     const a = get(call, "on");
     if (!a && !get(call, "name"))
-      ctx.fail("an action needs a name or `on=`: write `update :pay`, or `update on=PayInvoice` to take the name from the command", { at: call.loc, code: "MESH_NAME" });
+      ctx.fail(`an action needs a name or \`on=\`: write \`${call.name} :name\`, or \`${call.name} on=PayInvoice\` to take the name from the command`, { at: call.loc, code: "MESH_NAME" });
     if (!a) continue;
     if (!isReference(node(a)))
       ctx.fail("on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", { at: a.loc, code: "MESH_UNKNOWN_COMMAND" });

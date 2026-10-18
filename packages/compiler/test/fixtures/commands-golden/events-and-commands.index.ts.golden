@@ -47,7 +47,7 @@ declare module "@meshfw/runtime" {
 
 // The commands an action answers (`on=`): `dispatch(command, context)` runs the action, and joins the running transaction.
 import { Invoice as $billing$Invoice$value } from "./domain/billing/invoice.actions";
-import { PayInvoice as $billing$PayInvoice$class } from "./domain/billing/payInvoice.command";
+import type { PayInvoice as $billing$PayInvoice$class } from "./domain/billing/payInvoice.command";
 import {
   dispatchCommand as $dispatchCommand,
   type ActionContext as $ActionContext,
@@ -64,8 +64,8 @@ export type DispatchResult<C extends DomainCommand> = C extends $billing$PayInvo
 
 const $commandActions: { readonly [fqn: string]: $CommandAction } = {
   "billing.PayInvoice": {
-    fields: ["id", "paidAt"],
-    run: (input, context) => $billing$Invoice$value.payInvoice(input as never, context),
+    run: (command: $billing$PayInvoice$class, context) =>
+      $billing$Invoice$value.payInvoice({ id: command.id, paidAt: command.paidAt }, context),
   },
 };
 

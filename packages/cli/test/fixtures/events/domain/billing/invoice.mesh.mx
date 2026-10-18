@@ -1,7 +1,9 @@
 import { InvoicePaid } from "./invoice-paid.mesh.mx"
 import { InvoiceOpened } from "./invoice_opened.mesh.mx"
 import { InvoiceVoided } from "./invoice_voided.mesh.mx"
+import { OpenInvoice } from "./open-invoice.mesh.mx"
 import { PayInvoice } from "./pay-invoice.mesh.mx"
+import { VoidInvoice } from "./void-invoice.mesh.mx"
 import * as refunds from "../sales/refunds/refund-issued.mesh.mx"
 import { made, step } from "./probe"
 
@@ -49,6 +51,14 @@ entity :Invoice
           await step("chain", self.id)
         }
         publish=() => new refunds.RefundIssued({ invoiceId: &id, cents: 2 })
+    create on=OpenInvoice
+      input
+        string :note nullable
+      do
+        publish=() => new InvoiceOpened({ invoiceId: &id })
+    destroy on=VoidInvoice
+      do
+        publish=() => new InvoiceVoided({ invoiceId: &id, total: &total })
   policies
     policy :anyone types=[:create, :read, :update, :destroy]
       authorize-if=() => true

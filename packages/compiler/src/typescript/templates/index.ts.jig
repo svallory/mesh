@@ -64,7 +64,7 @@ declare module "@meshfw/runtime" {
 import { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
 @end
 @each(imported in commands.imports)
-import { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
+import type { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
 @end
 @if(commands.globals)
 {{ commands.globals.keyword }} { {{ commands.globals.names }} } from {{ commands.globals.fromLiteral }};
@@ -82,7 +82,7 @@ export type DispatchResult<C extends DomainCommand> =
 
 const $commandActions: { readonly [fqn: string]: $CommandAction } = {
   @each(entry in commands.table)
-  {{ entry.fqnLiteral }}: { fields: {{ entry.fieldsLiteral }}, run: (input, context) => {{ entry.entity }}.{{ entry.action }}(input as never, context) },
+  {{ entry.fqnLiteral }}: { run: ({{ entry.param }}: {{ entry.command }}, context) => {{ entry.entity }}.{{ entry.action }}({{ entry.input }}, context) },
   @end
 };
 

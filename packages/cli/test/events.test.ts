@@ -129,7 +129,7 @@ describe("events and commands in files of their own", () => {
     expect(files).toEqual([
       "$globals.ts", "binding.ts", "domain/billing/index.ts", "domain/billing/invoice.actions.ts", "domain/billing/invoice.expressions.ts",
       "domain/billing/invoice.types.ts", "domain/billing/invoice.validators.ts", "domain/billing/invoicePaid.event.ts",
-      "domain/billing/invoice_opened.event.ts", "domain/billing/invoice_voided.event.ts", "domain/billing/payInvoice.command.ts", "domain/billing/promise.event.ts", "domain/index.ts", "domain/sales/index.ts", "domain/sales/refunds/index.ts",
+      "domain/billing/invoice_opened.event.ts", "domain/billing/invoice_voided.event.ts", "domain/billing/openInvoice.command.ts", "domain/billing/payInvoice.command.ts", "domain/billing/promise.event.ts", "domain/billing/voidInvoice.command.ts", "domain/index.ts", "domain/sales/index.ts", "domain/sales/refunds/index.ts",
       "domain/sales/refunds/refundIssued.event.ts", "index.ts", "schema.ts",
     ]);
     const billing = await readFile(join(root, ".mesh/domain/billing/index.ts"), "utf8");
@@ -146,7 +146,7 @@ describe("events and commands in files of their own", () => {
     expect(index).toContain('"sales.refunds.RefundIssued": $sales$refunds$RefundIssued$class,');
     // a command is no event: `DomainEvent` and the event table hold none, and `DomainCommand` holds the command an action answers
     expect(index).not.toContain('"billing.PayInvoice": $billing$PayInvoice$class');
-    expect(index.replace(/\s+/g, " ")).toContain("export type DomainCommand = $billing$PayInvoice$class;");
+    expect(index.replace(/\s+/g, " ")).toContain("export type DomainCommand = | $billing$OpenInvoice$class | $billing$PayInvoice$class | $billing$VoidInvoice$class;");
   });
 
   test("mesh build --check finds the committed tree current, and mesh inspect shows the declarations in the model", () => {
@@ -156,7 +156,7 @@ describe("events and commands in files of their own", () => {
     expect(model.events[0]!.fields.map((field) => [field.name, field.type])).toEqual([
       ["invoiceId", "uuid"], ["amount", "decimal"], ["reference", "string"], ["method", "enum"], ["paidAt", "datetime"], ["extra", "json"],
     ]);
-    expect(model.commands.map((command) => command.fqn)).toEqual(["billing.PayInvoice"]);
+    expect(model.commands.map((command) => command.fqn)).toEqual(["billing.OpenInvoice", "billing.PayInvoice", "billing.VoidInvoice"]);
   }, 30_000);
 
   test("no generated file but $globals.ts reads a global by its own name, an event named Promise included", async () => {
@@ -396,7 +396,7 @@ describe("the outbox", () => {
     try {
       await stored(layer, ID);
       const { InvoicePaid, PayInvoice } = await import(join(root, ".mesh/domain/billing/index.ts"));
-      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:42:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
+      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:44:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
       const cases: [() => unknown, string][] = [
         [() => null, "null"],
         [() => undefined, "undefined"],
@@ -735,12 +735,50 @@ describe("the outbox", () => {
     } finally { await layer.close(); }
   });
 
+  test("dispatch of a create resolves with the new row, and of a destroy with nothing", async () => {
+    const { layer, binding } = await open();
+    try {
+      const created = await binding.run(() => app.dispatch(new billing.OpenInvoice({ note: "n" }), {})) as { id: string; paid: boolean };
+      expect(created).toMatchObject({ paid: false });
+      expect(await rows(layer).then((all) => all.map((row) => [row.name, row.action, row.key]))).toEqual([["billing.InvoiceOpened", "openInvoice", { id: created.id }]]);
+      expect(await binding.run(() => app.dispatch(new billing.VoidInvoice({ id: created.id }), {}))).toBeUndefined();
+      expect(await binding.run<unknown>(() => billing.Invoice.read({}, {}))).toEqual([]);
+      expect(await names(layer)).toEqual(["billing.InvoiceOpened", "billing.InvoiceVoided"]);
+    } finally { await layer.close(); }
+  });
+
+  test("a listen handler's dispatch runs in a transaction of its own: its writes commit even when the handler fails afterwards", async () => {
+    const paidAt = new Date(0);
+    const module = {
+      handlers: {
+        listen: {
+          payOnOpen: Mesh.handler({
+            events: [billing.InvoiceOpened],
+            run: async (event: { payload: { invoiceId: string } }, { context }: { context: object }) => {
+              await app.dispatch(new billing.PayInvoice({ id: event.payload.invoiceId, paidAt }), context);
+              throw new Error("after the dispatch");
+            },
+          }),
+        },
+      },
+    };
+    const { layer, binding } = await open({ events: { bus: testBus(), load: async () => module } });
+    const deliver = () => (binding as unknown as { deliver(): Promise<void> }).deliver();
+    try {
+      await deliver();
+      const created = await binding.run(() => billing.Invoice.open({}, {})) as { id: string };
+      expect(await failure(deliver())).toBeInstanceOf(HandlerStoppedError);
+      // the action committed on its own, though the handler failed: nothing rolled it back
+      expect(await binding.run<{ id: string; paid: boolean }[]>(() => billing.Invoice.read({}, {}))).toMatchObject([{ id: created.id, paid: true }]);
+    } finally { await layer.close(); }
+  });
+
   test("mesh explain shows the command an action answers, and mesh inspect records its FQN", () => {
     const explained = mesh(root, "explain", "billing.Invoice", "payInvoice");
     expect(explained.code).toBe(0);
     expect(explained.stdout).toContain("  answers      command billing.PayInvoice (on=PayInvoice): `dispatch` of an instance runs this action with the command's fields as its input\n");
     const model = JSON.parse(mesh(root, "inspect", "billing.Invoice").stdout) as { actions: { name: string; command?: { fqn: string; identifier: string } }[] };
-    expect(model.actions.filter((action) => action.command).map((action) => [action.name, action.command!.fqn, action.command!.identifier])).toEqual([["payInvoice", "billing.PayInvoice", "PayInvoice"]]);
+    expect(model.actions.filter((action) => action.command).map((action) => [action.name, action.command!.fqn, action.command!.identifier])).toEqual([["payInvoice", "billing.PayInvoice", "PayInvoice"], ["openInvoice", "billing.OpenInvoice", "OpenInvoice"], ["voidInvoice", "billing.VoidInvoice", "VoidInvoice"]]);
   }, 30_000);
 
 });

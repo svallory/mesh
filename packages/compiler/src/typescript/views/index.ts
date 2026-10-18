@@ -2,7 +2,7 @@ import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
 import { classLocal, className, declarationPath, declarationsOf } from "./declarations.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
-import { entityLocal, entityPath, moduleSpecifier, typeName } from "./inputs.ts";
+import { entityLocal, entityPath, moduleSpecifier, propertyName, typeName } from "./inputs.ts";
 import { modulesOf } from "./module.ts";
 
 /**
@@ -32,8 +32,8 @@ export interface IndexCommands {
   readonly union: string;
   /** One entry per answered command: the class local, the entity's local and the action's name, for `DispatchResult`. */
   readonly results: readonly { readonly command: string; readonly entity: string; readonly action: string }[];
-  /** One entry per answered command: the FQN as a quoted string literal, the fields that make the input as an array literal, and the call. */
-  readonly table: readonly { readonly fqnLiteral: string; readonly fieldsLiteral: string; readonly entity: string; readonly action: string }[];
+  /** One entry per answered command: the FQN as a quoted string literal, the class local, the input object built from the command's fields (`{ id: command.id }`), and the call. */
+  readonly table: readonly { readonly fqnLiteral: string; readonly command: string; readonly param: string; readonly input: string; readonly entity: string; readonly action: string }[];
   /** The globals the file names (`$Promise`), when `events` does not already import them. */
   readonly globals: GlobalsImport | null;
 }
@@ -75,7 +75,10 @@ function commandsView(input: EmitInput, declarations: ReturnType<typeof declarat
     results: answers.map(({ command, entity, action }) => ({ command: classLocal(command), entity: entityLocal(entity, "value"), action: action.name })),
     table: answers.map(({ command, entity, action }) => ({
       fqnLiteral: JSON.stringify(command.fqn),
-      fieldsLiteral: JSON.stringify(command.fields.map((field) => field.name)),
+      command: classLocal(command),
+      // a command with no fields leaves its parameter unread, which the strictest flags (`noUnusedParameters`) refuse
+      param: command.fields.length ? "command" : "_command",
+      input: `{ ${command.fields.map((field) => `${propertyName(field.name)}: command${/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}`).join(", ")} }`,
       entity: entityLocal(entity, "value"),
       action: action.name,
     })),

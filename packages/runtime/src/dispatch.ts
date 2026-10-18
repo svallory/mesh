@@ -2,12 +2,13 @@ import { DECLARATION, type Declaration } from "./declarations.ts";
 import { FrameworkError } from "./errors.ts";
 import type { ActionContext } from "./index.ts";
 
-/** What the generated `dispatch` knows of the action that answers one command: which fields become its input, and how to run it. */
+/**
+ * What the generated `dispatch` knows of the action that answers one command: how to run it. The generated entry is typed
+ * (`(command: PayInvoice, context) => Invoice.payInvoice({ id: command.id, paidAt: command.paidAt }, context)`), so the
+ * project's type check finds a command field the action's input does not take, or takes as another type.
+ */
 export interface CommandAction {
-  /** The command's fields, in declared order: the properties of the instance that make the action's input. */
-  readonly fields: readonly string[];
-  /** Calls the entity value's method for the action (`Invoice.payInvoice(input, context)`). */
-  readonly run: (input: Readonly<Record<string, unknown>>, context: ActionContext) => Promise<unknown>;
+  readonly run: (command: never, context: ActionContext) => Promise<unknown>;
 }
 
 /**
@@ -26,14 +27,12 @@ export function dispatchCommand(table: Readonly<Record<string, CommandAction>>, 
   const answer = Object.hasOwn(table, declaration.fqn) ? table[declaration.fqn] : undefined;
   if (answer === undefined)
     return Promise.reject(new FrameworkError(`dispatch: no action answers the command ${declaration.fqn}. The \`.mesh/\` folder is out of date, or no action's \`on=\` names the command: run \`mesh build\``));
-  const input: Record<string, unknown> = {};
-  for (const field of answer.fields) input[field] = (command as Record<string, unknown>)[field];
-  return answer.run(input, context);
+  return answer.run(command as never, context);
 }
 
 /**
  * What an action's call resolves with, as the generated `DispatchResult` reads it from the entity value's method
- * (`$ActionResult<typeof Invoice.payInvoice>`): the generated file names no global type itself, so it cannot spell
- * `Awaited<ReturnType<...>>`.
+ * (`$ActionResult<typeof Invoice.payInvoice>`): the generated file spells no global type of its own: a new
+ * alias in `GLOBAL_ALIASES` would change every project's `$globals.ts` and the corpus golden.
  */
 export type ActionResult<Call> = Call extends (...args: never[]) => Promise<infer Result> ? Result : never;

@@ -1,5 +1,6 @@
 import type { Action, Diagnostic, Entity, ModelDocument } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
+import { inputOptional } from "./input-optional.ts";
 
 /** An input of an action as a caller supplies it: its name, and whether a caller must give it a value. */
 interface ActionInput {
@@ -13,7 +14,7 @@ interface ActionInput {
  * The inputs an action takes: the key that selects the row of an update or a destroy, then each input line. A field is
  * optional when its attribute or argument is nullable or has a default, and every member input of an update or a destroy
  * is optional (a caller sends the ones it changes); this is the rule the generated input type applies
- * (`entityInputs` in `typescript/views/inputs.ts`). An input that names no attribute or `belongs-to` is another check's
+ * (`inputOptional`, shared with `entityInputs` in `typescript/views/inputs.ts`). An input that names no attribute or `belongs-to` is another check's
  * error and is left out here.
  */
 function inputsOf(entity: Entity, action: Action): ActionInput[] {
@@ -28,8 +29,7 @@ function inputsOf(entity: Entity, action: Action): ActionInput[] {
         ?? entity.relationships.find((relation) => relation.name === input.ref.name && relation.kind === "belongs-to");
     if (!shape) continue;
     const name = input.kind === "argument" ? input.name : input.ref.name;
-    const defaulted = (shape as { default?: unknown }).default !== undefined;
-    const optional = (input.kind === "member" && action.kind !== "create") || shape.nullable || defaulted;
+    const optional = inputOptional(action.kind, input.kind, shape as { nullable: boolean; default?: unknown });
     inputs.push({ name, required: !optional, what: `\`${name}\`` });
   }
   return inputs;

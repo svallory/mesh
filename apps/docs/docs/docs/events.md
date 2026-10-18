@@ -96,7 +96,7 @@ An action with `on=` and no name is named after the command: the command's class
 The command and the action describe one request, so they must agree:
 
 - An action answers at most one command, and a command is answered by at most one action in the whole project.
-- Every field of the command is an input of the action, and every required input of the action is a field of the command. The key that selects the row of an update or a destroy counts as an input, which is why `PayInvoice` above has the field `id`. The `input` section decides which inputs are required: on an update every member input is optional, so the command carries only the ones it changes, and a create's required inputs must all be fields.
+- Every field of the command is an input of the action, and every required input of the action is a field of the command. The key that selects the row of an update or a destroy counts as an input, which is why `PayInvoice` above has the field `id`. The `input` section decides which inputs are required: on an update every member input is optional, so the command carries only the ones it changes, and a create's required inputs must all be fields. A command's constructor sets a `nullable` field you leave out to `null`, and `dispatch` sends that `null` to the action, so on an update it overwrites the attribute with `null`. A command that answers an update should therefore carry only non-nullable fields, or ones the action is meant to set.
 
 A command that no action answers builds with a warning, since nothing runs when it is dispatched. These are the build errors of `on=`:
 
@@ -124,7 +124,7 @@ export function pay(invoiceId: string) {
 }
 ```
 
-The command's constructor checks its fields first, as an event's does. `dispatch(command, context)` then calls the action with the command's fields as its input and the `context` you give it, so the action validates the input and runs its policies exactly as `Invoice.payInvoice(...)` does, and resolves with what the action returns (here the updated `Invoice`). It runs on the binding in scope and joins the running transaction when there is one, so a `dispatch` inside `transaction(...)`, inside an action's own code or inside a `process` handler commits or rolls back with it, and the event the action publishes appears in `published()` before the commit. Outside a transaction it opens its own, as a plain call does.
+The command's constructor checks its fields first, as an event's does. `dispatch` hands the action an input object built from the fields, `{ id: command.id, paidAt: command.paidAt }`, in code the project's type check covers: a command field whose type differs from the action's input (a `string` field for a `datetime` input) is a type error in `.mesh/index.ts`, not a failure at the first dispatch. `dispatch(command, context)` then calls the action with the command's fields as its input and the `context` you give it, so the action validates the input and runs its policies exactly as `Invoice.payInvoice(...)` does, and resolves with what the action returns (here the updated `Invoice`). It runs on the binding in scope and joins the running transaction when there is one, so a `dispatch` inside `transaction(...)` or inside a `process` handler commits or rolls back with it, and the event the action publishes appears in `published()` before the commit. Outside a transaction it opens its own, as a plain call does.
 
 A `process` handler runs a command with the `context` it is given:
 

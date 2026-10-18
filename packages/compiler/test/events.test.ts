@@ -19,7 +19,7 @@ import { checkTypes, configOf } from "./generated.ts";
  */
 const buildModel = (project: Parameters<typeof buildWithWarnings>[0]): ReturnType<typeof buildWithWarnings> => {
   const result = buildWithWarnings(project);
-  return { ...result, diagnostics: result.diagnostics.filter((d) => d.code !== "MESH_COMMAND_UNANSWERED") };
+  return { ...result, diagnostics: result.diagnostics.filter((d) => !(d.code === "MESH_COMMAND_UNANSWERED" && d.message.startsWith("Command billing.PayInvoice "))) };
 };
 const PAID = `event :InvoicePaid
   uuid :invoiceId
@@ -96,15 +96,16 @@ describe("an event and a command file", () => {
     expect(brief(refused("string :s unique"))).toEqual([["billing/bad.mesh.mx", 2, 12, "error", "MESH_UNKNOWN_OPTION", message("unique"), "remove `unique`"]]);
     expect(brief(refused("uuid :k primary-key"))).toEqual([["billing/bad.mesh.mx", 2, 10, "error", "MESH_UNKNOWN_OPTION", message("primary-key"), "remove `primary-key`"]]);
     expect(refused("datetime :at on=:create").map((d) => [d.code, d.severity])).toEqual([["MESH_UNKNOWN_OPTION", "error"]]);
-    const command = buildModel({ root: "/project", files: [{ file: "billing/bad.mesh.mx", source: "command :Bad\n  uuid :k primary-key\n" }] }).diagnostics;
+    const command = buildModel({ root: "/project", files: [{ file: "billing/bad.mesh.mx", source: "command :Bad\n  uuid :k primary-key\n" }] }).diagnostics.filter((d) => d.severity === "error");
     expect(brief(command)[0]![5]).toBe(message("primary-key", "a command"));
   });
 
   test("the name, the fields and the file are checked", () => {
-    const one = (source: string, file = "billing/bad.mesh.mx") => buildModel({ root: "/project", files: [{ file, source }] }).diagnostics;
+    const one = (source: string, file = "billing/bad.mesh.mx") => buildModel({ root: "/project", files: [{ file, source }] }).diagnostics.filter((d) => d.severity === "error");
     // `_` is dropped and the next letter capitalised (`notes/spec/names.md`): no error, and the FQN carries the class's name.
     const snake = buildModel({ root: "/project", files: [{ file: "billing/x.mesh.mx", source: "event :invoice_paid\n  uuid :id\n" }, { file: "billing/y.mesh.mx", source: "command :_pay__it_now\n  uuid :id\n" }] });
-    expect(snake.diagnostics).toEqual([]);
+    // the one command is answered by no action: the warning is the only finding
+    expect(snake.diagnostics.map((d) => [d.code, d.severity, d.message])).toEqual([["MESH_COMMAND_UNANSWERED", "warning", "Command billing.PayItNow is answered by no action: nothing runs when it is dispatched"]]);
     expect(snake.document!.events!.map((event) => event.fqn)).toEqual(["billing.InvoicePaid"]);
     expect(snake.document!.commands!.map((command) => command.fqn)).toEqual(["billing.PayItNow"]);
     expect(brief(one("event :_1\n  uuid :id\n"))).toEqual([["billing/bad.mesh.mx", 1, 0, "error", "MESH_NAME",

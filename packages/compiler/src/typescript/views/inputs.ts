@@ -9,6 +9,7 @@ import {
   type ModelDocument,
   type SourcePosition,
 } from "@meshfw/model";
+import { inputOptional } from "../../model/input-optional.ts";
 import { emitError } from "../emit-error.ts";
 import { pathSegment } from "../emitters/order.ts";
 import { globalAlias } from "./globals.ts";
@@ -277,10 +278,7 @@ export function entityInputs(
           field.position,
           `Rename the argument of read :${action.name}`,
         );
-      const optional =
-        (input.kind === "member" && action.kind !== "create") ||
-        field.nullable ||
-        field.default !== undefined;
+      const optional = inputOptional(action.kind, input.kind, field);
       fields.push({
         attribute: field,
         optional,

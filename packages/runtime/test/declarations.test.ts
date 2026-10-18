@@ -44,13 +44,14 @@ describe("dispatchCommand", () => {
   class Paid {
     static readonly [DECLARATION] = { kind: "event" as const, fqn: "billing.Paid", is: (value: unknown): value is Paid => value instanceof Paid };
   }
-  const calls: { input: unknown; context: unknown }[] = [];
-  const table = { "billing.Pay": { fields: ["id", "note"], run: async (input: Readonly<Record<string, unknown>>, context: object) => { calls.push({ input, context }); return "done"; } } };
+  const calls: { command: unknown; context: unknown }[] = [];
+  const table = { "billing.Pay": { run: async (command: never, context: object) => { calls.push({ command, context }); return "done"; } } };
 
-  test("calls the action with exactly the declared fields as input and the context given, and resolves with its result", async () => {
+  test("calls the action with the command and the context given, and resolves with its result", async () => {
     const context = { system: true };
-    expect(await dispatchCommand(table, new Pay("a", "n"), context)).toBe("done");
-    expect(calls.pop()).toEqual({ input: { id: "a", note: "n" }, context });
+    const command = new Pay("a", "n");
+    expect(await dispatchCommand(table, command, context)).toBe("done");
+    expect(calls.pop()).toEqual({ command, context });
   });
 
   test("a value that is not an instance of a generated command class is a rejected FrameworkError: an event, a lookalike, the class itself, nothing", async () => {
