@@ -535,3 +535,14 @@ export async function reviewsSubmissionOf(submissionId: string, actorId: string)
   if (!submission) return true;
   return (await reviewerOfTask(submission.taskId)).collaboratorId === actorId;
 }
+
+/**
+ * The Task of submission `submissionId`, read with no policy: Review `accept` completes it after the submission is
+ * settled. A submission that is gone is a bug of the caller, since the review was written against it in the same
+ * transaction, so it throws a `FrameworkError`.
+ */
+export async function taskOfSubmission(submissionId: string): Promise<string> {
+  const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
+  if (submission === undefined) throw new FrameworkError(`submission ${submissionId} not found`);
+  return submission.taskId;
+}

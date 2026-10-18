@@ -14,6 +14,7 @@ import {
   reviewerRuleOf,
   reviewsSubmissionOf,
   submittedVersionsOf,
+  taskOfSubmission,
 } from "../../../src/domain/work/work.helpers";
 import {
   Submission as $work$Submission$value,
@@ -127,31 +128,26 @@ export const $expressions = {
   },
   // run, plain (run-step) (src/domain/work/review.mesh.mx:47:28)
   "accept.step.3.run": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
-    const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
-      const [submission] = await Mesh.privileged(Submission).read({
-        filter: { id: { eq: self.submissionId } },
-        limit: 1,
-      });
-      if (submission === undefined) throw new Error(`submission ${self.submissionId} not found`);
+      const taskId = await taskOfSubmission(self.submissionId);
       await Task.complete(
-        { id: submission.taskId },
+        { id: taskId },
         {
           ...context,
           system: true,
-          completion: { rule: "review-accepted", submissionId: submission.id },
+          completion: { rule: "review-accepted", submissionId: self.submissionId },
         },
       );
     })($s);
   },
-  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:59:16)
+  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:58:16)
   "return.check.pending.that": ($s: $work$Review$NewScope<$work$Review$ReturnReviewInput>) => {
     return (async ({ input }) => (await submittedVersionsOf(input.submission)).state === "pending")(
       $s,
     );
   },
-  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:64:16)
+  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:63:16)
   "return.check.versionMatches.that": (
     $s: $work$Review$NewScope<$work$Review$ReturnReviewInput>,
   ) => {
@@ -159,7 +155,7 @@ export const $expressions = {
       input.expectedVersion == null ||
       input.expectedVersion === (await submittedVersionsOf(input.submission)).current)($s);
   },
-  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:67:19)
+  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:66:19)
   "return.check.versionMatches.details": (
     $s: $work$Review$NewScope<$work$Review$ReturnReviewInput>,
   ) => {
@@ -168,18 +164,18 @@ export const $expressions = {
       actualVersion: (await submittedVersionsOf(input.submission)).current,
     }))($s);
   },
-  // set &reasons, translated (src/domain/work/review.mesh.mx:72:20)
+  // set &reasons, translated (src/domain/work/review.mesh.mx:71:20)
   "return.step.0.set.reasons": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) =>
     $s.input?.reasons,
-  // set &reviewer, translated (src/domain/work/review.mesh.mx:73:21)
+  // set &reviewer, translated (src/domain/work/review.mesh.mx:72:21)
   "return.step.0.set.reviewer": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) =>
     $s.actor?.id,
-  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:74:24)
+  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:73:24)
   "return.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
     const $self = $s.self;
     return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
-  // run, plain (run-step) (src/domain/work/review.mesh.mx:75:28)
+  // run, plain (run-step) (src/domain/work/review.mesh.mx:74:28)
   "return.step.1.run": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     const Task: $work$Task$ReadOnly = $work$Task$value;
@@ -191,7 +187,7 @@ export const $expressions = {
       await Task.touch({ id: submission.taskId }, { ...context, system: true });
     })($s);
   },
-  // publish, plain (publish-step) (src/domain/work/review.mesh.mx:79:17)
+  // publish, plain (publish-step) (src/domain/work/review.mesh.mx:78:17)
   "return.step.2.publish": (
     $s: $work$Review$Scope<$work$Review$ReturnReviewInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -205,10 +201,10 @@ export const $expressions = {
         reasons: $self.reasons ?? "",
       }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:82:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:81:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Review$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:84:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:83:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Review$NewScope<
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
@@ -216,7 +212,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:86:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:85:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$Review$NewScope<
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
@@ -225,7 +221,7 @@ export const $expressions = {
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :reviewReviewer authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:88:20)
+  // policy :reviewReviewer authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:87:20)
   "policy.reviewReviewer.authorize-if.0": (
     $s: $work$Review$NewScope<
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>

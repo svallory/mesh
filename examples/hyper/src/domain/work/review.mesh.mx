@@ -3,7 +3,7 @@ import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Task } from "./task.mesh.mx"
 import { ReviewAccepted } from "./review-accepted.mesh.mx"
 import { ReviewReturned } from "./review-returned.mesh.mx"
-import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf } from "./work.helpers"
+import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf, taskOfSubmission } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -45,9 +45,8 @@ entity :Review table="reviews"
         }
         publish=({ self }) => new ReviewAccepted({ reviewId: &id, submissionId: self.submissionId, reviewerId: self.reviewerId, ruleApplied: &ruleApplied })
         run [after=:write] ({ self, context }) {
-          const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: self.submissionId } }, limit: 1 });
-          if (submission === undefined) throw new Error(`submission ${self.submissionId} not found`);
-          await Task.complete({ id: submission.taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: submission.id } });
+          const taskId = await taskOfSubmission(self.submissionId);
+          await Task.complete({ id: taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: self.submissionId } });
         }
     create :return
       input
