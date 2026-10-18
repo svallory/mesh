@@ -61,6 +61,12 @@ export interface EventBusInstance {
   stop(): Promise<void>;
   /** One round, then resolve; rejects with `HandlerStoppedError` naming every handler that stopped, or with the error that ended the round. */
   deliver(): Promise<void>;
+  /**
+   * Resume a handler this instance stopped after `start()`: feed it again from its progress row, in the next round, with
+   * a fresh retry schedule. Optional; core calls it for `resumeHandler(name)` of `#mesh` (spec, Events and commands,
+   * "Handler failures") and refuses that call when the started bus has none. A handler that is not stopped is left as it is.
+   */
+  resumeHandler?(handler: RegisteredHandler): void;
 }
 
 /** A handler as core registered it for this claim: what a bus feeds. */

@@ -946,6 +946,25 @@ export async function forgetSubscription(binding: Binding, name: string): Promis
   });
 }
 
+/**
+ * `resumeHandler(name)` of `#mesh` (spec, Events and commands, "Handler failures"): resume a handler the started bus of
+ * this binding stopped at a failing event, from its progress row, in the next round. A handler that is not stopped is
+ * left as it is. Without a started delivery in this process there is nothing to resume here: the next start and the next
+ * `deliver()` round feed every handler again on their own, so the call is a `FrameworkError` that says so.
+ */
+export async function resumeHandler(binding: Binding, name: string): Promise<void> {
+  if (typeof name !== "string" || name === "") throw new FrameworkError(`resumeHandler takes a handler's name, and was given ${describe(name)}`);
+  const deliverer = deliveryOf(binding).started;
+  if (!deliverer || deliverer.lost)
+    throw new FrameworkError(`resumeHandler(${JSON.stringify(name)}) was called on a binding whose delivery is not started in this process: it resumes a handler the running bus stopped. A stopped handler also resumes at the next start (connect() or startDelivery()) and in the next deliver() round`);
+  const handler = deliverer.core.handlers.find((each) => each.name === name);
+  if (!handler)
+    throw new FrameworkError(`resumeHandler: no handler named ${JSON.stringify(name)} is registered by this deliverer; it registers ${deliverer.core.handlers.map((each) => JSON.stringify(each.name)).join(", ") || "none"}`);
+  if (typeof deliverer.instance.resumeHandler !== "function")
+    throw new FrameworkError(`resumeHandler: the bus ${deliverer.bus.manifest.adapter} cannot resume a handler while it runs (its instance has no resumeHandler); restart delivery to resume it`);
+  deliverer.instance.resumeHandler(handler);
+}
+
 /** What `mesh events forget` dropped. */
 export interface Forgotten {
   readonly kind: "handler" | "subscription";
