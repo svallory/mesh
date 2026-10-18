@@ -1,0 +1,29 @@
+{
+  "name": "@meshfw/bus-local",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "localBus, Mesh's first event-bus adapter: delivers events in the deliverer's process on any data adapter",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@meshfw/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/data-sqlite": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "zod": "4.6.5"
+  }
+}

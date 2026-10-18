@@ -6,3 +6,4 @@ packages/data-sqlite/test/.emitted-*/
 packages/data-sqlite/test/.modules-*/
 examples/blog/test/.guard-*/
 packages/cli/dist/
+packages/bus-local/test/.scratch-*/
