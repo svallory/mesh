@@ -58,8 +58,8 @@ export type MetadataFunction<E extends object = object> = (args: MetadataArgumen
 export interface EventsModule {
   /** The handlers, by kind, each under its name: the name is unique across both kinds and keys its progress row. */
   handlers?: {
-    process?: Record<string, Handler<never>>;
-    listen?: Record<string, Handler<never>>;
+    process?: Record<string, Handler>;
+    listen?: Record<string, Handler>;
   };
   metadata?: MetadataFunction<never>;
   /** The context handlers run with; default `{ system: true }`. It can read the original person from the event's `metadata`. */

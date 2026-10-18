@@ -57,7 +57,7 @@ export interface BusOptions {
 export interface EventBusInstance {
   /** Run on its own until `stop()`. */
   start(): Promise<void>;
-  /** End subscriptions, wait for the running round, clear every timer. */
+  /** Wait for the running round and clear every timer; core ends the live subscriptions after this resolves. */
   stop(): Promise<void>;
   /** One round, then resolve; rejects with `HandlerStoppedError` naming every handler that stopped, or with the error that ended the round. */
   deliver(): Promise<void>;

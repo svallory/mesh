@@ -53,7 +53,7 @@ const PID: number | null = typeof (globalThis as { process?: { pid?: unknown } }
 /** A row a deliverer reads from `mesh_handler_progress` and the handler as the events module declares it. */
 interface DeclaredHandler {
   readonly registered: RegisteredHandler;
-  readonly handler: Handler<never>;
+  readonly handler: Handler;
   readonly renamedFrom: string | undefined;
 }
 
@@ -961,7 +961,7 @@ export async function resumeHandler(binding: Binding, name: string): Promise<voi
   if (!handler)
     throw new FrameworkError(`resumeHandler: no handler named ${JSON.stringify(name)} is registered by this deliverer; it registers ${deliverer.core.handlers.map((each) => JSON.stringify(each.name)).join(", ") || "none"}`);
   if (typeof deliverer.instance.resumeHandler !== "function")
-    throw new FrameworkError(`resumeHandler: the bus ${deliverer.bus.manifest.adapter} cannot resume a handler while it runs (its instance has no resumeHandler); restart delivery to resume it`);
+    throw new FrameworkError(`resumeHandler: the bus ${JSON.stringify(deliverer.bus.manifest.adapter)} cannot resume a handler while it runs (its instance has no resumeHandler); restart delivery to resume it`);
   deliverer.instance.resumeHandler(handler);
 }
 

@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
-  subscribe,
+  subscribe, Mesh,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import type { DataLayer, DataOperations, Declaration, EventsConfig, OutboxRow } from "@meshfw/runtime";
@@ -398,5 +398,46 @@ describe("delivery needs the layer to name its database", () => {
       expect((error as Error).message).toStartWith(`${what} was called on a data layer that does not name its database (DataLayer.database)`);
     }
     expect(loaded).toBe(0);
+  });
+});
+
+describe("testBus's round loop", () => {
+  test("a wake-up that comes as a round ends starts another round at once, whichever microtask it lands in", async () => {
+    for (let depth = 0; depth < 12; depth++) {
+      let listener: (() => void) | undefined;
+      let passes = 0;
+      const core = {
+        handlers: [],
+        subscriptions: () => [],
+        deletionPass: async () => {
+          passes++;
+          if (passes !== 1) return;
+          let later = Promise.resolve();
+          for (let i = 0; i < depth; i++) later = later.then(() => undefined);
+          void later.then(() => listener?.());
+        },
+        onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
+        onClaimLost: () => () => undefined,
+      };
+      const instance = testBus({ pollMs: 60_000 }).create(core as never, { keep: "until-delivered" });
+      await instance.start();
+      const end = Date.now() + 1000;
+      while (passes < 2 && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 2));
+      await instance.stop();
+      expect({ depth, passes }).toEqual({ depth, passes: 2 });
+    }
+  });
+});
+
+describe("EventsModule", () => {
+  test("a module whose handlers are typed by Mesh.handler is an EventsModule, so `load: () => import(...)` type-checks", () => {
+    const module = {
+      handlers: {
+        process: { refund: Mesh.handler({ events: [InvoicePaid], run: async (event) => { void event.payload.invoiceId; } }) },
+        listen: { log: Mesh.handler({ events: [InvoicePaid, InvoiceVoided], run: () => undefined }) },
+      },
+    };
+    const config: EventsConfig = { bus: testBus(), load: async () => module };
+    expect(typeof config.load).toBe("function");
   });
 });
