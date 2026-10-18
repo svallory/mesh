@@ -247,6 +247,7 @@ describe("the outbox", () => {
   type Layer = {
     transaction<T>(fn: (tx: { insert(table: unknown, row: unknown): Promise<unknown>; deleteOutboxThrough(position: number): Promise<number> }) => Promise<T>): Promise<T>;
     readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number }>;
+    refuseIfFailed(): boolean;
     close(): Promise<void>;
   };
   const failure = (promise: Promise<unknown>) => promise.then(() => { throw new Error("expected a rejection"); }, (cause: unknown) => cause);
@@ -568,6 +569,37 @@ describe("the outbox", () => {
       await deliver();
       expect(seen.slice(3)).toEqual(["4 sales.refunds.RefundIssued"]);
       expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 4, highest: 4 });
+    } finally { await layer.close(); }
+  });
+
+  test("a listen handler's action runs in a transaction of its own, and what it publishes carries the handled event's id as causedBy", async () => {
+    const handled: { id: string; inside: boolean }[] = [];
+    const module = {
+      handlers: {
+        listen: {
+          refundOnPay: Mesh.handler({
+            events: [billing.InvoicePaid],
+            run: async (event: { id: string; payload: { invoiceId: string } }, { context }: { context: object }) => {
+              handled.push({ id: event.id, inside: layer.refuseIfFailed() });
+              await billing.Invoice.refund({ id: event.payload.invoiceId }, context);
+            },
+          }),
+        },
+      },
+    };
+    const { layer, binding } = await open({ events: { bus: testBus(), keep: "all", load: async () => module } });
+    const deliver = () => (binding as unknown as { deliver(): Promise<void> }).deliver();
+    try {
+      await deliver();
+      await stored(layer, ID);
+      await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
+      await deliver();
+      // the listen handler ran outside any transaction; the refund it called committed on its own
+      expect(handled.map((each) => each.inside)).toEqual([false]);
+      const [paid, refund] = await rows(layer);
+      expect([paid!.position, paid!.name, paid!.causedBy]).toEqual([1, "billing.InvoicePaid", null]);
+      expect([refund!.position, refund!.name, refund!.causedBy]).toEqual([2, "sales.refunds.RefundIssued", paid!.id]);
+      expect(handled[0]!.id).toBe(paid!.id);
     } finally { await layer.close(); }
   });
 
