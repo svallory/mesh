@@ -24,6 +24,7 @@ export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkE
 export type { ClaimHolder, StoppedHandler, DenialReason, Issue, IssueSource, MeshErrorOptions, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";
+export { dispatchCommand, type ActionResult, type CommandAction } from "./dispatch.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
 export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, SubscriptionFilter, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";

@@ -101,6 +101,8 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
     : action.kind === "update" ? "read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it"
       : reads ? "read-then-write: the body can see the stored record, so the row is read under the lock before it is deleted"
         : "one delete by key; nothing in the body can see the record, so the row is not read (with an afterWrite or afterCommit seam registered it is read under the lock first, so the seam gets `before`)";
+  // Printed only when the action has an `on=`: the command it answers, by its FQN, with the identifier the file writes.
+  if (action.command) section(lines, "answers", [`command ${action.command.fqn} (on=${action.command.identifier}): \`dispatch\` of an instance runs this action with the command's fields as its input`]);
   section(lines, "strategy", [strategy]);
   section(lines, "input", action.input.map((field) => (field.kind === "argument" ? `${field.name} (argument, not stored)` : `&${field.ref.name}`)));
   section(lines, "policies", policyLines(entity, action));

@@ -64,7 +64,7 @@ describe("binding, module and index views", () => {
   });
 
   test("the index view names every module's specifier and nothing of an entity", () => {
-    expect(indexView({ document: documentOf(), config: configOf("/project", ".mesh") })).toEqual({ modules: ["#mesh/domain", "#mesh/domain/notes"], events: null });
+    expect(indexView({ document: documentOf(), config: configOf("/project", ".mesh") })).toEqual({ modules: ["#mesh/domain", "#mesh/domain/notes"], events: null, commands: null });
   });
 
   test("an action whose handle in `actions` spells a table handle (`noteTable`) builds: #mesh re-exports no table handle, only `tables`", async () => {

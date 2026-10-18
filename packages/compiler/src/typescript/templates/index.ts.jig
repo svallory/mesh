@@ -57,3 +57,41 @@ declare module "@meshfw/runtime" {
   }
 }
 @end
+@if(commands)
+
+// The commands an action answers (`on=`): `dispatch(command, context)` runs the action, and joins the running transaction.
+@each(imported in commands.entities)
+import { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
+@end
+@each(imported in commands.imports)
+import { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
+@end
+@if(commands.globals)
+{{ commands.globals.keyword }} { {{ commands.globals.names }} } from {{ commands.globals.fromLiteral }};
+@end
+import { dispatchCommand as $dispatchCommand, type ActionContext as $ActionContext, type ActionResult as $ActionResult, type CommandAction as $CommandAction } from "@meshfw/runtime";
+
+/** The instance type of every command class an action answers: what `dispatch` takes. */
+export type DomainCommand = {{ commands.union }};
+/** What `dispatch` resolves with: what the action that answers the command returns. */
+export type DispatchResult<C extends DomainCommand> =
+  @each(entry in commands.results)
+  C extends {{ entry.command }} ? $ActionResult<typeof {{ entry.entity }}.{{ entry.action }}> :
+  @end
+  never;
+
+const $commandActions: { readonly [fqn: string]: $CommandAction } = {
+  @each(entry in commands.table)
+  {{ entry.fqnLiteral }}: { fields: {{ entry.fieldsLiteral }}, run: (input, context) => {{ entry.entity }}.{{ entry.action }}(input as never, context) },
+  @end
+};
+
+/**
+ * Runs the action whose `on=` names the command's class, with the command's fields as its input and the `context` given.
+ * Inside a transaction (an action's, a `process` handler's, `transaction()`'s) the action joins it; outside, it opens its own.
+ * Resolves with what the action returns, and rejects with what it throws.
+ */
+export function dispatch<C extends DomainCommand>(command: C, context: $ActionContext): $Promise<DispatchResult<C>> {
+  return $dispatchCommand($commandActions, command, context) as $Promise<DispatchResult<C>>;
+}
+@end

@@ -4,8 +4,12 @@
 // `MESH_COMMAND_INPUT`, `MESH_COMMAND_ANSWERED_TWICE` and `MESH_COMMAND_UNANSWERED`. What `dispatch` does at run time, and
 // `mesh explain`, are `packages/cli/test/events.test.ts`.
 import { describe, expect, test } from "bun:test";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { Diagnostic, Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
+import { generateFiles } from "../src/typescript/emit.ts";
+import { configOf } from "./generated.ts";
 
 const PAY = `command :PayInvoice
   uuid :id
@@ -315,5 +319,40 @@ entity :Invoice
     expect(buildModel(bare(entity, { "billing/rename.mesh.mx": "command :Rename\n  uuid :id\n  string :title\n" })).diagnostics.filter((d) => d.code !== "MESH_COMMAND_UNANSWERED")).toEqual([]);
     const extra = buildModel(bare(entity, { "billing/rename.mesh.mx": "command :Rename\n  uuid :id\n  string :title\n  string :colour\n" }));
     expect(inputs(extra).map((d) => d[2])).toEqual(["Command billing.Rename has the field `colour`, which is no input of billing.Invoice#rename: every field of the command is an input of the action it answers"]);
+  });
+});
+
+describe("the generated #mesh", () => {
+  const golden = async (name: string, actual: string) => {
+    const path = resolve(import.meta.dir, "fixtures/commands-golden", name);
+    if (process.env.MESH_UPDATE_GOLDEN === "1") await writeFile(path, actual);
+    expect(actual).toBe(await readFile(path, "utf8"));
+  };
+  const index = (extra: Record<string, string>) => {
+    const result = build(PAY_ACTION, IMPORT, extra);
+    expect(result.diagnostics).toEqual([]);
+    return generateFiles({ document: result.document!, config: configOf("/project", ".mesh") })
+      .then((files) => files.find((file) => file.path === ".mesh/index.ts")!.contents);
+  };
+
+  test("a project with a command an action answers exports dispatch, DomainCommand and DispatchResult, and no event table: golden", async () => {
+    const contents = await index({});
+    await golden("commands.index.ts.golden", contents);
+    expect(contents.replace(/\s+/g, " ")).toContain("export function dispatch<C extends DomainCommand>( command: C, context: $ActionContext, ): $Promise<DispatchResult<C>> {");
+    expect(contents).not.toContain("eventClasses");
+  });
+
+  test("with events too, one globals import serves both and the file keeps the event table: golden", async () => {
+    const contents = await index({ "billing/invoice-paid.mesh.mx": PAID });
+    await golden("events-and-commands.index.ts.golden", contents);
+    expect(contents.match(/from "\.\/\$globals"/g)).toHaveLength(1);
+  });
+
+  test("a command no action answers is not in DomainCommand, and a project with none has no dispatch", async () => {
+    const result = build("    update :rename\n", "");
+    const files = await generateFiles({ document: result.document!, config: configOf("/project", ".mesh") });
+    const contents = files.find((file) => file.path === ".mesh/index.ts")!.contents;
+    expect(contents).not.toContain("dispatch");
+    expect(contents).not.toContain("DomainCommand");
   });
 });

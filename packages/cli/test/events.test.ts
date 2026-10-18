@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CursorAheadError, EventsDeletedError, FrameworkError, HandlerStoppedError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
+import { CursorAheadError, dispatchCommand, EventsDeletedError, FrameworkError, HandlerStoppedError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
 
@@ -38,7 +38,7 @@ const TSCONFIG = {
 const CHECK = `import { InvoicePaid, PayInvoice } from "#mesh/domain/billing";
 import { RefundIssued } from "#mesh/domain/sales/refunds";
 import * as domain from "#mesh/domain";
-import { eventClasses, published, readEvents, type DomainEvent, type EventRecord, type MetadataFunction } from "#mesh";
+import { dispatch, eventClasses, published, readEvents, type DispatchResult, type DomainCommand, type DomainEvent, type EventRecord, type MetadataFunction } from "#mesh";
 import { Mesh } from "meshfw";
 
 const paid = new InvoicePaid({ invoiceId: "0190a000-0000-7000-8000-000000000000", amount: 1, method: "card", paidAt: new Date(), extra: null });
@@ -72,6 +72,16 @@ export async function amounts(): Promise<number[]> {
   return page.events.flatMap((record) => record.payload instanceof InvoicePaid ? [record.payload.amount] : []);
 }
 export const paidRecord = (record: EventRecord<InvoicePaid>): Date => record.payload.paidAt;
+const command = new PayInvoice({ id: "0190a000-0000-7000-8000-000000000000", paidAt: new Date() });
+export const answered: DomainCommand = command;
+// @ts-expect-error an event is no command
+export const eventAsCommand: DomainCommand = paid;
+export const dispatched: Promise<{ readonly id: string; readonly paid: boolean }> = dispatch(command, {});
+export const result: DispatchResult<PayInvoice> extends { readonly paid: boolean } ? true : false = true;
+// @ts-expect-error dispatch takes a command and not an event
+export const dispatchedEvent = dispatch(paid, {});
+// @ts-expect-error dispatch takes a context
+export const noContext = dispatch(command);
 // @ts-expect-error a command is no event record's payload
 export const commandRecord = (record: EventRecord<PayInvoice>) => record;
 `;
@@ -134,7 +144,9 @@ describe("events and commands in files of their own", () => {
     expect(index.replace(/\s+/g, " ")).toContain("export type DomainEvent = | $billing$InvoicePaid$class | $billing$InvoiceOpened$class | $billing$InvoiceVoided$class | $billing$Promise$class | $sales$refunds$RefundIssued$class;");
     expect(index).toContain('"billing.InvoicePaid": $billing$InvoicePaid$class,');
     expect(index).toContain('"sales.refunds.RefundIssued": $sales$refunds$RefundIssued$class,');
-    expect(index).not.toContain("PayInvoice");
+    // a command is no event: `DomainEvent` and the event table hold none, and `DomainCommand` holds the command an action answers
+    expect(index).not.toContain('"billing.PayInvoice": $billing$PayInvoice$class');
+    expect(index.replace(/\s+/g, " ")).toContain("export type DomainCommand = $billing$PayInvoice$class;");
   });
 
   test("mesh build --check finds the committed tree current, and mesh inspect shows the declarations in the model", () => {
@@ -384,7 +396,7 @@ describe("the outbox", () => {
     try {
       await stored(layer, ID);
       const { InvoicePaid, PayInvoice } = await import(join(root, ".mesh/domain/billing/index.ts"));
-      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:33:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
+      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:42:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
       const cases: [() => unknown, string][] = [
         [() => null, "null"],
         [() => undefined, "undefined"],
@@ -606,6 +618,131 @@ describe("the outbox", () => {
   test("readEvents with no binding in scope and none connected throws", async () => {
     expect(await failure(app.readEvents())).toBeInstanceOf(FrameworkError);
   });
+
+  test("dispatch runs the action whose on= names the command's class, with the command's fields as its input", async () => {
+    const { layer, binding } = await open();
+    const { PayInvoice } = billing;
+    try {
+      await stored(layer, ID);
+      const paidAt = new Date("2026-01-02T03:04:05.000Z");
+      const result = await binding.run(() => app.dispatch(new PayInvoice({ id: ID, paidAt }), {}));
+      // what the action returns, as a direct call returns it
+      expect(result).toMatchObject({ id: ID, paid: true, paidAt });
+      const [row, ...rest] = await rows(layer);
+      expect(rest).toEqual([]);
+      // the action is `payInvoice` (named after the command), and it set `paidAt` from the command's field
+      expect(row).toMatchObject({ name: "billing.InvoicePaid", entity: "billing.Invoice", action: "payInvoice", key: { id: ID }, payload: { invoiceId: ID, method: "wire" } });
+      // the same call by name does the same thing
+      await stored(layer, ID2);
+      expect(await binding.run(() => billing.Invoice.payInvoice({ id: ID2, paidAt }, {}))).toMatchObject({ id: ID2, paid: true, paidAt });
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch joins the running transaction: its events show in published(), and a rollback undoes the action and its event", async () => {
+    const { layer, binding } = await open();
+    const { PayInvoice } = billing;
+    try {
+      await stored(layer, ID);
+      const paidAt = new Date(0);
+      const seen = await binding.transaction(async () => {
+        await app.dispatch(new PayInvoice({ id: ID, paidAt }), {});
+        // one transaction: the event the action published is this transaction's own, before anything committed
+        return app.published().map((record: { name: string }) => record.name);
+      });
+      expect(seen).toEqual(["billing.InvoicePaid"]);
+      expect(await names(layer)).toEqual(["billing.InvoicePaid"]);
+      // a failure after the dispatch rolls back the action's write and its event with the transaction
+      await stored(layer, ID2);
+      const cause = await failure(binding.transaction(async () => {
+        await app.dispatch(new PayInvoice({ id: ID2, paidAt }), {});
+        throw new Error("after the dispatch");
+      }));
+      expect(cause).toMatchObject({ message: "after the dispatch" });
+      expect(await names(layer)).toEqual(["billing.InvoicePaid"]);
+      const stored2 = await binding.run<{ id: string; paid: boolean }[]>(() => billing.Invoice.read({}, {}));
+      expect(stored2.map((invoice) => [invoice.id, invoice.paid])).toEqual([[ID, true], [ID2, false]]);
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch passes the action's own failures through: an unknown row is NotFoundError, and nothing is published", async () => {
+    const { layer, binding } = await open();
+    try {
+      const cause = await failure(binding.run(() => app.dispatch(new billing.PayInvoice({ id: ID, paidAt: new Date(0) }), {})));
+      expect(cause).toBeInstanceOf(NotFoundError);
+      expect(await rows(layer)).toEqual([]);
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch refuses what is not an instance of a generated command class", async () => {
+    const { layer, binding } = await open();
+    try {
+      const paid = new billing.InvoicePaid({ invoiceId: ID, amount: 1, method: "card", paidAt: new Date(0), extra: null });
+      const lookalike = { id: ID, paidAt: new Date(0) };
+      for (const value of [paid, lookalike, billing.PayInvoice, null, undefined, "billing.PayInvoice"]) {
+        const cause = await failure(binding.run(() => app.dispatch(value, {})));
+        expect(cause).toBeInstanceOf(FrameworkError);
+        expect((cause as Error).message).toContain("dispatch takes an instance of a command class that `mesh build` generated");
+      }
+      // a command no action of the build answers (a stale `.mesh/`) is a FrameworkError naming it
+      const stale = await failure(dispatchCommand({}, new billing.PayInvoice({ id: ID, paidAt: new Date(0) }), {} as never));
+      expect(stale).toBeInstanceOf(FrameworkError);
+      expect((stale as Error).message).toContain("dispatch: no action answers the command billing.PayInvoice");
+      expect(await rows(layer)).toEqual([]);
+    } finally { await layer.close(); }
+  });
+
+  test("a process handler's dispatch runs in the handler's transaction: the event it publishes is caused by the handled one, and a failure rolls the action back", async () => {
+    const paidAt = new Date(0);
+    const logged: { id: string; name: string; causedBy: string | null }[] = [];
+    let failAfter = false;
+    const module = {
+      handlers: {
+        process: {
+          payOnOpen: Mesh.handler({
+            events: [billing.InvoiceOpened],
+            run: async (event: { payload: { invoiceId: string } }, { context }: { context: object }) => {
+              await app.dispatch(new billing.PayInvoice({ id: event.payload.invoiceId, paidAt }), context);
+              if (failAfter) throw new Error("after the dispatch");
+            },
+          }),
+        },
+        listen: {
+          log: Mesh.handler({
+            events: [billing.InvoiceOpened, billing.InvoicePaid],
+            run: (event: { id: string; name: string; causedBy: string | null }) => { logged.push({ id: event.id, name: event.name, causedBy: event.causedBy }); },
+          }),
+        },
+      },
+    };
+    const { layer, binding } = await open({ events: { bus: testBus(), load: async () => module } });
+    const deliver = () => (binding as unknown as { deliver(): Promise<void> }).deliver();
+    const invoices = () => binding.run<{ id: string; paid: boolean }[]>(() => billing.Invoice.read({}, {}));
+    try {
+      await deliver();
+      // a handler that fails after its dispatch: the action's write and its event are rolled back with the handler's transaction
+      failAfter = true;
+      const failed = await binding.run(() => billing.Invoice.open({}, {})) as { id: string };
+      expect(await failure(deliver())).toBeInstanceOf(HandlerStoppedError);
+      expect((await invoices()).map((invoice) => [invoice.id, invoice.paid])).toEqual([[failed.id, false]]);
+      expect(logged.map((event) => event.name)).toEqual(["billing.InvoiceOpened"]);
+      // once it succeeds, the dispatched action's event carries the handled event's id
+      failAfter = false;
+      await deliver();
+      await deliver();
+      expect((await invoices()).map((invoice) => [invoice.id, invoice.paid])).toEqual([[failed.id, true]]);
+      const [opened, paid] = [logged.find((event) => event.name === "billing.InvoiceOpened")!, logged.find((event) => event.name === "billing.InvoicePaid")!];
+      expect(paid.causedBy).toBe(opened.id);
+    } finally { await layer.close(); }
+  });
+
+  test("mesh explain shows the command an action answers, and mesh inspect records its FQN", () => {
+    const explained = mesh(root, "explain", "billing.Invoice", "payInvoice");
+    expect(explained.code).toBe(0);
+    expect(explained.stdout).toContain("  answers      command billing.PayInvoice (on=PayInvoice): `dispatch` of an instance runs this action with the command's fields as its input\n");
+    const model = JSON.parse(mesh(root, "inspect", "billing.Invoice").stdout) as { actions: { name: string; command?: { fqn: string; identifier: string } }[] };
+    expect(model.actions.filter((action) => action.command).map((action) => [action.name, action.command!.fqn, action.command!.identifier])).toEqual([["payInvoice", "billing.PayInvoice", "PayInvoice"]]);
+  }, 30_000);
+
 });
 
 describe("mesh events forget", () => {

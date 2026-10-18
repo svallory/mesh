@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DECLARATION, FrameworkError, InvalidInputError, Mesh, checkFields, fqnOf, type StandardSchemaV1 } from "../src/index.ts";
+import { DECLARATION, FrameworkError, InvalidInputError, Mesh, checkFields, dispatchCommand, fqnOf, type StandardSchemaV1 } from "../src/index.ts";
 
 const schema = (validate: (value: unknown) => StandardSchemaV1.Result<{ n: number }> | Promise<StandardSchemaV1.Result<{ n: number }>>): StandardSchemaV1<unknown, { n: number }> =>
   ({ "~standard": { version: 1, vendor: "test", validate } });
@@ -33,5 +33,35 @@ describe("checkFields", () => {
   test("a schema that answers with a promise, or a malformed result, is a FrameworkError", () => {
     expect(() => checkFields(schema(async () => ({ value: { n: 1 } })), {}, "event", "a.B")).toThrow(FrameworkError);
     expect(() => checkFields(schema(() => 1 as never), {}, "event", "a.B")).toThrow(FrameworkError);
+  });
+});
+
+describe("dispatchCommand", () => {
+  class Pay {
+    static readonly [DECLARATION] = { kind: "command" as const, fqn: "billing.Pay", is: (value: unknown): value is Pay => value instanceof Pay };
+    constructor(readonly id: string, readonly note: string | null = null) {}
+  }
+  class Paid {
+    static readonly [DECLARATION] = { kind: "event" as const, fqn: "billing.Paid", is: (value: unknown): value is Paid => value instanceof Paid };
+  }
+  const calls: { input: unknown; context: unknown }[] = [];
+  const table = { "billing.Pay": { fields: ["id", "note"], run: async (input: Readonly<Record<string, unknown>>, context: object) => { calls.push({ input, context }); return "done"; } } };
+
+  test("calls the action with exactly the declared fields as input and the context given, and resolves with its result", async () => {
+    const context = { system: true };
+    expect(await dispatchCommand(table, new Pay("a", "n"), context)).toBe("done");
+    expect(calls.pop()).toEqual({ input: { id: "a", note: "n" }, context });
+  });
+
+  test("a value that is not an instance of a generated command class is a rejected FrameworkError: an event, a lookalike, the class itself, nothing", async () => {
+    for (const value of [new Paid(), { id: "a" }, Pay, null, undefined, "billing.Pay"])
+      await expect(dispatchCommand(table, value, {})).rejects.toBeInstanceOf(FrameworkError);
+    expect(calls).toEqual([]);
+  });
+
+  test("a command with no entry in the table is a FrameworkError naming it, whatever the table inherits", async () => {
+    await expect(dispatchCommand({}, new Pay("a"), {})).rejects.toThrow("dispatch: no action answers the command billing.Pay");
+    class Inherited { static readonly [DECLARATION] = { kind: "command" as const, fqn: "constructor", is: (value: unknown): value is Inherited => value instanceof Inherited }; }
+    await expect(dispatchCommand({}, new Inherited(), {})).rejects.toBeInstanceOf(FrameworkError);
   });
 });
