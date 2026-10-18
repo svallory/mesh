@@ -69,7 +69,7 @@ Each `publish` appends one row to the outbox, `mesh_outbox`, in the action's tra
 | `id` | A time-ordered UUID, the event's identity |
 | `name` | The event's FQN, `billing.InvoicePaid` |
 | `entity`, `action`, `key` | The publishing entity's FQN, the action's name and the record's key |
-| `causedBy` | The `id` of the event whose handler published this one, or `null` for an event a caller's action published. A chain of handlers keeps the first event's `id`, so every event a command caused names the event that started it |
+| `causedBy` | The `id` of the event whose handler published this one, or `null` for an event a caller's action published. Each event names only the event whose handler was running when it was published: in a chain of handlers, every hop points to the one before it, so you follow `causedBy` back to the event that started the chain |
 | `metadata` | What your events module's `metadata` function returned, or `{}` |
 | `occurredAt` | The transaction's instant, `%.now` |
 | `payload` | The event's fields, as JSON |
@@ -152,6 +152,8 @@ Both kinds start from now: a handler handles the events published after it is fi
 A handler passes its `context` to the actions it calls. By default the context is `{ system: true }`, the mark of a call the application makes on its own behalf, which a policy admits with `Mesh.isSystem(context)`: policies deny by default, so a handler that writes through an action needs one. The events module can export `context(event)` to choose it, for instance to act as the person whose call published the event, read from the metadata your `metadata` function stored:
 
 ```ts "src/events.ts (excerpt)"
+import type { EventRecord } from "#mesh";
+
 export const context = (event: EventRecord) => ({ system: true, onBehalfOf: event.metadata.commandId });
 ```
 
@@ -362,7 +364,7 @@ Whether a retry makes sense is on the error. Every Mesh error carries `retryable
 | `EventsConfigError` | `MESH_EVENTS_CONFIG` | `false` | The `events` configuration is not valid, or the events module exports handlers while no bus is set |
 | `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A handler lists something other than an event class of the project, asks for `onFailure: "skip"` without `dead-letters`, or has a `renamedFrom` that names a registered handler or that two handlers name |
 | `DelivererTakenError` | `MESH_DELIVERER_TAKEN` | `true` | Another process or binding holds the claim, or a `deliver()` overlapped a round. Names the `holder` and `lapsesAt`. Stop the other process, or connect this one with `{ deliver: false }` |
-| `DelivererLostError` | `MESH_DELIVERER_LOST` | `false` | Another process took the claim over after it lapsed; this process's delivery stopped |
+| `DelivererLostError` | `MESH_DELIVERER_LOST` | `false` | This process no longer holds the claim: another process took it over after it lapsed, or a renewal updated no row or stayed blocked past the lapse. This process's delivery stopped |
 | `HandlerStoppedError` | `MESH_HANDLER_STOPPED` | `false` | `deliver()` when handlers stopped in the round; names them in `stopped` |
 | `SubscriptionOverflowError` | `MESH_SUBSCRIPTION_OVERFLOW` | `true` | A subscription's queue passed 10 000 events; reopen it |
 | `EventsDeletedError` | `MESH_EVENTS_DELETED` | `false` | A read or a first subscription from behind the deleted rows |
