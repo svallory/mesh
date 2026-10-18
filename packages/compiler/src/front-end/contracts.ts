@@ -55,27 +55,35 @@ interface Node {
   type: string;
   name?: string;
   value?: unknown;
-  extra?: { mxMember?: unknown; mxTransaction?: unknown };
+  extra?: { mxTransaction?: unknown };
   elements?: (Node | null)[];
 }
 const node = (a: Attr | undefined): Node | undefined =>
   a && (a.kind === "dynamic" || a.kind === "bound")
     ? (a.value.node as Node | undefined)
     : undefined;
-/** `&a`, `&a.b`, `&a.b.c`: plain property accesses from one marked member. */
-const isMemberPath = (n: Node | null | undefined): boolean => {
+/**
+ * The forwards of an option's members: the `self.name` each `mesh:Member` node lowers to, listed in `Expr.nodes`
+ * (MX 0.1.0-alpha.34, IR version 7). A member is found by its forward's identity; core sets no mark on it.
+ */
+const membersOf = (a: Attr | undefined): ReadonlySet<unknown> =>
+  new Set(
+    a && (a.kind === "dynamic" || a.kind === "bound")
+      ? (a.value.nodes ?? []).filter((each) => each.type === "mesh:Member").map((each) => each.forward)
+      : [],
+  );
+/** `&a`, `&a.b`, `&a.b.c`: plain property accesses from one member. */
+const isMemberPath = (n: Node | null | undefined, members: ReadonlySet<unknown>): boolean => {
   let cursor = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
-  while (cursor && !cursor.extra?.mxMember) {
+  while (cursor && !members.has(cursor)) {
     if (cursor.type !== "MemberExpression" || cursor.computed || cursor.property?.type !== "Identifier") return false;
     cursor = cursor.object;
   }
-  return cursor?.type === "MemberExpression";
+  return !!cursor;
 };
-const isMember = (n: Node | null | undefined) =>
-  n?.type === "MemberExpression" && !!n.extra?.mxMember;
-/** An unmarked identifier: not the stand-in of a mark such as `&x` or `%.x` (an atom, `:x`, is a string literal). */
+/** An identifier that stands for itself: not the stand-in of the `%.x` mark (a member's forward is a `MemberExpression`, an atom's a string literal). */
 const isPlainIdentifier = (n: Node | null | undefined) =>
-  n?.type === "Identifier" && !n.extra?.mxMember && !n.extra?.mxTransaction;
+  n?.type === "Identifier" && !n.extra?.mxTransaction;
 /**
  * A reference to another file's declaration: an imported identifier (`List`), or a member of a namespace import
  * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
@@ -85,8 +93,7 @@ const isPlainIdentifier = (n: Node | null | undefined) =>
 const isReference = (n: Node | null | undefined): boolean => {
   if (isPlainIdentifier(n)) return true;
   const access = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
-  return access?.type === "MemberExpression" && !access.computed && !access.extra?.mxMember
-    && !access.extra?.mxTransaction
+  return access?.type === "MemberExpression" && !access.computed && !access.extra?.mxTransaction
     && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
 };
 /**
@@ -98,14 +105,15 @@ const isReference = (n: Node | null | undefined): boolean => {
 const isWrapped = (a: Attr | undefined): a is Extract<Attr, { kind: "dynamic" }> & { valueSpan: SourceSpan } =>
   a?.kind === "dynamic" && !!a.valueSpan && !!a.value.span
   && (a.valueSpan.sourceStart !== a.value.span.sourceStart || a.valueSpan.sourceEnd !== a.value.span.sourceEnd);
-/** A slot that holds one member only (MX decision 182 addendum 4): MX checks
- * the `&name` form, after a kind or as a whole value; Mesh resolves membership. */
+/** A slot that holds one member only: a `mesh:Member` node (`syntax/member.ts`), after a kind or as a whole value.
+ * Core refuses any other typed value; `checkMemberSlots` refuses an expression that is not exactly one member; Mesh
+ * resolves membership. */
 const member = (required = false): CustomTagAttribute => ({
-  type: "member",
+  type: "mesh:Member",
   required,
 });
-/** A list of members (`actions=[&publish]`): MX's `"member"` type takes one
- * member, so a list is an array whose elements Mesh checks for marks. */
+/** A list of members (`actions=[&publish]`): a node type takes one value, so a list is an array whose elements
+ * `references` checks are members. */
 const members = (): CustomTagAttribute => ({ type: "array" });
 function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
   return (calls, ctx) => {
@@ -114,7 +122,8 @@ function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
         const a = get(call, key);
         if (!a) continue;
         const n = node(a);
-        if (n?.type !== "ArrayExpression" || !n.elements?.every(isMember))
+        const found = membersOf(a);
+        if (n?.type !== "ArrayExpression" || !n.elements?.every((e) => found.has(e)))
           ctx.fail(`\`${key}\` requires a list of member references`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
         // As `types=[]`: an empty list names no action, so what it scopes would cover none.
         else if (!n.elements.length)
@@ -230,8 +239,8 @@ const contracts: ContractMap = {
         if (!a) continue;
         const type = node(a)?.type;
         if (type === "ArrowFunctionExpression" || type === "FunctionExpression") continue;
-        const s = a as { kind: string; value?: unknown; member?: unknown; node?: unknown };
-        if (s.kind === "static" && typeof s.value === "string" && !s.member && !s.node) {
+        const s = a as { kind: string; value?: unknown; node?: unknown };
+        if (s.kind === "static" && typeof s.value === "string" && !s.node) {
           if (!s.value.trim()) ctx.fail("message cannot be empty", { at: a.loc, code: "MESH_TEXT" });
           continue;
         }
@@ -398,7 +407,7 @@ for (const kind of ROLLUPS)
             `of takes a member reference, not a string: ${path ? `write of=&${path}` : "write of=&relationship for a count, of=&relationship.attribute for the others"}`,
             { at: a.loc, code: "MESH_ROLLUP_PATH_STRING" },
           );
-        } else if (!isMemberPath(node(a)) || /\s/.test((a.kind === "dynamic" ? a.value.code : "") ?? ""))
+        } else if (!isMemberPath(node(a), membersOf(a)) || /\s/.test((a.kind === "dynamic" ? a.value.code : "") ?? ""))
           ctx.fail("of takes a member reference: &relationship for a count, &relationship.attribute for the others", { at: a.loc, code: "MESH_ROLLUP_PATH" });
       }
     },

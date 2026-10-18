@@ -28,7 +28,7 @@ describe("the atom value row", () => {
     const rows = MESH_DIALECT.table.valueTriggers ?? [];
     expect(rows.map((row) => row.id)).toEqual(["atom-value"]);
     expect(rows[0]).toMatchObject({ chars: ":", standIn: "keep", node: { type: "Atom", dialect: "mesh" } });
-    expect(Object.keys(MESH_DIALECT.nodeTypes ?? {})).toEqual(["Atom"]);
+    expect(Object.keys(MESH_DIALECT.nodeTypes ?? {})).toEqual(["Atom", "Member"]);
   });
 
   test("`Atom` parses `:name`, prints it back and lowers to an atom-marked string literal", () => {
@@ -65,7 +65,7 @@ describe("a claimed default value ends at a terminating attribute row", () => {
     const real = MESH_DIALECT.nodeTypes?.Atom as NodeType<Atom>;
     const declining: Dialect = {
       ...MESH_DIALECT,
-      nodeTypes: { Atom: { ...real, parse: (text, span, ctx) => (ctx.position === "value" ? undefined : real.parse(text, span, ctx)) } satisfies NodeType<Atom> },
+      nodeTypes: { ...MESH_DIALECT.nodeTypes, Atom: { ...real, parse: (text, span, ctx) => (ctx.position === "value" ? undefined : real.parse(text, span, ctx)) } satisfies NodeType<Atom> },
     };
     expect(meshDiagnostics(source, declining)).toEqual(meshDiagnostics(source, NO_VALUE_ROW));
   });

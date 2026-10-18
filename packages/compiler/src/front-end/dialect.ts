@@ -3,12 +3,13 @@
  * trigger positions, `:name` atoms and the `kind :name` declaration sugar,
  * lowered to the shapes the front end reads.
  *
- * - In an expression, `&status` is `self.status`, a `MemberExpression`
- *   marked `extra.mxMember = { span, name }`, and `:status` is a
- *   `mesh:Atom` node listed in `Expr.nodes`, whose forward (the `StringLiteral`
- *   of its name) stands in its place in the expression.
+ * - In an expression, `&status` is a `mesh:Member` node and `:status` a
+ *   `mesh:Atom` node, each listed in `Expr.nodes`, whose forward (`self.status`,
+ *   a `MemberExpression`, and the `StringLiteral` of the name) stands in its
+ *   place in the expression. Core has no member or atom vocabulary (MX
+ *   0.1.0-alpha.34) and sets no mark on either forward.
  * - In an attribute list (after a kind, `sort asc &dueOn`), a static
- *   attribute `member` carrying `member: { name, span }`; after the kind,
+ *   attribute `member` carrying `node: { type: "mesh:Member", name, span }`; after the kind,
  *   `:name` is a static attribute `name` carrying `node: { type: "mesh:Atom", name, span }`.
  * - As a whole attribute value, `:name` (`belongs-to=:List`) is claimed by
  *   the `atom-value` row as a `mesh:Atom` node, which lowers to the same

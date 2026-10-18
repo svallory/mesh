@@ -6,8 +6,9 @@
  *
  * Rows: `atom` (`:name` in an expression), `atom-value` (`:name` as a whole
  * attribute value, `belongs-to=:List`), `name` (spaced `kind :name`),
- * `member` (`&name`) and `transaction` (`%.now` in an expression;
- * `transaction.ts`, Mesh's own, not ported). One row per first character in
+ * `member` (`&name`; in an expression it claims a `mesh:Member` node) and
+ * `transaction` (`%.now` in an expression; `transaction.ts`, Mesh's own, not
+ * ported). One row per first character in
  * each list, so no two rows compete. MX's `#id` and `.class` rows are not
  * carried: Mesh writes neither. The table also turns the tag head's shorthands
  * off (`tagShorthands: false`, MX 0.1.0-alpha.28): a `.` continues the tag
@@ -21,7 +22,7 @@
  */
 import type { Dialect, NodeType, Trigger } from "@mxlang/core";
 import { ATOM, NAME_SUGAR, atomsHooks, checkAtomUse, type AtomNode } from "./atoms-sugars.ts";
-import { MEMBER, lowerMember } from "./member.ts";
+import { MEMBER, MEMBER_NODE, Member, checkMemberSlots, lowerMember } from "./member.ts";
 import { TRANSACTION, lowerTransaction } from "./transaction.ts";
 
 /**
@@ -46,12 +47,16 @@ export const ATOM_VALUE: Trigger = Object.freeze({
  * expression it first refuses the uses an atom cannot take (`checkAtomUse`).
  * `lower` returns a fresh literal on every call: core finds the node by its
  * forward's identity, and so do Mesh's readers (`atomForwards` in
- * `front-end/tree.ts`, `atomsIn` in `atoms-sugars.ts`). The literal still
- * carries `extra.mxAtom`, which no reader reads (core stopped in MX
- * 0.1.0-alpha.33); it goes with MX 0.1.0-alpha.34.
+ * `front-end/tree.ts`, `atomsIn` in `atoms-sugars.ts`); the literal carries no
+ * mark. The schema (MX 0.1.0-alpha.34) lists its one field and both positions
+ * it fills: the `atom` row names it in an expression, the value row and the
+ * sugar's `ctx.attribute` in value position. `label` is the word core's
+ * contract messages show for it (`must be atom, got string`).
  */
 const atomValue: NodeType<AtomNode> = {
   keys: [],
+  schema: { fields: { name: "data" }, slot: ["expression", "value"] },
+  label: "atom",
   parse: (text) => ({ name: text.slice(1) }),
   print: (node) => `:${node.name}`,
   lower: (node, ctx) => {
@@ -59,11 +64,7 @@ const atomValue: NodeType<AtomNode> = {
     return ctx.expression({
       type: "StringLiteral",
       value: node.name,
-      extra: {
-        raw: JSON.stringify(node.name),
-        rawValue: node.name,
-        mxAtom: { span: node.span },
-      },
+      extra: { raw: JSON.stringify(node.name), rawValue: node.name },
     });
   },
 };
@@ -72,13 +73,13 @@ export const AtomValue: NodeType<AtomNode> = Object.freeze(atomValue);
 /** The pieces of Mesh's dialect, minus its identity (`id`, `name`, `tagRules`), which `MESH_DIALECT` sets. */
 export const MESH_SYNTAX = {
   table: Object.freeze({
-    expressionTriggers: Object.freeze([ATOM, MEMBER, TRANSACTION]),
+    expressionTriggers: Object.freeze([ATOM, MEMBER_NODE, TRANSACTION]),
     attributeTriggers: Object.freeze([NAME_SUGAR, MEMBER]),
     lineTriggers: Object.freeze([MEMBER]),
     valueTriggers: Object.freeze([ATOM_VALUE]),
     tagShorthands: false,
   }),
-  nodeTypes: Object.freeze({ Atom: AtomValue }),
+  nodeTypes: Object.freeze({ Atom: AtomValue, Member }),
   lowerTrigger(id, text, span, ctx) {
     if (id === MEMBER.id) return lowerMember(text, span, ctx);
     if (id === TRANSACTION.id) return lowerTransaction(text, span, ctx);
@@ -87,5 +88,8 @@ export const MESH_SYNTAX = {
   contractFields: atomsHooks.contractFields,
   checkContract: atomsHooks.checkContract,
   describeAttribute: atomsHooks.describeAttribute,
-  afterLower: atomsHooks.afterLower,
+  afterLower(unit) {
+    atomsHooks.afterLower(unit);
+    checkMemberSlots(unit);
+  },
 } satisfies Omit<Dialect, "id" | "name" | "tagRules">;

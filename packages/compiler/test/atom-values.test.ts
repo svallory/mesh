@@ -40,8 +40,8 @@ describe("normalisation", () => {
 });
 
 // MX 0.1.0-alpha.33 lists the atoms of an expression in `Expr.nodes`, each with its forward (the string literal that
-// stands in its place). Mesh finds an atom by the forward's identity; the `extra.mxAtom` mark on a literal (which MX
-// stops carrying in alpha.34) makes nothing an atom, and its absence makes nothing a plain string.
+// stands in its place). Mesh finds an atom by the forward's identity; an `extra.mxAtom` mark on a literal (which MX
+// no longer sets since alpha.34) makes nothing an atom, and its absence makes nothing a plain string.
 describe("an atom inside an expression is found by identity, never by the mark", () => {
   const span = (sourceStart: number, sourceEnd: number) => ({ sourceStart, sourceEnd });
   // `values=[:a, "b"]`, built by hand: `:a`'s forward carries no mark, and `"b"` carries a forged one.
@@ -102,11 +102,11 @@ describe("the atom contract checks see value atoms", () => {
   });
   test.each([
     ["a value outside the fixed set", "    timestamp :t on=:bogus\n", "`:bogus` is not one of :create, :update"],
-    ["a string where an atom is required", '    timestamp :t on="create"\n', "must be mesh:Atom, got string"],
-    ["an expression where an atom is required", "    timestamp :t on=(1)\n", "must be mesh:Atom, got number"],
-    ["a string inverse", '    string :a\n  relationships\n    has-many :xs entity=User inverse="owner"\n', "`inverse` must be mesh:Atom, got string"],
+    ["a string where an atom is required", '    timestamp :t on="create"\n', "must be atom, got string"],
+    ["an expression where an atom is required", "    timestamp :t on=(1)\n", "must be atom, got number"],
+    ["a string inverse", '    string :a\n  relationships\n    has-many :xs entity=User inverse="owner"\n', "`inverse` must be atom, got string"],
     ["a inverse that breaks the pattern", "    string :a\n  relationships\n    has-many :xs entity=User inverse=:Own-er\n", "does not match the pattern"],
-    ["a string in a list of atoms", '    enum :s values=[:a, "b"]\n', "item 2 must be mesh:Atom, got string"],
+    ["a string in a list of atoms", '    enum :s values=[:a, "b"]\n', "item 2 must be atom, got string"],
     ["a repeated atom in a list", "    enum :s values=[:a, :a]\n", "must be non-empty with no repeated values"],
   ])("rejects %s", (_name, body, message) => {
     const found = diagnostics(body);

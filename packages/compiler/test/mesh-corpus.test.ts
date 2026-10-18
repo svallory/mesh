@@ -113,9 +113,11 @@ describe("Mesh's golden parse corpus", () => {
 
   test("the golden holds real lowerings (not a vacuous pass): atoms, members and diagnostics", () => {
     const text = readFileSync(GOLDEN, "utf8");
-    for (const mark of ['"mxAtom"', '"mxMember"','"mesh:Atom"', '"member"', '"diagnostics"']) {
+    for (const mark of ['"mesh:Atom"', '"mesh:Member"', '"member"', '"diagnostics"']) {
       expect(text).toContain(mark);
     }
+    // MX 0.1.0-alpha.34: core sets no mark on a forward; a dialect node is found in `Expr.nodes`.
+    for (const gone of ['"mxAtom"', '"mxMember"']) expect(text).not.toContain(gone);
   });
 });
 

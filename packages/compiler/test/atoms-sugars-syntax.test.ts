@@ -44,17 +44,23 @@ describe("atoms in every position", () => {
     expect(attr(firstTag(source), name)).toMatchObject(expected);
   });
 
-  test("atoms in a list, a ternary and a comparison are marked string literals", () => {
+  test("atoms in a list, a ternary and a comparison are string literals listed as mesh:Atom forwards", () => {
     const tag = firstTag("<div x=[:draft, :sent] y=(c ? :a : :b)/>");
     const x = attr(tag, "x");
     if (x.kind !== "dynamic") throw new Error(x.kind);
     expect(x.value.node).toMatchObject({
       type: "ArrayExpression",
       elements: [
-        { type: "StringLiteral", value: "draft", extra: { mxAtom: { span: { sourceStart: 8, sourceEnd: 14 } } } },
-        { type: "StringLiteral", value: "sent", extra: { mxAtom: {} } },
+        { type: "StringLiteral", value: "draft" },
+        { type: "StringLiteral", value: "sent" },
       ],
     });
+    const [draft, sent] = (x.value.node as unknown as { elements: object[] }).elements;
+    expect(draft).not.toHaveProperty("extra.mxAtom");
+    expect(x.value.nodes?.map((each) => [each.type, each.forward === draft || each.forward === sent, each.span])).toEqual([
+      ["mesh:Atom", true, { sourceStart: 8, sourceEnd: 14 }],
+      ["mesh:Atom", true, { sourceStart: 16, sourceEnd: 21 }],
+    ]);
     const y = attr(tag, "y");
     if (y.kind !== "dynamic") throw new Error(y.kind);
     expect(y.value.code).toBe('c ? "a" : "b"');

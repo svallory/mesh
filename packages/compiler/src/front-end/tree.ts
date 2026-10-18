@@ -1,5 +1,6 @@
 import type { SpannedIr } from "@mxlang/core";
 import type { AtomNode } from "./syntax/atoms-sugars.ts";
+import type { MemberNode } from "./syntax/member.ts";
 import { asynchronyOfFunction, rememberAskCalls, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
 import type {
   Atom,
@@ -11,7 +12,7 @@ import type {
   SourcePosition,
 } from "@meshfw/model";
 
-/** One node of the IR body: `lowerSource`'s spanned IR (IR version 6). */
+/** One node of the IR body: `lowerSource`'s spanned IR (IR version 7). */
 type IrNode = SpannedIr["body"][number];
 /** A tag as MX lowered it (`DelegatedTag`); the IR wraps it in a node. */
 export type Tag = Extract<IrNode, { kind: "DelegatedTag" }>["tag"];
@@ -23,7 +24,7 @@ type Named = Exclude<Attr, { kind: "spread" }>;
 type StaticAttr = Extract<Attr, { kind: "static" }>;
 type DynamicAttr = Extract<Attr, { kind: "dynamic" }>;
 
-/** Small read-only projection of MX's Babel tree, including the member and transaction marks Mesh's rows set. */
+/** Small read-only projection of MX's Babel tree, including the transaction mark Mesh's `%.` row sets. */
 export interface SyntaxNode {
   type: string;
   name?: string;
@@ -39,7 +40,7 @@ export interface SyntaxNode {
   pattern?: string;
   flags?: string;
   computed?: boolean;
-  extra?: { mxMember?: { name: string; span: Span }; mxTransaction?: { name: string; span: Span } };
+  extra?: { mxTransaction?: { name: string; span: Span } };
   loc?: { start: { index: number } };
   start?: number;
   end?: number;
@@ -47,8 +48,8 @@ export interface SyntaxNode {
 type Span = { sourceStart: number; sourceEnd: number };
 /**
  * The atoms an expression holds: each `mesh:Atom` node's forward (the `StringLiteral` that stands in its place in
- * `Expr.node`) with the node's span. MX lists a file's dialect nodes in `Expr.nodes` (IR version 6), and a reader finds
- * one by the forward's identity, never by a mark on it (`extra.mxAtom` goes in MX 0.1.0-alpha.34).
+ * `Expr.node`) with the node's span. MX lists a file's dialect nodes in `Expr.nodes` (since IR version 6), and a reader
+ * finds one by the forward's identity: no mark is set on it.
  */
 export type AtomForwards = ReadonlyMap<object, Span>;
 const NO_ATOMS: AtomForwards = new Map();
@@ -58,6 +59,23 @@ export function atomForwards(a: Attr | undefined): AtomForwards {
   const atoms = new Map<object, Span>();
   for (const each of a.value.nodes ?? []) if (each.type === "mesh:Atom") atoms.set(each.forward as object, each.span);
   return atoms;
+}
+/** Where a member is written and its name: `&name`, without the sigil. */
+export interface MemberMark { readonly name: string; readonly span: Span }
+/**
+ * The members an expression holds: each `mesh:Member` node's forward (the `self.name` `MemberExpression` that stands in
+ * its place in `Expr.node`) with the node's name and span, from `Expr.nodes` (MX 0.1.0-alpha.34, IR version 7: core
+ * has no members and reads no mark). A reader finds a member by the forward's identity, as an atom.
+ */
+export type MemberForwards = ReadonlyMap<object, MemberMark>;
+const NO_MEMBERS: MemberForwards = new Map();
+/** The members of an attribute's expression (`MemberForwards`); none for a static, boolean or missing attribute. */
+export function memberForwards(a: Attr | undefined): MemberForwards {
+  if (!a || (a.kind !== "dynamic" && a.kind !== "bound" && a.kind !== "spread")) return NO_MEMBERS;
+  const members = new Map<object, MemberMark>();
+  for (const each of a.value.nodes ?? [])
+    if (each.type === "mesh:Member") members.set(each.forward as object, { name: (each.node as MemberNode).name, span: each.span });
+  return members;
 }
 export type At = (offset: number) => SourcePosition;
 export type ReadResult<T> = { value: T; diagnostic?: never } | { value?: never; diagnostic: Diagnostic };
@@ -80,14 +98,16 @@ export const attr = (tag: Tag, name: string): Attr | undefined =>
  * one of the expression's `Expr.nodes` (`atomForwards`).
  *
  * MX folds what its `data` tree called `atom`, `member` and `string` attributes into one `static` kind and
- * tells them apart by `node` (a `mesh:Atom`) and `member`. `atomOf`, `memberOf` and `plainString` read each
- * shape; every other reader goes through them.
+ * tells them apart by `node`: a `mesh:Atom`, or the `mesh:Member` a member after a kind places
+ * (`sort asc &dueOn`). `atomOf`, `memberOf` and `plainString` read each shape; every other reader goes through
+ * them.
  */
 export const atomOf = (a: Attr | undefined): AtomNode | undefined =>
   a?.kind === "static" && a.node?.type === "mesh:Atom" ? (a.node as AtomNode) : undefined;
-const memberOf = (a: Attr | undefined) => (a?.kind === "static" ? a.member : undefined);
+const memberOf = (a: Attr | undefined): MemberNode | undefined =>
+  a?.kind === "static" && a.node?.type === "mesh:Member" ? (a.node as MemberNode) : undefined;
 const plainString = (a: Attr | undefined): StaticAttr | undefined =>
-  a?.kind === "static" && !a.member && !a.node ? a : undefined;
+  a?.kind === "static" && !a.node ? a : undefined;
 /** The text of a plain string option (`message="..."`), or `undefined` when the option is anything else (a function, an atom, a number). */
 export const textOf = (a: Attr | undefined): string | undefined => {
   const text = plainString(a);
@@ -178,33 +198,34 @@ export function declaredName(tag: Tag): string {
   if (!atom) throw new Error("A declaration name must be an atom");
   return atom.name;
 }
+/** The member `n` is, when it is one of `members` (a `mesh:Member`'s forward). */
 export function memberNode(
   n: SyntaxNode | null | undefined,
   at: At,
+  members: MemberForwards,
 ): MemberRef | undefined {
-  const mark = n?.extra?.mxMember;
-  return n?.type === "MemberExpression" && mark
-    ? { name: mark.name, position: at(mark.span.sourceStart) }
-    : undefined;
+  const mark = n ? members.get(n) : undefined;
+  return mark ? { name: mark.name, position: at(mark.span.sourceStart) } : undefined;
 }
-/** A member slot: `{ kind: "member" }` after a kind, or a whole value that is one marked member (`on:load=&visible`). */
+/** A member slot: the `mesh:Member` a kind places (`sort asc &dueOn`), or a whole value that is one member (`on:load=&visible`). */
 export function readMember(a: Attr | undefined, at: At): MemberRef {
   const member = memberOf(a);
   if (member) return { name: member.name, position: at(member.span.sourceStart) };
-  const ref = memberNode(nodeOf(a), at);
+  const ref = memberNode(nodeOf(a), at, memberForwards(a));
   if (!ref) throw new Error("Expected a member reference (&name)");
   return ref;
 }
-/** A rollup's `of=&lines.amount`: a marked member and the plain property accesses after it, each with its position (no whitespace inside, so offsets add up). */
+/** A rollup's `of=&lines.amount`: a member and the plain property accesses after it, each with its position (no whitespace inside, so offsets add up). */
 export function readMemberPath(a: Attr | undefined, at: At): MemberRef[] {
   const names: string[] = [];
+  const members = memberForwards(a);
   let cursor = nodeOf(a) as (SyntaxNode & { property?: SyntaxNode }) | undefined;
-  while (cursor && !cursor.extra?.mxMember) {
+  while (cursor && !members.has(cursor)) {
     if (cursor.type !== "MemberExpression" || cursor.computed || cursor.property?.type !== "Identifier") throw new Error("Expected a member reference (&relationship.attribute)");
     names.unshift(cursor.property.name!);
     cursor = cursor.object as typeof cursor;
   }
-  const root = cursor?.extra?.mxMember;
+  const root = cursor ? members.get(cursor) : undefined;
   if (!root) throw new Error("Expected a member reference (&relationship.attribute)");
   let offset = root.span.sourceStart + 1 + root.name.length;
   return [
@@ -219,8 +240,9 @@ export function readMemberPath(a: Attr | undefined, at: At): MemberRef[] {
 export function readMembers(a: Attr | undefined, at: At): MemberRef[] {
   const n = nodeOf(a);
   if (n?.type !== "ArrayExpression") throw new Error("Use a list of member references, such as [&title]");
+  const members = memberForwards(a);
   return (n.elements ?? []).map((e) => {
-    const ref = memberNode(e, at);
+    const ref = memberNode(e, at, members);
     if (!ref) throw new Error("Expected a member reference (&name)");
     return ref;
   });
@@ -259,14 +281,15 @@ export function expression(
   at: At,
   visit: (ref: MemberRef) => void,
   assign: (assignment: MemberAssignment) => void = () => {},
-  convert?: Omit<ConvertContext, "source" | "at" | "atoms">,
+  convert?: Omit<ConvertContext, "source" | "at" | "atoms" | "members">,
 ): Expression {
   if (a?.kind !== "dynamic")
     throw new Error("This declaration needs a function body");
   const n = nodeOf(a);
   if (!n || !["ArrowFunctionExpression", "FunctionExpression"].includes(n.type))
     throw new Error("This declaration needs a function body");
-  walkMembers(n, at, visit, assign);
+  const members = memberForwards(a);
+  walkMembers(n, at, visit, assign, members);
   const params = (n.params ?? []).flatMap((p) =>
     p.type === "ObjectPattern"
       ? (p.properties ?? []).flatMap((property) =>
@@ -279,7 +302,7 @@ export function expression(
   // Expr.code is the authored text with the triggers spliced in (`&title` lowered to its stand-in), and only a method shorthand's is printed; the model's `source` is the span's slice of the file.
   const data: DynamicAttr["value"] = a.value;
   const translated = convert
-    ? translate(n, data.span, { ...convert, source, at, atoms: atomForwards(a) })
+    ? translate(n, data.span, { ...convert, source, at, atoms: atomForwards(a), members })
     : {};
   const { demotion, privilegedCalls, askCalls, ...fields } = translated as { demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] };
   const result: Expression = {
@@ -298,19 +321,20 @@ export function expression(
   return result;
 }
 /** The members an assignment or update writes to or through (`&a`, `&a.b`,
- * `&a[0]`), from MX's marks only: the target's member-access root is marked. */
-function assignedMembers(target: SyntaxNode | undefined): SyntaxNode[] {
+ * `&a[0]`): the target's member-access root is one of `members`. */
+function assignedMembers(target: SyntaxNode | undefined, members: MemberForwards): MemberMark[] {
   if (!target) return [];
   let root = target;
-  while (!root.extra?.mxMember && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression") && root.object)
+  while (!members.has(root) && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression") && root.object)
     root = root.object;
-  if (root.extra?.mxMember) return [root];
+  const mark = members.get(root);
+  if (mark) return [mark];
   if (target.type === "ArrayPattern")
-    return (target.elements ?? []).flatMap((e) => assignedMembers(e ?? undefined));
+    return (target.elements ?? []).flatMap((e) => assignedMembers(e ?? undefined, members));
   if (target.type === "ObjectPattern")
-    return (target.properties ?? []).flatMap((p) => assignedMembers((p.value ?? p.argument) as SyntaxNode | undefined));
+    return (target.properties ?? []).flatMap((p) => assignedMembers((p.value ?? p.argument) as SyntaxNode | undefined, members));
   if (target.type === "RestElement" || target.type === "AssignmentPattern")
-    return assignedMembers(target.argument ?? target.left);
+    return assignedMembers(target.argument ?? target.left, members);
   return [];
 }
 function walkMembers(
@@ -318,27 +342,27 @@ function walkMembers(
   at: At,
   visit: (ref: MemberRef) => void,
   assign: (assignment: MemberAssignment) => void,
+  members: MemberForwards,
 ): void {
   if (!value || typeof value !== "object") return;
   if (Array.isArray(value)) {
-    value.forEach((v) => walkMembers(v, at, visit, assign));
+    value.forEach((v) => walkMembers(v, at, visit, assign, members));
     return;
   }
   const n = value as SyntaxNode;
-  const ref = memberNode(n, at);
+  const ref = memberNode(n, at, members);
   if (ref) visit(ref);
   const target =
     n.type === "AssignmentExpression" ? n.left
     : n.type === "UpdateExpression" ? n.argument
     : n.type === "ForInStatement" || n.type === "ForOfStatement" ? n.left
     : undefined;
-  for (const written of assignedMembers(target)) {
-    const mark = written.extra!.mxMember!;
+  for (const mark of assignedMembers(target, members)) {
     assign({
       ref: { name: mark.name, position: at(mark.span.sourceStart) },
       position: at(n.loc?.start.index ?? mark.span.sourceStart),
     });
   }
   for (const [key, child] of Object.entries(value))
-    if (key !== "extra" && key !== "loc") walkMembers(child, at, visit, assign);
+    if (key !== "extra" && key !== "loc") walkMembers(child, at, visit, assign, members);
 }

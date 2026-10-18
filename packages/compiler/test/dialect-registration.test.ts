@@ -84,7 +84,7 @@ test("the module is built JavaScript Node can load, and no TypeScript ships besi
     { stdout: "pipe", stderr: "pipe" },
   );
   expect(load.stderr.toString()).toBe("");
-  expect(JSON.parse(load.stdout.toString())).toEqual(["mesh", "Mesh", "none", "atom-value", ["Atom"]]);
+  expect(JSON.parse(load.stdout.toString())).toEqual(["mesh", "Mesh", "none", "atom-value", ["Atom", "Member"]]);
   // The tarball: the dialect build and the sources, but never the dialect's TypeScript entry.
   const pack = Bun.spawnSync(["bun", "pm", "pack", "--dry-run"], { cwd: cli, stdout: "pipe", stderr: "pipe" });
   const packed = (pack.stdout.toString() + pack.stderr.toString()).split("\n").filter((line) => line.startsWith("packed "));
