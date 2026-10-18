@@ -347,7 +347,7 @@ export function bindClaim(
                     entity: "work.Claim",
                     action: "acquire",
                     key: { id: $written.id },
-                    at: "src/domain/work/claim.mesh.mx:56:17",
+                    at: "src/domain/work/claim.mesh.mx:54:17",
                   },
                   $event,
                   $context,
@@ -468,7 +468,7 @@ export function bindClaim(
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not the current claim's; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 66, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 68, column: 9 },
               that: $expressions["renew.check.currentFence.that"],
               details: $expressions["renew.check.currentFence.details"],
             });
@@ -476,21 +476,21 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim was released or revoked; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 72, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 74, column: 9 },
               that: $expressions["renew.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "claimNotExpired",
               code: "claim.expired",
               message: "the lease has expired; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 77, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 79, column: 9 },
               that: $expressions["renew.check.claimNotExpired.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 82, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 84, column: 9 },
               that: $expressions["renew.check.versionMatches.that"],
               details: $expressions["renew.check.versionMatches.details"],
             });
@@ -500,7 +500,7 @@ export function bindClaim(
               const $value = await $expressions["renew.step.0.set.expiresAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &expiresAt (src/domain/work/claim.mesh.mx:90:22) produced no value, and expiresAt is required",
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:92:22) produced no value, and expiresAt is required",
                 );
               $changes.expiresAt = $record.expiresAt = $value;
             }
@@ -542,7 +542,7 @@ export function bindClaim(
                     entity: "work.Claim",
                     action: "renew",
                     key: { id: $written.id },
-                    at: "src/domain/work/claim.mesh.mx:94:17",
+                    at: "src/domain/work/claim.mesh.mx:96:17",
                   },
                   $event,
                   $context,
@@ -666,7 +666,7 @@ export function bindClaim(
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not the current claim's; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 101, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 103, column: 9 },
               that: $expressions["release.check.currentFence.that"],
               details: $expressions["release.check.currentFence.details"],
             });
@@ -674,21 +674,21 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim was released or revoked; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 107, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 109, column: 9 },
               that: $expressions["release.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "claimNotExpired",
               code: "claim.expired",
               message: "the lease has expired; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 112, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 114, column: 9 },
               that: $expressions["release.check.claimNotExpired.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 117, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 119, column: 9 },
               that: $expressions["release.check.versionMatches.that"],
               details: $expressions["release.check.versionMatches.details"],
             });
@@ -741,7 +741,7 @@ export function bindClaim(
                     entity: "work.Claim",
                     action: "release",
                     key: { id: $written.id },
-                    at: "src/domain/work/claim.mesh.mx:131:17",
+                    at: "src/domain/work/claim.mesh.mx:133:17",
                   },
                   $event,
                   $context,
@@ -862,14 +862,14 @@ export function bindClaim(
               code: "claim.active",
               message:
                 "the claim has ended or its lease has run out; there is no active claim to revoke",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 137, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 139, column: 9 },
               that: $expressions["revoke.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 142, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 144, column: 9 },
               that: $expressions["revoke.check.versionMatches.that"],
               details: $expressions["revoke.check.versionMatches.details"],
             });
@@ -922,7 +922,7 @@ export function bindClaim(
                     entity: "work.Claim",
                     action: "revoke",
                     key: { id: $written.id },
-                    at: "src/domain/work/claim.mesh.mx:156:17",
+                    at: "src/domain/work/claim.mesh.mx:158:17",
                   },
                   $event,
                   $context,
@@ -1011,7 +1011,7 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 161, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 163, column: 9 },
               that: $expressions["expire.check.claimActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -1062,7 +1062,7 @@ export function bindClaim(
                     entity: "work.Claim",
                     action: "expire",
                     key: { id: $written.id },
-                    at: "src/domain/work/claim.mesh.mx:174:17",
+                    at: "src/domain/work/claim.mesh.mx:176:17",
                   },
                   $event,
                   $context,
@@ -1151,7 +1151,7 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 180, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 182, column: 9 },
               that: $expressions["end.check.claimActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -1163,7 +1163,7 @@ export function bindClaim(
               const $value = await $expressions["end.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/work/claim.mesh.mx:187:18) produced no value, and state is required",
+                  "set &state (src/domain/work/claim.mesh.mx:189:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -1215,7 +1215,7 @@ export function bindClaim(
                       entity: "work.Claim",
                       action: "end",
                       key: { id: $written.id },
-                      at: "src/domain/work/claim.mesh.mx:191:19",
+                      at: "src/domain/work/claim.mesh.mx:193:19",
                     },
                     $event,
                     $context,
@@ -1235,7 +1235,7 @@ export function bindClaim(
                       entity: "work.Claim",
                       action: "end",
                       key: { id: $written.id },
-                      at: "src/domain/work/claim.mesh.mx:193:19",
+                      at: "src/domain/work/claim.mesh.mx:195:19",
                     },
                     $event,
                     $context,
@@ -1255,7 +1255,7 @@ export function bindClaim(
                       entity: "work.Claim",
                       action: "end",
                       key: { id: $written.id },
-                      at: "src/domain/work/claim.mesh.mx:195:19",
+                      at: "src/domain/work/claim.mesh.mx:197:19",
                     },
                     $event,
                     $context,

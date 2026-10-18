@@ -75,7 +75,7 @@ entity :Review table="reviews"
           const submission = await Submission.settle({ id: self.submissionId, outcome: :returned }, { ...context, system: true });
           await Task.touch({ id: submission.taskId }, { ...context, system: true });
         }
-        publish=({ self }) => new ReviewReturned({ reviewId: &id, submissionId: self.submissionId, reviewerId: self.reviewerId, reasons: &reasons ?? "" })
+        publish=({ self, input }) => new ReviewReturned({ reviewId: &id, submissionId: self.submissionId, reviewerId: self.reviewerId, reasons: input.reasons })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

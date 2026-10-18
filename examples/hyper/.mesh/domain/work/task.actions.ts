@@ -1519,7 +1519,7 @@ export function bindTask(
               const $value = await $expressions["complete.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:259:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:261:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -1650,35 +1650,35 @@ export function bindTask(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/task.mesh.mx", line: 287, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 289, column: 9 },
               that: $expressions["assign.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "assigneeActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/work/task.mesh.mx", line: 292, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 294, column: 9 },
               that: $expressions["assign.check.assigneeActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "assigneeRole",
               code: "assignment.assignee-role",
               message: "only members and owners can be assigned",
-              source: { file: "src/domain/work/task.mesh.mx", line: 297, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 299, column: 9 },
               that: $expressions["assign.check.assigneeRole.that"],
             });
             await $runCheck($issues, $checks, {
               label: "assignmentChanges",
               code: "assignment.unchanged",
               message: "assignee and review waiver are unchanged",
-              source: { file: "src/domain/work/task.mesh.mx", line: 302, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 304, column: 9 },
               that: $expressions["assign.check.assignmentChanges.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 307, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 309, column: 9 },
               that: $expressions["assign.check.versionMatches.that"],
               details: $expressions["assign.check.versionMatches.details"],
             });
@@ -1688,7 +1688,7 @@ export function bindTask(
               const $value = await $expressions["assign.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:315:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:317:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -1836,14 +1836,14 @@ export function bindTask(
               label: "assignmentCurrent",
               code: "assignment.current",
               message: "the task has no current assignment",
-              source: { file: "src/domain/work/task.mesh.mx", line: 331, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 333, column: 9 },
               that: $expressions["unassign.check.assignmentCurrent.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/work/task.mesh.mx", line: 336, column: 9 },
+              source: { file: "src/domain/work/task.mesh.mx", line: 338, column: 9 },
               that: $expressions["unassign.check.versionMatches.that"],
               details: $expressions["unassign.check.versionMatches.details"],
             });
@@ -1853,7 +1853,7 @@ export function bindTask(
               const $value = await $expressions["unassign.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/work/task.mesh.mx:344:20) produced no value, and version is required",
+                  "set &version (src/domain/work/task.mesh.mx:346:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }

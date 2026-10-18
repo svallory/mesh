@@ -26,7 +26,7 @@ entity :Workspace table="workspaces"
         publish=({ input, actor }) => new WorkspaceCreated({ name: &name, location: &location, firstOwnerId: input.firstOwner ?? actor.id })
     update :rename
       input
-        &name
+        string :name min=1
         integer :expectedVersion nullable
       validate
         check :workspaceActive [
@@ -42,8 +42,9 @@ entity :Workspace table="workspaces"
         ]
       do
         set
+          &name=({ input }) => input.name
           &version=() => &version + 1
-        publish=({ before }) => new WorkspaceRenamed({ oldName: before.name, newName: &name ?? "" })
+        publish=({ before, input }) => new WorkspaceRenamed({ oldName: before.name, newName: input.name })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

@@ -339,15 +339,16 @@ export function bindWorkspace(
               details: $expressions["rename.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
-            // the input: the member inputs the caller sent, applied now that the checks have passed
-            if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
-              $changes.name = $record.name = parsed.name;
             // do: the steps run in written order, each seeing the record as the ones before it left it
+            {
+              const $value = await $expressions["rename.step.0.set.name"]($s);
+              $changes.name = $record.name = $value === undefined ? null : $value;
+            }
             {
               const $value = await $expressions["rename.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/workspace.mesh.mx:45:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/workspace.mesh.mx:46:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -391,7 +392,7 @@ export function bindWorkspace(
                     entity: "identity.Workspace",
                     action: "rename",
                     key: { id: $written.id },
-                    at: "src/domain/identity/workspace.mesh.mx:46:17",
+                    at: "src/domain/identity/workspace.mesh.mx:47:17",
                   },
                   $event,
                   $context,

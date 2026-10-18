@@ -256,6 +256,8 @@ entity :Task table="tasks"
       do
         set
           &state=:done
+          // Review :accept touched the Task before it called this complete (context.completion), so the command bumps
+          // the version once and review.accepted and task.completed carry the same one.
           &version=({ context }) => context.completion != null ? &version : &version + 1
         run [after=:write] ({ self, before, input, actor, context }) {
           let submission: string | null = null;

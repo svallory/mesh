@@ -85,7 +85,7 @@ export type CreateWorkspaceInputShape = Assert<
 
 export const renameWorkspaceInputSchema = z.strictObject({
   id: z.uuid(),
-  name: z.string().nullable().optional(),
+  name: z.string().min(1),
   expectedVersion: z.int().nullable().optional(),
 }) satisfies z.ZodType<RenameWorkspaceInput>;
 

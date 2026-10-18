@@ -84,24 +84,27 @@ export const $expressions = {
       actualVersion: $self.version,
     }))($s);
   },
-  // set &version, translated (src/domain/identity/workspace.mesh.mx:45:20)
+  // set &name, translated (src/domain/identity/workspace.mesh.mx:45:17)
+  "rename.step.0.set.name": (
+    $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
+  ) => $s.input?.name,
+  // set &version, translated (src/domain/identity/workspace.mesh.mx:46:20)
   "rename.step.0.set.version": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:46:17)
+  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:47:17)
   "rename.step.1.publish": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
-    const $self = $s.self;
     const WorkspaceRenamed: typeof $identity$WorkspaceRenamed$class =
       $identity$WorkspaceRenamed$class;
-    return (({ before }) =>
-      new WorkspaceRenamed({ oldName: before.name, newName: $self.name ?? "" }))($s);
+    return (({ before, input }) =>
+      new WorkspaceRenamed({ oldName: before.name, newName: input.name }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:49:20)
+  // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:50:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Workspace$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:51:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:52:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Workspace$CheckScope<
       $SharedInput<
@@ -111,7 +114,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:53:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:54:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $identity$Workspace$CheckScope<
       $SharedInput<

@@ -193,12 +193,12 @@ export const $expressions = {
   ): $DomainEvent | $Promise<$DomainEvent> => {
     const $self = $s.self;
     const ReviewReturned: typeof $work$ReviewReturned$class = $work$ReviewReturned$class;
-    return (({ self }) =>
+    return (({ self, input }) =>
       new ReviewReturned({
         reviewId: $self.id,
         submissionId: self.submissionId,
         reviewerId: self.reviewerId,
-        reasons: $self.reasons ?? "",
+        reasons: input.reasons,
       }))($s);
   },
   // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:81:20)

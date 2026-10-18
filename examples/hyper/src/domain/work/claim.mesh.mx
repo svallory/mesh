@@ -50,11 +50,13 @@ entity :Claim table="claims"
           &expiresAt=({ context }) => leaseEnd(%.now, context.leaseMs)
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
-          const lapsed = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId }, state: { eq: :active }, expiresAt: { lte: %.now } } });
-          for (const claim of lapsed) await Claim.end({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
         }
         publish=({ self }) => new ClaimAcquired({ claimId: &id, taskId: self.taskId, holderId: self.holderId, fence: &fence, expiresAt: structuredClone(&expiresAt) })
+        // The lapsed claims end after claim.acquired is published, so the command's first event is its own and its
+        // cause is the command (PROTOCOL.md §4.2); each claim.expired that follows names the lease-expiry rule.
         run [after=:write] ({ self, context }) {
+          const lapsed = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId }, state: { eq: :active }, expiresAt: { lte: %.now } } });
+          for (const claim of lapsed) await Claim.end({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
           const open = await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
           if (open.length === 0) await Assignment.start({ task: self.taskId, assignee: self.holderId, reviewWaived: false }, { ...context, system: true });
         }
