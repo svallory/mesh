@@ -7,7 +7,8 @@ import type { BindOptions } from "./lifecycle.ts";
 import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import { publishedIn, readEventsFrom, type EventClass, type EventRecord, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { causedIn, publishedIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
 /**
  * Entity values and bindings. An action is called on its entity, `Task.complete(input,
@@ -130,9 +131,22 @@ export interface Binding {
    * when `fn` catches it.
    */
   transaction<T>(fn: () => Promise<T>): Promise<T>;
+  /**
+   * One round of delivery, for tests (spec, Events and commands, "Ways to run"): claims, registers the handlers, feeds
+   * every handler and subscription as far as the committed rows go, retries inline, runs the deletion pass and releases
+   * the claim. Rejects with `HandlerStoppedError` naming every handler that stopped in the round, with
+   * `MESH_DATABASE_BUSY`, or with `MESH_DELIVERER_TAKEN` when another binding or process delivers or another round of
+   * this binding is running. A `FrameworkError` on a binding with no bus or one that `startDelivery()` started.
+   */
+  deliver(): Promise<void>;
+  /**
+   * Claim, register the handlers and start the bus, as `connect()` does, for a process that binds a layer of its own;
+   * `await delivery.stop()` stops delivery and releases the claim, before the application closes the layer.
+   */
+  startDelivery(): Promise<Delivery>;
 }
 
-/** What a binding holds behind its two methods. */
+/** What a binding holds behind its methods. */
 interface BindingState {
   binding: Binding;
   readonly layer: DataLayer;
@@ -147,6 +161,8 @@ interface BindingState {
   readonly idle: (() => void)[];
   /** True once `releaseBinding` let go of it (`disconnect()`), until `connectBinding` takes it again. */
   released: boolean;
+  /** The project's async frame. */
+  readonly frame: AsyncFrame;
 }
 
 /**
@@ -186,6 +202,8 @@ interface CallChain {
 /** What the calls of one chain share: the action at its root, and the error once the chain went too deep. */
 interface CallRoot {
   readonly label: string;
+  /** The id of the event whose handler began the chain: what every event the chain publishes carries as `causedBy`. */
+  readonly causedBy?: string;
   /**
    * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the chain: every call made under the root
    * throws it at entry, so a helper that catches it cannot keep a cycle going. Inside a transaction it also fails that
@@ -457,6 +475,9 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
     },
     within<T>(tx: DataOperations, clock: Clock, label: string, fn: () => Promise<T>): Promise<T> {
       const store = here();
+      // An action run for an event's handler: its publishes carry that event's id as `causedBy`.
+      const cause = store.calls?.root.causedBy;
+      if (cause !== undefined) causedIn(tx, cause);
       return frame.run(kept({ state, scope: store.scope, tx, clock, label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
     },
     plain<T>(fn: () => Promise<T>): Promise<T> {
@@ -482,7 +503,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
 export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding {
   const entities: BindingState["entities"] = new Map();
   const events: BindingState["events"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, inFlight: 0, idle: [], released: false };
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, inFlight: 0, idle: [], released: false, frame };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -547,6 +568,12 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
         }
       });
     },
+    deliver(): Promise<void> {
+      return deliverRound(binding);
+    },
+    startDelivery(): Promise<Delivery> {
+      return startDelivery(binding);
+    },
   });
   state.binding = binding;
   states.set(binding, state);
@@ -583,6 +610,40 @@ export async function readEvents(frame: AsyncFrame, connected: Binding | undefin
   const state = store?.state ?? (connected === undefined ? undefined : stateOf(connected));
   if (!state) throw notConnected("readEvents");
   return counted(state, () => readEventsFrom(state.layer, state.events, query));
+}
+
+/** What the deliverer needs of a binding: its layer, its event classes by FQN, its events configuration and its async frame. */
+export interface BindingParts {
+  readonly layer: DataLayer;
+  readonly events: ReadonlyMap<string, EventClass>;
+  readonly config: EventsConfig | undefined;
+  readonly frame: AsyncFrame;
+}
+
+/** The parts of `binding` the deliverer reads (`deliverer.ts`); a `FrameworkError` for a value `bind()` did not make. */
+export function bindingParts(binding: Binding): BindingParts {
+  const state = stateOf(binding);
+  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame };
+}
+
+/**
+ * Run `fn`, a handler's body, on `binding` for the event `causedBy`: in a transaction of the binding (a `process`
+ * handler) or with the binding in scope and no transaction (a `listen` handler). Every action it calls is nested in one
+ * chain whose root is the handler (`label`), and every event those actions publish carries `causedBy`.
+ */
+export async function handlerScope<T>(binding: Binding, label: string, causedBy: string, transactional: boolean, fn: () => Promise<T>): Promise<T> {
+  const state = stateOf(binding);
+  const calls: CallChain = { depth: 0, root: { label, causedBy }, settled: false };
+  try {
+    return await counted(state, () => scoped(state.frame, { state, scope: live(state, state.frame), calls }, () => transactional ? binding.transaction(fn) : fn()));
+  } finally {
+    calls.settled = true;
+  }
+}
+
+/** The transaction a call made here runs in, on `binding`'s layer: true when one is running (a call would join it). */
+export function insideTransaction(binding: Binding): boolean {
+  return stateOf(binding).layer.refuseIfFailed();
 }
 
 function stateOf(binding: Binding): BindingState {

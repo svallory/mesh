@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
-  OUTBOX_STATE_TABLE, OUTBOX_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
+  OUTBOX_STATE_TABLE, OUTBOX_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
 } from "@meshfw/runtime";
 import type { DataLayer, DataOperations, Declaration, EventsConfig, OutboxRow } from "@meshfw/runtime";
 
@@ -339,13 +339,13 @@ describe("published() and readEvents through a binding", () => {
 });
 
 describe("core's tables", () => {
-  test("the outbox and its state table, declared once, needed only when the project declares an event", () => {
-    expect(CORE_TABLES.map((table) => table.name)).toEqual([OUTBOX_TABLE, OUTBOX_STATE_TABLE]);
-    expect([...CORE_TABLE_NAMES]).toEqual(["mesh_outbox", "mesh_outbox_state"]);
+  test("the outbox, its state table and the two progress tables, declared once, needed only when the project declares an event", () => {
+    expect(CORE_TABLES.map((table) => table.name)).toEqual([OUTBOX_TABLE, OUTBOX_STATE_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE]);
+    expect([...CORE_TABLE_NAMES]).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
     expect(coreTablesFor({})).toEqual([]);
     expect(coreTablesFor({ events: [] })).toEqual([]);
-    expect(coreTablesFor({ events: [{}] }).map((table) => table.name)).toEqual(["mesh_outbox", "mesh_outbox_state"]);
-    const [outbox, state] = CORE_TABLES;
+    expect(coreTablesFor({ events: [{}] }).map((table) => table.name)).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+    const [outbox, state, handlers, subscriptions] = CORE_TABLES;
     expect(outbox!.columns.map(({ name, type, nullable, primaryKey, neverReuse }) => [name, type, nullable, primaryKey, neverReuse])).toEqual([
       ["position", "integer", false, true, true],
       ["id", "uuid", false, false, false],
@@ -358,7 +358,23 @@ describe("core's tables", () => {
       ["occurred_at", "timestamp", false, false, false],
       ["payload", "json", false, false, false],
     ]);
-    expect(state!.columns.map(({ name, primaryKey, neverReuse }) => [name, primaryKey, neverReuse])).toEqual([["id", true, false], ["deleted_through", false, false]]);
+    expect(state!.columns.map(({ name, type, nullable, primaryKey }) => [name, type, nullable, primaryKey])).toEqual([
+      ["id", "integer", false, true],
+      ["deleted_through", "integer", false, false],
+      ["run_id", "uuid", true, false],
+      ["generation", "integer", true, false],
+      ["renewed_at", "timestamp", true, false],
+      ["host", "string", true, false],
+      ["pid", "integer", true, false],
+      ["started_at", "timestamp", true, false],
+    ]);
+    expect(handlers!.columns.map(({ name, type, primaryKey }) => [name, type, primaryKey])).toEqual([
+      ["name", "string", true], ["kind", "string", false], ["position", "integer", false], ["events", "json", false], ["generation", "integer", false],
+    ]);
+    expect(subscriptions!.columns.map(({ name, type, primaryKey }) => [name, type, primaryKey])).toEqual([
+      ["name", "string", true], ["position", "integer", false], ["filter", "json", false], ["seen_at", "timestamp", false], ["open", "integer", false],
+      ["generation", "integer", false],
+    ]);
     expect(Object.isFrozen(CORE_TABLES) && Object.isFrozen(outbox) && Object.isFrozen(outbox!.columns) && Object.isFrozen(outbox!.columns[0])).toBe(true);
   });
 });

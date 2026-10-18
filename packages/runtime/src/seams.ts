@@ -2,7 +2,7 @@ import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import type { ActionContext } from "./index.ts";
 import { FrameworkError } from "./errors.ts";
 import { cloneValue } from "./load.ts";
-import { forgetPublished } from "./events.ts";
+import { forgetPublished, notifyPublished, publishedIn } from "./events.ts";
 
 /**
  * The three lifecycle seams (M6, ADR-0075): code the application runs before an action's transaction, after each row an
@@ -129,12 +129,15 @@ function readOnly(value: unknown): unknown {
  */
 export async function outermost<T>(layer: DataLayer, seams: Seams | undefined, body: (tx: DataOperations) => Promise<T>): Promise<T> {
   let taken: Change[] | undefined;
+  let publishedAny = false;
   const result = await layer.transaction(async (tx) => {
     changesOf.delete(tx);
     forgetPublished(tx);
     try { return await body(tx); }
-    finally { taken = changesOf.get(tx); changesOf.delete(tx); forgetPublished(tx); }
+    finally { taken = changesOf.get(tx); changesOf.delete(tx); publishedAny = publishedIn(tx).length > 0; forgetPublished(tx); }
   });
+  // The bus's wake-up (`BusCore.onPublished`): after the commit, never for a rollback.
+  if (publishedAny) notifyPublished(layer);
   await report(taken, seams);
   return result;
 }
