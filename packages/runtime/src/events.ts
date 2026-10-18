@@ -1,6 +1,8 @@
 import type { DataLayer, DataOperations, Key, OutboxAppend, OutboxPage, OutboxRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import { CursorAheadError, EventUndeclaredError, EventsDeletedError, FrameworkError } from "./errors.ts";
+import type { BusCapability, EventBus, Handler } from "./bus.ts";
+import type { Capability } from "./capabilities.ts";
+import { CursorAheadError, EventUndeclaredError, EventsConfigError, EventsDeletedError, FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
 import type { ActionContext, EventMetadata } from "./index.ts";
 import { uuidv7 } from "./uuid.ts";
@@ -8,7 +10,7 @@ import { uuidv7 } from "./uuid.ts";
 /**
  * Events at run time (M6, spec "Events and commands"): the `publish` step's write to the outbox, a transaction's own
  * events (`published()`), core's one read of the outbox (`rows`) and `readEvents` over it. Delivery, handlers and the
- * deletion pass that calls `deleteOutboxThrough` come with the event bus.
+ * deletion pass are in `deliverer.ts`; the bus contract is in `bus.ts`.
  */
 
 /**
@@ -52,16 +54,24 @@ export interface MetadataArguments<E extends object = object> {
  */
 export type MetadataFunction<E extends object = object> = (args: MetadataArguments<E>) => EventMetadata | Promise<EventMetadata>;
 
-/** The events module (`src/events.ts`), which `events.load` loads at run time and the build never imports. Handlers come with the event bus. */
+/** The events module (`src/events.ts`), which `events.load` loads at run time and the build never imports. */
 export interface EventsModule {
+  /** The handlers, by kind, each under its name: the name is unique across both kinds and keys its progress row. */
+  handlers?: {
+    process?: Record<string, Handler<never>>;
+    listen?: Record<string, Handler<never>>;
+  };
   metadata?: MetadataFunction<never>;
+  /** The context handlers run with; default `{ system: true }`. It can read the original person from the event's `metadata`. */
+  context?: (event: EventRecord) => ActionContext;
 }
 
 /**
- * The `events` key of `mesh.config.ts`, and the `events` option of `bind(layer, { events })`. `bus` and `requires` come
- * with the event bus.
+ * The `events` key of `mesh.config.ts`, and the `events` option of `bind(layer, { events })`.
  */
 export interface EventsConfig {
+  /** The event bus (`localBus()`); a project that declares an event must set it, and there is no default. */
+  bus?: EventBus;
   /** Loads the events module at run time: `() => import("./src/events.ts")`. `connect()` calls it; under `bind`, the binding's first `publish` does. */
   load?: () => Promise<EventsModule>;
   /**
@@ -70,6 +80,8 @@ export interface EventsConfig {
    * delivery.
    */
   keep?: "until-delivered" | "all";
+  /** Capabilities the project needs from the bus and the data adapter: checked by the build, ignored by `bind`. */
+  requires?: readonly (BusCapability | Capability)[];
 }
 
 /** The two values of `events.keep`. */
@@ -80,15 +92,59 @@ export type EventClass = (new (fields: never) => object) & { readonly [DECLARATI
 
 /** The events each outermost transaction has published so far, in order, by its data operations. */
 const publishedOf = new WeakMap<DataOperations, EventRecord[]>();
+/** The id of the event whose handler a transaction runs for, by its data operations: what its publishes carry as `causedBy`. */
+const causes = new WeakMap<DataOperations, string>();
 
-/** Forget what `tx` published: called by `outermost` when the transaction opens and once it has settled. */
+/** Forget what `tx` published, and the event it ran for: called by `outermost` when the transaction opens and once it has settled. */
 export function forgetPublished(tx: DataOperations): void {
   publishedOf.delete(tx);
+  causes.delete(tx);
+}
+
+/** Record that `tx` runs for the handler of the event `eventId`, unless it already runs for one. */
+export function causedIn(tx: DataOperations, eventId: string): void {
+  if (!causes.has(tx)) causes.set(tx, eventId);
 }
 
 /** A frozen copy of the events published so far in the transaction whose operations are `tx`. */
 export function publishedIn(tx: DataOperations): readonly EventRecord[] {
   return Object.freeze([...(publishedOf.get(tx) ?? [])]);
+}
+
+/**
+ * One value per database: by `layer.database` when the layer names its database, else by the layer object. Core keeps
+ * the deliverer's process-side state, the subscription registry and the publish wake-ups this way.
+ */
+export class PerDatabase<T> {
+  readonly #named = new Map<string, T>();
+  readonly #objects = new WeakMap<DataLayer, T>();
+  constructor(private readonly make: (layer: DataLayer) => T) {}
+  get(layer: DataLayer): T {
+    const name = typeof layer.database === "string" && layer.database !== "" ? layer.database : undefined;
+    let value = name === undefined ? this.#objects.get(layer) : this.#named.get(name);
+    if (value === undefined) {
+      value = this.make(layer);
+      if (name === undefined) this.#objects.set(layer, value); else this.#named.set(name, value);
+    }
+    return value;
+  }
+}
+
+/** The listeners `BusCore.onPublished` registered, per database. */
+const publishListeners = new PerDatabase<Set<() => void>>(() => new Set());
+
+/** Call `listener` after each outermost commit in this process that published on `layer`'s database. Returns the unsubscribe. */
+export function onPublished(layer: DataLayer, listener: () => void): () => void {
+  const listeners = publishListeners.get(layer);
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+/** Called by `outermost` after a commit that published: wakes every listener of the database. A listener that throws is reported, never the commit's failure. */
+export function notifyPublished(layer: DataLayer): void {
+  for (const listener of [...publishListeners.get(layer)]) {
+    try { listener(); } catch (error) { console.error("A bus's onPublished listener threw:", error); }
+  }
 }
 
 /** The loaded events module, by the configuration object that loads it: loaded once per configuration. */
@@ -119,6 +175,23 @@ export function loadEvents(config: EventsConfig | undefined): Promise<EventsModu
       const metadata = (loaded as { metadata?: unknown }).metadata;
       if (metadata !== undefined && typeof metadata !== "function")
         throw new FrameworkError(`The events module exports metadata as ${describe(metadata)}: it must be a function ({ event, context }) => ({ ... })`);
+      const context = (loaded as { context?: unknown }).context;
+      if (context !== undefined && typeof context !== "function")
+        throw new FrameworkError(`The events module exports context as ${describe(context)}: it must be a function (event) => ({ ... }), the context handlers run with`);
+      const handlers = (loaded as { handlers?: unknown }).handlers;
+      if (handlers !== undefined) {
+        if (typeof handlers !== "object" || handlers === null || Array.isArray(handlers))
+          throw new FrameworkError(`The events module exports handlers as ${describe(handlers)}: it must be an object { process, listen }, each a record of handlers by name`);
+        for (const [kind, group] of Object.entries(handlers)) {
+          if (kind !== "process" && kind !== "listen")
+            throw new FrameworkError(`The events module's handlers has the kind ${JSON.stringify(kind)}: the kinds are process and listen`);
+          if (group !== undefined && (typeof group !== "object" || group === null || Array.isArray(group)))
+            throw new FrameworkError(`The events module's handlers.${kind} is ${describe(group)}: it must be a record of handlers by name`);
+        }
+        const count = Object.values(handlers as Record<string, object | undefined>).reduce((sum, group) => sum + Object.keys(group ?? {}).length, 0);
+        if (count > 0 && config.bus === undefined)
+          throw new EventsConfigError("The events module exports handlers, and mesh.config.ts configures no events.bus: nothing would deliver to them. Set events: { bus: localBus() }, or remove the handlers");
+      }
       return loaded as EventsModule;
     })();
     modules.set(config, loading);
@@ -162,9 +235,10 @@ export async function publishEvent(
     payload: value as object,
   });
   const metadata = await metadataOf(events, event, context, target);
-  const row: OutboxAppend = { ...event, causedBy: null, metadata, payload: jsonCopy(value, `the event ${declaration.fqn}`) };
+  const causedBy = causes.get(tx) ?? null;
+  const row: OutboxAppend = { ...event, causedBy, metadata, payload: jsonCopy(value, `the event ${declaration.fqn}`) };
   const position = await tx.appendEvent(row);
-  const record: EventRecord = Object.freeze({ ...event, position, causedBy: null, metadata: metadata as EventMetadata });
+  const record: EventRecord = Object.freeze({ ...event, position, causedBy, metadata: metadata as EventMetadata });
   const list = publishedOf.get(tx);
   if (list) list.push(record); else publishedOf.set(tx, [record]);
   return record;
@@ -207,7 +281,7 @@ function deepFrozen(value: unknown): unknown {
 }
 
 /** A value, for a message. */
-function describe(value: unknown): string {
+export function describe(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
   if (Array.isArray(value)) return "an array";
@@ -294,14 +368,14 @@ export async function readEventsFrom(layer: DataLayer, classes: ReadonlyMap<stri
 }
 
 /** True when two keys hold the same fields with the same values. */
-function sameKey(stored: Key, wanted: Key): boolean {
+export function sameKey(stored: Key, wanted: Key): boolean {
   const a = Object.keys(stored);
   const b = Object.keys(wanted);
   return a.length === b.length && b.every((field) => Object.hasOwn(stored, field) && JSON.stringify(stored[field]) === JSON.stringify(wanted[field]));
 }
 
 /** A stored row as a reader gets it: its payload rebuilt into an instance of its class, its dates revived first. */
-function recordOf(row: OutboxRow, eventClass: EventClass): EventRecord {
+export function recordOf(row: OutboxRow, eventClass: EventClass): EventRecord {
   const declaration = eventClass[DECLARATION];
   const fields = { ...(row.payload as Record<string, unknown>) };
   for (const field of declaration.dates ?? [])

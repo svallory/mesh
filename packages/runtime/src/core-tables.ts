@@ -36,8 +36,16 @@ export interface CoreTable {
 
 /** One row per published event, never updated; `position` is its place in the outbox's order. */
 export const OUTBOX_TABLE = "mesh_outbox";
-/** One row, `id` 1, written by the first delete: the highest deleted position (`deleted_through`). */
+/**
+ * One row, `id` 1, written by the first delete or the first claim: the highest deleted position (`deleted_through`) and
+ * the deliverer claim (run id, generation, `renewed_at` by the database's clock, and host, pid and start time for
+ * messages).
+ */
 export const OUTBOX_STATE_TABLE = "mesh_outbox_state";
+/** One row per handler: its kind, its low-water position, its sorted event list and the generation that registered it. */
+export const HANDLER_PROGRESS_TABLE = "mesh_handler_progress";
+/** One row per named subscription: its acknowledged position, filter, `seen_at`, `open` flag and generation. */
+export const SUBSCRIPTION_PROGRESS_TABLE = "mesh_subscription_progress";
 
 const column = (name: string, type: CoreColumnType, options: Partial<Omit<CoreColumn, "name" | "type">> = {}): CoreColumn =>
   Object.freeze({ name, type, nullable: false, primaryKey: false, neverReuse: false, ...options });
@@ -60,6 +68,27 @@ export const CORE_TABLES: readonly CoreTable[] = Object.freeze([
   table(OUTBOX_STATE_TABLE, [
     column("id", "integer", { primaryKey: true }),
     column("deleted_through", "integer"),
+    column("run_id", "uuid", { nullable: true }),
+    column("generation", "integer", { nullable: true }),
+    column("renewed_at", "timestamp", { nullable: true }),
+    column("host", "string", { nullable: true }),
+    column("pid", "integer", { nullable: true }),
+    column("started_at", "timestamp", { nullable: true }),
+  ]),
+  table(HANDLER_PROGRESS_TABLE, [
+    column("name", "string", { primaryKey: true }),
+    column("kind", "string"),
+    column("position", "integer"),
+    column("events", "json"),
+    column("generation", "integer"),
+  ]),
+  table(SUBSCRIPTION_PROGRESS_TABLE, [
+    column("name", "string", { primaryKey: true }),
+    column("position", "integer"),
+    column("filter", "json"),
+    column("seen_at", "timestamp"),
+    column("open", "integer"),
+    column("generation", "integer"),
   ]),
 ]);
 
