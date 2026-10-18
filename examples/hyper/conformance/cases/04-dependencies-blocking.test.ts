@@ -5,10 +5,24 @@
  * implementation/acceptance-cases.md#heart case 8 (concurrent dependency cycle).
  */
 import { expect, test } from "bun:test";
-import { E, expectRejected, suite, useWorld } from "./_setup.ts";
+import { E, expectRejected, suite, types, useWorld } from "./_setup.ts";
 
 suite("04.1 dependency commands [domain/core/dependency.md#commands]", () => {
   const w = useWorld();
+
+  test("dependency.add blocks the dependent with a reason naming the prerequisite; the event carries both IDs", async () => {
+    const o = w().owner;
+    const research = await o.create("Research visa requirements");
+    const book = await o.create("Book flights");
+    const r = await o.do("dependency.add", { dependentId: book.id, prerequisiteId: research.id });
+    expect(types(r.events)).toEqual(["dependency.added"]);
+    expect(r.events[0]).toMatchObject({ taskId: book.id, record: { type: "task", id: book.id, version: 2 } });
+    expect(r.events[0]!.payload).toEqual({ dependentId: book.id, prerequisiteId: research.id });
+    expect(r.task.dependsOn).toEqual([research.id]);
+    expect(r.task.derived.state).toBe("blocked");
+    expect(r.task.derived.reasons).toEqual([{ kind: "dependency", taskId: research.id, message: expect.any(String) }]);
+    expect(r.task.derived.reasons[0]!.message.length).toBeGreaterThan(0);
+  });
 
   test("rejects a self-dependency, a duplicate, an unknown Task, removing a missing one, and a cycle", async () => {
     const o = w().owner;
@@ -22,6 +36,16 @@ suite("04.1 dependency commands [domain/core/dependency.md#commands]", () => {
     await expectRejected(o.do("dependency.remove", { dependentId: c.id, prerequisiteId: a.id }), E.ruleViolation, "dependency.exists");
     await o.do("dependency.add", { dependentId: c.id, prerequisiteId: b.id });
     await expectRejected(o.do("dependency.add", { dependentId: a.id, prerequisiteId: c.id }), E.ruleViolation, "dependency.no-cycle");
+  });
+
+  test("dependency.remove unblocks and records the reason", async () => {
+    const o = w().owner;
+    const a = await o.create("pre");
+    const b = await o.create("dep");
+    await o.do("dependency.add", { dependentId: b.id, prerequisiteId: a.id });
+    const r = await o.do("dependency.remove", { dependentId: b.id, prerequisiteId: a.id, reason: "not really needed" });
+    expect(r.events[0]!.payload).toEqual({ dependentId: b.id, prerequisiteId: a.id, reason: "not really needed" });
+    expect(r.task.derived).toEqual({ state: "ready", reasons: [] });
   });
 
   test("a guest cannot add dependencies", async () => {
@@ -86,6 +110,23 @@ suite("04.2 readiness and blocked reasons [domain/core/dependency.md#rules, doma
     await o.do("dependency.remove", { dependentId: d.id, prerequisiteId: p2.id, reason: "replaced" });
     t = (await o.task(d.id)).task;
     expect(t.derived).toEqual({ state: "ready", reasons: [] });
+  });
+
+  test("reopening a prerequisite blocks an unstarted dependent again; a claimed dependent stays claimed but shows the reason", async () => {
+    const o = w().owner;
+    const pre = await o.create("pre");
+    const idle = await o.create("idle");
+    const busy = await o.create("busy", { intent: "x" });
+    await o.do("dependency.add", { dependentId: idle.id, prerequisiteId: pre.id });
+    await o.do("dependency.add", { dependentId: busy.id, prerequisiteId: pre.id });
+    await o.complete({ taskId: pre.id });
+    await o.do("claim.acquire", { taskId: busy.id });
+    const reopened = await o.do("task.reopen", { taskId: pre.id, reason: "regression" });
+    expect(reopened.events.every((e) => e.taskId === pre.id)).toBe(true);
+    expect((await o.task(idle.id)).task.derived.state).toBe("blocked");
+    const b = (await o.task(busy.id)).task;
+    expect(b.derived.state).toBe("claimed");
+    expect(b.derived.reasons.map((r) => r.taskId)).toEqual([pre.id]);
   });
 
   test("a prerequisite reopened after the claim: review.accept succeeds and returns it as a warning", async () => {

@@ -4,10 +4,33 @@
  * implementation/acceptance-cases.md#heart cases 6 (no inheritance), 7 (parent rule), 8 (cycles).
  */
 import { expect, test } from "bun:test";
-import { E, expectRejected, suite, useWorld } from "./_setup.ts";
+import { E, expectRejected, suite, types, useWorld } from "./_setup.ts";
 
 suite("03.1 create, update, cancel, reopen [domain/core/task.md#commands]", () => {
   const w = useWorld();
+
+  test("task.create: version 1, open, ready, creator recorded, top-level reviewer is the creator", async () => {
+    const m = await w().add("maker");
+    const r = await m.do("task.create", { title: "Write intro", intent: "a paragraph", priority: 3 });
+    expect(r.task).toMatchObject({
+      title: "Write intro",
+      intent: "a paragraph",
+      state: "open",
+      parentId: null,
+      priority: 3,
+      creatorId: m.id,
+      version: 1,
+      derived: { state: "ready", reasons: [] },
+      dependsOn: [],
+      assignment: null,
+      activeClaim: null,
+      pendingSubmission: null,
+      reviewer: { collaboratorId: m.id, rule: "task-creator" },
+    });
+    expect(types(r.events)).toEqual(["task.created"]);
+    expect(r.events[0]).toMatchObject({ taskId: r.task.id, actor: m.id, record: { type: "task", id: r.task.id, version: 1 } });
+    expect(r.events[0]!.payload).toEqual({ title: "Write intro", intent: "a paragraph", parentId: null, priority: 3, creatorId: m.id });
+  });
 
   test("task.create with a parent: the parent must exist (not_found) and be open (task.parent-open)", async () => {
     const o = w().owner;
@@ -15,6 +38,14 @@ suite("03.1 create, update, cancel, reopen [domain/core/task.md#commands]", () =
     const p = await o.create("Closed parent");
     await o.do("task.cancel", { taskId: p.id, reason: "not needed" });
     await expectRejected(o.do("task.create", { title: "child", parentId: p.id }), E.ruleViolation, "task.parent-open");
+  });
+
+  test("task.update records old and new values and bumps the version", async () => {
+    const o = w().owner;
+    const t = await o.create("Draft", { intent: null });
+    const r = await o.do("task.update", { taskId: t.id, title: "Final", intent: "clear goal" });
+    expect(r.task).toMatchObject({ title: "Final", intent: "clear goal", version: 2 });
+    expect(r.events[0]!.payload).toEqual({ changes: { title: { old: "Draft", new: "Final" }, intent: { old: null, new: "clear goal" } } });
   });
 
   test("no-ops are rejected: task.update with nothing that differs (task.unchanged), task.assign to the same assignee (assignment.unchanged)", async () => {
@@ -28,6 +59,20 @@ suite("03.1 create, update, cancel, reopen [domain/core/task.md#commands]", () =
     const r = await o.do("task.assign", { taskId: t.id, assigneeId: a.id, waiveReview: true });
     expect(r.assignment.reviewWaived).toBe(true);
     expect((await o.task(t.id)).task.version).toBe(3);
+  });
+
+  test("task.cancel needs a reason; a canceled Task cannot be updated (task.open); task.reopen returns it to open", async () => {
+    const o = w().owner;
+    const t = await o.create("Maybe");
+    const c = await o.do("task.cancel", { taskId: t.id, reason: "descoped" });
+    expect(c.task).toMatchObject({ state: "canceled", derived: { state: "canceled" } });
+    expect(c.events[0]!.payload).toEqual({ reason: "descoped" });
+    await expectRejected(o.do("task.update", { taskId: t.id, title: "x" }), E.ruleViolation, "task.open");
+    await expectRejected(o.do("task.cancel", { taskId: t.id, reason: "again" }), E.ruleViolation, "task.open");
+    const r = await o.do("task.reopen", { taskId: t.id, reason: "back in scope" });
+    expect(r.task.state).toBe("open");
+    expect(r.events[0]!.payload).toEqual({ reason: "back in scope", fromState: "canceled" });
+    await expectRejected(o.do("task.reopen", { taskId: t.id, reason: "twice" }), E.ruleViolation, "task.settled");
   });
 
   test("one phase, several failures: a no-op update of a canceled Task may report task.open, task.unchanged, or both (content)", async () => {
@@ -70,6 +115,20 @@ suite("03.1 create, update, cancel, reopen [domain/core/task.md#commands]", () =
 
 suite("03.2 hierarchy [domain/core/task.md#rules]", () => {
   const w = useWorld();
+
+  test("task.move changes the parent (task.moved); moving under itself or a descendant is rejected (task.no-cycle)", async () => {
+    const o = w().owner;
+    const a = await o.create("A");
+    const b = await o.create("B", { parentId: a.id });
+    const c = await o.create("C", { parentId: b.id });
+    await expectRejected(o.do("task.move", { taskId: a.id, parentId: c.id }), E.ruleViolation, "task.no-cycle");
+    await expectRejected(o.do("task.move", { taskId: a.id, parentId: a.id }), E.ruleViolation, "task.no-cycle");
+    const r = await o.do("task.move", { taskId: c.id, parentId: a.id });
+    expect(r.task.parentId).toBe(a.id);
+    expect(r.events[0]!.payload).toEqual({ oldParentId: b.id, newParentId: a.id });
+    const top = await o.do("task.move", { taskId: c.id, parentId: null });
+    expect(top.task.parentId).toBeNull();
+  });
 
   test("task.move is rejected while the Task has an active claim (task.no-active-claim)", async () => {
     const o = w().owner;
@@ -128,6 +187,35 @@ suite("03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/
     expect(r.task.state).toBe("done");
   });
 
+  test("case 6: assigning, canceling or completing a parent changes no child; a child's completion does not complete the parent", async () => {
+    const o = w().owner;
+    const lead = await w().add("lead");
+    const p = await o.create("Parent");
+    const c1 = await o.create("c1", { parentId: p.id });
+    const c2 = await o.create("c2", { parentId: p.id });
+    const before = await w().head();
+
+    const assigned = await o.do("task.assign", { taskId: p.id, assigneeId: lead.id });
+    expect(assigned.events.every((e) => e.taskId === p.id)).toBe(true);
+
+    // The lead now reviews the children (parent-assignee), so the lead completes c1 directly.
+    const childDone = await lead.complete({ taskId: c1.id });
+    expect(childDone.events.every((e) => e.taskId === c1.id)).toBe(true);
+    expect((await o.task(p.id)).task.state).toBe("open");
+
+    const canceled = await o.do("task.cancel", { taskId: p.id, reason: "stop" });
+    expect(canceled.events.every((e) => e.taskId === p.id)).toBe(true);
+    const c2now = (await o.task(c2.id)).task;
+    expect(c2now).toMatchObject({ state: "open", version: c2.version, assignment: null });
+
+    await o.do("task.reopen", { taskId: p.id, reason: "restart" });
+    expect((await o.task(c1.id)).task.state).toBe("done");
+
+    const since = await w().events(before);
+    const c2events = since.filter((e) => e.taskId === c2.id);
+    expect(c2events).toEqual([]);
+  });
+
   test("reopening a done Task keeps its earlier completion; completing again adds a second one", async () => {
     const o = w().owner;
     const t = await o.create("Twice");
@@ -137,5 +225,38 @@ suite("03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/
     const h = (await o.task(t.id)).history;
     expect(h.completions).toHaveLength(2);
     expect(h.completions.every((c) => c.rule === "performer-is-reviewer" && c.submissionId === null)).toBe(true);
+  });
+});
+
+suite("03.4 priority and task.next [domain/core/task.md#priority]", () => {
+  const w = useWorld();
+
+  test("task.priority-set records old and new; task.next returns the highest-priority ready Task the actor may claim", async () => {
+    const o = w().owner;
+    const agent = await w().add("agent");
+    const other = await w().add("other");
+    expect((await agent.query("task.next", {})).task).toBeNull();
+
+    const low = await o.create("low", { priority: 1 });
+    const none = await o.create("none");
+    const high = await o.create("high", { priority: 5 });
+    const mine = await o.create("assigned to other", { priority: 100 });
+    await o.do("task.assign", { taskId: mine.id, assigneeId: other.id });
+    const blocked = await o.create("blocked", { priority: 50 });
+    await o.do("dependency.add", { dependentId: blocked.id, prerequisiteId: none.id });
+
+    expect((await agent.query("task.next", {})).task?.id).toBe(high.id);
+    expect((await other.query("task.next", {})).task?.id).toBe(mine.id);
+
+    const r = await o.do("task.set-priority", { taskId: low.id, priority: 9 });
+    expect(r.events[0]!.payload).toEqual({ oldPriority: 1, newPriority: 9 });
+    expect((await agent.query("task.next", {})).task?.id).toBe(low.id);
+
+    await o.do("claim.acquire", { taskId: low.id });
+    expect((await agent.query("task.next", {})).task?.id).toBe(high.id);
+
+    await o.do("task.set-priority", { taskId: high.id, priority: null });
+    // high (null, created after none) ties with none (null): earliest created wins.
+    expect((await agent.query("task.next", {})).task?.id).toBe(none.id);
   });
 });
