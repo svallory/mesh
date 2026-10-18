@@ -83,7 +83,7 @@ Adapted from [research synthesis](../research/synthesis.md) (section 14) and the
 | Ring | Test | Packages ([roadmap](../roadmap/roadmap.md), section 3) |
 |---|---|---|
 | Core | Mesh cannot run without it | `@meshfw/model`, `@meshfw/compiler`, `meshfw` (CLI, build time); `@meshfw/runtime` (run time); the MX host `mesh` |
-| Adapter | One replaceable implementation of a contract core owns | `@meshfw/data-drizzle`, `@meshfw/data-sqlite`, `@meshfw/data-postgres` |
+| Adapter | One replaceable implementation of a contract core owns | `@meshfw/data-drizzle`, `@meshfw/data-sqlite`, `@meshfw/data-postgres`, `@meshfw/bus-local` |
 | Extension | Optional feature built on core's declared extension points | none first-party in 1.0; project-local extensions in `src/extensions/` |
 
 Application concerns never enter Mesh's architecture: core defines no feature flags, no tenant and no login. How a caller is identified is the application's business, carried in its own `ActionContext` keys. Elysia is not core; it stays a candidate HTTP adapter once the generic transport contract exists ([ADR-0038](../decisions/0038-elysia-is-not-core.md)). Extensions add to each other's part of the model only through contribution points that the owning extension publishes and the contributor declares; anything else is a build error ([ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md)).

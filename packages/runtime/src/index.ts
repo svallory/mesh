@@ -51,6 +51,6 @@ export { KEEP_VALUES, loadEvents, publishEvent, rows } from "./events.ts";
 export type { EventClass, EventRecord, EventsConfig, EventsModule, MetadataArguments, MetadataFunction, PublishTarget, ReadEventsPage, ReadEventsQuery } from "./events.ts";
 export { BUS_CAPABILITIES, busProblem, checkedBus, handler } from "./bus.ts";
 export type { BusCapability, BusCore, BusManifest, BusOptions, EventBus, EventBusCapabilities, EventBusInstance, Handler, HandlerTools, ListedEvent, LiveSubscription, OnFailure, RegisteredHandler } from "./bus.ts";
-export { declaredHandlers, deliverRound, forgetByName, forgetHandler, forgetSubscription, isRetryable, markNoDeliver, startDelivery, subscribe } from "./deliverer.ts";
+export { declaredHandlers, deliverRound, forgetByName, forgetHandler, forgetSubscription, isRetryable, markNoDeliver, resumeHandler, startDelivery, subscribe } from "./deliverer.ts";
 export type { Delivery, Forgotten, SubscribeQuery, Subscription } from "./deliverer.ts";
 export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged } from "./entity.ts";

@@ -80,17 +80,26 @@ How long the outbox keeps a row is your setting, `events.keep` in `mesh.config.t
 
 A project that declares an event names its event bus in `mesh.config.ts`. There is no default: a project that declares an event and sets no `events.bus` fails the build with `MESH_EVENTS_CONFIG`.
 
-```ts "mesh.config.ts (excerpt)"
+```ts "mesh.config.ts"
 import { localBus } from "@meshfw/bus-local";
+import { sqlite } from "@meshfw/data-sqlite";
+import { defineConfig } from "@meshfw/runtime";
 
-events: {
-  bus: localBus(),
-  load: () => import("./src/events.ts"),
-  requires: ["replay", "subscribe"],
-},
+export default defineConfig({
+  domain: "src/domain",
+  output: ".mesh",
+  data: sqlite({ file: "app.db" }),
+  events: {
+    bus: localBus(),
+    load: () => import("./src/events.ts"),
+    requires: ["replay", "subscribe"],
+  },
+});
 ```
 
-`localBus()` delivers inside the deliverer's process, on any data adapter: for development, tests and an application that runs in one process. A bus declares what it can promise, its **capabilities**, from a closed list:
+`events.load` names the module that holds your handlers; see [The events module and metadata](#the-events-module-and-metadata).
+
+`localBus()`, from the package `@meshfw/bus-local`, delivers inside the deliverer's process, on any data adapter: for development, tests and an application that runs in one process. [`localBus`](#localbus) below lists its options. A bus declares what it can promise, its **capabilities**, from a closed list:
 
 | Capability | What it promises | Needed by |
 |:--|:--|:--|
@@ -212,7 +221,52 @@ await binding.deliver(); // every handler gets the InvoicePaid
 
 `deliver()` resolves once the round is done. It rejects with `HandlerStoppedError` when a handler stopped in the round, or with `DatabaseBusyError`. A round hands each handler the rows there were when it reached that handler, so an event a `process` handler publishes reaches the handlers after it in the next round. It does not queue: one `deliver()` that overlaps another round is `MESH_DELIVERER_TAKEN`. `deliver()` on a binding whose delivery is started, and either call on a binding with no bus, is a `FrameworkError`.
 
-The running deliverer renews its claim every 5 seconds; a claim not renewed for 15 seconds has lapsed, and another process may take it over. The deliverer that lost the claim notices at its next transaction and stops with `DelivererLostError` (`MESH_DELIVERER_LOST`): its handlers stop, its subscriptions end with that error, and no event is handled twice or deleted by it. Both numbers are fixed for now. Mind one consequence: a transaction longer than 15 seconds in the deliverer's process (an action, or a `process` handler awaiting a slow call) holds the database long enough for a waiting process to take over a healthy deliverer, which then stops loudly and loses nothing.
+The running deliverer renews its claim every 5 seconds, whatever the bus; a claim not renewed for 15 seconds has lapsed, and another process may take it over. The deliverer that lost the claim notices at its next transaction and stops with `DelivererLostError` (`MESH_DELIVERER_LOST`): its handlers stop, its subscriptions end with that error, and no event is handled twice or deleted by it. Both numbers are fixed for now. Mind one consequence: a transaction longer than 15 seconds in the deliverer's process (an action, or a `process` handler awaiting a slow call) holds the database long enough for a waiting process to take over a healthy deliverer, which then stops loudly and loses nothing.
+
+## `localBus`
+
+`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter, for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay` and `subscribe`; it does not declare `dead-letters`, so `onFailure: "skip"` is refused. Its options are all optional:
+
+| Option | Default | What it does |
+|:--|:--|:--|
+| `pollInterval` | `1000` | After start, how often in milliseconds a round also runs, to pick up what processes connected with `{ deliver: false }` committed |
+| `retryDelays` | `[100, 1000, 10000]` after start; `[0, 0, 0]` in `deliver()` rounds | The wait in milliseconds before each retry of a failing handler; when they are used up, the handler stops. A value you set applies to both |
+| `maxQueue` | `10000` | How many events a live subscription may have waiting for its callback before it ends with `SubscriptionOverflowError` |
+
+```ts "mesh.config.ts"
+import { localBus } from "@meshfw/bus-local";
+import { sqlite } from "@meshfw/data-sqlite";
+import { defineConfig } from "@meshfw/runtime";
+
+export default defineConfig({
+  domain: "src/domain",
+  output: ".mesh",
+  data: sqlite({ file: "app.db" }),
+  events: {
+    bus: localBus({ pollInterval: 250, retryDelays: [500, 5000, 30000], maxQueue: 50_000 }),
+  },
+});
+```
+
+`pollInterval` and each delay are whole milliseconds, at most 2147483647 (about 24.8 days, the longest wait a timer keeps); `pollInterval` is at least 1. A wrong option, such as a `pollInterval` of 0 or a negative delay, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
+
+**Rounds.** Each round feeds every handler from its own progress row, in position order, one event at a time, then every live subscription from its own position, then deletes what every reader has passed. Once delivery is started (`connect()` or `startDelivery()`), a round runs at once, after each transaction in this process that published commits, and every `pollInterval`. Creating the bus starts nothing, and `disconnect()` or `delivery.stop()` waits for the running round and leaves no timer behind.
+
+**Retries.** After start, a handler that throws waits out its delay on its own timer, outside the rounds, so a handler that backs off delays no other handler or subscription; the next try is the same event. An error with `retryable: false`, such as a `ForbiddenError`, stops the handler at once, without the delays. A try that `DatabaseBusyError` ends is not counted: the round ends, and the next one tries again. In a `deliver()` round the retries run inline with no wait, because the started defaults add up to 11.1 seconds, past `bun test`'s 5-second timeout, which would turn a handler's error into a timeout.
+
+**A stopped handler.** A started `localBus` reports a handler that stops with `console.error`, as a `HandlerStoppedError` that names the handler, the position and the event. The other handlers go on; the stopped one is fed nothing until it resumes, and the outbox keeps every row from its position on. It resumes at the next start, in the next `deliver()` round, or when you call `resumeHandler(name)`, from `#mesh`, in the process that delivers, once its cause is fixed:
+
+```ts "src/resume.ts"
+import { connect, resumeHandler } from "#mesh";
+
+await connect();
+// later, once the mail service that made the receipt handler stop is back
+await resumeHandler("receipt");
+```
+
+`resumeHandler` feeds the handler again from its progress row in the next round, with a fresh retry schedule. It does nothing to a handler that is not stopped, and it is a `FrameworkError` for a name the deliverer did not register, or in a process where delivery is not started.
+
+**Subscriptions** are fed from the rounds, each from its own position, so a commit in another process reaches them within `pollInterval`. Acknowledgements are core's and go through `ack`, never through the bus.
 
 ## Live subscriptions
 
@@ -245,7 +299,7 @@ The query takes `name`, `after` (where a first open starts; by default the highe
 
 Each subscription has a row in `mesh_subscription_progress` that stores its acknowledged position and its filter. A reopen under the same name ignores `after` and starts from the acknowledged position, so every row the client did not acknowledge comes again: a subscription is at least once, as a `listen` handler is. A reopen with a different filter is a `FrameworkError`, since an acknowledged position means something only under the filter it was reached with; forget the name first, then open it with the new filter.
 
-The callback never runs inside a transaction, and an error ends only its own subscription. A subscription whose queue passes 10 000 events, because its callback is slower than publishing, ends with `SubscriptionOverflowError` (`MESH_SUBSCRIPTION_OVERFLOW`), never with a skip; reopen it to resume from what it acknowledged.
+The callback never runs inside a transaction, and an error ends only its own subscription. A subscription whose queue passes the bus's `maxQueue` (10 000 events by default), because its callback is slower than publishing, ends with `SubscriptionOverflowError` (`MESH_SUBSCRIPTION_OVERFLOW`), never with a skip; reopen it to resume from what it acknowledged.
 
 ## How long rows are kept
 
@@ -355,7 +409,7 @@ Inside a transaction `readEvents` throws a `FrameworkError`: a transaction's own
 
 ## Failures and retries
 
-A handler that throws is retried by the bus, then stopped at its event: `binding.deliver()` rejects with `HandlerStoppedError`, whose `stopped` lists `{ handler, position, event, cause }` for each handler that stopped in the round, `cause` being its last error, and a started bus reports it. A stopped handler holds deletion at its position, so the outbox keeps every row from there on, and the next round tries it again. No failure is dropped without a record.
+A handler that throws is retried by the bus, then stopped at its event: `binding.deliver()` rejects with `HandlerStoppedError`, whose `stopped` lists `{ handler, position, event, cause }` for each handler that stopped in the round, `cause` being its last error, and a started bus reports it. A stopped handler holds deletion at its position, so the outbox keeps every row from there on. It resumes in the next `deliver()` round, at the next start of delivery, or on `resumeHandler(name)` (see [`localBus`](#localbus)). No failure is dropped without a record.
 
 Whether a retry makes sense is on the error. Every Mesh error carries `retryable`, which says whether the same call may succeed if repeated unchanged: `DatabaseBusyError` is retryable, since another connection held the database's write lock, while a validation, policy, not-found or framework error is not. An error of your own counts as retryable unless it sets `retryable: false`. A handler whose error is not retryable is stopped at once, without the retry schedule: retrying a `ForbiddenError` three times changes nothing and only delays the report. `DatabaseBusyError` in a handler's transaction is never a handler failure: the round ends, and the next one tries again.
 
@@ -366,7 +420,7 @@ Whether a retry makes sense is on the error. Every Mesh error carries `retryable
 | `DelivererTakenError` | `MESH_DELIVERER_TAKEN` | `true` | Another process or binding holds the claim, or a `deliver()` overlapped a round. Names the `holder` and `lapsesAt`. Stop the other process, or connect this one with `{ deliver: false }` |
 | `DelivererLostError` | `MESH_DELIVERER_LOST` | `false` | This process no longer holds the claim: another process took it over after it lapsed, or a renewal updated no row or stayed blocked past the lapse. This process's delivery stopped |
 | `HandlerStoppedError` | `MESH_HANDLER_STOPPED` | `false` | `deliver()` when handlers stopped in the round; names them in `stopped` |
-| `SubscriptionOverflowError` | `MESH_SUBSCRIPTION_OVERFLOW` | `true` | A subscription's queue passed 10 000 events; reopen it |
+| `SubscriptionOverflowError` | `MESH_SUBSCRIPTION_OVERFLOW` | `true` | A subscription's queue passed the bus's `maxQueue` (10 000 events by default); reopen it |
 | `EventsDeletedError` | `MESH_EVENTS_DELETED` | `false` | A read or a first subscription from behind the deleted rows |
 | `CursorAheadError` | `MESH_CURSOR_AHEAD` | `false` | A read or a first subscription from above the highest position ever assigned |
 | `EventUndeclaredError` | `MESH_EVENT_UNDECLARED` | `false` | A kept row names an event the project no longer declares: every handler stops at it, and a subscription or a read that reaches it ends |
@@ -375,7 +429,7 @@ The full list of Mesh's errors is under [Errors](./using-your-domain.md#errors).
 
 ## Writing an event bus
 
-A bus is a descriptor, `{ manifest, create(core, options) }`: `manifest` declares the adapter's name and its capabilities as static data the build reads, and `create` makes one instance per binding that delivers, with `start()`, `stop()` and `deliver()`. A descriptor holds no state and starts nothing, so the build may construct one each time it reads the configuration.
+A bus is a descriptor, `{ manifest, create(core, options) }`: `manifest` declares the adapter's name and its capabilities as static data the build reads, and `create` makes one instance per binding that delivers, with `start()`, `stop()` and `deliver()`, and, optionally, `resumeHandler(handler)`, which `resumeHandler(name)` of `#mesh` calls; without it, that call is a `FrameworkError` while the bus runs. A descriptor holds no state and starts nothing, so the build may construct one each time it reads the configuration.
 
 Core hands each instance a `BusCore`, its only way to the outbox and the handlers: `rows(after, limit)`, the one read; the registered `handlers`; `position(handler)`, `lists(handler, row)`, `runHandler(handler, row)` and `retry(handler, row, delays)`; the live `subscriptions()`, each with a cursor and a `feed(page)`; `deletionPass()`; and `onPublished` and `onClaimLost`, two wake-ups. Core owns everything that must be right whatever the bus: the claim and its renewal, the handler's transaction and its progress row, and every deletion. A bus delivers to a handler only through `runHandler`, never names a position to delete and never writes core's tables, so a bug in a bus can delay delivery and deletion but never lose an event or delete one early.
 

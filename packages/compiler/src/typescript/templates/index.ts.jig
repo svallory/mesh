@@ -29,7 +29,7 @@ export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
 export type MetadataFunction = $MetadataFunction<DomainEvent>;
 export type { EventMetadata } from "@meshfw/runtime";
 /** `published()`, the running transaction's own events, and the functions of delivery. */
-export { published, forgetHandler, forgetSubscription, type ConnectOptions } from "./binding";
+export { published, forgetHandler, forgetSubscription, resumeHandler, type ConnectOptions } from "./binding";
 export type { Delivery } from "@meshfw/runtime";
 @if(events.replay)
 /** `readEvents(query)`, a page of the outbox's kept events: the bus declares replay. */

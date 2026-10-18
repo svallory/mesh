@@ -86,11 +86,19 @@ export function testBus(options: TestBusOptions = {}): EventBus {
         if (!started || lost) return;
         if (running) { again = true; return; }
         running = (async () => {
-          do {
-            again = false;
-            try { await round(); } catch (error) { if (!(error instanceof DelivererLostError)) onError(error); }
-          } while (again && started && !lost);
-        })().finally(() => { running = undefined; });
+          try {
+            do {
+              again = false;
+              try { await round(); } catch (error) {
+                if (!(error instanceof DelivererLostError)) try { onError(error); } catch { /* a reporter that throws ends nothing */ }
+              }
+            } while (again && started && !lost);
+          } finally {
+            // Cleared in the same turn as the loop's last check, so a wake-up that comes after it starts a new round
+            // instead of setting `again` for a loop that already ended.
+            running = undefined;
+          }
+        })();
       };
       return Object.freeze({
         async start() {

@@ -30,6 +30,7 @@ import {
 @if(replay)
   readEvents as $readEvents,
 @end
+  resumeHandler as $resumeHandler,
 @if(subscribe)
   subscribe as $subscribe,
 @end
@@ -254,6 +255,15 @@ export function subscribe(query: $SubscribeQuery, callback: (event: $EventRecord
  */
 export function forgetHandler(name: string): $Promise<void> {
   return $forgetHandler($deliveryBinding("forgetHandler"), name);
+}
+
+/**
+ * Resume a handler the running bus stopped at a failing event: it is fed again from its progress row in the next round.
+ * Called where delivery is started (`connect()` or `startDelivery()`); elsewhere a `FrameworkError`, since the next start
+ * and the next `deliver()` round resume every stopped handler on their own.
+ */
+export function resumeHandler(name: string): $Promise<void> {
+  return $resumeHandler($deliveryBinding("resumeHandler"), name);
 }
 
 /** Drop the row of a subscription whose client is not coming back, so it holds deletion no longer. An open one is refused. */
