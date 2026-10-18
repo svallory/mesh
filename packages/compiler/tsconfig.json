@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
   "include": ["src", "test"],
-  "exclude": ["test/fixtures/mesh-corpus/contracts.ts", "test/fixtures/mesh-corpus/model.ts"]
+  "exclude": ["test/fixtures/mesh-corpus/contracts.ts"]
 }
