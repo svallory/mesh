@@ -17,6 +17,7 @@ import {
   type Argument,
   type Attribute,
   type AttributeType,
+  type Action,
   type Check,
   type CommandDeclaration,
   type Computed,
@@ -49,6 +50,7 @@ import {
 } from "./rollups.ts";
 import { resolveRelationships } from "./relationships.ts";
 import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
+import { checkCommands } from "../model/commands.ts";
 import { checkPublishSteps } from "../model/publish-steps.ts";
 import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
@@ -106,7 +108,7 @@ interface DeclaredFile {
 const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command"]);
 /** Where the file's own declaration is named without an import: only an entity file's own entity is (an entity relates to itself). */
 /**
- * What a reference position takes, for the files of `kind`: `entity=` an entity, a `publish` function's `new` an event. A
+ * What a reference position takes, for the files of `kind`: `entity=` an entity, a `publish` function's `new` an event, `on=` a command. A
  * path that no file of the project answers (the import itself is reported) matches every kind, so that a reference through
  * it reports nothing more.
  */
@@ -114,7 +116,7 @@ const referenceKind = (kind: DeclaredFile["kind"], declared: (from: string) => D
   noun: kind,
   declares: (from) => hasMeshExtension(from) && (declared(from)?.kind ?? kind) === kind,
   // An event's unknown name is a failed `publish` check (`notes/spec/events-and-commands.md`, "Errors").
-  code: kind === "entity" ? "MESH_UNKNOWN_ENTITY" : "MESH_PUBLISH",
+  code: kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 });
 /** The package an entity file imports `Mesh` from. */
 const MESHFW = "meshfw";
@@ -500,6 +502,8 @@ function buildEntity(
   // An event is never the file's own declaration (the file declares an entity), so only an import names one.
   const eventReferences: ReferenceScope = { imports: importNames, duplicates, declared };
   const eventKind = referenceKind("event", declaredFile);
+  // `on=PayInvoice` or `on=billing.PayInvoice`: a command is never the file's own declaration either.
+  const commandKind = referenceKind("command", declaredFile);
   // The kind of file each import binds: an entity's, an event's or a command's (an import no file of the project answers is an entity's, and reported).
   const importedKind = (entry: Import): DeclaredFile["kind"] | undefined => (entry.helper || entry.mesh ? undefined : declaredFile(entry.from)?.kind ?? "entity");
   const boundTo = (kind: DeclaredFile["kind"]) => bindings.filter(({ entry }) => importedKind(entry) === kind).map(({ name }) => name);
@@ -750,6 +754,8 @@ function buildEntity(
       : {}),
   });
   const actionSection = section("actions");
+  // The actions whose name the author wrote, as against one named after its command.
+  const authorNamed = new Set<Action>();
   if (actionSection) {
     const auto = attr(actionSection, "auto");
     if (auto) entity.auto = types(auto);
@@ -771,6 +777,21 @@ function buildEntity(
         continue;
       }
       const kind = tag.name as ActionType;
+      // `on=` answers a command and, with no name written, names the action: the command's class name with its first letter
+      // in lower case, whatever name this file binds (`notes/spec/events-and-commands.md`, "Answering a command").
+      const onAttr = attr(tag, "on");
+      const written = onAttr ? writtenReference(nodeOf(onAttr)) : undefined;
+      const answered = written ? resolveReference(written, eventReferences, commandKind) : undefined;
+      if (answered && !answered.ok && "code" in answered) fail(answered.code, answered.message, at(answered.offset), answered.fix);
+      const commandFile = answered?.ok ? declaredFile(answered.from) : undefined;
+      const commandClass = commandFile?.names[0];
+      const writtenName = attr(tag, "name") ? declaredName(tag) : undefined;
+      // A name and no `on=` is the one case a contract leaves nothing to say about; with neither, `MESH_NAME` has been reported.
+      const actionName = writtenName ?? (commandClass ? commandClass.charAt(0).toLowerCase() + commandClass.slice(1) : written ? written.name.charAt(0).toLowerCase() + written.name.slice(1) : undefined);
+      if (actionName === undefined) continue;
+      const command: Action["command"] = written && onAttr
+        ? { identifier: referenceText(written), from: answered?.ok ? answered.from : "", fqn: "", position: at(attrOffset(onAttr)) }
+        : undefined;
       const input: InputField[] = [];
       const names = new Set<string>();
       for (const line of tags(
@@ -815,9 +836,10 @@ function buildEntity(
       if (attr(tag, "filter") && filterTag)
         fail("MESH_DUPLICATE_MEMBER", "A read has only one filter", filterTag);
       const sort = tags(tag.children).find((t) => t.name === "sort");
-      entity.actions.push({
+      const action: Action = {
         kind,
-        name: declaredName(tag),
+        name: actionName,
+        ...(command ? { command } : {}),
         input,
         ...body(tag),
         ...(filter ? { filter: expr(filter, "filter") } : {}),
@@ -830,7 +852,9 @@ function buildEntity(
             }
           : {}),
         position: pos(tag),
-      });
+      };
+      entity.actions.push(action);
+      if (writtenName !== undefined) authorNamed.add(action);
     }
   }
   for (const tag of tags(section("policies")?.children ?? [])) {
@@ -861,13 +885,24 @@ function buildEntity(
     ...entity.policies,
   ];
   const names = new Set<string>();
+  // The action each name belongs to, for a name taken from a command: the message names the command (`notes/spec/events-and-commands.md`, "Answering a command").
+  const holders = new Map<string, (typeof members)[number]>();
+  const fromCommand = (member: unknown): Action | undefined => {
+    const action = entity.actions.find((candidate) => candidate === member);
+    return action?.command && !authorNamed.has(action) ? action : undefined;
+  };
   for (const member of members) {
-    if (names.has(member.name))
+    if (names.has(member.name)) {
+      const taken = fromCommand(member) ?? fromCommand(holders.get(member.name));
       fail(
         "MESH_DUPLICATE_MEMBER",
-        `Duplicate member :${member.name}`,
+        taken === undefined
+          ? `Duplicate member :${member.name}`
+          : `Duplicate member :${member.name}: the ${taken.kind} that answers ${taken.command!.identifier} takes its name from the command; write a name for it (\`${taken.kind} :name on=${taken.command!.identifier}\`) or rename the other member`,
         member.position,
       );
+    }
+    if (!holders.has(member.name)) holders.set(member.name, member);
     if (member.name === PROTOTYPE_SETTING_NAME)
       fail(
         "MESH_ATTRIBUTE_NAME",
@@ -1167,6 +1202,14 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   if (events.length) document.events = events;
   if (commands.length) document.commands = commands;
+  // The FQN of the command each `on=` resolved to, now that every command is built: `from` is the import's path from the entity's file.
+  for (const entity of document.entities)
+    for (const action of entity.actions) {
+      if (!action.command?.from) continue;
+      const target = resolve(rootPath, dirname(entity.file), action.command.from);
+      const answered = commands.find((command) => resolve(rootPath, command.file) === target);
+      if (answered) action.command.fqn = answered.fqn;
+    }
   // What each file of the project declares, for an import to check its name against.
   const declarations: { name: string; file: string }[] = [...document.entities, ...[...events, ...commands].map(({ name, file }) => ({ name: classNameOf(name), file }))];
   const identities = new Map<string, string>();
@@ -1229,6 +1272,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
   computeNeeds(document, diagnostics);
   checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, askCallsOf, asynchronyOf });
   checkPublishSteps(document, diagnostics);
+  // A file that did not parse may hold the action that answers a command: with one missing, "unanswered" is not known.
+  checkCommands(document, diagnostics, parsedFiles.length === project.files.length);
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(

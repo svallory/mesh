@@ -112,6 +112,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `count.of` | `count :total of=&lines` | `count.of` | on main |
 | `create` | `create :work` | `create` | on main |
 | `create.name` | `create :work` | `create.name` | on main |
+| `create.on` | `create on=Paid` | `create.on` | on main |
 | `date` | `date :field` | `date` | on main |
 | `date.name` | `date :field` | `date.name` | on main |
 | `date.nullable` | `date :field nullable` | `date.nullable` | on main |
@@ -136,6 +137,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `desc.member` | `desc &title` | `desc.member` | on main |
 | `destroy` | `destroy :work` | `destroy` | on main |
 | `destroy.name` | `destroy :work` | `destroy.name` | on main |
+| `destroy.on` | `destroy on=Paid` | `destroy.on` | on main |
 | `do` | `do` | `do` | on main |
 | `entity` | `entity :Sample table="samples"` | `entity` | on main |
 | `entity.name` | `entity :Sample table="samples"` | `entity.name` | on main |
@@ -234,6 +236,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `timestamp.value` | `timestamp :field() { return new Date() }` | `timestamp.value` | on main |
 | `update` | `update :work` | `update` | on main |
 | `update.name` | `update :work` | `update.name` | on main |
+| `update.on` | `update on=Paid` | `update.on` | on main |
 | `uuid` | `uuid :field` | `uuid` | on main |
 | `uuid.name` | `uuid :field` | `uuid.name` | on main |
 | `uuid.nullable` | `uuid :field nullable` | `uuid.nullable` | on main |

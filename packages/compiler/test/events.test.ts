@@ -8,11 +8,19 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity, Step } from "@meshfw/model";
 import { eventsDiagnostics } from "../src/capabilities.ts";
-import { buildModel } from "../src/front-end/build.ts";
+import { buildModel as buildWithWarnings } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { explainAction } from "../src/typescript/explain.ts";
 import { checkTypes, configOf } from "./generated.ts";
 
+/**
+ * These tests declare `PayInvoice` to name it in a `publish`, and nothing answers it: `MESH_COMMAND_UNANSWERED` (a warning,
+ * `commands.test.ts`) is not what they are about, so it is left out of what they compare.
+ */
+const buildModel = (project: Parameters<typeof buildWithWarnings>[0]): ReturnType<typeof buildWithWarnings> => {
+  const result = buildWithWarnings(project);
+  return { ...result, diagnostics: result.diagnostics.filter((d) => d.code !== "MESH_COMMAND_UNANSWERED") };
+};
 const PAID = `event :InvoicePaid
   uuid :invoiceId
   decimal :amount min=0
