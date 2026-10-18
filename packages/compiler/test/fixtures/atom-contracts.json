@@ -102,7 +102,7 @@
  "vocab|<box mode='strict'/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode` must be mesh:Atom, got string (one of :loose, :strict)",
+   "message": "`box`: option `mode` must be atom, got string (one of :loose, :strict)",
    "line": 1,
    "column": 10,
    "offset": 10,
@@ -112,7 +112,7 @@
  "vocab|<box mode=1/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode` must be mesh:Atom, got number (one of :loose, :strict)",
+   "message": "`box`: option `mode` must be atom, got number (one of :loose, :strict)",
    "line": 1,
    "column": 10,
    "offset": 10,
@@ -297,7 +297,7 @@
  "vocab|<entity :invoice>\n  <attributes><string name=\"title\"/></attributes>\n</entity>": [
   {
    "severity": "error",
-   "message": "`string`: option `name` must be mesh:Atom, got string",
+   "message": "`string`: option `name` must be atom, got string",
    "line": 2,
    "column": 27,
    "offset": 45,
@@ -432,7 +432,7 @@
  "vocab|<box any=\"red\"/>": [
   {
    "severity": "error",
-   "message": "`box`: option `any` must be mesh:Atom, got string",
+   "message": "`box`: option `any` must be atom, got string",
    "line": 1,
    "column": 9,
    "offset": 9,
@@ -447,7 +447,7 @@
  "vocab|<box mode=\"red\"/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode` must be mesh:Atom, got string (one of :loose, :strict)",
+   "message": "`box`: option `mode` must be atom, got string (one of :loose, :strict)",
    "line": 1,
    "column": 10,
    "offset": 10,

@@ -1702,7 +1702,7 @@ describe("review fixes (PR #63, round 1)", () => {
       const source = make('        run [after="write"] ({ self }) { console.log(self) }\n');
       const d = build(source).diagnostics;
       expect(d).toHaveLength(1);
-      expect(d[0]).toMatchObject({ severity: "error", message: expect.stringContaining("option `after` must be mesh:Atom, got string (one of :write)") });
+      expect(d[0]).toMatchObject({ severity: "error", message: expect.stringContaining("option `after` must be atom, got string (one of :write)") });
       expect(d[0]!.position).toMatchObject(at(source, source.indexOf('"write"')));
     });
     test("only a run takes after: on set, load or when it is an error at the attribute", () => {

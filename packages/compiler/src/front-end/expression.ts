@@ -8,7 +8,7 @@ import type {
   SourceEdit,
   SourcePosition,
 } from "@meshfw/model";
-import type { At, AtomForwards, SyntaxNode } from "./tree.ts";
+import type { At, AtomForwards, MemberForwards, SyntaxNode } from "./tree.ts";
 import { writtenReference, type Resolution, type WrittenReference } from "./references.ts";
 
 /**
@@ -24,6 +24,8 @@ export interface ConvertContext {
   at: At;
   /** The atoms the function holds (`Expr.nodes`, read through `atomForwards` in `tree.ts`): a string literal is an atom only when it is one of these forwards. */
   atoms?: AtomForwards;
+  /** The members the function holds (`Expr.nodes`, read through `memberForwards` in `tree.ts`): a `self.name` is the member `&name` only when it is one of these forwards. */
+  members?: MemberForwards;
   /** Imported names that are helper functions (not entities) and the module each comes from. */
   helpers: ReadonlyMap<string, string>;
   /** Every name the file imports, helpers and entities. */
@@ -412,7 +414,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         });
     }
     // `&name`: the record's member, whatever the function names a local (`self`): its stand-in `self` is no variable.
-    if ((n.extra as { mxMember?: unknown } | undefined)?.mxMember && (n.type === "MemberExpression" || n.type === "OptionalMemberExpression")) {
+    if (ctx.members?.has(n)) {
       names.record = true;
       return;
     }
@@ -621,7 +623,7 @@ function internalNames(text: string, record: boolean, clock: readonly ("now" | "
  * translated code read one instant, a fresh `Date` each read. The names are `internal`'s, which the authored text
  * does not spell. A `%.` name Mesh does not know is reported by `freeVariables` and left as written.
  */
-function editsFor(fn: N, base: number, internal: InternalNames, atoms: AtomForwards): SourceEdit[] {
+function editsFor(fn: N, base: number, internal: InternalNames, atoms: AtomForwards, members: MemberForwards): SourceEdit[] {
   const edits: SourceEdit[] = [];
   // The `&x` of an `input.x ?? &x`.
   const fallbacks = new Set<unknown>();
@@ -629,15 +631,14 @@ function editsFor(fn: N, base: number, internal: InternalNames, atoms: AtomForwa
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { value.forEach(walk); return; }
     const n = value as N;
-    const extra = n.extra as any;
-    const member = extra?.mxMember;
+    const member = members.get(n);
     if (n.type === "LogicalExpression" && n.operator === "??") {
       const left = n.left as N, right = n.right as N;
-      const name = (right?.extra as any)?.mxMember?.name;
+      const name = right ? members.get(right)?.name : undefined;
       if (left?.type === "MemberExpression" && (left.object as N)?.type === "Identifier" && (left.object as N).name === "input"
         && !left.computed && (left.property as N)?.name === name && name !== undefined) fallbacks.add(right);
     }
-    if ((n.type === "MemberExpression" || n.type === "OptionalMemberExpression") && member)
+    if (member)
       edits.push({ from: member.span.sourceStart - base, to: member.span.sourceEnd - base, text: `${internal.self}.${member.name}`, member: member.name, ...(fallbacks.has(n) ? { fallback: true as const } : {}) });
     const instant = transactionMark(n);
     if (instant) {
@@ -718,7 +719,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       }
       if (n.computed) throw new Plain("unsupported-construct", "computed member access", n);
       const name = String(n.property.name);
-      const mark = (n.extra as any)?.mxMember as { name: string; span: { sourceStart: number } } | undefined;
+      const mark = ctx.members?.get(n);
       const here = mark ? ctx.at(mark.span.sourceStart) : position;
       if (mark && n.object?.type === "Identifier" && n.object.name === "self") {
         env.reads.record = true;
@@ -1028,7 +1029,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   // the instant are bound under names the authored text does not spell, which the edits read.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
   const internal = internalNames(ctx.source.slice(span.sourceStart, span.sourceEnd), names.record === true, clock);
-  const edits = editsFor(f, span.sourceStart, internal, ctx.atoms ?? new Map());
+  const edits = editsFor(f, span.sourceStart, internal, ctx.atoms ?? new Map(), ctx.members ?? new Map());
   const clocked = {
     ...(clock.length ? { clock } : {}),
     ...(Object.keys(internal).length ? { internal } : {}),

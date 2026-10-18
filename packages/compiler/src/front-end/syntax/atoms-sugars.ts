@@ -8,7 +8,7 @@
  *
  * - `:name` in an expression is an atom: a `mesh:Atom` node (`syntax/mesh.ts`),
  *   listed in `Expr.nodes`, whose forward is a `StringLiteral` of the name,
- *   found by identity (the forward's `extra.mxAtom` is read by nobody). It is a
+ *   found by identity: core sets no mark on it. It is a
  *   name, not a value to operate on: member access, calls, unary operators,
  *   spreading and use as an object key are refused (`checkAtomUse`, called
  *   by the node's `lower`). `::name` is reserved.
@@ -37,7 +37,6 @@ import type {
   ContractData,
   ContractExpression,
   ContractFields,
-  ContractMember,
   ContractString,
   DialectNode,
   LoweredUnit,
@@ -48,6 +47,7 @@ import type {
   TriggerResult,
 } from "@mxlang/core";
 import { tagLabel } from "../tag-spelling.ts";
+import type { MemberNode } from "./member.ts";
 
 /** An atom's name: an identifier, `-` between words (`:rename-all`). */
 const NAME = "[A-Za-z_$][\\w$]*(?:-[\\w$]+)*";
@@ -571,9 +571,9 @@ function statedName(
       span: (value.span ?? attr.nameSpan) as SourceSpan,
     };
   }
-  if (value.type === "mx:Member") {
+  if (value.type === "mesh:Member") {
     return {
-      name: (value as ContractMember).name,
+      name: (value as MemberNode).name,
       span: (value.span ?? attr.nameSpan) as SourceSpan,
     };
   }
@@ -814,8 +814,8 @@ function plainStringOf(attr: ContractAttr): string | undefined {
   if (attr.value?.type === "mx:String") {
     return (attr.value as ContractString).value;
   }
-  if (attr.value?.type === "mx:Member") {
-    return (attr.value as ContractMember).name;
+  if (attr.value?.type === "mesh:Member") {
+    return (attr.value as MemberNode).name;
   }
   const expression = expressionOf(attr);
   if (!expression || expression.bound) return undefined;

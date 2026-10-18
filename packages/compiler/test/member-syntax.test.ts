@@ -40,8 +40,16 @@ function exprOf(tag: SpannedTag, name: string) {
   return attr.value;
 }
 
+/**
+ * The dialect nodes an expression lists in `Expr.nodes` whose forward is `forward`: since MX 0.1.0-alpha.34 core sets
+ * no mark on a forward, and a reader finds a member (`mesh:Member`) or an atom (`mesh:Atom`) by the forward's identity.
+ */
+function nodesAt(expression: { nodes?: readonly { type: string; span: unknown; node: unknown; forward: unknown }[] }, forward: unknown) {
+  return (expression.nodes ?? []).filter((each) => each.forward === forward).map((each) => ({ type: each.type, span: each.span, node: each.node }));
+}
+
 describe("the five Mesh cases", () => {
-  test("`() => &status === :sent`: a marked `self.status`, the atom unchanged", () => {
+  test("`() => &status === :sent`: a `mesh:Member` whose forward is `self.status`, the atom unchanged", () => {
     const source = "rule check=(() => &status === :sent)\n";
     const [rule] = tags(ir(source).body);
     const check = exprOf(rule as SpannedTag, "check");
@@ -57,23 +65,20 @@ describe("the five Mesh cases", () => {
           type: "MemberExpression",
           object: { type: "Identifier", name: "self" },
           property: { type: "Identifier", name: "status" },
-          extra: {
-            mxMember: {
-              span: { sourceStart: 18, sourceEnd: 25 },
-              name: "status",
-            },
-          },
         },
-        right: {
-          type: "StringLiteral",
-          value: "sent",
-          extra: { mxAtom: { span: { sourceStart: 30, sourceEnd: 35 } } },
-        },
+        right: { type: "StringLiteral", value: "sent" },
       },
     });
+    const { left, right } = (check.node as unknown as { body: { left: object; right: object } }).body;
+    expect(left).not.toHaveProperty("extra");
+    expect(right).not.toHaveProperty("extra.mxAtom");
+    expect(nodesAt(check, left)).toMatchObject([
+      { type: "mesh:Member", span: { sourceStart: 18, sourceEnd: 25 }, node: { type: "mesh:Member", name: "status", span: { sourceStart: 18, sourceEnd: 25 } } },
+    ]);
+    expect(nodesAt(check, right)).toMatchObject([{ type: "mesh:Atom", span: { sourceStart: 30, sourceEnd: 35 } }]);
   });
 
-  test("`load=[&customer, &other]`: an array of marked members", () => {
+  test("`load=[&customer, &other]`: an array of members", () => {
     const [rule] = tags(
       ir("rule load=[&customer, &other]\n").body,
     );
@@ -82,28 +87,13 @@ describe("the five Mesh cases", () => {
     expect(value.node).toMatchObject({
       type: "ArrayExpression",
       elements: [
-        {
-          type: "MemberExpression",
-          property: { name: "customer" },
-          extra: {
-            mxMember: {
-              span: { sourceStart: 11, sourceEnd: 20 },
-              name: "customer",
-            },
-          },
-        },
-        {
-          type: "MemberExpression",
-          property: { name: "other" },
-          extra: {
-            mxMember: {
-              span: { sourceStart: 22, sourceEnd: 28 },
-              name: "other",
-            },
-          },
-        },
+        { type: "MemberExpression", property: { name: "customer" } },
+        { type: "MemberExpression", property: { name: "other" } },
       ],
     });
+    const [customer, other] = (value.node as unknown as { elements: object[] }).elements;
+    expect(nodesAt(value, customer)).toMatchObject([{ type: "mesh:Member", span: { sourceStart: 11, sourceEnd: 20 }, node: { name: "customer" } }]);
+    expect(nodesAt(value, other)).toMatchObject([{ type: "mesh:Member", span: { sourceStart: 22, sourceEnd: 28 }, node: { name: "other" } }]);
   });
 
   test("`sort asc &dueOn`: the static member variant, never the expression form", () => {
@@ -115,12 +105,12 @@ describe("the five Mesh cases", () => {
         nameSpan: { sourceStart: 5, sourceEnd: 8 },
       },
       {
-        // A whole-value member is a `static` attribute carrying `member`.
+        // A whole-value member is a `static` attribute carrying the `mesh:Member` node.
         kind: "static",
         name: "member",
         value: "dueOn",
-        member: {
-          kind: "member",
+        node: {
+          type: "mesh:Member",
           name: "dueOn",
           span: { sourceStart: 9, sourceEnd: 15 },
         },
@@ -165,7 +155,7 @@ describe("the five Mesh cases", () => {
     expect(amount?.trigger).toMatchObject({ id: "member", text: "&amount" });
   });
 
-  test("`&amount=qty * price` under a concise block: a dynamic `value`, marks inside it", () => {
+  test("`&amount=qty * price` under a concise block: a dynamic `value`, members inside it", () => {
     const source = "set\n  &title\n  &amount=qty * &price\n";
     const [set] = tags(ir(source).body);
     const members = tags((set as SpannedTag).children);
@@ -179,11 +169,10 @@ describe("the five Mesh cases", () => {
     expect(value.value.node).toMatchObject({
       type: "BinaryExpression",
       left: { type: "Identifier", name: "qty" },
-      right: {
-        type: "MemberExpression",
-        extra: { mxMember: { name: "price" } },
-      },
+      right: { type: "MemberExpression", property: { name: "price" } },
     });
+    const right = (value.value.node as unknown as { right: object }).right;
+    expect(nodesAt(value.value, right)).toMatchObject([{ type: "mesh:Member", node: { name: "price" } }]);
   });
 });
 
@@ -201,13 +190,13 @@ describe("what is not a member", () => {
     const [rule] = tags(result.ir?.body ?? []);
     const x = attrNamed(rule as SpannedTag, "x");
     expect(x.kind === "dynamic" && x.value.node?.type).toBe(type);
-    expect(JSON.stringify(x)).not.toContain("mxMember");
+    expect(JSON.stringify(x)).not.toContain("mesh:Member");
   });
 
   test("`&x` in a string, an expression comment and a line comment stays text", () => {
     const result = parse('// &a\nrule x="&b" y=(c /* &d */)\n');
     expect(result.diagnostics).toEqual([]);
-    expect(JSON.stringify(result.ir)).not.toContain("mxMember");
+    expect(JSON.stringify(result.ir)).not.toContain("mesh:Member");
     const [rule] = tags(result.ir?.body ?? []);
     expect(attrNamed(rule as SpannedTag, "x")).toMatchObject({
       kind: "static",
@@ -334,7 +323,7 @@ describe("the unknown-tag scan takes the module too (PR 450's parseMxDocument)",
         ...SYNTAX_DIALECT,
         contracts: {
           sort: {
-            attributes: { asc: { type: "boolean" }, member: { type: "member" } },
+            attributes: { asc: { type: "boolean" }, member: { type: "mesh:Member" } },
           },
         },
       },
@@ -398,39 +387,65 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
     expect(messages.join("\n")).not.toContain("is not a known tag");
   });
 
-  const slot = (type: "member" | "mesh:Atom", source: string) =>
+  const slot = (type: "mesh:Member" | "mesh:Atom", source: string) =>
     parse(source, {
       dialect: { ...SYNTAX_DIALECT, contracts: { sort: { attributes: { load: { type } } } } },
     }).diagnostics.map((d) => d.message);
 
   test("M5: a `member` slot accepts a dynamic value that is one member", () => {
-    expect(slot("member", "sort load=&visible\n")).toEqual([]);
+    expect(slot("mesh:Member", "sort load=&visible\n")).toEqual([]);
   });
 
   test("M5: a `member` slot refuses an expression around a member", () => {
-    expect(slot("member", "sort load=(&visible && x)\n")).toEqual([
+    expect(slot("mesh:Member", "sort load=(&visible && x)\n")).toEqual([
       expect.stringContaining(
-        "option `load` must be a member, got an expression",
+        "option `load` must be member, got expression",
       ),
     ]);
   });
 
+  test.each([
+    ["a string", 'sort load="visible"\n', "`sort`: option `load` must be member, got string"],
+    ["a number", "sort load=1\n", "`sort`: option `load` must be member, got number"],
+    ["an atom", "sort load=:visible\n", "`sort`: option `load` must be member, got atom"],
+  ])("a `mesh:Member` slot refuses %s with core's label (MX 0.1.0-alpha.34)", (_, source, message) => {
+    expect(slot("mesh:Member", source)).toEqual([message]);
+  });
+
+  test.each(["sort load=a.b\n", "sort load=(&visible.x)\n", "sort load=[&visible]\n", "sort load=(c ? &a : &b)\n"])(
+    "%j: a `mesh:Member` slot refuses an expression that is not exactly one member",
+    (source) => {
+      expect(slot("mesh:Member", source)).toEqual([expect.stringMatching(/option `load` must be (a )?member, got/)]);
+    },
+  );
+
+  test.each(["sort load=(&visible)\n", "sort load=&visible!\n", "sort load=(&visible as T)\n"])(
+    "%j: a member inside a wrapper MX lowers away is still one member",
+    (source) => {
+      expect(slot("mesh:Member", source)).toEqual([]);
+    },
+  );
+
   test("M5: an `atom` slot refuses the dynamic form too", () => {
     expect(slot("mesh:Atom", "sort load=&visible\n")).toEqual([
-      expect.stringContaining("option `load` must be mesh:Atom, got a member"),
+      "`sort`: option `load` must be atom, got member",
     ]);
   });
 
   test("a second member in one name slot is an error at the second", () => {
     const result = parse("sort asc &c &d\n");
     expect(result.ir).toBeUndefined();
+    // Core's once-per-tag check (MX 0.1.0-alpha.34) refuses it as `MX_INVALID_TRIGGER_USE`, Mesh's `MESH_SYNTAX`.
     expect(result.diagnostics).toEqual([
-      expect.objectContaining({
-        message:
-          "one member per slot: `member` already holds `c`, so this member cannot also set it",
+      {
+        severity: "error",
+        code: "MESH_SYNTAX",
+        message: "a line takes one member reference: `&d` follows the one at 1:10",
         line: 1,
         column: 12,
-      }),
+        offset: 12,
+        end: { line: 1, column: 14, offset: 14 },
+      },
     ]);
   });
 });
@@ -441,6 +456,7 @@ describe("a member inside an attribute's argument list (ported from MX's `attr-a
     const attr = attrNamed(tag!, "a");
     const [arg] = "args" in attr ? (attr.args ?? []) : [];
     expect(arg?.code).toBe("self.b");
-    expect(arg?.node).toMatchObject({ extra: { mxMember: { name: "b" } } });
+    expect(arg?.node).toMatchObject({ type: "MemberExpression", property: { name: "b" } });
+    expect(nodesAt(arg!, arg?.node)).toMatchObject([{ type: "mesh:Member", node: { name: "b" } }]);
   });
 });

@@ -1,8 +1,9 @@
 // Mesh's v4 reference file through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX
 // commit 750c80ec1; Mesh owns the syntax now): atoms and the name sugar as layer-2 triggers plus the `&` member rows. The shapes
-// the front end reads: a whole-value atom is a `static` attribute carrying `atom`, an atom inside an expression a `StringLiteral`
-// marked `extra.mxAtom`, a member a `static` attribute carrying `member` or `extra.mxMember`. The "dialect package" loader is
-// covered by `dialect-registration.test.ts`.
+// the front end reads: a whole-value atom is a `static` attribute carrying a `mesh:Atom` `node`, an atom inside an expression a
+// `mesh:Atom` in `Expr.nodes` whose forward is a `StringLiteral`, a member a `static` attribute carrying a `mesh:Member` `node`
+// or a `mesh:Member` in `Expr.nodes` whose forward is `self.name`. Core sets no mark on a forward (MX 0.1.0-alpha.34). The
+// "dialect package" loader is covered by `dialect-registration.test.ts`.
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
@@ -104,11 +105,17 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     expect(values.value.node).toMatchObject({
       type: "ArrayExpression",
       elements: [
-        { type: "StringLiteral", value: "draft", extra: { mxAtom: {} } },
+        { type: "StringLiteral", value: "draft" },
         { type: "StringLiteral", value: "sent" },
         { type: "StringLiteral", value: "paid" },
       ],
     });
+    const elements = (values.value.node as unknown as { elements: object[] }).elements;
+    expect(values.value.nodes?.map((each) => [each.type, elements.indexOf(each.forward as object)])).toEqual([
+      ["mesh:Atom", 0],
+      ["mesh:Atom", 1],
+      ["mesh:Atom", 2],
+    ]);
   });
 
   test("`:name` then a method is the name and the default value, members inside", () => {
@@ -119,9 +126,9 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
       node: { type: "mesh:Atom", name: "isOverdue" },
     });
     const value = attr(overdue, "value");
-    expect(value.kind).toBe("dynamic");
-    expect(JSON.stringify(value)).toContain('"mxMember"');
-    expect(JSON.stringify(value)).toContain('"mxAtom"');
+    if (value.kind !== "dynamic") throw new Error(value.kind);
+    const types = new Set(value.value.nodes?.map((each) => each.type));
+    expect(types).toEqual(new Set(["mesh:Member", "mesh:Atom"]));
   });
 
   test("members after a kind, on a tagless line and in a value", () => {
@@ -129,7 +136,7 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     expect(attr(find(ir.body, "asc"), "member")).toMatchObject({
       kind: "static",
       value: "dueOn",
-      member: { kind: "member", name: "dueOn" },
+      node: { type: "mesh:Member", name: "dueOn" },
     });
     const member = find(find(ir.body, "set").children, "member");
     expect(attr(member, "name")).toMatchObject({ value: "status" });
@@ -141,7 +148,8 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     const load = find(ir.body, "actions").attrs.find(
       (each) => each.kind !== "spread" && each.name.startsWith("on"),
     );
-    expect(JSON.stringify(load)).toContain('"mxMember"');
+    if (load?.kind !== "dynamic") throw new Error(load?.kind);
+    expect(load.value.nodes?.map((each) => each.type)).toContain("mesh:Member");
   });
 });
 
@@ -256,15 +264,26 @@ describe("Mesh's rows under MX alpha.26: prefix operators, await and conditional
     const source = `entity :T\n  computed\n    boolean :c() { ${body} }\n`;
     const { ir, diagnostics } = lowerSource(source, "t.mesh.mx", { ...BASE, dialect: SYNTAX_DIALECT });
     const marked: { kind: "member" | "transaction"; name: string }[] = [];
+    // A member is a `mesh:Member` in `Expr.nodes`, found by its forward; `%.name` is still the `extra.mxTransaction` mark.
+    let members = new Map<unknown, string>();
     const walk = (value: unknown): void => {
       if (Array.isArray(value)) return value.forEach(walk);
       if (value === null || typeof value !== "object") return;
-      const extra = (value as { extra?: { mxMember?: { name?: string }; mxTransaction?: { name: string } } }).extra;
-      if (extra?.mxMember) marked.push({ kind: "member", name: String(extra.mxMember.name) });
+      const member = members.get(value);
+      if (member !== undefined) marked.push({ kind: "member", name: member });
+      const extra = (value as { extra?: { mxTransaction?: { name: string } } }).extra;
       if (extra?.mxTransaction) marked.push({ kind: "transaction", name: extra.mxTransaction.name });
       for (const child of Object.values(value)) walk(child);
     };
-    if (ir) walk(attr(find(ir.body, "boolean"), "value"));
+    const value = ir ? attr(find(ir.body, "boolean"), "value") : undefined;
+    if (value?.kind === "dynamic") {
+      members = new Map(
+        (value.value.nodes ?? [])
+          .filter((each) => each.type === "mesh:Member")
+          .map((each) => [each.forward, (each.node as unknown as { name: string }).name]),
+      );
+      walk(value.value.node);
+    }
     return { codes: diagnostics.map((d) => d.code), marked, ir };
   };
 

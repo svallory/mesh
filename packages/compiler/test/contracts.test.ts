@@ -89,7 +89,7 @@ describe("v4 contracts", () => {
   test("a single atom in a list slot is refused with the list spelling (MX alpha.33: list slots are arrays of `mesh:Atom`)", () => {
     const result = parse(`${keyed}  actions auto=:read\n`);
     expect(result.diagnostics.map((d) => [d.code, d.message])).toEqual([
-      ["MESH_OPTION_VALUE", "`actions`: option `auto` must be array, got mesh:Atom; write it as a list: `[:read]`"],
+      ["MESH_OPTION_VALUE", "`actions`: option `auto` must be array, got atom; write it as a list: `[:read]`"],
     ]);
   });
   test("old-relationship: exact message and position (the value-position atom row ends the default at the spaced name; Mesh's words since MX alpha.31)", () => {

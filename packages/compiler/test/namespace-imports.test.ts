@@ -170,6 +170,22 @@ describe("a reference that does not resolve is MESH_UNKNOWN_ENTITY, from the one
     }
   });
 
+  // A member lowers to the forward `self.list`, shaped like `billing.Invoice`: core sets no mark on it (MX 0.1.0-alpha.34),
+  // so the contract tells it apart by identity and refuses it, and the stand-in `self` never reaches a message.
+  test("a member (`entity=&list`, `&a.b`) is MESH_ENTITY_REFERENCE from the contract, in belongs-to, has-many and has-one", () => {
+    for (const kind of ["belongs-to", "has-many", "has-one"])
+      for (const written of ["&list", "&list.owner"]) {
+        const relationship = `    ${kind} :other entity=${written}`;
+        const result = build(line("", `${relationship}\n`));
+        expect(brief(result.diagnostics).map((d) => d.slice(0, 4)), `${kind} ${written}`).toEqual([[
+          "MESH_ENTITY_REFERENCE",
+          `\`${kind}\`: entity must be an imported identifier (\`List\`) or a member of a namespace import (\`billing.Invoice\`)`,
+          7, relationship.indexOf("entity="),
+        ]]);
+        expect(result.diagnostics[0]!.message).not.toContain("self");
+      }
+  });
+
   // MX lowers a wrapped value to the bare one and keeps the value as written in the option's `valueSpan` (MX 0.1.0-alpha.28,
   // IR version 5): a reference is written bare, so a wrapper is refused at the value as written, in every reference position.
   test("a wrapped reference is MESH_ENTITY_REFERENCE at the value as written, in belongs-to, has-many and has-one", () => {

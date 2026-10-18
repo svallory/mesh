@@ -197,7 +197,7 @@ describe("the atom attribute type after core dropped it", () => {
     const source = "entity :Todo\n  actions auto=:read\n";
     const found = diagnosticsOf(source, tags, MESH);
     expect(found).toHaveLength(1);
-    expect(found[0]?.message).toContain("must be array, got mesh:Atom");
+    expect(found[0]?.message).toContain("must be array, got atom");
     expect(found[0]?.message).toContain("`[:read]`");
     expect(diagnosticsOf("entity :Todo\n  actions auto=[:read]\n", tags, MESH)).toEqual([]);
   });
