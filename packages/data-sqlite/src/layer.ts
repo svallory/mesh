@@ -9,6 +9,9 @@ import { resolve } from "node:path";
 import { deliveryOperations } from "./delivery.ts";
 import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 
+/** How many `:memory:` layers this process made: each names its private database `:memory: #<n>`. */
+let memoryLayers = 0;
+
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
 export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions"]);
 
@@ -236,8 +239,8 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
   const layer: SQLiteLayer = {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
     // Every layer object over one file names it alike, so core keeps one deliverer and one subscription registry per
-    // file; a `:memory:` database is private to its connection and names nothing.
-    ...(configured.file === ":memory:" ? {} : { database: resolve(configured.file) }),
+    // file; a `:memory:` database is private to its layer object, so each gets a name of its own.
+    database: configured.file === ":memory:" ? `:memory: #${++memoryLayers}` : resolve(configured.file),
     transaction(run, options?: TransactionOptions) { return transactionWith(run, options?.waitMs === undefined ? undefined : { waitMs: options.waitMs }); },
     readOutbox(after, limit) {
       // A statement sent on this connection while a transaction is open would see that transaction's uncommitted rows;

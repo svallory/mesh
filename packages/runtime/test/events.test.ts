@@ -3,7 +3,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
+  subscribe,
 } from "@meshfw/runtime";
+import { testBus } from "@meshfw/runtime/testing";
 import type { DataLayer, DataOperations, Declaration, EventsConfig, OutboxRow } from "@meshfw/runtime";
 
 /** An event class shaped as `mesh build` generates one: a private brand, the declaration under DECLARATION, frozen instances. */
@@ -376,5 +378,25 @@ describe("core's tables", () => {
       ["generation", "integer", false],
     ]);
     expect(Object.isFrozen(CORE_TABLES) && Object.isFrozen(outbox) && Object.isFrozen(outbox!.columns) && Object.isFrozen(outbox!.columns[0])).toBe(true);
+  });
+});
+
+describe("delivery needs the layer to name its database", () => {
+  test("deliver(), startDelivery() and subscribe refuse a layer without DataLayer.database, before they load the events module or write a row", async () => {
+    const memory = memoryLayer();
+    expect(memory.layer.database).toBeUndefined();
+    let loaded = 0;
+    const config: EventsConfig = { bus: testBus(), load: async () => { loaded++; return {}; } };
+    const binding = bindDomain({ InvoicePaid }, memory.layer, { events: config }, new AsyncLocalStorage());
+    for (const [what, run] of [
+      ["deliver()", () => binding.deliver()],
+      ["startDelivery()", () => binding.startDelivery()],
+      ["subscribe", () => subscribe(binding, { name: "s" }, () => {})],
+    ] as const) {
+      const error = await rejection(run);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toStartWith(`${what} was called on a data layer that does not name its database (DataLayer.database)`);
+    }
+    expect(loaded).toBe(0);
   });
 });

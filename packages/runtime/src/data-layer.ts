@@ -291,9 +291,11 @@ export interface TransactionOptions {
 /** A bound data adapter; handlers always open a transaction before operations. */
 export interface DataLayer {
   /**
-   * Names the database this layer opens, the same for every layer object over it (data-sqlite: the file's absolute
-   * path); left out when no other layer object can open it (`:memory:`). Core keeps the deliverer's process-side state
-   * and the subscription registry per database by it, and names it in the claim's errors.
+   * Names the database this layer opens, the same for every layer object over it and different for every other database
+   * (data-sqlite: the file's absolute path, or `:memory: #<n>` for a private memory database). Required to deliver
+   * events: core keeps the deliverer's process-side state and the subscription registry per database by it, so two
+   * layer objects over one database without it would each claim under this process's run id, the second taking the
+   * first's claim over quietly. `deliver()`, `startDelivery()` and `subscribe` refuse a layer without it.
    */
   readonly database?: string;
   /** Runs run in one transaction: commits when it resolves, rolls back and rethrows when it rejects.

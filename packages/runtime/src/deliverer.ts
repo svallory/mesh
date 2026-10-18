@@ -177,6 +177,10 @@ export function declaredHandlers(module: EventsModule, bus: EventBus, events: Re
         throw new HandlerOptionError(name, `${where} has onFailure ${JSON.stringify(onFailure)}: it is "stop" (the default) or "skip"`);
       if (onFailure === "skip" && !capabilities.has("dead-letters"))
         throw new HandlerOptionError(name, `${where} has onFailure "skip", which needs the bus's dead-letters, and the bus ${bus.manifest.adapter} does not declare it: no event is ever skipped without a record`);
+      // Dead letters (mesh_outbox_failures, core's skip path, retryFailed) are not built yet: a bus that declares
+      // dead-letters would otherwise get stop behaviour silently. The type keeps "skip" gated on dead-letters.
+      if (onFailure === "skip")
+        throw new HandlerOptionError(name, `${where} has onFailure "skip", and dead-letter handling is not built yet: no event can be set aside with a record. Leave onFailure out (it defaults to "stop")`);
       const renamedFrom = handler.renamedFrom;
       if (renamedFrom !== undefined && (typeof renamedFrom !== "string" || renamedFrom.trim() === ""))
         throw new HandlerOptionError(name, `${where} has renamedFrom ${describe(renamedFrom)}: it must be the handler's former name`);
@@ -239,7 +243,8 @@ class Deliverer {
       runHandler: (handler: RegisteredHandler, row: OutboxRow) => self.runHandler(handler, row),
       retry: (handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]) => self.retry(handler, row, delays),
       isRetryable,
-      subscriptions: () => [...self.db.subscriptions.values()].filter((subscription) => !subscription.ended),
+      // A subscription still writing its row (opening) is not fed: its first read is rows(start), once the row commits.
+      subscriptions: () => [...self.db.subscriptions.values()].filter((subscription) => !subscription.ended && !subscription.opening),
       deletionPass: () => self.deletionPass(),
       onPublished: (listener: () => void) => onPublished(layer, listener),
       onClaimLost: (listener: (error: Error) => void) => { self.#lostListeners.add(listener); return () => { self.#lostListeners.delete(listener); }; },
@@ -602,6 +607,12 @@ function matches(filter: SubscriptionFilter, row: OutboxRow): boolean {
   return true;
 }
 
+/** Delivery needs the layer to name its database (`DataLayer.database`): the claim and the registry are kept per database. */
+function requireDatabase(layer: DataLayer, what: string): void {
+  if (typeof layer.database !== "string" || layer.database === "")
+    throw new FrameworkError(`${what} was called on a data layer that does not name its database (DataLayer.database): core keeps the claim and the subscription registry per database, so a layer that delivers must name it, the same for every layer object over one database`);
+}
+
 /** What a binding needs to deliver, checked: its layer, event classes, configuration with a bus, and the events module. */
 async function prepare(binding: Binding, what: string) {
   const { layer, events, config } = bindingParts(binding);
@@ -609,6 +620,7 @@ async function prepare(binding: Binding, what: string) {
     throw new FrameworkError(`${what} was called on a binding with no event bus: configure events: { bus: localBus() } in mesh.config.ts, or pass it to bind(layer, { events })`);
   if (insideTransaction(binding)) throw new FrameworkError(`${what} was called inside a transaction: delivery runs its own transactions, so call it outside any`);
   checkedBus(config.bus);
+  requireDatabase(layer, what);
   const module = await loadEvents(config);
   return { layer, events, config, module };
 }
@@ -727,6 +739,13 @@ function canonical(value: unknown): string {
 class OpenSubscription implements LiveSubscription {
   cursor: number;
   ended = false;
+  /**
+   * True for the reservation `subscribe` holds in the registry while it writes the row: it keeps the name taken and
+   * makes no read. Ending it (a stop or a lost claim meanwhile) only records why; `subscribe` ends the real one with it.
+   */
+  opening = false;
+  /** Why an opening reservation was ended, for `subscribe` to pass on. */
+  endedWith: unknown;
   /** The highest position handed to the callback. */
   #handed: number;
   /** The acknowledged position as this process last wrote or read it. */
@@ -794,7 +813,8 @@ class OpenSubscription implements LiveSubscription {
       if (!row) throw new FrameworkError(`The subscription ${JSON.stringify(this.name)} has no row: it was forgotten while open`);
       if (row.generation !== state.generation) throw new DelivererLostError(this.db.name, `another process claimed the database (generation ${state.generation}) since the subscription ${JSON.stringify(this.name)} opened`);
       if (position <= row.position) return row.position;
-      await ops.writeSubscriptionProgress({ ...row, position });
+      // seenAt left out: the database stamps it with its own now, as the spec's ack writes the position and seenAt.
+      await ops.writeSubscriptionProgress({ name: row.name, position, filter: row.filter, open: row.open, generation: row.generation });
       return position;
     }).catch((error: unknown) => {
       if (error instanceof DelivererLostError) this.end(error);
@@ -811,6 +831,7 @@ class OpenSubscription implements LiveSubscription {
   end(error: unknown): void {
     if (this.ended) return;
     this.ended = true;
+    if (this.opening) { this.endedWith = error; return; }
     this.#queue.length = 0;
     if (this.db.subscriptions.get(this.name) === this) this.db.subscriptions.delete(this.name);
     // A lost claim leaves the rows to the process that took it over (its generation already reads them as closed), and
@@ -842,16 +863,20 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
   if (typeof callback !== "function") throw new FrameworkError(`subscribe takes a callback, (event) => ..., and was given ${describe(callback)}`);
   if (after !== undefined && (!Number.isSafeInteger(after) || after < 0)) throw new FrameworkError(`subscribe: after must be a position, a whole number, and is ${describe(after)}`);
   if (insideTransaction(binding)) throw new FrameworkError("subscribe was called inside a transaction: a subscription never runs inside one");
+  requireDatabase(layer, "subscribe");
   const filter = filterOf(query, events);
   const db = databases.get(layer);
   if (db.subscriptions.has(name))
     throw new FrameworkError(`A subscription named ${JSON.stringify(name)} is open in this process already: two readers acknowledging under one row would pass each other's rows`);
   const placeholder = new OpenSubscription(db, layer, events, name, filter, 0, callback);
+  placeholder.opening = true;
   db.subscriptions.set(name, placeholder);
   try {
     const position = await layer.transaction(async (tx) => {
       const ops = operations(tx);
       const state = await ops.readDeliveryState();
+      if (state.claim !== null && state.claim.runId !== RUN_ID && !lapsed(state.claim, state.now))
+        throw new FrameworkError(`subscribe was called in a process that does not deliver: another process (pid ${state.claim.pid ?? "unknown"} on host ${state.claim.host ?? "unknown"}) holds ${db.name}'s deliverer claim, so nothing here would feed the subscription. Subscribe in the deliverer's process`);
       const row = (await ops.readSubscriptionProgress()).find((each) => each.name === name);
       let start: number;
       if (row) {
@@ -867,8 +892,13 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
       await ops.writeSubscriptionProgress({ name, position: start, filter, open: true, generation });
       return start;
     });
-    placeholder.cursor = position;
     const subscription = new OpenSubscription(db, layer, events, name, filter, position, callback);
+    if (db.subscriptions.get(name) === placeholder) db.subscriptions.delete(name);
+    if (placeholder.ended) {
+      // Delivery stopped, or the claim was lost, while the row was being written: the stream ends as it would have.
+      subscription.end(placeholder.endedWith);
+      return subscription.handle;
+    }
     db.subscriptions.set(name, subscription);
     return subscription.handle;
   } catch (error) {

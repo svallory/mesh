@@ -623,11 +623,15 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       assert((await world.state()).state.generation === state.generation, "a refused start claimed");
     });
 
-    add("a handler with onFailure: \"skip\" on a bus without dead-letters is MESH_HANDLER_OPTION", async (world) => {
-      if (declares.has("dead-letters")) return;
-      const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } });
-      const error = await rejection(() => binding.deliver());
-      assert(error instanceof HandlerOptionError, `got ${String(error)}`);
+    add("a handler with onFailure: \"skip\" is MESH_HANDLER_OPTION, on a bus with or without dead-letters, until dead-letter handling is built", async (world) => {
+      for (const capabilities of [["ordered-delivery"], ["ordered-delivery", "dead-letters"]] as BusCapability[][]) {
+        const bus = testBus({ capabilities });
+        const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } }, { bus });
+        const error = await rejection(() => binding.deliver());
+        assert(error instanceof HandlerOptionError && error.code === "MESH_HANDLER_OPTION", `with ${capabilities.join(", ")}: got ${String(error)}`);
+        assert(capabilities.length === 1 || error.message.includes("dead-letter handling is not built yet"), `with dead-letters: ${error.message}`);
+      }
+      assert((await world.state()).handlers.length === 0, "a refused handler was registered");
     });
 
     add("an orphaned handler row is reported once in a run of deliver() rounds", async (world) => {
@@ -767,6 +771,85 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const cause = await ended.done;
         assert(cause instanceof Error && cause.message === "callback failed", `the stream ended with ${String(cause)}`);
         assert(!(await world.state()).subscriptions.find((row) => row.name === "t")!.open, "an ended stream left the row open");
+      });
+
+      add("subscribe: ack writes the position and the database's now as seenAt", async (world) => {
+        const binding = world.bind({});
+        const got = received();
+        const subscription = await subscribe(binding, { name: "s", after: 0 }, got.callback);
+        await world.publish(binding, [Alpha, 1], [Alpha, 2]);
+        await binding.deliver();
+        await until(() => got.list.length === 2, "two rows are handed over");
+        const before = (await world.state()).subscriptions[0]!;
+        await sleep(10);
+        await subscription.ack(1);
+        const acked = (await world.state()).subscriptions[0]!;
+        assert(acked.position === 1 && acked.open, `row ${JSON.stringify(acked)}`);
+        assert(acked.seenAt.getTime() > before.seenAt.getTime(), `seenAt stayed at ${before.seenAt.toISOString()} through ack`);
+        await subscription.close();
+      });
+
+      add("subscribe: a round that runs while subscribe writes the row does not feed it; it then reads from its row's position", async (world) => {
+        const publisher = world.bind({});
+        await world.publish(publisher, [Alpha, 1], [Alpha, 2]);
+        const got = received();
+        let opening = -1;
+        let cursors: number[] = [];
+        let opened: Subscription | undefined;
+        const bus = fakeBus(async (core) => {
+          // subscribe reserves the name in the registry before its first await, then writes the row
+          const pending = subscribe(binding, { name: "s" }, got.callback);
+          opening = core.subscriptions().length;
+          opened = await pending;
+          cursors = core.subscriptions().map((subscription) => subscription.cursor);
+          await world.publish(publisher, [Alpha, 3]);
+          for (const subscription of core.subscriptions()) await subscription.feed(await core.rows(subscription.cursor, 10));
+          await core.deletionPass();
+        });
+        const binding = world.bind({}, { bus });
+        await binding.deliver();
+        assert(opening === 0, `a round fed a subscription still writing its row (${opening} listed)`);
+        assert(JSON.stringify(cursors) === "[2]", `the opened subscription's cursor: ${JSON.stringify(cursors)}`);
+        await until(() => got.list.length === 1, "the row published after the open is handed over");
+        assert(JSON.stringify(got.positions()) === "[3]", `got ${JSON.stringify(got.positions())}`);
+        await opened!.close();
+      });
+
+      add("subscribe: a stop while subscribe writes the row ends the stream with null and leaves the row closed", async (world) => {
+        const bus = fakeBus(async () => {});
+        const binding = world.bind({}, { bus });
+        const delivery = await start(world, binding);
+        // hold the layer, so subscribe's transaction waits behind it while the stop runs
+        let release!: () => void;
+        const held = world.layer.transaction(() => new Promise<void>((resolve) => { release = resolve; }));
+        const pending = subscribe(binding, { name: "s" }, () => {});
+        const stopping = delivery.stop();
+        await sleep(10);
+        release();
+        await held;
+        const subscription = await pending;
+        await stopping;
+        const cause = await Promise.race([subscription.done, sleep(2000).then(() => "timeout")]);
+        assert(cause === null, `the stream ended with ${String(cause)}`);
+        const row = (await world.state()).subscriptions.find((each) => each.name === "s");
+        assert(row !== undefined && !row.open, `row ${JSON.stringify(row)}`);
+        // the name is free again: nothing of the ended open stayed in the registry
+        await (await subscribe(binding, { name: "s" }, () => {})).close();
+      });
+
+      add("subscribe in a process whose database another process's live claim holds is a FrameworkError naming it, and writes no row", async (world) => {
+        setDeliveryTiming({ lapseMs: 150 });
+        const binding = world.bind({});
+        await world.layer.transaction(async (tx) => {
+          const { generation } = await ops(tx).readDeliveryState();
+          await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000ee", generation: generation + 1, host: "elsewhere", pid: 4242, startedAt: new Date() });
+        });
+        const error = await rejection(() => subscribe(binding, { name: "s" }, () => {}));
+        assert(error instanceof FrameworkError && error.message.startsWith("subscribe was called in a process that does not deliver: another process (pid 4242 on host elsewhere)"), `got ${String(error)}`);
+        assert((await world.state()).subscriptions.length === 0, "a refused open wrote a row");
+        await sleep(200);
+        // once that claim lapses, nothing holds the database, and the open goes ahead
+        await (await subscribe(binding, { name: "s" }, () => {})).close();
       });
 
       add("subscribe: an orphaned subscription is reported once, then at most hourly, under until-delivered only", async (world) => {
