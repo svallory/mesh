@@ -398,7 +398,7 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
     expect(messages.join("\n")).not.toContain("is not a known tag");
   });
 
-  const slot = (type: "member" | "atom", source: string) =>
+  const slot = (type: "member" | "mesh:Atom", source: string) =>
     parse(source, {
       dialect: { ...SYNTAX_DIALECT, contracts: { sort: { attributes: { load: { type } } } } },
     }).diagnostics.map((d) => d.message);
@@ -416,8 +416,8 @@ describe("Mesh review of PR 451 (M1, M4, M5, one member per slot)", () => {
   });
 
   test("M5: an `atom` slot refuses the dynamic form too", () => {
-    expect(slot("atom", "sort load=&visible\n")).toEqual([
-      expect.stringContaining("option `load` must be an atom, got a member"),
+    expect(slot("mesh:Atom", "sort load=&visible\n")).toEqual([
+      expect.stringContaining("option `load` must be mesh:Atom, got a member"),
     ]);
   });
 

@@ -5,13 +5,14 @@
  *
  * - In an expression, `&status` is `self.status`, a `MemberExpression`
  *   marked `extra.mxMember = { span, name }`, and `:status` is a
- *   `StringLiteral` marked `extra.mxAtom`.
+ *   `mesh:Atom` node listed in `Expr.nodes`, whose forward (the `StringLiteral`
+ *   of its name) stands in its place in the expression.
  * - In an attribute list (after a kind, `sort asc &dueOn`), a static
  *   attribute `member` carrying `member: { name, span }`; after the kind,
- *   `:name` is a static attribute `name` carrying `atom: { name, span }`.
+ *   `:name` is a static attribute `name` carrying `node: { type: "mesh:Atom", name, span }`.
  * - As a whole attribute value, `:name` (`belongs-to=:List`) is claimed by
  *   the `atom-value` row as a `mesh:Atom` node, which lowers to the same
- *   atom-marked static attribute as an atom elsewhere.
+ *   static attribute, carrying the node on `node`, as the name sugar's.
  * - On a tagless line, a `member` child tag with a static `name` and, for
  *   `&amount=expr`, a dynamic `value`.
  *

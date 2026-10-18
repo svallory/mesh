@@ -49,13 +49,13 @@
    "code": "MESH_SYNTAX"
   }
  ],
- "vocab|<box mode=[:strict, :lose]/>": [
+ "vocab|<box modes=[:strict, :lose]/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode`: `:lose` is not one of :loose, :strict; did you mean `:loose`?",
+   "message": "`box`: option `modes`: `:lose` is not one of :loose, :strict; did you mean `:loose`?",
    "line": 1,
-   "column": 20,
-   "offset": 20,
+   "column": 21,
+   "offset": 21,
    "code": "MESH_SYNTAX"
   }
  ],
@@ -102,7 +102,7 @@
  "vocab|<box mode='strict'/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode` must be atom, got string (one of :loose, :strict)",
+   "message": "`box`: option `mode` must be mesh:Atom, got string (one of :loose, :strict)",
    "line": 1,
    "column": 10,
    "offset": 10,
@@ -112,7 +112,7 @@
  "vocab|<box mode=1/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode` must be atom, got number (one of :loose, :strict)",
+   "message": "`box`: option `mode` must be mesh:Atom, got number (one of :loose, :strict)",
    "line": 1,
    "column": 10,
    "offset": 10,
@@ -297,7 +297,7 @@
  "vocab|<entity :invoice>\n  <attributes><string name=\"title\"/></attributes>\n</entity>": [
   {
    "severity": "error",
-   "message": "`string`: option `name` must be atom, got string",
+   "message": "`string`: option `name` must be mesh:Atom, got string",
    "line": 2,
    "column": 27,
    "offset": 45,
@@ -309,13 +309,13 @@
    }
   }
  ],
- "vocab|<entity :invoice>\n  <attributes><string :title/></attributes>\n  <actions>\n    <action :rename>\n      <arguments><string :newTitle/></arguments>\n    </action>\n    <action :other>\n      <policy require=:newTitle/>\n    </action>\n  </actions>\n</entity>": [
+ "vocab|<entity :invoice>\n  <attributes><string :title/></attributes>\n  <actions>\n    <action :rename>\n      <arguments><string :newTitle/></arguments>\n    </action>\n    <action :other>\n      <policy require=[:newTitle]/>\n    </action>\n  </actions>\n</entity>": [
   {
    "severity": "error",
    "message": "`policy`: option `require`: `:newTitle` is not a declared attribute or argument here (one of :title)",
    "line": 8,
-   "column": 22,
-   "offset": 200,
+   "column": 23,
+   "offset": 201,
    "code": "MESH_SYNTAX"
   }
  ],
@@ -369,13 +369,13 @@
    "code": "MESH_SYNTAX"
   }
  ],
- "vocab|<box><@row><@cell k=[:x, :w]/></@row></box>": [
+ "vocab|<box><@row><@cell ks=[:x, :w]/></@row></box>": [
   {
    "severity": "error",
-   "message": "`box`: `@row`: `@cell`: option `k`: `:w` is not one of :x, :y",
+   "message": "`box`: `@row`: `@cell`: option `ks`: `:w` is not one of :x, :y",
    "line": 1,
-   "column": 25,
-   "offset": 25,
+   "column": 26,
+   "offset": 26,
    "code": "MESH_SYNTAX"
   }
  ],
@@ -432,7 +432,7 @@
  "vocab|<box any=\"red\"/>": [
   {
    "severity": "error",
-   "message": "`box`: option `any` must be atom, got string",
+   "message": "`box`: option `any` must be mesh:Atom, got string",
    "line": 1,
    "column": 9,
    "offset": 9,
@@ -447,7 +447,7 @@
  "vocab|<box mode=\"red\"/>": [
   {
    "severity": "error",
-   "message": "`box`: option `mode` must be atom, got string (one of :loose, :strict)",
+   "message": "`box`: option `mode` must be mesh:Atom, got string (one of :loose, :strict)",
    "line": 1,
    "column": 10,
    "offset": 10,
@@ -457,7 +457,7 @@
  "registration|values": [
   {
    "severity": "error",
-   "message": "Invalid \"a\" attribute declaration of tag \"box\": `values` requires `type: \"atom\"`",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `values` requires `type: \"mesh:Atom\"` (or `type: \"array\"` with `items: \"mesh:Atom\"`)",
    "line": 1,
    "column": 0,
    "offset": 0,
@@ -467,7 +467,7 @@
  "registration|pattern": [
   {
    "severity": "error",
-   "message": "Invalid \"a\" attribute declaration of tag \"box\": `pattern` requires `type: \"atom\"`",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `pattern` requires `type: \"mesh:Atom\"` (or `type: \"array\"` with `items: \"mesh:Atom\"`)",
    "line": 1,
    "column": 0,
    "offset": 0,
@@ -477,7 +477,7 @@
  "registration|ref": [
   {
    "severity": "error",
-   "message": "Invalid \"a\" attribute declaration of tag \"box\": `ref` requires `type: \"atom\"`",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `ref` requires `type: \"mesh:Atom\"` (or `type: \"array\"` with `items: \"mesh:Atom\"`)",
    "line": 1,
    "column": 0,
    "offset": 0,
@@ -517,7 +517,7 @@
  "registration|nested values": [
   {
    "severity": "error",
-   "message": "Invalid \"a\" attribute declaration of tag \"box\": \"<@row>\": `values` requires `type: \"atom\"`",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": \"<@row>\": `values` requires `type: \"mesh:Atom\"` (or `type: \"array\"` with `items: \"mesh:Atom\"`)",
    "line": 1,
    "column": 0,
    "offset": 0,
@@ -527,7 +527,7 @@
  "registration|wildcard values": [
   {
    "severity": "error",
-   "message": "Invalid \"a\" attribute declaration of tag \"box\": `attributeTags[\"*\"]` entry 1: `values` requires `type: \"atom\"`",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `attributeTags[\"*\"]` entry 1: `values` requires `type: \"mesh:Atom\"` (or `type: \"array\"` with `items: \"mesh:Atom\"`)",
    "line": 1,
    "column": 0,
    "offset": 0,
@@ -617,7 +617,7 @@
  "registration|inline children contract": [
   {
    "severity": "error",
-   "message": "Invalid \"a\" attribute declaration of tag \"box\": `children[\"*\"]` entry 2: `pattern` requires `type: \"atom\"`",
+   "message": "Invalid \"a\" attribute declaration of tag \"box\": `children[\"*\"]` entry 2: `pattern` requires `type: \"mesh:Atom\"` (or `type: \"array\"` with `items: \"mesh:Atom\"`)",
    "line": 1,
    "column": 0,
    "offset": 0,
@@ -684,13 +684,13 @@
    "code": "MESH_SYNTAX"
   }
  ],
- "entity|entity :Invoice\n  actions\n    action :rename\n      arguments\n        string :newTitle\n    action :other\n      policy require=:newTitle\n": [
+ "entity|entity :Invoice\n  actions\n    action :rename\n      arguments\n        string :newTitle\n    action :other\n      policy require=[:newTitle]\n": [
   {
    "severity": "error",
    "message": "`policy`: option `require`: `:newTitle` is not a declared attribute or argument here (none declared)",
    "line": 7,
-   "column": 21,
-   "offset": 125,
+   "column": 22,
+   "offset": 126,
    "code": "MESH_SYNTAX"
   }
  ],

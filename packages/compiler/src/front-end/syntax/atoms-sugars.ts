@@ -6,10 +6,12 @@
  *
  * What it reads:
  *
- * - `:name` in an expression is an atom: a `StringLiteral` of the name
- *   marked `extra.mxAtom = { span }`. It is a name, not a value to operate
- *   on: member access, calls, unary operators, spreading and use as an
- *   object key are refused. `::name` is reserved.
+ * - `:name` in an expression is an atom: a `mesh:Atom` node (`syntax/mesh.ts`),
+ *   listed in `Expr.nodes`, whose forward is a `StringLiteral` of the name,
+ *   found by identity (the forward's `extra.mxAtom` is read by nobody). It is a
+ *   name, not a value to operate on: member access, calls, unary operators,
+ *   spreading and use as an object key are refused (`checkAtomUse`, called
+ *   by the node's `lower`). `::name` is reserved.
  * - `:name` in an attribute list sets `name` to the atom, spelled by its
  *   token (`authored`), once per tag. Followed by `=value` or
  *   `(params) { body }` it also sets the tag's default value. An async
@@ -28,7 +30,6 @@
  * It imports types only from `@mxlang/core`'s public entry.
  */
 import type {
-  ContractAtomOrMember,
   ContractAttr,
   ContractAttributeTag,
   ContractCall,
@@ -36,7 +37,9 @@ import type {
   ContractData,
   ContractExpression,
   ContractFields,
+  ContractMember,
   ContractString,
+  DialectNode,
   LoweredUnit,
   SourceSpan,
   Trigger,
@@ -49,13 +52,23 @@ import { tagLabel } from "../tag-spelling.ts";
 /** An atom's name: an identifier, `-` between words (`:rename-all`). */
 const NAME = "[A-Za-z_$][\\w$]*(?:-[\\w$]+)*";
 
-/** `:name` in an expression; `::` (with or without a name) is matched so the hook can name it reserved. */
+/**
+ * A `mesh:Atom` node (`syntax/mesh.ts`): `:name` as a whole value, as an
+ * expression operand, or placed by the `:name` sugar. `name` is the text
+ * after the first colon, so `::x` (reserved) reads as the name `:x`.
+ */
+export interface AtomNode extends DialectNode {
+  readonly type: "mesh:Atom";
+  readonly name: string;
+}
+
+/** `:name` in an expression: claimed as a `mesh:Atom`. `::` (with or without a name) is matched so `lower` can name it reserved. */
 export const ATOM: Trigger = Object.freeze({
   id: "atom",
   chars: ":",
   match: `::(?:${NAME})?|:${NAME}`,
   standIn: "number",
-  node: Object.freeze({ call: "atom" }),
+  node: Object.freeze({ type: "Atom", dialect: "mesh" }),
 });
 
 /**
@@ -103,14 +116,15 @@ function misuse(name: string, what: string): string {
   return `\`:${name}\` is an atom, a name and not a value to operate on: ${what} is not allowed on it; write \`"${name}"\` for a string you mean to operate on`;
 }
 
-/** `:name` in an expression: the atom, or the module's refusal of its use. */
-function atom(
-  text: string,
-  span: SourceSpan,
-  ctx: TriggerContext,
-): TriggerResult {
-  if (text.startsWith("::")) ctx.fail(reserved(text.slice(2)), { code: "MESH_SYNTAX" });
-  const name = text.slice(1);
+/**
+ * `:name` in an expression: the module's refusal of a use of the atom it
+ * cannot take. Called from `AtomValue.lower` when `ctx.position` is
+ * `"expression"`; in value position the atom is the whole value, so no
+ * operator reaches it.
+ */
+export function checkAtomUse(node: AtomNode, ctx: TriggerContext): void {
+  if (node.name.startsWith(":")) ctx.fail(reserved(node.name.slice(1)), { code: "MESH_SYNTAX" });
+  const name = node.name;
   switch (ctx.use) {
     case "member-object":
       ctx.fail(misuse(name, "member access"), { code: "MESH_SYNTAX" });
@@ -130,11 +144,6 @@ function atom(
         { code: "MESH_SYNTAX" },
       );
   }
-  return ctx.expression({
-    type: "StringLiteral",
-    value: name,
-    extra: { raw: JSON.stringify(name), rawValue: name, mxAtom: { span } },
-  });
 }
 
 /**
@@ -173,7 +182,7 @@ function nameSugar(
   // A second spaced `:name` follows the duplicate rule (last wins, with a
   // warning), as any attribute; only `:a:b` in one token is refused above.
   const attrs = [
-    ctx.attribute("name", { kind: "atom", name }, { authored: true, at }),
+    ctx.attribute("name", { type: "mesh:Atom", span: at, name }, { authored: true, at }),
   ];
   if (ctx.value) {
     attrs.push(
@@ -189,7 +198,7 @@ function nameSugar(
  * the contract keys (`contractFields`): an attribute's `values`, `pattern`
  * and `ref`, and a tag's `declares`. Core accepts them unchecked and hands
  * them over on `ContractCall.contract`; core keeps the whole-value shape
- * check (`type: "atom"`, decision 156 addendum 6). The diagnostics are
+ * check (a `mesh:Atom` or an array of them as the slot's type). The diagnostics are
  * core's built-in ones, word for word and at the same positions.
  *
  * 0. **Register** (`checkContract`). Core hands every registered contract
@@ -214,9 +223,24 @@ const CONTRACT_FIELDS: ContractFields = Object.freeze({
 /** An attribute declaration, as far as this module reads it. */
 interface AtomDeclaration {
   readonly type?: unknown;
+  readonly items?: unknown;
   readonly values?: readonly string[];
   readonly pattern?: string;
   readonly ref?: string | readonly string[];
+}
+
+/**
+ * Whether a declaration holds atoms: one (`type: "mesh:Atom"`) or a list of
+ * them (`type: "array"`, `items: "mesh:Atom"`). The keys this module claims
+ * (`values`, `pattern`, `ref`) mean something only there. Core checks the
+ * shape (an atom, or a list of atoms); which names are allowed is this
+ * module's.
+ */
+function isAtomSlot(declaration: AtomDeclaration): boolean {
+  return (
+    declaration.type === "mesh:Atom" ||
+    (declaration.type === "array" && declaration.items === "mesh:Atom")
+  );
 }
 
 /** One `declares` entry. */
@@ -412,11 +436,11 @@ function checkAttributeFields(
   const reject = (problem: string): never =>
     fail(`Invalid "${attrName}" attribute declaration of ${owner}: ${problem}`, { code: "MESH_SYNTAX" });
   for (const key of ["values", "pattern", "ref"] as const) {
-    if (declaration[key] !== undefined && declaration.type !== "atom") {
-      reject(`\`${key}\` requires \`type: "atom"\``);
+    if (declaration[key] !== undefined && !isAtomSlot(declaration)) {
+      reject(`\`${key}\` requires \`type: "mesh:Atom"\` (or \`type: "array"\` with \`items: "mesh:Atom"\`)`);
     }
   }
-  if (declaration.type !== "atom") return;
+  if (!isAtomSlot(declaration)) return;
   if (
     declaration.values !== undefined &&
     !(
@@ -547,9 +571,15 @@ function statedName(
       span: (value.span ?? attr.nameSpan) as SourceSpan,
     };
   }
-  if (value.type === "mx:Atom" || value.type === "mx:Member") {
+  if (value.type === "mx:Member") {
     return {
-      name: (value as ContractAtomOrMember).name,
+      name: (value as ContractMember).name,
+      span: (value.span ?? attr.nameSpan) as SourceSpan,
+    };
+  }
+  if (value.type === "mesh:Atom") {
+    return {
+      name: (value as AtomNode).name,
       span: (value.span ?? attr.nameSpan) as SourceSpan,
     };
   }
@@ -558,12 +588,12 @@ function statedName(
   const node = expression.node as {
     type?: string;
     value?: unknown;
-    extra?: { mxAtom?: { span: SourceSpan } };
   } | null;
   if (node?.type !== "StringLiteral" || !expression.span) return null;
+  const atom = expression.nodes?.find((each) => each.forward === node);
   return {
     name: String(node.value),
-    span: node.extra?.mxAtom?.span ?? expression.span,
+    span: atom?.span ?? expression.span,
   };
 }
 
@@ -751,30 +781,16 @@ function contractOf(declaration: AtomDeclaration): AtomContract {
   return { values, pattern, ref: ref === undefined ? undefined : asList(ref) };
 }
 
-/** Every atom-marked string literal under `node`, in source order. */
-function markedAtoms(node: unknown): Array<{ name: string; span: SourceSpan }> {
+/** Every `mesh:Atom` an expression holds, in source order (`Expr.nodes`). */
+function atomsIn(
+  expression: ContractExpression,
+): Array<{ name: string; span: SourceSpan }> {
   const found: Array<{ name: string; span: SourceSpan }> = [];
-  const seen = new Set<object>();
-  const visit = (value: unknown): void => {
-    if (!value || typeof value !== "object" || seen.has(value)) return;
-    seen.add(value);
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
+  for (const each of expression.nodes ?? []) {
+    if (each.type === "mesh:Atom") {
+      found.push({ name: (each.node as AtomNode).name, span: each.span });
     }
-    const record = value as {
-      type?: unknown;
-      value?: unknown;
-      extra?: { mxAtom?: { span?: SourceSpan } };
-    };
-    const mark = record.extra?.mxAtom?.span;
-    if (record.type === "StringLiteral" && mark) {
-      found.push({ name: String(record.value), span: mark });
-      return;
-    }
-    for (const child of Object.values(value)) visit(child);
-  };
-  visit(node);
+  }
   return found.sort((a, b) => a.span.sourceStart - b.span.sourceStart);
 }
 
@@ -783,17 +799,13 @@ function atomsOf(
   attr: ContractAttr,
 ): Array<{ name: string; span: SourceSpan }> {
   if ("spread" in attr) return [];
-  if (attr.value?.type === "mx:Atom") {
-    const { name, span } = attr.value as ContractAtomOrMember;
+  if (attr.value?.type === "mesh:Atom") {
+    const { name, span } = attr.value as AtomNode;
     return span ? [{ name, span }] : [];
   }
   const expression = expressionOf(attr);
   if (!expression?.span) return [];
-  const { sourceStart, sourceEnd } = expression.span;
-  return markedAtoms(expression.node).filter(
-    ({ span }) =>
-      span.sourceStart >= sourceStart && span.sourceEnd <= sourceEnd,
-  );
+  return atomsIn(expression);
 }
 
 /** The text of an attribute written as a plain string (not an atom, not an expression), else undefined. */
@@ -803,16 +815,16 @@ function plainStringOf(attr: ContractAttr): string | undefined {
     return (attr.value as ContractString).value;
   }
   if (attr.value?.type === "mx:Member") {
-    return (attr.value as ContractAtomOrMember).name;
+    return (attr.value as ContractMember).name;
   }
   const expression = expressionOf(attr);
   if (!expression || expression.bound) return undefined;
   const node = expression.node as {
     type?: string;
     value?: unknown;
-    extra?: { mxAtom?: unknown };
   } | null;
-  return node?.type === "StringLiteral" && !node.extra?.mxAtom
+  return node?.type === "StringLiteral" &&
+    !expression.nodes?.some((each) => each.forward === node)
     ? String(node.value)
     : undefined;
 }
@@ -899,7 +911,7 @@ function queueAttrs(
       continue;
     }
     const declaration = attributes[attr.name] as AtomDeclaration | undefined;
-    if (declaration?.type !== "atom") continue;
+    if (!declaration || !isAtomSlot(declaration)) continue;
     if (
       declaration.values === undefined &&
       declaration.pattern === undefined &&
@@ -973,8 +985,8 @@ function checkAtomContracts(unit: LoweredUnit): void {
 /** The hooks Mesh's dialect (`mesh.ts`) takes from this module. */
 export const atomsHooks = {
   /** Lowers the `atom` and `name` rows. */
-  lowerTrigger(id: string, text: string, span: SourceSpan, ctx: TriggerContext): TriggerResult {
-    return id === "atom" ? atom(text, span, ctx) : nameSugar(text.slice(1), ctx, span);
+  lowerTrigger(_id: string, text: string, span: SourceSpan, ctx: TriggerContext): TriggerResult {
+    return nameSugar(text.slice(1), ctx, span);
   },
   contractFields: CONTRACT_FIELDS,
   checkContract,

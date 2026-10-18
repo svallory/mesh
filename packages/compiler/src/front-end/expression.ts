@@ -8,7 +8,7 @@ import type {
   SourceEdit,
   SourcePosition,
 } from "@meshfw/model";
-import type { At, SyntaxNode } from "./tree.ts";
+import type { At, AtomForwards, SyntaxNode } from "./tree.ts";
 import { writtenReference, type Resolution, type WrittenReference } from "./references.ts";
 
 /**
@@ -22,6 +22,8 @@ type N = SyntaxNode & { [key: string]: any };
 export interface ConvertContext {
   source: string;
   at: At;
+  /** The atoms the function holds (`Expr.nodes`, read through `atomForwards` in `tree.ts`): a string literal is an atom only when it is one of these forwards. */
+  atoms?: AtomForwards;
   /** Imported names that are helper functions (not entities) and the module each comes from. */
   helpers: ReadonlyMap<string, string>;
   /** Every name the file imports, helpers and entities. */
@@ -619,7 +621,7 @@ function internalNames(text: string, record: boolean, clock: readonly ("now" | "
  * translated code read one instant, a fresh `Date` each read. The names are `internal`'s, which the authored text
  * does not spell. A `%.` name Mesh does not know is reported by `freeVariables` and left as written.
  */
-function editsFor(fn: N, base: number, internal: InternalNames): SourceEdit[] {
+function editsFor(fn: N, base: number, internal: InternalNames, atoms: AtomForwards): SourceEdit[] {
   const edits: SourceEdit[] = [];
   // The `&x` of an `input.x ?? &x`.
   const fallbacks = new Set<unknown>();
@@ -643,9 +645,9 @@ function editsFor(fn: N, base: number, internal: InternalNames): SourceEdit[] {
       if (known) edits.push({ from: instant.span.sourceStart - base, to: instant.span.sourceEnd - base, text: `${internal[known.fn]}()` });
       return;
     }
-    const atom = extra?.mxAtom;
-    if (n.type === "StringLiteral" && atom)
-      edits.push({ from: atom.span.sourceStart - base, to: atom.span.sourceEnd - base, text: JSON.stringify(String(n.value)) });
+    const atom = n.type === "StringLiteral" ? atoms.get(n) : undefined;
+    if (atom)
+      edits.push({ from: atom.sourceStart - base, to: atom.sourceEnd - base, text: JSON.stringify(String(n.value)) });
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child);
   };
   walk(fn);
@@ -680,7 +682,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
     case "BooleanLiteral": return { kind: "literal", value: n.value as boolean, position };
     case "NullLiteral": return { kind: "literal", value: null, position };
     case "StringLiteral":
-      return (n.extra as any)?.mxAtom ? { kind: "atom", value: String(n.value), position } : { kind: "literal", value: String(n.value), position };
+      return ctx.atoms?.has(n) ? { kind: "atom", value: String(n.value), position } : { kind: "literal", value: String(n.value), position };
     case "ParenthesizedExpression": return sub(n.expression);
     case "Identifier": {
       const name = n.name!;
@@ -1026,7 +1028,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   // the instant are bound under names the authored text does not spell, which the edits read.
   const clock = (["now", "today"] as const).filter((name) => called.has(name));
   const internal = internalNames(ctx.source.slice(span.sourceStart, span.sourceEnd), names.record === true, clock);
-  const edits = editsFor(f, span.sourceStart, internal);
+  const edits = editsFor(f, span.sourceStart, internal, ctx.atoms ?? new Map());
   const clocked = {
     ...(clock.length ? { clock } : {}),
     ...(Object.keys(internal).length ? { internal } : {}),

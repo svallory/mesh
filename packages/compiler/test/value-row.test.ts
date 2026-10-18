@@ -13,11 +13,10 @@ interface Atom extends DialectNode {
   readonly name: string;
 }
 
-/** `MESH_DIALECT` with no value row: what Mesh's alpha.15 dialect was. */
+/** `MESH_DIALECT` with no value row: what Mesh's alpha.15 dialect was. It keeps `nodeTypes`: the expression row claims `mesh:Atom` too, and the contracts name it. */
 const NO_VALUE_ROW: Dialect = (() => {
   const { valueTriggers: _, ...table } = MESH_DIALECT.table;
-  const { nodeTypes: __, ...rest } = MESH_DIALECT;
-  return { ...rest, table };
+  return { ...MESH_DIALECT, table };
 })();
 
 const meshDiagnostics = (source: string, dialect: Dialect) =>
@@ -62,9 +61,11 @@ describe("a claimed default value ends at a terminating attribute row", () => {
   });
 
   test("a value the row declines keeps the expression's end", () => {
+    // `Atom` declines in value position only: the expression row still claims the operand, as it does with no value row.
+    const real = MESH_DIALECT.nodeTypes?.Atom as NodeType<Atom>;
     const declining: Dialect = {
       ...MESH_DIALECT,
-      nodeTypes: { Atom: { keys: [], parse: () => undefined, print: () => "", lower: () => "" } satisfies NodeType<Atom> },
+      nodeTypes: { Atom: { ...real, parse: (text, span, ctx) => (ctx.position === "value" ? undefined : real.parse(text, span, ctx)) } satisfies NodeType<Atom> },
     };
     expect(meshDiagnostics(source, declining)).toEqual(meshDiagnostics(source, NO_VALUE_ROW));
   });

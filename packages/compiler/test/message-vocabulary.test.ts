@@ -272,7 +272,7 @@ describe("Mesh's own tag labels", () => {
   test("an atom check names the tag as written, once (afterLower's unit.fail adds no owner)", () => {
     const atoms: Dialect = Object.freeze({
       ...BOX,
-      contracts: { box: { attributes: { mode: { type: "atom", values: ["loose", "strict"] } } } },
+      contracts: { box: { attributes: { mode: { type: "mesh:Atom", values: ["loose", "strict"] } } } },
     }) as Dialect;
     expect(messages("box mode=:lose\n", atoms)).toEqual(["`box`: option `mode`: `:lose` is not one of :loose, :strict; did you mean `:loose`?"]);
   });

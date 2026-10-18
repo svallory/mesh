@@ -6,7 +6,7 @@ import { lowerSource, type CustomTag } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 
-const attrs = { name: { type: "atom" } };
+const attrs = { name: { type: "mesh:Atom" } };
 const tags = {
   entity: { attributes: attrs },
   attributes: {},
