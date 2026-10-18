@@ -3,9 +3,11 @@
 import { describe, expect, test } from "bun:test";
 import { type Call, RpcError } from "@meshfw/jsonrpc";
 import { ForbiddenError, InvalidInputError, NotFoundError } from "@meshfw/runtime";
+import { Idempotency } from "#mesh/domain/audit";
 import { Collaborator, Membership } from "#mesh/domain/identity";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import { contextFactory, ENGINE, ENGINE_ID } from "../src/rpc/context";
+import { commandHash } from "../src/rpc/idempotency";
 import { actorless, methods, unserved } from "../src/rpc/methods";
 import { existingCollaborator, existingTask, isId, membershipOf, requireId } from "../src/rpc/resolve";
 import { as, setup, within } from "./world";
@@ -39,8 +41,8 @@ describe("contextFactory", () => {
 
   test("an actor's role is read from its active membership, with the caller and the command id", async () => {
     await within(async ({ alice, bob }) => {
-      expect(await factory(call("task.create"), params(alice.id))).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
-      expect(await factory(call("task.create"), params(bob.id, { caller: "agent" }))).toEqual({ actor: { id: bob.id, role: "member" }, caller: "agent", commandId: "c-1" });
+      expect(await factory(call("task.create"), params(alice.id))).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1", method: "task.create" });
+      expect(await factory(call("task.create"), params(bob.id, { caller: "agent" }))).toEqual({ actor: { id: bob.id, role: "member" }, caller: "agent", commandId: "c-1", method: "task.create" });
     });
   });
 
@@ -60,10 +62,33 @@ describe("contextFactory", () => {
     });
   });
 
+  test("a commandId already stored: the same command gets a context with no role, another one is -32006 before the actor is read", async () => {
+    await within(async ({ alice, bob }) => {
+      const sent = params(alice.id, { commandId: "c-stored", payload: { title: "Ship" } });
+      const stored = { ...call("task.create"), params: sent };
+      await Idempotency.record({ commandId: "c-stored", method: "task.create", hash: commandHash("task.create", sent), result: { events: [] } }, setup);
+      // A repeat is answered from the store (the method returns it), with no membership read: the actor may have lost it since.
+      expect(await factory(stored, sent)).toEqual({ actor: { id: alice.id, role: null }, caller: "cli", commandId: "c-stored", method: "task.create" });
+      // Another method, other params or another actor under the same commandId is the conflict, in the shape phase.
+      for (const [method, other] of [
+        ["task.update", sent],
+        ["task.create", { ...sent, payload: { title: "Other" } }],
+        ["task.create", { ...sent, actor: bob.id }],
+      ] as const) {
+        const error = await factory({ ...call(method), params: other }, other).catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(RpcError);
+        expect(error).toMatchObject({ code: -32006, message: "idempotency_conflict", data: { phase: "shape", failures: [{ check: "command-id" }] } });
+      }
+      // The conflict comes before the membership check: an unknown actor reusing the id gets it too.
+      const stranger = params("nobody", { commandId: "c-stored" });
+      expect(await factory({ ...call("task.create"), params: stranger }, stranger).catch((caught: unknown) => caught)).toMatchObject({ code: -32006 });
+    });
+  });
+
   test("the daemon's --lease-ms is on every context, the engine's a frozen copy of ENGINE with it; without one, no context names it", async () => {
     await within(async ({ alice }) => {
       const leased = contextFactory(new Set(["workspace.get"]), new Map(), 30_000);
-      expect(await leased(call("task.create"), params(alice.id))).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1", leaseMs: 30_000 });
+      expect(await leased(call("task.create"), params(alice.id))).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1", method: "task.create", leaseMs: 30_000 });
       expect(await leased(call("task.get"), { actor: alice.id, caller: "cli", taskId: "t" })).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", leaseMs: 30_000 });
       const engine = await leased(call("workspace.get"), {});
       expect(engine).toEqual({ ...ENGINE, leaseMs: 30_000 });
@@ -149,25 +174,25 @@ describe("the daemon's context factory", () => {
         expect((asEngine as RpcError).code).toBe(reasons.has(method) ? -32010 : -32001);
         const asAlice = await outcome(methods, method, alice.id);
         if (reasons.has(method)) expect((asAlice as RpcError).code).toBe(-32010);
-        else expect(asAlice).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
+        else expect(asAlice).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1", method });
       }
     });
   });
 
   test("serving a method takes it off the unserved map, and it then needs an actor with a membership", async () => {
-    const served = { ...methods, "events.read": { run: () => ({ events: [] }) } };
-    expect(unserved(methods).has("events.read")).toBe(true);
-    expect(unserved(served).has("events.read")).toBe(false);
+    const served = { ...methods, "workspace.export": { run: () => ({}) } };
+    expect(unserved(methods).has("workspace.export")).toBe(true);
+    expect(unserved(served).has("workspace.export")).toBe(false);
     await within(async ({ alice }) => {
-      expect(await outcome(served, "events.read", alice.id)).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1" });
-      expect((await outcome(served, "events.read", ENGINE_ID)) as RpcError).toMatchObject({ code: -32001, data: { failures: [{ check: "membership" }] } });
+      expect(await outcome(served, "workspace.export", alice.id)).toEqual({ actor: { id: alice.id, role: "owner" }, caller: "cli", commandId: "c-1", method: "workspace.export" });
+      expect((await outcome(served, "workspace.export", ENGINE_ID)) as RpcError).toMatchObject({ code: -32001, data: { failures: [{ check: "membership" }] } });
     });
   });
 
-  test("of the spec's actorless methods, workspace.get gets the engine's context and events.unsubscribe, not served yet, answers -32010", async () => {
+  test("the spec's actorless methods, workspace.get and events.unsubscribe, get the engine's context", async () => {
     await within(async () => {
       expect(await outcome(methods, "workspace.get", "anyone")).toBe(ENGINE);
-      expect(await outcome(methods, "events.unsubscribe", "anyone")).toMatchObject({ code: -32010 });
+      expect(await outcome(methods, "events.unsubscribe", "anyone")).toBe(ENGINE);
     });
   });
 });

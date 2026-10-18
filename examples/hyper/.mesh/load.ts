@@ -4,7 +4,7 @@
 
 import type { LoadPlan as $LoadPlan } from "@meshfw/runtime";
 import { tables } from "./schema";
-import { $expressions as $audit$Event$expressions } from "./domain/audit/event.expressions";
+import { $expressions as $audit$Idempotency$expressions } from "./domain/audit/idempotency.expressions";
 import { $expressions as $execution$Attempt$expressions } from "./domain/execution/attempt.expressions";
 import { $expressions as $execution$Invocation$expressions } from "./domain/execution/invocation.expressions";
 import { $expressions as $execution$Machine$expressions } from "./domain/execution/machine.expressions";
@@ -28,23 +28,22 @@ import { $expressions as $work$Task$expressions } from "./domain/work/task.expre
  * a caller's load of it runs (none listed: a caller loads none of its records).
  */
 export const loadPlan = {
-  "audit.Event": {
-    table: tables.events,
-    key: "seq",
-    relations: {
-      task: { kind: "belongs-to", target: "work.Task", column: "taskId", nullable: true },
-    },
+  "audit.Idempotency": {
+    table: tables.idempotency,
+    key: "id",
+    relations: {},
     computed: {},
     reads: [
       {
-        name: "membersRead",
+        name: "internal",
         when: null,
         checks: [
           {
             kind: "authorize-if",
-            check: "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
+            check: "({ context }) => Mesh.isSystem(context)",
             record: false,
-            run: ($s: never) => $audit$Event$expressions["policy.membersRead.authorize-if.0"]($s),
+            run: ($s: never) =>
+              $audit$Idempotency$expressions["policy.internal.authorize-if.0"]($s),
           },
         ],
       },
@@ -620,7 +619,6 @@ export const loadPlan = {
       claims: { kind: "has-many", target: "work.Claim", column: "taskId" },
       submissions: { kind: "has-many", target: "work.Submission", column: "taskId" },
       completions: { kind: "has-many", target: "work.Completion", column: "taskId" },
-      events: { kind: "has-many", target: "audit.Event", column: "taskId" },
     },
     computed: {
       childrenSettled: {

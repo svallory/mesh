@@ -244,7 +244,6 @@ export const readTaskInputSchema = z.strictObject({
         "claims",
         "submissions",
         "completions",
-        "events",
         "childrenSettled",
         "claimed",
         "lapsedClaim",

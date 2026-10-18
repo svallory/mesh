@@ -17,6 +17,7 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
   rescope as $rescope,
@@ -251,14 +252,14 @@ export function bindSubmission(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 29, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 31, column: 9 },
               that: $expressions["submit.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not your current claim; claim the task again",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 34, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 36, column: 9 },
               that: $expressions["submit.check.currentFence.that"],
               details: $expressions["submit.check.currentFence.details"],
             });
@@ -266,14 +267,14 @@ export function bindSubmission(
               label: "nonePending",
               code: "submission.none-pending",
               message: "a submission is already pending; wait for its review or withdraw it",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 40, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 42, column: 9 },
               that: $expressions["submit.check.nonePending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidenceExists",
               code: "evidence.exists",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 45, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 47, column: 9 },
               that: $expressions["submit.check.evidenceExists.that"],
               details: $expressions["submit.check.evidenceExists.details"],
             });
@@ -281,7 +282,7 @@ export function bindSubmission(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 51, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 53, column: 9 },
               that: $expressions["submit.check.versionMatches.that"],
               details: $expressions["submit.check.versionMatches.details"],
             });
@@ -296,7 +297,7 @@ export function bindSubmission(
               const $value = await $expressions["submit.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/submission.mesh.mx:59:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/submission.mesh.mx:61:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -313,7 +314,7 @@ export function bindSubmission(
               const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &taskVersion (src/domain/work/submission.mesh.mx:62:24) produced no value, and taskVersion is required",
+                  "set &taskVersion (src/domain/work/submission.mesh.mx:64:24) produced no value, and taskVersion is required",
                 );
               $changes.taskVersion = $record.taskVersion = $value;
             }
@@ -342,6 +343,25 @@ export function bindSubmission(
               ),
             });
             await $expressions["submit.step.1.run"]($after);
+            {
+              const $event = await $expressions["submit.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Submission",
+                    action: "submit",
+                    key: { id: $written.id },
+                    at: "src/domain/work/submission.mesh.mx:68:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            await $expressions["submit.step.3.run"]($after);
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
             if ($result === undefined)
@@ -461,14 +481,14 @@ export function bindSubmission(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 73, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 78, column: 9 },
               that: $expressions["withdraw.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 78, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 83, column: 9 },
               that: $expressions["withdraw.check.versionMatches.that"],
               details: $expressions["withdraw.check.versionMatches.details"],
             });
@@ -510,6 +530,24 @@ export function bindSubmission(
               ),
             });
             await $expressions["withdraw.step.1.run"]($after);
+            {
+              const $event = await $expressions["withdraw.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Submission",
+                    action: "withdraw",
+                    key: { id: $written.id },
+                    at: "src/domain/work/submission.mesh.mx:95:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
             if ($result === undefined)
@@ -598,19 +636,21 @@ export function bindSubmission(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 94, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 100, column: 9 },
               that: $expressions["settle.check.pending.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
+            let $when0 = false;
             {
               const $value = await $expressions["settle.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/work/submission.mesh.mx:101:18) produced no value, and state is required",
+                  "set &state (src/domain/work/submission.mesh.mx:107:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
+            $when0 = !!(await $expressions["settle.step.1.when"]($s));
             // data layer
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
@@ -636,7 +676,41 @@ export function bindSubmission(
                 context,
               ),
             );
-            return $stored as Submission;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Submission", $written, "action function"),
+                "work.Submission#settle",
+              ),
+            });
+            if ($when0) {
+              {
+                const $event = await $expressions["settle.step.1.0.publish"]($after);
+                await frame.plain(() =>
+                  $publishEvent(
+                    tx,
+                    options.events,
+                    {
+                      entity: "work.Submission",
+                      action: "settle",
+                      key: { id: $written.id },
+                      at: "src/domain/work/submission.mesh.mx:111:19",
+                    },
+                    $event,
+                    $context,
+                    $clock,
+                  ),
+                );
+              }
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Submission#settle: a step after the write deleted the row this action returns",
+              );
+            return $result as Submission;
           }),
       );
     },
@@ -737,7 +811,7 @@ export function bindSubmission(
               const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/submission.mesh.mx:111:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/submission.mesh.mx:121:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -757,7 +831,39 @@ export function bindSubmission(
                 context,
               ),
             );
-            return $stored as Submission;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Submission", $written, "action function"),
+                "work.Submission#recordAccepted",
+              ),
+            });
+            {
+              const $event = await $expressions["recordAccepted.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Submission",
+                    action: "recordAccepted",
+                    key: { id: $written.id },
+                    at: "src/domain/work/submission.mesh.mx:123:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.submissions, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Submission#recordAccepted: a step after the write deleted the row this action returns",
+              );
+            return $result as Submission;
           }),
       );
     },

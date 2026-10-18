@@ -9,12 +9,14 @@ import {
   type Scope as $Scope,
 } from "@meshfw/runtime";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
+import { EvidenceReferenceRecorded as $work$EvidenceReferenceRecorded$class } from "./evidenceReferenceRecorded.event";
 import type {
   EvidenceReference as $work$EvidenceReference$Record,
   EvidenceReferenceLoaded as $work$EvidenceReference$Loaded,
   RecordEvidenceReferenceInput as $work$EvidenceReference$RecordEvidenceReferenceInput,
 } from "./evidenceReference.types";
-import type { $Omit } from "../../$globals";
+import type { DomainEvent as $DomainEvent } from "../../index";
+import type { $Omit, $Promise } from "../../$globals";
 
 /** What every expression of EvidenceReference reads; `I` is the input of the action it runs in. */
 export type $work$EvidenceReference$Scope<I = unknown> = $Scope<{
@@ -52,20 +54,36 @@ export type $work$EvidenceReference$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // set &recordedBy, translated (src/domain/work/evidence-reference.mesh.mx:24:23)
+  // set &recordedBy, translated (src/domain/work/evidence-reference.mesh.mx:25:23)
   "record.step.0.set.recordedBy": (
     $s: $work$EvidenceReference$Scope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => $s.actor?.id,
-  // policy :membersRead authorize-if, translated (src/domain/work/evidence-reference.mesh.mx:27:20)
+  // publish, plain (publish-step) (src/domain/work/evidence-reference.mesh.mx:26:17)
+  "record.step.1.publish": (
+    $s: $work$EvidenceReference$Scope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const EvidenceReferenceRecorded: typeof $work$EvidenceReferenceRecorded$class =
+      $work$EvidenceReferenceRecorded$class;
+    return (() =>
+      new EvidenceReferenceRecorded({
+        evidenceReferenceId: $self.id,
+        kind: $self.kind,
+        locator: $self.locator,
+        contentHash: $self.contentHash,
+        description: $self.description,
+      }))();
+  },
+  // policy :membersRead authorize-if, translated (src/domain/work/evidence-reference.mesh.mx:29:20)
   "policy.membersRead.authorize-if.0": ($s: $work$EvidenceReference$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:29:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:31:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:31:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/evidence-reference.mesh.mx:33:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$EvidenceReference$NewScope<$work$EvidenceReference$RecordEvidenceReferenceInput>,
   ) => {

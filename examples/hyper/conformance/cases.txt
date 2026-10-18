@@ -3,7 +3,11 @@
 # one passes. A pull request that makes a case pass copies it into cases/ and adds its line here; at the gate the
 # list holds every case of the suite.
 
+01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap] > workspace.get returns the automatic local workspace and its single first owner
+01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap] > bootstrap emits collaborator.registered, workspace.created, membership.granted as seq 1–3, by the engine
 01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap] > workspace.create on a daemon that has its workspace is rejected: rule_violation workspace.exists
+01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap] > workspace.rename: owner renames (workspace.renamed with old and new name); a member may not
+01.2 restart keeps state [PROTOCOL.md#daemon, architecture/persistence-and-events.md#storage] > restarting on the same --db keeps the workspace, its owner and its event log; no second bootstrap
 01.3 transport [PROTOCOL.md#transport] > a malformed line gets parse_error (-32700, id null) and the connection stays usable
 01.3 transport [PROTOCOL.md#transport] > an unknown method gets method_not_found (-32601)
 01.3 transport [PROTOCOL.md#transport] > inherited object property names are not methods (-32601)
@@ -13,49 +17,108 @@
 01.3 transport [PROTOCOL.md#transport] > pipelined requests on one connection are all answered and matched by id
 01.3 transport [PROTOCOL.md#transport] > several connections can be open at once
 02.1 guests [domain/core/membership.md#roles] > a guest cannot send work commands: permission_denied role
+02.1 guests [domain/core/membership.md#roles] > a guest can read (queries need any active membership)
 02.1 guests [domain/core/membership.md#roles] > a guest cannot be assigned work: rule_violation assignment.assignee-role
 02.1 guests [domain/core/membership.md#roles] > task.next for a guest is null (a guest may not claim)
 02.1 guests [domain/core/membership.md#roles] > a collaborator with no membership cannot act or read: permission_denied membership
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a member cannot register, grant, change roles, revoke or retire: permission_denied role
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > an owner grants, changes a role and revokes, with events and granted/revoked by
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > one active membership per collaborator: rule_violation membership.none-active
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a revoked collaborator returns through a new grant (a new membership)
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > the last owner cannot be demoted or revoked: rule_violation membership.last-owner
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a second owner can manage memberships; then the first owner may be demoted
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > collaborator names are unique among active collaborators: rule_violation collaborator.name-unique
+02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > collaborator.update: the collaborator itself or an owner; kind never changes
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > a guest may update its own profile, and only its own (collaborator.self-or-owner)
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > changing a role to the one it already has is rejected (membership.unchanged)
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > phase precedence: a guest with a stale expectedVersion is rejected by the permission phase; content never runs
 02.2 only owners manage memberships and collaborators [domain/core/membership.md#commands] > one phase, several failures: a guest claiming a Task assigned to someone else may report role, claim.assignee, or both (permission)
+02.3 revoking and retiring end active authority [domain/core/membership.md#rules, domain/core/collaborator.md#rules] > revoking a membership revokes the collaborator's active claims in the same change; assignments stay
+02.3 revoking and retiring end active authority [domain/core/membership.md#rules, domain/core/collaborator.md#rules] > retiring a collaborator revokes its memberships and claims, keeps its history, and it can no longer act
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.create: version 1, open, ready, creator recorded, top-level reviewer is the creator
 03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.create with a parent: the parent must exist (not_found) and be open (task.parent-open)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.update records old and new values and bumps the version
 03.1 create, update, cancel, reopen [domain/core/task.md#commands] > no-ops are rejected: task.update with nothing that differs (task.unchanged), task.assign to the same assignee (assignment.unchanged)
+03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.cancel needs a reason; a canceled Task cannot be updated (task.open); task.reopen returns it to open
 03.1 create, update, cancel, reopen [domain/core/task.md#commands] > one phase, several failures: a no-op update of a canceled Task may report task.open, task.unchanged, or both (content)
 03.1 create, update, cancel, reopen [domain/core/task.md#commands] > task.cancel/reopen: the assignee, the delegator or an owner — not another member (task.manager)
 03.1 create, update, cancel, reopen [domain/core/task.md#commands] > the creator may cancel and reopen its Task while it is unassigned, not once someone else delegated it
 03.1 create, update, cancel, reopen [domain/core/task.md#commands] > unknown Task IDs are not_found
+03.2 hierarchy [domain/core/task.md#rules] > task.move changes the parent (task.moved); moving under itself or a descendant is rejected (task.no-cycle)
 03.2 hierarchy [domain/core/task.md#rules] > task.move is rejected while the Task has an active claim (task.no-active-claim)
 03.2 hierarchy [domain/core/task.md#rules] > task.list filters by parent (null = top-level) and stored state
 03.2 hierarchy [domain/core/task.md#rules] > case 8: two concurrent moves that together would make a parent cycle — exactly one is rejected
 03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/completion.md#rules] > case 7: completing a parent with an open child fails naming the child; canceling the child with a reason allows it
+03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/completion.md#rules] > case 6: assigning, canceling or completing a parent changes no child; a child's completion does not complete the parent
 03.3 parent rule and no cascades [domain/core/task.md#rules, domain/core/completion.md#rules] > reopening a done Task keeps its earlier completion; completing again adds a second one
+03.4 priority and task.next [domain/core/task.md#priority] > task.priority-set records old and new; task.next returns the highest-priority ready Task the actor may claim
+04.1 dependency commands [domain/core/dependency.md#commands] > dependency.add blocks the dependent with a reason naming the prerequisite; the event carries both IDs
 04.1 dependency commands [domain/core/dependency.md#commands] > rejects a self-dependency, a duplicate, an unknown Task, removing a missing one, and a cycle
+04.1 dependency commands [domain/core/dependency.md#commands] > dependency.remove unblocks and records the reason
 04.1 dependency commands [domain/core/dependency.md#commands] > a guest cannot add dependencies
 04.1 dependency commands [domain/core/dependency.md#commands] > case 8: two concurrent dependency.add that together would make a cycle — exactly one is rejected
 04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > a blocked Task cannot be claimed (claim.task-ready, with reasons); completing it succeeds with the dependency as a warning
 04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > only done satisfies: prerequisite done → ready; canceled → blocked with prerequisite-canceled
+04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > reopening a prerequisite blocks an unstarted dependent again; a claimed dependent stays claimed but shows the reason
 04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > a prerequisite reopened after the claim: review.accept succeeds and returns it as a warning
 04.2 readiness and blocked reasons [domain/core/dependency.md#rules, domain/core/task.md#states] > derived state precedence: in-review over claimed over blocked over ready; stored states win
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > claim.acquire on an unassigned ready Task: fence 1, lease, and the claimer becomes assignee
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > an assigned Task can be claimed only by its assignee (claim.assignee); a claimed Task is not ready (claim.task-ready)
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > claim.renew moves the expiry forward; wrong fence (claim.current-fence) and non-holder (claim.holder) are rejected
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > claim.release ends the claim; the Task is ready again for its assignee; renewal cannot revive; the next claim gets fence 2
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > claim.revoke: by the delegator or an owner, not by another member (claim.revoker)
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > reassigning or canceling revokes the active claim in the same change
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > task.unassign: assignee, delegator or owner; ends the assignment and revokes the assignee's claim
+05.1 acquire, renew, release, revoke [domain/core/claim.md#commands] > parent and child claims are independent
+05.2 claim race — case 4 [domain/core/claim.md#rules] > eight agents claim the same ready Task at once on separate connections: exactly one wins
 05.2 claim race — case 4 [domain/core/claim.md#rules] > race on an assigned Task between its assignee's two connections: one wins, the other gets claim.task-ready
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > --lease-ms sets the lease; the engine emits claim.expired on its own, as the engine, with the expiry rule as cause
 05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > renewing just after expiresAt is rejected with claim.expired even before claim.expired is emitted
 05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > one phase, several failures: renewing an expired claim with a wrong fence may report claim.expired, claim.current-fence, or both (content)
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > stale worker: A's claim expires, B claims with a new fence, A's late submission is recorded as claim.late-result-recorded and changes nothing
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > stale completion with no replacement claim (expired): the fenced complete is a late result; an unfenced one is claim.invalidated
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > stale completion with no replacement claim (revoked): the fenced complete is a late result; an unfenced one is claim.invalidated
 05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > a result under a revoked fence is also a late result; a fence the actor never held is claim.current-fence
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > expiry happens without any traffic on the Task, and the Task is claimable again
+05.3 lease expiry and stale workers — case 5 [domain/core/claim.md#lease, #fencing] > renewing before expiry keeps the claim alive past the original lease
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > submitting releases the claim, binds the Task version and puts the Task in review
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > return with reasons keeps the assignment; the worker claims again (new fence) and resubmits; accept completes
 06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > only the reviewer may review — not the worker, not another member, not even an owner (review.reviewer)
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > the submitter may withdraw a pending submission; others may not
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > task.complete with evidence but no summary records an accepted submission with summary null and the evidence kept
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > completing with one's own pending submission accepts it (no new summary); a new summary is rejected (submission.pending)
 06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > with the waiver, the assignee's own pending submission is accepted the same way (review-waived)
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > task.cancel withdraws a pending submission in the same change (reason task-canceled)
 06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > a review binds to the submission it saw: editing the Task afterwards does not change the submission
+06.1 submit, return, resubmit, accept [domain/core/review.md#commands] > evidence references: recorded with kind and locator, cited by ID, immutable; unknown IDs are rejected
 06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > the reviewer is the parent's assignee when it has one (parent-assignee), else the parent's creator
 06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > review is required when the performer is not the reviewer: task.complete is rejected (task.review-required)
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > performer is the reviewer: completes directly (performer-is-reviewer), no review record
+06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > the delegator's waiver lets the assignee complete directly (review-waived); a result is recorded as an accepted submission
 06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > while holding the claim, task.complete needs the current fence (claim.current-fence); another holder blocks others (claim.holder)
 06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > the reviewer cannot bypass a pending submission from someone else with task.complete (task.no-foreign-submission)
 06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > accepting checks the parent rule: a child with an open grandchild cannot be accepted (task.children-settled)
 06.2 the reviewer rule and the waiver [domain/core/review.md#reviewer] > changing roles resolves nothing pending: demoting the reviewer leaves the submission pending, and a guest reviewer cannot act
+07.1 idempotent command IDs — case 9 [domain/commands-and-events.md#commands] > resending a command with the same ID and content returns the first result and has one effect
+07.1 idempotent command IDs — case 9 [domain/commands-and-events.md#commands] > a retry after a lost response (new connection) returns the first result
+07.1 idempotent command IDs — case 9 [domain/commands-and-events.md#commands] > the same ID with different content, or for another method, is rejected (idempotency_conflict)
+07.1 idempotent command IDs — case 9 [domain/commands-and-events.md#commands] > concurrent duplicates of one command have one effect
+07.1 idempotent command IDs — case 9 [domain/commands-and-events.md#commands] > a rejected command is not remembered: the same ID can be sent again once the rule holds
+07.1 idempotent command IDs — case 9 [domain/commands-and-events.md#commands] > a retried claim.acquire returns the same claim, not a rejection
+07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > the Task version increments once per changing command, and every event of the command carries it
+07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > a matching expectedVersion succeeds; a stale one is rejected with both versions and changes nothing
 07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > expectedVersion is checked on the command's target: the dependent for dependency.add, the membership for change-role
 07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > version and entity rules share the content phase: a stale update on a canceled Task may report expected-version, task.open, or both
+07.2 versions and expected-version conflicts [domain/commands-and-events.md#commands] > rejections are not events
+08.1 event envelope and log [domain/core/event.md#attributes, #rules] > every event validates; seq is gapless from 1; the log is append-only across reads
+08.1 event envelope and log [domain/core/event.md#attributes, #rules] > actor and caller are recorded separately and verbatim; cause names the command
+08.1 event envelope and log [domain/core/event.md#attributes, #rules] > events.read pages with limit, cursor and hasMore; filtered reads still advance the cursor
+08.1 event envelope and log [domain/core/event.md#attributes, #rules] > taskSubtree covers the Task and its current descendants only; types filters exactly
+08.2 subscriptions [domain/core/event.md#subscriptions, architecture/persistence-and-events.md#subscriptions] > case 2: a subscriber gets the backlog after its cursor, then live events, in seq order, after the subscribe response
+08.2 subscriptions [domain/core/event.md#subscriptions, architecture/persistence-and-events.md#subscriptions] > case 11: a subscriber that disconnects and resubscribes from its cursor misses no event
+08.2 subscriptions [domain/core/event.md#subscriptions, architecture/persistence-and-events.md#subscriptions] > a subtree subscription picks up children created after it started
+08.2 subscriptions [domain/core/event.md#subscriptions, architecture/persistence-and-events.md#subscriptions] > events.unsubscribe stops notifications
+08.2 subscriptions [domain/core/event.md#subscriptions, architecture/persistence-and-events.md#subscriptions] > two subscriptions on one connection are delivered independently
+09.1 case 1: the lead-and-swarm journey [overview/heart.md, acceptance-cases.md#heart] > a lead decomposes, delegates, waits, returns one result, accepts both and hands the parent back for review
+09.2 solo — case 10 [domain/scenarios.md#solo, domain/core/index.md#rules rule 9] > one person creates, completes and reopens Tasks with no assignment, parent, dependency or review; history shows every step
+09.3 trip to Japan [domain/scenarios.md#trip] > Ana and a research agent prepare a trip with only core concepts

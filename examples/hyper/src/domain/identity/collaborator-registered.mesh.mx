@@ -1,0 +1,3 @@
+event :CollaboratorRegistered
+  enum :kind values=[:human, :agent]
+  string :name

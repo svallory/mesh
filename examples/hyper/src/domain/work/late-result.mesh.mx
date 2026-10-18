@@ -1,5 +1,6 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { ClaimLateResultRecorded } from "./claim-late-result-recorded.mesh.mx"
 import { claimsOf, isStale, missingEvidenceOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
@@ -36,6 +37,7 @@ entity :LateResult table="late_results"
       do
         set
           &submitter=({ actor }) => actor.id
+        publish=({ self }) => new ClaimLateResultRecorded({ lateResultId: &id, fence: &fence, submitterId: self.submitterId, summary: &summary, evidence: &evidence })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

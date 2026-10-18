@@ -5,7 +5,7 @@ Hyper's 18 entities as `.mesh.mx` files, in four modules under `src/domain/`: `i
 ```sh
 bun install
 mesh build        # writes .mesh/
-mesh db push      # creates the 18 tables in hyper.db
+mesh db push      # creates the 18 entity tables and Mesh's event tables in hyper.db
 bun test ./test   # the rules, the effects, the relationships and a round-trip of every entity
 ```
 
@@ -21,6 +21,7 @@ bun main.ts --socket /tmp/hyper.sock --db hyper.db [--lease-ms 600000]
 
 - It opens the database file, creating it when it is missing, in WAL mode, and creates the tables it lacks; a restart on the same `--db` keeps every row.
 - On a database with no workspace it bootstraps one, in one transaction: a collaborator named `owner`, the local workspace, and the owner membership that collaborator holds. On a database that has its workspace it does nothing.
+- It starts event delivery, which claims the database for this process. A second engine on a file whose engine is alive on this host exits 1 at once with `MESH_DELIVERER_TAKEN`; a claim left by an engine that died, or that runs on another host, is waited out once (it lapses 15 s after its last renewal). The subscription rows of an earlier run are then dropped, since a subscription lives as long as its connection. On stop it closes every subscription before delivery stops, and a subscription Mesh ends on its own (a callback error, an overflowing queue) is logged and its row dropped.
 - It prints `READY` on standard output once the socket accepts connections, and nothing else there; its logs go to standard error.
 - `--lease-ms <n>` sets the claim lease in milliseconds: a positive integer, 600000 (ten minutes) when the flag is left out. The context of every call carries it (`leaseMs`), and Claim `acquire` and `renew` read it there to set `expiresAt`.
 - Every 250 ms the lease sweeper (`src/daemon/sweeper.ts`) expires each active claim whose `expiresAt` has passed, through Claim `expire` with the engine's context, one transaction per claim, which bumps the Task's version as the protocol's `claim.expired` does, well within the 1000 ms the protocol allows. A claim is expired the moment its lease runs out, whether or not the sweeper has reached it (PROTOCOL.md:312): `task.get` shows no active claim, `claim.renew` and `claim.release` answer `claim.expired` (also for a claim marked expired, should the clock step back before its `expiresAt`), `claim.revoke` answers `claim.active`, and `task.cancel`, `task.assign`, `task.unassign`, `membership.revoke` and `collaborator.retire` revoke only the claims whose lease is still running and leave a lapsed one to the sweeper.
@@ -28,9 +29,11 @@ bun main.ts --socket /tmp/hyper.sock --db hyper.db [--lease-ms 600000]
 
 Each call runs as its actor, read from the database: the collaborator the request names and the role of its active membership. An unknown or retired collaborator, or one with no active membership, is refused before the method runs. Only `workspace.get` and `events.unsubscribe`, which the protocol defines without an actor, run as the engine itself. A command runs in one transaction and calls the command function where there is one. An error reaches the client in the protocol's shape: the code, the short name, the phase that refused the call and the checks that failed.
 
-It serves 32 of the protocol's 37 methods: `workspace.get`, `workspace.create`, `workspace.rename`, the collaborator and membership methods, and the work methods (the `task.*`, `dependency.*`, `claim.*`, `submission.*` and `review.*` commands, `evidence-reference.record`, and the queries `task.get`, `task.list` and `task.next`). The other five answer `-32010 not_implemented`, naming why, before the actor is read: `workspace.export` and `workspace.move`, which are outside the v0 slice, and `events.read`, `events.subscribe` and `events.unsubscribe`, which need the event log. Until the event log lands (M6), a command's result carries `events: []` and `workspace.get`'s `head` is 0.
+It serves 35 of the protocol's 37 methods: `workspace.get`, `workspace.create`, `workspace.rename`, the collaborator and membership methods, the work methods (the `task.*`, `dependency.*`, `claim.*`, `submission.*` and `review.*` commands, `evidence-reference.record`, and the queries `task.get`, `task.list` and `task.next`) and the event methods `events.read`, `events.subscribe` and `events.unsubscribe`. The other two, `workspace.export` and `workspace.move`, which are outside the v0 slice, answer `-32010 not_implemented`, naming why, before the actor is read.
 
-- `src/rpc/`: the method table (`methods.ts`), the params schemas (`params.ts`), the context factory (`context.ts`), the record views (`views.ts`), the lookups that turn the protocol's ids into records (`resolve.ts`) and the error mapping (`errors.ts`).
+Every change publishes its domain event in the change's transaction (Mesh's outbox, `localBus` delivering), so a command's result carries the events it caused, `workspace.get`'s `head` is the log's highest `seq`, and `events.read` and `events.subscribe` page and stream the log from a cursor. A command sent again with the same `commandId` and the same params returns the stored result and changes nothing; with other params it is `-32006 idempotency_conflict`. PORTING.md's Event and Idempotency lines say where each part lives.
+
+- `src/rpc/`: the method table (`methods.ts`), the params schemas (`params.ts`), the context factory (`context.ts`), the record views (`views.ts`), the lookups that turn the protocol's ids into records (`resolve.ts`), the error mapping (`errors.ts`), the stored command ids (`idempotency.ts`), the event log's data layer and binding (`event-log.ts`) and the event methods (`subscriptions.ts`).
 - `src/daemon/`: `startDaemon`, `exitOnSignal` and `runDaemon`, the start sequence `main.ts` runs (`daemon.ts`), bootstrap (`bootstrap.ts`) and the lease sweeper (`sweeper.ts`).
 
 ## Conformance

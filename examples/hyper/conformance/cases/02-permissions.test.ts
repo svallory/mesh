@@ -5,7 +5,7 @@
  * (check phases: permission before content).
  */
 import { expect, test } from "bun:test";
-import { E, expectRejected, suite, useWorld } from "./_setup.ts";
+import { E, expectRejected, suite, types, useWorld } from "./_setup.ts";
 
 suite("02.1 guests [domain/core/membership.md#roles]", () => {
   const w = useWorld();
@@ -16,6 +16,14 @@ suite("02.1 guests [domain/core/membership.md#roles]", () => {
     const t = await w().owner.create("Owner's task");
     await expectRejected(guest.do("claim.acquire", { taskId: t.id }), E.permissionDenied, "role");
     await expectRejected(guest.do("evidence-reference.record", { kind: "link", locator: "https://example.com" }), E.permissionDenied, "role");
+  });
+
+  test("a guest can read (queries need any active membership)", async () => {
+    const guest = await w().add("reader", "guest", "human");
+    const t = await w().owner.create("Readable");
+    expect((await guest.task(t.id)).task.title).toBe("Readable");
+    expect((await guest.query("task.list", {})).tasks.length).toBeGreaterThan(0);
+    expect((await guest.query("events.read", { after: 0, limit: 5 })).events.length).toBe(5);
   });
 
   test("a guest cannot be assigned work: rule_violation assignment.assignee-role", async () => {
@@ -58,6 +66,20 @@ suite("02.2 only owners manage memberships and collaborators [domain/core/member
     await expectRejected(m.do("collaborator.retire", { collaboratorId: other.id }), E.permissionDenied, "role");
   });
 
+  test("an owner grants, changes a role and revokes, with events and granted/revoked by", async () => {
+    const o = w().owner;
+    const { collaborator } = await o.do("collaborator.register", { kind: "human", name: "Ana" });
+    const g = await o.do("membership.grant", { collaboratorId: collaborator.id, role: "guest" });
+    expect(g.membership).toMatchObject({ role: "guest", state: "active", grantedBy: o.id, collaboratorId: collaborator.id });
+    expect(g.events[0]!.payload).toEqual({ collaboratorId: collaborator.id, role: "guest", grantedBy: o.id });
+    const c = await o.do("membership.change-role", { collaboratorId: collaborator.id, role: "member" });
+    expect(c.membership.role).toBe("member");
+    expect(c.events[0]!.payload).toMatchObject({ oldRole: "guest", newRole: "member" });
+    const r = await o.do("membership.revoke", { collaboratorId: collaborator.id, reason: "left" });
+    expect(r.membership).toMatchObject({ state: "revoked", revokedBy: o.id });
+    expect(types(r.events)).toEqual(["membership.revoked"]);
+  });
+
   test("one active membership per collaborator: rule_violation membership.none-active", async () => {
     const m = await w().add("dup");
     await expectRejected(w().owner.do("membership.grant", { collaboratorId: m.id, role: "guest" }), E.ruleViolation, "membership.none-active");
@@ -92,6 +114,16 @@ suite("02.2 only owners manage memberships and collaborators [domain/core/member
     await expectRejected(w().owner.do("collaborator.register", { kind: "human", name: "reviewer-agent" }), E.ruleViolation, "collaborator.name-unique");
   });
 
+  test("collaborator.update: the collaborator itself or an owner; kind never changes", async () => {
+    const a = await w().add("renamer");
+    const b = await w().add("bystander");
+    const r = await a.do("collaborator.update", { collaboratorId: a.id, name: `${a.name}-v2` });
+    expect(r.collaborator.name).toBe(`${a.name}-v2`);
+    expect(r.events[0]!.payload).toEqual({ changes: { name: { old: a.name, new: `${a.name}-v2` } } });
+    await expectRejected(b.do("collaborator.update", { collaboratorId: a.id, name: "hijack" }), E.permissionDenied, "collaborator.self-or-owner");
+    await expectRejected(a.do("collaborator.update", { collaboratorId: a.id, kind: "human" }), E.ruleViolation, "collaborator.kind-immutable");
+  });
+
   test("a guest may update its own profile, and only its own (collaborator.self-or-owner)", async () => {
     const guest = await w().add("self-guest", "guest", "human");
     const other = await w().add("someone");
@@ -121,5 +153,38 @@ suite("02.2 only owners manage memberships and collaborators [domain/core/member
     await w().owner.do("task.assign", { taskId: t.id, assigneeId: worker.id });
     // Both checks are permission-phase failures; the engine may return one or both. Extras are tolerated.
     await expectRejected(guest.do("claim.acquire", { taskId: t.id }), E.permissionDenied, ["role", "claim.assignee"]);
+  });
+});
+
+suite("02.3 revoking and retiring end active authority [domain/core/membership.md#rules, domain/core/collaborator.md#rules]", () => {
+  const w = useWorld();
+
+  test("revoking a membership revokes the collaborator's active claims in the same change; assignments stay", async () => {
+    const worker = await w().add("worker");
+    const t = await w().owner.create("Claimed work", { intent: "x" });
+    await worker.do("claim.acquire", { taskId: t.id });
+    const r = await w().owner.do("membership.revoke", { collaboratorId: worker.id, reason: "offboarded" });
+    expect(types(r.events)).toEqual(["membership.revoked", "claim.revoked"]);
+    expect(r.events[1]!.taskId).toBe(t.id);
+    const after = (await w().owner.task(t.id)).task;
+    expect(after.activeClaim).toBeNull();
+    expect(after.assignment).toMatchObject({ assigneeId: worker.id, endedAt: null, endReason: null });
+    await expectRejected(worker.do("task.create", { title: "after revoke" }), E.permissionDenied, "membership");
+  });
+
+  test("retiring a collaborator revokes its memberships and claims, keeps its history, and it can no longer act", async () => {
+    const worker = await w().add("retiree");
+    const t = await w().owner.create("Retiree's work", { intent: "x" });
+    await worker.do("claim.acquire", { taskId: t.id });
+    const r = await w().owner.do("collaborator.retire", { collaboratorId: worker.id, reason: "model retired" });
+    expect(types(r.events)).toEqual(["collaborator.retired", "membership.revoked", "claim.revoked"]);
+    expect(r.collaborator.state).toBe("retired");
+    const h = (await w().owner.task(t.id)).history;
+    expect(h.assignments).toHaveLength(1);
+    expect(h.assignments[0]).toMatchObject({ assigneeId: worker.id, endedAt: null });
+    expect(h.claims[0]!.holderId).toBe(worker.id);
+    expect(h.claims[0]!.state).toBe("revoked");
+    await expectRejected(worker.do("task.create", { title: "ghost" }), E.permissionDenied, "membership");
+    await expectRejected(w().owner.do("membership.grant", { collaboratorId: worker.id, role: "member" }), E.ruleViolation, "collaborator.active");
   });
 });

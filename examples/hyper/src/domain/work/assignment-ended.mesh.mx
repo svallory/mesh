@@ -1,0 +1,5 @@
+event :AssignmentEnded
+  uuid :assignmentId
+  uuid :taskId
+  uuid :formerAssigneeId
+  enum :endReason values=[:reassigned, :unassigned]

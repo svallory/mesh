@@ -5,14 +5,10 @@
 // subfolder. `bind`, `connect`, `disconnect` and `transaction` come from "#mesh"; the other files in this folder are an
 // implementation detail.
 
-export { Event, loadEventFields } from "./event.actions";
+export { Idempotency } from "./idempotency.actions";
 export type {
-  RecordEventInput,
-  ReadEventInput,
-  EventFilter,
-  EventSort,
-  EventLoadable,
-  EventWith,
-  EventLoadNames,
-  EventLoadArg,
-} from "./event.types";
+  RecordIdempotencyInput,
+  ReadIdempotencyInput,
+  IdempotencyFilter,
+  IdempotencySort,
+} from "./idempotency.types";

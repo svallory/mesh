@@ -8,7 +8,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { type Call, RpcError } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
 import { Mesh } from "meshfw";
-import { Collaborator, Membership } from "#mesh/domain/identity";
+import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
 import { checkResult } from "../conformance/harness/validate.ts";
 import type { MethodName } from "../conformance/schemas/protocol.ts";
 import { explained, rejection } from "../src/rpc/errors";
@@ -33,8 +33,11 @@ async function run(method: keyof typeof schemas, sent: Sent, context: ActionCont
 const command = (context: ActionContext, payload: Sent, extra: Sent = {}): Sent =>
   ({ commandId: crypto.randomUUID(), actor: context.actor.id, caller: "test", payload, ...extra });
 
-/** Sends the command `method` as `context`. */
-const send = (method: keyof typeof schemas, context: ActionContext, payload: Sent, extra: Sent = {}) => run(method, command(context, payload, extra), context);
+/** Sends the command `method` as `context`, which carries the command's id and method as the context factory's does. */
+const send = (method: keyof typeof schemas, context: ActionContext, payload: Sent, extra: Sent = {}) => {
+  const sent = command(context, payload, extra);
+  return run(method, sent, { ...context, commandId: sent.commandId as string, method });
+};
 
 /** Sends the query `method` as `context`. */
 const ask = (method: keyof typeof schemas, context: ActionContext, fields: Sent = {}) => run(method, { actor: context.actor.id, caller: "test", ...fields }, context);
@@ -62,10 +65,11 @@ function ticking(w: World, start: Date): void {
   Object.defineProperty(w.time, "now", { get: () => new Date(at++), configurable: true });
 }
 
-/** A world whose clock reads the system's, with Gus, a guest. */
+/** A world whose clock reads the system's, with its workspace (every event carries its id) and Gus, a guest. */
 function inWorld(body: (w: World & { gus: Collaborator }) => Promise<void>) {
   return within(async (w) => {
     w.time.now = new Date();
+    await Workspace.create({ name: "Home", firstOwner: w.alice.id }, setup);
     const gus = await Collaborator.register({ kind: "agent", name: "Gus" }, setup);
     await Membership.grant({ collaborator: gus.id, role: "guest" }, as(w.alice));
     await body({ ...w, gus });
@@ -75,7 +79,12 @@ function inWorld(body: (w: World & { gus: Collaborator }) => Promise<void>) {
 describe("task.set-priority and task.unassign", () => {
   test("task.set-priority sets and clears the priority and bumps the version; a settled Task is task.open", () => inWorld(async (w) => {
     const set = await send("task.set-priority", as(w.alice), { taskId: w.task.id, priority: 5 });
-    expect(set).toMatchObject({ events: [], task: { id: w.task.id, priority: 5, version: 2 } });
+    expect(set).toMatchObject({ task: { id: w.task.id, priority: 5, version: 2 } });
+    // The command's one event, caused by the command, recording the Task at the version the command left it at.
+    expect(set.events).toMatchObject([{
+      type: "task.priority-set", actor: w.alice.id, record: { type: "task", id: w.task.id, version: 2 }, taskId: w.task.id,
+      cause: { kind: "command", method: "task.set-priority" }, payload: { oldPriority: null, newPriority: 5 },
+    }]);
     const cleared = await send("task.set-priority", as(w.alice), { taskId: w.task.id, priority: null }, { expectedVersion: 2 });
     expect(cleared.task).toMatchObject({ priority: null, version: 3 });
     await send("task.cancel", as(w.alice), { taskId: w.task.id, reason: "descoped" });

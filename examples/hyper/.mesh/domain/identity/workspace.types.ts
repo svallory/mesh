@@ -14,11 +14,12 @@ export type Workspace = {
 export type CreateWorkspaceInput = {
   name?: string | null | undefined;
   location?: "local" | "shared" | undefined;
+  firstOwner?: string | null | undefined;
 };
 
 export type RenameWorkspaceInput = {
   id: string;
-  name?: string | null | undefined;
+  name: string;
   expectedVersion?: number | null | undefined;
 };
 

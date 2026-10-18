@@ -1,5 +1,7 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { DependencyAdded } from "./dependency-added.mesh.mx"
+import { DependencyRemoved } from "./dependency-removed.mesh.mx"
 import { dependencyExistsOf, missingTasksOf, prerequisiteReachesOf, taskVersionOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
@@ -52,6 +54,7 @@ entity :Dependency table="dependencies"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.dependentId }, { ...context, system: true });
         }
+        publish=({ self }) => new DependencyAdded({ dependentId: self.dependentId, prerequisiteId: self.prerequisiteId })
     destroy :remove
       input
         string :reason nullable
@@ -67,6 +70,7 @@ entity :Dependency table="dependencies"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.dependentId }, { ...context, system: true });
         }
+        publish=({ self, input }) => new DependencyRemoved({ dependentId: self.dependentId, prerequisiteId: self.prerequisiteId, reason: input.reason ?? null })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

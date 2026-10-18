@@ -12,3 +12,136 @@
 export { bind, connect, disconnect, transaction, type Binding } from "./binding";
 export type { Privileged } from "@meshfw/runtime";
 export { tables } from "./schema";
+
+// The project's events: the types `DomainEvent`, `EventRecord` and `MetadataFunction`, the table `eventClasses`, `published`
+// and the functions of delivery; the event and command classes come from their module.
+import { CollaboratorRegistered as $identity$CollaboratorRegistered$class } from "./domain/identity/collaboratorRegistered.event";
+import { CollaboratorRetired as $identity$CollaboratorRetired$class } from "./domain/identity/collaboratorRetired.event";
+import { CollaboratorUpdated as $identity$CollaboratorUpdated$class } from "./domain/identity/collaboratorUpdated.event";
+import { MembershipGranted as $identity$MembershipGranted$class } from "./domain/identity/membershipGranted.event";
+import { MembershipRevoked as $identity$MembershipRevoked$class } from "./domain/identity/membershipRevoked.event";
+import { MembershipRoleChanged as $identity$MembershipRoleChanged$class } from "./domain/identity/membershipRoleChanged.event";
+import { WorkspaceCreated as $identity$WorkspaceCreated$class } from "./domain/identity/workspaceCreated.event";
+import { WorkspaceRenamed as $identity$WorkspaceRenamed$class } from "./domain/identity/workspaceRenamed.event";
+import { AssignmentEnded as $work$AssignmentEnded$class } from "./domain/work/assignmentEnded.event";
+import { AssignmentStarted as $work$AssignmentStarted$class } from "./domain/work/assignmentStarted.event";
+import { ClaimAcquired as $work$ClaimAcquired$class } from "./domain/work/claimAcquired.event";
+import { ClaimExpired as $work$ClaimExpired$class } from "./domain/work/claimExpired.event";
+import { ClaimLateResultRecorded as $work$ClaimLateResultRecorded$class } from "./domain/work/claimLateResultRecorded.event";
+import { ClaimReleased as $work$ClaimReleased$class } from "./domain/work/claimReleased.event";
+import { ClaimRenewed as $work$ClaimRenewed$class } from "./domain/work/claimRenewed.event";
+import { ClaimRevoked as $work$ClaimRevoked$class } from "./domain/work/claimRevoked.event";
+import { DependencyAdded as $work$DependencyAdded$class } from "./domain/work/dependencyAdded.event";
+import { DependencyRemoved as $work$DependencyRemoved$class } from "./domain/work/dependencyRemoved.event";
+import { EvidenceReferenceRecorded as $work$EvidenceReferenceRecorded$class } from "./domain/work/evidenceReferenceRecorded.event";
+import { ReviewAccepted as $work$ReviewAccepted$class } from "./domain/work/reviewAccepted.event";
+import { ReviewReturned as $work$ReviewReturned$class } from "./domain/work/reviewReturned.event";
+import { SubmissionSubmitted as $work$SubmissionSubmitted$class } from "./domain/work/submissionSubmitted.event";
+import { SubmissionWithdrawn as $work$SubmissionWithdrawn$class } from "./domain/work/submissionWithdrawn.event";
+import { TaskCanceled as $work$TaskCanceled$class } from "./domain/work/taskCanceled.event";
+import { TaskCompleted as $work$TaskCompleted$class } from "./domain/work/taskCompleted.event";
+import { TaskCreated as $work$TaskCreated$class } from "./domain/work/taskCreated.event";
+import { TaskMoved as $work$TaskMoved$class } from "./domain/work/taskMoved.event";
+import { TaskPrioritySet as $work$TaskPrioritySet$class } from "./domain/work/taskPrioritySet.event";
+import { TaskReopened as $work$TaskReopened$class } from "./domain/work/taskReopened.event";
+import { TaskUpdated as $work$TaskUpdated$class } from "./domain/work/taskUpdated.event";
+import { $Object } from "./$globals";
+import type {
+  EventRecord as $EventRecord,
+  MetadataFunction as $MetadataFunction,
+} from "@meshfw/runtime";
+
+/** The instance type of every event class of the project: what a delivered event is. */
+export type DomainEvent =
+  | $identity$CollaboratorRegistered$class
+  | $identity$CollaboratorRetired$class
+  | $identity$CollaboratorUpdated$class
+  | $identity$MembershipGranted$class
+  | $identity$MembershipRevoked$class
+  | $identity$MembershipRoleChanged$class
+  | $identity$WorkspaceCreated$class
+  | $identity$WorkspaceRenamed$class
+  | $work$AssignmentEnded$class
+  | $work$AssignmentStarted$class
+  | $work$ClaimAcquired$class
+  | $work$ClaimExpired$class
+  | $work$ClaimLateResultRecorded$class
+  | $work$ClaimReleased$class
+  | $work$ClaimRenewed$class
+  | $work$ClaimRevoked$class
+  | $work$DependencyAdded$class
+  | $work$DependencyRemoved$class
+  | $work$EvidenceReferenceRecorded$class
+  | $work$ReviewAccepted$class
+  | $work$ReviewReturned$class
+  | $work$SubmissionSubmitted$class
+  | $work$SubmissionWithdrawn$class
+  | $work$TaskCanceled$class
+  | $work$TaskCompleted$class
+  | $work$TaskCreated$class
+  | $work$TaskMoved$class
+  | $work$TaskPrioritySet$class
+  | $work$TaskReopened$class
+  | $work$TaskUpdated$class;
+/** A published event as a reader gets it: the envelope, the project's metadata and the event itself (`payload`). */
+export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
+/** The type of the events module's `metadata` function: `export const metadata: MetadataFunction = ({ event, context }) => ({ ... })`. */
+export type MetadataFunction = $MetadataFunction<DomainEvent>;
+export type { EventMetadata } from "@meshfw/runtime";
+/** `published()`, the running transaction's own events, and the functions of delivery. */
+export {
+  published,
+  forgetHandler,
+  forgetSubscription,
+  resumeHandler,
+  type ConnectOptions,
+} from "./binding";
+export type { Delivery } from "@meshfw/runtime";
+/** `readEvents(query)`, a page of the outbox's kept events: the bus declares replay. */
+export { readEvents } from "./binding";
+export type { ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
+/** `subscribe(query, callback)`, a live subscription: the bus declares subscribe. */
+export { subscribe } from "./binding";
+export type { SubscribeQuery, Subscription } from "@meshfw/runtime";
+/** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
+export const eventClasses = $Object.freeze({
+  "identity.CollaboratorRegistered": $identity$CollaboratorRegistered$class,
+  "identity.CollaboratorRetired": $identity$CollaboratorRetired$class,
+  "identity.CollaboratorUpdated": $identity$CollaboratorUpdated$class,
+  "identity.MembershipGranted": $identity$MembershipGranted$class,
+  "identity.MembershipRevoked": $identity$MembershipRevoked$class,
+  "identity.MembershipRoleChanged": $identity$MembershipRoleChanged$class,
+  "identity.WorkspaceCreated": $identity$WorkspaceCreated$class,
+  "identity.WorkspaceRenamed": $identity$WorkspaceRenamed$class,
+  "work.AssignmentEnded": $work$AssignmentEnded$class,
+  "work.AssignmentStarted": $work$AssignmentStarted$class,
+  "work.ClaimAcquired": $work$ClaimAcquired$class,
+  "work.ClaimExpired": $work$ClaimExpired$class,
+  "work.ClaimLateResultRecorded": $work$ClaimLateResultRecorded$class,
+  "work.ClaimReleased": $work$ClaimReleased$class,
+  "work.ClaimRenewed": $work$ClaimRenewed$class,
+  "work.ClaimRevoked": $work$ClaimRevoked$class,
+  "work.DependencyAdded": $work$DependencyAdded$class,
+  "work.DependencyRemoved": $work$DependencyRemoved$class,
+  "work.EvidenceReferenceRecorded": $work$EvidenceReferenceRecorded$class,
+  "work.ReviewAccepted": $work$ReviewAccepted$class,
+  "work.ReviewReturned": $work$ReviewReturned$class,
+  "work.SubmissionSubmitted": $work$SubmissionSubmitted$class,
+  "work.SubmissionWithdrawn": $work$SubmissionWithdrawn$class,
+  "work.TaskCanceled": $work$TaskCanceled$class,
+  "work.TaskCompleted": $work$TaskCompleted$class,
+  "work.TaskCreated": $work$TaskCreated$class,
+  "work.TaskMoved": $work$TaskMoved$class,
+  "work.TaskPrioritySet": $work$TaskPrioritySet$class,
+  "work.TaskReopened": $work$TaskReopened$class,
+  "work.TaskUpdated": $work$TaskUpdated$class,
+});
+
+// The configured bus's capabilities, so that a handler option it cannot honour is a type error.
+declare module "@meshfw/runtime" {
+  interface EventBusCapabilities {
+    "ordered-delivery": true;
+    replay: true;
+    subscribe: true;
+  }
+}

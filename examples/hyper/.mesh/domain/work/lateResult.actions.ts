@@ -14,8 +14,10 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
+  rescope as $rescope,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -32,6 +34,7 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   LateResult as $Record,
@@ -208,14 +211,14 @@ export function bindLateResult(
               label: "staleFence",
               code: "claim.stale-fence",
               message: "only a fence you held that expired or was revoked records a late result",
-              source: { file: "src/domain/work/late-result.mesh.mx", line: 25, column: 9 },
+              source: { file: "src/domain/work/late-result.mesh.mx", line: 26, column: 9 },
               that: $expressions["record.check.staleFence.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidenceExists",
               code: "evidence.exists",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/work/late-result.mesh.mx", line: 30, column: 9 },
+              source: { file: "src/domain/work/late-result.mesh.mx", line: 31, column: 9 },
               that: $expressions["record.check.evidenceExists.that"],
               details: $expressions["record.check.evidenceExists.details"],
             });
@@ -234,7 +237,7 @@ export function bindLateResult(
               const $value = await $expressions["record.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/late-result.mesh.mx:38:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/late-result.mesh.mx:39:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -253,7 +256,39 @@ export function bindLateResult(
                 context,
               ),
             );
-            return $stored as LateResult;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.LateResult", $written, "action function"),
+                "work.LateResult#record",
+              ),
+            });
+            {
+              const $event = await $expressions["record.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.LateResult",
+                    action: "record",
+                    key: { id: $written.id },
+                    at: "src/domain/work/late-result.mesh.mx:40:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.late_results, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.LateResult#record: a step after the write deleted the row this action returns",
+              );
+            return $result as LateResult;
           }),
       );
     },

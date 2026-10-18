@@ -1,4 +1,7 @@
 import { Collaborator } from "./collaborator.mesh.mx"
+import { MembershipGranted } from "./membership-granted.mesh.mx"
+import { MembershipRoleChanged } from "./membership-role-changed.mesh.mx"
+import { MembershipRevoked } from "./membership-revoked.mesh.mx"
 import { collaboratorActiveOf, keepsAnOwnerOf, memberOf, noActiveMembershipOf, roleIn } from "./identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -34,6 +37,7 @@ entity :Membership table="memberships"
         set
           &grantedAt=() => %.now
           &grantedBy=({ actor }) => actor.id
+        publish=({ self }) => new MembershipGranted({ collaboratorId: self.collaboratorId, role: &role, grantedBy: self.grantedById })
     update :changeRole
       input
         &role
@@ -63,6 +67,7 @@ entity :Membership table="memberships"
       do
         set
           &version=() => &version + 1
+        publish=({ self, before }) => new MembershipRoleChanged({ collaboratorId: self.collaboratorId, oldRole: before.role, newRole: &role })
     update :revoke
       input
         string :reason nullable
@@ -90,6 +95,7 @@ entity :Membership table="memberships"
           &revokedAt=() => %.now
           &revokedBy=({ actor }) => actor.id
           &version=() => &version + 1
+        publish=({ self, input, actor }) => new MembershipRevoked({ collaboratorId: self.collaboratorId, reason: input.reason ?? null, revokedBy: actor.id })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

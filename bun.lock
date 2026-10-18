@@ -36,6 +36,7 @@
       "name": "hyper-example",
       "version": "0.0.0",
       "dependencies": {
+        "@meshfw/bus-local": "workspace:*",
         "@meshfw/data-sqlite": "workspace:*",
         "@meshfw/jsonrpc": "workspace:*",
         "@meshfw/runtime": "workspace:*",

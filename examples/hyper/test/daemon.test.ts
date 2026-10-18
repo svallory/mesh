@@ -53,9 +53,9 @@ interface Engine {
   stop(signal?: "SIGTERM" | "SIGINT"): Promise<{ code: number | null; ms: number }>;
 }
 
-/** Runs `bun <args>` from the example's folder, collecting both outputs. */
-function launch(args: readonly string[]): Engine {
-  const proc = Bun.spawn([process.execPath, ...args], { cwd: HYPER, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+/** Runs `bun <args>` from the example's folder, with `env` added to the environment, collecting both outputs. */
+function launch(args: readonly string[], env: Record<string, string> = {}): Engine {
+  const proc = Bun.spawn([process.execPath, ...args], { cwd: HYPER, env: { ...process.env, ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
   running.push(proc);
   let out = "";
   let err = "";
@@ -148,6 +148,28 @@ function storedNames(db: string): string[] {
   }
 }
 
+/** The names of the subscription rows in `db`, read from the file (WAL lets it be read while the daemon runs). */
+function subscriptionRows(db: string): string[] {
+  const database = new Database(db, { readonly: true });
+  try {
+    return database.query<{ name: string }, []>("SELECT name FROM mesh_subscription_progress ORDER BY name").all().map((row) => row.name);
+  } finally {
+    database.close();
+  }
+}
+
+/** Resolves once `holds()` is true, checking every 50 ms; rejects after `ms`. */
+async function eventually(holds: () => boolean, what: string, ms = 5_000): Promise<void> {
+  const until = performance.now() + ms;
+  while (!holds()) {
+    if (performance.now() > until) throw new Error(`still not true after ${ms} ms: ${what}`);
+    await Bun.sleep(50);
+  }
+}
+
+/** A short claim lapse for the child daemons that crash, so a restart waits about a second instead of 15. */
+const SHORT_LAPSE = { MESH_TEST_DELIVERY_TIMING: JSON.stringify({ lapseMs: 1_500, renewMs: 300 }) };
+
 describe("the daemon", () => {
   test("bootstraps a workspace with one owner, prints only READY, and exits 0 on SIGTERM", async () => {
     const { socket, db } = scratch();
@@ -161,7 +183,8 @@ describe("the daemon", () => {
     expect(result).toEqual({
       workspace: { id: expect.any(String), name: null, location: "local", state: "active", version: expect.any(Number) },
       owners: [{ id: expect.any(String), kind: "human", name: "owner", state: "active", version: expect.any(Number) }],
-      head: 0,
+      // Bootstrap's three events: collaborator.registered, workspace.created, membership.granted.
+      head: 3,
     });
 
     // The connection stays open: stopping must not wait for an idle client.
@@ -287,7 +310,7 @@ describe("the daemon", () => {
     }
 
     const reasons = unserved(methods);
-    expect([...reasons.keys()]).toContain("events.read");
+    expect([...reasons.keys()]).toContain("workspace.export");
     for (const [method, why] of reasons) {
       // An unknown actor would be -32001 had its context been built.
       const { error } = await client.call(method, { ...command(crypto.randomUUID(), {}), taskId: crypto.randomUUID() });
@@ -301,7 +324,7 @@ describe("the daemon", () => {
     expect((await engine.stop()).code).toBe(0);
   }, TIMEOUT_MS);
 
-  test("task.create over the wire returns the new Task's view, with no events until the event log exists", async () => {
+  test("task.create over the wire returns the new Task's view and its task.created event", async () => {
     const { socket, db } = scratch();
     const engine = launch([MAIN, "--socket", socket, "--db", db]);
     await engine.ready();
@@ -312,7 +335,21 @@ describe("the daemon", () => {
     const { result, error } = await client.call("task.create", command(owner, { title: "Write the report", intent: "for the board", priority: 3 }));
     expect(error).toBeUndefined();
     expect(result).toEqual({
-      events: [],
+      events: [{
+        id: expect.stringMatching(UUID),
+        seq: 4,
+        type: "task.created",
+        schemaVersion: 1,
+        workspaceId: workspace!.workspace.id,
+        record: { type: "task", id: expect.stringMatching(UUID), version: 1 },
+        taskId: expect.stringMatching(UUID),
+        actor: owner,
+        caller: "test",
+        occurredAt: expect.any(String),
+        recordedAt: expect.any(String),
+        cause: { kind: "command", commandId: expect.any(String), method: "task.create" },
+        payload: { title: "Write the report", intent: "for the board", parentId: null, priority: 3, creatorId: owner },
+      }],
       task: {
         id: expect.stringMatching(UUID),
         title: "Write the report",
@@ -332,6 +369,8 @@ describe("the daemon", () => {
       },
     });
     expect(new Date(result!.task.createdAt).toISOString()).toBe(result!.task.createdAt);
+    expect(result!.events[0].record.id).toBe(result!.task.id);
+    expect(result!.events[0].taskId).toBe(result!.task.id);
 
     const child = await client.call("task.create", command(owner, { title: "Draft it", parentId: result!.task.id }));
     expect(child.result?.task).toMatchObject({ title: "Draft it", intent: null, parentId: result!.task.id, priority: null, version: 1 });
@@ -414,5 +453,92 @@ describe("the daemon", () => {
     expect(await engine.proc.exited).toBe(1);
     expect(engine.out()).toBe("");
     expect(engine.err()).toContain("the engine could not start");
+  }, TIMEOUT_MS);
+});
+
+describe("event delivery in the daemon", () => {
+  test("a second daemon on the same --db, while the first is alive on this host, exits 1 at once with MESH_DELIVERER_TAKEN", async () => {
+    const { socket, db, dir } = scratch();
+    const first = launch([MAIN, "--socket", socket, "--db", db]);
+    await first.ready();
+    const started = performance.now();
+    const second = launch([MAIN, "--socket", join(dir, "second.sock"), "--db", db]);
+    expect(await second.proc.exited).toBe(1);
+    // At once: the first daemon's claim does not lapse for 15 s, and the second does not wait for it.
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(second.out()).toBe("");
+    expect(second.err()).toContain("the engine could not start");
+    expect(second.err()).toContain("MESH_DELIVERER_TAKEN");
+    // The first one never noticed.
+    const client = await connect(socket);
+    expect((await client.call("workspace.get", {})).result).toBeDefined();
+    client.close();
+    expect((await first.stop()).code).toBe(0);
+  }, TIMEOUT_MS);
+
+  test("after a crash, a restart waits for the dead engine's claim to lapse, then starts and forgets the subscriptions it left", async () => {
+    const { socket, db } = scratch();
+    const crashed = launch([TEST_DAEMON, socket, db], SHORT_LAPSE);
+    await crashed.ready();
+    const client = await connect(socket);
+    const owner: string = (await client.call("workspace.get", {})).result!.owners[0].id;
+    const { subscriptionId } = (await client.call("events.subscribe", { actor: owner, caller: "test", after: 0 })).result!;
+    expect(subscriptionRows(db)).toEqual([subscriptionId]);
+    crashed.proc.kill("SIGKILL");
+    // Reaped, so its pid no longer answers signal 0 and the restart treats the claim as a dead engine's.
+    await crashed.proc.exited;
+    client.close();
+    expect(subscriptionRows(db)).toEqual([subscriptionId]);
+
+    const restarted = launch([TEST_DAEMON, socket, db], SHORT_LAPSE);
+    await restarted.ready();
+    expect(subscriptionRows(db)).toEqual([]);
+    const again = await connect(socket);
+    expect((await again.call("events.read", { actor: owner, caller: "test", after: 0 })).result!.events.length).toBeGreaterThan(0);
+    again.close();
+    expect((await restarted.stop()).code).toBe(0);
+  }, TIMEOUT_MS);
+
+  test("a subscription's row is dropped on events.unsubscribe, when its connection closes, and when the daemon stops", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([MAIN, "--socket", socket, "--db", db]);
+    await engine.ready();
+    const subscribe = async () => {
+      const client = await connect(socket);
+      const owner: string = (await client.call("workspace.get", {})).result!.owners[0].id;
+      const { subscriptionId } = (await client.call("events.subscribe", { actor: owner, caller: "test", after: 0 })).result!;
+      expect(subscriptionRows(db)).toContain(subscriptionId);
+      return { client, owner, subscriptionId: subscriptionId as string };
+    };
+
+    const unsubscribed = await subscribe();
+    expect((await unsubscribed.client.call("events.unsubscribe", { subscriptionId: unsubscribed.subscriptionId })).result).toEqual({ ok: true });
+    expect(subscriptionRows(db)).toEqual([]);
+    unsubscribed.client.close();
+
+    const dropped = await subscribe();
+    dropped.client.close();
+    await eventually(() => subscriptionRows(db).length === 0, "the closed connection's subscription row is gone");
+
+    const open = await subscribe();
+    expect(subscriptionRows(db)).toEqual([open.subscriptionId]);
+    expect((await engine.stop()).code).toBe(0);
+    open.client.close();
+    expect(subscriptionRows(db)).toEqual([]);
+  }, TIMEOUT_MS);
+
+  test("a subscription Mesh ends on its own (its queue overflows) is logged and its row dropped", async () => {
+    const { socket, db } = scratch();
+    // Bootstrap's three events are more than a queue of one holds, so the backlog overflows it at once.
+    const engine = launch([TEST_DAEMON, socket, db], { MESH_TEST_DELIVERY_TIMING: JSON.stringify({ maxQueue: 1 }) });
+    await engine.ready();
+    const client = await connect(socket);
+    const owner: string = (await client.call("workspace.get", {})).result!.owners[0].id;
+    const { subscriptionId } = (await client.call("events.subscribe", { actor: owner, caller: "test", after: 0 })).result!;
+    await engine.logged(`subscription ${subscriptionId} ended on its own`);
+    expect(engine.err()).toContain("MESH_SUBSCRIPTION_OVERFLOW");
+    await eventually(() => subscriptionRows(db).length === 0, "the overflowed subscription's row is gone");
+    client.close();
+    expect((await engine.stop()).code).toBe(0);
   }, TIMEOUT_MS);
 });

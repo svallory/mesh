@@ -1,0 +1,4 @@
+event :ClaimReleased
+  uuid :claimId
+  integer :fence
+  string :endReason

@@ -8,13 +8,16 @@ import {
   type Scope as $Scope,
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
+import { AssignmentEnded as $work$AssignmentEnded$class } from "./assignmentEnded.event";
+import { AssignmentStarted as $work$AssignmentStarted$class } from "./assignmentStarted.event";
 import type {
   Assignment as $work$Assignment$Record,
   AssignmentLoaded as $work$Assignment$Loaded,
   FinishAssignmentInput as $work$Assignment$FinishAssignmentInput,
   StartAssignmentInput as $work$Assignment$StartAssignmentInput,
 } from "./assignment.types";
-import type { $Omit } from "../../$globals";
+import type { DomainEvent as $DomainEvent } from "../../index";
+import type { $Omit, $Promise } from "../../$globals";
 
 /** What every expression of Assignment reads; `I` is the input of the action it runs in. */
 export type $work$Assignment$Scope<I = unknown> = $Scope<{
@@ -57,30 +60,59 @@ export type $work$Assignment$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // set &delegator, translated (src/domain/work/assignment.mesh.mx:24:22)
+  // set &delegator, translated (src/domain/work/assignment.mesh.mx:26:22)
   "start.step.0.set.delegator": (
     $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
   ) => $s.actor?.id,
-  // set &startedAt, translated (src/domain/work/assignment.mesh.mx:25:22)
+  // set &startedAt, translated (src/domain/work/assignment.mesh.mx:27:22)
   "start.step.0.set.startedAt": (
     $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
   ) => $.now($s),
-  // check :current that, translated (src/domain/work/assignment.mesh.mx:31:16)
+  // publish, plain (publish-step) (src/domain/work/assignment.mesh.mx:28:17)
+  "start.step.1.publish": (
+    $s: $work$Assignment$Scope<$work$Assignment$StartAssignmentInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const AssignmentStarted: typeof $work$AssignmentStarted$class = $work$AssignmentStarted$class;
+    return (({ self }) =>
+      new AssignmentStarted({
+        assignmentId: $self.id,
+        taskId: self.taskId,
+        assigneeId: self.assigneeId,
+        delegatorId: self.delegatorId,
+        reviewWaived: $self.reviewWaived,
+      }))($s);
+  },
+  // check :current that, translated (src/domain/work/assignment.mesh.mx:34:16)
   "finish.check.current.that": (
     $s: $work$Assignment$CheckScope<$work$Assignment$FinishAssignmentInput>,
   ) => $.isNull($s.self.endedAt),
-  // set &endedAt, translated (src/domain/work/assignment.mesh.mx:37:20)
+  // set &endedAt, translated (src/domain/work/assignment.mesh.mx:40:20)
   "finish.step.0.set.endedAt": (
     $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
   ) => $.now($s),
-  // set &endReason, translated (src/domain/work/assignment.mesh.mx:38:22)
+  // set &endReason, translated (src/domain/work/assignment.mesh.mx:41:22)
   "finish.step.0.set.endReason": (
     $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
   ) => $s.input?.reason,
-  // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:41:20)
+  // publish, plain (publish-step) (src/domain/work/assignment.mesh.mx:42:17)
+  "finish.step.1.publish": (
+    $s: $work$Assignment$StoredScope<$work$Assignment$FinishAssignmentInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const AssignmentEnded: typeof $work$AssignmentEnded$class = $work$AssignmentEnded$class;
+    return (({ self, input }) =>
+      new AssignmentEnded({
+        assignmentId: $self.id,
+        taskId: self.taskId,
+        formerAssigneeId: self.assigneeId,
+        endReason: input.reason,
+      }))($s);
+  },
+  // policy :membersRead authorize-if, translated (src/domain/work/assignment.mesh.mx:45:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Assignment$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:43:20)
+  // policy :internal authorize-if, translated (src/domain/work/assignment.mesh.mx:47:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Assignment$NewScope<
       $SharedInput<$work$Assignment$StartAssignmentInput | $work$Assignment$FinishAssignmentInput>

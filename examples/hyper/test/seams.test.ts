@@ -12,7 +12,7 @@ import { submissionSubmit } from "../src/domain/work/work.commands";
 import { as, empty, populate, setup, world } from "./world";
 
 const ENTITIES = [
-  "work.Assignment", "execution.Attempt", "work.Claim", "identity.Collaborator", "work.Completion", "work.Dependency", "audit.Event",
+  "work.Assignment", "execution.Attempt", "work.Claim", "identity.Collaborator", "work.Completion", "work.Dependency", "audit.Idempotency",
   "work.EvidenceReference", "execution.Invocation", "work.LateResult", "execution.Machine", "identity.Membership", "work.Review",
   "execution.Run", "execution.SessionReference", "work.Submission", "work.Task", "identity.Workspace",
 ];
@@ -20,15 +20,15 @@ const ENTITIES = [
 /** The declaration part of an FQN: `work.Review` is `Review`. */
 const bareOf = (fqn: string) => fqn.slice(fqn.lastIndexOf(".") + 1);
 
-/** An entity's table and the key of one of its rows: every entity keys on `id` but Event, which keys on `seq`. */
+/** An entity's table and the key of one of its rows: every entity keys on `id`. */
 const TABLE_OF: Readonly<Record<string, keyof typeof tables>> = {
   Assignment: "assignments", Attempt: "attempts", Claim: "claims", Collaborator: "collaborators", Completion: "completions",
-  Dependency: "dependencies", Event: "events", EvidenceReference: "evidence_references", Invocation: "invocations",
-  LateResult: "late_results", Machine: "machines", Membership: "memberships", Review: "reviews", Run: "runs",
+  Dependency: "dependencies", EvidenceReference: "evidence_references", Invocation: "invocations",
+  LateResult: "late_results", Machine: "machines", Idempotency: "idempotency", Membership: "memberships", Review: "reviews", Run: "runs",
   SessionReference: "session_references", Submission: "submissions", Task: "tasks", Workspace: "workspaces",
 };
 const tableOf = (entity: string) => tables[TABLE_OF[bareOf(entity)]!] as never;
-const keyOf = (entity: string, row: Record<string, unknown>) => (entity === "audit.Event" ? { seq: row.seq } : { id: row.id }) as never;
+const keyOf = (_entity: string, row: Record<string, unknown>) => ({ id: row.id }) as never;
 
 /** Every seam call, in order, as plain data; `after` and `commit` hold what the seams received. */
 function recorder(extra: Seams = {}) {
@@ -64,7 +64,7 @@ describe("acceptance 1: afterWrite runs once for each row written, with its befo
         const rows = new Map<string, Record<string, unknown>>();
         for (const { entity, action, before, after } of rec.writes) {
           expect(after, `${entity}#${action}`).not.toBeNull();
-          const key = `${entity}/${String(entity === "audit.Event" ? after!.seq : after!.id)}`;
+          const key = `${entity}/${String(after!.id)}`;
           const known = rows.get(key);
           if (known === undefined) expect(before, `${entity}#${action} creates ${key}`).toBeNull();
           else expect(before, `${entity}#${action} updates ${key}`).toEqual(known);
@@ -115,7 +115,7 @@ describe("acceptance 2: a nested write reaches the seams in the order the rows a
         await watched.run(() => Review.accept({ submission: submitted.submission.id }, as(w.alice)));
         const seen = rec.writes.map(shape);
         // Written in the order the lifecycle runs them: the review's row, then the steps after it, which call the others.
-        expect(seen).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#complete", "work.Completion#record"]);
+        expect(seen).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#touch", "work.Task#complete", "work.Completion#record"]);
         // The seams see the whole call as one transaction: the top-level action is the only one that ran beforeTransaction,
         // and afterCommit ran once, after every write, with the same list.
         expect(rec.before.map((event) => `${event.entity}#${event.action}`)).toEqual(["work.Review#accept"]);
@@ -247,9 +247,9 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
         expect(rec.commits).toHaveLength(1);
         // The same rows afterWrite received, in the same order: before and after as plain data.
         expect(rec.commits[0]!.changes).toEqual(rec.writes.map(({ entity, action, before, after }) => ({ entity, action, before, after })));
-        expect(rec.commits[0]!.changes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#complete", "work.Completion#record"]);
+        expect(rec.commits[0]!.changes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#touch", "work.Task#complete", "work.Completion#record"]);
         // After the commit: what the call changed is there to read, and afterCommit came after every afterWrite.
-        expect(rec.log.at(-1)).toBe("afterCommit 4");
+        expect(rec.log.at(-1)).toBe("afterCommit 5");
       });
     } finally { await w.db.close(); }
   });
@@ -349,7 +349,7 @@ describe("acceptance 5: beforeTransaction runs for the call that opens the trans
         const context = { ...as(w.alice), commandId: "c-1" };
         await watched.run(() => Review.accept({ submission: submission.id }, context));
         expect(rec.before).toEqual([{ entity: "work.Review", action: "accept", input: { submission: submission.id }, context }]);
-        expect(rec.writes.length).toBe(4);
+        expect(rec.writes.length).toBe(5);
       });
     } finally { await w.db.close(); }
   });
@@ -391,7 +391,7 @@ describe("acceptance 6: the context of a call reaches the seams of every row it 
         const rec = recorder();
         const watched = bind(w.db, { clock: w.clock, seams: rec.seams });
         await watched.run(() => Review.accept({ submission: submission.id }, { ...as(w.alice), commandId: "cmd-7", caller: "cli" }));
-        expect(rec.writes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#complete", "work.Completion#record"]);
+        expect(rec.writes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#touch", "work.Task#complete", "work.Completion#record"]);
         for (const event of rec.writes) expect(event.context, shape(event)).toMatchObject({ commandId: "cmd-7", caller: "cli", actor: { id: w.alice.id } });
         // A nested call's own input, not the caller's.
         expect(rec.writes[1]!.input).toEqual({ id: submission.id, outcome: "accepted" });

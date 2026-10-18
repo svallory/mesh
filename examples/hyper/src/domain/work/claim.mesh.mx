@@ -1,6 +1,11 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Assignment } from "./assignment.mesh.mx"
+import { ClaimAcquired } from "./claim-acquired.mesh.mx"
+import { ClaimRenewed } from "./claim-renewed.mesh.mx"
+import { ClaimReleased } from "./claim-released.mesh.mx"
+import { ClaimRevoked } from "./claim-revoked.mesh.mx"
+import { ClaimExpired } from "./claim-expired.mesh.mx"
 import { assigneeMayClaimOf, derivedStateOf, leaseEnd, readinessOf, revokesClaimOf, taskVersionOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
@@ -38,19 +43,22 @@ entity :Claim table="claims"
           details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: await taskVersionOf(input.task) })
         ]
       do
-        run({ input, context }) {
-          const lapsed = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.task }, state: { eq: :active }, expiresAt: { lte: %.now } } });
-          for (const claim of lapsed) await Claim.end({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
-        }
         set
           &holder=({ actor }) => actor.id
           &fence=() => (&task.maxFence ?? 0) + 1
           &acquiredAt=() => %.now
           &expiresAt=({ context }) => leaseEnd(%.now, context.leaseMs)
         run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
+        }
+        publish=({ self }) => new ClaimAcquired({ claimId: &id, taskId: self.taskId, holderId: self.holderId, fence: &fence, expiresAt: structuredClone(&expiresAt) })
+        // The lapsed claims end after claim.acquired is published, so the command's first event is its own and its
+        // cause is the command (PROTOCOL.md §4.2); each claim.expired that follows names the lease-expiry rule.
+        run [after=:write] ({ self, context }) {
+          const lapsed = await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId }, state: { eq: :active }, expiresAt: { lte: %.now } } });
+          for (const claim of lapsed) await Claim.end({ id: claim.id, outcome: :expired, reason: "lease expired" }, { ...context, system: true });
           const open = await Mesh.privileged(Assignment).read({ filter: { taskId: { eq: self.taskId }, endedAt: { nil: true } }, limit: 1 });
           if (open.length === 0) await Assignment.start({ task: self.taskId, assignee: self.holderId, reviewWaived: false }, { ...context, system: true });
-          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :renew
       input
@@ -85,6 +93,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
+        publish=() => new ClaimRenewed({ claimId: &id, fence: &fence, expiresAt: structuredClone(&expiresAt) })
     update :release
       input
         integer :fence
@@ -121,6 +130,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
+        publish=() => new ClaimReleased({ claimId: &id, fence: &fence, endReason: &endReason ?? "released" })
     update :revoke
       input
         string :reason min=1
@@ -145,6 +155,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
+        publish=({ input, actor }) => new ClaimRevoked({ claimId: &id, fence: &fence, revokedBy: actor.id, reason: input.reason })
     update :expire
       input
         string :reason nullable
@@ -162,6 +173,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
+        publish=() => new ClaimExpired({ claimId: &id, fence: &fence, expiredAt: structuredClone(&expiresAt) })
     update :end
       input
         enum :outcome values=[:released, :revoked, :expired]
@@ -177,6 +189,12 @@ entity :Claim table="claims"
           &state=({ input }) => input.outcome
           &endedAt=() => %.now
           &endReason=({ input }) => input.reason
+        when=({ input }) => input.outcome === :released
+          publish=({ input }) => new ClaimReleased({ claimId: &id, fence: &fence, endReason: input.reason })
+        when=({ input }) => input.outcome === :revoked
+          publish=({ input, actor }) => new ClaimRevoked({ claimId: &id, fence: &fence, revokedBy: actor.id, reason: input.reason })
+        when=({ input }) => input.outcome === :expired
+          publish=() => new ClaimExpired({ claimId: &id, fence: &fence, expiredAt: structuredClone(&expiresAt) })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

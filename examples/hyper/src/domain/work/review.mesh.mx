@@ -1,7 +1,9 @@
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Task } from "./task.mesh.mx"
-import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf } from "./work.helpers"
+import { ReviewAccepted } from "./review-accepted.mesh.mx"
+import { ReviewReturned } from "./review-returned.mesh.mx"
+import { reviewerRuleOf, reviewsSubmissionOf, submittedVersionsOf, taskOfSubmission } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -39,7 +41,12 @@ entity :Review table="reviews"
           &ruleApplied=async ({}) => await reviewerRuleOf(&submission.taskId)
         run [after=:write] ({ self, context }) {
           const submission = await Submission.settle({ id: self.submissionId, outcome: :accepted }, { ...context, system: true });
-          await Task.complete({ id: submission.taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: submission.id } });
+          await Task.touch({ id: submission.taskId }, { ...context, system: true });
+        }
+        publish=({ self }) => new ReviewAccepted({ reviewId: &id, submissionId: self.submissionId, reviewerId: self.reviewerId, ruleApplied: &ruleApplied })
+        run [after=:write] ({ self, context }) {
+          const taskId = await taskOfSubmission(self.submissionId);
+          await Task.complete({ id: taskId }, { ...context, system: true, completion: { rule: "review-accepted", submissionId: self.submissionId } });
         }
     create :return
       input
@@ -68,6 +75,7 @@ entity :Review table="reviews"
           const submission = await Submission.settle({ id: self.submissionId, outcome: :returned }, { ...context, system: true });
           await Task.touch({ id: submission.taskId }, { ...context, system: true });
         }
+        publish=({ self, input }) => new ReviewReturned({ reviewId: &id, submissionId: self.submissionId, reviewerId: self.reviewerId, reasons: input.reasons })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

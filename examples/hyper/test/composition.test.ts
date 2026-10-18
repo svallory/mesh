@@ -47,6 +47,8 @@ function refusing(layer: DataLayer, refuse: (table: TableHandle, changes: Record
     transaction: (run) => layer.transaction((tx) => run(wrap(tx))),
     refuseIfFailed: () => layer.refuseIfFailed(),
     close: () => layer.close(),
+    // A project with events needs the outbox read; the transaction's operations above keep `appendEvent` from `tx`.
+    readOutbox: (after, limit) => layer.readOutbox!(after, limit),
   };
 }
 
@@ -549,7 +551,10 @@ describe("PROTOCOL.md §4.5: the Task's version goes up by one per committed com
 describe("the command functions", () => {
   test("follow Hyper's method names in camelCase, and none is a name `#mesh` or a module's index exports", () => {
     // `#mesh` holds only the framework's names; every entity value is its module's.
-    expect(Object.keys(mesh).sort()).toEqual(["bind", "connect", "disconnect", "tables", "transaction"]);
+    expect(Object.keys(mesh).sort()).toEqual([
+      "bind", "connect", "disconnect", "eventClasses", "forgetHandler", "forgetSubscription", "published", "readEvents", "resumeHandler",
+      "subscribe", "tables", "transaction",
+    ]);
     const exported = new Set([mesh, audit, execution, identity, work].flatMap((module) => Object.keys(module)));
     // The key lists, not a spread of the modules: a name two modules export would be one key of a spread.
     const names = [workCommands, identityCommands, executionCommands].flatMap((module) => Object.keys(module));

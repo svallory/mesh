@@ -1,0 +1,5 @@
+event :ReviewReturned
+  uuid :reviewId
+  uuid :submissionId
+  uuid :reviewerId
+  string :reasons

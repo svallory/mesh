@@ -1,0 +1,5 @@
+event :TaskCompleted
+  uuid :completionId
+  enum :rule values=[:review-accepted, :performer-is-reviewer, :review-waived]
+  uuid :submissionId nullable
+  uuid :completedBy

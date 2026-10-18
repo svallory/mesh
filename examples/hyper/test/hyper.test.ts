@@ -3,29 +3,34 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { FrameworkError, InvalidInputError } from "@meshfw/runtime";
-import { tables } from "#mesh";
-import { Event } from "#mesh/domain/audit";
+import { readEvents, tables } from "#mesh";
+import { Idempotency } from "#mesh/domain/audit";
 import { Attempt, Invocation, Machine, Run, SessionReference } from "#mesh/domain/execution";
 import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
 import { Assignment, Claim, Completion, Dependency, EvidenceReference, LateResult, Review, Submission, Task } from "#mesh/domain/work";
-import { as, asSystem, empty, eventOf, populate, setup } from "./world";
+import { as, asSystem, empty, populate, setup } from "./world";
 
 const root = resolve(import.meta.dir, "..");
 const context = setup;
 const ENTITIES = [
-  "Assignment", "Attempt", "Claim", "Collaborator", "Completion", "Dependency", "Event", "EvidenceReference", "Invocation",
+  "Assignment", "Attempt", "Claim", "Collaborator", "Completion", "Dependency", "EvidenceReference", "Idempotency", "Invocation",
   "LateResult", "Machine", "Membership", "Review", "Run", "SessionReference", "Submission", "Task", "Workspace",
 ];
+
+/** Core's tables of the event log, which `tables` and the database hold beside the entities' own. */
+const CORE = ["mesh_handler_progress", "mesh_outbox", "mesh_outbox_state", "mesh_subscription_progress"];
 
 describe("the schema", () => {
   test("the model has 18 entities in four modules, each in a folder of its own", async () => {
     const model = JSON.parse(readFileSync(resolve(root, ".mesh/model.json"), "utf8")) as { entities: { name: string; module: string }[] };
     expect(model.entities.map((entity) => entity.name).sort()).toEqual(ENTITIES);
     expect([...new Set(model.entities.map((entity) => entity.module))].sort()).toEqual(["audit", "execution", "identity", "work"]);
-    expect(Object.keys(tables)).toHaveLength(18);
+    // The 18 entity tables, and core's four tables of the event log (the outbox, its state, handler and subscription progress).
+    expect(Object.keys(tables).filter((name) => !CORE.includes(name))).toHaveLength(18);
+    expect(Object.keys(tables).filter((name) => CORE.includes(name)).sort()).toEqual(CORE);
   });
 
-  test("`mesh db push` creates 18 tables", () => {
+  test("`mesh db push` creates the 18 entity tables and core's four", () => {
     const file = resolve(root, "hyper.db");
     rmSync(file, { force: true });
     try {
@@ -35,7 +40,10 @@ describe("the schema", () => {
       const database = new Database(file, { readonly: true });
       const names = (database.query("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((row) => row.name);
       database.close();
-      expect(names).toHaveLength(18);
+      // SQLite adds `sqlite_sequence` for the outbox's never-reused AUTOINCREMENT key.
+      expect(names.filter((name) => !CORE.includes(name) && name !== "sqlite_sequence")).toHaveLength(18);
+      expect(names.filter((name) => CORE.includes(name)).sort()).toEqual(CORE);
+      expect(names).toContain("sqlite_sequence");
     } finally { for (const suffix of ["", "-journal", "-wal", "-shm"]) rmSync(file + suffix, { force: true }); }
   }, 30_000);
 });
@@ -56,7 +64,7 @@ describe("one row of every entity round-trips through its generated functions", 
           LateResult: () => LateResult.read({}, context), EvidenceReference: () => EvidenceReference.read({}, context),
           Run: () => Run.read({}, context), Attempt: () => Attempt.read({}, context),
           Invocation: () => Invocation.read({}, context), Machine: () => Machine.read({}, context),
-          SessionReference: () => SessionReference.read({}, context), Event: () => Event.read({}, context),
+          SessionReference: () => SessionReference.read({}, context), Idempotency: () => Idempotency.read({}, context),
         };
         expect(Object.keys(reads).sort()).toEqual(ENTITIES);
         // The rows no later step changed read back as they were returned.
@@ -64,7 +72,7 @@ describe("one row of every entity round-trips through its generated functions", 
           Workspace: [rows.workspace], Membership: [rows.membership, rows.botMembership], Dependency: [rows.dependency],
           Review: [rows.review], Completion: [rows.completion], LateResult: [rows.lateResult], EvidenceReference: [rows.evidence],
           Run: [rows.run], Attempt: [rows.attempt], Invocation: [rows.invocation], Machine: [rows.machine],
-          SessionReference: [rows.session], Event: [rows.event], Collaborator: [rows.alice, rows.bot],
+          SessionReference: [rows.session], Idempotency: [rows.idempotency], Collaborator: [rows.alice, rows.bot],
         };
         for (const [name, expected] of Object.entries(unchanged)) expect(await reads[name]!(), name).toEqual(expected);
         // The rows later steps changed read back with those changes.
@@ -106,13 +114,12 @@ describe("one row of every entity round-trips through its generated functions", 
     const fresh = await empty();
     const { db, hyper } = fresh;
     try {
-      const { task, event, alice } = await populate(fresh);
+      const { task, idempotency, alice } = await populate(fresh);
       expect(task).toMatchObject({ state: "open", version: 1, intent: null, parentId: null, creatorId: alice.id });
-      expect(event).toMatchObject({ schemaVersion: 1, actor: "engine", caller: "engine", cause: { kind: "command", commandId: "c-1", method: "task.create" } });
-      expect(event.recordedAt).toBeInstanceOf(Date);
+      expect(idempotency).toMatchObject({ commandId: "populate", method: "task.create", result: { ok: true } });
+      expect(idempotency.recordedAt).toBeInstanceOf(Date);
       expect(task.createdAt).toBeInstanceOf(Date);
-      expect(task.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-      expect(event.seq).toBe(1);
+      for (const id of [task.id, idempotency.id]) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     } finally { await db.close(); }
   });
 
@@ -163,8 +170,6 @@ describe("json attributes", () => {
         const second = await Run.start({ task: task.id }, as(bot));
         expect(second.inputs).toEqual({});
         expect(lateResult.evidence).toEqual([]);
-        const event = await Event.record(eventOf(2, { recordId: run.id, checks: undefined }), context);
-        expect(event.checks).toBeNull();
         expect((await Run.read({ sort: ["startedAt", "id"] }, context)).map((r) => r.inputs)).toEqual([run.inputs, {}]);
       });
     } finally { await db.close(); }
@@ -186,48 +191,37 @@ describe("json attributes", () => {
   });
 });
 
-describe("integer keys", () => {
-  const event = (n: number) => eventOf(n);
-
-  test("1,000 creates with a rolled-back transaction every tenth leave keys 1 to 900 with no gap", async () => {
+describe("the event log's positions", () => {
+  test("200 commands with a rolled-back transaction every tenth leave positions 1 to 180 with no gap", async () => {
     const fresh = await empty();
     const { db, hyper } = fresh;
     try {
       await hyper.run(async () => {
-        for (let n = 1; n <= 1000; n++) {
+        const { alice } = await populate(fresh);
+        const { cursor: start } = await readEvents({ after: 0, limit: 1000 });
+        for (let n = 1; n <= 200; n++) {
           if (n % 10 === 0) {
-            // The generated call joins this transaction; the throw rolls the write back.
-            await expect(db.transaction(async () => { await Event.record(event(n), context); throw new Error("rollback"); })).rejects.toThrow("rollback");
-          } else await Event.record(event(n), context);
+            // The generated call joins this transaction; the throw rolls the write and its event back.
+            await expect(db.transaction(async () => { await Task.create({ title: `T${n}` }, as(alice)); throw new Error("rollback"); })).rejects.toThrow("rollback");
+          } else await Task.create({ title: `T${n}` }, as(alice));
         }
-        const events = await Event.read({ sort: ["seq"] }, context);
-        expect(events).toHaveLength(900);
-        expect(events.map((row) => row.seq)).toEqual(Array.from({ length: 900 }, (_, i) => i + 1));
+        const { events } = await readEvents({ after: start, limit: 1000 });
+        expect(events.map((event) => event.position)).toEqual(Array.from({ length: 180 }, (_, i) => start + i + 1));
+        expect(new Set(events.map((event) => event.name))).toEqual(new Set(["work.TaskCreated"]));
       });
     } finally { await db.close(); }
-  });
+  }, 30_000);
 
-  test("parallel creates get distinct consecutive keys", async () => {
+  test("parallel commands get distinct consecutive positions", async () => {
     const fresh = await empty();
     const { db, hyper } = fresh;
     try {
       await hyper.run(async () => {
-        const rows = await Promise.all(Array.from({ length: 25 }, (_, n) => Event.record(event(n), context)));
-        expect(rows.map((row) => row.seq).sort((a, b) => a - b)).toEqual(Array.from({ length: 25 }, (_, i) => i + 1));
-      });
-    } finally { await db.close(); }
-  });
-
-  test("a client cannot send the key, and a filter pages by it", async () => {
-    const fresh = await empty();
-    const { db, hyper } = fresh;
-    try {
-      await hyper.run(async () => {
-        await expect(Event.record({ ...(event(0) as object), seq: 5 } as never, context)).rejects.toBeInstanceOf(InvalidInputError);
-        for (let n = 1; n <= 10; n++) await Event.record(event(n), context);
-        const page = await Event.read({ filter: { seq: { gt: 5 } }, sort: ["seq"], limit: 3 }, context);
-        expect(page.map((row) => row.seq)).toEqual([6, 7, 8]);
-        expect((await Event.read({ sort: ["-seq"], limit: 1 }, context))[0]!.seq).toBe(10);
+        const { alice } = await populate(fresh);
+        const { cursor: start } = await readEvents({ after: 0, limit: 1000 });
+        await Promise.all(Array.from({ length: 25 }, (_, n) => Task.create({ title: `P${n}` }, as(alice))));
+        const { events } = await readEvents({ after: start });
+        expect(events.map((event) => event.position)).toEqual(Array.from({ length: 25 }, (_, i) => start + i + 1));
       });
     } finally { await db.close(); }
   });

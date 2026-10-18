@@ -1,0 +1,4 @@
+event :WorkspaceCreated
+  string :name nullable
+  string :location
+  uuid :firstOwnerId

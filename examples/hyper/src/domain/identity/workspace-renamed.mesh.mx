@@ -1,0 +1,3 @@
+event :WorkspaceRenamed
+  string :oldName nullable
+  string :newName

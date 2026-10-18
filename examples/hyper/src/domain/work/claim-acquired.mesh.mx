@@ -1,0 +1,6 @@
+event :ClaimAcquired
+  uuid :claimId
+  uuid :taskId
+  uuid :holderId
+  integer :fence
+  timestamp :expiresAt

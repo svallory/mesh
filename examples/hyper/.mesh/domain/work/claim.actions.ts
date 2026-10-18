@@ -17,6 +17,7 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
   rejectComputedQuery,
@@ -261,7 +262,7 @@ export function bindClaim(
               label: "taskReady",
               code: "claim.task-ready",
               message: "the task is not ready to claim",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 28, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 33, column: 9 },
               that: $expressions["acquire.check.taskReady.that"],
               details: $expressions["acquire.check.taskReady.details"],
             });
@@ -269,7 +270,7 @@ export function bindClaim(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 34, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 39, column: 9 },
               that: $expressions["acquire.check.versionMatches.that"],
               details: $expressions["acquire.check.versionMatches.details"],
             });
@@ -278,37 +279,36 @@ export function bindClaim(
             if ($Object.hasOwn(parsed, "task") && parsed.task !== undefined)
               $changes.taskId = $record.taskId = parsed.task;
             // do: the steps run in written order, each seeing the record as the ones before it left it
-            await $expressions["acquire.step.0.run"]($s);
             {
-              const $value = await $expressions["acquire.step.1.set.holder"]($s);
+              const $value = await $expressions["acquire.step.0.set.holder"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &holder (src/domain/work/claim.mesh.mx:46:19) produced no value, and the relationship holder is required",
+                  "set &holder (src/domain/work/claim.mesh.mx:47:19) produced no value, and the relationship holder is required",
                 );
               $changes.holderId = $record.holderId = $value;
             }
             await $loadInto($loadPlan, "work.Claim", tx, $record, ["task", "task.maxFence"], $load);
             {
-              const $value = await $expressions["acquire.step.1.set.fence"]($s);
+              const $value = await $expressions["acquire.step.0.set.fence"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &fence (src/domain/work/claim.mesh.mx:47:18) produced no value, and fence is required",
+                  "set &fence (src/domain/work/claim.mesh.mx:48:18) produced no value, and fence is required",
                 );
               $changes.fence = $record.fence = $value;
             }
             {
-              const $value = await $expressions["acquire.step.1.set.acquiredAt"]($s);
+              const $value = await $expressions["acquire.step.0.set.acquiredAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &acquiredAt (src/domain/work/claim.mesh.mx:48:23) produced no value, and acquiredAt is required",
+                  "set &acquiredAt (src/domain/work/claim.mesh.mx:49:23) produced no value, and acquiredAt is required",
                 );
               $changes.acquiredAt = $record.acquiredAt = $value;
             }
             {
-              const $value = await $expressions["acquire.step.1.set.expiresAt"]($s);
+              const $value = await $expressions["acquire.step.0.set.expiresAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &expiresAt (src/domain/work/claim.mesh.mx:49:22) produced no value, and expiresAt is required",
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:50:22) produced no value, and expiresAt is required",
                 );
               $changes.expiresAt = $record.expiresAt = $value;
             }
@@ -336,7 +336,26 @@ export function bindClaim(
                 "work.Claim#acquire",
               ),
             });
-            await $expressions["acquire.step.2.run"]($after);
+            await $expressions["acquire.step.1.run"]($after);
+            {
+              const $event = await $expressions["acquire.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Claim",
+                    action: "acquire",
+                    key: { id: $written.id },
+                    at: "src/domain/work/claim.mesh.mx:54:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            await $expressions["acquire.step.3.run"]($after);
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
             if ($result === undefined)
@@ -449,7 +468,7 @@ export function bindClaim(
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not the current claim's; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 60, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 68, column: 9 },
               that: $expressions["renew.check.currentFence.that"],
               details: $expressions["renew.check.currentFence.details"],
             });
@@ -457,21 +476,21 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim was released or revoked; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 66, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 74, column: 9 },
               that: $expressions["renew.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "claimNotExpired",
               code: "claim.expired",
               message: "the lease has expired; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 71, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 79, column: 9 },
               that: $expressions["renew.check.claimNotExpired.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 76, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 84, column: 9 },
               that: $expressions["renew.check.versionMatches.that"],
               details: $expressions["renew.check.versionMatches.details"],
             });
@@ -481,7 +500,7 @@ export function bindClaim(
               const $value = await $expressions["renew.step.0.set.expiresAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &expiresAt (src/domain/work/claim.mesh.mx:84:22) produced no value, and expiresAt is required",
+                  "set &expiresAt (src/domain/work/claim.mesh.mx:92:22) produced no value, and expiresAt is required",
                 );
               $changes.expiresAt = $record.expiresAt = $value;
             }
@@ -513,6 +532,24 @@ export function bindClaim(
               ),
             });
             await $expressions["renew.step.1.run"]($after);
+            {
+              const $event = await $expressions["renew.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Claim",
+                    action: "renew",
+                    key: { id: $written.id },
+                    at: "src/domain/work/claim.mesh.mx:96:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
             if ($result === undefined)
@@ -629,7 +666,7 @@ export function bindClaim(
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not the current claim's; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 94, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 103, column: 9 },
               that: $expressions["release.check.currentFence.that"],
               details: $expressions["release.check.currentFence.details"],
             });
@@ -637,21 +674,21 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim was released or revoked; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 100, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 109, column: 9 },
               that: $expressions["release.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "claimNotExpired",
               code: "claim.expired",
               message: "the lease has expired; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 105, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 114, column: 9 },
               that: $expressions["release.check.claimNotExpired.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 110, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 119, column: 9 },
               that: $expressions["release.check.versionMatches.that"],
               details: $expressions["release.check.versionMatches.details"],
             });
@@ -694,6 +731,24 @@ export function bindClaim(
               ),
             });
             await $expressions["release.step.1.run"]($after);
+            {
+              const $event = await $expressions["release.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Claim",
+                    action: "release",
+                    key: { id: $written.id },
+                    at: "src/domain/work/claim.mesh.mx:133:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
             if ($result === undefined)
@@ -807,14 +862,14 @@ export function bindClaim(
               code: "claim.active",
               message:
                 "the claim has ended or its lease has run out; there is no active claim to revoke",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 129, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 139, column: 9 },
               that: $expressions["revoke.check.claimActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 134, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 144, column: 9 },
               that: $expressions["revoke.check.versionMatches.that"],
               details: $expressions["revoke.check.versionMatches.details"],
             });
@@ -857,6 +912,24 @@ export function bindClaim(
               ),
             });
             await $expressions["revoke.step.1.run"]($after);
+            {
+              const $event = await $expressions["revoke.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Claim",
+                    action: "revoke",
+                    key: { id: $written.id },
+                    at: "src/domain/work/claim.mesh.mx:158:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
             if ($result === undefined)
@@ -938,7 +1011,7 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 152, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 163, column: 9 },
               that: $expressions["expire.check.claimActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -979,6 +1052,24 @@ export function bindClaim(
               ),
             });
             await $expressions["expire.step.1.run"]($after);
+            {
+              const $event = await $expressions["expire.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Claim",
+                    action: "expire",
+                    key: { id: $written.id },
+                    at: "src/domain/work/claim.mesh.mx:176:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
             if ($result === undefined)
@@ -1060,16 +1151,19 @@ export function bindClaim(
               label: "claimActive",
               code: "claim.active",
               message: "the claim has ended; claim the task again",
-              source: { file: "src/domain/work/claim.mesh.mx", line: 170, column: 9 },
+              source: { file: "src/domain/work/claim.mesh.mx", line: 182, column: 9 },
               that: $expressions["end.check.claimActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
+            let $when0 = false;
+            let $when1 = false;
+            let $when2 = false;
             {
               const $value = await $expressions["end.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/work/claim.mesh.mx:177:18) produced no value, and state is required",
+                  "set &state (src/domain/work/claim.mesh.mx:189:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -1081,6 +1175,9 @@ export function bindClaim(
               const $value = await $expressions["end.step.0.set.endReason"]($s);
               $changes.endReason = $record.endReason = $value === undefined ? null : $value;
             }
+            $when0 = !!(await $expressions["end.step.1.when"]($s));
+            $when1 = !!(await $expressions["end.step.2.when"]($s));
+            $when2 = !!(await $expressions["end.step.3.when"]($s));
             // data layer
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(tx, $writes, tables.claims, $key, $before, "work.Claim#end");
@@ -1099,7 +1196,81 @@ export function bindClaim(
                 context,
               ),
             );
-            return $stored as Claim;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Claim", $written, "action function"),
+                "work.Claim#end",
+              ),
+            });
+            if ($when0) {
+              {
+                const $event = await $expressions["end.step.1.0.publish"]($after);
+                await frame.plain(() =>
+                  $publishEvent(
+                    tx,
+                    options.events,
+                    {
+                      entity: "work.Claim",
+                      action: "end",
+                      key: { id: $written.id },
+                      at: "src/domain/work/claim.mesh.mx:193:19",
+                    },
+                    $event,
+                    $context,
+                    $clock,
+                  ),
+                );
+              }
+            }
+            if ($when1) {
+              {
+                const $event = await $expressions["end.step.2.0.publish"]($after);
+                await frame.plain(() =>
+                  $publishEvent(
+                    tx,
+                    options.events,
+                    {
+                      entity: "work.Claim",
+                      action: "end",
+                      key: { id: $written.id },
+                      at: "src/domain/work/claim.mesh.mx:195:19",
+                    },
+                    $event,
+                    $context,
+                    $clock,
+                  ),
+                );
+              }
+            }
+            if ($when2) {
+              {
+                const $event = await $expressions["end.step.3.0.publish"]($after);
+                await frame.plain(() =>
+                  $publishEvent(
+                    tx,
+                    options.events,
+                    {
+                      entity: "work.Claim",
+                      action: "end",
+                      key: { id: $written.id },
+                      at: "src/domain/work/claim.mesh.mx:197:19",
+                    },
+                    $event,
+                    $context,
+                    $clock,
+                  ),
+                );
+              }
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.claims, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Claim#end: a step after the write deleted the row this action returns",
+              );
+            return $result as Claim;
           }),
       );
     },

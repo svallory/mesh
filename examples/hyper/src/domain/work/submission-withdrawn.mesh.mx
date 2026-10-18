@@ -1,0 +1,3 @@
+event :SubmissionWithdrawn
+  uuid :submissionId
+  string :reason nullable

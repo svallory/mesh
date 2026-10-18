@@ -30,11 +30,6 @@ import type {
   CompletionLoaded as $work$Completion$Loaded,
 } from "./completion.types";
 
-import type {
-  Event as $audit$Event$Record,
-  EventLoaded as $audit$Event$Loaded,
-} from "../audit/event.types";
-
 import type { $Date, $Pick } from "../../$globals";
 
 export type Task = {
@@ -137,7 +132,6 @@ export type TaskLoadable = {
   claims: $work$Claim$Record[];
   submissions: $work$Submission$Record[];
   completions: $work$Completion$Record[];
-  events: $audit$Event$Record[];
   childrenSettled: boolean;
   claimed: boolean;
   lapsedClaim: boolean;
@@ -162,7 +156,6 @@ export type TaskTxLoadable = {
   claims: $work$Claim$Record[];
   submissions: $work$Submission$Record[];
   completions: $work$Completion$Record[];
-  events: $audit$Event$Record[];
   childrenSettled: boolean;
   claimed: boolean;
   lapsedClaim: boolean;
@@ -199,7 +192,6 @@ export type TaskLoaded = Task & {
   claims: $work$Claim$Loaded[];
   submissions: $work$Submission$Loaded[];
   completions: $work$Completion$Loaded[];
-  events: $audit$Event$Loaded[];
   childrenSettled: boolean;
   claimed: boolean;
   lapsedClaim: boolean;

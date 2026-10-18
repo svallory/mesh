@@ -1,5 +1,7 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { AssignmentStarted } from "./assignment-started.mesh.mx"
+import { AssignmentEnded } from "./assignment-ended.mesh.mx"
 import { Mesh } from "meshfw"
 
 entity :Assignment table="assignments"
@@ -23,6 +25,7 @@ entity :Assignment table="assignments"
         set
           &delegator=({ actor }) => actor.id
           &startedAt=() => %.now
+        publish=({ self }) => new AssignmentStarted({ assignmentId: &id, taskId: self.taskId, assigneeId: self.assigneeId, delegatorId: self.delegatorId, reviewWaived: &reviewWaived })
     update :finish
       input
         enum :reason values=[:reassigned, :unassigned]
@@ -36,6 +39,7 @@ entity :Assignment table="assignments"
         set
           &endedAt=() => %.now
           &endReason=({ input }) => input.reason
+        publish=({ self, input }) => new AssignmentEnded({ assignmentId: &id, taskId: self.taskId, formerAssigneeId: self.assigneeId, endReason: input.reason })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

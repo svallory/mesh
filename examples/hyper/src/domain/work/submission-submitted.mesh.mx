@@ -1,0 +1,8 @@
+event :SubmissionSubmitted
+  uuid :submissionId
+  uuid :taskId
+  uuid :submitterId
+  string :summary nullable
+  json :evidence
+  integer :taskVersion
+  integer :fence nullable

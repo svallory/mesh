@@ -1,6 +1,8 @@
 import { Task } from "./task.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
 import { Claim } from "./claim.mesh.mx"
+import { SubmissionSubmitted } from "./submission-submitted.mesh.mx"
+import { SubmissionWithdrawn } from "./submission-withdrawn.mesh.mx"
 import { claimsOf, claimToRelease, fenceDetailsOf, fenceIsCurrent, heldAClaimOf, inReviewOf, missingEvidenceOf, taskOpenOf, taskVersionOf } from "./work.helpers"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
@@ -61,9 +63,12 @@ entity :Submission table="submissions"
           &summary=({ input }) => input.summary
           &taskVersion=() => &task.version
         run [after=:write] ({ self, context }) {
+          await Task.touch({ id: self.taskId }, { ...context, system: true });
+        }
+        publish=({ self }) => new SubmissionSubmitted({ submissionId: &id, taskId: self.taskId, submitterId: self.submitterId, summary: &summary, evidence: &evidence, taskVersion: &taskVersion, fence: &fence })
+        run [after=:write] ({ self, context }) {
           const live = claimToRelease(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.taskId } } }), %.now);
           if (live) await Claim.end({ id: live.id, outcome: :released, reason: "submitted" }, { ...context, system: true });
-          await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
     update :withdraw
       input
@@ -87,6 +92,7 @@ entity :Submission table="submissions"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
+        publish=({ input }) => new SubmissionWithdrawn({ submissionId: &id, reason: input.reason ?? null })
     update :settle
       input
         enum :outcome values=[:accepted, :returned, :withdrawn]
@@ -99,6 +105,10 @@ entity :Submission table="submissions"
       do
         set
           &state=({ input }) => input.outcome
+        // Only task.cancel settles a submission as withdrawn (the submitter's own withdrawal is `withdraw`), so the
+        // event names the cancel as its reason (PROTOCOL.md §6, `submission.withdrawn`).
+        when=({ input }) => input.outcome === :withdrawn
+          publish=() => new SubmissionWithdrawn({ submissionId: &id, reason: "task-canceled" })
     create :recordAccepted
       input
         &task
@@ -110,6 +120,7 @@ entity :Submission table="submissions"
         set
           &submitter=({ actor }) => actor.id
           &state=:accepted
+        publish=({ self }) => new SubmissionSubmitted({ submissionId: &id, taskId: self.taskId, submitterId: self.submitterId, summary: &summary, evidence: &evidence, taskVersion: &taskVersion, fence: &fence })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

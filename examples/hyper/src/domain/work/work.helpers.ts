@@ -295,6 +295,9 @@ export async function blockReasonsOf(taskId: string): Promise<BlockReason[]> {
   return blockReasons(dependencies.map((d) => byId.get(d.prerequisiteId)!).filter((task) => task !== undefined));
 }
 
+/** The shape of a UUID, the only id a stored row has. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * `evidence.exists` (`tasks/rules.ex:48-62`): the ids among `evidence` that name no evidence reference. Evidence is a
  * list of ids (`schemas/protocol.ts:603`); a value that is neither null nor a list is reported whole, as text, so it
@@ -306,8 +309,10 @@ export async function missingEvidenceOf(evidence: unknown): Promise<string[]> {
   if (!Array.isArray(evidence)) return [text(evidence)];
   const ids = evidence.filter((id): id is string => typeof id === "string");
   if (ids.length !== evidence.length) return evidence.filter((id) => typeof id !== "string").map(text);
-  if (ids.length === 0) return [];
-  const found = new Set((await Mesh.privileged(EvidenceReference).read({ filter: { id: { in: ids } } })).map((row) => row.id));
+  // Only a UUID can name a stored reference, and the read's filter refuses anything else: any other id is missing.
+  const stored = ids.filter((id) => UUID.test(id));
+  if (stored.length === 0) return ids;
+  const found = new Set((await Mesh.privileged(EvidenceReference).read({ filter: { id: { in: stored } } })).map((row) => row.id));
   return ids.filter((id) => !found.has(id));
 }
 
@@ -529,4 +534,15 @@ export async function reviewsSubmissionOf(submissionId: string, actorId: string)
   const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
   if (!submission) return true;
   return (await reviewerOfTask(submission.taskId)).collaboratorId === actorId;
+}
+
+/**
+ * The Task of submission `submissionId`, read with no policy: Review `accept` completes it after the submission is
+ * settled. A submission that is gone is a bug of the caller, since the review was written against it in the same
+ * transaction, so it throws a `FrameworkError`.
+ */
+export async function taskOfSubmission(submissionId: string): Promise<string> {
+  const [submission] = await Mesh.privileged(Submission).read({ filter: { id: { eq: submissionId } }, limit: 1 });
+  if (submission === undefined) throw new FrameworkError(`submission ${submissionId} not found`);
+  return submission.taskId;
 }

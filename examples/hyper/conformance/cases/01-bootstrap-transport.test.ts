@@ -5,7 +5,7 @@
  */
 import { expect, test } from "bun:test";
 import { RpcClient, RpcError } from "../harness/rpc.ts";
-import { E, expectRejected, suite, until, useWorld } from "./_setup.ts";
+import { E, expectRejected, suite, types, until, useWorld, World } from "./_setup.ts";
 
 /** Waits for a response in the connection's log. Responses may arrive in any order (PROTOCOL.md#transport). */
 const waitForLogged = (c: RpcClient, pred: (m: any) => boolean) =>
@@ -14,9 +14,65 @@ const waitForLogged = (c: RpcClient, pred: (m: any) => boolean) =>
 suite("01.1 bootstrap [domain/core/workspace.md#rules, PROTOCOL.md#bootstrap]", () => {
   const w = useWorld();
 
+  test("workspace.get returns the automatic local workspace and its single first owner", async () => {
+    const r = await w().client.request("workspace.get", {});
+    expect(r.workspace).toMatchObject({ location: "local", state: "active" });
+    expect(r.owners).toHaveLength(1);
+    expect(r.owners[0]).toMatchObject({ kind: "human", name: "owner", state: "active" });
+    expect(r.head).toBeGreaterThanOrEqual(3);
+  });
+
+  test("bootstrap emits collaborator.registered, workspace.created, membership.granted as seq 1–3, by the engine", async () => {
+    const ev = (await w().events(0)).slice(0, 3);
+    expect(types(ev)).toEqual(["collaborator.registered", "workspace.created", "membership.granted"]);
+    expect(ev.map((e) => e.seq)).toEqual([1, 2, 3]);
+    for (const e of ev) {
+      expect(e.actor).toBe("engine");
+      expect(e.caller).toBe("engine");
+      expect(e.cause).toMatchObject({ kind: "rule" });
+      expect(e.workspaceId).toBe(w().workspaceId);
+    }
+    expect(ev[1]!.payload).toMatchObject({ firstOwnerId: w().owner.id, location: "local" });
+    expect(ev[2]!.payload).toMatchObject({ collaboratorId: w().owner.id, role: "owner" });
+  });
+
   test("workspace.create on a daemon that has its workspace is rejected: rule_violation workspace.exists", async () => {
     await expectRejected(w().owner.do("workspace.create", { name: "again" }), E.ruleViolation, "workspace.exists");
   });
+
+  test("workspace.rename: owner renames (workspace.renamed with old and new name); a member may not", async () => {
+    const r = await w().owner.do("workspace.rename", { name: "Home" });
+    expect(r.workspace.name).toBe("Home");
+    expect(types(r.events)).toEqual(["workspace.renamed"]);
+    expect(r.events[0]!.payload).toEqual({ oldName: null, newName: "Home" });
+    const m = await w().add("m");
+    await expectRejected(m.do("workspace.rename", { name: "Mine" }), E.permissionDenied, "role");
+  });
+});
+
+suite("01.2 restart keeps state [PROTOCOL.md#daemon, architecture/persistence-and-events.md#storage]", () => {
+  test("restarting on the same --db keeps the workspace, its owner and its event log; no second bootstrap", async () => {
+    const first = await World.start();
+    try {
+      await first.owner.create("Survives restart");
+      const head = await first.head();
+      await first.engine.stop();
+      const second = await World.start({ dir: first.engine.dir });
+      try {
+        expect(second.workspaceId).toBe(first.workspaceId);
+        expect(second.owner.id).toBe(first.owner.id);
+        expect(await second.head()).toBe(head);
+        const tasks = (await second.owner.query("task.list", {})).tasks;
+        expect(tasks.map((t) => t.title)).toContain("Survives restart");
+        const ev = await second.events(0);
+        expect(types(ev).filter((t) => t === "workspace.created")).toHaveLength(1);
+      } finally {
+        await second.engine.stop();
+      }
+    } finally {
+      await first.dispose();
+    }
+  }, 90_000);
 });
 
 suite("01.3 transport [PROTOCOL.md#transport]", () => {

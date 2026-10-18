@@ -1,13 +1,13 @@
 // Hyper's method table for `@meshfw/jsonrpc`: one entry per method of the spec (`schemas/protocol.ts`, `Methods`). A
 // command runs in one transaction, so a crash never leaves half of one behind (PROTOCOL.md:38), and calls the command
 // function where one exists (`src/domain/<module>/<module>.commands.ts`), never the generated action it wraps, which
-// would skip the effects on other aggregates (PORTING.md:54). Its result carries `events: []` until the event log
-// exists (M6); `workspace.get`'s `head` is 0 for the same reason.
+// would skip the effects on other aggregates (PORTING.md:54). Its result carries every event it committed, in seq order
+// (PROTOCOL.md §4.2), and is stored under its `commandId` in the same transaction (§4.3, `src/rpc/idempotency.ts`).
 import type { Call, Method, MethodTable } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
 import { Mesh } from "meshfw";
 import { z } from "zod";
-import { transaction } from "#mesh";
+import { published, transaction } from "#mesh";
 import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
 import { Assignment, Claim, Dependency, EvidenceReference, Review, Submission, Task } from "#mesh/domain/work";
 import { connected } from "../domain/binding";
@@ -15,8 +15,12 @@ import { roleIn } from "../domain/identity/identity.helpers";
 import { collaboratorRetire, membershipRevoke } from "../domain/identity/identity.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../domain/work/work.commands";
 import { currentAssignment, type BlockReason } from "../domain/work/work.helpers";
+import { toWire } from "../events";
 import { explained, notServed, rpcErrorOf } from "./errors";
+import { head, theWorkspaceId } from "./event-log";
+import { commandHash, replayOf, storeCommand } from "./idempotency";
 import { params } from "./params";
+import { closeSubscription, openSubscription, readPage } from "./subscriptions";
 import { activeClaimOf, claimOf, dependencyOf, existingCollaborator, existingSubmission, existingTask, isId, membershipOf, requireId, theWorkspace } from "./resolve";
 import {
   assignmentView,
@@ -53,11 +57,29 @@ async function inTransaction<R>(context: ActionContext, body: () => Promise<R>, 
   }
 }
 
-/** A command (PROTOCOL.md:73-91): its params schema, and what it does, which returns the records of its result. */
+/**
+ * A command (PROTOCOL.md:73-91): its params schema, and what it does, which returns the records of its result. In one
+ * transaction it looks the `commandId` up (a repeat of a committed command returns the stored result and changes
+ * nothing; one with other params is `-32006`), runs, adds the events the transaction published, in seq order, and
+ * stores the result under the `commandId`. A rejection rolls all of it back, so it is never stored (PROTOCOL.md §4.3).
+ */
 function command<S extends z.ZodType, R extends object>(schema: S, run: (params: z.output<S>, context: ActionContext) => Promise<R>): Method<ActionContext, any> {
   return {
     params: schema,
-    run: async (sent, context) => ({ events: [], ...(await inTransaction(context, () => run(sent as z.output<S>, context), (sent as { payload?: unknown }).payload)) }),
+    run: (sent, context, call) => {
+      const { commandId, payload } = sent as { readonly commandId: string; readonly payload?: unknown };
+      const hash = commandHash(call.method, call.params);
+      return inTransaction(context, async () => {
+        const stored = await replayOf(commandId, call.method, hash);
+        if (stored !== undefined) return stored.replay;
+        const records = await run(sent as z.output<S>, context);
+        const events = published();
+        const workspaceId = await theWorkspaceId();
+        const result: object = JSON.parse(JSON.stringify({ events: events.map((event) => toWire(event, workspaceId)), ...records }));
+        await storeCommand(commandId, call.method, hash, result, context);
+        return result;
+      }, payload);
+    },
   };
 }
 
@@ -88,7 +110,6 @@ function notImplemented(why: string): Method<ActionContext, any> {
 }
 
 const outsideTheSlice = notImplemented("it is outside the v0 slice");
-const needsTheEventLog = notImplemented("it needs the event log, which arrives with the outbox (Mesh's M6)");
 
 /**
  * The Task `id` as it stands once the call's actions ran, read in the call's transaction. The record an action returns
@@ -131,6 +152,20 @@ export function unserved(table: MethodTable<ActionContext>): ReadonlyMap<string,
     if (why !== undefined) reasons.set(name, why);
   }
   return reasons;
+}
+
+/** `workspace.get` without its `head`: the workspace and its active owners, in grant order. */
+async function workspaceAndOwners() {
+  const owners = await Mesh.privileged(Membership).read({ filter: { role: { eq: "owner" }, state: { eq: "active" } }, sort: ["grantedAt", "id"] });
+  const collaborators = owners.length === 0 ? [] : await Mesh.privileged(Collaborator).read({ filter: { id: { in: owners.map((owner) => owner.collaboratorId) } } });
+  const byId = new Map(collaborators.map((collaborator) => [collaborator.id, collaborator]));
+  return {
+    workspace: workspaceView(await theWorkspace()),
+    owners: owners.flatMap((owner) => {
+      const collaborator = byId.get(owner.collaboratorId);
+      return collaborator ? [collaboratorView(collaborator)] : [];
+    }),
+  };
 }
 
 /** The method table: every one of the spec's 37 methods. */
@@ -287,19 +322,11 @@ export const methods: MethodTable<ActionContext> = {
     return { evidenceReference: evidenceReferenceView(evidenceReference) };
   }),
 
-  "workspace.get": query(z.object({}), async () => {
-    const owners = await Mesh.privileged(Membership).read({ filter: { role: { eq: "owner" }, state: { eq: "active" } }, sort: ["grantedAt", "id"] });
-    const collaborators = owners.length === 0 ? [] : await Mesh.privileged(Collaborator).read({ filter: { id: { in: owners.map((owner) => owner.collaboratorId) } } });
-    const byId = new Map(collaborators.map((collaborator) => [collaborator.id, collaborator]));
-    return {
-      workspace: workspaceView(await theWorkspace()),
-      owners: owners.flatMap((owner) => {
-        const collaborator = byId.get(owner.collaboratorId);
-        return collaborator ? [collaboratorView(collaborator)] : [];
-      }),
-      head: 0,
-    };
-  }),
+  "workspace.get": {
+    params: z.object({}),
+    // `head` is read after the transaction, since the outbox is read outside one: it is at least what the transaction saw.
+    run: async (_sent, context) => ({ ...(await inTransaction(context, workspaceAndOwners)), head: await head() }),
+  },
   "task.get": query(params["task.get"], async ({ taskId }) => {
     const task = await existingTask(taskId);
     return { task: await taskView(task, new Date()), history: await taskHistory(task.id) };
@@ -333,7 +360,17 @@ export const methods: MethodTable<ActionContext> = {
     const [next] = mayClaim.sort(nextFirst);
     return { task: next === undefined ? null : await taskView(next, new Date()) };
   }),
-  "events.read": needsTheEventLog,
-  "events.subscribe": needsTheEventLog,
-  "events.unsubscribe": needsTheEventLog,
+  // The event methods run outside any transaction: Mesh reads and subscribes to the outbox only outside one.
+  "events.read": {
+    params: params["events.read"],
+    run: (sent) => readPage(sent as z.output<(typeof params)["events.read"]>),
+  },
+  "events.subscribe": {
+    params: params["events.subscribe"],
+    run: (sent, _context, call) => openSubscription(sent as z.output<(typeof params)["events.subscribe"]>, call.connection),
+  },
+  "events.unsubscribe": {
+    params: params["events.unsubscribe"],
+    run: (sent) => closeSubscription((sent as z.output<(typeof params)["events.unsubscribe"]>).subscriptionId),
+  },
 };

@@ -1,8 +1,16 @@
 import type { Diagnostic, ModelDocument, Step } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 
-/** A step that runs before the action's row is written: a `set`, a `load`, a `run` with no `after=`, and a `when`, whose condition is read before the write. */
-const runsBeforeWrite = (step: Step): boolean => step.kind !== "publish" && !(step.kind === "run" && step.after === "write");
+/** True for a `publish`, and for a `when` that holds only `publish` steps (at any depth): a guarded publish. */
+const publishesOnly = (step: Step): boolean => step.kind === "publish" || (step.kind === "when" && step.steps.every(publishesOnly));
+
+/**
+ * A step that runs before the action's row is written: a `set`, a `load`, a `run` with no `after=`, and a `when`, whose
+ * condition is read before the write. A `when` that holds only `publish` steps is left out: its condition is read before
+ * the write, but all it guards runs after it, so a `publish` written ahead of it still runs in the order on the page. This
+ * is the spec's way of publishing one of several events (Claim `:end`, "What Hyper needs"), one `when=` per outcome.
+ */
+const runsBeforeWrite = (step: Step): boolean => !publishesOnly(step) && !(step.kind === "run" && step.after === "write");
 
 /** The steps in written order, a `when` before the steps it holds. */
 function flatten(steps: readonly Step[]): Step[] {

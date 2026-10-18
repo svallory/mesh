@@ -1,0 +1,4 @@
+event :MembershipRoleChanged
+  uuid :collaboratorId
+  enum :oldRole values=[:owner, :member, :guest]
+  enum :newRole values=[:owner, :member, :guest]

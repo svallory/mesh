@@ -19,7 +19,7 @@ import { $expressions as taskExpressions } from "../.mesh/domain/work/task.expre
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
 import { reviewAccept, submissionSubmit, taskCancel, taskComplete } from "../src/domain/work/work.commands";
-import { as, asSystem, codes, deniedBy, empty, eventOf, issuesOf, one, populate, within, type Empty, type World } from "./world";
+import { as, asSystem, codes, deniedBy, empty, issuesOf, one, populate, within, type Empty, type World } from "./world";
 
 type Role = "owner" | "member" | "guest";
 
@@ -205,7 +205,9 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
   test("(8) a policy whose actions= names a missing action fails the build", () => {
     const root = resolve(import.meta.dir, "..");
     const files = [...new Glob("src/domain/**/*.mesh.mx").scanSync(root)].sort().map((file) => ({ file, source: readFileSync(resolve(root, file), "utf8") }));
-    expect(files).toHaveLength(18);
+    // The 18 entity files and the 30 event declarations.
+    expect(files.filter((entry) => /^entity :/m.test(entry.source))).toHaveLength(18);
+    expect(files.filter((entry) => /^event :/m.test(entry.source))).toHaveLength(30);
     expect(buildModel({ root, files, domainRoot: "src/domain" }).diagnostics).toEqual([]);
     const typo = files.map((entry) => entry.file.endsWith("/claim.mesh.mx")
       ? { ...entry, source: entry.source.replace("policy :claimHolder actions=[&renew, &release]", "policy :claimHolder actions=[&renw, &release]") }
@@ -226,7 +228,7 @@ describe("group 02.1: guests", () => {
   }));
 
   test("02:21 a guest can read (queries need any active membership)", () => within(async (w) => {
-    // The spec's `events.read` is HA's: the port's Event rows are written by HA's event log.
+    // The spec's `events.read` is served by the event methods (src/rpc/subscriptions.ts), tested in rpc-events.test.ts.
     const guest = await join(w, "Gail", "guest");
     expect((await one(Task.read({ filter: { id: { eq: w.task.id } } }, as(guest)))).title).toBe("Ship");
     expect((await Task.read({}, as(guest))).length).toBeGreaterThan(0);
@@ -582,7 +584,9 @@ describe("every read, every internal action and every gated write, over a worksp
     for (const entity of entities) {
       const read = p.call(`${entity}.read`);
       expect(await read({}, as(p.otto)), entity).toEqual([]);
-      expect(((await read({}, as(p.gail))) as unknown[]).length, entity).toBeGreaterThan(0);
+      // The stored commands are the engine's own (idempotency, PROTOCOL.md §4.3): no member reads them, only `system`.
+      if (entity === "Idempotency") expect(await read({}, as(p.gail)), entity).toEqual([]);
+      else expect(((await read({}, as(p.gail))) as unknown[]).length, entity).toBeGreaterThan(0);
       expect(((await read({}, asSystem(p.otto))) as unknown[]).length, entity).toBeGreaterThan(0);
     }
   }));
@@ -643,7 +647,7 @@ const coveredBy = (name: string) => model.entities.flatMap((entity) => entity.ac
 
 /** The input of each internal action over `populate`'s rows; any input that casts would do, since `internal` reads only `context`. */
 const INTERNAL: Record<string, (p: Populated) => object | Promise<object>> = {
-  "Event.record": (p) => eventOf(2, { recordId: p.task.id }),
+  "Idempotency.record": () => ({ commandId: "again", method: "task.create", hash: "0".repeat(64), result: {} }),
   "Machine.report": () => ({ name: "desktop" }),
   "Run.settle": (p) => ({ id: p.run.id, result: "succeeded" }),
   "Assignment.start": (p) => ({ task: p.task.id, assignee: p.bot.id }),
