@@ -161,7 +161,8 @@ describe("the daemon", () => {
     expect(result).toEqual({
       workspace: { id: expect.any(String), name: null, location: "local", state: "active", version: expect.any(Number) },
       owners: [{ id: expect.any(String), kind: "human", name: "owner", state: "active", version: expect.any(Number) }],
-      head: 0,
+      // Bootstrap's three events: collaborator.registered, workspace.created, membership.granted.
+      head: 3,
     });
 
     // The connection stays open: stopping must not wait for an idle client.
@@ -287,7 +288,7 @@ describe("the daemon", () => {
     }
 
     const reasons = unserved(methods);
-    expect([...reasons.keys()]).toContain("events.read");
+    expect([...reasons.keys()]).toContain("workspace.export");
     for (const [method, why] of reasons) {
       // An unknown actor would be -32001 had its context been built.
       const { error } = await client.call(method, { ...command(crypto.randomUUID(), {}), taskId: crypto.randomUUID() });
@@ -301,7 +302,7 @@ describe("the daemon", () => {
     expect((await engine.stop()).code).toBe(0);
   }, TIMEOUT_MS);
 
-  test("task.create over the wire returns the new Task's view, with no events until the event log exists", async () => {
+  test("task.create over the wire returns the new Task's view and its task.created event", async () => {
     const { socket, db } = scratch();
     const engine = launch([MAIN, "--socket", socket, "--db", db]);
     await engine.ready();
@@ -312,7 +313,21 @@ describe("the daemon", () => {
     const { result, error } = await client.call("task.create", command(owner, { title: "Write the report", intent: "for the board", priority: 3 }));
     expect(error).toBeUndefined();
     expect(result).toEqual({
-      events: [],
+      events: [{
+        id: expect.stringMatching(UUID),
+        seq: 4,
+        type: "task.created",
+        schemaVersion: 1,
+        workspaceId: workspace!.workspace.id,
+        record: { type: "task", id: expect.stringMatching(UUID), version: 1 },
+        taskId: expect.stringMatching(UUID),
+        actor: owner,
+        caller: "test",
+        occurredAt: expect.any(String),
+        recordedAt: expect.any(String),
+        cause: { kind: "command", commandId: expect.any(String), method: "task.create" },
+        payload: { title: "Write the report", intent: "for the board", parentId: null, priority: 3, creatorId: owner },
+      }],
       task: {
         id: expect.stringMatching(UUID),
         title: "Write the report",
@@ -332,6 +347,8 @@ describe("the daemon", () => {
       },
     });
     expect(new Date(result!.task.createdAt).toISOString()).toBe(result!.task.createdAt);
+    expect(result!.events[0].record.id).toBe(result!.task.id);
+    expect(result!.events[0].taskId).toBe(result!.task.id);
 
     const child = await client.call("task.create", command(owner, { title: "Draft it", parentId: result!.task.id }));
     expect(child.result?.task).toMatchObject({ title: "Draft it", intent: null, parentId: result!.task.id, priority: null, version: 1 });

@@ -14,6 +14,7 @@ import type { ActionContext } from "@meshfw/runtime";
 import { transaction } from "#mesh";
 import { Collaborator } from "#mesh/domain/identity";
 import { runDaemon, startDaemon } from "../../src/daemon/daemon";
+import { engineRule } from "../../src/rpc/context";
 import { actorless, methods } from "../../src/rpc/methods";
 
 const [socket, db, delay] = process.argv.slice(2);
@@ -30,6 +31,8 @@ const withTestMethods: MethodTable<ActionContext> = {
   "test.write-twice": {
     run: async (params, context) => {
       const { name, pauseMs } = params as { readonly name: string; readonly pauseMs: number };
+      // The engine's context runs no command, so its writes publish under a rule of their own (`causeOf` in src/events.ts).
+      context = engineRule("test.write-twice", context);
       await transaction(async () => {
         await Collaborator.register({ kind: "agent", name: `${name}-1` }, context);
         console.error(`test.write-twice ${name} wrote ${name}-1`);

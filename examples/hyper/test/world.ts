@@ -3,7 +3,7 @@
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { ForbiddenError, InvalidInputError, type ActionContext, type AfterCommitEvent, type Issue, type Seams } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
-import { Event } from "#mesh/domain/audit";
+import { Idempotency } from "#mesh/domain/audit";
 import { Invocation, Machine, Run } from "#mesh/domain/execution";
 import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
 import { Claim, Dependency, EvidenceReference, Task } from "#mesh/domain/work";
@@ -34,10 +34,17 @@ function trackRoles({ changes }: AfterCommitEvent): void {
 }
 
 /**
+ * The command every test call belongs to: an event's cause names the command that published it (`metadata` in
+ * `src/events.ts`), and a call that is neither a command nor an engine rule cannot publish.
+ */
+export const command = Object.freeze({ commandId: "test-command", method: "test.call" });
+
+/**
  * The context of a call made as `collaborator`, as HA builds it: the actor's id and the role of its active membership
  * when the call is made (`null` without one). Only the read policies use the role; write policies read it through `Mesh.privileged`.
  */
-export const as = (collaborator: { readonly id: string }): ActionContext => ({ actor: { id: collaborator.id, role: roles.get(collaborator.id) ?? null } });
+export const as = (collaborator: { readonly id: string }): ActionContext => ({ actor: { id: collaborator.id, role: roles.get(collaborator.id) ?? null }, ...command });
+
 
 /**
  * The context of a call made as `collaborator` with `system` set, as the engine makes a nested call or an effect
@@ -50,7 +57,10 @@ export const asSystem = (collaborator: { readonly id: string }): ActionContext =
  * The engine's context for the calls that set up a world before any collaborator exists: registering the first ones,
  * as the spec's bootstrap acts as the engine (PROTOCOL.md:40-52).
  */
-export const setup: ActionContext = { actor: { id: "00000000-0000-4000-8000-000000000000", role: null }, system: true };
+export const setup: ActionContext = { actor: { id: "00000000-0000-4000-8000-000000000000", role: null }, system: true, rule: "workspace.bootstrap" };
+
+/** The event log of `mesh.config.ts` with no bus: events are written and read, and nothing delivers them. */
+export const events = { load: () => import("../src/events.ts"), keep: "all" } as const;
 
 /**
  * An empty database and its binding; the clock reads `time.now`, which a test moves. The binding's `afterCommit` seam
@@ -63,7 +73,7 @@ export async function empty(options: { readonly seams?: Seams } = {}) {
   const clock = () => time.now;
   const own = options.seams?.afterCommit;
   const seams: Seams = { ...options.seams, afterCommit: async (event) => { trackRoles(event); await own?.(event); } };
-  const hyper = bind(db, { clock, seams });
+  const hyper = bind(db, { clock, seams, events });
   const binding: Binding = { transaction: hyper.transaction };
   /** Write a column the actions never write, to reach a state for a test: set columns of one row. */
   const force = (table: keyof typeof tables, id: string, changes: Record<string, unknown>) =>
@@ -133,21 +143,10 @@ export async function one<T>(rows: Promise<readonly T[]>): Promise<T> {
   return row;
 }
 
-/** An event in the spec's v0 shape (PROTOCOL.md, `Event`): typed, with a cause and a payload. */
-export function eventOf(n: number, extra: Record<string, unknown> = {}) {
-  return {
-    type: "task.created", workspaceId: "00000000-0000-4000-8000-0000000000aa", recordType: "task",
-    recordId: "00000000-0000-4000-8000-000000000001", recordVersion: 1, actor: "engine", caller: "engine",
-    occurredAt: new Date("2026-10-10T10:00:00.000Z"),
-    cause: { kind: "command", commandId: `c-${n}`, method: "task.create" }, payload: { n },
-    ...extra,
-  } as never;
-}
-
 /**
  * One row of every entity (two of Collaborator, Membership, Task, Claim and Assignment), each written by the generated
  * actions or the command functions, through one piece of work: Bot claims, submits and has its work accepted on the
- * child task, then claims the parent, reports an attempt on a machine, loses the claim and reports late. It runs with
+ * child task, then claims the parent, reports an attempt on a machine, loses the claim and reports late; one stored command fills Idempotency. It runs with
  * `hyper` in scope.
  */
 export async function populate({ hyper, binding }: Pick<Empty, "hyper" | "binding">) {
@@ -175,10 +174,10 @@ export async function populate({ hyper, binding }: Pick<Empty, "hyper" | "bindin
     await Claim.revoke({ id: claim.id, reason: "taking over" }, as(alice));
     const late = await submissionSubmit({ summary: "late", fence: claim.fence, task: task.id }, as(bot), binding);
     if (late.outcome !== "late-result-recorded") throw new Error(late.outcome);
-    const event = await Event.record(eventOf(1, { recordId: task.id, payload: { taskId: task.id, title: "Ship" }, task: task.id }), setup);
+    const idempotency = await Idempotency.record({ commandId: "populate", method: "task.create", hash: "0".repeat(64), result: { ok: true } }, asSystem(alice));
     return {
       workspace, alice, bot, membership, botMembership, task, child, dependency, childClaim, claim, evidence,
-      submission: submitted.submission, review: accepted.review, completion: accepted.completion, lateResult: late.lateResult, machine, session, run, attempt, invocation, event,
+      submission: submitted.submission, review: accepted.review, completion: accepted.completion, lateResult: late.lateResult, machine, session, run, attempt, invocation, idempotency,
     };
   });
 }
