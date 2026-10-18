@@ -25,7 +25,14 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     const emitted = compile(["--declaration", "--emitDeclarationOnly", "--outDir", join(root, "actual"), join(repo, "packages/runtime/src/index.ts")], root);
     expect(emitted).toEqual({ code: 0, output: "" });
     const names = [...section.matchAll(/export (?:interface|class) (\w+)/g)].map((match) => match[1]!);
-    expect(names).toEqual(["EventsConfig", "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError", "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError", "EventUndeclaredError"]);
+    expect(names).toEqual([
+      "EventsConfig", "EventsModule", "EventBusCapabilities", "BusManifest", "EventBus", "BusOptions", "EventBusInstance", "RegisteredHandler", "OutboxRow",
+      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription",
+      "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
+      "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
+      "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError",
+      "SubscriptionOverflowError", "StoppedHandler", "HandlerStoppedError",
+    ]);
     // Check every documented member. Real errors additionally expose entity/key;
     // that extra API is not promised by the sample's deliberately smaller shape.
     const probe = `import type * as Docs from "mesh-runtime-reference";\nimport type * as Actual from "./actual/index";\n${names.map((name) => `declare const ${name}: Docs.${name};\n${name} satisfies Pick<Actual.${name}, keyof Docs.${name}>;`).join("\n")}
@@ -37,6 +44,17 @@ type PolicyParity = Assert<Same<Docs.PolicyCheck, Actual.PolicyCheck>>;
 // The events configuration and the metadata function: \`Pick\` of a callable interface checks nothing, so both are compared whole.
 type EventsConfigParity = Assert<Same<Docs.EventsConfig, Actual.EventsConfig>>;
 type MetadataFunctionParity = Assert<Same<Docs.MetadataFunction, Actual.MetadataFunction>>;
+// The event-bus contract an adapter implements, compared whole, readonly modifiers included, and the closed capability lists.
+type EventBusParity = Assert<Equal<Docs.EventBus, Actual.EventBus>>;
+type BusCoreParity = Assert<Equal<Docs.BusCore, Actual.BusCore>>;
+type InstanceParity = Assert<Equal<Docs.EventBusInstance, Actual.EventBusInstance>>;
+type LiveSubscriptionParity = Assert<Equal<Docs.LiveSubscription, Actual.LiveSubscription>>;
+type BusCapabilityParity = Assert<Equal<Docs.BusCapability, Actual.BusCapability>>;
+type CapabilityParity = Assert<Equal<Docs.Capability, Actual.Capability>>;
+type HandlerParity = Assert<Same<Docs.Handler, Actual.Handler>>;
+type SubscriptionParity = Assert<Equal<Docs.Subscription, Actual.Subscription>>;
+type SubscribeQueryParity = Assert<Same<Docs.SubscribeQuery, Actual.SubscribeQuery>>;
+type BindingDeliveryParity = Assert<Same<Pick<Docs.Binding, "deliver" | "startDelivery">, Pick<Actual.Binding, "deliver" | "startDelivery">>>;
 type MetadataFunctionOfParity = Assert<Same<Docs.MetadataFunction<{ n: number }>, Actual.MetadataFunction<{ n: number }>>>;
 // @ts-expect-error a metadata function that may return undefined must fail parity
 type LooseMetadata = Assert<Same<Docs.MetadataFunction, (...args: Parameters<Actual.MetadataFunction>) => Actual.EventMetadata | undefined>>;

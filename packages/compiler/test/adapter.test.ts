@@ -132,7 +132,7 @@ test.each([
 });
 
 test("the reserved words are the core commands and the scheduled ones", () => {
-  expect([...RESERVED_COMMAND_WORDS].sort()).toEqual(["build", "explain", "export", "help", "init", "inspect", "migrate"]);
+  expect([...RESERVED_COMMAND_WORDS].sort()).toEqual(["build", "events", "explain", "export", "help", "init", "inspect", "migrate"]);
 });
 
 test("a valid inline build half with commands and no generators loads", async () => {

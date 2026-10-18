@@ -20,6 +20,13 @@ export interface BindingView {
    * passes the config's `events` to the binding and loads the events module; false leaves the file as it was.
    */
   readonly events: boolean;
+  /**
+   * True when the project declares an event and the configured bus declares `replay`: the file then exports
+   * `readEvents` (spec, Events and commands, "Capabilities").
+   */
+  readonly replay: boolean;
+  /** True when the project declares an event and the configured bus declares `subscribe`: the file then exports `subscribe`. */
+  readonly subscribe: boolean;
 }
 
 /** A module specifier relative to the output folder, quoted: `"./domain/blog/post.actions"`. */
@@ -28,10 +35,14 @@ export const quote = (path: string) => JSON.stringify(path.startsWith(".") ? pat
 /** The binding view of the whole model. Pure and synchronous. */
 export function bindingView(input: EmitInput): BindingView {
   const { config } = input;
+  const events = (input.document.events?.length ?? 0) > 0;
+  const capabilities: readonly string[] = config.events?.bus?.manifest.capabilities ?? [];
   const configModule = relative(config.output, config.configFile).replace(/\\/g, "/").replace(/\.ts$/, "");
   return {
     configFromLiteral: quote(configModule),
     domainFromLiteral: quote(`${DOMAIN_FOLDER}/index`),
-    events: (input.document.events?.length ?? 0) > 0,
+    events,
+    replay: events && capabilities.includes("replay"),
+    subscribe: events && capabilities.includes("subscribe"),
   };
 }

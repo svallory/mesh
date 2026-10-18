@@ -43,7 +43,7 @@ export interface AdapterBuildResult {
  * (`init`, `explain`, `migrate`). An adapter command starting with one would be
  * registered but never reached, so the loader refuses it. The CLI routes by this list.
  */
-export const RESERVED_COMMAND_WORDS: readonly string[] = Object.freeze(["build", "inspect", "export", "init", "explain", "migrate", "help"]);
+export const RESERVED_COMMAND_WORDS: readonly string[] = Object.freeze(["build", "inspect", "export", "init", "explain", "migrate", "help", "events"]);
 
 const CONFIG_POSITION = { file: "mesh.config.ts", line: 1, column: 0, offset: 0 } as const;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);

@@ -12,7 +12,7 @@ export type { Privileged } from "@meshfw/runtime";
 export { tables } from "./schema";
 
 // The project's events: the types `DomainEvent`, `EventRecord` and `MetadataFunction`, the table `eventClasses`, `published`
-// and `readEvents`; the event and command classes come from their module.
+// and the functions of delivery; the event and command classes come from their module.
 import { InvoicePaid as $billing$InvoicePaid$class } from "./domain/billing/invoicePaid.event";
 import { RefundIssued as $sales$refunds$RefundIssued$class } from "./domain/sales/refunds/refundIssued.event";
 import { $Object } from "./$globals";
@@ -27,11 +27,17 @@ export type DomainEvent = $billing$InvoicePaid$class | $sales$refunds$RefundIssu
 export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
 /** The type of the events module's `metadata` function: `export const metadata: MetadataFunction = ({ event, context }) => ({ ... })`. */
 export type MetadataFunction = $MetadataFunction<DomainEvent>;
-export type { EventMetadata, ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
-/** `published()`, the running transaction's own events, and `readEvents(query)`, a page of the outbox's kept events. */
-export { published, readEvents } from "./binding";
+export type { EventMetadata } from "@meshfw/runtime";
+/** `published()`, the running transaction's own events, and the functions of delivery. */
+export { published, forgetHandler, forgetSubscription, type ConnectOptions } from "./binding";
+export type { Delivery } from "@meshfw/runtime";
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   "billing.InvoicePaid": $billing$InvoicePaid$class,
   "sales.refunds.RefundIssued": $sales$refunds$RefundIssued$class,
 });
+
+// The configured bus's capabilities, so that a handler option it cannot honour is a type error.
+declare module "@meshfw/runtime" {
+  interface EventBusCapabilities {}
+}

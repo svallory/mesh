@@ -2,11 +2,11 @@ import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
-import { FrameworkError, KEEP_VALUES, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
+import { BUS_CAPABILITIES, busProblem, CAPABILITIES, FrameworkError, KEEP_VALUES, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
-import { capabilityDiagnostics } from "./capabilities.ts";
+import { capabilityDiagnostics, eventsDiagnostics } from "./capabilities.ts";
 import { error, positionAt, type BuildResult } from "./model/index.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
 
@@ -20,7 +20,7 @@ export interface ResolvedConfig {
   output: string;
   data: DataAdapter;
   extensions?: readonly ExtensionDescriptor[];
-  /** The `events` key as the project wrote it, checked: `keep` and `load` (M6). Absent when the config has none. */
+  /** The `events` key as the project wrote it, checked: `bus`, `keep`, `load` and `requires` (M6). Absent when the config has none. */
   events?: EventsConfig;
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
@@ -257,7 +257,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
 function checkEvents(events: unknown, at: (field: string) => Diagnostic["position"], diagnostics: Diagnostic[]): void {
   const fail = (field: string, message: string, fix: string) => diagnostics.push(error("MESH_EVENTS_CONFIG", message, at(field), fix));
   if (!record(events)) {
-    fail("events", "Configuration field `events` must be an object", "Set events: { load, keep }, each optional");
+    fail("events", "Configuration field `events` must be an object", "Set events: { bus, load, keep, requires }; bus is needed once an event is declared");
     return;
   }
   for (const [key, value] of Object.entries(events)) {
@@ -267,10 +267,24 @@ function checkEvents(events: unknown, at: (field: string) => Diagnostic["positio
     } else if (key === "load") {
       if (typeof value !== "function")
         fail("load", "`events.load` must be a function that imports the events module", "Set load: () => import(\"./src/events.ts\")");
-    } else if (key === "bus" || key === "requires") {
-      fail(key, `\`events.${key}\` is not built yet: it comes with the event bus (M6 PR 3)`, `Remove events.${key}`);
+    } else if (key === "bus") {
+      const problem = busProblem(value);
+      if (problem) fail("bus", `\`events.bus\` is not a valid event bus: ${problem}`, "Set bus: localBus() (from @meshfw/bus-local), or another event-bus adapter's descriptor");
+    } else if (key === "requires") {
+      const known: readonly string[] = [...BUS_CAPABILITIES, ...CAPABILITIES];
+      if (!Array.isArray(value)) {
+        fail("requires", "`events.requires` must be an array of capability names", `Set requires: ["replay", "subscribe"], naming any of ${known.join(", ")}`);
+        continue;
+      }
+      const seen = new Set<unknown>();
+      for (const name of value) {
+        if (typeof name !== "string" || !known.includes(name))
+          fail("requires", `\`events.requires\` lists ${JSON.stringify(name) ?? String(name)}, which is no capability: the bus's are ${BUS_CAPABILITIES.join(", ")}, and the data adapter's ${CAPABILITIES.join(", ")}`, "Remove it, or correct the name");
+        else if (seen.has(name)) fail("requires", `\`events.requires\` lists "${name}" twice`, "Remove the second one");
+        seen.add(name);
+      }
     } else {
-      fail(key, `Unknown field "${key}" in configuration field \`events\`; its fields are load and keep`, "Remove the unknown field");
+      fail(key, `Unknown field "${key}" in configuration field \`events\`; its fields are bus, load, keep and requires`, "Remove the unknown field");
     }
   }
 }
@@ -302,6 +316,8 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
     ignored: (config.ignoredFiles ?? []).map(({ file, pattern }) => ({ file: projectPath(config.root, file), pattern })),
   });
   if (result.document) result.document.data = { name: config.data.name };
-  const capabilities = result.document ? capabilityDiagnostics(result.document, config.data) : [];
+  const capabilities = result.document
+    ? [...capabilityDiagnostics(result.document, config.data), ...eventsDiagnostics(result.document, config, positionAt("", projectPath(config.root, config.configFile), 0))]
+    : [];
   return { document: diagnostics.length || capabilities.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics, ...capabilities] };
 }

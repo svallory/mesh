@@ -1,5 +1,5 @@
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
-import type { DataAdapter } from "@meshfw/runtime";
+import { BUS_CAPABILITIES, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
 
 /**
@@ -24,6 +24,41 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
           `Entity ${entity.fqn} has the ${field.rollup.fn} rollup :${field.name}, which calls the data layer's ${field.rollup.fn}, and the data adapter "${adapter.name}" does not declare the aggregates capability`,
           field.position, "Use a data adapter that declares aggregates, or remove the rollup"));
       }
+    }
+  }
+  return diagnostics;
+}
+
+/**
+ * The checks of `events` that need the model or both manifests (spec, Events and commands, "Configuration and the
+ * events module"): a project that declares an event sets `events.bus`, with no default (`MESH_EVENTS_CONFIG`), and each
+ * capability `events.requires` lists is declared by the bus (a bus capability) or by the data adapter (a data
+ * capability), else `MESH_CAPABILITY` naming the capability and the adapter. `checkEvents` in `config.ts` has already
+ * refused a bus that is not one and a name that is no capability.
+ */
+export function eventsDiagnostics(document: ModelDocument, config: { readonly data: DataAdapter; readonly events?: EventsConfig }, at: Diagnostic["position"]): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const bus = config.events?.bus;
+  const declared = document.events ?? [];
+  if (declared.length > 0 && bus === undefined) {
+    diagnostics.push(error("MESH_EVENTS_CONFIG",
+      `The project declares ${declared.length === 1 ? "the event" : "events, among them"} ${declared[0]!.fqn}, and mesh.config.ts sets no events.bus: an event is delivered by a bus, and there is no default`,
+      at, "Set events: { bus: localBus() } in mesh.config.ts (localBus from @meshfw/bus-local)"));
+  }
+  const busNames: readonly string[] = BUS_CAPABILITIES;
+  const data: readonly string[] = config.data.capabilities?.capabilities ?? [];
+  for (const name of config.events?.requires ?? []) {
+    if (busNames.includes(name)) {
+      if (bus === undefined) {
+        diagnostics.push(error("MESH_CAPABILITY", `events.requires lists the bus capability ${name}, and mesh.config.ts sets no events.bus to declare it`, at,
+          "Set events.bus to a bus that declares it, or remove it from events.requires"));
+      } else if (!(bus.manifest.capabilities as readonly string[]).includes(name)) {
+        diagnostics.push(error("MESH_CAPABILITY", `events.requires lists ${name}, and the event bus "${bus.manifest.adapter}" does not declare it`, at,
+          `Use a bus that declares ${name}, or remove it from events.requires`));
+      }
+    } else if (!data.includes(name)) {
+      diagnostics.push(error("MESH_CAPABILITY", `events.requires lists ${name}, and the data adapter "${config.data.name}" does not declare it`, at,
+        `Use a data adapter that declares ${name}, or remove it from events.requires`));
     }
   }
   return diagnostics;
