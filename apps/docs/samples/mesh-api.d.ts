@@ -5,7 +5,7 @@
 // This is not Mesh. Mesh does not exist as an installable runtime yet, so the file
 // states the shape the pages promise: the generated entry points (`#mesh` and the
 // `#mesh/domain/<module>` specifiers) for the entities of the pages, the run-time error
-// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter, the JSON-RPC transport and the configuration helper. If a page and this file
+// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter, the local event bus, the JSON-RPC transport and the configuration helper. If a page and this file
 // disagree, the page is a bug or this file is; both are cheap to fix and the sample
 // check is what notices.
 //
@@ -84,6 +84,8 @@ declare module "@meshfw/runtime" {
     stop(): Promise<void>;
     /** One round, then resolve; rejects with `HandlerStoppedError` naming every handler that stopped, or with the error that ended the round. */
     deliver(): Promise<void>;
+    /** Optional: resume a handler this instance stopped after `start()`, from its progress row, in the next round; what `resumeHandler(name)` of `#mesh` calls. */
+    resumeHandler?(handler: RegisteredHandler): void;
   }
 
   /** A handler as core registered it for this claim: what a bus feeds. */
@@ -569,6 +571,23 @@ declare module "@meshfw/data-postgres" {
   export function postgres(options: { url: string | undefined }): PostgresDataLayer;
 }
 
+declare module "@meshfw/bus-local" {
+  import type { EventBus } from "@meshfw/runtime";
+
+  /** What `localBus` takes. */
+  export interface LocalBusOptions {
+    /** After `start()`, a round also runs this often, in milliseconds, for the commits of processes that only publish; default 1000. */
+    readonly pollInterval?: number;
+    /** The delays before each retry of a failing handler, in milliseconds; default `[100, 1000, 10000]` after `start()` and `[0, 0, 0]` in `deliver()` rounds; a value given here applies to both. */
+    readonly retryDelays?: readonly number[];
+    /** The rows a live subscription may have waiting for its callback before it ends with `MESH_SUBSCRIPTION_OVERFLOW`; default 10 000. */
+    readonly maxQueue?: number;
+  }
+
+  /** The first event bus: delivers in the deliverer's process, on any data adapter. Declares `ordered-delivery`, `replay` and `subscribe`. */
+  export function localBus(options?: LocalBusOptions): EventBus;
+}
+
 declare module "@meshfw/jsonrpc" {
   /** Any Standard Schema validator (zod, valibot, ArkType...); `run` receives its output. */
   export interface ParamsSchema<P> {
@@ -867,6 +886,8 @@ declare module "#mesh" {
   export function forgetHandler(name: string): Promise<void>;
   /** Drop the row of a subscription whose client is not coming back; an open one is refused. */
   export function forgetSubscription(name: string): Promise<void>;
+  /** Resume a handler the running bus stopped at a failing event, from its progress row; where delivery is started, else a `FrameworkError`. */
+  export function resumeHandler(name: string): Promise<void>;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`, keyed by table name as stored (`table=` included). */
   export const tables: { readonly lists: object; readonly todos: object };
