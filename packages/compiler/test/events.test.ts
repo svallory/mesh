@@ -275,6 +275,14 @@ describe("MESH_PUBLISH_BEFORE_WRITE", () => {
     expect(warn(`        ${PUBLISH_PAID}\n        ${PUBLISH_PAID}\n`)).toEqual([]);
   });
 
+  test("none for a publish written ahead of a when that holds only publish steps: one when= per outcome", () => {
+    const outcomes = `        set\n          &paid=true\n        when=() => &paid\n          ${PUBLISH_PAID}\n        when=() => !&paid\n          ${PUBLISH_PAID}\n          when=() => true\n            ${PUBLISH_PAID}\n`;
+    expect(warn(outcomes)).toEqual([]);
+    // a when that also holds a step that runs before the write is still such a step
+    expect(warn(`        set\n          &paid=true\n        ${PUBLISH_PAID}\n        when=() => &paid\n          ${PUBLISH_PAID}\n          set\n            &paid=false\n`).map((d) => [d[1], d[4]]))
+      .toEqual([[12, "MESH_PUBLISH_BEFORE_WRITE"], [14, "MESH_PUBLISH_BEFORE_WRITE"]]);
+  });
+
   test("an always block's do is checked on its own", () => {
     const result = build(invoice(`    update :pay\n    always types=[:update]\n      do\n        ${PUBLISH_PAID}\n        set\n          &paid=true\n`));
     expect(brief(result.diagnostics)).toEqual([["billing/invoice.mesh.mx", 11, 8, "warning", "MESH_PUBLISH_BEFORE_WRITE",
