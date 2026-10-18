@@ -12,7 +12,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CursorAheadError, EventsDeletedError, FrameworkError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
+import { CursorAheadError, EventsDeletedError, FrameworkError, HandlerStoppedError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
+import { testBus } from "@meshfw/runtime/testing";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -21,7 +22,9 @@ const projects: string[] = [];
 
 const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
+const testing: string = "@meshfw/runtime/testing";
+const { testBus } = (await import(testing)) as { testBus(): import("@meshfw/runtime").EventBus };
+export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }), events: { bus: testBus() } };
 `;
 const PACKAGE = {
   name: "events", private: true, type: "module",
@@ -244,6 +247,7 @@ describe("the outbox", () => {
   type Layer = {
     transaction<T>(fn: (tx: { insert(table: unknown, row: unknown): Promise<unknown>; deleteOutboxThrough(position: number): Promise<number> }) => Promise<T>): Promise<T>;
     readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number }>;
+    refuseIfFailed(): boolean;
     close(): Promise<void>;
   };
   const failure = (promise: Promise<unknown>) => promise.then(() => { throw new Error("expected a rejection"); }, (cause: unknown) => cause);
@@ -279,7 +283,7 @@ describe("the outbox", () => {
   afterEach(() => { probe.hooks.made = undefined; probe.hooks.step = undefined; });
 
   test("the schema creates the outbox and its state table, both empty", async () => {
-    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state"]);
+    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
     const { layer } = await open();
     try {
       expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 0, highest: 0 });
@@ -502,7 +506,177 @@ describe("the outbox", () => {
     } finally { await layer.close(); }
   });
 
+  test("acceptance 9: the bus delivers to process and listen handlers; a process handler's writes and progress commit together", async () => {
+    const seen: string[] = [];
+    const records: { id: string; causedBy: string | null }[] = [];
+    let failPay = false;
+    const module = {
+      handlers: {
+        process: {
+          // in the handler's transaction: the refund it runs publishes an event caused by the one it handles
+          refundOnPay: Mesh.handler({
+            events: [billing.InvoicePaid],
+            run: async (event: { payload: { invoiceId: string } }, { context }: { context: object }) => {
+              await billing.Invoice.refund({ id: event.payload.invoiceId }, context);
+              if (failPay) throw new Error("the refund is refused");
+            },
+          }),
+        },
+        listen: {
+          log: Mesh.handler({
+            events: [billing.InvoicePaid, refunds.RefundIssued],
+            run: (event: { id: string; causedBy: string | null; name: string; position: number }) => {
+              seen.push(`${event.position} ${event.name}`);
+              records.push({ id: event.id, causedBy: event.causedBy });
+            },
+          }),
+        },
+      },
+    };
+    const { layer, binding } = await open({ events: { bus: testBus(), load: async () => module } });
+    const deliver = () => (binding as unknown as { deliver(): Promise<void> }).deliver();
+    try {
+      // the first round registers both handlers at the highest position, 0
+      await deliver();
+      await stored(layer, ID);
+      await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
+      await deliver();
+      // a round hands each handler the rows there were when it reached it: the refund's event, published by the process
+      // handler after the listen handler's turn, reaches the listen handler in the next round
+      await deliver();
+      // the listen handler got both events in position order; the process handler's publish carries the handled event's id
+      expect(seen).toEqual(["1 billing.InvoicePaid", "2 sales.refunds.RefundIssued"]);
+      expect(records.map((record) => record.causedBy)).toEqual([null, records[0]!.id]);
+      // every handler is past both rows under keep "until-delivered", so the deletion pass removed them
+      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 2, highest: 2 });
+      const progress = await layer.transaction(async (tx) => (tx as unknown as { readHandlerProgress(): Promise<unknown> }).readHandlerProgress());
+      expect(progress).toEqual([
+        { name: "log", kind: "listen", position: 2, events: ["billing.InvoicePaid", "sales.refunds.RefundIssued"], generation: 3 },
+        { name: "refundOnPay", kind: "process", position: 2, events: ["billing.InvoicePaid"], generation: 3 },
+      ]);
+      // a process handler that fails rolls back what it wrote and stops at the event; the listen handler still gets it
+      failPay = true;
+      await stored(layer, ID2);
+      await binding.run(() => billing.Invoice.pay({ id: ID2 }, {}));
+      const stopped = await failure(deliver());
+      expect(stopped).toBeInstanceOf(HandlerStoppedError);
+      expect(stopped).toMatchObject({ code: "MESH_HANDLER_STOPPED", retryable: false, stopped: [{ handler: "refundOnPay", position: 3, event: "billing.InvoicePaid" }] });
+      expect(seen.slice(2)).toEqual(["3 billing.InvoicePaid"]);
+      expect(await names(layer)).toEqual(["billing.InvoicePaid"]);
+      // the next round retries it, and once it succeeds the rows go
+      failPay = false;
+      await deliver();
+      await deliver();
+      expect(seen.slice(3)).toEqual(["4 sales.refunds.RefundIssued"]);
+      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 4, highest: 4 });
+    } finally { await layer.close(); }
+  });
+
+  test("a listen handler's action runs in a transaction of its own, and what it publishes carries the handled event's id as causedBy", async () => {
+    const handled: { id: string; inside: boolean }[] = [];
+    const module = {
+      handlers: {
+        listen: {
+          refundOnPay: Mesh.handler({
+            events: [billing.InvoicePaid],
+            run: async (event: { id: string; payload: { invoiceId: string } }, { context }: { context: object }) => {
+              handled.push({ id: event.id, inside: layer.refuseIfFailed() });
+              await billing.Invoice.refund({ id: event.payload.invoiceId }, context);
+            },
+          }),
+        },
+      },
+    };
+    const { layer, binding } = await open({ events: { bus: testBus(), keep: "all", load: async () => module } });
+    const deliver = () => (binding as unknown as { deliver(): Promise<void> }).deliver();
+    try {
+      await deliver();
+      await stored(layer, ID);
+      await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
+      await deliver();
+      // the listen handler ran outside any transaction; the refund it called committed on its own
+      expect(handled.map((each) => each.inside)).toEqual([false]);
+      const [paid, refund] = await rows(layer);
+      expect([paid!.position, paid!.name, paid!.causedBy]).toEqual([1, "billing.InvoicePaid", null]);
+      expect([refund!.position, refund!.name, refund!.causedBy]).toEqual([2, "sales.refunds.RefundIssued", paid!.id]);
+      expect(handled[0]!.id).toBe(paid!.id);
+    } finally { await layer.close(); }
+  });
+
   test("readEvents with no binding in scope and none connected throws", async () => {
     expect(await failure(app.readEvents())).toBeInstanceOf(FrameworkError);
   });
+});
+
+describe("mesh events forget", () => {
+  const CONFIG_FILE = CONFIG.replace('sqlite({ file: ":memory:" })', 'sqlite({ file: "app.db" })');
+  type Ops = Record<string, (...args: unknown[]) => Promise<unknown>>;
+  type FileLayer = { transaction<T>(fn: (tx: Ops) => Promise<T>): Promise<T>; close(): Promise<void> };
+
+  /** A project on a file database holding the given handler and subscription rows, and a live claim at generation 3. */
+  async function withRows(): Promise<{ dir: string; rows(): Promise<{ handlers: string[]; subscriptions: string[] }> }> {
+    const dir = await project();
+    await writeFile(join(dir, "mesh.config.ts"), CONFIG_FILE);
+    const app = await import(join(root, ".mesh/index.ts"));
+    const data = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    const open = async () => {
+      const layer = data.sqlite({ file: join(dir, "app.db") }) as FileLayer;
+      return layer;
+    };
+    const layer = await open();
+    await data.createSchema(layer, app.tables);
+    await layer.transaction(async (tx) => {
+      await tx.writeClaim!({ runId: "live", generation: 3, pid: 1, startedAt: null });
+      await tx.writeHandlerProgress!({ name: "running", kind: "process", position: 4, events: ["billing.InvoicePaid"], generation: 3 });
+      await tx.writeHandlerProgress!({ name: "removed", kind: "listen", position: 2, events: ["billing.InvoicePaid"], generation: 2 });
+      await tx.writeHandlerProgress!({ name: "both", kind: "listen", position: 1, events: ["billing.InvoicePaid"], generation: 2 });
+      await tx.writeSubscriptionProgress!({ name: "open", position: 5, filter: {}, open: true, generation: 3 });
+      await tx.writeSubscriptionProgress!({ name: "crashed", position: 6, filter: {}, open: true, generation: 1 });
+      await tx.writeSubscriptionProgress!({ name: "closed", position: 7, filter: {}, open: false, generation: 3 });
+      await tx.writeSubscriptionProgress!({ name: "both", position: 1, filter: {}, open: false, generation: 2 });
+    });
+    await layer.close();
+    return {
+      dir,
+      async rows() {
+        const reader = await open();
+        try {
+          return await reader.transaction(async (tx) => ({
+            handlers: ((await tx.readHandlerProgress!()) as { name: string }[]).map((row) => row.name),
+            subscriptions: ((await tx.readSubscriptionProgress!()) as { name: string }[]).map((row) => row.name),
+          }));
+        } finally { await reader.close(); }
+      },
+    };
+  }
+
+  test("drops a removed handler's row, a closed subscription's and one a crash left open; refuses the live deliverer's", async () => {
+    const { dir, rows } = await withRows();
+    expect(mesh(dir, "events", "forget", "removed")).toEqual({ code: 0, stdout: "forgot the handler removed, which was at position 2\n", stderr: "" });
+    expect(mesh(dir, "events", "forget", "closed")).toEqual({ code: 0, stdout: "forgot the subscription closed, which was at position 7\n", stderr: "" });
+    // open under generation 1, while the live claim is at 3: a crash's leftover
+    expect(mesh(dir, "events", "forget", "crashed")).toEqual({ code: 0, stdout: "forgot the subscription crashed, which was at position 6\n", stderr: "" });
+    const running = mesh(dir, "events", "forget", "running");
+    expect(running.code).toBe(1);
+    expect(running.stderr).toContain('events forget failed: The handler "running" is registered by the live deliverer (generation 3), so its progress is not dropped');
+    const open = mesh(dir, "events", "forget", "open");
+    expect(open.code).toBe(1);
+    expect(open.stderr).toContain('events forget failed: The subscription "open" is open in the deliverer\'s process (generation 3); close it there first');
+    const both = mesh(dir, "events", "forget", "both");
+    expect(both.code).toBe(1);
+    expect(both.stderr).toContain('The name "both" is held by a handler\'s progress row and by a subscription\'s row');
+    const unknown = mesh(dir, "events", "forget", "nobody");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain('No handler and no subscription named "nobody" has a row in this database');
+    expect(await rows()).toEqual({ handlers: ["both", "running"], subscriptions: ["both", "open"] });
+  }, 60_000);
+
+  test("a usage mistake is exit 2 and touches nothing", async () => {
+    const dir = await project();
+    expect(mesh(dir, "events")).toEqual({ code: 2, stdout: "", stderr: "Missing events command; use mesh events forget <name>\n" });
+    expect(mesh(dir, "events", "drop", "x")).toEqual({ code: 2, stdout: "", stderr: 'Unknown events command "drop"; use mesh events forget <name>\n' });
+    expect(mesh(dir, "events", "forget")).toEqual({ code: 2, stdout: "", stderr: "Missing name for mesh events forget; use mesh events forget <name>\n" });
+    expect(mesh(dir, "events", "forget", "a", "b")).toEqual({ code: 2, stdout: "", stderr: "Extra argument for mesh events forget; use mesh events forget <name>\n" });
+    expect(mesh(dir, "--help").stdout).toContain("events forget <name>");
+  }, 30_000);
 });

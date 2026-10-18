@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { EmitError, explainAction, RESERVED_COMMAND_WORDS, buildEmitters, generatedImportDiagnostics, generateFiles, loadAdapterBuild, loadConfig, loadProject, resolveName, stableJsonStringify, writeGeneratedFiles, type AdapterBuild, type ResolvedConfig } from "@meshfw/compiler";
 import type { Diagnostic } from "@meshfw/model";
 import { compareText, diagnostic, printDiagnostics } from "./diagnostics.ts";
+import { runEvents } from "./events.ts";
 import { exportGenerators } from "./export.ts";
 import { checkGeneratedFiles, projectPath } from "./guard.ts";
 
@@ -17,6 +18,9 @@ Commands:
   explain <entity> <action>
                       Print the plan the action's handler follows
   export generators   Copy Mesh's generator templates into .mesh-generators/
+  events forget <name>
+                      Drop the progress row of a removed handler, or the row
+                      of a subscription that is not coming back
 
 The data adapter can add its own commands; they are listed below
 when mesh.config.ts names one.
@@ -53,6 +57,7 @@ export async function runCli(args: string[], root = process.cwd(), io = {
 }): Promise<number> {
   // A first word that is not a core command or flag may be one the data adapter adds.
   const [first] = args;
+  if (first === "events") return runEvents(args, root, io);
   if (first !== undefined && !first.startsWith("-") && !RESERVED_COMMAND_WORDS.includes(first)) {
     return runAdapterCommand(args, root, io);
   }

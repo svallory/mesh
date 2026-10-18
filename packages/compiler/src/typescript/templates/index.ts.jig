@@ -14,7 +14,7 @@ export { tables } from "./schema";
 @if(events)
 
 // The project's events: the types `DomainEvent`, `EventRecord` and `MetadataFunction`, the table `eventClasses`, `published`
-// and `readEvents`; the event and command classes come from their module.
+// and the functions of delivery; the event and command classes come from their module.
 @each(imported in events.imports)
 import { {{ imported.name }} as {{ imported.local }} } from {{ imported.fromLiteral }};
 @end
@@ -27,13 +27,33 @@ export type DomainEvent = {{ events.union }};
 export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
 /** The type of the events module's `metadata` function: `export const metadata: MetadataFunction = ({ event, context }) => ({ ... })`. */
 export type MetadataFunction = $MetadataFunction<DomainEvent>;
-export type { EventMetadata, ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
-/** `published()`, the running transaction's own events, and `readEvents(query)`, a page of the outbox's kept events. */
-export { published, readEvents } from "./binding";
+export type { EventMetadata } from "@meshfw/runtime";
+/** `published()`, the running transaction's own events, and the functions of delivery. */
+export { published, forgetHandler, forgetSubscription, type ConnectOptions } from "./binding";
+export type { Delivery } from "@meshfw/runtime";
+@if(events.replay)
+/** `readEvents(query)`, a page of the outbox's kept events: the bus declares replay. */
+export { readEvents } from "./binding";
+export type { ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
+@end
+@if(events.subscribe)
+/** `subscribe(query, callback)`, a live subscription: the bus declares subscribe. */
+export { subscribe } from "./binding";
+export type { SubscribeQuery, Subscription } from "@meshfw/runtime";
+@end
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   @each(entry in events.table)
   {{ entry.fqnLiteral }}: {{ entry.local }},
   @end
 });
+
+// The configured bus's capabilities, so that a handler option it cannot honour is a type error.
+declare module "@meshfw/runtime" {
+  interface EventBusCapabilities {
+    @each(capability in events.busCapabilities)
+    {{ capability }}: true;
+    @end
+  }
+}
 @end

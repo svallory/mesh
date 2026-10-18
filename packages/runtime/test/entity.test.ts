@@ -66,7 +66,7 @@ describe("bindDomain", () => {
   test("binds the entity values of every namespace it reaches and skips every other export", async () => {
     const binding = bindDomain(domain, layerNamed("db"), {}, frame);
     expect(Object.isFrozen(binding)).toBe(true);
-    expect(Object.keys(binding).sort()).toEqual(["run", "transaction"]);
+    expect(Object.keys(binding).sort()).toEqual(["deliver", "run", "startDelivery", "transaction"]);
     const placed = await binding.run(() => domain.sales.Order.place({ total: 3 }));
     expect(placed).toMatchObject({ layer: "db", input: { total: 3 } });
   });

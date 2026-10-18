@@ -41,7 +41,7 @@ function documentOf(files: Record<string, string> = { "notes/note.mesh.mx": note
 describe("binding, module and index views", () => {
   test("the binding view names the config and the root barrel, which `bind` walks; it lists no entity or action", () => {
     expect(bindingView({ document: documentOf(), config: configOf("/project", ".mesh") }))
-      .toEqual({ configFromLiteral: '"../mesh.config"', domainFromLiteral: '"./domain/index"', events: false });
+      .toEqual({ configFromLiteral: '"../mesh.config"', domainFromLiteral: '"./domain/index"', events: false, replay: false, subscribe: false });
   });
 
   test("the config import is relative to a nested output folder", () => {
@@ -194,7 +194,7 @@ describe("the generated index", () => {
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     // With no action, the binding is still `run` and `transaction`, whose callback is handed nothing.
     const bound = mesh.bind({ transaction: async (run: (tx: object) => Promise<unknown>) => run({}), refuseIfFailed: () => false, close: async () => {} });
-    expect(Object.keys(bound)).toEqual(["run", "transaction"]);
+    expect(Object.keys(bound)).toEqual(["run", "transaction", "deliver", "startDelivery"]);
     expect(await bound.run(async () => "ran")).toBe("ran");
     expect(await bound.transaction(async (...args: unknown[]) => args.length)).toBe(0);
   }, 30_000);
@@ -212,7 +212,7 @@ describe("the generated index", () => {
     };
     const bound = mesh.bind(layer);
     expect(Object.isFrozen(bound)).toBe(true);
-    expect(Object.keys(bound)).toEqual(["run", "transaction"]);
+    expect(Object.keys(bound)).toEqual(["run", "transaction", "deliver", "startDelivery"]);
     await bound.run(() => notes.Note.create({ text: "x" }));
     expect(rows).toHaveLength(1);
     await mesh.connect();

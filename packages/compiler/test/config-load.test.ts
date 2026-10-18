@@ -153,7 +153,7 @@ describe("the events key", () => {
 
   test("not an object", async () => {
     for (const value of ["null", "\"all\"", "[]", "() => ({})"]) {
-      expect(await codes(value), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "Configuration field `events` must be an object", fix: "Set events: { load, keep }, each optional" }]);
+      expect(await codes(value), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "Configuration field `events` must be an object", fix: "Set events: { bus, load, keep, requires }; bus is needed once an event is declared" }]);
     }
   });
 
@@ -170,11 +170,36 @@ describe("the events key", () => {
     }
   });
 
-  test("bus and requires are not built yet, and any other field is unknown; every problem is reported", async () => {
-    expect(await codes("{ bus: {}, requires: [\"replay\"], retain: 3, keep: \"no\" }")).toEqual([
-      { code: "MESH_EVENTS_CONFIG", message: "`events.bus` is not built yet: it comes with the event bus (M6 PR 3)", fix: "Remove events.bus" },
-      { code: "MESH_EVENTS_CONFIG", message: "`events.requires` is not built yet: it comes with the event bus (M6 PR 3)", fix: "Remove events.requires" },
-      { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are load and keep", fix: "Remove the unknown field" },
+  const bus = (capabilities: string) => `{ manifest: { adapter: "fake", capabilities: ${capabilities} }, create() { return {}; } }`;
+
+  test("a bus and requires are kept on the resolved config", async () => {
+    const loaded = await loadConfig(await withEvents(`{ bus: ${bus('["ordered-delivery", "replay"]')}, requires: ["replay", "gapless-positions"] }`));
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.config!.events!.bus!.manifest).toEqual({ adapter: "fake", capabilities: ["ordered-delivery", "replay"] });
+    expect(loaded.config!.events!.requires).toEqual(["replay", "gapless-positions"]);
+  });
+
+  test("a bus that is not an event-bus descriptor", async () => {
+    const fix = "Set bus: localBus() (from @meshfw/bus-local), or another event-bus adapter's descriptor";
+    const cases: [string, string][] = [
+      ["{}", "it has no create function: an event-bus descriptor has { manifest, create(core, options) }"],
+      ["\"local\"", "it must be an event-bus descriptor, such as localBus()"],
+      ["{ create() {} }", "it has no manifest: an event-bus descriptor declares { adapter, capabilities }"],
+      [bus('["ordered-delivery", "prune"]'), "its manifest lists the unknown capability \"prune\"; the closed set is ordered-delivery, replay, subscribe, dead-letters, multi-process"],
+      [bus('["replay", "replay"]'), "its manifest lists the capability \"replay\" twice"],
+      [`{ manifest: { adapter: "", capabilities: [] }, create() {} }`, "its manifest's adapter must be a non-empty string"],
+    ];
+    for (const [value, problem] of cases)
+      expect(await codes(`{ bus: ${value} }`), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: `\`events.bus\` is not a valid event bus: ${problem}`, fix }]);
+  });
+
+  test("requires that is not a list of capability names, and any other field is unknown; every problem is reported", async () => {
+    expect(await codes("{ requires: \"replay\" }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.requires` must be an array of capability names", fix: expect.stringContaining("Set requires:") }]);
+    expect(await codes("{ requires: [\"replay\", \"prune\", \"replay\", 3], retain: 3, keep: \"no\" }")).toEqual([
+      { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"prune\", which is no capability: the bus's are ordered-delivery, replay, subscribe, dead-letters, multi-process, and the data adapter's aggregates, integer-key-fill, joins, upserts, atomic-expressions, gapless-positions", fix: "Remove it, or correct the name" },
+      { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"replay\" twice", fix: "Remove the second one" },
+      { code: "MESH_EVENTS_CONFIG", message: expect.stringContaining("`events.requires` lists 3, which is no capability"), fix: "Remove it, or correct the name" },
+      { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are bus, load, keep and requires", fix: "Remove the unknown field" },
       { code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\" or \"all\", and is \"no\"", fix: expect.any(String) },
     ]);
   });

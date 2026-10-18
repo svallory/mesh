@@ -313,7 +313,7 @@ describe("entity values on the connected binding", () => {
     try {
       const bound = app.mesh.bind(own);
       expect(Object.isFrozen(bound)).toBe(true);
-      expect(Object.keys(bound)).toEqual(["run", "transaction"]);
+      expect(Object.keys(bound)).toEqual(["run", "transaction", "deliver", "startDelivery"]);
       await bound.run(() => Column.make({ label: "own" }));
       await Column.make({ label: "connected" });
       const labels = (rows: { label: string }[]) => rows.map((row) => row.label);

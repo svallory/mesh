@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity, Step } from "@meshfw/model";
+import { eventsDiagnostics } from "../src/capabilities.ts";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { explainAction } from "../src/typescript/explain.ts";
@@ -302,6 +303,35 @@ describe("MESH_EVENT_NOT_PUBLISHED", () => {
   });
 });
 
+describe("the bus at build time (MESH_EVENTS_CONFIG, MESH_CAPABILITY)", () => {
+  const at = { file: "/project/mesh.config.ts", line: 1, column: 1, offset: 0 };
+  const bus = (capabilities: readonly string[]) => ({ manifest: { adapter: "fake", capabilities }, create: () => { throw new Error("never started"); } }) as never;
+  const data = (capabilities: readonly string[]) => ({ ...configOf("/project").data, capabilities: { adapter: "sqlite", capabilities } }) as never;
+  const declared = () => buildModel(files()).document!;
+  const none = () => buildModel({ root: "/project", files: [{ file: "billing/invoice.mesh.mx", source: invoice("", "") }] }).document!;
+
+  test("a project that declares an event and sets no bus: one error naming the event, at the config", () => {
+    expect(eventsDiagnostics(declared(), { data: data([]) }, at)).toEqual([{
+      severity: "error", code: "MESH_EVENTS_CONFIG", position: at,
+      message: "The project declares the event billing.InvoicePaid, and mesh.config.ts sets no events.bus: an event is delivered by a bus, and there is no default",
+      fix: "Set events: { bus: localBus() } in mesh.config.ts (localBus from @meshfw/bus-local)",
+    }]);
+    expect(eventsDiagnostics(declared(), { data: data([]), events: { bus: bus(["ordered-delivery"]) } }, at)).toEqual([]);
+    expect(eventsDiagnostics(none(), { data: data([]) }, at)).toEqual([]);
+  });
+
+  test("requires: each capability the bus or the data adapter does not declare is MESH_CAPABILITY", () => {
+    const config = { data: data(["gapless-positions"]), events: { bus: bus(["ordered-delivery", "replay"]), requires: ["replay", "gapless-positions", "subscribe", "upserts"] as never } };
+    expect(eventsDiagnostics(declared(), config, at).map(({ code, message, fix }) => ({ code, message, fix }))).toEqual([
+      { code: "MESH_CAPABILITY", message: "events.requires lists subscribe, and the event bus \"fake\" does not declare it", fix: "Use a bus that declares subscribe, or remove it from events.requires" },
+      { code: "MESH_CAPABILITY", message: "events.requires lists upserts, and the data adapter \"sqlite\" does not declare it", fix: "Use a data adapter that declares upserts, or remove it from events.requires" },
+    ]);
+    expect(eventsDiagnostics(none(), { data: data([]), events: { requires: ["replay"] as never } }, at).map(({ code, message }) => ({ code, message }))).toEqual([
+      { code: "MESH_CAPABILITY", message: "events.requires lists the bus capability replay, and mesh.config.ts sets no events.bus to declare it" },
+    ]);
+  });
+});
+
 describe("what is generated", () => {
   const roots: string[] = [];
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -431,6 +461,41 @@ entity :Invoice
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
     const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    expect(checked).toEqual({ code: 0, output: "" });
+  }, 30_000);
+
+  test("a bus that declares replay and subscribe: #mesh exports readEvents and subscribe, merges the capabilities, and type-checks", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    roots.push(root);
+    const bus = { manifest: { adapter: "fake", capabilities: ["ordered-delivery", "replay", "subscribe"] as const }, create: () => { throw new Error("never started"); } };
+    const config = { ...configOf(root), events: { bus } };
+    const generated = await generateFiles({ document: full().document!, config });
+    const index = text(generated, "generated/index.ts");
+    expect(index).toContain('export { readEvents } from "./binding";\nexport type { ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";');
+    expect(index).toContain('export { subscribe } from "./binding";\nexport type { SubscribeQuery, Subscription } from "@meshfw/runtime";');
+    expect(index).toContain('interface EventBusCapabilities {\n    "ordered-delivery": true;\n    replay: true;\n    subscribe: true;\n  }');
+    const binding = text(generated, "generated/binding.ts");
+    expect(binding).toContain("export function subscribe(");
+    expect(binding).toContain("export function readEvents(");
+    // disconnect stops delivery before it releases the binding, so the running round's handlers finish on it
+    expect(binding.indexOf("await delivery.stop()")).toBeGreaterThan(-1);
+    expect(binding.indexOf("await delivery.stop()")).toBeLessThan(binding.indexOf("$releaseBinding(binding)"));
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    // Mesh.handler infers run's event from events; the bus declares no dead-letters, so onFailure "skip" is a type error
+    await writeFile(resolve(root, "handlers.ts"), [
+      'import { handler } from "@meshfw/runtime";',
+      'import { eventClasses } from "./generated/index";',
+      'const InvoicePaid = eventClasses["billing.InvoicePaid"];',
+      "export const inferred = handler({ events: [InvoicePaid], run: (event) => { const id: string = event.payload.invoiceId; void id; } });",
+      "// @ts-expect-error the payload is the listed class's instance, which has no field named nothing",
+      "export const unknownField = handler({ events: [InvoicePaid], run: (event) => { void event.payload.nothing; } });",
+      '// @ts-expect-error onFailure "skip" needs a bus that declares dead-letters',
+      'export const skips = handler({ events: [InvoicePaid], onFailure: "skip", run: () => {} });',
+      "",
+    ].join("\n"));
+    const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "handlers.ts")]);
     expect(checked).toEqual({ code: 0, output: "" });
   }, 30_000);
 

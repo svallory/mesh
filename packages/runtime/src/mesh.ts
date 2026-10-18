@@ -1,5 +1,6 @@
 import type { Decision } from "./answer.ts";
 import { can, checkPolicies, privileged } from "./entity.ts";
+import { handler } from "./bus.ts";
 import { fqnOf, type Declared } from "./declarations.ts";
 import { isSystem } from "./expr.ts";
 import type { ActionContext } from "./index.ts";
@@ -54,6 +55,12 @@ export interface MeshFunctions {
    * (`DECLARATION`); any other value is a `FrameworkError`.
    */
   readonly fqnOf: (declared: Declared) => string;
+  /**
+   * `Mesh.handler({ events, run, onFailure?, renamedFrom? })` (M6): a handler for the events module's `handlers`. It
+   * returns its argument as it is, and exists so that TypeScript types `run`'s event from `events`
+   * (`EventRecord<InvoicePaid | InvoiceVoided>`), which a plain object literal cannot do.
+   */
+  readonly handler: typeof handler;
 }
 
-export const Mesh: MeshFunctions = Object.freeze({ privileged, isSystem, checkPolicies, can, fqnOf });
+export const Mesh: MeshFunctions = Object.freeze({ privileged, isSystem, checkPolicies, can, fqnOf, handler });

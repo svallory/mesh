@@ -110,6 +110,18 @@ export interface DataOperations {
   appendEvent?: OutboxOperations["appendEvent"];
   /** The outbox delete; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
   deleteOutboxThrough?: OutboxOperations["deleteOutboxThrough"];
+  /** The deliverer's operations on core's delivery state; see `DeliveryOperations`. Mandatory with the outbox ones. */
+  readDeliveryState?: DeliveryOperations["readDeliveryState"];
+  writeClaim?: DeliveryOperations["writeClaim"];
+  renewClaim?: DeliveryOperations["renewClaim"];
+  releaseClaim?: DeliveryOperations["releaseClaim"];
+  readHandlerProgress?: DeliveryOperations["readHandlerProgress"];
+  writeHandlerProgress?: DeliveryOperations["writeHandlerProgress"];
+  deleteHandlerProgress?: DeliveryOperations["deleteHandlerProgress"];
+  readSubscriptionProgress?: DeliveryOperations["readSubscriptionProgress"];
+  writeSubscriptionProgress?: DeliveryOperations["writeSubscriptionProgress"];
+  deleteSubscriptionProgress?: DeliveryOperations["deleteSubscriptionProgress"];
+  firstOutboxRow?: DeliveryOperations["firstOutboxRow"];
 }
 
 /**
@@ -175,8 +187,117 @@ export interface OutboxOperations {
   deleteOutboxThrough(position: number): Promise<number>;
 }
 
+/** The deliverer claim as `mesh_outbox_state` holds it (spec, Events and commands, "The claim"). */
+export interface DelivererClaim {
+  /** A random UUID drawn once per process run: never the pid, since containers run every process as pid 1. */
+  readonly runId: string;
+  /** The generation the holder claimed under. */
+  readonly generation: number;
+  /** When the holder last claimed or renewed, by the database's clock. */
+  readonly renewedAt: Date;
+  /** For messages only. */
+  readonly host: string | null;
+  readonly pid: number | null;
+  readonly startedAt: Date | null;
+}
+
+/** `mesh_outbox_state` as one read in the running transaction, with the database's clock. */
+export interface DeliveryState {
+  readonly deletedThrough: number;
+  /** The highest position ever assigned. */
+  readonly highest: number;
+  /** The generation of the latest claim, kept after a release; 0 before the first claim. */
+  readonly generation: number;
+  /** The claim, or null when nobody holds it (never claimed, or released). A lapsed claim is still returned. */
+  readonly claim: DelivererClaim | null;
+  /** The database's clock now: every lapse and every `seenAt` is measured on it. */
+  readonly now: Date;
+}
+
+/** One row of `mesh_handler_progress`: a handler's low-water position, as last registered. */
+export interface HandlerProgressRow {
+  /** The handler's name, unique across both kinds: the row's key. */
+  readonly name: string;
+  readonly kind: "process" | "listen";
+  /** The low-water position: every row the handler lists at or below it is handled. */
+  readonly position: number;
+  /** The sorted FQNs the handler lists, as last registered. */
+  readonly events: readonly string[];
+  /** The generation of the claim that last registered it. */
+  readonly generation: number;
+}
+
+/** A subscription's filter as its row stores it: each member is left out when not set. */
+export interface SubscriptionFilter {
+  readonly names?: readonly string[];
+  readonly entity?: string;
+  readonly key?: Key;
+}
+
+/** One row of `mesh_subscription_progress`. */
+export interface SubscriptionProgressRow {
+  readonly name: string;
+  /** The acknowledged position. */
+  readonly position: number;
+  readonly filter: SubscriptionFilter;
+  /** Its last open, acknowledgement, close or stream end, by the database's clock. */
+  readonly seenAt: Date;
+  readonly open: boolean;
+  /** The generation of the claim under which it was last open. */
+  readonly generation: number;
+}
+
+/**
+ * The operations core's deliverer runs on its own tables (spec, Events and commands, "The deliverer", "Retention"), each
+ * in the running transaction, mandatory with the outbox operations. Only core calls them; a bus never does.
+ */
+export interface DeliveryOperations {
+  /** `mesh_outbox_state` and the highest position, read with the database's clock. */
+  readDeliveryState(): Promise<DeliveryState>;
+  /**
+   * Write the claim; `renewedAt` is the database's clock. A claim that leaves `host` out gets the name of the host the
+   * data layer runs on (core names no host API, ADR-0025); `null` stores none.
+   */
+  writeClaim(claim: { readonly runId: string; readonly generation: number; readonly host?: string | null; readonly pid: number | null; readonly startedAt: Date | null }): Promise<void>;
+  /** In one statement: set `renewedAt` to the database's clock where the claim holds `runId` and `generation`; false when no row matched. */
+  renewClaim(runId: string, generation: number): Promise<boolean>;
+  /** Clear the claim where it holds `runId` and `generation`, keeping the generation; false when no row matched. */
+  releaseClaim(runId: string, generation: number): Promise<boolean>;
+  readHandlerProgress(): Promise<readonly HandlerProgressRow[]>;
+  /** Insert or replace the row named `row.name`. */
+  writeHandlerProgress(row: HandlerProgressRow): Promise<void>;
+  /** Delete the row named `name`; false when there was none. */
+  deleteHandlerProgress(name: string): Promise<boolean>;
+  readSubscriptionProgress(): Promise<readonly SubscriptionProgressRow[]>;
+  /** Insert or replace the row named `row.name`; `seenAt`, when left out, is the database's clock. */
+  writeSubscriptionProgress(row: Omit<SubscriptionProgressRow, "seenAt"> & { readonly seenAt?: Date }): Promise<void>;
+  deleteSubscriptionProgress(name: string): Promise<boolean>;
+  /**
+   * The position of the first outbox row above `after` and below `before` whose name is in `listed` or not in
+   * `declared` (a row no declared event matches counts as listed by every handler), or null.
+   */
+  firstOutboxRow(after: number, before: number, listed: readonly string[], declared: readonly string[]): Promise<number | null>;
+}
+
+/** What `DataLayer.transaction` takes beside its callback. */
+export interface TransactionOptions {
+  /**
+   * How long to wait for another connection's write lock, in all, in milliseconds, in place of the adapter's default.
+   * Core's claim renewal passes the 15 s lapse; nothing else sets it.
+   */
+  readonly waitMs?: number;
+}
+
 /** A bound data adapter; handlers always open a transaction before operations. */
 export interface DataLayer {
+  /**
+   * Names the database this layer opens, the same for every layer object over it and different for every other database
+   * (data-sqlite: the file's absolute path, or `:memory: #<n>` for a private memory database). Required to deliver
+   * events: core keeps the deliverer's process-side state and the subscription registry per database by it, so two
+   * layer objects over one database without it would each claim under this process's run id, the second taking the
+   * first's claim over quietly. `deliver()`, `startDelivery()` and `subscribe` refuse a layer without it.
+   */
+  readonly database?: string;
   /** Runs run in one transaction: commits when it resolves, rolls back and rethrows when it rejects.
    * One transaction runs at a time per layer; unrelated concurrent calls queue, and
    * a failed transaction does not block the queue unless its own rollback failed, which
@@ -201,7 +322,7 @@ export interface DataLayer {
    * one whose turn comes after the outer call settled rejects with a FrameworkError. A call
    * made after the outer transaction settled starts a new one.
    */
-  transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T>;
+  transaction<T>(run: (tx: DataOperations) => Promise<T>, options?: TransactionOptions): Promise<T>;
   /**
    * Whether a call made here would join a running transaction, refusing it if that transaction has failed. Every
    * generated function calls this first, before it casts its input. Inside a transaction that a joined call already

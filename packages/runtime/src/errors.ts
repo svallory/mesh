@@ -249,3 +249,131 @@ export class EventUndeclaredError extends MeshError {
     this.position = position;
   }
 }
+
+/** A time of day for a message, `12:04:18` (UTC). */
+function clockTime(date: Date): string {
+  return Number.isNaN(date.getTime()) ? "an unknown time" : date.toISOString().slice(11, 19);
+}
+
+/**
+ * The events configuration is wrong in a way only the start can see (`MESH_EVENTS_CONFIG`, start time): the events module
+ * exports `handlers` while no `events.bus` is configured. The build reports the same code for what it can see.
+ */
+export class EventsConfigError extends MeshError {
+  readonly code = "MESH_EVENTS_CONFIG";
+}
+
+/**
+ * A handler option or default the configured bus cannot honour, or a `renamedFrom` that names a handler the module still
+ * registers or that two handlers name (`MESH_HANDLER_OPTION`, start time). Checked by `connect()`, `startDelivery()` and
+ * the first `deliver()` before anything is claimed.
+ */
+export class HandlerOptionError extends MeshError {
+  readonly code = "MESH_HANDLER_OPTION";
+  /** The handler the problem is about. */
+  readonly handler: string;
+
+  constructor(handler: string, message: string, options?: MeshErrorOptions) {
+    super(message, options);
+    this.handler = handler;
+  }
+}
+
+/** Who holds a deliverer claim, as `MESH_DELIVERER_TAKEN` reports it. */
+export interface ClaimHolder {
+  /** The database the claim is on, as the data layer names it (`app.db`). */
+  readonly database: string;
+  readonly pid: number | null;
+  readonly host: string | null;
+  readonly startedAt: Date | null;
+  /** How long ago the holder last renewed the claim, in milliseconds, by the database's clock. */
+  readonly renewedAgoMs: number;
+  /** When the claim lapses if it is not renewed. */
+  readonly lapsesAt: Date;
+  /** True when the holder is another binding, or another round, of this process. */
+  readonly thisProcess: boolean;
+}
+
+/**
+ * The deliverer claim is held by another process or binding, or a `deliver()` overlapped a round
+ * (`MESH_DELIVERER_TAKEN`). Retryable: the claim lapses at `lapsesAt` if its holder has died.
+ */
+export class DelivererTakenError extends MeshError {
+  static override readonly retryableByDefault: boolean = true;
+  readonly code = "MESH_DELIVERER_TAKEN";
+  /** When the holder's claim lapses unless it is renewed. */
+  readonly lapsesAt: Date;
+  readonly holder: ClaimHolder;
+
+  constructor(holder: ClaimHolder, options?: MeshErrorOptions) {
+    const who = holder.thisProcess
+      ? `Another binding or round of this process delivers this database's events: ${holder.database} is claimed by this process (pid ${holder.pid ?? "unknown"}, renewed ${Math.round(holder.renewedAgoMs / 1000)} s ago). One binding per process per database delivers at a time.`
+      : `Another process delivers this database's events: ${holder.database} is claimed by pid ${holder.pid ?? "unknown"} on host ${holder.host ?? "unknown"} `
+        + `(started ${holder.startedAt ? clockTime(holder.startedAt) : "at an unknown time"}, renewed ${Math.round(holder.renewedAgoMs / 1000)} s ago). One process delivers per database.`;
+    const fix = holder.thisProcess
+      ? "\n  fix: Stop the other delivery first (`await delivery.stop()`, `disconnect()`, or await the running `deliver()`), or bind this one without delivering."
+      : `\n  fix: Stop that process first, or connect this one without delivering: \`await connect({ deliver: false })\`. If that process has died, its claim lapses at ${clockTime(holder.lapsesAt)}.`;
+    super(who + fix, options);
+    this.lapsesAt = holder.lapsesAt;
+    this.holder = Object.freeze({ ...holder });
+  }
+}
+
+/**
+ * The deliverer claim was lost (`MESH_DELIVERER_LOST`): another process took it over, a renewal updated no row, or a
+ * blocked renewal waited past the lapse. The instance stops: its handlers stop, its subscriptions end with this error,
+ * and a pending `deliver()` rejects with it. Nothing is handled twice and nothing is deleted after it.
+ */
+export class DelivererLostError extends MeshError {
+  readonly code = "MESH_DELIVERER_LOST";
+  /** The database the claim was on. */
+  readonly database: string;
+
+  constructor(database: string, reason: string, options?: MeshErrorOptions) {
+    super(`This process lost the claim to deliver ${database}'s events: ${reason}. Its handlers and subscriptions stopped; the process now holding the claim delivers, and nothing was handled twice or deleted after the loss`, options);
+    this.database = database;
+  }
+}
+
+/**
+ * A subscription's queue passed `maxQueue` (`MESH_SUBSCRIPTION_OVERFLOW`): the subscription ends rather than skip a row.
+ * Retryable: its row stays, and a reopen under its name resumes from the acknowledged position.
+ */
+export class SubscriptionOverflowError extends MeshError {
+  static override readonly retryableByDefault: boolean = true;
+  readonly code = "MESH_SUBSCRIPTION_OVERFLOW";
+  readonly subscription: string;
+  readonly maxQueue: number;
+
+  constructor(subscription: string, maxQueue: number, options?: MeshErrorOptions) {
+    super(`The subscription ${JSON.stringify(subscription)} ended: its queue passed ${maxQueue} rows waiting for the callback. Its row is kept: open it again under the same name to resume from its acknowledged position`, options);
+    this.subscription = subscription;
+    this.maxQueue = maxQueue;
+  }
+}
+
+/** One handler that stopped in a `deliver()` round: its name, the event it stopped at, and its last error. */
+export interface StoppedHandler {
+  readonly handler: string;
+  readonly position: number;
+  /** The event's FQN as stored. */
+  readonly event: string;
+  readonly cause: unknown;
+}
+
+/**
+ * `deliver()` when handlers stopped in the round (`MESH_HANDLER_STOPPED`). Not retryable: it reports what already
+ * stopped; the next round retries each stopped handler. The outbox keeps every row from each position on until the
+ * handler resumes.
+ */
+export class HandlerStoppedError extends MeshError {
+  readonly code = "MESH_HANDLER_STOPPED";
+  readonly stopped: readonly StoppedHandler[];
+
+  constructor(stopped: readonly StoppedHandler[], options?: MeshErrorOptions) {
+    const lines = stopped.map(({ handler, position, event, cause }) =>
+      `  ${handler} stopped at position ${position} (${event}): ${cause instanceof Error ? cause.message : String(cause)}`);
+    super(`${stopped.length === 1 ? "A handler" : `${stopped.length} handlers`} stopped in this delivery round; the outbox keeps every row from each position on until the handler resumes:\n${lines.join("\n")}`, options);
+    this.stopped = Object.freeze(stopped.map((entry) => Object.freeze({ ...entry })));
+  }
+}

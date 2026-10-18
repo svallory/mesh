@@ -30,6 +30,15 @@ export interface IndexEvents {
   readonly table: readonly { readonly fqnLiteral: string; readonly local: string }[];
   /** The globals the file names (`$Object`), from `$globals.ts`. */
   readonly globals: GlobalsImport;
+  /** True when the configured bus declares `replay`: `readEvents` is exported. */
+  readonly replay: boolean;
+  /** True when the configured bus declares `subscribe`: `subscribe` is exported. */
+  readonly subscribe: boolean;
+  /**
+   * The bus's capabilities as quoted string literals, in its manifest's order: each becomes a `true` member of
+   * `EventBusCapabilities` (`declare module "@meshfw/runtime"`), so a handler option the bus cannot honour is a type error.
+   */
+  readonly busCapabilities: readonly string[];
 }
 
 /** The index view of the whole model. Pure and synchronous. */
@@ -43,5 +52,10 @@ export function indexView(input: EmitInput): IndexView {
     union: events.map(classLocal).join(" | "),
     table: events.map((event) => ({ fqnLiteral: JSON.stringify(event.fqn), local: classLocal(event) })),
   };
-  return { modules, events: { ...view, globals: globalsImport("index", view, ["Object"])! } };
+  const capabilities: readonly string[] = input.config.events?.bus?.manifest.capabilities ?? [];
+  return { modules, events: {
+    ...view, globals: globalsImport("index", view, ["Object"])!,
+    replay: capabilities.includes("replay"), subscribe: capabilities.includes("subscribe"),
+    busCapabilities: capabilities.map((capability) => JSON.stringify(capability)),
+  } };
 }
