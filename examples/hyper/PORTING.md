@@ -1,6 +1,6 @@
 # Porting Hyper to Mesh: what the entity files leave out
 
-The entity files in `src/domain/` hold what Mesh builds today: attributes, keys, relationships, the actions with their checks and steps, and, since M5, every effect a command has inside its own aggregate (entity calls and `privileged` reads in a `run` step, `run [after=:write]`). The effects that reach another aggregate, the `warnings` and the late result are plain TypeScript functions in `src/domain/<module>/<module>.commands.ts`, each one application transaction (`transaction(fn)` from `#mesh`). They follow the Hyper specification (`svallory/hyper-engine-spec`, branch `feat/protocol-phases`, commit `ccc00f9`: `PROTOCOL.md` and `schemas/protocol.ts`) and nothing else, as [ADR-0072](../../apps/docs/docs/architecture/decisions/0072-mesh-1-0-is-the-port-gate.md) requires; the five execution entities (Run, Attempt, Invocation, Machine, SessionReference) are not in the spec's twelve and follow the drafts in `notes/hyper-port/entities/`. Every read is the auto read: a caller's `{ filter, sort, limit, offset }` serves Hyper's `get_*`, `list_*` and `list_events`, so those reads are not omissions.
+The entity files in `src/domain/` hold what Mesh builds today: attributes, keys, relationships, the actions with their checks and steps, and, since M5, every effect a command has inside its own aggregate (entity calls and `privileged` reads in a `run` step, `run [after=:write]`). The effects that reach another aggregate, the `warnings` and the late result are plain TypeScript functions in `src/domain/<module>/<module>.commands.ts`, each one application transaction (`transaction(fn)` from `#mesh`). They follow the Hyper specification (`svallory/hyper-engine-spec`, branch `feat/protocol-phases`, commit `ccc00f9`: `PROTOCOL.md` and `schemas/protocol.ts`) and nothing else, as [ADR-0072](../../apps/docs/docs/architecture/decisions/0072-mesh-1-0-is-the-port-gate.md) requires; the five execution entities (Run, Attempt, Invocation, Machine, SessionReference) are not in the spec's twelve and follow the drafts in `notes/hyper-port/entities/`. Every read is the auto read: a caller's `{ filter, sort, limit, offset }` serves Hyper's `get_*` and `list_*`, so those reads are not omissions; `list_events` is `events.read`, a page of the outbox (the Event lines below).
 
 Each line names the entity, the construct left out, its code in the [gap analysis](../../apps/docs/docs/architecture/research/hyper-port-gap-analysis.md) (`G` for a gap, `D` for a draft finding), and the milestone of [roadmap revision 5](../../apps/docs/docs/architecture/roadmap/roadmap.md) that delivers it. "No gap code" marks a limit the analysis does not list.
 
@@ -26,9 +26,10 @@ Each line names the entity, the construct left out, its code in the [gap analysi
 - Claim: the lease sweeper, which Hyper runs as a process (`tasks/claim/sweeper.ex:19-61`), is a timer in `src/daemon/sweeper.ts` that calls the internal `expire` with the engine's context, one transaction per claim; and the lease length, which Hyper reads from its configuration (`tasks/claim/changes/lease.ex:24-25`), reaches `leaseEnd` in `src/domain/work/work.helpers.ts` as `context.leaseMs`, which the daemon's context factory sets from `--lease-ms` on every call, with the constant `LEASE_MS` (ten minutes) when a context has none (G17, G34): application code.
 - Invocation: an exact `estimatedCost`; `decimal` is a number, so it round-trips as a double (G38): not scheduled.
 - SessionReference: `record` as an upsert (G09): after 1.0.
-- Event: the event written in the same transaction as every change, with a gap-free sequence (G12): M6.
-- Event: the spec's `id` beside `seq`; Mesh fills one key, so `seq` is the key and the wire `id` and the nested `record` object are assembled by the application (G12): application code.
-- Event: the `subtree` read, a walk over descendants (G36): application code.
+- Event: since M6 the event log is Mesh's outbox. Each of the 30 events the spec lists (`PROTOCOL.md` §6) is an `event :name` file beside the entity that publishes it (`src/domain/<module>/<name>.mesh.mx`, `task-created.mesh.mx`), and the action that changes the record publishes it in a `publish` step, so the event commits in the change's transaction and the outbox's never-reused position is the wire `seq` (G12). The envelope the spec adds (`actor`, `caller`, `cause`, `record`, `taskId`, `schemaVersion`) is the metadata `src/events.ts` returns from the call's context; `toWire` there builds the wire `Event`, taking `workspaceId` from the one workspace row and the wire `type` from `WIRE_TYPES`. A publish made by neither a command (`commandId` and `method`) nor an engine rule (`rule`) throws, so the change rolls back (no gap code): application code.
+- Event: `events.read` pages `readEvents` (`readPage` in `src/rpc/subscriptions.ts`) and `events.subscribe` opens a Mesh subscription (`subscribe` of `#mesh`) whose callback notifies the connection; `hasMore` and `workspace.get`'s `head` read the outbox's highest position through the data layer, since `readEvents` returns neither (no gap code): application code.
+- Event: the `taskSubtree` filter of `events.read` and `events.subscribe`, a walk over the Task's current descendants (G36): application code.
+- Idempotency: the spec's stored command ids (`PROTOCOL.md` §4.3) are the internal entity `audit.Idempotency` (`commandId`, the hash of `{ method, params }`, the result), recorded in the command's transaction by the command wrapper of `src/rpc/methods.ts`; a repeat is answered from it in the context factory, before the permission phase, and another hash under the same id is `-32006` (no gap code): application code.
 - Workspace: `owner_ids` and `stats`, results that are not a record (G10, G26): application code.
 - Workspace: `export` and `import` (G18): after 1.0.
 
@@ -124,7 +125,7 @@ Each ported permission, with its source (the spec's check where the spec has one
 | Dependency | `add`, `remove` | G | `tasks/dependency.ex:52-53` | `04:55` |
 | EvidenceReference | `record` | G | `evidence/evidence_reference.ex:37-38` | `02:13` |
 | LateResult | `record` | G | `tasks/late_result.ex:46-47`, exposed over RPC (`transport/rpc.ex:88-89`) | `PROTOCOL.md:323` |
-| Event | `record` | `internal` | `pipeline/event.ex:128-131` | none |
+| Idempotency | `record` | `internal` | none (the spec's stored command ids, `PROTOCOL.md` §4.3) | none |
 | Run | `start` | G | `runs/run.ex:81-82` | none |
 | Run | `cancel` | G, `runCanceler` | `runs/run.ex:85-86`; `runs/checks/reporter.ex:71-82` | none |
 | Run | `settle` | `internal` | none (engine change) | none |
@@ -139,4 +140,4 @@ Each ported permission, with its source (the spec's check where the spec has one
 | Machine | `update`, `retire` | `isMember`, `ownerOnly` | `machines/machine.ex:71-72` | none |
 | Machine | `report` | `internal` | `machines/changes/report_machine.ex:39` | none |
 
-Every read: `membersRead`. The Elixir engine's Workspace `export` and `stats` and Event `restore` are not in the port.
+Every read: `membersRead`, except Idempotency's, which `internal` covers, so a member reads no row. The Elixir engine's Workspace `export` and `stats` and Event `restore` are not in the port.
