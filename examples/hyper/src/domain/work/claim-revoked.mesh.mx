@@ -1,0 +1,5 @@
+event :ClaimRevoked
+  uuid :claimId
+  integer :fence
+  uuid :revokedBy
+  string :reason

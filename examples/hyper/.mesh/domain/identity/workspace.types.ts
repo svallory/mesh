@@ -14,6 +14,7 @@ export type Workspace = {
 export type CreateWorkspaceInput = {
   name?: string | null | undefined;
   location?: "local" | "shared" | undefined;
+  firstOwner?: string | null | undefined;
 };
 
 export type RenameWorkspaceInput = {

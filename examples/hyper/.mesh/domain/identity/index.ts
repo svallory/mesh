@@ -41,3 +41,12 @@ export type {
   WorkspaceFilter,
   WorkspaceSort,
 } from "./workspace.types";
+// The module's event and command classes: `new <Class>({ ... })` makes an instance, `Mesh.fqnOf` names its declaration.
+export { CollaboratorRegistered } from "./collaboratorRegistered.event";
+export { CollaboratorRetired } from "./collaboratorRetired.event";
+export { CollaboratorUpdated } from "./collaboratorUpdated.event";
+export { MembershipGranted } from "./membershipGranted.event";
+export { MembershipRevoked } from "./membershipRevoked.event";
+export { MembershipRoleChanged } from "./membershipRoleChanged.event";
+export { WorkspaceCreated } from "./workspaceCreated.event";
+export { WorkspaceRenamed } from "./workspaceRenamed.event";

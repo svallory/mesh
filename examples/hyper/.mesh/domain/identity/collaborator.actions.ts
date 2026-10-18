@@ -16,8 +16,10 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
+  rescope as $rescope,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -35,6 +37,7 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Collaborator as $Record,
@@ -222,7 +225,7 @@ export function bindCollaborator(
               label: "nameUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 20, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 24, column: 9 },
               that: $expressions["register.check.nameUnique.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -246,7 +249,39 @@ export function bindCollaborator(
                 context,
               ),
             );
-            return $stored as Collaborator;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "identity.Collaborator", $written, "action function"),
+                "identity.Collaborator#register",
+              ),
+            });
+            {
+              const $event = await $expressions["register.step.0.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "identity.Collaborator",
+                    action: "register",
+                    key: { id: $written.id },
+                    at: "src/domain/identity/collaborator.mesh.mx:30:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.collaborators, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "identity.Collaborator#register: a step after the write deleted the row this action returns",
+              );
+            return $result as Collaborator;
           }),
       );
     },
@@ -344,28 +379,28 @@ export function bindCollaborator(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 31, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 37, column: 9 },
               that: $expressions["update.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "kindImmutable",
               code: "collaborator.kind-immutable",
               message: "a collaborator keeps its kind",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 36, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 42, column: 9 },
               that: $expressions["update.check.kindImmutable.that"],
             });
             await $runCheck($issues, $checks, {
               label: "nameUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 41, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 47, column: 9 },
               that: $expressions["update.check.nameUnique.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 46, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 52, column: 9 },
               that: $expressions["update.check.versionMatches.that"],
               details: $expressions["update.check.versionMatches.details"],
             });
@@ -378,7 +413,7 @@ export function bindCollaborator(
               const $value = await $expressions["update.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:54:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/collaborator.mesh.mx:60:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -407,7 +442,39 @@ export function bindCollaborator(
                 context,
               ),
             );
-            return $stored as Collaborator;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "identity.Collaborator", $written, "action function"),
+                "identity.Collaborator#update",
+              ),
+            });
+            {
+              const $event = await $expressions["update.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "identity.Collaborator",
+                    action: "update",
+                    key: { id: $written.id },
+                    at: "src/domain/identity/collaborator.mesh.mx:61:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.collaborators, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "identity.Collaborator#update: a step after the write deleted the row this action returns",
+              );
+            return $result as Collaborator;
           }),
       );
     },
@@ -505,21 +572,21 @@ export function bindCollaborator(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 60, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 67, column: 9 },
               that: $expressions["retire.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 65, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 72, column: 9 },
               that: $expressions["retire.check.lastOwner.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 70, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 77, column: 9 },
               that: $expressions["retire.check.versionMatches.that"],
               details: $expressions["retire.check.versionMatches.details"],
             });
@@ -530,7 +597,7 @@ export function bindCollaborator(
               const $value = await $expressions["retire.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:79:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/collaborator.mesh.mx:86:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -559,7 +626,39 @@ export function bindCollaborator(
                 context,
               ),
             );
-            return $stored as Collaborator;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "identity.Collaborator", $written, "action function"),
+                "identity.Collaborator#retire",
+              ),
+            });
+            {
+              const $event = await $expressions["retire.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "identity.Collaborator",
+                    action: "retire",
+                    key: { id: $written.id },
+                    at: "src/domain/identity/collaborator.mesh.mx:87:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.collaborators, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "identity.Collaborator#retire: a step after the write deleted the row this action returns",
+              );
+            return $result as Collaborator;
           }),
       );
     },

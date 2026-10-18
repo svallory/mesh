@@ -1,3 +1,5 @@
+import { WorkspaceCreated } from "./workspace-created.mesh.mx"
+import { WorkspaceRenamed } from "./workspace-renamed.mesh.mx"
 import { memberOf, noWorkspaceOf, roleIn } from "./identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -13,12 +15,15 @@ entity :Workspace table="workspaces"
       input
         &name
         &location
+        uuid :firstOwner nullable
       validate
         check :workspaceUnique [
           that=async () => await noWorkspaceOf()
           code="workspace.exists"
           message="this engine already hosts its workspace; read it with workspace.get, or rename it"
         ]
+      do
+        publish=({ input, actor }) => new WorkspaceCreated({ name: &name, location: &location, firstOwnerId: input.firstOwner ?? actor.id })
     update :rename
       input
         &name
@@ -38,6 +43,7 @@ entity :Workspace table="workspaces"
       do
         set
           &version=() => &version + 1
+        publish=({ before }) => new WorkspaceRenamed({ oldName: before.name, newName: &name ?? "" })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

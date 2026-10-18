@@ -1,5 +1,9 @@
 import { Membership } from "./membership.mesh.mx"
+import { CollaboratorRegistered } from "./collaborator-registered.mesh.mx"
+import { CollaboratorUpdated } from "./collaborator-updated.mesh.mx"
+import { CollaboratorRetired } from "./collaborator-retired.mesh.mx"
 import { memberOf, nameFreeOf, retireKeepsAnOwnerOf, roleIn } from "./identity.helpers"
+import { changesOf } from "../changes"
 import { Mesh } from "meshfw"
 
 entity :Collaborator table="collaborators"
@@ -22,6 +26,8 @@ entity :Collaborator table="collaborators"
           code="collaborator.name-unique"
           message="another active collaborator has that name"
         ]
+      do
+        publish=() => new CollaboratorRegistered({ kind: &kind, name: &name })
     update :update
       input
         &name
@@ -52,6 +58,7 @@ entity :Collaborator table="collaborators"
       do
         set
           &version=() => &version + 1
+        publish=({ before, self }) => new CollaboratorUpdated({ changes: changesOf(before, self, ["name", "kind"]) })
     update :retire
       input
         string :reason nullable
@@ -77,6 +84,7 @@ entity :Collaborator table="collaborators"
         set
           &state=:retired
           &version=() => &version + 1
+        publish=({ input }) => new CollaboratorRetired({ reason: input.reason ?? null })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

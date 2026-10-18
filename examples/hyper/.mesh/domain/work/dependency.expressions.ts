@@ -17,13 +17,16 @@ import {
 } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
 import { Task as $work$Task$value, type $ReadOnly as $work$Task$ReadOnly } from "./task.actions";
+import { DependencyAdded as $work$DependencyAdded$class } from "./dependencyAdded.event";
+import { DependencyRemoved as $work$DependencyRemoved$class } from "./dependencyRemoved.event";
 import type {
   Dependency as $work$Dependency$Record,
   DependencyLoaded as $work$Dependency$Loaded,
   AddDependencyInput as $work$Dependency$AddDependencyInput,
   RemoveDependencyInput as $work$Dependency$RemoveDependencyInput,
 } from "./dependency.types";
-import type { $Omit } from "../../$globals";
+import type { DomainEvent as $DomainEvent } from "../../index";
+import type { $Omit, $Promise } from "../../$globals";
 
 /** What every expression of Dependency reads; `I` is the input of the action it runs in. */
 export type $work$Dependency$Scope<I = unknown> = $Scope<{
@@ -65,12 +68,12 @@ export type $work$Dependency$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // check :exists that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:23:16)
+  // check :exists that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:25:16)
   "add.check.exists.that": ($s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>) => {
     return (async ({ input }) =>
       (await missingTasksOf([input.dependent, input.prerequisite])).length === 0)($s);
   },
-  // check :exists details, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:26:19)
+  // check :exists details, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:28:19)
   "add.check.exists.details": (
     $s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>,
   ) => {
@@ -78,10 +81,10 @@ export const $expressions = {
       missing: await missingTasksOf([input.dependent, input.prerequisite]),
     }))($s);
   },
-  // check :distinct that, translated (src/domain/work/dependency.mesh.mx:29:16)
+  // check :distinct that, translated (src/domain/work/dependency.mesh.mx:31:16)
   "add.check.distinct.that": ($s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>) =>
     $.ne($s.input?.dependent, $s.input?.prerequisite),
-  // check :duplicate that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:34:16)
+  // check :duplicate that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:36:16)
   "add.check.duplicate.that": (
     $s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>,
   ) => {
@@ -89,14 +92,14 @@ export const $expressions = {
       $s,
     );
   },
-  // check :noCycle that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:39:16)
+  // check :noCycle that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:41:16)
   "add.check.noCycle.that": (
     $s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>,
   ) => {
     return (async ({ input }) =>
       !(await prerequisiteReachesOf(input.prerequisite, input.dependent)))($s);
   },
-  // check :versionMatches that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:44:16)
+  // check :versionMatches that, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:46:16)
   "add.check.versionMatches.that": (
     $s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>,
   ) => {
@@ -104,7 +107,7 @@ export const $expressions = {
       input.expectedVersion == null ||
       [input.expectedVersion, null].includes(await taskVersionOf(input.dependent)))($s);
   },
-  // check :versionMatches details, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:47:19)
+  // check :versionMatches details, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:49:19)
   "add.check.versionMatches.details": (
     $s: $work$Dependency$NewScope<$work$Dependency$AddDependencyInput>,
   ) => {
@@ -113,24 +116,34 @@ export const $expressions = {
       actualVersion: await taskVersionOf(input.dependent),
     }))($s);
   },
-  // set &createdBy, translated (src/domain/work/dependency.mesh.mx:51:22)
+  // set &createdBy, translated (src/domain/work/dependency.mesh.mx:53:22)
   "add.step.0.set.createdBy": ($s: $work$Dependency$Scope<$work$Dependency$AddDependencyInput>) =>
     $s.actor?.id,
-  // run, plain (run-step) (src/domain/work/dependency.mesh.mx:52:28)
+  // run, plain (run-step) (src/domain/work/dependency.mesh.mx:54:28)
   "add.step.1.run": ($s: $work$Dependency$Scope<$work$Dependency$AddDependencyInput>) => {
     const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
       await Task.touch({ id: self.dependentId }, { ...context, system: true });
     })($s);
   },
-  // check :versionMatches that, translated (src/domain/work/dependency.mesh.mx:61:16)
+  // publish, plain (publish-step) (src/domain/work/dependency.mesh.mx:57:17)
+  "add.step.2.publish": (
+    $s: $work$Dependency$Scope<$work$Dependency$AddDependencyInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const DependencyAdded: typeof $work$DependencyAdded$class = $work$DependencyAdded$class;
+    return (({ self }) =>
+      new DependencyAdded({ dependentId: self.dependentId, prerequisiteId: self.prerequisiteId }))(
+      $s,
+    );
+  },
+  // check :versionMatches that, translated (src/domain/work/dependency.mesh.mx:64:16)
   "remove.check.versionMatches.that": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) =>
     $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.dependent?.version),
     ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/dependency.mesh.mx:64:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/dependency.mesh.mx:67:19)
   "remove.check.versionMatches.details": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) => {
@@ -140,7 +153,7 @@ export const $expressions = {
       actualVersion: $self.dependent.version,
     }))($s);
   },
-  // run, plain (run-step) (src/domain/work/dependency.mesh.mx:67:28)
+  // run, plain (run-step) (src/domain/work/dependency.mesh.mx:70:28)
   "remove.step.0.run": (
     $s: $work$Dependency$StoredScope<$work$Dependency$RemoveDependencyInput>,
   ) => {
@@ -149,10 +162,22 @@ export const $expressions = {
       await Task.touch({ id: self.dependentId }, { ...context, system: true });
     })($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/work/dependency.mesh.mx:72:20)
+  // publish, plain (publish-step) (src/domain/work/dependency.mesh.mx:73:17)
+  "remove.step.1.publish": (
+    $s: $work$Dependency$StoredScope<$work$Dependency$RemoveDependencyInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const DependencyRemoved: typeof $work$DependencyRemoved$class = $work$DependencyRemoved$class;
+    return (({ self, input }) =>
+      new DependencyRemoved({
+        dependentId: self.dependentId,
+        prerequisiteId: self.prerequisiteId,
+        reason: input.reason ?? null,
+      }))($s);
+  },
+  // policy :membersRead authorize-if, translated (src/domain/work/dependency.mesh.mx:76:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Dependency$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:74:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:78:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Dependency$NewScope<
       $SharedInput<$work$Dependency$AddDependencyInput | $work$Dependency$RemoveDependencyInput>
@@ -160,7 +185,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:76:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/dependency.mesh.mx:80:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$Dependency$NewScope<
       $SharedInput<$work$Dependency$AddDependencyInput | $work$Dependency$RemoveDependencyInput>

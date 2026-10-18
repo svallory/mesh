@@ -15,6 +15,7 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
   rescope as $rescope,
@@ -234,14 +235,14 @@ export function bindReview(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/review.mesh.mx", line: 24, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 26, column: 9 },
               that: $expressions["accept.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/review.mesh.mx", line: 29, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 31, column: 9 },
               that: $expressions["accept.check.versionMatches.that"],
               details: $expressions["accept.check.versionMatches.details"],
             });
@@ -255,7 +256,7 @@ export function bindReview(
               const $value = await $expressions["accept.step.0.set.reviewer"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &reviewer (src/domain/work/review.mesh.mx:38:21) produced no value, and the relationship reviewer is required",
+                  "set &reviewer (src/domain/work/review.mesh.mx:40:21) produced no value, and the relationship reviewer is required",
                 );
               $changes.reviewerId = $record.reviewerId = $value;
             }
@@ -264,7 +265,7 @@ export function bindReview(
               const $value = await $expressions["accept.step.0.set.ruleApplied"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &ruleApplied (src/domain/work/review.mesh.mx:39:24) produced no value, and ruleApplied is required",
+                  "set &ruleApplied (src/domain/work/review.mesh.mx:41:24) produced no value, and ruleApplied is required",
                 );
               $changes.ruleApplied = $record.ruleApplied = $value;
             }
@@ -293,6 +294,25 @@ export function bindReview(
               ),
             });
             await $expressions["accept.step.1.run"]($after);
+            {
+              const $event = await $expressions["accept.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Review",
+                    action: "accept",
+                    key: { id: $written.id },
+                    at: "src/domain/work/review.mesh.mx:46:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            await $expressions["accept.step.3.run"]($after);
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.reviews, { id: $stored.id });
             if ($result === undefined)
@@ -424,14 +444,14 @@ export function bindReview(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/review.mesh.mx", line: 50, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 58, column: 9 },
               that: $expressions["return.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/review.mesh.mx", line: 55, column: 9 },
+              source: { file: "src/domain/work/review.mesh.mx", line: 63, column: 9 },
               that: $expressions["return.check.versionMatches.that"],
               details: $expressions["return.check.versionMatches.details"],
             });
@@ -449,7 +469,7 @@ export function bindReview(
               const $value = await $expressions["return.step.0.set.reviewer"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &reviewer (src/domain/work/review.mesh.mx:65:21) produced no value, and the relationship reviewer is required",
+                  "set &reviewer (src/domain/work/review.mesh.mx:73:21) produced no value, and the relationship reviewer is required",
                 );
               $changes.reviewerId = $record.reviewerId = $value;
             }
@@ -458,7 +478,7 @@ export function bindReview(
               const $value = await $expressions["return.step.0.set.ruleApplied"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &ruleApplied (src/domain/work/review.mesh.mx:66:24) produced no value, and ruleApplied is required",
+                  "set &ruleApplied (src/domain/work/review.mesh.mx:74:24) produced no value, and ruleApplied is required",
                 );
               $changes.ruleApplied = $record.ruleApplied = $value;
             }
@@ -487,6 +507,24 @@ export function bindReview(
               ),
             });
             await $expressions["return.step.1.run"]($after);
+            {
+              const $event = await $expressions["return.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Review",
+                    action: "return",
+                    key: { id: $written.id },
+                    at: "src/domain/work/review.mesh.mx:79:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.reviews, { id: $stored.id });
             if ($result === undefined)

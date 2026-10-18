@@ -142,3 +142,26 @@ export type {
   TaskTxLoadable,
   TaskTxWith,
 } from "./task.types";
+// The module's event and command classes: `new <Class>({ ... })` makes an instance, `Mesh.fqnOf` names its declaration.
+export { AssignmentEnded } from "./assignmentEnded.event";
+export { AssignmentStarted } from "./assignmentStarted.event";
+export { ClaimAcquired } from "./claimAcquired.event";
+export { ClaimExpired } from "./claimExpired.event";
+export { ClaimLateResultRecorded } from "./claimLateResultRecorded.event";
+export { ClaimReleased } from "./claimReleased.event";
+export { ClaimRenewed } from "./claimRenewed.event";
+export { ClaimRevoked } from "./claimRevoked.event";
+export { DependencyAdded } from "./dependencyAdded.event";
+export { DependencyRemoved } from "./dependencyRemoved.event";
+export { EvidenceReferenceRecorded } from "./evidenceReferenceRecorded.event";
+export { ReviewAccepted } from "./reviewAccepted.event";
+export { ReviewReturned } from "./reviewReturned.event";
+export { SubmissionSubmitted } from "./submissionSubmitted.event";
+export { SubmissionWithdrawn } from "./submissionWithdrawn.event";
+export { TaskCanceled } from "./taskCanceled.event";
+export { TaskCompleted } from "./taskCompleted.event";
+export { TaskCreated } from "./taskCreated.event";
+export { TaskMoved } from "./taskMoved.event";
+export { TaskPrioritySet } from "./taskPrioritySet.event";
+export { TaskReopened } from "./taskReopened.event";
+export { TaskUpdated } from "./taskUpdated.event";

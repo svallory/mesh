@@ -13,8 +13,10 @@ import {
   checkUnchanged as $checkUnchanged,
   entity as $entity,
   noteWrite as $noteWrite,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
+  rescope as $rescope,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -30,6 +32,7 @@ import {
   type EntityValue as $EntityValue,
   type CastOutput as $CastOutput,
   type Issue as $Issue,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Workspace as $Record,
@@ -179,7 +182,7 @@ export function bindWorkspace(
               code: "workspace.exists",
               message:
                 "this engine already hosts its workspace; read it with workspace.get, or rename it",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 17, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 20, column: 9 },
               that: $expressions["create.check.workspaceUnique.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -203,7 +206,36 @@ export function bindWorkspace(
                 context,
               ),
             );
-            return $stored as Workspace;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord($written, "identity.Workspace#create"),
+            });
+            {
+              const $event = await $expressions["create.step.0.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "identity.Workspace",
+                    action: "create",
+                    key: { id: $written.id },
+                    at: "src/domain/identity/workspace.mesh.mx:26:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.workspaces, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "identity.Workspace#create: a step after the write deleted the row this action returns",
+              );
+            return $result as Workspace;
           }),
       );
     },
@@ -295,14 +327,14 @@ export function bindWorkspace(
               label: "workspaceActive",
               code: "workspace.active",
               message: "the workspace has moved; it can no longer be changed",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 27, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 32, column: 9 },
               that: $expressions["rename.check.workspaceActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 32, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 37, column: 9 },
               that: $expressions["rename.check.versionMatches.that"],
               details: $expressions["rename.check.versionMatches.details"],
             });
@@ -315,7 +347,7 @@ export function bindWorkspace(
               const $value = await $expressions["rename.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/workspace.mesh.mx:40:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/workspace.mesh.mx:45:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -344,7 +376,36 @@ export function bindWorkspace(
                 context,
               ),
             );
-            return $stored as Workspace;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord($written, "identity.Workspace#rename"),
+            });
+            {
+              const $event = await $expressions["rename.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "identity.Workspace",
+                    action: "rename",
+                    key: { id: $written.id },
+                    at: "src/domain/identity/workspace.mesh.mx:46:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.workspaces, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "identity.Workspace#rename: a step after the write deleted the row this action returns",
+              );
+            return $result as Workspace;
           }),
       );
     },

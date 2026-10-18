@@ -13,8 +13,10 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
+  rescope as $rescope,
   runAction as $runAction,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -29,6 +31,7 @@ import {
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type LoadOptions as $LoadOptions,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   EvidenceReference as $Record,
@@ -222,7 +225,7 @@ export function bindEvidenceReference(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:24:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/work/evidence-reference.mesh.mx:25:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -241,7 +244,39 @@ export function bindEvidenceReference(
                 context,
               ),
             );
-            return $stored as EvidenceReference;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.EvidenceReference", $written, "action function"),
+                "work.EvidenceReference#record",
+              ),
+            });
+            {
+              const $event = await $expressions["record.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.EvidenceReference",
+                    action: "record",
+                    key: { id: $written.id },
+                    at: "src/domain/work/evidence-reference.mesh.mx:26:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.evidence_references, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.EvidenceReference#record: a step after the write deleted the row this action returns",
+              );
+            return $result as EvidenceReference;
           }),
       );
     },

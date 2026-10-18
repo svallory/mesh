@@ -1,0 +1,20 @@
+import { Mesh } from "meshfw"
+
+entity :Idempotency table="idempotency"
+  attributes
+    uuid :id primary-key
+    string :commandId unique
+    string :method
+    string :hash
+    json :result
+    timestamp :recordedAt on=:create
+  actions auto=[:read]
+    create :record
+      input
+        &commandId
+        &method
+        &hash
+        &result
+  policies
+    policy :internal types=[:read, :create]
+      authorize-if=({ context }) => Mesh.isSystem(context)

@@ -1,0 +1,4 @@
+event :MembershipRevoked
+  uuid :collaboratorId
+  string :reason nullable
+  uuid :revokedBy

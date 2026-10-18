@@ -1,0 +1,4 @@
+event :DependencyRemoved
+  uuid :dependentId
+  uuid :prerequisiteId
+  string :reason nullable

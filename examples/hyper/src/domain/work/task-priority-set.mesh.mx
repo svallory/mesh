@@ -1,0 +1,3 @@
+event :TaskPrioritySet
+  integer :oldPriority nullable
+  integer :newPriority nullable

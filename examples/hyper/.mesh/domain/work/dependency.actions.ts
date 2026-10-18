@@ -16,6 +16,7 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
   rescope as $rescope,
@@ -216,7 +217,7 @@ export function bindDependency(
               label: "exists",
               code: "dependency.exists",
               message: "a task of the dependency does not exist",
-              source: { file: "src/domain/work/dependency.mesh.mx", line: 22, column: 9 },
+              source: { file: "src/domain/work/dependency.mesh.mx", line: 24, column: 9 },
               that: $expressions["add.check.exists.that"],
               details: $expressions["add.check.exists.details"],
             });
@@ -224,28 +225,28 @@ export function bindDependency(
               label: "distinct",
               code: "dependency.distinct",
               message: "a task cannot depend on itself",
-              source: { file: "src/domain/work/dependency.mesh.mx", line: 28, column: 9 },
+              source: { file: "src/domain/work/dependency.mesh.mx", line: 30, column: 9 },
               that: $expressions["add.check.distinct.that"],
             });
             await $runCheck($issues, $checks, {
               label: "duplicate",
               code: "dependency.duplicate",
               message: "the dependency already exists",
-              source: { file: "src/domain/work/dependency.mesh.mx", line: 33, column: 9 },
+              source: { file: "src/domain/work/dependency.mesh.mx", line: 35, column: 9 },
               that: $expressions["add.check.duplicate.that"],
             });
             await $runCheck($issues, $checks, {
               label: "noCycle",
               code: "dependency.no-cycle",
               message: "the prerequisite already waits for the dependent",
-              source: { file: "src/domain/work/dependency.mesh.mx", line: 38, column: 9 },
+              source: { file: "src/domain/work/dependency.mesh.mx", line: 40, column: 9 },
               that: $expressions["add.check.noCycle.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/dependency.mesh.mx", line: 43, column: 9 },
+              source: { file: "src/domain/work/dependency.mesh.mx", line: 45, column: 9 },
               that: $expressions["add.check.versionMatches.that"],
               details: $expressions["add.check.versionMatches.details"],
             });
@@ -260,7 +261,7 @@ export function bindDependency(
               const $value = await $expressions["add.step.0.set.createdBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &createdBy (src/domain/work/dependency.mesh.mx:51:22) produced no value, and the relationship createdBy is required",
+                  "set &createdBy (src/domain/work/dependency.mesh.mx:53:22) produced no value, and the relationship createdBy is required",
                 );
               $changes.createdById = $record.createdById = $value;
             }
@@ -288,6 +289,24 @@ export function bindDependency(
               ),
             });
             await $expressions["add.step.1.run"]($after);
+            {
+              const $event = await $expressions["add.step.2.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Dependency",
+                    action: "add",
+                    key: { id: $written.id },
+                    at: "src/domain/work/dependency.mesh.mx:57:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.dependencies, { id: $stored.id });
             if ($result === undefined)
@@ -389,7 +408,7 @@ export function bindDependency(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/dependency.mesh.mx", line: 60, column: 9 },
+              source: { file: "src/domain/work/dependency.mesh.mx", line: 63, column: 9 },
               that: $expressions["remove.check.versionMatches.that"],
               details: $expressions["remove.check.versionMatches.details"],
             });
@@ -418,6 +437,24 @@ export function bindDependency(
               ),
             });
             await $expressions["remove.step.0.run"]($after);
+            {
+              const $event = await $expressions["remove.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Dependency",
+                    action: "remove",
+                    key: { id: $record.id },
+                    at: "src/domain/work/dependency.mesh.mx:73:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
           }),
       );
     },

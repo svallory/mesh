@@ -1,0 +1,5 @@
+event :ReviewAccepted
+  uuid :reviewId
+  uuid :submissionId
+  uuid :reviewerId
+  enum :ruleApplied values=[:parent-assignee, :parent-creator, :task-creator]

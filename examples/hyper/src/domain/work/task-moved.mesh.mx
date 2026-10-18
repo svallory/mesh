@@ -1,0 +1,3 @@
+event :TaskMoved
+  uuid :oldParentId nullable
+  uuid :newParentId nullable

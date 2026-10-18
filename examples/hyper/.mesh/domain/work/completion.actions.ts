@@ -12,8 +12,10 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
+  rescope as $rescope,
   runAction as $runAction,
   scope as $scope,
   uuidv7 as $uuidv7,
@@ -28,6 +30,7 @@ import {
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type LoadOptions as $LoadOptions,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Completion as $Record,
@@ -192,7 +195,7 @@ export function bindCompletion(
               const $value = await $expressions["record.step.0.set.completedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &completedBy (src/domain/work/completion.mesh.mx:23:24) produced no value, and the relationship completedBy is required",
+                  "set &completedBy (src/domain/work/completion.mesh.mx:24:24) produced no value, and the relationship completedBy is required",
                 );
               $changes.completedById = $record.completedById = $value;
             }
@@ -211,7 +214,39 @@ export function bindCompletion(
                 context,
               ),
             );
-            return $stored as Completion;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Completion", $written, "action function"),
+                "work.Completion#record",
+              ),
+            });
+            {
+              const $event = await $expressions["record.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Completion",
+                    action: "record",
+                    key: { id: $written.id },
+                    at: "src/domain/work/completion.mesh.mx:25:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.completions, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Completion#record: a step after the write deleted the row this action returns",
+              );
+            return $result as Completion;
           }),
       );
     },

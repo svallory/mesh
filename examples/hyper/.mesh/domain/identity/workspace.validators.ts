@@ -76,6 +76,7 @@ export const workspaceSortSchema = z
 export const createWorkspaceInputSchema = z.strictObject({
   name: z.string().nullable().optional(),
   location: z.enum(["local", "shared"]).optional(),
+  firstOwner: z.uuid().nullable().optional(),
 }) satisfies z.ZodType<CreateWorkspaceInput>;
 
 export type CreateWorkspaceInputShape = Assert<

@@ -1,0 +1,2 @@
+event :CollaboratorUpdated
+  json :changes

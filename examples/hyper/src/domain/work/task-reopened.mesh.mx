@@ -1,0 +1,3 @@
+event :TaskReopened
+  string :reason
+  enum :fromState values=[:done, :canceled]

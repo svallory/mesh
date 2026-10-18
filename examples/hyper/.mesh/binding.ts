@@ -21,9 +21,25 @@ import {
   type Binding as $Binding,
   type DataLayer as $DataLayer,
   type Seams as $Seams,
+  forgetHandler as $forgetHandler,
+  forgetSubscription as $forgetSubscription,
+  loadEvents as $loadEvents,
+  markNoDeliver as $markNoDeliver,
+  published as $published,
+  readEvents as $readEvents,
+  resumeHandler as $resumeHandler,
+  subscribe as $subscribe,
+  type Delivery as $Delivery,
+  type EventRecord as $EventRecord,
+  type EventsConfig as $EventsConfig,
+  type ReadEventsPage as $ReadEventsPage,
+  type ReadEventsQuery as $ReadEventsQuery,
+  type SubscribeQuery as $SubscribeQuery,
+  type Subscription as $Subscription,
 } from "@meshfw/runtime";
 import * as $domain from "./domain/index";
 import type { $Partial, $Promise } from "./$globals";
+import type { DomainEvent } from "./index";
 
 /**
  * The whole domain bound to one data layer: `run(fn)` runs `fn` with the binding in scope, so every entity call in it
@@ -49,6 +65,7 @@ export function bind(layer: $DataLayer, options: $BindOptions = {}): Binding {
 let $defaultBinding: Binding | undefined;
 let $defaultLayer: $DataLayer | undefined;
 let $disconnecting: $Promise<void> | undefined;
+let $delivery: $Delivery | undefined;
 
 function $isDataLayer(value: unknown): value is $DataLayer {
   return (
@@ -60,12 +77,23 @@ function $isDataLayer(value: unknown): value is $DataLayer {
   );
 }
 
+/** What `connect` takes: `deliver: false` connects without claiming, registering or starting the event bus. */
+export interface ConnectOptions {
+  /**
+   * Default true: claim the database, register the handlers and start the bus, so that this process delivers events
+   * until `disconnect()`. False is for scripts, the CLI and a web tier beside a worker: its actions write the outbox,
+   * which the deliverer picks up; `readEvents` works; `subscribe` throws.
+   */
+  readonly deliver?: boolean;
+}
+
 /**
  * Bind every entity to the data layer `mesh.config.ts` configures: an entity call made outside any `run` or
- * `transaction` runs on it. The layer opens on the first transaction. Waits for a `disconnect()` in progress;
- * throws `FrameworkError` while connected.
+ * `transaction` runs on it. Loads the events module, then, unless `deliver` is false, claims the database, registers
+ * the handlers and starts the bus (rejecting with the claim's or the registration's error). Waits for a `disconnect()`
+ * in progress; throws `FrameworkError` while connected.
  */
-export async function connect(): $Promise<void> {
+export async function connect(options: ConnectOptions = {}): $Promise<void> {
   if ($disconnecting) await $disconnecting;
   if ($defaultLayer)
     throw new $FrameworkError("connect() was called while connected; call disconnect() first");
@@ -75,10 +103,23 @@ export async function connect(): $Promise<void> {
     throw new $FrameworkError(
       `The data adapter "${config.data.name}" configured in mesh.config.ts has no run-time half: connect() needs a data layer with transaction(), refuseIfFailed() and close()`,
     );
+  // The events module is loaded now, so that a `load` that fails fails here and not at the first publish.
+  const events = (config as { readonly events?: $EventsConfig }).events;
+  await $loadEvents(events);
   if ($defaultLayer)
     throw new $FrameworkError("connect() was called while connected; call disconnect() first");
   // `config` is read as the project wrote it, so a configuration that is not typed with `defineConfig` still binds.
-  const binding = bind(data, { seams: (config as { readonly seams?: $Seams }).seams });
+  const binding = bind(data, { seams: (config as { readonly seams?: $Seams }).seams, events });
+  if (options.deliver === false || events?.bus === undefined) {
+    $markNoDeliver(binding);
+  } else {
+    try {
+      $delivery = await binding.startDelivery();
+    } catch (error) {
+      await data.close().catch(() => undefined);
+      throw error;
+    }
+  }
   $connectBinding(binding);
   $defaultBinding = binding;
   $defaultLayer = data;
@@ -88,16 +129,21 @@ export async function connect(): $Promise<void> {
  * Stop new calls, wait for the calls already made on the connected binding to settle, however long they take, then
  * close the layer `connect()` bound. Does nothing when not connected. If `close()` rejects, the binding is restored
  * and the program stays connected, so `disconnect()` can be called again. Never closes a layer passed to `bind`.
+ * Delivery stops first: the bus's running round ends, every subscription closes and the claim is released.
  */
 export async function disconnect(): $Promise<void> {
   if ($disconnecting) return $disconnecting;
   const layer = $defaultLayer;
   const binding = $defaultBinding;
   if (!layer || !binding) return;
-  $releaseBinding(binding);
-  $defaultBinding = undefined;
-  $defaultLayer = undefined;
+  const delivery = $delivery;
+  $delivery = undefined;
   $disconnecting = (async () => {
+    // Delivery stops while the binding is still connected, so the running round's handlers finish on it.
+    if (delivery) await delivery.stop();
+    $releaseBinding(binding);
+    $defaultBinding = undefined;
+    $defaultLayer = undefined;
     await $settled(binding);
     try {
       await layer.close();
@@ -128,4 +174,71 @@ export async function transaction<T>(fn: () => $Promise<T>): $Promise<T> {
       "transaction was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own",
     );
   return binding.transaction(fn);
+}
+
+/**
+ * The events published so far in the running outermost transaction, in order, with their positions: to return an
+ * endpoint's events, store them with an idempotency record inside the transaction, or assert them in a test. Outside a
+ * transaction it throws `FrameworkError`.
+ */
+export function published(): readonly $EventRecord<DomainEvent>[] {
+  return $published($frame) as readonly $EventRecord<DomainEvent>[];
+}
+
+/**
+ * A page of the events the outbox keeps, after the cursor `after` (default 0), on the binding in scope, else on the
+ * connected one: `{ events, cursor }`, where `cursor` is what to pass as `after` next. `limit` (default 100) bounds the rows read,
+ * filtered ones included. A cursor behind the deleted rows is `MESH_EVENTS_DELETED`; inside a transaction it throws
+ * `FrameworkError`, since a transaction's own events come from `published()`.
+ */
+export function readEvents(query?: $ReadEventsQuery): $Promise<$ReadEventsPage<DomainEvent>> {
+  return $readEvents($frame, $defaultBinding, query) as $Promise<$ReadEventsPage<DomainEvent>>;
+}
+
+/** The binding in scope, else the connected one, for the delivery functions below; `FrameworkError` when there is none. */
+function $deliveryBinding(name: string): Binding {
+  const binding = ($bindingInScope($frame) as Binding | undefined) ?? $defaultBinding;
+  if (!binding)
+    throw new $FrameworkError(
+      `${name} was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own`,
+    );
+  return binding;
+}
+
+/**
+ * Open (or reopen) the live subscription `query.name` in the delivering process: `callback` gets each matching event
+ * once, in position order, from `query.after` (default: the highest position now) on a first open, else from the
+ * position the subscription last acknowledged. Resolves with the handle: `ack(position)`, `close()` and `done`.
+ */
+export function subscribe(
+  query: $SubscribeQuery,
+  callback: (event: $EventRecord<DomainEvent>) => unknown,
+): $Promise<$Subscription> {
+  return $subscribe(
+    $deliveryBinding("subscribe"),
+    query,
+    callback as (event: $EventRecord) => unknown,
+  );
+}
+
+/**
+ * Drop the progress row of a handler that was removed or renamed without `renamedFrom`, so it holds deletion no longer.
+ * A handler the running deliverer registered is refused (`FrameworkError`).
+ */
+export function forgetHandler(name: string): $Promise<void> {
+  return $forgetHandler($deliveryBinding("forgetHandler"), name);
+}
+
+/**
+ * Resume a handler the running bus stopped at a failing event: it is fed again from its progress row in the next round.
+ * Called where delivery is started (`connect()` or `startDelivery()`); elsewhere a `FrameworkError`, since the next start
+ * and the next `deliver()` round resume every stopped handler on their own.
+ */
+export function resumeHandler(name: string): $Promise<void> {
+  return $resumeHandler($deliveryBinding("resumeHandler"), name);
+}
+
+/** Drop the row of a subscription whose client is not coming back, so it holds deletion no longer. An open one is refused. */
+export function forgetSubscription(name: string): $Promise<void> {
+  return $forgetSubscription($deliveryBinding("forgetSubscription"), name);
 }

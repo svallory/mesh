@@ -1,4 +1,5 @@
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { EvidenceReferenceRecorded } from "./evidence-reference-recorded.mesh.mx"
 import { memberOf, roleIn } from "../identity/identity.helpers"
 import { Mesh } from "meshfw"
 
@@ -22,6 +23,7 @@ entity :EvidenceReference table="evidence_references"
       do
         set
           &recordedBy=({ actor }) => actor.id
+        publish=() => new EvidenceReferenceRecorded({ evidenceReferenceId: &id, kind: &kind, locator: &locator, contentHash: &contentHash, description: &description })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

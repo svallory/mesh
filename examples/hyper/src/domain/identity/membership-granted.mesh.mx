@@ -1,0 +1,4 @@
+event :MembershipGranted
+  uuid :collaboratorId
+  enum :role values=[:owner, :member, :guest]
+  uuid :grantedBy

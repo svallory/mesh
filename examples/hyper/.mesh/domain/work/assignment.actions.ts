@@ -16,8 +16,10 @@ import {
   loadRows as $loadRows,
   noteWrite as $noteWrite,
   pinClock as $pinClock,
+  publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
+  rescope as $rescope,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -35,6 +37,7 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
+  type Row as $Row,
 } from "@meshfw/runtime";
 import type {
   Assignment as $Record,
@@ -218,7 +221,7 @@ export function bindAssignment(
               const $value = await $expressions["start.step.0.set.delegator"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &delegator (src/domain/work/assignment.mesh.mx:24:22) produced no value, and the relationship delegator is required",
+                  "set &delegator (src/domain/work/assignment.mesh.mx:26:22) produced no value, and the relationship delegator is required",
                 );
               $changes.delegatorId = $record.delegatorId = $value;
             }
@@ -226,7 +229,7 @@ export function bindAssignment(
               const $value = await $expressions["start.step.0.set.startedAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &startedAt (src/domain/work/assignment.mesh.mx:25:22) produced no value, and startedAt is required",
+                  "set &startedAt (src/domain/work/assignment.mesh.mx:27:22) produced no value, and startedAt is required",
                 );
               $changes.startedAt = $record.startedAt = $value;
             }
@@ -245,7 +248,39 @@ export function bindAssignment(
                 context,
               ),
             );
-            return $stored as Assignment;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Assignment", $written, "action function"),
+                "work.Assignment#start",
+              ),
+            });
+            {
+              const $event = await $expressions["start.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Assignment",
+                    action: "start",
+                    key: { id: $written.id },
+                    at: "src/domain/work/assignment.mesh.mx:28:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.assignments, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Assignment#start: a step after the write deleted the row this action returns",
+              );
+            return $result as Assignment;
           }),
       );
     },
@@ -327,7 +362,7 @@ export function bindAssignment(
               label: "current",
               code: "assignment.current",
               message: "the assignment has already ended",
-              source: { file: "src/domain/work/assignment.mesh.mx", line: 30, column: 9 },
+              source: { file: "src/domain/work/assignment.mesh.mx", line: 33, column: 9 },
               that: $expressions["finish.check.current.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -365,7 +400,39 @@ export function bindAssignment(
                 context,
               ),
             );
-            return $stored as Assignment;
+            // after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self
+            const $written: $Row = { ...$stored };
+            const $after = $rescope($s, {
+              self: $readOnlyRecord(
+                $guarded($loadPlan, "work.Assignment", $written, "action function"),
+                "work.Assignment#finish",
+              ),
+            });
+            {
+              const $event = await $expressions["finish.step.1.publish"]($after);
+              await frame.plain(() =>
+                $publishEvent(
+                  tx,
+                  options.events,
+                  {
+                    entity: "work.Assignment",
+                    action: "finish",
+                    key: { id: $written.id },
+                    at: "src/domain/work/assignment.mesh.mx:42:17",
+                  },
+                  $event,
+                  $context,
+                  $clock,
+                ),
+              );
+            }
+            // the result: the row as the steps after the write left it, read again by key
+            const $result = await tx.selectByKey(tables.assignments, { id: $stored.id });
+            if ($result === undefined)
+              throw new $FrameworkError(
+                "work.Assignment#finish: a step after the write deleted the row this action returns",
+              );
+            return $result as Assignment;
           }),
       );
     },

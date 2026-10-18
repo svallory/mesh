@@ -1,0 +1,4 @@
+event :ClaimRenewed
+  uuid :claimId
+  integer :fence
+  timestamp :expiresAt

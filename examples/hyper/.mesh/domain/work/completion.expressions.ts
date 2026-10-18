@@ -7,12 +7,14 @@ import {
   type DeepReadonly as $DeepReadonly,
   type Scope as $Scope,
 } from "@meshfw/runtime";
+import { TaskCompleted as $work$TaskCompleted$class } from "./taskCompleted.event";
 import type {
   Completion as $work$Completion$Record,
   CompletionLoaded as $work$Completion$Loaded,
   RecordCompletionInput as $work$Completion$RecordCompletionInput,
 } from "./completion.types";
-import type { $Omit } from "../../$globals";
+import type { DomainEvent as $DomainEvent } from "../../index";
+import type { $Omit, $Promise } from "../../$globals";
 
 /** What every expression of Completion reads; `I` is the input of the action it runs in. */
 export type $work$Completion$Scope<I = unknown> = $Scope<{
@@ -47,14 +49,28 @@ export type $work$Completion$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // set &completedBy, translated (src/domain/work/completion.mesh.mx:23:24)
+  // set &completedBy, translated (src/domain/work/completion.mesh.mx:24:24)
   "record.step.0.set.completedBy": (
     $s: $work$Completion$Scope<$work$Completion$RecordCompletionInput>,
   ) => $s.actor?.id,
-  // policy :membersRead authorize-if, translated (src/domain/work/completion.mesh.mx:26:20)
+  // publish, plain (publish-step) (src/domain/work/completion.mesh.mx:25:17)
+  "record.step.1.publish": (
+    $s: $work$Completion$Scope<$work$Completion$RecordCompletionInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const TaskCompleted: typeof $work$TaskCompleted$class = $work$TaskCompleted$class;
+    return (({ self }) =>
+      new TaskCompleted({
+        completionId: $self.id,
+        rule: $self.rule,
+        submissionId: self.submissionId,
+        completedBy: self.completedById,
+      }))($s);
+  },
+  // policy :membersRead authorize-if, translated (src/domain/work/completion.mesh.mx:28:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Completion$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :internal authorize-if, translated (src/domain/work/completion.mesh.mx:28:20)
+  // policy :internal authorize-if, translated (src/domain/work/completion.mesh.mx:30:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Completion$NewScope<$work$Completion$RecordCompletionInput>,
   ) => $.isSystem($s.context),

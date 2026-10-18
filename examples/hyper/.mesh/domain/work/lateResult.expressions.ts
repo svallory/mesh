@@ -10,12 +10,14 @@ import {
 } from "@meshfw/runtime";
 import { claimsOf, isStale, missingEvidenceOf } from "../../../src/domain/work/work.helpers";
 import { memberOf, roleIn } from "../../../src/domain/identity/identity.helpers";
+import { ClaimLateResultRecorded as $work$ClaimLateResultRecorded$class } from "./claimLateResultRecorded.event";
 import type {
   LateResult as $work$LateResult$Record,
   LateResultLoaded as $work$LateResult$Loaded,
   RecordLateResultInput as $work$LateResult$RecordLateResultInput,
 } from "./lateResult.types";
-import type { $Omit } from "../../$globals";
+import type { DomainEvent as $DomainEvent } from "../../index";
+import type { $Omit, $Promise } from "../../$globals";
 
 /** What every expression of LateResult reads; `I` is the input of the action it runs in. */
 export type $work$LateResult$Scope<I = unknown> = $Scope<{
@@ -50,7 +52,7 @@ export type $work$LateResult$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // check :staleFence that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:26:16)
+  // check :staleFence that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:27:16)
   "record.check.staleFence.that": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
@@ -58,7 +60,7 @@ export const $expressions = {
     return (async ({ input, actor }) =>
       isStale(await claimsOf(input.task), input.fence, actor.id, $now()))($s);
   },
-  // check :evidenceExists that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:31:16)
+  // check :evidenceExists that, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:32:16)
   "record.check.evidenceExists.that": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
@@ -66,7 +68,7 @@ export const $expressions = {
     return (async ({ input }) =>
       (await missingEvidenceOf(input.evidence ?? $self.evidence)).length === 0)($s);
   },
-  // check :evidenceExists details, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:34:19)
+  // check :evidenceExists details, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:35:19)
   "record.check.evidenceExists.details": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
@@ -75,20 +77,36 @@ export const $expressions = {
       missing: await missingEvidenceOf(input.evidence ?? $self.evidence),
     }))($s);
   },
-  // set &submitter, translated (src/domain/work/late-result.mesh.mx:38:22)
+  // set &submitter, translated (src/domain/work/late-result.mesh.mx:39:22)
   "record.step.0.set.submitter": (
     $s: $work$LateResult$Scope<$work$LateResult$RecordLateResultInput>,
   ) => $s.actor?.id,
-  // policy :membersRead authorize-if, translated (src/domain/work/late-result.mesh.mx:41:20)
+  // publish, plain (publish-step) (src/domain/work/late-result.mesh.mx:40:17)
+  "record.step.1.publish": (
+    $s: $work$LateResult$Scope<$work$LateResult$RecordLateResultInput>,
+  ): $DomainEvent | $Promise<$DomainEvent> => {
+    const $self = $s.self;
+    const ClaimLateResultRecorded: typeof $work$ClaimLateResultRecorded$class =
+      $work$ClaimLateResultRecorded$class;
+    return (({ self }) =>
+      new ClaimLateResultRecorded({
+        lateResultId: $self.id,
+        fence: $self.fence,
+        submitterId: self.submitterId,
+        summary: $self.summary,
+        evidence: $self.evidence,
+      }))($s);
+  },
+  // policy :membersRead authorize-if, translated (src/domain/work/late-result.mesh.mx:43:20)
   "policy.membersRead.authorize-if.0": ($s: $work$LateResult$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:43:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:45:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:45:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/late-result.mesh.mx:47:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$LateResult$NewScope<$work$LateResult$RecordLateResultInput>,
   ) => {

@@ -1,0 +1,6 @@
+event :TaskCreated
+  string :title
+  string :intent nullable
+  uuid :parentId nullable
+  integer :priority nullable
+  uuid :creatorId

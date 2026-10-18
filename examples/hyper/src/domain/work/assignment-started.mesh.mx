@@ -1,0 +1,6 @@
+event :AssignmentStarted
+  uuid :assignmentId
+  uuid :taskId
+  uuid :assigneeId
+  uuid :delegatorId
+  boolean :reviewWaived

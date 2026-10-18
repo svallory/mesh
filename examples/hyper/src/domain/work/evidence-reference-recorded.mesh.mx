@@ -1,0 +1,6 @@
+event :EvidenceReferenceRecorded
+  uuid :evidenceReferenceId
+  string :kind
+  string :locator
+  string :contentHash nullable
+  string :description nullable

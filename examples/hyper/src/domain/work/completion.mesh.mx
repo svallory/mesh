@@ -1,6 +1,7 @@
 import { Task } from "./task.mesh.mx"
 import { Submission } from "./submission.mesh.mx"
 import { Collaborator } from "../identity/collaborator.mesh.mx"
+import { TaskCompleted } from "./task-completed.mesh.mx"
 import { Mesh } from "meshfw"
 
 entity :Completion table="completions"
@@ -21,6 +22,7 @@ entity :Completion table="completions"
       do
         set
           &completedBy=({ actor }) => actor.id
+        publish=({ self }) => new TaskCompleted({ completionId: &id, rule: &rule, submissionId: self.submissionId, completedBy: self.completedById })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

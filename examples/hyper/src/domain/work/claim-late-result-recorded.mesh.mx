@@ -1,0 +1,6 @@
+event :ClaimLateResultRecorded
+  uuid :lateResultId
+  integer :fence
+  uuid :submitterId
+  string :summary nullable
+  json :evidence
