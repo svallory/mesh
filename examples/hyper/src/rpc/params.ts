@@ -65,4 +65,12 @@ export const params = {
   "task.get": query({ taskId: Id }),
   "task.list": query({ parentId: Id.nullable().optional(), state: StoredTaskState.optional() }),
   "task.next": query({}),
+  "events.read": query({
+    after: z.number().int().min(0),
+    limit: z.number().int().min(1).max(1000).optional(),
+    taskSubtree: Id.optional(),
+    types: z.array(NonEmpty).optional(),
+  }),
+  "events.subscribe": query({ after: z.number().int().min(0), taskSubtree: Id.optional(), types: z.array(NonEmpty).optional() }),
+  "events.unsubscribe": z.object({ subscriptionId: Id }),
 } as const;

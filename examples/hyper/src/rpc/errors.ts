@@ -18,6 +18,7 @@ export const specCodes = Object.freeze({
   versionConflict: -32002,
   ruleViolation: -32003,
   notFound: -32005,
+  idempotencyConflict: -32006,
   notImplemented: -32010,
 } as const);
 
@@ -36,6 +37,7 @@ const names: Readonly<Record<number, string>> = {
   [specCodes.versionConflict]: "version_conflict",
   [specCodes.ruleViolation]: "rule_violation",
   [specCodes.notFound]: "not_found",
+  [specCodes.idempotencyConflict]: "idempotency_conflict",
   [specCodes.notImplemented]: "not_implemented",
 };
 

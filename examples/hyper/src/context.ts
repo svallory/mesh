@@ -35,6 +35,18 @@ declare module "@meshfw/runtime" {
      * call; a context without it gets the default lease, `LEASE_MS`.
      */
     leaseMs?: number;
+    /**
+     * The method of the command a call belongs to (`task.create`); the daemon's context factory sets it with
+     * `commandId`, and every event the call publishes names both as its cause (PROTOCOL.md §4.2, `metadata` in
+     * `src/events.ts`).
+     */
+    method?: string;
+    /**
+     * The engine rule a call runs for, when the engine acts on its own: `workspace.bootstrap` for bootstrap and
+     * `claim.lease-expiry` for the lease sweeper (PROTOCOL.md:48, 178). Every event such a call publishes is recorded
+     * with actor and caller `engine` and the cause `{ kind: "rule", rule }`.
+     */
+    rule?: string;
   }
 }
 

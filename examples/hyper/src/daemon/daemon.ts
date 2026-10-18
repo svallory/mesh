@@ -1,12 +1,15 @@
-// The engine daemon (PROTOCOL.md:24-38): one SQLite database in WAL mode, the domain bound to it, bootstrap, the
+// The engine daemon (PROTOCOL.md:24-38): one SQLite database (the data layer opens a file in WAL mode), the domain
+// bound to it with the event log of `mesh.config.ts`, bootstrap, event delivery (which feeds the subscriptions), the
 // method table served on a Unix socket, and the lease sweeper. `main.ts` parses the flags and calls `startDaemon`; the
 // tests start it the same way, with an extra method when they need one.
-import { Database } from "bun:sqlite";
 import { serve, type MethodTable, type Server } from "@meshfw/jsonrpc";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import type { ActionContext } from "@meshfw/runtime";
-import { bind, tables } from "#mesh";
-import { contextFactory, ENGINE } from "../rpc/context";
+import { DelivererTakenError, type ActionContext, type DataLayer, type Delivery } from "@meshfw/runtime";
+import { bind, forgetSubscription, tables, type Binding } from "#mesh";
+import config from "../../mesh.config";
+import { contextFactory, engineRule } from "../rpc/context";
+import { attachEventLog } from "../rpc/event-log";
+import { closeAll } from "../rpc/subscriptions";
 import { messages, wireError } from "../rpc/errors";
 import { actorless as hyperActorless, methods as hyperMethods, unserved } from "../rpc/methods";
 import { bootstrap } from "./bootstrap";
@@ -35,17 +38,28 @@ export interface Daemon {
 }
 
 /**
- * Sets WAL mode on the database file, creating the file when it is missing. `SQLiteOptions` takes only the file, and WAL
- * mode persists in the file once set (https://www.sqlite.org/wal.html, "Persistence of WAL mode"), so the data layer's
- * own connections open it in WAL mode.
+ * Starts event delivery on `binding`, which claims the database for this process. A claim left by an engine that died
+ * on this file lapses on its own (15 s after its last renewal), so a claim held elsewhere is waited out once, until it
+ * lapses; still held then, the start fails. Every subscription row left by an earlier run is then dropped: a
+ * subscription lives as long as its connection, and a client that comes back subscribes again from its cursor.
  */
-function useWal(file: string): void {
-  const database = new Database(file, { create: true });
+async function startDelivery(binding: Binding, layer: DataLayer): Promise<Delivery> {
+  let delivery: Delivery;
   try {
-    database.exec("PRAGMA journal_mode=WAL");
-  } finally {
-    database.close();
+    delivery = await binding.startDelivery();
+  } catch (error) {
+    if (!(error instanceof DelivererTakenError) || error.holder.thisProcess) throw error;
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, error.lapsesAt.getTime() - Date.now()) + 100));
+    delivery = await binding.startDelivery();
   }
+  try {
+    const rows = await layer.transaction(async (tx) => (await (tx as { readSubscriptionProgress(): Promise<readonly { name: string }[]> }).readSubscriptionProgress()));
+    for (const { name } of rows) await binding.run(() => forgetSubscription(name));
+  } catch (error) {
+    await delivery.stop();
+    throw error;
+  }
+  return delivery;
 }
 
 /**
@@ -53,13 +67,14 @@ function useWal(file: string): void {
  * the socket accepts connections.
  */
 export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
-  useWal(options.db);
   const layer = sqlite({ file: options.db });
   // `createSchema` plans a diff against what the file already holds and refuses statements that would lose data, so a
   // restart on the same database keeps its rows (the lead's ruling on Q7 of the HA plan).
   await createSchema(layer, tables);
-  const hyper = bind(layer);
+  const hyper = bind(layer, { events: config.events });
   await bootstrap(hyper);
+  const delivery = await startDelivery(hyper, layer);
+  attachEventLog({ layer, binding: hyper });
   const methods = options.methods ?? hyperMethods;
   const server = await serve({
     socket: options.socket,
@@ -69,19 +84,26 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
     error: wireError,
     messages,
   });
-  const sweeper = startSweeper(hyper, { context: ENGINE });
+  const sweeper = startSweeper(hyper, { context: engineRule("claim.lease-expiry") });
   let closing: Promise<void> | undefined;
   return {
     server,
-    // The sweeper stops first, so no new sweep starts while the calls drain; `stop` never rejects. The database is
-    // closed even when `server.close()` rejects; that rejection is still what `close()` rejects with.
+    // The sweeper stops first, so no new sweep starts while the calls drain; `stop` never rejects. The subscriptions end
+    // and delivery stops (releasing the claim) once no call runs. The database is closed even when `server.close()`
+    // rejects; that rejection is still what `close()` rejects with.
     close: () => (closing ??= (async () => {
       const sweeping = sweeper.stop();
       try {
         await server.close();
       } finally {
         await sweeping;
-        await layer.close();
+        try {
+          await closeAll();
+          await delivery.stop();
+        } finally {
+          attachEventLog(undefined);
+          await layer.close();
+        }
       }
     })()),
   };

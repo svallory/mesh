@@ -25,7 +25,7 @@ import { blockReasonsOf, staleClaimWithLapsed, type BlockReason } from "./work.h
 
 export type LateResultRecorded = { readonly outcome: "late-result-recorded"; readonly lateResult: LateResult };
 
-export type TaskCompleted = {
+export type TaskCompleteResult = {
   readonly outcome: "completed";
   readonly task: Task;
   readonly completion: Completion;
@@ -33,9 +33,9 @@ export type TaskCompleted = {
   readonly warnings: BlockReason[];
 };
 
-export type SubmissionSubmitted = { readonly outcome: "submitted"; readonly task: Task; readonly submission: Submission };
+export type SubmissionSubmitResult = { readonly outcome: "submitted"; readonly task: Task; readonly submission: Submission };
 
-export type ReviewAccepted = { readonly task: Task; readonly review: Review; readonly completion: Completion; readonly warnings: BlockReason[] };
+export type ReviewAcceptResult = { readonly task: Task; readonly review: Review; readonly completion: Completion; readonly warnings: BlockReason[] };
 
 /** The Task's claims, each with `lapsed`, read at the running transaction's instant. */
 function claimsOfTask(taskId: string) {
@@ -54,7 +54,7 @@ async function taskOf(id: string): Promise<Task> {
  * completion, settles or records the submission and releases the claim, and the result lists the prerequisites that
  * are not done as `warnings` (`tasks/task/changes/record_completion.ex:15-43`, PROTOCOL.md:333).
  */
-export async function taskComplete(input: CompleteTaskInput, context: ActionContext, binding: Binding = connected): Promise<TaskCompleted | LateResultRecorded> {
+export async function taskComplete(input: CompleteTaskInput, context: ActionContext, binding: Binding = connected): Promise<TaskCompleteResult | LateResultRecorded> {
   return binding.transaction(async () => {
     // Read inside the transaction, with `lapsed`: a lease is judged at the transaction's instant, the one
     // `Task.complete` checks the fence at, so a lease that runs out while the call waits or runs records a late result.
@@ -76,7 +76,7 @@ export async function taskComplete(input: CompleteTaskInput, context: ActionCont
  * `submission.submit` (PROTOCOL.md:313): a stale fence of the actor's records a late result and changes nothing
  * else; otherwise `Submission.submit` records the pending submission and releases the claim.
  */
-export async function submissionSubmit(input: SubmitSubmissionInput, context: ActionContext, binding: Binding = connected): Promise<SubmissionSubmitted | LateResultRecorded> {
+export async function submissionSubmit(input: SubmitSubmissionInput, context: ActionContext, binding: Binding = connected): Promise<SubmissionSubmitResult | LateResultRecorded> {
   return binding.transaction(async () => {
     // As in `taskComplete`: judged at the transaction's instant, the one `Submission.submit` checks the fence at.
     const stale = staleClaimWithLapsed(await claimsOfTask(input.task), input.fence, context.actor.id);
@@ -90,7 +90,7 @@ export async function submissionSubmit(input: SubmitSubmissionInput, context: Ac
 }
 
 /** `review.accept`: `Review.accept` settles the submission and completes the Task; the result adds the completion and the `warnings` (PROTOCOL.md:333). */
-export async function reviewAccept(input: AcceptReviewInput, context: ActionContext, binding: Binding = connected): Promise<ReviewAccepted> {
+export async function reviewAccept(input: AcceptReviewInput, context: ActionContext, binding: Binding = connected): Promise<ReviewAcceptResult> {
   return binding.transaction(async () => {
     const review = await Review.accept(input, context);
     const [completion] = await Mesh.privileged(Completion).read({ filter: { submissionId: { eq: review.submissionId } } });
