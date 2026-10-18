@@ -18,16 +18,20 @@ const closed = (def: CustomTag): CustomTag => ({
   children: {},
   ...def,
 });
+/** One atom (`mesh:Atom`, `syntax/mesh.ts`); core checks the shape, `syntax/atoms-sugars.ts` checks `pattern`. */
 const atom = (required = false): CustomTagAttribute => ({
-  type: "atom",
+  type: "mesh:Atom",
   required,
   pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
 });
-/** An enum value is a fixed-set atom, written into string literals only, so it may contain hyphens (`:review-accepted`). */
-const valueAtom = (): CustomTagAttribute => ({
-  type: "atom",
-  pattern: "^[A-Za-z_][A-Za-z0-9_-]*$",
+/** A list of atoms: `[:a, :b]`. The slot's `values`/`pattern` apply to each element. */
+const atomList = (extra: { values?: string[]; pattern?: string } = {}): CustomTagAttribute => ({
+  type: "array",
+  items: "mesh:Atom",
+  ...extra,
 });
+/** An enum value is a fixed-set atom, written into string literals only, so it may contain hyphens (`:review-accepted`). The slot is the list `values=[:a, :b]`. */
+const valueAtom = (): CustomTagAttribute => atomList({ pattern: "^[A-Za-z_][A-Za-z0-9_-]*$" });
 const text = (required = false): CustomTagAttribute => ({
   type: "string",
   literalOnly: true,
@@ -51,7 +55,7 @@ interface Node {
   type: string;
   name?: string;
   value?: unknown;
-  extra?: { mxMember?: unknown; mxAtom?: unknown; mxTransaction?: unknown };
+  extra?: { mxMember?: unknown; mxTransaction?: unknown };
   elements?: (Node | null)[];
 }
 const node = (a: Attr | undefined): Node | undefined =>
@@ -69,9 +73,9 @@ const isMemberPath = (n: Node | null | undefined): boolean => {
 };
 const isMember = (n: Node | null | undefined) =>
   n?.type === "MemberExpression" && !!n.extra?.mxMember;
-/** An unmarked identifier: not an atom (`:x`), and not the stand-in of a mark such as `&x` or `%.x`. */
+/** An unmarked identifier: not the stand-in of a mark such as `&x` or `%.x` (an atom, `:x`, is a string literal). */
 const isPlainIdentifier = (n: Node | null | undefined) =>
-  n?.type === "Identifier" && !n.extra?.mxMember && !n.extra?.mxAtom && !n.extra?.mxTransaction;
+  n?.type === "Identifier" && !n.extra?.mxMember && !n.extra?.mxTransaction;
 /**
  * A reference to another file's declaration: an imported identifier (`List`), or a member of a namespace import
  * (`billing.Invoice`), one plain property access on an identifier. Which import it is, and what that file declares, is
@@ -120,7 +124,7 @@ function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
   };
 }
 const scope = () => ({
-  types: { type: "atom", values: [...ACTION_TYPES] } as CustomTagAttribute,
+  types: atomList({ values: [...ACTION_TYPES] }),
   actions: members(),
 });
 const options = (type: string) => ({
@@ -183,7 +187,7 @@ const contracts: ContractMap = {
   actions: closed({
     parents: ["entity"],
     attributes: {
-      auto: { type: "atom", values: [...ACTION_TYPES] },
+      auto: atomList({ values: [...ACTION_TYPES] }),
       "on:load": member(),
     },
     children: children(...ACTION_TYPES, "always"),
@@ -226,8 +230,8 @@ const contracts: ContractMap = {
         if (!a) continue;
         const type = node(a)?.type;
         if (type === "ArrowFunctionExpression" || type === "FunctionExpression") continue;
-        const s = a as { kind: string; value?: unknown; atom?: unknown; member?: unknown; node?: unknown };
-        if (s.kind === "static" && typeof s.value === "string" && !s.atom && !s.member && !s.node) {
+        const s = a as { kind: string; value?: unknown; member?: unknown; node?: unknown };
+        if (s.kind === "static" && typeof s.value === "string" && !s.member && !s.node) {
           if (!s.value.trim()) ctx.fail("message cannot be empty", { at: a.loc, code: "MESH_TEXT" });
           continue;
         }
@@ -257,7 +261,7 @@ const contracts: ContractMap = {
   run: closed({
     parents: ["do", "when"],
     // `after=:write` moves the step after the action's own row is written (ADR-0068 decision 2).
-    attributes: { value: fn(true), after: { type: "atom", values: ["write"] } },
+    attributes: { value: fn(true), after: { type: "mesh:Atom", values: ["write"] } },
   }),
   // `publish=() => new InvoicePaid({ ... })` raises an event (M6, `notes/spec/events-and-commands.md`, "Publishing"): the
   // function's value is the event's instance. It is a step of `do`, and of a `when` in one; `validate` and a `check` take
@@ -306,7 +310,7 @@ for (const type of ATTRIBUTE_TYPES)
       ...(["uuid", "integer", "string"].includes(type) ? { "primary-key": flag() } : {}),
       // A json value is opaque to the database, so it cannot be unique (ADR-0069).
       ...(type === "json" ? {} : { unique: flag() }),
-      ...(type === "timestamp" ? { on: { type: "atom" as const, values: ["create", "update"] } } : {}),
+      ...(type === "timestamp" ? { on: { type: "mesh:Atom" as const, values: ["create", "update"] } } : {}),
       value: fn(),
     },
     analyze(calls, ctx) {
@@ -385,7 +389,9 @@ for (const kind of ROLLUPS)
         const a = get(call, "of");
         if (!a) continue;
         const literal = node(a);
-        const written = a.kind === "static" ? a.value : literal?.type === "StringLiteral" && !literal.extra?.mxAtom ? String(literal.value) : undefined;
+        // An atom is one of the expression's `mesh:Atom` nodes, found by its forward (`Expr.nodes`).
+        const atom = (a.kind === "dynamic" || a.kind === "bound") && (a.value.nodes ?? []).some((each) => each.forward === literal);
+        const written = a.kind === "static" ? a.value : literal?.type === "StringLiteral" && !atom ? String(literal.value) : undefined;
         if (written !== undefined) {
           const path = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(written) ? written : undefined;
           ctx.fail(
@@ -427,8 +433,8 @@ for (const contract of Object.values(contracts)) {
           ctx.fail(`${key} must be a function as written`, { at: a.loc, code: "MESH_EXPRESSION" });
         if (
           key === "name" &&
-          declaration.type === "atom" &&
-          !(a.kind === "static" && a.atom)
+          declaration.type === "mesh:Atom" &&
+          !(a.kind === "static" && a.node?.type === "mesh:Atom")
         )
           ctx.fail("a declaration needs one atom name", { at: a.loc, code: "MESH_NAME" });
         if (["auto", "types", "values"].includes(key)) {

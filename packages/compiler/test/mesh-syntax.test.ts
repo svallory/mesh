@@ -82,12 +82,12 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     expect(attr(find(ir.body, "entity"), "name")).toMatchObject({
       kind: "static",
       value: "Invoice",
-      atom: { kind: "atom", name: "Invoice" },
+      node: { type: "mesh:Atom", name: "Invoice" },
     });
     expect(attr(find(ir.body, "uuid"), "name")).toMatchObject({
       kind: "static",
       value: "id",
-      atom: { kind: "atom", name: "id" },
+      node: { type: "mesh:Atom", name: "id" },
     });
   });
 
@@ -97,7 +97,7 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     expect(attr(status, "default")).toMatchObject({
       kind: "static",
       value: "draft",
-      atom: { kind: "atom", name: "draft" },
+      node: { type: "mesh:Atom", name: "draft" },
     });
     const values = attr(status, "values");
     if (values.kind !== "dynamic") throw new Error(values.kind);
@@ -116,7 +116,7 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     expect(attr(overdue, "name")).toMatchObject({
       kind: "static",
       value: "isOverdue",
-      atom: { kind: "atom", name: "isOverdue" },
+      node: { type: "mesh:Atom", name: "isOverdue" },
     });
     const value = attr(overdue, "value");
     expect(value.kind).toBe("dynamic");
@@ -136,7 +136,7 @@ describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
     expect(attr(member, "value")).toMatchObject({
       kind: "static",
       value: "sent",
-      atom: { kind: "atom", name: "sent" },
+      node: { type: "mesh:Atom", name: "sent" },
     });
     const load = find(ir.body, "actions").attrs.find(
       (each) => each.kind !== "spread" && each.name.startsWith("on"),

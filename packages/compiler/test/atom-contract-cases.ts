@@ -41,7 +41,7 @@ export const vocab: Record<string, CustomTag> = {
   arguments: {},
   relationships: {},
   string: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: [
       { kind: "attribute", from: "name", under: "attributes" },
       {
@@ -53,72 +53,79 @@ export const vocab: Record<string, CustomTag> = {
     ],
   },
   action: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: { kind: "action", from: "name" },
   },
   "has-many": {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: { kind: "relationship", from: "name" },
   },
   calc: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: { kind: "computed", from: "name" },
   },
   policy: {
     attributes: {
-      accept: { type: "atom", ref: "attribute" },
-      load: { type: "atom", ref: ["relationship", "computed"] },
-      require: { type: "atom", ref: ["attribute", "argument"] },
-      types: { type: "atom", values: ["create", "read", "update", "destroy"] },
-      only: { type: "atom", ref: "attribute", values: ["title", "body"] },
-      shaped: { type: "atom", ref: "attribute", pattern: "^t" },
+      // MX's `atom` type took one atom or a list; a node-type slot is one or the other, so the slots the matrix writes as lists are lists.
+      accept: { type: "array", items: "mesh:Atom", ref: "attribute" },
+      load: { type: "array", items: "mesh:Atom", ref: ["relationship", "computed"] },
+      require: { type: "array", items: "mesh:Atom", ref: ["attribute", "argument"] },
+      types: { type: "mesh:Atom", values: ["create", "read", "update", "destroy"] },
+      only: { type: "mesh:Atom", ref: "attribute", values: ["title", "body"] },
+      shaped: { type: "mesh:Atom", ref: "attribute", pattern: "^t" },
     },
   },
   setter: {
-    attributes: { name: { type: "atom", ref: "attribute" }, value: {} },
+    attributes: { name: { type: "mesh:Atom", ref: "attribute" }, value: {} },
   },
   set: { defaultTag: "setter" },
   box: {
     attributes: {
-      any: { type: "atom" },
-      mode: { type: "atom", values: ["strict", "loose"] },
-      slug: { type: "atom", pattern: "^[a-z]+$" },
-      both: { type: "atom", values: ["a1", "b2"], pattern: "^[a-z]\\d$" },
-      many: { type: "atom", values: NAMES },
-      ten: { type: "atom", values: NAMES.slice(0, 10) },
+      any: { type: "mesh:Atom" },
+      mode: { type: "mesh:Atom", values: ["strict", "loose"] },
+      modes: { type: "array", items: "mesh:Atom", values: ["strict", "loose"] },
+      slug: { type: "mesh:Atom", pattern: "^[a-z]+$" },
+      both: { type: "mesh:Atom", values: ["a1", "b2"], pattern: "^[a-z]\\d$" },
+      many: { type: "mesh:Atom", values: NAMES },
+      ten: { type: "mesh:Atom", values: NAMES.slice(0, 10) },
     },
     attributeTags: {
       row: {
         attributes: {
-          mode: { type: "atom", values: ["a", "b"] },
-          to: { type: "atom", ref: "node" },
+          mode: { type: "mesh:Atom", values: ["a", "b"] },
+          to: { type: "mesh:Atom", ref: "node" },
         },
         attributeTags: {
-          cell: { attributes: { k: { type: "atom", values: ["x", "y"] } } },
+          cell: {
+            attributes: {
+              k: { type: "mesh:Atom", values: ["x", "y"] },
+              ks: { type: "array", items: "mesh:Atom", values: ["x", "y"] },
+            },
+          },
         },
       },
       "*": {
         pattern: "col-.*",
-        attributes: { to: { type: "atom", ref: "node" } },
+        attributes: { to: { type: "mesh:Atom", ref: "node" } },
       },
     },
   },
   node: { attributes: { id: {} }, declares: { kind: "node", from: "id" } },
-  link: { attributes: { to: { type: "atom", ref: "node" } } },
+  link: { attributes: { to: { type: "mesh:Atom", ref: "node" } } },
   slot: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: { kind: "slot", from: "name", uniqueWith: ["node"] },
   },
   scoped: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: { kind: "item", from: "name", scope: ["list", "grid"] },
   },
   list: {},
   item: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: { kind: "item", from: "name", scope: "list" },
   },
-  pick: { attributes: { of: { type: "atom", ref: "item" } } },
+  pick: { attributes: { of: { type: "mesh:Atom", ref: "item" } } },
   derive: deriving("node", "made"),
   "derive-scoped": deriving("node", "lost", "nowhere"),
   "derive-list": deriving("item", "auto", "list"),
@@ -134,7 +141,7 @@ export const FAILING: readonly string[] = [
   "<box slug=:ab-c/>",
   "<box both=:b9/>",
   "<box both=:c3/>",
-  "<box mode=[:strict, :lose]/>",
+  "<box modes=[:strict, :lose]/>",
   "<box mode=(c ? :strict : :lose)/>",
   "<box many=:zz/>",
   "<box many=:alpah/>",
@@ -187,7 +194,7 @@ export const FAILING: readonly string[] = [
       <arguments><string :newTitle/></arguments>
     </action>
     <action :other>
-      <policy require=:newTitle/>
+      <policy require=[:newTitle]/>
     </action>
   </actions>
 </entity>`,
@@ -200,7 +207,7 @@ export const FAILING: readonly string[] = [
   "<box><@row mode=:c/></box>",
   `${nodes(["n"])}<box><@row to=:m/></box>`,
   "<box><@row><@cell k=:z/></@row></box>",
-  "<box><@row><@cell k=[:x, :w]/></@row></box>",
+  "<box><@row><@cell ks=[:x, :w]/></@row></box>",
   `${nodes(["n"])}<box><@col-1 to=:nn/></box>`,
   `${nodes(["n"])}<box><@col-1 to="n"/></box>`,
   // Review 466 B1: a plain string against a `ref` atom, alone, after a
@@ -215,7 +222,7 @@ export const FAILING: readonly string[] = [
 /** Sources the built-in path accepts. */
 export const PASSING: readonly string[] = [
   "<box mode=:strict slug=:abc both=:a1/>",
-  "<box mode=[:strict, :loose]/>",
+  "<box modes=[:strict, :loose]/>",
   `${nodes(["a"])}<link to=:a/>`,
   "<link to=:later/><node#later/>",
   "<list><item :a/><pick of=:a/></list>",
@@ -240,12 +247,12 @@ export const REGISTRATION: ReadonlyArray<
   ["values", { box: { attributes: { a: { type: "string", values: ["a"] } } } }],
   ["pattern", { box: { attributes: { a: { type: "string", pattern: "a" } } } }],
   ["ref", { box: { attributes: { a: { ref: "k" } } } }],
-  ["bad values", { box: { attributes: { a: { type: "atom", values: [1] } } } }],
+  ["bad values", { box: { attributes: { a: { type: "mesh:Atom", values: [1] } } } }],
   [
     "bad pattern",
-    { box: { attributes: { a: { type: "atom", pattern: "(" } } } },
+    { box: { attributes: { a: { type: "mesh:Atom", pattern: "(" } } } },
   ],
-  ["bad ref", { box: { attributes: { a: { type: "atom", ref: [] } } } }],
+  ["bad ref", { box: { attributes: { a: { type: "mesh:Atom", ref: [] } } } }],
   [
     "nested values",
     {
@@ -287,7 +294,7 @@ export const REGISTRATION: ReadonlyArray<
   ],
   [
     "unknown key beside the claimed ones",
-    { box: { attributes: { a: { type: "atom", bogus: 1 } } } },
+    { box: { attributes: { a: { type: "mesh:Atom", bogus: 1 } } } },
   ],
   [
     "inline children contract",
@@ -310,7 +317,7 @@ export const REGISTRATION: ReadonlyArray<
           "*": {
             pattern: "b-.*",
             attributeTags: {
-              row: { attributes: { a: { type: "atom", ref: "" } } },
+              row: { attributes: { a: { type: "mesh:Atom", ref: "" } } },
             },
           },
         },

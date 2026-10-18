@@ -35,10 +35,10 @@ const firstError = (source: string) => {
 
 describe("atoms in every position", () => {
   test.each([
-    ["a whole value", "<div x=:a/>", "x", { kind: "static", value: "a", atom: { kind: "atom", name: "a" } }],
-    ["a name", "<input type='email' :email/>", "name", { kind: "static", value: "email", atom: { kind: "atom", name: "email" } }],
-    ["a hyphenated name", "kind :first-name\n", "name", { kind: "static", value: "first-name", atom: { name: "first-name" } }],
-    ["a name with a default value", "kind :n=1\n", "name", { kind: "static", value: "n", atom: { name: "n" } }],
+    ["a whole value", "<div x=:a/>", "x", { kind: "static", value: "a", node: { type: "mesh:Atom", name: "a" } }],
+    ["a name", "<input type='email' :email/>", "name", { kind: "static", value: "email", node: { type: "mesh:Atom", name: "email" } }],
+    ["a hyphenated name", "kind :first-name\n", "name", { kind: "static", value: "first-name", node: { type: "mesh:Atom", name: "first-name" } }],
+    ["a name with a default value", "kind :n=1\n", "name", { kind: "static", value: "n", node: { type: "mesh:Atom", name: "n" } }],
     ["`async` before nothing is no method", "kind async :n\n", "name", { kind: "static", value: "n" }],
   ])("%s", (_, source, name, expected) => {
     expect(attr(firstTag(source), name)).toMatchObject(expected);
@@ -69,7 +69,7 @@ describe("atoms in every position", () => {
   test("the combined dialect keeps the member rows beside the atom rows", () => {
     const tag = firstTag("sort asc &dueOn :n x=[&a, :b]\n");
     expect(attr(tag, "member")).toMatchObject({ kind: "static", value: "dueOn" });
-    expect(attr(tag, "name")).toMatchObject({ kind: "static", value: "n", atom: { name: "n" } });
+    expect(attr(tag, "name")).toMatchObject({ kind: "static", value: "n", node: { type: "mesh:Atom", name: "n" } });
     const x = attr(tag, "x");
     if (x.kind !== "dynamic") throw new Error(x.kind);
     expect(x.value.code).toBe('[self.a, "b"]');

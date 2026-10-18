@@ -113,7 +113,7 @@ describe("Mesh's golden parse corpus", () => {
 
   test("the golden holds real lowerings (not a vacuous pass): atoms, members and diagnostics", () => {
     const text = readFileSync(GOLDEN, "utf8");
-    for (const mark of ['"mxAtom"', '"mxMember"','"atom"', '"member"', '"diagnostics"']) {
+    for (const mark of ['"mxAtom"', '"mxMember"','"mesh:Atom"', '"member"', '"diagnostics"']) {
       expect(text).toContain(mark);
     }
   });

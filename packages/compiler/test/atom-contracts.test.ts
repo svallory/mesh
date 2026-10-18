@@ -80,24 +80,25 @@ describe("the dialect's contract checks", () => {
 });
 
 const customTags: Record<string, CustomTag> = {
-  entity: { attributes: { name: { type: "atom" } } },
+  entity: { attributes: { name: { type: "mesh:Atom" } } },
   attributes: {},
   actions: {},
   arguments: {},
   string: {
-    attributes: { name: { type: "atom" } },
+    attributes: { name: { type: "mesh:Atom" } },
     declares: [
       { kind: "attribute", from: "name", under: "attributes" },
       { kind: "argument", from: "name", under: "arguments", scope: "action" },
     ],
   },
-  action: { attributes: { name: { type: "atom" } }, declares: { kind: "action", from: "name" } },
+  action: { attributes: { name: { type: "mesh:Atom" } }, declares: { kind: "action", from: "name" } },
   policy: {
     attributes: {
-      accept: { type: "atom", ref: "attribute" },
-      require: { type: "atom", ref: ["attribute", "argument"] },
-      types: { type: "atom", values: ["create", "read", "update", "destroy"] },
-      slug: { type: "atom", pattern: "^[a-z]+$" },
+      // MX's `atom` type took one atom or a list; a node-type slot is one or the other, so the slots written as lists are lists.
+      accept: { type: "array", items: "mesh:Atom", ref: "attribute" },
+      require: { type: "array", items: "mesh:Atom", ref: ["attribute", "argument"] },
+      types: { type: "mesh:Atom", values: ["create", "read", "update", "destroy"] },
+      slug: { type: "mesh:Atom", pattern: "^[a-z]+$" },
     },
   },
 } as unknown as Record<string, CustomTag>;
@@ -108,7 +109,7 @@ const ENTITY_FAILING: readonly string[] = [
   "entity :Invoice\n  policy types=:craete\n",
   "entity :Invoice\n  policy slug=:Upper\n",
   "entity :Invoice\n  attributes\n    string :title\n    string :title\n",
-  "entity :Invoice\n  actions\n    action :rename\n      arguments\n        string :newTitle\n    action :other\n      policy require=:newTitle\n",
+  "entity :Invoice\n  actions\n    action :rename\n      arguments\n        string :newTitle\n    action :other\n      policy require=[:newTitle]\n",
   "entity :Invoice\n  arguments\n    string :orphan\n",
 ];
 
@@ -135,7 +136,7 @@ describe("an entity file through the dialect", () => {
     const expected = {
       severity: "error" as const,
       code: "MESH_SYNTAX",
-      message: 'Invalid "a" attribute declaration of tag "box": `values` requires `type: "atom"`',
+      message: 'Invalid "a" attribute declaration of tag "box": `values` requires `type: "mesh:Atom"` (or `type: "array"` with `items: "mesh:Atom"`)',
       line: 1,
       column: 0,
       offset: 0,
@@ -148,8 +149,8 @@ describe("a dialect's own contract key", () => {
   test("passes registration and reaches `afterLower`, whose `fail` is a positioned, coded diagnostic", () => {
     const source = "entity :Invoice\n  index on=:title\n";
     const tags = {
-      entity: { attributes: { name: { type: "atom" } } },
-      index: { attributes: { on: { type: "atom", unique: true } }, relations: "many" },
+      entity: { attributes: { name: { type: "mesh:Atom" } } },
+      index: { attributes: { on: { type: "mesh:Atom", unique: true } }, relations: "many" },
     } as unknown as Record<string, CustomTag>;
     // Without a dialect that claims it, `unique` is an unknown key.
     expect(diagnosticsOf(source, tags, MESH)[0]?.message).toMatch(/Unknown key "(relations|unique)"/);
@@ -163,10 +164,10 @@ describe("a dialect's own contract key", () => {
           if (call.tag !== "index") continue;
           seen.push([call.tag, call.contract.relations]);
           const on = call.attrs.find((attr) => !("spread" in attr) && attr.name === "on");
-          // The unit view names an atom `mx:Atom` whatever dialect claims it (in the IR a value atom is a string literal marked `extra.mxAtom`).
+          // The unit view hands a whole-value atom over as the `mesh:Atom` node itself.
           const value = on && !("spread" in on) ? on.value : null;
-          if (value?.type === "mx:Atom" && call.contract.attributes?.on?.unique) {
-            unit.fail(`\`:${(value as { name: string }).name}\` is not unique`, { at: value.span, code: "MESH_UNIQUE" });
+          if (value?.type === "mesh:Atom" && call.contract.attributes?.on?.unique) {
+            unit.fail(`\`:${(value as unknown as { name: string }).name}\` is not unique`, { at: value.span, code: "MESH_UNIQUE" });
           }
         }
       },
@@ -175,6 +176,30 @@ describe("a dialect's own contract key", () => {
       { severity: "error", message: "`:title` is not unique", line: 2, column: 11, offset: source.indexOf(":title"), code: "MESH_UNIQUE" },
     ]);
     expect(seen).toEqual([["index", "many"]]);
+  });
+});
+
+// MX 0.1.0-alpha.33 takes atoms out of core: a contract names Mesh's node type (`mesh:Atom`), or a list of it.
+describe("the atom attribute type after core dropped it", () => {
+  test("`type: \"atom\"` is refused, and the message names the node type to declare instead", () => {
+    const tags = { entity: { attributes: { name: { type: "atom" } } } } as unknown as Record<string, CustomTag>;
+    const found = diagnosticsOf("entity :Todo\n", tags, MESH);
+    // Handed per call, the contract is renamed to Mesh's code; inside `Dialect.contracts` it stops the dialect (`MX_INVALID_DIALECT_CONTRACT`).
+    expect(found.map((each) => each.code)).toEqual(["MESH_INVALID_CONTRACT"]);
+    expect(found[0]?.message).toContain('`type: "atom"` was removed');
+    expect(found[0]?.message).toContain("mesh:Atom");
+  });
+  test("a single atom where the contract asks for a list says to write it as a list", () => {
+    const tags = {
+      entity: { attributes: { name: { type: "mesh:Atom" } } },
+      actions: { attributes: { auto: { type: "array", items: "mesh:Atom" } } },
+    } as unknown as Record<string, CustomTag>;
+    const source = "entity :Todo\n  actions auto=:read\n";
+    const found = diagnosticsOf(source, tags, MESH);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.message).toContain("must be array, got mesh:Atom");
+    expect(found[0]?.message).toContain("`[:read]`");
+    expect(diagnosticsOf("entity :Todo\n  actions auto=[:read]\n", tags, MESH)).toEqual([]);
   });
 });
 

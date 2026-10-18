@@ -5,11 +5,58 @@ import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { deepFreeze } from "../src/front-end/deep-freeze.ts";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
-import contractsModule from "./fixtures/mesh-corpus/contracts.ts";
 
 export const CORPUS = join(import.meta.dir, "fixtures/mesh-corpus");
 export const GOLDEN = join(CORPUS, "__golden__/golden.json");
-const contracts = contractsModule as Record<string, CustomTag>;
+// The frozen contracts are loaded by path, not imported: they are typed against MX's API of their day (`type: "atom"`,
+// `Attr.atom`), which MX 0.1.0-alpha.33 removed, so the type check leaves them out (`exclude` in `tsconfig.json`) and
+// `migrateAtoms` reads them as alpha.33 needs.
+const FROZEN_CONTRACTS: string = join(CORPUS, "contracts.ts");
+const contracts = migrateAtoms((await import(FROZEN_CONTRACTS)).default as Record<string, CustomTag>);
+
+/**
+ * The frozen contracts, read under MX 0.1.0-alpha.33. They were written for core's `type: "atom"`, which alpha.33
+ * removed (an unknown `type` is `MX_INVALID_CONTRACT`), and their `analyze` reads a static attribute's `atom`, which
+ * alpha.33 replaced with `node` (a `mesh:Atom`). The file itself stays frozen; this reads it as alpha.33 needs, the
+ * way Mesh's live contracts (`src/front-end/contracts.ts`) moved: a slot written as a list of atoms (`values`, `types`,
+ * `auto`) is `{ type: "array", items: "mesh:Atom" }`, every other atom slot is `{ type: "mesh:Atom" }`, and each
+ * `analyze` hook sees a static attribute's `mesh:Atom` node as the `atom` it was written against.
+ */
+function migrateAtoms(frozen: Record<string, CustomTag>): Record<string, CustomTag> {
+  const LISTS = new Set(["values", "types", "auto"]);
+  type Declaration = { type?: unknown } & Record<string, unknown>;
+  const attributes = (declared: Record<string, unknown> | undefined) =>
+    declared &&
+    Object.fromEntries(
+      Object.entries(declared).map(([name, declaration]) => {
+        const d = declaration as Declaration;
+        if (d?.type !== "atom") return [name, declaration];
+        return [name, LISTS.has(name) ? { ...d, type: "array", items: "mesh:Atom" } : { ...d, type: "mesh:Atom" }];
+      }),
+    );
+  type Analyze = NonNullable<CustomTag["analyze"]>;
+  type Call = Parameters<Analyze>[0][number];
+  const withAtom = (call: Call): Call => ({
+    ...call,
+    attrs: call.attrs.map((a) => {
+      const node = a.kind === "static" ? (a.node as { type?: string; name?: string; span?: unknown } | undefined) : undefined;
+      return node?.type === "mesh:Atom" ? { ...a, atom: { kind: "atom", name: node.name, span: node.span } } : a;
+    }),
+  });
+  return Object.fromEntries(
+    Object.entries(frozen).map(([tag, contract]) => {
+      const analyze = contract.analyze;
+      return [
+        tag,
+        {
+          ...contract,
+          ...(contract.attributes ? { attributes: attributes(contract.attributes as Record<string, unknown>) } : {}),
+          ...(analyze ? { analyze: ((calls, ctx) => analyze(calls.map(withAtom), ctx)) as Analyze } : {}),
+        } as CustomTag,
+      ];
+    }),
+  );
+}
 
 const withContracts = new WeakMap<Dialect, Dialect>();
 /** The frozen contracts replace the live ones on the dialect; its strictness and tag rules stay the dialect's own. One object per dialect, deep-frozen, because MX (since alpha.22) checks a dialect once only when every plain object and array in it is frozen, and re-checks any other on every call (46 ms against 3 ms). */

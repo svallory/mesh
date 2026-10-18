@@ -19,15 +19,10 @@
  *
  * It imports types only from `@mxlang/core`'s public entry.
  */
-import type { Dialect, DialectNode, NodeType, Trigger } from "@mxlang/core";
-import { ATOM, NAME_SUGAR, atomsHooks } from "./atoms-sugars.ts";
+import type { Dialect, NodeType, Trigger } from "@mxlang/core";
+import { ATOM, NAME_SUGAR, atomsHooks, checkAtomUse, type AtomNode } from "./atoms-sugars.ts";
 import { MEMBER, lowerMember } from "./member.ts";
 import { TRANSACTION, lowerTransaction } from "./transaction.ts";
-
-/** A whole attribute value `:name`, claimed in the value position. */
-interface Atom extends DialectNode {
-  readonly name: string;
-}
 
 /**
  * `:name` as a whole attribute value: the value row claims it as a
@@ -45,16 +40,23 @@ export const ATOM_VALUE: Trigger = Object.freeze({
 });
 
 /**
- * Lowers to the literal the `atom` expression row builds (a `StringLiteral`
- * marked `extra.mxAtom`), so the attribute keeps its atom mark and the atom
- * contracts read it as before. A plain string would drop the mark.
+ * `mesh:Atom`, the node every `:name` is: an expression operand (`atom` row),
+ * a whole attribute value (`atom-value` row) and the `name` the `:name` sugar
+ * places. It lowers to the string literal of its name, its forward. In an
+ * expression it first refuses the uses an atom cannot take (`checkAtomUse`).
+ * `lower` returns a fresh literal on every call: core finds the node by its
+ * forward's identity, and so do Mesh's readers (`atomForwards` in
+ * `front-end/tree.ts`, `atomsIn` in `atoms-sugars.ts`). The literal still
+ * carries `extra.mxAtom`, which no reader reads (core stopped in MX
+ * 0.1.0-alpha.33); it goes with MX 0.1.0-alpha.34.
  */
-const atomValue: NodeType<Atom> = {
+const atomValue: NodeType<AtomNode> = {
   keys: [],
   parse: (text) => ({ name: text.slice(1) }),
   print: (node) => `:${node.name}`,
-  lower: (node, ctx) =>
-    ctx.expression({
+  lower: (node, ctx) => {
+    if (ctx.position === "expression") checkAtomUse(node, ctx);
+    return ctx.expression({
       type: "StringLiteral",
       value: node.name,
       extra: {
@@ -62,9 +64,10 @@ const atomValue: NodeType<Atom> = {
         rawValue: node.name,
         mxAtom: { span: node.span },
       },
-    }),
+    });
+  },
 };
-export const AtomValue: NodeType<Atom> = Object.freeze(atomValue);
+export const AtomValue: NodeType<AtomNode> = Object.freeze(atomValue);
 
 /** The pieces of Mesh's dialect, minus its identity (`id`, `name`, `tagRules`), which `MESH_DIALECT` sets. */
 export const MESH_SYNTAX = {

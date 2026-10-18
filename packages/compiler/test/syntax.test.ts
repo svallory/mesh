@@ -99,7 +99,7 @@ test("shape 3: tagless &title and &done=true are member child tags", () => {
     valueSpan: { sourceStart: titleStart + 1, sourceEnd: titleStart + 6 },
   });
   // A plain string: neither an atom nor a member.
-  expect(attrOf(title!, "name")).not.toHaveProperty("atom");
+  expect(attrOf(title!, "name")).not.toHaveProperty("node");
   expect(attrOf(title!, "name")).not.toHaveProperty("member");
   expect(title!.trigger).toMatchObject({ id: "member", text: "&title" });
   expect(attrOf(done!, "name")).toMatchObject({ kind: "static", value: "done" });
@@ -114,7 +114,7 @@ test("shape 3: tagless &title and &done=true are member child tags", () => {
 
 test("shape 4: atoms are unchanged by the module", () => {
   const [tag] = tagsOf(parse("enum :status values=[:draft, :sent]\n").body);
-  expect(attrOf(tag!, "name")).toMatchObject({ kind: "static", value: "status", atom: { kind: "atom", name: "status" } });
+  expect(attrOf(tag!, "name")).toMatchObject({ kind: "static", value: "status", node: { type: "mesh:Atom", name: "status" } });
   const values = attrOf(tag!, "values");
   if (values?.kind !== "dynamic") throw new Error(String(values?.kind));
   expect(JSON.stringify(values)).not.toContain("mxMember");
