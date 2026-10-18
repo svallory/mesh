@@ -830,19 +830,29 @@ declare module "#mesh/domain/billing" {
     readonly paidAt: Date;
   }
 
+  /** The command `billing.PayInvoice`, declared in `src/domain/billing/pay-invoice.mesh.mx`; `update on=PayInvoice` answers it. */
+  export class PayInvoice {
+    constructor(fields: { id: string; paidAt: Date });
+    readonly id: string;
+    readonly paidAt: Date;
+  }
+
   /** The entity value of `Invoice`. */
   export const Invoice: {
     pay(input: { id: string }, context: ActionContext): Promise<Invoice>;
+    /** The action `update on=PayInvoice` declares, named after the command. */
+    payInvoice(input: { id: string; paidAt?: Date }, context: ActionContext): Promise<Invoice>;
     forCustomer(input: ReadInvoiceInput, context: ActionContext): Promise<Invoice[]>;
   } & EntityValue<{
       forCustomer(input: ReadInvoiceInput, context?: ActionContext): Promise<Invoice[]>;
       pay(input: { id: string }, context?: ActionContext): Promise<Invoice>;
+      payInvoice(input: { id: string; paidAt?: Date }, context?: ActionContext): Promise<Invoice>;
   }>;
 }
 
 declare module "#mesh" {
   import type { ActionContext, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription } from "@meshfw/runtime";
-  import type { InvoicePaid, PayInvoice } from "#mesh/domain/billing";
+  import type { Invoice, InvoicePaid, PayInvoice } from "#mesh/domain/billing";
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
 
@@ -875,7 +885,7 @@ declare module "#mesh" {
   /** Every command class an action answers with `on=`: what `dispatch` takes. A command no action answers is not in it. */
   export type DomainCommand = PayInvoice;
   /** What `dispatch` resolves with: what the action that answers the command returns (here `Invoice.payInvoice`). */
-  export type DispatchResult<C extends DomainCommand> = C extends PayInvoice ? object : never;
+  export type DispatchResult<C extends DomainCommand> = C extends PayInvoice ? Invoice : never;
   /**
    * Runs the action whose `on=` names the command's class, with the command's fields as its input and the `context` given.
    * Joins the running transaction (an action's, a `process` handler's, `transaction()`'s) or opens its own. A value that is
