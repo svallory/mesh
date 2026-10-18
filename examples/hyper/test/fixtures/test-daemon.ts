@@ -9,8 +9,12 @@
 //
 // With a delay, it logs `starting` once `runDaemon` has put its signal handlers in place, then waits that long before
 // `startDaemon`, so a test can send a signal while the daemon is still starting.
+//
+// `MESH_TEST_DELIVERY_TIMING`, when set, is JSON for `setDeliveryTiming` (`{"lapseMs":1500,"renewMs":300}`), so a test
+// can have a claim lapse, or a subscription overflow, in a fraction of the defaults.
 import type { MethodTable } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
+import { setDeliveryTiming, type DeliveryTiming } from "@meshfw/runtime/testing";
 import { transaction } from "#mesh";
 import { Collaborator } from "#mesh/domain/identity";
 import { runDaemon, startDaemon } from "../../src/daemon/daemon";
@@ -19,6 +23,9 @@ import { actorless, methods } from "../../src/rpc/methods";
 
 const [socket, db, delay] = process.argv.slice(2);
 if (!socket || !db) throw new Error("usage: bun test/fixtures/test-daemon.ts <socket> <db> [<start-up delay in ms>]");
+
+const timing = process.env.MESH_TEST_DELIVERY_TIMING;
+if (timing !== undefined) setDeliveryTiming(JSON.parse(timing) as Partial<DeliveryTiming>);
 
 const withTestMethods: MethodTable<ActionContext> = {
   ...methods,

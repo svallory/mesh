@@ -5,7 +5,7 @@
 // so the server logs it and answers `-32603 internal_error` with no data. `explained` adds what one failure needs that
 // the action's error does not carry, read once the call's transaction has rolled back.
 import { type Call, codes, type ErrorObject, RpcError } from "@meshfw/jsonrpc";
-import { ForbiddenError, type Issue, InvalidInputError, NotFoundError, type ActionContext } from "@meshfw/runtime";
+import { CursorAheadError, ForbiddenError, type Issue, InvalidInputError, NotFoundError, type ActionContext } from "@meshfw/runtime";
 import { Mesh } from "meshfw";
 import { transaction } from "#mesh";
 import { Submission } from "#mesh/domain/work";
@@ -254,11 +254,24 @@ export async function explained(error: RpcError, payload: unknown): Promise<RpcE
 }
 
 /**
+ * `events.read` or `events.subscribe` with an `after` above the log's head: the client's cursor names events this log
+ * never had, which is a fault of the params, so `-32602` in the shape phase.
+ */
+function cursorAhead(error: CursorAheadError): RpcError {
+  return rejection(codes.invalidParams, "shape", [{
+    check: "schema",
+    reason: `after: ${error.after} is above the event log's head, ${error.highest}; read from a seq the log has`,
+    details: { path: ["after"], head: error.highest },
+  }]);
+}
+
+/**
  * The `error` option of `serve`. The server's own `-32601` and `-32602` get a phase and failures like every other
- * rejection; any other `RpcError` is already in the spec's shape; anything else is rethrown, which the server answers
- * `-32603` and logs.
+ * rejection, and so does a cursor above the log's head (`MESH_CURSOR_AHEAD`); any other `RpcError` is already in the
+ * spec's shape; anything else is rethrown, which the server answers `-32603` and logs.
  */
 export function wireError(error: unknown, call: Call): ErrorObject {
+  if (error instanceof CursorAheadError) return objectOf(cursorAhead(error));
   if (!(error instanceof RpcError)) throw error;
   if (error.code === codes.methodNotFound && error.data === undefined) {
     return objectOf(rejection(codes.methodNotFound, "shape", [{ check: "method", reason: `unknown method ${JSON.stringify(call.method)}; see the protocol's method list` }]));

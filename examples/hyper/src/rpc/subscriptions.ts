@@ -113,6 +113,8 @@ export interface SubscribeParams {
 export async function openSubscription(params: SubscribeParams, connection: Connection): Promise<{ subscriptionId: string }> {
   const subscriptionId = crypto.randomUUID();
   const { binding } = eventLog();
+  // Every wire event carries the workspace id, which never changes once bootstrap created the workspace: read it once.
+  const workspaceId = await theWorkspaceId();
   // The server writes the response once this call resolves, before the next turn of the event loop: the gate opens on
   // that turn, and Mesh hands the callback one event at a time, so the notifications keep seq order behind it.
   let release!: () => void;
@@ -120,12 +122,21 @@ export async function openSubscription(params: SubscribeParams, connection: Conn
   const subscription = await subscribe({ name: subscriptionId, after: params.after, names: namesOf(params.types) }, async (record) => {
     await gate;
     const wire = await binding.run(async () => {
-      const event = toWire(record, await theWorkspaceId());
+      const event = toWire(record, workspaceId);
       return params.taskSubtree === undefined || (await inSubtree(event.taskId, params.taskSubtree)) ? event : undefined;
     });
     if (wire !== undefined) connection.notify("events.event", { subscriptionId, event: wire as unknown as Record<string, unknown> });
   });
   served.set(subscriptionId, { subscription, connection });
+  // Mesh ends a stream on its own when the callback throws, the queue overflows or another process takes the database;
+  // `done` then resolves with the error (null after `close()` or delivery's stop, which `end` already handles). The
+  // subscription is ended here too, so its row is dropped; the connection stays open, since `@meshfw/jsonrpc` gives
+  // the server no way to close one.
+  void subscription.done.then((error) => {
+    if (error === null || !served.has(subscriptionId)) return;
+    console.error(`subscription ${subscriptionId} ended on its own`, error);
+    return end(subscriptionId);
+  }).catch((error: unknown) => console.error(`could not close subscription ${subscriptionId}`, error));
   watchConnections();
   setImmediate(release);
   return { subscriptionId };

@@ -2,9 +2,10 @@
 // bound to it with the event log of `mesh.config.ts`, bootstrap, event delivery (which feeds the subscriptions), the
 // method table served on a Unix socket, and the lease sweeper. `main.ts` parses the flags and calls `startDaemon`; the
 // tests start it the same way, with an extra method when they need one.
+import { hostname } from "node:os";
 import { serve, type MethodTable, type Server } from "@meshfw/jsonrpc";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { DelivererTakenError, type ActionContext, type DataLayer, type Delivery } from "@meshfw/runtime";
+import { DelivererTakenError, type ActionContext, type ClaimHolder, type DataLayer, type Delivery } from "@meshfw/runtime";
 import { bind, forgetSubscription, tables, type Binding } from "#mesh";
 import config from "../../mesh.config";
 import { contextFactory, engineRule } from "../rpc/context";
@@ -38,17 +39,33 @@ export interface Daemon {
 }
 
 /**
- * Starts event delivery on `binding`, which claims the database for this process. A claim left by an engine that died
- * on this file lapses on its own (15 s after its last renewal), so a claim held elsewhere is waited out once, until it
- * lapses; still held then, the start fails. Every subscription row left by an earlier run is then dropped: a
- * subscription lives as long as its connection, and a client that comes back subscribes again from its cursor.
+ * True when the claim's holder is a process alive on this host: signal 0 checks that the pid exists without touching
+ * it (`EPERM` means it exists under another user). A holder on another host, or one that names no pid, cannot be
+ * checked from here.
+ */
+function holderAlive(holder: ClaimHolder): boolean {
+  if (holder.pid === null || holder.host !== hostname()) return false;
+  try {
+    process.kill(holder.pid, 0);
+    return true;
+  } catch (error) {
+    return (error as { code?: unknown }).code === "EPERM";
+  }
+}
+
+/**
+ * Starts event delivery on `binding`, which claims the database for this process. A second engine on a file whose
+ * holder is alive on this host fails at once with `MESH_DELIVERER_TAKEN`. A claim left by an engine that died lapses on
+ * its own (15 s after its last renewal), so a claim whose holder is gone, or cannot be checked from this host, is waited
+ * out once, until it lapses; still held then, the start fails. Every subscription row left by an earlier run is then
+ * dropped: a subscription lives as long as its connection, and a client that comes back subscribes again from its cursor.
  */
 async function startDelivery(binding: Binding, layer: DataLayer): Promise<Delivery> {
   let delivery: Delivery;
   try {
     delivery = await binding.startDelivery();
   } catch (error) {
-    if (!(error instanceof DelivererTakenError) || error.holder.thisProcess) throw error;
+    if (!(error instanceof DelivererTakenError) || error.holder.thisProcess || holderAlive(error.holder)) throw error;
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, error.lapsesAt.getTime() - Date.now()) + 100));
     delivery = await binding.startDelivery();
   }
@@ -89,7 +106,7 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   return {
     server,
     // The sweeper stops first, so no new sweep starts while the calls drain; `stop` never rejects. The subscriptions end
-    // and delivery stops (releasing the claim) once no call runs. The database is closed even when `server.close()`
+    // and delivery stops (releasing the claim) once no call runs, even when ending a subscription fails. The database is closed even when `server.close()`
     // rejects; that rejection is still what `close()` rejects with.
     close: () => (closing ??= (async () => {
       const sweeping = sweeper.stop();
@@ -99,10 +116,13 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
         await sweeping;
         try {
           await closeAll();
-          await delivery.stop();
         } finally {
-          attachEventLog(undefined);
-          await layer.close();
+          try {
+            await delivery.stop();
+          } finally {
+            attachEventLog(undefined);
+            await layer.close();
+          }
         }
       }
     })()),

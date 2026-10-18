@@ -5,7 +5,7 @@
 // wire; these pin the parts they reach only indirectly.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type Call, RpcError } from "@meshfw/jsonrpc";
-import type { ActionContext } from "@meshfw/runtime";
+import { CursorAheadError, type ActionContext } from "@meshfw/runtime";
 import { eventClasses, readEvents, type EventRecord } from "#mesh";
 import { Idempotency } from "#mesh/domain/audit";
 import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
@@ -15,6 +15,7 @@ import { bootstrap } from "../src/daemon/bootstrap";
 import { reviewAccept, submissionSubmit } from "../src/domain/work/work.commands";
 import { toWire, WIRE_TYPES, type WireEvent } from "../src/events";
 import { engineRule } from "../src/rpc/context";
+import { wireError } from "../src/rpc/errors";
 import { attachEventLog } from "../src/rpc/event-log";
 import { canonicalJson, commandHash } from "../src/rpc/idempotency";
 import { methods } from "../src/rpc/methods";
@@ -125,6 +126,18 @@ describe("metadata and the wire Event", () => {
     expect(events[0]).toMatchObject({ actor: "engine", caller: "engine", cause: { kind: "rule", rule: "claim.lease-expiry" }, taskId: task.id });
   }));
 
+  test("claim.acquire over a lapsed claim: claim.acquired comes first, caused by the command, then claim.expired by the rule (PROTOCOL.md §4.2)", () => onEngine(async ({ owner, time }) => {
+    const task = await Task.create({ title: "Lapsed" }, as(owner));
+    const lapsed = await Claim.acquire({ task: task.id }, as(owner));
+    time.now = new Date(lapsed.expiresAt.getTime() + 1);
+    const from = await head();
+    const claim = await Claim.acquire({ task: task.id }, { ...as(owner), commandId: "c-again", method: "claim.acquire" });
+    const events = await wire(from);
+    expect(events.map((event) => event.type)).toEqual(["claim.acquired", "claim.expired"]);
+    expect(events[0]).toMatchObject({ cause: { kind: "command", commandId: "c-again", method: "claim.acquire" }, payload: { claimId: claim.id } });
+    expect(events[1]).toMatchObject({ actor: "engine", cause: { kind: "rule", rule: "claim.lease-expiry" }, payload: { claimId: lapsed.id } });
+  }));
+
   test("review.accept: review.accepted and task.completed share the Task's one new version, one bump for the command", () => onEngine(async ({ owner, bob, binding }) => {
     const task = await Task.create({ title: "Review me" }, as(owner));
     await Task.assign({ id: task.id, assignee: bob.id }, as(owner));
@@ -216,6 +229,14 @@ describe("events.read (PROTOCOL.md §5)", () => {
     expect(tasks.events.map((event) => event.type)).toEqual(["task.created"]);
     expect(tasks).toMatchObject({ cursor: top, hasMore: false });
     expect((await readPage({ after: 0, types: ["no.such-type"] })).events).toEqual([]);
+  }));
+
+  test("an after above the log's head is -32602 invalid_params on after, not -32603", () => onEngine(async () => {
+    const top = await head();
+    const error = await readPage({ after: top + 5 }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(CursorAheadError);
+    const wired = wireError(error, { method: "events.read", id: 1, params: { after: top + 5 } } as unknown as Call);
+    expect(wired).toMatchObject({ code: -32602, message: "invalid_params", data: { phase: "shape", failures: [{ check: "schema", details: { path: ["after"], head: top } }] } });
   }));
 
   test("taskSubtree keeps the events of the Task and of its descendants as they are now", () => onEngine(async ({ owner }) => {
