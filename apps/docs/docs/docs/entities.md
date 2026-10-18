@@ -356,6 +356,16 @@ Call it on its entity: `Invoice.applyDiscount({ id, percent: 10 }, context)`. Th
 
 Options such as `auto=`, `on:load=`, `types=` and `actions=` sit on the declaration line. Sections such as `input`, `validate`, `do` and `sort` have their own lines.
 
+### Options on an action line
+
+| Option | On | Required | Meaning |
+|:--|:--|:--|:--|
+| `:name` | every action | for a read; for the others unless `on=` is given | The action's name, and the method of the entity value |
+| `on=` | `create`, `update`, `destroy` | no | The command the action answers: an imported identifier (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`). With no name, the action is named after the command (`payInvoice`); with one, the name wins. A `read` takes no `on=` |
+| `filter=` | `read` | no | The condition every row must meet; see [Reads: filter and sort](#reads-filter-and-sort) |
+
+A command is a request's fields, declared in a file of its own; see [Events: Answering a command](./events.md#answering-a-command) for how the action and the command must agree, and `dispatch` for running one.
+
 ### validate
 
 Checks run before anything is written, and before the input is applied: `&name` is the record as it is stored (on a create, the new record with its defaults), and the caller's values are in `input`. A rule about one field goes on its declaration: `decimal :amount min=0` says the whole of "the amount cannot be negative". A `check` is for a cross-field or stored-state rule:

@@ -244,7 +244,7 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
       for (const file of project.files) expect(parse(file.source).diagnostics).toEqual([]);
       // The docs sample for `run` calls `audit`, a helper it does not import: a free variable, by design (M4). The one for
       // `policy.actions` covers named actions only, so the relationship the project adds to it loads nothing (R2-N2).
-      expect(buildModel(project).diagnostics.filter((d) => !(d.code === "MESH_EXPR_FREE_VARIABLE" && example.includes("audit(")) && !(d.code === "MESH_LOAD_NO_POLICY" && cell === "policy.actions") && !(d.code === "MESH_JSON_NULLABLE" && cell === "json.nullable") && !(d.code === "MESH_NOT_IMPLEMENTED" && /^(sum|avg|min)\b/.test(example)))).toEqual([]);
+      expect(buildModel(project).diagnostics.filter((d) => !(d.code === "MESH_EXPR_FREE_VARIABLE" && example.includes("audit(")) && !(d.code === "MESH_LOAD_NO_POLICY" && cell === "policy.actions") && !(d.code === "MESH_COMMAND_UNANSWERED" && tag === "command") && !(d.code === "MESH_JSON_NULLABLE" && cell === "json.nullable") && !(d.code === "MESH_NOT_IMPLEMENTED" && /^(sum|avg|min)\b/.test(example)))).toEqual([]);
     };
     test(`${cell} example parses and builds`, check);
   }

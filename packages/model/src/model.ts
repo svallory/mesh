@@ -161,9 +161,22 @@ export type Step = (
    */
   | { kind: "publish"; fn: Expression }
 ) & { position: SourcePosition };
+/** The command an action answers (`on=PayInvoice`): the model's record of it, for `dispatch`, `explain` and the checks. */
+export interface CommandRef {
+  /** The reference as the entity file writes it: an imported identifier (`PayInvoice`, or the alias `Pay`) or `billing.PayInvoice`. Only messages read it. */
+  identifier: string;
+  /** The file the command is declared in, as the import writes it (relative to the entity file). */
+  from: string;
+  /** The command's FQN (`billing.PayInvoice`), the name a serialised command carries and `Mesh.fqnOf` returns. */
+  fqn: string;
+  /** Where `on=` is written. */
+  position: SourcePosition;
+}
 export interface Action {
   kind: ActionType;
   name: string;
+  /** The command this action answers, when it has an `on=`. */
+  command?: CommandRef;
   input: InputField[];
   validate: Check[];
   do: Step[];

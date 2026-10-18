@@ -343,10 +343,32 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
       }
     },
   });
+/**
+ * `on=` answers a command (`notes/spec/events-and-commands.md`, "Answering a command"): the command's imported identifier
+ * (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`). Every shape that is not that is
+ * `MESH_UNKNOWN_COMMAND`, as the spec has it for an `on=` that names anything but an imported command; which import it is
+ * and what that file declares is the build's to resolve. A `read` has no `on=`, so MX refuses it there, and the name is
+ * optional on the other three (a command names the action), with neither a `MESH_NAME`.
+ */
+function answers(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
+  for (const call of calls) {
+    const a = get(call, "on");
+    if (!a && !get(call, "name"))
+      ctx.fail(`an action needs a name or \`on=\`: write \`${call.name} :name\`, or \`${call.name} on=PayInvoice\` to take the name from the command`, { at: call.loc, code: "MESH_NAME" });
+    if (!a) continue;
+    if (!isReference(node(a)))
+      ctx.fail("on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", { at: a.loc, code: "MESH_UNKNOWN_COMMAND" });
+    else if (isWrapped(a))
+      ctx.fail("on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=PayInvoice`, `on=billing.PayInvoice`)", { at: a.valueSpan, code: "MESH_UNKNOWN_COMMAND" });
+  }
+}
 for (const kind of ACTION_TYPES)
   contracts[kind] = closed({
     parents: ["actions"],
-    attributes: { ...named(), ...(kind === "read" ? { filter: fn() } : {}) },
+    attributes: kind === "read"
+      ? { ...named(), filter: fn() }
+      : { name: atom(), on: { type: "expression" } },
+    ...(kind === "read" ? {} : { analyze: answers }),
     children: {
       input: {},
       ...body,

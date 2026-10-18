@@ -30,7 +30,7 @@ A field takes the options that constrain a value: `nullable`, `values` on an `en
 
 `mesh build` generates a class for each event in its module's barrel, here `#mesh/domain/billing`. Its constructor checks every field against the declaration, with every problem in one `InvalidInputError`, and freezes the instance; a `nullable` field left out is `null`. The class is nominal: an object literal shaped like an `InvoicePaid` is not one. `#mesh` exports `DomainEvent`, the union of every event class's instance type, and `eventClasses`, a table from each event's fully qualified name (FQN) to its class. The FQN is the module's folders, a dot, and the class name, `billing.InvoicePaid`; `Mesh.fqnOf(InvoicePaid)` returns it.
 
-A **command** is declared the same way, with `command :Name`, and is a request's fields: what a caller asks an action to do. It generates a class too, which is not a `DomainEvent`.
+A **command** is declared the same way, with `command :Name`, and is a request's fields: what a caller asks an action to do. It generates a class too, which is not a `DomainEvent`. An action answers a command with `on=` ([Answering a command](#answering-a-command)), and application code runs one with `dispatch` ([Running a command](#running-a-command)).
 
 ## Raising an event
 
@@ -58,6 +58,96 @@ entity :Invoice
 A `publish` runs after the action's row is written, inside the transaction, in written order among the `run [after=:write]` steps, and reads `self` as the stored record: a create's new key, a destroy's deleted row. Inside a `when=`, it runs only if the condition held before the write, so a `publish` that should sometimes raise nothing is written inside a `when=`.
 
 The function must return an instance of a declared event. Anything else fails the action with a `FrameworkError` naming the entity, the action and the step's line, and rolls it back: `null`, `undefined`, a plain object shaped like the event, a command, or any other value. A constructor that rejects its fields throws its `InvalidInputError`, which rolls the action back the same way. The build catches what it can see first: a `publish` that constructs something other than an imported event is the build error `MESH_PUBLISH`, and a `new InvoicePaid(...)` outside a `publish` step, which raises nothing, is a warning.
+
+## Answering a command
+
+An event says what happened; a command asks for something to happen. A command is the fields of a request, declared in a file of its own as an event is:
+
+```mx "src/domain/billing/pay-invoice.mesh.mx"
+command :PayInvoice
+  uuid :id
+  datetime :paidAt
+```
+
+An action answers it with `on=`, whose value is the command's imported identifier. The action is a `create`, an `update` or a `destroy`; a `read` has no `on=`.
+
+```mx "src/domain/billing/invoice.mesh.mx"
+import { PayInvoice } from "./pay-invoice.mesh.mx"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    enum :status values=[:draft, :sent, :paid] default=:draft
+    datetime :paidAt nullable
+  actions auto=[:read]
+    update on=PayInvoice
+      input
+        &paidAt
+      do
+        set
+          &status=:paid
+  policies
+    policy :anyone types=[:read, :update]
+      authorize-if=() => true
+```
+
+An action with `on=` and no name is named after the command: the command's class name with its first letter in lower case, whatever name the file binds. `update on=PayInvoice` is the action `payInvoice`, so `Invoice.payInvoice({ id, paidAt }, context)` works as for any action; so does `on=Pay` after `import { PayInvoice as Pay }`. Write a name to choose another: `update :pay on=PayInvoice` is `Invoice.pay`. A file that imports the command's file as a namespace writes `on=billing.PayInvoice`, as `entity=billing.Invoice` names an entity.
+
+The command and the action describe one request, so they must agree:
+
+- An action answers at most one command, and a command is answered by at most one action in the whole project.
+- Every field of the command is an input of the action, and every required input of the action is a field of the command. The key that selects the row of an update or a destroy counts as an input, which is why `PayInvoice` above has the field `id`. The `input` section decides which inputs are required: on an update every member input is optional, so the command carries only the ones it changes, and a create's required inputs must all be fields. A command's constructor sets a `nullable` field you leave out to `null`, and `dispatch` sends that `null` to the action, so on an update it overwrites the attribute with `null`. A command that answers an update should therefore carry only non-nullable fields, or ones the action is meant to set.
+
+A command that no action answers builds with a warning, since nothing runs when it is dispatched. These are the build errors of `on=`:
+
+| Code | When |
+|:--|:--|
+| `MESH_NAME` | an action with neither a name nor `on=` |
+| `MESH_UNKNOWN_COMMAND` | `on=` names anything but an imported command: an event, an entity, a name nothing imports, or a value that is not an identifier or a member of a namespace import. The message suggests the nearest imported command |
+| `MESH_DUPLICATE_MEMBER` | the name taken from the command clashes with another member of the entity; the message names the command. Name the action to avoid it |
+| `MESH_COMMAND_INPUT` | a field of the command is no input of the action, or a required input of the action is no field of the command |
+| `MESH_COMMAND_ANSWERED_TWICE` | two actions answer one command, in one entity or in two |
+| `MESH_COMMAND_UNANSWERED` | a warning: no action answers the command |
+| `MESH_UNKNOWN_OPTION` | `on=` on a `read` |
+
+## Running a command
+
+`dispatch` runs the action that answers a command, so that code that holds a command needs to know neither the entity nor the action's name:
+
+```ts "src/pay.ts"
+import { dispatch } from "#mesh";
+import { PayInvoice } from "#mesh/domain/billing";
+import { alice } from "./context";
+
+export function pay(invoiceId: string) {
+  return dispatch(new PayInvoice({ id: invoiceId, paidAt: new Date() }), { actor: alice });
+}
+```
+
+The command's constructor checks its fields first, as an event's does. `dispatch` hands the action an input object built from the fields, `{ id: command.id, paidAt: command.paidAt }`, in code the project's type check covers: a command field whose type differs from the action's input (a `string` field for a `datetime` input) is a type error in `.mesh/index.ts`, not a failure at the first dispatch. `dispatch(command, context)` then calls the action with the command's fields as its input and the `context` you give it, so the action validates the input and runs its policies exactly as `Invoice.payInvoice(...)` does, and resolves with what the action returns (here the updated `Invoice`). It runs on the binding in scope and joins the running transaction when there is one, so a `dispatch` inside `transaction(...)` or inside a `process` handler commits or rolls back with it, and the event the action publishes appears in `published()` before the commit. Outside a transaction it opens its own, as a plain call does.
+
+A `process` handler runs a command with the `context` it is given:
+
+```ts "src/events.ts (excerpt)"
+import { Mesh } from "meshfw";
+import { dispatch } from "#mesh";
+import { InvoiceOpened, PayInvoice } from "#mesh/domain/billing";
+
+export const handlers = {
+  process: {
+    payOnOpen: Mesh.handler({
+      events: [InvoiceOpened],
+      run: async (event, { context }) => {
+        await dispatch(new PayInvoice({ id: event.payload.invoiceId, paidAt: new Date() }), context);
+      },
+    }),
+  },
+};
+```
+
+The action runs in the handler's transaction, together with the record that the handler handled the event, and an event it publishes carries the handled event in `causedBy`. A `listen` handler's `dispatch` runs in a transaction of its own.
+
+`#mesh` also exports the type `DomainCommand`, the union of the command classes an action answers, and `DispatchResult<C>`, what the action that answers `C` returns. A command no action answers is not in `DomainCommand`, so dispatching it is a type error. A value that is not an instance of a generated command class (an event, an object shaped like a command) is a `FrameworkError`, and so is a command whose action is missing from the generated code, which only a `.mesh/` folder older than the declaration can cause: run `mesh build`.
 
 ## The outbox
 
@@ -437,7 +527,7 @@ Core hands each instance a `BusCore`, its only way to the outbox and the handler
 
 ## Next
 
-- [Entities](./entities.md#do) — the `do` steps, `publish` among them.
+- [Entities](./entities.md#do) — the `do` steps, `publish` among them, and [the options of an action line](./entities.md#options-on-an-action-line), `on=` among them.
 - [Configuration](./configuration.md#events) — `events.bus`, `events.load`, `events.keep` and `events.requires`.
 - [Command line](./command-line.md#events-forget) — `mesh events forget`.
 - [Using your domain](./using-your-domain.md#seams) — the seams, and why events do not go through them.
