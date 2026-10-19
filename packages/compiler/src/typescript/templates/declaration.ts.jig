@@ -29,7 +29,11 @@ export class {{ className }} {
     dates: {{ datesLiteral }},
   };
   @each(field in fields)
+  @if(field.instanceOptional)~
+  readonly {{ field.key }}?: {{ field.instanceType }};
+  @else~
   readonly {{ field.key }}: {{ field.instanceType }};
+  @end~
   @end
   constructor(fields: {
     @each(field in fields)

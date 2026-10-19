@@ -13,6 +13,7 @@ entity :Invoice
     boolean :paid default=false
     decimal :total default=10
     datetime :paidAt nullable
+    string :title default="untitled"
   actions auto=[:read]
     create :open
       do
@@ -28,6 +29,7 @@ entity :Invoice
     update on=PayInvoice
       input
         &paidAt
+        &title
       do
         set
           &paid=true

@@ -362,6 +362,28 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
   test("a nullable command field may fill an optional nullable input", () => {
     expect(typed("string :value nullable", "string :value nullable").diagnostics).toEqual([]);
   });
+  test.each(["string :value", "string :value nullable"])("an optional field fits %s without admitting null", (input) => {
+    const result = typed("string :value optional", input);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document!.commands![0]!.fields[1]).toMatchObject({ name: "value", nullable: false, optional: true });
+  });
+  test("optional and nullable together retain nullable semantics", () => {
+    const result = typed("string :value optional nullable", "string :value nullable");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document!.commands![0]!.fields[1]).toMatchObject({ nullable: true });
+    expect(Object.hasOwn(result.document!.commands![0]!.fields[1]!, "optional")).toBe(false);
+    mismatch(typed("string :value optional nullable", "string :value"));
+  });
+  test.each([false, true])("optional cannot fill a required create input (wrong kind: %p)", (wrongKind) => {
+    const result = typed(`${wrongKind ? "integer" : "string"} :value optional`, "string :value", "create");
+    expect(result.document).toBeNull();
+    expect(codes(result.diagnostics)).toEqual(wrongKind ? ["MESH_COMMAND_INPUT", "MESH_COMMAND_INPUT"] : ["MESH_COMMAND_INPUT"]);
+    expect(result.diagnostics[0]).toMatchObject({ position: { line: 7, column: 14 }, message: expect.stringContaining("requires the input") });
+  });
+  test("an optional command field cannot supply the required row selector", () => {
+    const result = build("    update on=PayInvoice\n", IMPORT, {}, "command :PayInvoice\n  uuid :id optional\n");
+    expect(codes(result.diagnostics)).toEqual(["MESH_COMMAND_INPUT"]);
+  });
   test("a nullable field cannot fill a non-nullable update member, even though the input is optional", () => {
     expect(mismatch(typed("string :value nullable", "string :value")).message).toContain("nullable");
   });
@@ -456,8 +478,8 @@ describe("the generated #mesh", () => {
   const roots: string[] = [];
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
   /** Builds the project, writes the generated tree under the package (so `@meshfw/runtime` resolves) and type-checks it under the strictest flags. */
-  async function typeCheck(command: string) {
-    const result = build(PAY_ACTION, IMPORT, {}, command);
+  async function typeCheck(command: string, entity = invoice(PAY_ACTION), check = "") {
+    const result = buildModel(project(entity, {}, command));
     expect(result.diagnostics).toEqual([]);
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-commands-"));
     roots.push(root);
@@ -466,7 +488,8 @@ describe("the generated #mesh", () => {
     await writeGeneratedFiles(generated, config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
-    return await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    await writeFile(resolve(root, "check.ts"), check);
+    return await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "check.ts")]);
   }
 
   test("a command field of the action's input type type-checks: dispatch builds the input from the fields, with no cast", async () => {
@@ -476,6 +499,35 @@ describe("the generated #mesh", () => {
   test("nullable command fields preserve undefined and dispatch omits them under exactOptionalPropertyTypes", async () => {
     expect(await typeCheck(PAY.replace("datetime :paidAt", "datetime :paidAt nullable"))).toEqual({ code: 0, output: "" });
   }, 30_000);
+
+  test("optional title is an optional string property, excludes null and dispatch type-checks", async () => {
+    const command = "command :PayInvoice\n  uuid :id\n  string :title optional\n";
+    const entity = invoice(PAY_ACTION).replace("datetime :paidAt nullable", "string :title").replace("&paidAt", "&title");
+    const result = buildModel(project(entity, {}, command));
+    expect(result.diagnostics).toEqual([]);
+    const files = await generateFiles({ document: result.document!, config: configOf("/project", ".mesh") });
+    const declaration = files.find((file) => file.path.endsWith("payInvoice.command.ts"))!.contents;
+    expect(declaration).toContain("readonly title?: string | undefined;");
+    expect(declaration).toContain("title: z.string().optional()");
+    expect(await typeCheck(command, entity, `import { PayInvoice } from "./generated/domain/billing/payInvoice.command";
+export const omitted = new PayInvoice({ id: "x" });
+export const explicit = new PayInvoice({ id: "x", title: undefined });
+export const title: string | undefined = omitted.title;
+export const optional: Pick<PayInvoice, "title"> = {};
+// @ts-expect-error optional does not admit null
+export const nullTitle = new PayInvoice({ id: "x", title: null });
+`)).toEqual({ code: 0, output: "" });
+  }, 30_000);
+
+  test("optional nullable generates the same model and declaration as nullable alone", async () => {
+    const nullable = build(PAY_ACTION, IMPORT, {}, PAY.replace("datetime :paidAt", "datetime :paidAt nullable"));
+    const both = build(PAY_ACTION, IMPORT, {}, PAY.replace("datetime :paidAt", "datetime :paidAt optional nullable"));
+    expect(nullable.diagnostics).toEqual([]);
+    expect(both.diagnostics).toEqual([]);
+    expect(both.document).toEqual(nullable.document);
+    const config = configOf("/project", ".mesh");
+    expect(await generateFiles({ document: both.document!, config })).toEqual(await generateFiles({ document: nullable.document!, config }));
+  });
 
   test("the generated dispatch builds each input from the command's fields and imports the classes as types", async () => {
     const contents = await index({});

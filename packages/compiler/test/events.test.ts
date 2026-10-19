@@ -103,6 +103,19 @@ describe("an event and a command file", () => {
     expect(brief(command)[0]![5]).toBe(message("primary-key", "a command"));
   });
 
+  test.each([
+    "event :Bad\n  string :title optional\n",
+    "entity :Bad\n  attributes\n    uuid :id primary-key\n    string :title optional\n",
+    "entity :Bad\n  attributes\n    uuid :id primary-key\n  actions\n    update :change\n      input\n        string :title optional\n",
+    "entity :Bad\n  attributes\n    uuid :id primary-key\n  computed\n    string :title optional value=() => 'title'\n",
+  ])("optional belongs only to a command field: %s", (source) => {
+    const result = buildModel({ root: "/project", files: [{ file: "billing/bad.mesh.mx", source }] });
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_OPTION", severity: "error" });
+    expect(result.diagnostics[0]!.message).toBe("`optional` is only an option of a command's field" + (source.startsWith("event ") ? ": an event field may be left out only when it is `nullable`" : ""));
+  });
+
   test("the name, the fields and the file are checked", () => {
     const one = (source: string, file = "billing/bad.mesh.mx") => buildModel({ root: "/project", files: [{ file, source }] }).diagnostics.filter((d) => d.severity === "error");
     // `_` is dropped and the next letter capitalised (`notes/spec/names.md`): no error, and the FQN carries the class's name.

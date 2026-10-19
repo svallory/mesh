@@ -980,7 +980,7 @@ function buildEntity(
 /**
  * An event or a command: a file of its own whose root line declares it and whose children are field lines
  * (`notes/spec/events-and-commands.md`, "Events" and "Commands"). A field line is an attribute line with the options that
- * constrain a value only: `nullable`, `values`, `min`, `max` and `match`. What concerns storage or creation, `default`,
+ * constrain a value only: `nullable`, `values`, `min`, `max` and `match`, plus `optional` for commands. What concerns storage or creation, `default`,
  * `unique`, `primary-key` and `on`, is `MESH_UNKNOWN_OPTION`, since the declaration is a message that carries what its
  * sender put in it, with no row behind it (and `value`, a computed field's body, is no option of one either). A contract
  * is per tag and the field kinds are the attribute types, so the contract cannot tell a field from an attribute, and the
@@ -995,7 +995,7 @@ function buildDeclaration(
   diagnostics: Diagnostic[],
   folder: string,
 ): EventDeclaration | CommandDeclaration {
-  const { at, pos, fail, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
   const name = declaredName(root);
   const { module, bareUnderscore } = moduleOfFolder(folder);
   // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
@@ -1028,7 +1028,7 @@ function buildDeclaration(
     names.add(field.name);
     // `default`, which `shape` reads, is no part of a field.
     const { name: fieldName, type, nullable, values, min, max, match, position } = field;
-    fields.push({ name: fieldName, type, nullable, ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
+    fields.push({ name: fieldName, type, nullable, ...(root.name === "command" && !nullable && opt(tag, "optional") === true ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
   }
   return {
     name,

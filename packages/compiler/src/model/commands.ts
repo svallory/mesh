@@ -94,10 +94,10 @@ export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[]
             ref.position, `add \`&${field.name}\` or an argument \`${field.name}\` to the input of the action, or remove the field`));
           continue;
         }
-        const optional = input.required && field.nullable;
+        const optional = input.required && (field.nullable || field.optional === true);
         if (optional)
           diagnostics.push(error("MESH_COMMAND_INPUT",
-            `${entity.fqn}#${action.name} requires the input ${input.what}, but the field of ${ref.fqn} is optional: a nullable command field may be left out`,
+            `${entity.fqn}#${action.name} requires the input ${input.what}, but the field of ${ref.fqn} is optional: a nullable or optional command field may be left out`,
             ref.position, `make the command field \`${field.name}\` required, or make the input optional`));
         // Requiredness already explains omission/null here, but must not hide a different kind or enum set.
         const value = optional ? { ...field, nullable: false } : field;

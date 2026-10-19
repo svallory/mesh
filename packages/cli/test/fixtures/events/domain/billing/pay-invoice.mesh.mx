@@ -1,3 +1,4 @@
 command :PayInvoice
   uuid :id
   datetime :paidAt nullable
+  string :title optional
