@@ -3,8 +3,9 @@
 // (`run [after=:write]`) and open an application transaction, built, generated, pushed to SQLite and called through the
 // generated functions. Account and Entry import each other.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { openPolicies } from "./open-policy.ts";
@@ -383,21 +384,49 @@ const SQLITE: ResolvedConfig["data"] = {
   capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" },
 };
 
-/** Build the domain into a temporary project folder and write its generated files. */
+/**
+ * Build the domain into a temporary project folder under the system temp dir and write its generated files. The
+ * project's `node_modules` holds absolute symlinks to the packages and libraries the generated tree and the fixture's
+ * helpers import (`@meshfw/runtime`, `meshfw`, `zod`, `drizzle-orm`), so they resolve for both Bun and the `tsc` of
+ * `typeCheck` from outside the checkout (a symlink to the whole `node_modules` does not: Bun resolves neither the
+ * workspace's own relative links nor its `.bun` layout through it, so each target is resolved from this package
+ * first). The links live inside `dir`, so they are removed with it. If anything fails after the folder is made, it is
+ * removed before the error leaves the helper.
+ */
+const RUNTIME_LINKS: readonly [string, string][] = [
+  ["@meshfw/runtime", resolve(import.meta.dir, "../../../packages/runtime")],
+  ["meshfw", resolve(import.meta.dir, "../../../packages/cli")],
+  // `Bun.resolveSync` answers a file inside the package (the `.bun` store's copy), so the package root is its dirname;
+  // a subpath is resolved for packages whose root exports no entry of its own.
+  ["zod", dirname(Bun.resolveSync("zod", import.meta.dir))],
+  ["drizzle-orm", Bun.resolveSync("drizzle-orm/sqlite-core", import.meta.dir).replace(/\/sqlite-core.*$/, "")],
+  ["@types", resolve(import.meta.dir, "../../../node_modules/@types")],
+];
+
 async function generate(prefix: string, sources: Record<string, string>): Promise<string> {
-  const dir = await mkdtemp(join(import.meta.dir, prefix));
-  const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
-  await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
-  await Bun.write(join(dir, "src/domain/peek.ts"), peek);
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
-  expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-  await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
-  // `binding.ts` imports the project's config, which is not part of this fixture.
-  await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
-  // The project declares the context keys its functions pass (ADR-0059): against the bare `ActionContext`, which holds only
-  // the reserved `system`, `{ actor, log }` would be excess properties.
-  await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
-  return dir;
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  try {
+    for (const [name, target] of RUNTIME_LINKS) {
+      const link = join(dir, "node_modules", ...name.split("/"));
+      await mkdir(dirname(link), { recursive: true });
+      await symlink(target, link, "dir");
+    }
+    const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
+    await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
+    await Bun.write(join(dir, "src/domain/peek.ts"), peek);
+    const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
+    // `binding.ts` imports the project's config, which is not part of this fixture.
+    await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
+    // The project declares the context keys its functions pass (ADR-0059): against the bare `ActionContext`, which holds only
+    // the reserved `system`, `{ actor, log }` would be excess properties.
+    await Bun.write(join(dir, "project-context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string };\n    log: string[];\n    stash?: unknown;\n  }\n}\nexport {};\n');
+    return dir;
+  } catch (cause) {
+    await rm(dir, { recursive: true, force: true });
+    throw cause;
+  }
 }
 
 /**
