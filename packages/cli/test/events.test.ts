@@ -314,7 +314,7 @@ describe("the outbox", () => {
   /** A stored invoice to update, written without an action, so no event comes with it. */
   async function stored(layer: Layer, id: string, row: Record<string, unknown> = {}) {
     const table = (app.tables as Record<string, unknown>).invoice;
-    await layer.transaction(async (tx) => { await tx.insert(table, { id, paid: false, total: 10, ...row }); });
+    await layer.transaction(async (tx) => { await tx.insert(table, { id, paid: false, total: 10, title: "untitled", ...row }); });
     return id;
   }
   const ID = "00000000-0000-4000-8000-000000000001";
@@ -423,7 +423,7 @@ describe("the outbox", () => {
     try {
       await stored(layer, ID);
       const { InvoicePaid, PayInvoice } = await import(join(root, ".mesh/domain/billing/index.ts"));
-      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:44:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
+      const refused = (returned: string) => `The publish step of billing.Invoice#publishMade (domain/billing/invoice.mesh.mx:46:17) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${returned}. A publish that should sometimes raise nothing is written inside a when=`;
       const cases: [() => unknown, string][] = [
         [() => null, "null"],
         [() => undefined, "undefined"],
@@ -678,6 +678,33 @@ describe("the outbox", () => {
       expect(seen).toEqual([{ id: ID }]);
       expect(Object.hasOwn(seen[0] as object, "paidAt")).toBe(false);
     } finally { await layer.close(); }
+  });
+
+  test.each([false, true])("dispatch keeps an omitted non-nullable optional title (explicit undefined: %p) and applies a sent title", async (explicit) => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      await stored(layer, ID, { title: "original" });
+      const command = new billing.PayInvoice(explicit ? { id: ID, title: undefined } : { id: ID });
+      expect(command.title).toBeUndefined();
+      expect(await binding.run(() => app.dispatch(command, {}))).toMatchObject({ id: ID, title: "original" });
+      expect(seen).toEqual([{ id: ID }]);
+      expect(Object.hasOwn(seen[0] as object, "title")).toBe(false);
+      expect(await binding.run(() => app.dispatch(new billing.PayInvoice({ id: ID, title: "renamed" }), {}))).toMatchObject({ id: ID, title: "renamed" });
+      expect(seen[1]).toEqual({ id: ID, title: "renamed" });
+      expect(await binding.run<{ id: string; title: string }[]>(() => billing.Invoice.read({}, {}))).toEqual([expect.objectContaining({ id: ID, title: "renamed" })]);
+    } finally { await layer.close(); }
+  });
+
+  test("an optional command field refuses null in the constructor", () => {
+    expect(() => new billing.PayInvoice({ id: ID, title: null })).toThrow(InvalidInputError);
+  });
+
+  test("optional together with nullable accepts null and preserves undefined", () => {
+    expect(new billing.OpenInvoice({}).note).toBeUndefined();
+    expect(new billing.OpenInvoice({ note: undefined }).note).toBeUndefined();
+    expect(new billing.OpenInvoice({ note: null }).note).toBeNull();
+    expect(new billing.OpenInvoice({ note: "sent" }).note).toBe("sent");
   });
 
   test("dispatch sends an explicit null update field and clears the attribute", async () => {

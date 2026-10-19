@@ -319,6 +319,8 @@ for (const type of ATTRIBUTE_TYPES)
     attributes: {
       ...named(),
       ...options(type),
+      // Command fields only; the dialect's afterLower hook checks the authored parent.
+      optional: flag(),
       ...(["uuid", "integer", "string"].includes(type) ? { "primary-key": flag() } : {}),
       // A json value is opaque to the database, so it cannot be unique (ADR-0069).
       ...(type === "json" ? {} : { unique: flag() }),

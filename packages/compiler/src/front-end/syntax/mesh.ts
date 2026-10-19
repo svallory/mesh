@@ -24,6 +24,7 @@ import type { Dialect, NodeType, Trigger } from "@mxlang/core";
 import { ATOM, NAME_SUGAR, atomsHooks, checkAtomUse, type AtomNode } from "./atoms-sugars.ts";
 import { MEMBER, MEMBER_NODE, Member, checkMemberSlots, lowerMember } from "./member.ts";
 import { TRANSACTION, lowerTransaction } from "./transaction.ts";
+import { checkFieldOptions } from "./field-options.ts";
 
 /**
  * `:name` as a whole attribute value: the value row claims it as a
@@ -91,5 +92,6 @@ export const MESH_SYNTAX = {
   afterLower(unit) {
     atomsHooks.afterLower(unit);
     checkMemberSlots(unit);
+    checkFieldOptions(unit);
   },
 } satisfies Omit<Dialect, "id" | "name" | "tagRules">;

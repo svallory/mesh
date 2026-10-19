@@ -82,7 +82,7 @@ function commandsView(input: EmitInput, declarations: ReturnType<typeof declarat
         const access = `command${/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}`;
         const property = `${propertyName(field.name)}: ${access}`;
         // A command's optional field keeps undefined. Do not turn omission into null or an own undefined input.
-        return field.nullable ? `...(${access} === undefined ? {} : { ${property} })` : property;
+        return field.nullable || field.optional ? `...(${access} === undefined ? {} : { ${property} })` : property;
       }).join(", ")} }`,
       entity: entityLocal(entity, "value"),
       action: action.name,

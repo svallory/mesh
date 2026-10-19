@@ -69,6 +69,8 @@ Grouped by why. Row numbers refer to section 3.
 
 Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
+The `optional` rows are command field lines, tested in a command file with an answering update; `optional` is refused on event fields, attributes, arguments and computed fields ([Events: Answering a command](../../docs/events.md#answering-a-command)).
+
 “On main” records the delivered compiler/model coverage, not runtime execution. MX lowers authored `&` in every position through Mesh's syntax module; the production compiler never rewrites source.
 
 | Construct | Example | Contract | Status |
@@ -94,6 +96,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `boolean` | `boolean :field` | `boolean` | on main |
 | `boolean.name` | `boolean :field` | `boolean.name` | on main |
 | `boolean.nullable` | `boolean :field nullable` | `boolean.nullable` | on main |
+| `boolean.optional` | `boolean :field optional` | `boolean.optional` | on main |
 | `boolean.default` | `boolean :field default=false` | `boolean.default` | on main |
 | `boolean.unique` | `boolean :field unique` | `boolean.unique` | on main |
 | `boolean.value` | `boolean :field() { return false }` | `boolean.value` | on main |
@@ -116,18 +119,21 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `date` | `date :field` | `date` | on main |
 | `date.name` | `date :field` | `date.name` | on main |
 | `date.nullable` | `date :field nullable` | `date.nullable` | on main |
+| `date.optional` | `date :field optional` | `date.optional` | on main |
 | `date.default` | `date :field default="2026-10-09"` | `date.default` | on main |
 | `date.unique` | `date :field unique` | `date.unique` | on main |
 | `date.value` | `date :field() { return new Date() }` | `date.value` | on main |
 | `datetime` | `datetime :field` | `datetime` | on main |
 | `datetime.name` | `datetime :field` | `datetime.name` | on main |
 | `datetime.nullable` | `datetime :field nullable` | `datetime.nullable` | on main |
+| `datetime.optional` | `datetime :field optional` | `datetime.optional` | on main |
 | `datetime.default` | `datetime :field default="2026-10-09T12:00:00Z"` | `datetime.default` | on main |
 | `datetime.unique` | `datetime :field unique` | `datetime.unique` | on main |
 | `datetime.value` | `datetime :field() { return new Date() }` | `datetime.value` | on main |
 | `decimal` | `decimal :field` | `decimal` | on main |
 | `decimal.name` | `decimal :field` | `decimal.name` | on main |
 | `decimal.nullable` | `decimal :field nullable` | `decimal.nullable` | on main |
+| `decimal.optional` | `decimal :field optional` | `decimal.optional` | on main |
 | `decimal.default` | `decimal :field default=1.5` | `decimal.default` | on main |
 | `decimal.min` | `decimal :field min=0` | `decimal.min` | on main |
 | `decimal.max` | `decimal :field max=100` | `decimal.max` | on main |
@@ -145,6 +151,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `enum` | `enum :field values=[:draft, :sent]` | `enum` | on main |
 | `enum.name` | `enum :field values=[:draft, :sent]` | `enum.name` | on main |
 | `enum.nullable` | `enum :field values=[:draft, :sent] nullable` | `enum.nullable` | on main |
+| `enum.optional` | `enum :field values=[:draft, :sent] optional` | `enum.optional` | on main |
 | `enum.default` | `enum :field values=[:draft, :sent] default=:draft` | `enum.default` | on main |
 | `enum.values` | `enum :field values=[:draft, :sent]` | `enum.values` | on main |
 | `enum.unique` | `enum :field values=[:draft, :sent] unique` | `enum.unique` | on main |
@@ -156,6 +163,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `float` | `float :field` | `float` | on main |
 | `float.name` | `float :field` | `float.name` | on main |
 | `float.nullable` | `float :field nullable` | `float.nullable` | on main |
+| `float.optional` | `float :field optional` | `float.optional` | on main |
 | `float.default` | `float :field default=0.5` | `float.default` | on main |
 | `float.min` | `float :field min=0` | `float.min` | on main |
 | `float.max` | `float :field max=100` | `float.max` | on main |
@@ -175,6 +183,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `integer` | `integer :field` | `integer` | on main |
 | `integer.name` | `integer :field` | `integer.name` | on main |
 | `integer.nullable` | `integer :field nullable` | `integer.nullable` | on main |
+| `integer.optional` | `integer :field optional` | `integer.optional` | on main |
 | `integer.default` | `integer :field default=0` | `integer.default` | on main |
 | `integer.min` | `integer :field min=0` | `integer.min` | on main |
 | `integer.max` | `integer :field max=100` | `integer.max` | on main |
@@ -184,6 +193,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `json` | `json :field` | `json` | on main |
 | `json.name` | `json :field` | `json.name` | on main |
 | `json.nullable` | `json :field nullable` | `json.nullable` | on main |
+| `json.optional` | `json :field optional` | `json.optional` | on main |
 | `json.default` | `json :field default={ list: [1, 2] }` | `json.default` | on main |
 | `json.value` | `json :field() { return null }` | `json.value` | on main |
 | `load` | `load=[&lines]` | `load` | on main |
@@ -217,6 +227,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `string` | `string :field` | `string` | on main |
 | `string.name` | `string :field` | `string.name` | on main |
 | `string.nullable` | `string :field nullable` | `string.nullable` | on main |
+| `string.optional` | `string :field optional` | `string.optional` | on main |
 | `string.default` | `string :field default="hello"` | `string.default` | on main |
 | `string.min` | `string :field min=0` | `string.min` | on main |
 | `string.max` | `string :field max=100` | `string.max` | on main |
@@ -230,6 +241,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `timestamp` | `timestamp :field` | `timestamp` | on main |
 | `timestamp.name` | `timestamp :field` | `timestamp.name` | on main |
 | `timestamp.nullable` | `timestamp :field nullable` | `timestamp.nullable` | on main |
+| `timestamp.optional` | `timestamp :field optional` | `timestamp.optional` | on main |
 | `timestamp.default` | `timestamp :field default="2026-10-09T12:00:00Z"` | `timestamp.default` | on main |
 | `timestamp.unique` | `timestamp :field unique` | `timestamp.unique` | on main |
 | `timestamp.on` | `timestamp :field on=:create` | `timestamp.on` | on main |
@@ -240,6 +252,7 @@ Each example is a complete tag or tagless member line, tested in a minimal entit
 | `uuid` | `uuid :field` | `uuid` | on main |
 | `uuid.name` | `uuid :field` | `uuid.name` | on main |
 | `uuid.nullable` | `uuid :field nullable` | `uuid.nullable` | on main |
+| `uuid.optional` | `uuid :field optional` | `uuid.optional` | on main |
 | `uuid.default` | `uuid :field default="00000000-0000-4000-8000-000000000001"` | `uuid.default` | on main |
 | `uuid.primary-key` | `uuid :field primary-key` | `uuid.primary-key` | on main |
 | `uuid.unique` | `uuid :field unique` | `uuid.unique` | on main |

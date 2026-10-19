@@ -225,7 +225,10 @@ export interface Entity {
  * One field of an event or a command: an attribute line without what concerns storage or creation, so it has no
  * `primaryKey`, `unique`, `default` or `on`.
  */
-export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "position">;
+export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "position"> & {
+  /** Command fields only: the caller may omit the field without admitting null. Absent unless written. */
+  optional?: true;
+};
 /**
  * An event declaration: the fields of a fact the domain records (`event :InvoicePaid`, a file of its own). Plain data;
  * the generated class and its checks come from it.

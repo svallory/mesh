@@ -26,7 +26,7 @@ event :InvoicePaid
   string :reference nullable
 ```
 
-A field takes the options that constrain a value: `nullable`, `values` on an `enum`, `min` and `max`, and `match` on a `string`. It takes none that concern storage (`default=`, `unique`, `primary-key`), because an event is a message with no row behind it. A field that refers to a record holds its key (`uuid :invoiceId`), since an event outlives the row it is about.
+A field takes the options that constrain a value: `nullable`, `values` on an `enum`, `min` and `max`, and `match` on a `string`. The `optional` flag belongs only to command fields; an event field with `optional` is `MESH_UNKNOWN_OPTION`. It takes none that concern storage (`default=`, `unique`, `primary-key`), because an event is a message with no row behind it. A field that refers to a record holds its key (`uuid :invoiceId`), since an event outlives the row it is about.
 
 `mesh build` generates a class for each event in its module's barrel, here `#mesh/domain/billing`. Its constructor checks every field against the declaration, with every problem in one `InvalidInputError`, and freezes the instance; a `nullable` field left out is `null`. The class is nominal: an object literal shaped like an `InvoicePaid` is not one. `#mesh` exports `DomainEvent`, the union of every event class's instance type, and `eventClasses`, a table from each event's fully qualified name (FQN) to its class. The FQN is the module's folders, a dot, and the class name, `billing.InvoicePaid`; `Mesh.fqnOf(InvoicePaid)` returns it.
 
@@ -69,6 +69,8 @@ command :PayInvoice
   datetime :paidAt
 ```
 
+A command field may also be `optional`: the caller may leave it out, but may not set it to `null`. For example, `string :title optional` lets a rename command keep the stored title when the caller omits it. Its generated class property is `title?: string | undefined`. A `nullable` command field may already be left out and also accepts `null`; writing both `optional` and `nullable` means the same as `nullable`.
+
 An action answers it with `on=`, whose value is the command's imported identifier. The action is a `create`, an `update` or a `destroy`; a `read` has no `on=`.
 
 ```mx "src/domain/billing/invoice.mesh.mx"
@@ -97,9 +99,9 @@ The command and the action describe one request, so they must agree:
 
 - An action answers at most one command, and a command is answered by at most one action in the whole project.
 - Every field of the command is an input of the action, and every required input of the action is a required field of the command. The key that selects the row of an update or a destroy counts as an input, which is why `PayInvoice` above has the field `id`. The `input` section decides which inputs are required: on an update every member input is optional, so the command carries only the ones it changes, and a create's required inputs must all be fields.
-- The command field's values must fit the input's type. Scalar kinds must match exactly (`uuid` is not `string`, `integer` is not `float`, and `datetime` is not `timestamp`, even when their TypeScript types coincide). An enum's values must be a subset of the input's values; order does not matter. A nullable command field cannot fill a non-nullable input, but a non-nullable field can fill a nullable input. A `belongs-to` input takes its target's key type. `min`, `max` and `match` constrain values and are not part of this type check.
+- The command field's values must fit the input's type. Scalar kinds must match exactly (`uuid` is not `string`, `integer` is not `float`, and `datetime` is not `timestamp`, even when their TypeScript types coincide). An enum's values must be a subset of the input's values; order does not matter. A nullable command field cannot fill a non-nullable input, but a non-nullable field can fill a nullable input. An `optional` field fits either, but cannot fill a required input, such as a create's required attribute or an update's row-selecting key. A `belongs-to` input takes its target's key type. `min`, `max` and `match` constrain values and are not part of this type check.
 
-A command's constructor preserves a nullable field you leave out as `undefined`. `dispatch` leaves that field out of the action's input entirely, so an update keeps the stored attribute. Explicit `null` is sent as `null` and clears it. Events keep their own rule: an omitted nullable event field is `null`.
+A command's constructor preserves a nullable or `optional` field you leave out as `undefined`. `dispatch` leaves that field out of the action's input entirely, so an update keeps the stored attribute. Explicit `null` on a nullable field is sent as `null` and clears it; an `optional` field without `nullable` refuses `null` in its constructor. Events keep their own rule: an omitted nullable event field is `null`.
 
 A command that no action answers builds with a warning, since nothing runs when it is dispatched. These are the build errors of `on=`:
 

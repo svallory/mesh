@@ -8,6 +8,11 @@ const defaults: Record<string, string> = { entity: "entity :Sample", create: "cr
 export function coverageProject(tag: string, option: string | undefined, example: string) {
   // An event or a command is the root of a file of its own: the example is the whole file.
   if (tag === "event" || tag === "command") return { root: "/project", files: [{ file: "docs/sample.mesh.mx", source: `${example}\n  uuid :id\n` }] };
+  // The kind's contract is shared, but `optional` is legal only on a command's field. Keep the table cell as authored.
+  if (option === "optional" && ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number])) return { root: "/project", files: [
+    { file: "docs/change.mesh.mx", source: `command :Change\n  uuid :id\n  ${example}\n` },
+    { file: "docs/sample.mesh.mx", source: `import { Change } from "./change.mesh.mx"\nentity :Sample\n  attributes\n    uuid :id primary-key\n    ${tag} :field${tag === "enum" ? " values=[:draft, :sent]" : ""}\n  actions\n    update on=Change\n      input\n        &field\n` },
+  ] };
   const attributes = node("attributes", [node("uuid :id primary-key"), node("string :title"), node("boolean :done")]);
   const relationships = node("relationships", [node("has-many :lines entity=Line")]);
   const actions = node("actions", [node("read :custom")]);

@@ -41,7 +41,9 @@ export interface DeclarationField {
   readonly type: string;
   /** The instance property's type: an optional command field also admits `undefined`; an event field never does. */
   readonly instanceType: string;
-  /** True when the constructor may leave it out: a nullable field, kept undefined on a command and null on an event. */
+  /** True for an explicitly optional command instance property. */
+  readonly instanceOptional: boolean;
+  /** True when the constructor may leave it out: a nullable or optional field, kept undefined on a command and null on an event. */
   readonly optional: boolean;
   /** The Zod expression the constructor checks it with, as printed in a validator. */
   readonly schema: string;
@@ -78,7 +80,7 @@ export interface DeclarationView {
 export function declarationView(declaration: Declaration): DeclarationView {
   const name = className(declaration);
   const fields = declaration.fields.map((field): DeclarationField => {
-    const optional = field.nullable;
+    const optional = field.nullable || (declaration.kind === "command" && field.optional === true);
     const type = valueType(field);
     return {
       name: field.name,
@@ -86,6 +88,7 @@ export function declarationView(declaration: Declaration): DeclarationView {
       access: IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`,
       type,
       instanceType: type + (optional && declaration.kind === "command" ? " | undefined" : ""),
+      instanceOptional: declaration.kind === "command" && field.optional === true,
       optional,
       schema: fieldSchema(field, optional),
       assignment: `$checked${IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}${optional && declaration.kind === "event" ? " ?? null" : ""}`,

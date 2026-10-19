@@ -1,2 +1,2 @@
 command :OpenInvoice
-  string :note nullable
+  string :note optional nullable
