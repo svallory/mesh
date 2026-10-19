@@ -88,7 +88,7 @@
       "dependencies": {
         "@jig-lang/jig": "1.0.1",
         "@meshfw/model": "workspace:*",
-        "@mxlang/core": "0.1.0-alpha.34",
+        "@mxlang/core": "0.1.0-alpha.36",
         "prettier": "3.6.2",
       },
       "devDependencies": {
@@ -352,7 +352,7 @@
 
     "@meshfw/runtime": ["@meshfw/runtime@workspace:packages/runtime"],
 
-    "@mxlang/core": ["@mxlang/core@0.1.0-alpha.34", "https://npm.saulo.tech/@mxlang/core/-/core-0.1.0-alpha.34.tgz", { "dependencies": { "@babel/code-frame": "7.29.7", "@babel/core": "7.29.7", "@babel/generator": "7.29.8", "@babel/parser": "7.29.8", "@babel/plugin-transform-typescript": "7.29.7", "cosmiconfig": "10.0.1" } }, "sha512-V54gAhqTpZ+qM1gotKOe2IZr+TOlb4ZzxTmSGaGZeewfGaLIchMQOV2T+ikpUhC1VVjMgYWmpgABH23ynNcuAg=="],
+    "@mxlang/core": ["@mxlang/core@0.1.0-alpha.36", "https://npm.saulo.tech/@mxlang/core/-/core-0.1.0-alpha.36.tgz", { "dependencies": { "@babel/code-frame": "7.29.7", "@babel/core": "7.29.7", "@babel/generator": "7.29.8", "@babel/parser": "7.29.8", "@babel/plugin-transform-typescript": "7.29.7", "cosmiconfig": "10.0.1" } }, "sha512-VCX8q5JcOYSKHVgX+sg8K6usn4uddyQ2I5+yDPELBB4Yc3feZNTciNLRwBD+GXBsrvtaXAEenIfre6K4iCd2jQ=="],
 
     "@mxlang/tree-sitter-mx": ["@mxlang/tree-sitter-mx@0.1.0-alpha.2", "https://npm.saulo.tech/@mxlang/tree-sitter-mx/-/tree-sitter-mx-0.1.0-alpha.2.tgz", { "dependencies": { "web-tree-sitter": "0.26.9" }, "peerDependencies": { "@types/emscripten": "^1.40.0" }, "optionalPeers": ["@types/emscripten"] }, "sha512-Ahhwu9lBQCVQX1kWwyDXLp1/0K1G/5i7olUCiyrZeINiL3KAQkZx+0yhJf1VXcwh1RGguj7XwOHFtQ7tVVaC0g=="],
 
