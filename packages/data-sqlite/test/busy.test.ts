@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +18,29 @@ let dir: string;
 let file: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "mesh-wait-")); file = join(dir, "app.db"); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+/**
+ * Runs `scenario` under fake timers, advancing the fake clock 50 ms at a time (flushing microtasks between steps)
+ * until it settles, so the layer's busy retry loop — a `setTimeout` sleep checked against a `performance.now()`
+ * deadline — runs through its whole wait in faked milliseconds instead of real ones: `advanceTimersByTime` advances
+ * `performance.now` with it, which is what the deadline math and `waitedMs` read. The scenario may schedule its own
+ * timers (a lock released at a faked instant); they fire as the clock is advanced the same way.
+ */
+async function withoutRealTime<T>(scenario: () => Promise<T>): Promise<T> {
+  jest.useFakeTimers();
+  let settled = false;
+  try {
+    const result = scenario();
+    void result.then(() => { settled = true; }, () => { settled = true; });
+    for (let advanced = 0; !settled && advanced < 120_000; advanced += 50) {
+      jest.advanceTimersByTime(50);
+      for (let i = 0; i < 50 && !settled; i++) await Promise.resolve();
+    }
+    return await result;
+  } finally {
+    jest.useRealTimers();
+  }
+}
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const mode = (path: string) => {
@@ -40,14 +63,16 @@ describe("waiting for a lock", () => {
       await createSchema(layer, { table });
       const lock = holder(file);
       let ticks = 0;
-      const timer = setInterval(() => { ticks++; }, 10);
+      let enough!: () => void;
+      const ticked = new Promise<void>((resolve) => { enough = resolve; });
+      const timer = setInterval(() => { if (++ticks >= 15) enough(); }, 10);
       const waiting = layer.transaction(async (tx) => tx.insert(table, { id: "a", n: 1 }));
-      await sleep(400);
+      await ticked;
       const during = ticks;
       lock.release();
       await waiting;
       clearInterval(timer);
-      // A synchronous busy_timeout wait would have stopped the timer for the whole 400 ms.
+      // A synchronous busy_timeout wait would have stopped the timer before it reached 15 ticks.
       expect(during).toBeGreaterThanOrEqual(15);
       await layer.transaction(async (tx) => expect((await tx.select(table)).map((row) => row.id)).toEqual(["a"]));
     } finally { await layer.close(); }
@@ -58,16 +83,19 @@ describe("waiting for a lock", () => {
     const second = sqlite({ file });
     try {
       await createSchema(first, { table });
-      let entered!: () => void;
-      const inside = new Promise<void>((resolve) => { entered = resolve; });
-      const one = first.transaction(async (tx) => { await tx.insert(table, { id: "one", n: 1 }); entered(); await sleep(150); });
-      await inside;
-      const two = second.transaction(async (tx) => {
-        const seen = (await tx.select(table)).map((row) => row.id);
-        await tx.insert(table, { id: "two", n: seen.length });
+      const seen = await withoutRealTime(async () => {
+        let entered!: () => void;
+        const inside = new Promise<void>((resolve) => { entered = resolve; });
+        const one = first.transaction(async (tx) => { await tx.insert(table, { id: "one", n: 1 }); entered(); await sleep(150); });
+        await inside;
+        const two = second.transaction(async (tx) => {
+          const seen = (await tx.select(table)).map((row) => row.id);
+          await tx.insert(table, { id: "two", n: seen.length });
+          return seen;
+        });
+        const [, seen] = await Promise.all([one, two]);
         return seen;
       });
-      const [, seen] = await Promise.all([one, two]);
       expect(seen).toEqual(["one"]);
     } finally { await first.close(); await second.close(); }
   });
@@ -78,15 +106,18 @@ describe("waiting for a lock", () => {
     try {
       await createSchema(layer, { table });
       lock = holder(file);
-      const started = performance.now();
-      const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      const error = await withoutRealTime(async () => {
+        const started = performance.now();
+        const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+        expect(performance.now() - started).toBeLessThan(1500);
+        return error;
+      });
       expect(error).toBeInstanceOf(DatabaseBusyError);
       const busy = error as DatabaseBusyError;
       expect(busy.code).toBe("MESH_DATABASE_BUSY");
       expect(busy.file).toBe(file);
       expect(busy.waitedMs).toBeGreaterThanOrEqual(300);
       expect(busy.waitedMs).toBeLessThan(1500);
-      expect(performance.now() - started).toBeLessThan(1500);
       lock.release();
       await layer.transaction(async (tx) => { await tx.insert(table, { id: "late", n: 1 }); });
     } finally { lock?.release(); await layer.close(); }
@@ -97,12 +128,15 @@ describe("waiting for a lock", () => {
     try {
       await createSchema(layer, { table });
       const lock = holder(file);
-      const started = performance.now();
-      const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      const error = await withoutRealTime(async () => {
+        const started = performance.now();
+        const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+        expect(performance.now() - started).toBeLessThan(8000);
+        return error;
+      });
       lock.release();
       expect(error).toBeInstanceOf(DatabaseBusyError);
       expect((error as DatabaseBusyError).waitedMs).toBeGreaterThanOrEqual(5000);
-      expect(performance.now() - started).toBeLessThan(8000);
     } finally { await layer.close(); }
   }, 15_000);
 
@@ -111,10 +145,11 @@ describe("waiting for a lock", () => {
     try {
       await createSchema(layer, { table });
       const lock = holder(file);
-      const waiting = sqliteState(layer).transaction(async (tx) => { await tx.insert(table, { id: "x", n: 1 }); }, { waitMs: 2000 });
-      await sleep(300); // past the layer's own 50 ms
-      lock.release();
-      await waiting;
+      // The lock goes 250 ms in, past the layer's own 50 ms, on the faked clock.
+      await withoutRealTime(async () => {
+        setTimeout(() => lock.release(), 250);
+        return sqliteState(layer).transaction(async (tx) => { await tx.insert(table, { id: "x", n: 1 }); }, { waitMs: 2000 });
+      });
     } finally { await layer.close(); }
   });
 
@@ -125,9 +160,11 @@ describe("waiting for a lock", () => {
       const lock = holder(file);
       const order: number[] = [];
       const all = [0, 1, 2, 3].map((n) => layer.transaction(async (tx) => { order.push(n); await tx.insert(table, { id: `r${n}`, n }); }));
-      await sleep(100);
-      lock.release();
-      await Promise.all(all);
+      await withoutRealTime(async () => {
+        // The lock goes 100 ms in, on the faked clock.
+        setTimeout(() => lock.release(), 100);
+        await Promise.all(all);
+      });
       expect(order).toEqual([0, 1, 2, 3]);
     } finally { await layer.close(); }
   });
@@ -218,10 +255,11 @@ describe("WAL", () => {
     const lock = holder(file);
     const layer = sqliteWith({ file }, { waitMs: 3000 });
     try {
-      const waiting = layer.transaction(async (tx) => { await tx.insert(table, { id: "w", n: 1 }); });
-      await sleep(250);
-      lock.release();
-      await waiting;
+      // The lock goes 250 ms in, on the faked clock, and the open succeeds once it has.
+      await withoutRealTime(async () => {
+        setTimeout(() => lock.release(), 250);
+        return layer.transaction(async (tx) => { await tx.insert(table, { id: "w", n: 1 }); });
+      });
       expect(mode(file)).toBe("wal");
       await layer.transaction(async (tx) => expect((await tx.select(table)).map((row) => row.id)).toEqual(["w"]));
     } finally { lock.release(); await layer.close(); }
@@ -234,7 +272,7 @@ describe("WAL", () => {
     const lock = holder(file);
     const layer = sqliteWith({ file }, { waitMs: 300 });
     try {
-      const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      const error = await withoutRealTime(() => layer.transaction(async () => {}).catch((cause: unknown) => cause));
       // Still in the rollback journal: the failure came from the switch, never from BEGIN.
       expect(mode(file)).toBe("delete");
       expect(error).toBeInstanceOf(DatabaseBusyError);
@@ -275,22 +313,26 @@ describe("one deadline for a call", () => {
     let second: ReturnType<typeof holder> | undefined;
     // After 250 ms the first holder commits and its connection moves the file to WAL and takes the lock again, in one
     // tick: the layer's switch then succeeds (the file is WAL already) and its BEGIN meets a lock that does not go.
-    const handover = setTimeout(() => {
-      first.release();
-      const next = new Database(file);
-      next.query("PRAGMA journal_mode=WAL").get();
-      next.run("BEGIN IMMEDIATE");
-      second = { release() { next.run("COMMIT"); next.close(); } };
-    }, 250);
+    // Scheduled inside the faked clock, so it fires as the clock is advanced.
+    let handover: ReturnType<typeof setTimeout> | undefined;
     const layer = sqliteWith({ file }, { waitMs: 500 });
     try {
-      const error = await layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      const error = await withoutRealTime(async () => {
+        handover = setTimeout(() => {
+          first.release();
+          const next = new Database(file);
+          next.query("PRAGMA journal_mode=WAL").get();
+          next.run("BEGIN IMMEDIATE");
+          second = { release() { next.run("COMMIT"); next.close(); } };
+        }, 250);
+        return layer.transaction(async () => {}).catch((cause: unknown) => cause);
+      });
       expect(error).toBeInstanceOf(DatabaseBusyError);
       const waited = (error as DatabaseBusyError).waitedMs;
       expect(waited).toBeGreaterThanOrEqual(500);
       // Two clocks would have waited about 250 + 500 ms.
       expect(waited).toBeLessThan(650);
-    } finally { clearTimeout(handover); first.release(); second?.release(); await layer.close(); }
+    } finally { if (handover !== undefined) clearTimeout(handover); first.release(); second?.release(); await layer.close(); }
   });
 });
 
