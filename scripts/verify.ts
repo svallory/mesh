@@ -27,6 +27,7 @@ async function run(label: string, cmd: string[], cwd: string) {
 }
 
 await run("mesh (.): typecheck scripts", ["bunx", "tsc", "--noEmit"], root);
+await run("mesh (.): test scripts", ["bun", "test", "scripts/"], root);
 
 for (const dir of dirs) {
   const pkg = await Bun.file(join(root, dir, "package.json")).json();
