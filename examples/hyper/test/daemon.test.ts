@@ -158,16 +158,16 @@ function subscriptionRows(db: string): string[] {
   }
 }
 
-/** Resolves once `holds()` is true, checking every 50 ms; rejects after `ms`. */
-async function eventually(holds: () => boolean, what: string, ms = 5_000): Promise<void> {
+/** Resolves once `holds()` is true, checking every 20 ms; rejects after `ms`. */
+async function eventually(holds: () => boolean | Promise<boolean>, what: string, ms = 5_000): Promise<void> {
   const until = performance.now() + ms;
-  while (!holds()) {
+  while (!(await holds())) {
     if (performance.now() > until) throw new Error(`still not true after ${ms} ms: ${what}`);
-    await Bun.sleep(50);
+    await Bun.sleep(20);
   }
 }
 
-/** A short claim lapse for the child daemons that crash, so a restart waits about a second instead of 15. */
+/** Shorter than production's 15 s, but long enough to remain held through the restarted child's module loading. */
 const SHORT_LAPSE = { MESH_TEST_DELIVERY_TIMING: JSON.stringify({ lapseMs: 1_500, renewMs: 300 }) };
 
 describe("the daemon", () => {
@@ -264,7 +264,9 @@ describe("the daemon", () => {
 
   test("SIGTERM exits 0 within 5 seconds even with a call in flight that never settles", async () => {
     const { socket, db } = scratch();
-    const engine = launch([TEST_DAEMON, socket, db]);
+    // A 100 ms grace, in place of the real 4 s, through the fixture's MESH_TEST_GRACE_MS: the grace exit itself is the
+    // point, not how long it waits.
+    const engine = launch([TEST_DAEMON, socket, db], { MESH_TEST_GRACE_MS: "100" });
     await engine.ready();
     const client = await connect(socket);
     void client.call("test.hang", {});
@@ -415,9 +417,13 @@ describe("the daemon", () => {
     const expiresAt = Date.parse(acquired.claim.expiresAt);
     expect(expiresAt - Date.parse(acquired.claim.acquiredAt)).toBe(300);
 
-    // Nothing touches the Task until the protocol's tolerance has passed.
-    await Bun.sleep(expiresAt + 1_000 - Date.now());
-    const { task: view, history } = (await client.call("task.get", { actor: owner, caller: "test", taskId: task })).result!;
+    // Reads do not touch a Task, so the claim expires on its own: poll `task.get` until the sweeper has expired it
+    // (every 250 ms) instead of sleeping past the protocol's whole 1000 ms tolerance first.
+    let view: any, history: any;
+    await eventually(async () => {
+      ({ task: view, history } = (await client.call("task.get", { actor: owner, caller: "test", taskId: task })).result!);
+      return view.activeClaim === null && view.version === acquired.task.version + 1;
+    }, "the sweeper expires the claim", 5_000);
     expect(view).toMatchObject({ activeClaim: null, version: acquired.task.version + 1 });
     expect(history.claims).toMatchObject([{ id: acquired.claim.id, state: "expired", endReason: "lease expired" }]);
     const late = Date.parse(history.claims[0].endedAt) - expiresAt;

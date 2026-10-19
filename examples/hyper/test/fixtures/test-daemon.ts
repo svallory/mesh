@@ -11,12 +11,16 @@
 // `startDaemon`, so a test can send a signal while the daemon is still starting.
 //
 // `MESH_TEST_DELIVERY_TIMING`, when set, is JSON for `setDeliveryTiming` (`{"lapseMs":1500,"renewMs":300}`), so a test
-// can have a claim lapse, or a subscription overflow, in a fraction of the defaults.
+// can have a claim lapse, or a subscription overflow, in a fraction of the defaults. `MESH_TEST_GRACE_MS`, when set, is
+// how long the daemon waits for its calls in flight before it exits anyway, in place of the real 4 s — the hang test
+// uses it so its point, the grace exit itself, is reached without waiting the whole grace period.
+import { localBus } from "@meshfw/bus-local";
 import type { MethodTable } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
 import { setDeliveryTiming, type DeliveryTiming } from "@meshfw/runtime/testing";
 import { transaction } from "#mesh";
 import { Collaborator } from "#mesh/domain/identity";
+import config from "../../mesh.config";
 import { runDaemon, startDaemon } from "../../src/daemon/daemon";
 import { engineRule } from "../../src/rpc/context";
 import { actorless, methods } from "../../src/rpc/methods";
@@ -25,7 +29,20 @@ const [socket, db, delay] = process.argv.slice(2);
 if (!socket || !db) throw new Error("usage: bun test/fixtures/test-daemon.ts <socket> <db> [<start-up delay in ms>]");
 
 const timing = process.env.MESH_TEST_DELIVERY_TIMING;
-if (timing !== undefined) setDeliveryTiming(JSON.parse(timing) as Partial<DeliveryTiming>);
+if (timing !== undefined) {
+  setDeliveryTiming(JSON.parse(timing) as Partial<DeliveryTiming>);
+  config.events = { ...config.events!, bus: localBus({ pollInterval: 20 }) };
+}
+const graceMs = process.env.MESH_TEST_GRACE_MS !== undefined ? Number(process.env.MESH_TEST_GRACE_MS) : undefined;
+if (graceMs !== undefined && (!Number.isInteger(graceMs) || graceMs <= 0)) throw new Error("MESH_TEST_GRACE_MS must be a positive integer of milliseconds");
+
+// Resolves on the turn after `SIGTERM` or `SIGINT` has run `exitOnSignal`'s handler, so a pause whose only job is to
+// hold a transaction or start-up open until the signal arrives ends as soon as the signal is handled.
+const signalled = new Promise<void>((resolve) => {
+  const wake = () => setImmediate(resolve);
+  process.once("SIGTERM", wake);
+  process.once("SIGINT", wake);
+});
 
 const withTestMethods: MethodTable<ActionContext> = {
   ...methods,
@@ -43,7 +60,7 @@ const withTestMethods: MethodTable<ActionContext> = {
       await transaction(async () => {
         await Collaborator.register({ kind: "agent", name: `${name}-1` }, context);
         console.error(`test.write-twice ${name} wrote ${name}-1`);
-        await Bun.sleep(pauseMs);
+        await Promise.race([signalled, Bun.sleep(pauseMs)]);
         await Collaborator.register({ kind: "agent", name: `${name}-2` }, context);
       });
       console.error(`test.write-twice ${name} committed`);
@@ -58,7 +75,7 @@ await runDaemon(async () => {
     // `runDaemon` installs the handlers when `start` first awaits, which is here, so `starting` comes after them.
     await Bun.sleep(0);
     console.error("starting");
-    await Bun.sleep(Number(delay));
+    await Promise.race([signalled, Bun.sleep(Number(delay))]);
   }
   return startDaemon(options);
-});
+}, graceMs);
