@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { FUNCTIONS, type Expression, type ExprNode, type FunctionId } from "@meshfw/model";
@@ -7,7 +8,9 @@ import { EXPRESSION_TABLES, QUANTIFIER_TABLES } from "@meshfw/runtime/testing";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { printTree } from "../src/typescript/expression-printer.ts";
-import { checkTypes, configOf } from "./generated.ts";
+import { checkBatchedTypes as checkTypes, checkTypesBinary, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -477,7 +480,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   test("the generated file type-checks under the strict flags", async () => {
     const { root, files } = await generated(source);
     expect(files.map((f) => f.path)).toContain("generated/domain/task.expressions.ts");
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    // the one test in this file that runs the real `tsc` binary, keeping the CLI path covered
+    expect(checkTypesBinary(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("quantifiers evaluate on loaded rows, unknown included (test 3)", async () => {
@@ -508,8 +512,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   test("plain code type-checks strictly: quantifier callbacks, atoms without &, a bare self, and only the scope names read are declared", async () => {
     // A string or an object key that spells a scope name declares nothing, so --noUnusedLocals finds nothing unused.
     const plain = (entity(check("() => true")) + "      do\n        run ({ context }) { console.log({ actor: \"before the write\" }, context) }\n").replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => (c.title ?? \"\").startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
-    const { root, files } = await generated(plain);
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { root } = await generated(plain);
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.c"](scope({ self: { n: 1 } }))).toBe(true);
   }, 30_000);
@@ -529,7 +533,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).toContain("const $today = () => $.today($s);");
     expect(printed).toContain("[$today()].some(");
     expect(printed).not.toMatch(/\bMesh,|Mesh as|meshIn|\$mesh/);
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.stamped"](scope({ self: { n: 86_400 * 2 + 5 } }, at))).toBe(true);
@@ -558,7 +562,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).toContain("const $today1 = () => $.today($s);");
     expect(printed).toContain("$now2().getTime() + $today1().getTime() + $self2.n + $now + $self + $today > 0");
     expect(printed).toContain("$self.children.some(($) => $.title === \"open\" && $.dueAt !== null && $.dueAt < $now())");
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.spelled"](scope({ self: { n: 1 } }, at))).toBe(true);
@@ -585,7 +589,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(computed.map((c) => [c.name, c.body?.plain?.clock])).toEqual([["outer", ["now"]], ["inner", undefined], ["nested", ["now", "today"]], ["cast", ["now"]]]);
     expect(computed.map((c) => [c.name, c.body?.plain?.mesh])).toEqual([["outer", ["Mesh"]], ["inner", undefined], ["nested", ["Mesh"]], ["cast", undefined]]);
     expect(computed.map((c) => [c.name, c.body?.plain?.isSystem])).toEqual([["outer", true], ["inner", undefined], ["nested", true], ["cast", undefined]]);
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     const system = { system: true };
@@ -628,7 +632,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const printed = await Bun.file(resolve(root, "generated/domain/task.expressions.ts")).text();
     expect(printed).toContain('import { now } from "../../clock"');
     expect(printed).not.toMatch(/const now = |\$\.now\(/);
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     // The bound clock says two days in; the import says the epoch. Both paths answer as the import does.
     const at = { clock: () => new Date(86_400_000 * 2) };
@@ -660,7 +664,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).not.toMatch(new RegExp(`const ${alias} = `));
     expect(printed).not.toMatch(/\$cloneValue|\bMesh\b/);
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("an entity imported as now is no clock to the arity check, and a name only Object.prototype has is a free variable", () => {
@@ -703,7 +707,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).not.toContain("$Task$value");
     expect(files.find((f) => f.path.endsWith("task.types.ts"))!.contents).toContain("  parent: Task | null;\n  held: Task | null;\n");
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const logs: unknown[][] = [];
     const log = console.log;
@@ -729,7 +733,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(steps.map((step) => (step.kind === "run" ? step.fn.plain?.structuredClone : "?"))).toEqual([true, undefined, undefined]);
     const printed = files.find((f) => f.path.endsWith("task.expressions.ts"))!.contents;
     expect(printed.match(/const structuredClone = \$cloneValue;/g)).toHaveLength(1);
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const logs: unknown[][] = [];
     const log = console.log;
@@ -763,7 +767,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // No function names a helper, so the file imports none: an unused import is TS6133 under `--noUnusedLocals`.
     expect(printed).not.toContain("helpers");
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const logs: unknown[][] = [];
     const log = console.log;
@@ -814,7 +818,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).toContain('import type { Money } from "../../money";\nimport { big, type fmt } from "../../helpers";\n');
     expect(printed).not.toMatch(/\b(Cents|Shape|label)\b[^\n]*from/);
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const logs: unknown[][] = [];
     const log = console.log;
@@ -861,7 +865,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const fromTypes = /import type \{([^}]*)\} from "\.\/task\.types"/.exec(printed)![1]!;
     expect(fromTypes.split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => entry.split(" as ")[1])).toEqual(["$Task$Record", "$Task$Loaded", "$Task$GoTaskInput"]);
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.copy"](scope({ self: { n: 3 } }))).toBe("mine: 3");
     expect(expressions["go.step.0.set.title"](scope({ self: { n: 3 } }))).toBe("record,GoTaskInput,TaskScope,TaskStoredScope,expressions,3");
@@ -874,8 +878,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
       "        run ({ self }) { class C { #x = self.n; get() { return this.#x } } console.log(new C().get()) }",
       "",
     ].join("\n"));
-    const { root, files } = await generated(plain);
-    expect(checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
+    const { root } = await generated(plain);
+    expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const logs: unknown[][] = [];
     const log = console.log;
@@ -951,7 +955,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(printed).not.toMatch(/\b(input|self)\b[^\n]*from "\.\.\/\.\.\/helpers"/);
     expect(printed).toContain("const { input } = $s;");
     expect(printed).toContain("const { self } = $s;");
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logged(async () => {
       await expressions["go.step.0.run"]!(scope(values));
@@ -972,7 +976,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(printed).toContain("const { input, before } = $s;");
     expect(printed).toContain("const { context } = $s;");
     expect(printed).toContain("const { self } = $s;");
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logged(async () => { await expressions["go.step.0.run"]!(scope(values)); })).toEqual([["x", 1]]);
     expect(expressions["go.check.c.that"]!(scope(values))).toBe(true);
@@ -998,7 +1002,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
       ].join("\n")).replace("import { Task }", 'import { fmt } from "./helpers"\nimport { Task }'),
     });
     expect(printed).not.toContain("helpers");
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logged(async () => { await expressions["go.step.0.run"]!(scope(values)); })).toEqual([["a", "b", null]]);
   }, 30_000);
@@ -1027,7 +1031,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(imports[2]).toEqual({ identifiers: ["Task"], from: "./task.mesh.mx", position: expect.anything() });
     expect(printed).toContain('import { big as Big, type Money as Cash, fmt as format, same, default as twice } from "../../more";');
     expect(printed).toContain('import type { Money as Amount } from "../../types";');
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logged(async () => {
       await expressions["go.step.0.run"]!(scope(values));
@@ -1056,7 +1060,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(printed).toContain("type List = $List$Record;");
     expect(printed).toContain("type Label = $Tag$Record;");
     expect(printed).toContain("const List: $List$ReadOnly = $List$value;");
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logged(async () => {
       await expressions["go.step.0.run"]!(scope(values));
@@ -1094,7 +1098,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(printed).toContain('"make.step.0.set.title"');
     expect(printed).toContain('"make.step.1.run"');
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     const create = { ...values, input: { title: "from input" }, before: null };
     expect(await expressions["make.step.0.set.title"]!(scope(create))).toBe("from input");
@@ -1173,7 +1177,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     expect(printed).toContain("console.log($now().getTime(), $today().getTime(), Mesh.isSystem(context))");
     expect(printed).toContain("$.today($s)");
     expect(printed).not.toMatch(/const Mesh|meshIn|\$mesh/);
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logs(() => expressions["go.step.1.run"]!(scope({ context: { system: true } }, clock)))).toEqual([[DAY * 3 + 5_000, DAY * 3, true]]);
     expect(await logs(() => expressions["go.step.1.run"]!(scope({ context: {} }, clock)))).toEqual([[DAY * 3 + 5_000, DAY * 3, false]]);
@@ -1189,7 +1193,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     expect(run.kind === "run" ? run.fn.plain : undefined).toMatchObject({ privileged: true, mesh: ["Mesh"], entities: ["Task"] });
     expect(printed).toMatch(/import \{[^}]*\bMesh,[^}]*\} from "@meshfw\/runtime";/);
     expect(printed).toContain("await Mesh.privileged(Task).read({})");
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("an aliased import works under its alias, and the fixes name the alias", async () => {
@@ -1202,7 +1206,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     expect(go.do[0]!.kind === "run" ? go.do[0]!.fn.plain : undefined).toMatchObject({ privileged: true, clock: ["today"], mesh: ["M"] });
     expect(printed).toMatch(/import \{[^}]*\bMesh as M,[^}]*\} from "@meshfw\/runtime";/);
     expect(printed).not.toMatch(/\bMesh,|const M\b|const Mesh/);
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     expect((await load())["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY) }, context: {} }, clock))).toBe(true);
     // `Mesh` itself is not bound in that file, and a bare Mesh function is not either: each fix names the alias.
     const plainMesh = aliased(entity(check("({ context }) => Mesh.isSystem(context)")));
@@ -1294,7 +1298,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     // MX strips the type, so the front end sees no `Mesh` in the first; the back end finds it in the printed function.
     expect(steps.map((step) => (step.kind === "run" ? step.fn.plain?.mesh : "?"))).toEqual([undefined, ["Mesh"]]);
     expect(printed.match(/\bMesh,/g)).toHaveLength(1);
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     const expressions = await load();
     expect(await logs(() => expressions["go.step.0.run"]!(scope({}, clock)))).toEqual([[false]]);
     expect(await logs(() => expressions["go.step.1.run"]!(scope({ context: { system: true } }, clock)))).toEqual([[true]]);
@@ -1305,7 +1309,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
       .replace('import { Mesh } from "meshfw"', 'import { Mesh as M } from "meshfw"');
     const { printed, typeCheck } = await emitted(source);
     expect(printed).toMatch(/import \{[^}]*\btype Mesh as M,[^}]*\} from "@meshfw\/runtime";/);
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("a member destructured from Mesh counts as a read of it: privileged so read is still MESH_COMPUTED_COMPOSES and MESH_READ_POLICY_PRIVILEGED", () => {
@@ -1355,7 +1359,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     expect(task.actions.find((a) => a.name === "go")!.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { kind: "call", fn: "isSystem" }] });
     const run = task.actions.find((a) => a.name === "go")!.do[0]!;
     expect(run.kind === "run" ? run.fn.plain : undefined).toMatchObject({ isSystem: true, mesh: ["Mesh"] });
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
     expect(printed).toContain("$.isSystem($s.context)");
     const expressions = await load();
     expect(expressions["go.check.c.that"]!(scope({ self: { dueAt: new Date(DAY) }, context: { system: true } }, clock))).toBe(true);
@@ -1368,7 +1372,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     const { printed, typeCheck } = await emitted(source);
     expect(printed).toContain('"Mesh.isSystem(%.now)"');
     expect(printed).not.toMatch(/\bMesh,|\$\.now\(/);
-    expect(typeCheck()).toEqual({ code: 0, output: "" });
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("Mesh imported under a scope name is refused at the import, and a fix never names an alias that cannot be read", () => {
@@ -1480,7 +1484,7 @@ describe("%.now and %.today are the current transaction's instant and date", () 
     expect(printed).toContain("return $now().getTime()");
     expect(printed).not.toMatch(/%\.|\bMesh\b/);
     const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-    expect(checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...paths, "generated/schema.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     expect(expressions["computed.at"](scope({ self: {} }, clock))).toBe(DAY * 3 + 5_000);
     expect(expressions["computed.late"](scope({ self: { dueAt: new Date(DAY * 3 - 1) } }, clock))).toBe(true);
@@ -1978,7 +1982,7 @@ export const id: string = fresh.self.id;
 export const state: "open" | "done" = fresh.self.state;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+      expect(await checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     }, 30_000);
     test("a computed field that reads a member the new instance has not filled is null there, in the type: directly, through another computed field or through a relationship; the others keep their type", async () => {
       const computed = "  computed\n    integer :double() { return &n * 2 }\n    integer :twice() { return &double + 1 }\n    integer :viaOwner() { return &owner.n }\n    boolean :isUnset() { return &n === null }\n    integer :orZero() { return &n ?? 0 }\n    integer :orSelf() { return &n ?? &double }\n    boolean :isOpen() { return &state === :open }\n    integer :plain({ self }) { const q = self.n; return q + 1 }\n  actions auto=[:read]";
@@ -2007,7 +2011,7 @@ export const plain: number = fresh.self.plain;
 export const set: number = stored.self.double;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+      expect(await checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     }, 30_000);
     test("an integer key: a create's steps before the write get $Item$CreateScope, where the key may be null", async () => {
       const source = item(make(checkOf("() => &seq === null") + "      do\n        set\n          &m=() => &seq ?? 0\n        run [after=:write] ({ self }) { console.log(self.seq + 1) }\n"), "integer :seq primary-key");
@@ -2024,7 +2028,7 @@ export const notYet: number = creating.self.seq;
 export const after: number = written.self.seq;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
-      expect(checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+      expect(await checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
     }, 30_000);
   });
 });

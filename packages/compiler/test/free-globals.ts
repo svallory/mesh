@@ -2,9 +2,10 @@
 // take the name of any global (`Promise`, `Boolean`, `Date`) without hiding it. `freeGlobals` holds that to the
 // TypeScript checker instead of a list of names: it resolves every identifier a generated file reads and reports the
 // ones whose declaration is a global of the TypeScript library or of a global types package (`@types/bun`).
-import { API } from "typescript/unstable/async";
+import type { API } from "typescript/unstable/async";
 import { SyntaxKind, type Identifier, type Node } from "typescript/unstable/ast";
 import { dirname, relative } from "node:path";
+import { typeServer } from "./type-server.ts";
 
 /** One identifier of a generated file that reads a global by its own name. */
 export interface FreeGlobal {
@@ -58,9 +59,10 @@ const GLOBAL_DECLARATIONS = /\/node_modules\/(?:.*\/)?(?:lib\.[\w.]+\.d\.ts|@typ
  */
 export async function freeGlobals(tsconfig: string, files: readonly string[]): Promise<FreeGlobal[]> {
   const root = dirname(tsconfig);
-  const api = new API({ cwd: root });
+  const api: API = typeServer();
+  let opened: Awaited<ReturnType<typeof api.updateSnapshot>> | undefined;
   try {
-    const snapshot = await api.updateSnapshot({ openProject: tsconfig });
+    const snapshot = (opened = await api.updateSnapshot({ openProject: tsconfig }));
     const project = snapshot.getProject(tsconfig);
     if (!project) throw new Error(`TypeScript did not open ${tsconfig}`);
     const found: FreeGlobal[] = [];
@@ -99,6 +101,9 @@ export async function freeGlobals(tsconfig: string, files: readonly string[]): P
     }
     return found;
   } finally {
-    await api.close();
+    await opened?.dispose();
+    // Snapshots and open projects have separate lifetimes; release both, retaining only the server.
+    const closed = await api.updateSnapshot({ closeProjects: [tsconfig] });
+    await closed.dispose();
   }
 }

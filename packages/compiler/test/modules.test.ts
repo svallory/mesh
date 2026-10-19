@@ -4,7 +4,8 @@
 // subfolder (the folder's name with each character invalid in an identifier replaced by `_`). `#mesh` (`.mesh/index.ts`) keeps only the framework's names. These tests pin the layout,
 // each barrel's contents and the names that must never collide; packages/data-sqlite/test/modules.test.ts
 // runs it against SQLite through the package.json `imports` mapping.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
@@ -13,6 +14,8 @@ import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript
 import { moduleSpecifier } from "../src/typescript/views/inputs.ts";
 import { moduleViews, namespaceName } from "../src/typescript/views/module.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -220,7 +223,7 @@ describe("folder names as export names", () => {
       'export * as class from "./class/index";',
       'export * as default from "./default/index";',
     ].join("\n"));
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
     const domain = await import(resolve(root, ".mesh/domain/index.ts"));
     const mesh = await import(resolve(root, ".mesh/index.ts"));
@@ -323,7 +326,7 @@ describe("names across modules", () => {
     // Each barrel exports its own List and its load function, from its own actions file.
     expect(code(contents(".mesh/domain/order-management/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
     expect(code(contents(".mesh/domain/index.ts"))).toContain('export { List, loadListFields } from "./list.actions";');
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
     const domain = await import(resolve(root, ".mesh/domain/index.ts"));
     const mesh = await import(resolve(root, ".mesh/index.ts"));

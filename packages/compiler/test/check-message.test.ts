@@ -1,9 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 // a check's `message=` is fixed text or a function of the arguments `that=` gets.
 const entity = (message: string) => `entity :Task
@@ -145,7 +148,7 @@ async function typeCheck(message: string) {
   const config = configOf(root);
   await writeGeneratedFiles(await generateFiles({ document: result.document!, config }), config);
   await writeFile(resolve(root, "generated/schema.ts"), "export const tables: any = {};\n");
-  return checkTypes(root, ["generated/domain/task.actions.ts"]);
+  return await checkTypes(root, ["generated/domain/task.actions.ts"]);
 }
 
 test("the generated code type-checks with a message that is text or returns a string", async () => {

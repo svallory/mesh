@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
@@ -9,6 +10,8 @@ import { typesView } from "../src/typescript/views/types.ts";
 import { validatorsView } from "../src/typescript/views/validators.ts";
 import { checkTypes, configOf } from "./generated.ts";
 import { build, keyed } from "./v4.ts";
+
+afterAll(closeTypeServer);
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -140,7 +143,7 @@ describe("json in the generated code", () => {
 
   test("the generated files type-check under the strictest flags", async () => {
     const { root, files } = await generated({ "m/note.mesh.mx": note });
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("the validator accepts any JSON value and null, and nothing else", async () => {
@@ -208,7 +211,7 @@ describe("the key of a create", () => {
     expect(types.record.members[0]).toMatchObject({ key: "seq", type: "number" });
     expect(types.inputs.find((i) => i.name === "DestroyItemInput")!.members).toEqual([{ name: "seq", optional: false, key: "seq", type: "number" }]);
     expect(types.query!.filterMembers[0]).toMatchObject({ key: "seq", type: "$Comparison<number> | undefined" });
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test.each([["uuid :id primary-key", "id"], ["integer :seq primary-key", "seq"]])("a client cannot send the key of %s", (key, name) => {
@@ -254,7 +257,7 @@ describe("a read's input", () => {
     const view = typesView({ document, config: configOf("/p") }, document.entities[0]!);
     expect(view.query!.filterMembers.map((m) => m.key)).toEqual(["id", "name", "count"]);
     expect(view.query!.sortKeys).toContain('"and"');
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("an entity without a read has no query types", async () => {
@@ -387,7 +390,7 @@ describe("hyphens in enum values", () => {
     const view = typesView({ document, config: configOf("/p") }, entity);
     expect(view.record.members[1]!.type).toBe('"review-accepted" | "performer-is-reviewer" | "plain"');
     expect(view.query!.filterMembers[1]!.type).toBe('$Comparison<"review-accepted" | "performer-is-reviewer" | "plain"> | undefined');
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts") && !f.path.endsWith("index.ts") && !f.path.endsWith("binding.ts")).map((f) => f.path), "generated/schema.ts"])).toEqual({ code: 0, output: "" });
     const { makeRuleInputSchema, readRuleInputSchema } = await import(resolve(root, "generated/domain/m/rule.validators.ts"));
     expect(makeRuleInputSchema.safeParse({ kind: "performer-is-reviewer" }).success).toBe(true);
     expect(makeRuleInputSchema.safeParse({}).success).toBe(true);

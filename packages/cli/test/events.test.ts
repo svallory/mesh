@@ -16,6 +16,9 @@ import { CursorAheadError, dispatchCommand, EventsDeletedError, FrameworkError, 
 import { testBus } from "@meshfw/runtime/testing";
 import { runCli } from "../src/cli.ts";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
+import { closeTypeServer } from "../../compiler/test/type-server.ts";
+
+afterAll(closeTypeServer);
 
 const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/events/domain");

@@ -3,7 +3,8 @@
 // `MESH_PUBLISH_BEFORE_WRITE`, `MESH_EVENT_NOT_PUBLISHED`) and generates a class per declaration, a barrel export, `DomainEvent`
 // and the table of event classes in `#mesh`; a `publish` is a plain function with the reason `publish-step` in the
 // entity's `.expressions.ts`. What `mesh build` does end to end, with the classes run, is `packages/cli/test/events.test.ts`.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity, Step } from "@meshfw/model";
@@ -12,6 +13,8 @@ import { buildModel as buildWithWarnings } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { explainAction } from "../src/typescript/explain.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 /**
  * These tests declare `PayInvoice` to name it in a `publish`, and nothing answers it: `MESH_COMMAND_UNANSWERED` (a warning,
@@ -477,7 +480,7 @@ entity :Invoice
     await writeGeneratedFiles(generated, config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
-    const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
     expect(checked).toEqual({ code: 0, output: "" });
   }, 30_000);
 
@@ -512,7 +515,7 @@ entity :Invoice
       'export const skips = handler({ events: [InvoicePaid], onFailure: "skip", run: () => {} });',
       "",
     ].join("\n"));
-    const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "handlers.ts")]);
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "handlers.ts")]);
     expect(checked).toEqual({ code: 0, output: "" });
   }, 30_000);
 
@@ -527,7 +530,7 @@ entity :Invoice
     await writeGeneratedFiles(generated, config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
-    const checked = checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
     expect(checked.code).toBe(1);
     expect(checked.output).toContain("invoice.expressions.ts");
     expect(checked.output).toContain("Type '{ id: string; }' is not assignable to type");

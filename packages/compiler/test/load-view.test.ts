@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, type EmitInput } from "../src/typescript/emit.ts";
@@ -11,6 +12,8 @@ import { typesView } from "../src/typescript/views/types.ts";
 import { checkTypes, configOf } from "./generated.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { resolve } from "node:path";
+
+afterAll(closeTypeServer);
 
 /** The `load` generator's view, and the pieces of the types, module and read views that name what it generates (M7). */
 const author = `import { Post } from "./post.mesh.mx"
@@ -164,7 +167,7 @@ describe("the load generator", () => {
       await writeGeneratedFiles(files, emitted);
       // The load file imports `./schema`, which the adapter writes; a stand-in with the same table names is enough here.
       await Bun.write(resolve(root, "generated/schema.ts"), "export const tables = { authors: {}, lonelies: {}, posts: {} };\n");
-      const result = checkTypes(root, ["generated/load.ts", "generated/domain/app/author.expressions.ts", "generated/domain/app/post.types.ts",
+      const result = await checkTypes(root, ["generated/load.ts", "generated/domain/app/author.expressions.ts", "generated/domain/app/post.types.ts",
         "generated/domain/app/author.actions.ts", "generated/domain/app/lonely.actions.ts", "generated/domain/app/post.actions.ts", "generated/domain/app/index.ts"]);
       expect(result.output).toBe("");
       expect(result.code).toBe(0);
