@@ -513,20 +513,22 @@ describe("the outbox", () => {
       await binding.run(() => billing.Invoice.pay({ id: ID }, {}));
       await binding.run(() => billing.Invoice.refund({ id: ID2 }, {}));
       await binding.run(() => billing.Invoice.pay({ id: ID2 }, {}));
-      const read = (query?: Record<string, unknown>) => binding.run(() => app.readEvents(query)) as Promise<{ events: { position: number; name: string; key: unknown; payload: any }[]; cursor: number }>;
+      const read = (query?: Record<string, unknown>) => binding.run(() => app.readEvents(query)) as Promise<{ events: { position: number; name: string; key: unknown; payload: any }[]; cursor: number; highest: number }>;
       const all = await read();
       expect(all.events.map((record) => [record.position, record.name, record.key])).toEqual([
         [1, "billing.InvoicePaid", { id: ID }], [2, "sales.refunds.RefundIssued", { id: ID2 }], [3, "billing.InvoicePaid", { id: ID2 }],
       ]);
-      expect(all.cursor).toBe(3);
+      expect([all.cursor, all.highest]).toEqual([3, 3]);
       const { InvoicePaid } = await import(join(root, ".mesh/domain/billing/index.ts"));
       expect(all.events[0]!.payload).toBeInstanceOf(InvoicePaid);
       expect(all.events[0]!.payload.paidAt).toBeInstanceOf(Date);
       expect(all.events[1]!.payload).toBeInstanceOf(refunds.RefundIssued);
-      expect((await read({ after: 1, limit: 1 })).events.map((record) => record.position)).toEqual([2]);
+      const limited = await read({ after: 1, limit: 1 });
+      expect(limited.events.map((record) => record.position)).toEqual([2]);
+      expect([limited.cursor, limited.highest]).toEqual([2, 3]);
       expect((await read({ names: ["billing.InvoicePaid"] })).events.map((record) => record.position)).toEqual([1, 3]);
       expect((await read({ entity: "billing.Invoice", key: { id: ID2 } })).events.map((record) => record.position)).toEqual([2, 3]);
-      expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3 });
+      expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3, highest: 3 });
       // inside a transaction it is refused: the transaction's own events come from published()
       expect(((await failure(binding.transaction(() => app.readEvents()))) as Error).message).toContain("published()");
       // a cursor past the highest position
@@ -642,6 +644,30 @@ describe("the outbox", () => {
     } finally { await layer.close(); }
   });
 
+  test("listSubscriptions uses the binding in scope without started delivery and keeps closed rows until forgotten", async () => {
+    const { layer, binding } = await open({ events: { bus: testBus() } });
+    const elsewhere = await open();
+    const list = () => app.listSubscriptions() as Promise<readonly { name: string; position: number }[]>;
+    try {
+      expect(await binding.run(list)).toEqual([]);
+      const s = await binding.run(() => app.subscribe({ name: "client" }, () => {})) as { close(): Promise<void> };
+      expect(await binding.run(list)).toEqual([{ name: "client", position: 0 }]);
+      expect(await elsewhere.binding.run(list)).toEqual([]);
+      await s.close();
+      expect(await binding.run(list)).toEqual([{ name: "client", position: 0 }]);
+      await expect(binding.transaction(async () => {
+        expect(await list()).toEqual([{ name: "client", position: 0 }]);
+        await app.forgetSubscription("client");
+        expect(await list()).toEqual([]); // Joins and sees the uncommitted deletion.
+        throw new Error("roll listing back");
+      })).rejects.toThrow("roll listing back");
+      expect(await binding.run(list)).toEqual([{ name: "client", position: 0 }]);
+      await binding.run(() => app.forgetSubscription("client"));
+      expect(await binding.run(list)).toEqual([]);
+      expect(() => app.listSubscriptions()).toThrow("listSubscriptions was called while not connected");
+    } finally { await layer.close(); await elsewhere.layer.close(); }
+  });
+
   test("readEvents with no binding in scope and none connected throws", async () => {
     expect(await failure(app.readEvents())).toBeInstanceOf(FrameworkError);
   });
@@ -662,6 +688,46 @@ describe("the outbox", () => {
       // the same call by name does the same thing
       await stored(layer, ID2);
       expect(await binding.run(() => billing.Invoice.payInvoice({ id: ID2, paidAt }, {}))).toMatchObject({ id: ID2, paid: true, paidAt });
+    } finally { await layer.close(); }
+  });
+
+  test.each([false, true])("dispatch leaves an omitted update field out of the input (explicit undefined: %p)", async (explicit) => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      const paidAt = new Date("2026-01-02T03:04:05.000Z");
+      await stored(layer, ID, { paidAt });
+      const command = new billing.PayInvoice(explicit ? { id: ID, paidAt: undefined } : { id: ID });
+      expect(command.paidAt).toBeUndefined();
+      const result = await binding.run(() => app.dispatch(command, {}));
+      expect(result).toMatchObject({ id: ID, paidAt });
+      expect(seen).toEqual([{ id: ID }]);
+      expect(Object.hasOwn(seen[0] as object, "paidAt")).toBe(false);
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch sends an explicit null update field and clears the attribute", async () => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      await stored(layer, ID, { paidAt: new Date(0) });
+      const command = new billing.PayInvoice({ id: ID, paidAt: null });
+      expect(command.paidAt).toBeNull();
+      expect(await binding.run(() => app.dispatch(command, {}))).toMatchObject({ id: ID, paidAt: null });
+      expect(seen).toEqual([{ id: ID, paidAt: null }]);
+      expect(Object.hasOwn(seen[0] as object, "paidAt")).toBe(true);
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch leaves an omitted optional create field out of the input", async () => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      const command = new billing.OpenInvoice({});
+      expect(command.note).toBeUndefined();
+      expect(await binding.run(() => app.dispatch(command, {}))).toMatchObject({ paid: false });
+      expect(seen).toEqual([{}]);
+      expect(Object.hasOwn(seen[0] as object, "note")).toBe(false);
     } finally { await layer.close(); }
   });
 

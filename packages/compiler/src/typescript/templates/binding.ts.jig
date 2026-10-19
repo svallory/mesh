@@ -24,6 +24,7 @@ import {
 @if(events)
   forgetHandler as $forgetHandler,
   forgetSubscription as $forgetSubscription,
+  listSubscriptions as $listSubscriptions,
   loadEvents as $loadEvents,
   markNoDeliver as $markNoDeliver,
   published as $published,
@@ -37,6 +38,7 @@ import {
   type Delivery as $Delivery,
   type EventRecord as $EventRecord,
   type EventsConfig as $EventsConfig,
+  type SubscriptionProgress as $SubscriptionProgress,
 @if(replay)
   type ReadEventsPage as $ReadEventsPage,
   type ReadEventsQuery as $ReadEventsQuery,
@@ -221,7 +223,8 @@ export function published(): readonly $EventRecord<DomainEvent>[] {
 
 /**
  * A page of the events the outbox keeps, after the cursor `after` (default 0), on the binding in scope, else on the
- * connected one: `{ events, cursor }`, where `cursor` is what to pass as `after` next. `limit` (default 100) bounds the rows read,
+ * connected one: `{ events, cursor, highest }`, where `cursor` is what to pass as `after` next, and `highest` is the
+ * outbox's highest assigned position in the same snapshot. `limit` (default 100) bounds the rows read,
  * filtered ones included. A cursor behind the deleted rows is `MESH_EVENTS_DELETED`; inside a transaction it throws
  * `FrameworkError`, since a transaction's own events come from `published()`.
  */
@@ -264,6 +267,14 @@ export function forgetHandler(name: string): $Promise<void> {
  */
 export function resumeHandler(name: string): $Promise<void> {
   return $resumeHandler($deliveryBinding("resumeHandler"), name);
+}
+
+/**
+ * Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer.
+ * Reads through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
+ */
+export function listSubscriptions(): $Promise<readonly $SubscriptionProgress[]> {
+  return $listSubscriptions($deliveryBinding("listSubscriptions"));
 }
 
 /** Drop the row of a subscription whose client is not coming back, so it holds deletion no longer. An open one is refused. */

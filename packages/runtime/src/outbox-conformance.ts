@@ -77,11 +77,14 @@ export function outboxConformance(makeLayer: () => Promise<OutboxFixture>, manif
     }),
     "a read pages by after and limit": withLayer(async (layer) => {
       await append(layer, outboxRow(1), outboxRow(2), outboxRow(3), outboxRow(4), outboxRow(5));
-      assert(JSON.stringify(positions(await layer.readOutbox(0, 2))) === "[1,2]", "first page");
-      assert(JSON.stringify(positions(await layer.readOutbox(2, 2))) === "[3,4]", "second page");
+      const first = await layer.readOutbox(0, 2);
+      assert(JSON.stringify(positions(first)) === "[1,2]" && first.highest === 5, "first page keeps the head beyond its limit");
+      const second = await layer.readOutbox(2, 2);
+      assert(JSON.stringify(positions(second)) === "[3,4]" && second.highest === 5, "second page keeps the same head");
       const last = await layer.readOutbox(4, 2);
       assert(JSON.stringify(positions(last)) === "[5]" && last.highest === 5, "last page");
-      assert((await layer.readOutbox(5, 2)).rows.length === 0, "past the end");
+      const empty = await layer.readOutbox(5, 2);
+      assert(empty.rows.length === 0 && empty.highest === 5, "an empty page at the head retains highest");
     }),
     "a rolled-back transaction leaves no row": withLayer(async (layer) => {
       await rejects(() => layer.transaction(async (tx) => { await tx.appendEvent!(outboxRow(1)); throw new Error("roll back"); }),

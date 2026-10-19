@@ -269,6 +269,23 @@ describe("published() and readEvents through a binding", () => {
     await binding.transaction(async () => { expect(published(frame)).toEqual([]); });
   });
 
+  test("readEvents reports highest on empty, written, limited, filtered and deleted logs", async () => {
+    const { frame, binding, publish, layer } = setup();
+    const read = (query = {}) => binding.run(() => readEvents(frame, undefined, query));
+    expect(await read()).toEqual({ events: [], cursor: 0, highest: 0 });
+    await publish(paid("a"));
+    await publish(paid("b"));
+    await publish(paid("c"));
+    expect((await read()).highest).toBe(3);
+    const first = await read({ limit: 1 });
+    expect([first.cursor, first.highest]).toEqual([1, 3]);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(await read({ names: ["billing.InvoiceVoided"], limit: 1 })).toEqual({ events: [], cursor: 1, highest: 3 });
+    expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3, highest: 3 });
+    await layer.transaction(async (tx) => { await tx.deleteOutboxThrough!(3); });
+    expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3, highest: 3 });
+  });
+
   test("readEvents rebuilds each event as an instance of its class, its dates revived, and moves the cursor over filtered rows", async () => {
     const { frame, binding, publish } = setup();
     await binding.transaction(async () => {
