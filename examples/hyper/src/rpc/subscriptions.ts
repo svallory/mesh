@@ -61,40 +61,30 @@ export async function readPage(params: ReadParams): Promise<{ events: WireEvent[
   return { events, cursor: page.cursor, hasMore: page.cursor < (await head()) };
 }
 
-/** One open subscription: Mesh's handle and the connection it notifies. */
+/** One open subscription: Mesh's handle and the listener to remove when it ends. */
 interface Open {
   readonly subscription: Subscription;
-  readonly connection: Connection;
+  unwatch: () => void;
 }
 
 /** Every subscription this process serves, by its id. */
 const served = new Map<string, Open>();
-/** The timer that closes the subscriptions of connections that went away; runs only while one is open. */
-let sweeping: ReturnType<typeof setInterval> | undefined;
-
-/** How often the subscriptions of closed connections are closed. */
-const SWEEP_MS = 500;
+/** Cleanup already started by a connection's close hook; shutdown waits for it too. */
+const ending = new Set<Promise<void>>();
 
 /** Closes subscription `id` and drops its row, so it holds nothing once its client is gone. */
-async function end(id: string): Promise<void> {
+function end(id: string): Promise<void> {
   const entry = served.get(id);
-  if (entry === undefined) return;
+  if (entry === undefined) return Promise.resolve();
   served.delete(id);
-  if (served.size === 0 && sweeping !== undefined) {
-    clearInterval(sweeping);
-    sweeping = undefined;
-  }
-  await entry.subscription.close();
-  await eventLog().binding.run(() => forgetSubscription(id));
-}
-
-/** Starts the sweep that ends the subscriptions whose connection closed (`@meshfw/jsonrpc` reports it as `closed`). */
-function watchConnections(): void {
-  sweeping ??= setInterval(() => {
-    for (const [id, entry] of served)
-      if (entry.connection.closed) void end(id).catch((error: unknown) => console.error(`could not close subscription ${id}`, error));
-  }, SWEEP_MS);
-  sweeping.unref?.();
+  entry.unwatch();
+  const task = (async () => {
+    await entry.subscription.close();
+    const { binding } = eventLog();
+    await binding.run(() => forgetSubscription(id));
+  })().finally(() => ending.delete(task));
+  ending.add(task);
+  return task;
 }
 
 /** What `events.subscribe` takes, past its schema. */
@@ -108,7 +98,9 @@ export interface SubscribeParams {
  * `events.subscribe` (PROTOCOL.md §8): opens a subscription from the cursor `after` and returns its id. Every matching
  * event is then sent as an `events.event` notification on this connection, in seq order, each once. Notifications wait
  * until the response is written, so the client always learns the id first. The subscription ends on
- * `events.unsubscribe` or when the connection closes.
+ * `events.unsubscribe` or when the connection closes. PROTOCOL.md defines no per-subscription end signal: an
+ * autonomous stream failure closes the connection, ending its other subscriptions and pending requests too. The
+ * client reconnects and subscribes from its last processed cursors; no invented final notification is sent.
  */
 export async function openSubscription(params: SubscribeParams, connection: Connection): Promise<{ subscriptionId: string }> {
   const subscriptionId = crypto.randomUUID();
@@ -125,19 +117,21 @@ export async function openSubscription(params: SubscribeParams, connection: Conn
       const event = toWire(record, workspaceId);
       return params.taskSubtree === undefined || (await inSubtree(event.taskId, params.taskSubtree)) ? event : undefined;
     });
-    if (wire !== undefined) connection.notify("events.event", { subscriptionId, event: wire as unknown as Record<string, unknown> });
+    if (wire !== undefined) connection.notify("events.event", { subscriptionId, event: wire });
   });
-  served.set(subscriptionId, { subscription, connection });
-  // Mesh ends a stream on its own when the callback throws, the queue overflows or another process takes the database;
-  // `done` then resolves with the error (null after `close()` or delivery's stop, which `end` already handles). The
-  // subscription is ended here too, so its row is dropped; the connection stays open, since `@meshfw/jsonrpc` gives
-  // the server no way to close one.
-  void subscription.done.then((error) => {
-    if (error === null || !served.has(subscriptionId)) return;
+  const entry: Open = { subscription, unwatch: () => {} };
+  served.set(subscriptionId, entry);
+  // A late listener runs at once too: a connection lost while `subscribe` awaited its row leaves no open stream.
+  entry.unwatch = connection.onClose(() => end(subscriptionId));
+  // Mesh ends a stream on its own when the callback throws, the queue overflows or another process takes the database.
+  // Wait for the response gate even on failure, so the client learns the subscription id before the connection ends.
+  void subscription.done.then(async (error) => {
+    if (error === null) return;
+    await gate;
+    if (!served.has(subscriptionId)) return;
     console.error(`subscription ${subscriptionId} ended on its own`, error);
-    return end(subscriptionId);
+    connection.close();
   }).catch((error: unknown) => console.error(`could not close subscription ${subscriptionId}`, error));
-  watchConnections();
   setImmediate(release);
   return { subscriptionId };
 }
@@ -150,5 +144,5 @@ export async function closeSubscription(subscriptionId: string): Promise<{ ok: t
 
 /** Ends every subscription this process serves: the daemon calls it before it stops delivery. */
 export async function closeAll(): Promise<void> {
-  await Promise.all([...served.keys()].map((id) => end(id)));
+  await Promise.all([...served.keys()].map((id) => end(id)).concat([...ending]));
 }

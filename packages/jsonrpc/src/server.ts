@@ -61,6 +61,19 @@ export interface Connection {
    * Does nothing once the connection is closed. Throws `FrameworkError` when `params` is not a plain JSON object.
    */
   notify(method: string, params: Record<string, unknown>): void;
+  /**
+   * Runs once when either side closes, with `closed` already true; a late listener runs immediately. Returns an
+   * unsubscribe function. A listener's throw or rejected promise is reported through `log`, without stopping others.
+   */
+  onClose(listener: () => void | Promise<void>): () => void;
+  /**
+   * Stops reading and marks this connection closed immediately, then ends it after previously queued bytes are
+   * written. Idempotent. A call still validating never reaches its context factory; a call still building context
+   * never reaches `run`. Work already in `run` is not cancelled, but its result is discarded without an error response.
+   * Unlike `Server.close()`, this does not wait for running calls. Send any final notification before calling this.
+   * The byte drain has no deadline: a client that never reads can keep its socket and queued bytes open indefinitely.
+   */
+  close(): void;
   /** True once the client or the server closed the connection. */
   readonly closed: boolean;
 }
@@ -159,7 +172,7 @@ export async function serve<C, T extends Record<string, unknown>>(options: Serve
   const receive = (peer: Peer, chunk: Uint8Array) => {
     for (const frame of peer.reader.push(chunk)) {
       // close() began, possibly from a call this same chunk started: the rest of the chunk is not read.
-      if (state.closing) return;
+      if (state.closing || peer.closed) return;
       if (frame.kind !== "line") {
         peer.sendError(null, reserved(settings, codes.parseError));
         continue;
@@ -282,9 +295,9 @@ async function dispatch<C>(
     if (!entry) throw new RpcError(codes.methodNotFound, settings.messages[codes.methodNotFound]);
     const params = entry.params ? await validate(entry.params, value, settings.messages[codes.invalidParams]) : value;
     const invoke = async (): Promise<unknown> => {
-      if (server.closing) return SKIPPED;
+      if (server.closing || peer.closed) return SKIPPED;
       const context = await settings.context(call, params);
-      if (server.closing) return SKIPPED;
+      if (server.closing || peer.closed) return SKIPPED;
       return entry.run(params as Readonly<Record<string, unknown>>, context, call);
     };
     result = settings.binding ? await settings.binding.run(invoke) : await invoke();
@@ -357,6 +370,9 @@ class Peer implements Connection {
   /** Bytes waiting for the socket's `drain`, oldest first. */
   #queue: Uint8Array[] = [];
   #closed = false;
+  /** A server-side close: no new output, but already queued bytes still drain. */
+  #closeRequested = false;
+  readonly #closeListeners = new Set<() => void>();
   /** Calls started on this connection that have not finished. */
   #pending = 0;
   /** True once the client shut down its writing side: no request follows. */
@@ -371,7 +387,28 @@ class Peer implements Connection {
   }
 
   get closed(): boolean {
-    return this.#closed;
+    return this.#closed || this.#closeRequested;
+  }
+
+  onClose(listener: () => void | Promise<void>): () => void {
+    const run = () => {
+      try {
+        const result = listener();
+        if (result) void Promise.resolve(result).catch((error: unknown) => this.#settings.log("connection onClose listener failed", error));
+      } catch (error) {
+        this.#settings.log("connection onClose listener failed", error);
+      }
+    };
+    if (this.closed) run();
+    else this.#closeListeners.add(run);
+    return () => { this.#closeListeners.delete(run); };
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.#closeRequested = true;
+    this.#notifyClosed();
+    this.flush();
   }
 
   notify(method: string, params: Record<string, unknown>): void {
@@ -390,7 +427,7 @@ class Peer implements Connection {
 
   /** Writes one line, after whatever is still queued. */
   send(line: string): void {
-    if (this.#closed) return;
+    if (this.closed) return;
     const bytes = encoder.encode(line + "\n");
     if (this.#queue.length > 0) {
       this.#queue.push(bytes);
@@ -457,17 +494,25 @@ class Peer implements Connection {
     this.#socket.end();
   }
 
-  /** Ends a connection whose client stopped writing, once every call it made has finished and every byte is written. */
+  /** Drains an explicit close, or a client's half-close after its pending calls finish. */
   #endIfFinished(): void {
-    if (this.#closed || !this.#readEnded || this.#pending > 0 || this.#queue.length > 0) return;
-    this.markClosed();
-    this.#socket.end();
+    if (this.#closed || this.#queue.length > 0) return;
+    if (!this.#closeRequested && (!this.#readEnded || this.#pending > 0)) return;
+    this.finish();
   }
 
   markClosed(): void {
+    if (this.#closed) return;
     this.#closed = true;
     this.#queue = [];
     this.#releaseDrained();
+    this.#notifyClosed();
+  }
+
+  #notifyClosed(): void {
+    const listeners = [...this.#closeListeners];
+    this.#closeListeners.clear();
+    for (const listener of listeners) listener();
   }
 
   #releaseDrained(): void {

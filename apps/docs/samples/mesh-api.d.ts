@@ -635,6 +635,14 @@ declare module "@meshfw/jsonrpc" {
   export interface Connection {
     /** Writes a notification (a line with no `id`) to this client; does nothing once it is closed. */
     notify(method: string, params: Record<string, unknown>): void;
+    /** Runs once on close (immediately if already closed); failures go to `log`. Returns an unsubscribe function. */
+    onClose(listener: () => void | Promise<void>): () => void;
+    /**
+     * Marks closed immediately. Calls still validating never reach context; calls building context never reach `run`.
+     * Work already in `run` keeps running without an answer. Queued bytes drain with no deadline; a client that never
+     * reads can keep its socket and queued bytes open indefinitely. Idempotent; does not wait for running calls.
+     */
+    close(): void;
     readonly closed: boolean;
   }
 

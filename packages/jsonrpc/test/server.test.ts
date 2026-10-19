@@ -577,6 +577,160 @@ describe("notifications", () => {
   });
 });
 
+describe("connection lifecycle", () => {
+  async function kept() {
+    let connection!: Call["connection"];
+    const server = await start({ keep: { run: (_params, _context, call) => { connection = call.connection; return null; } }, ...echo });
+    const client = await connect(server);
+    await ask(client, "keep");
+    return { server, client, connection };
+  }
+
+  test("a client close calls its listeners once, with closed true; unsubscribed listeners do not run", async () => {
+    const { client, connection } = await kept();
+    const closed = gate();
+    const seen: boolean[] = [];
+    const unsubscribe = connection.onClose(() => { throw new Error("removed listener ran"); });
+    unsubscribe();
+    unsubscribe();
+    connection.onClose(() => { seen.push(connection.closed); closed.resolve(); });
+    client.end();
+    await closed.promise;
+    connection.close();
+    expect(seen).toEqual([true]);
+    expect(logged).toEqual([]);
+  });
+
+  test("server-side close is immediate and idempotent, and late listeners run synchronously", async () => {
+    const { client, connection } = await kept();
+    let called = 0;
+    connection.onClose(() => { expect(connection.closed).toBe(true); called++; });
+    connection.close();
+    connection.close();
+    expect(connection.closed).toBe(true);
+    expect(called).toBe(1);
+    const unsubscribe = connection.onClose(() => { called++; });
+    expect(called).toBe(2);
+    unsubscribe();
+    connection.notify("ignored", {});
+    await client.closed();
+    expect(called).toBe(2);
+  });
+
+  test("throwing and rejecting close listeners are logged without stopping the others, including late listeners", async () => {
+    const { client, connection } = await kept();
+    const thrown = new Error("listener threw");
+    const rejected = new Error("listener rejected");
+    let called = 0;
+    connection.onClose(() => { throw thrown; });
+    connection.onClose(async () => { throw rejected; });
+    connection.onClose(() => { called++; });
+    connection.close();
+    connection.onClose(() => { throw thrown; });
+    await client.closed();
+    expect(called).toBe(1);
+    expect(logged.map(({ error }) => error)).toEqual([thrown, thrown, rejected]);
+    expect(logged.every(({ message }) => message === "connection onClose listener failed")).toBe(true);
+  });
+
+  test("Server.close also calls the connection's close listeners once", async () => {
+    const { server, client, connection } = await kept();
+    let called = 0;
+    connection.onClose(() => { called++; });
+    await server.close();
+    await client.closed();
+    expect(called).toBe(1);
+  });
+
+  test("connection close does not wait for pending calls or send errors; their work settles but results are discarded", async () => {
+    const entered = gate();
+    const release = gate();
+    let connection!: Call["connection"];
+    let finished = false;
+    let late = 0;
+    const server = await start({
+      pending: { run: async (_params, _context, call) => {
+        connection = call.connection;
+        entered.resolve();
+        await release.promise;
+        finished = true;
+        return "discarded";
+      } },
+      stop: { run: (_params, _context, call) => { call.connection.close(); return "also discarded"; } },
+      late: { run: () => late++ },
+    });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "pending" });
+    await entered.promise;
+    client.write('{"jsonrpc":"2.0","id":2,"method":"stop"}\n{"jsonrpc":"2.0","id":3,"method":"late"}\n');
+    try {
+      await client.closed();
+      expect(connection.closed).toBe(true);
+      expect(finished).toBe(false);
+      expect(late).toBe(0);
+    } finally { release.resolve(); }
+    await server.close();
+    expect(finished).toBe(true);
+    await expect(client.nextLine()).rejects.toThrow("no line");
+  });
+
+  test("connection close overtakes asynchronous validation and context before they can start more work", async () => {
+    const validating = gate();
+    const building = gate();
+    const release = gate();
+    let connection!: Call["connection"];
+    const reached: string[] = [];
+    const schema: StandardSchemaV1<unknown, Record<string, unknown>> = { "~standard": {
+      version: 1, vendor: "test", validate: async (value) => {
+        validating.resolve();
+        await release.promise;
+        return { value: value as Record<string, unknown> };
+      },
+    } };
+    const server = await start({
+      checked: { params: schema, run: () => reached.push("run checked") },
+      built: { run: () => reached.push("run built") },
+    }, { context: async (call) => {
+      reached.push(`context ${call.method}`);
+      connection = call.connection;
+      building.resolve();
+      await release.promise;
+      return null;
+    } });
+    const client = await connect(server);
+    client.send({ jsonrpc: "2.0", id: 1, method: "checked" });
+    client.send({ jsonrpc: "2.0", id: 2, method: "built" });
+    await Promise.all([validating.promise, building.promise]);
+    connection.close();
+    release.resolve();
+    await client.closed();
+    // Wait for the dispatches without initiating Server.close (which has its own independent skip guards).
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(reached).toEqual(["context built"]);
+    expect(logged).toEqual([]);
+  });
+
+  test("a final notification queued before close drains whole, even under backpressure", async () => {
+    const big = "x".repeat(4 * 1024 * 1024);
+    let notified = false;
+    let notifiedAtClose = false;
+    const server = await start({ stop: { run: (_params, _context, { connection }) => {
+      connection.onClose(() => { notified = true; });
+      connection.notify("final", { big });
+      connection.close();
+      // Capture synchronously while the paused client has not read the queued notification.
+      notifiedAtClose = notified;
+      return "discarded";
+    } } });
+    const result = await exchange(server.socket, '{"jsonrpc":"2.0","id":1,"method":"stop"}\n', { readAfterMs: 100, halfClose: true });
+    expect(notifiedAtClose).toBe(true);
+    expect(result.lines).toHaveLength(1);
+    expect(JSON.parse(result.lines[0]!)).toEqual({ jsonrpc: "2.0", method: "final", params: { big } });
+    expect(result.endedByServer).toBe(true);
+    expect(result.hadError).toBe(false);
+  });
+});
+
 describe("lifecycle", () => {
   test("close() holds the connection open until an in-flight call settles and is answered, then ends it and removes the socket file", async () => {
     const running = gate();
