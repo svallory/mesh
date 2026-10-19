@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CursorAheadError, dispatchCommand, EventsDeletedError, FrameworkError, HandlerStoppedError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
+import { runCli } from "../src/cli.ts";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -109,7 +110,24 @@ async function project(): Promise<string> {
   return root;
 }
 
-function mesh(root: string, ...args: string[]) {
+/** In-process: the same `mesh` entry the binary runs, with captured streams. The CLI's
+ * contract is "run from the project root" and a config may hold cwd-relative paths
+ * (`file: "app.db"`), so the call runs with the project as the working directory. */
+async function mesh(root: string, ...args: string[]) {
+  let stdout = "", stderr = "";
+  const cwd = process.cwd();
+  process.chdir(root);
+  try {
+    const code = await runCli(args, root, {
+      stdout: (text) => { stdout += text; },
+      stderr: (text) => { stderr += text; },
+    });
+    return { code, stdout, stderr };
+  } finally { process.chdir(cwd); }
+}
+
+/** A real process running the source entry: the smoke test for the binary wrapper. */
+function meshSpawn(root: string, ...args: string[]) {
   const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
   return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
 }
@@ -117,13 +135,19 @@ function mesh(root: string, ...args: string[]) {
 let root: string;
 beforeAll(async () => {
   root = await project();
-  expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+  expect(await mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
 afterAll(async () => {
   for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
 describe("events and commands in files of their own", () => {
+// The binary wrapper (src/bin.ts) over runCli: one real process, so the thin wrapper stays covered.
+test("the binary wrapper builds the project in a real process", async () => {
+  expect(meshSpawn(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+}, 30_000);
+
+
   test("build writes one class file per declaration, a barrel export for each, and DomainEvent and the table in #mesh", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).sort();
     expect(files).toEqual([
@@ -149,9 +173,9 @@ describe("events and commands in files of their own", () => {
     expect(index.replace(/\s+/g, " ")).toContain("export type DomainCommand = | $billing$OpenInvoice$class | $billing$PayInvoice$class | $billing$VoidInvoice$class;");
   });
 
-  test("mesh build --check finds the committed tree current, and mesh inspect shows the declarations in the model", () => {
-    expect(mesh(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
-    const model = JSON.parse(mesh(root, "inspect").stdout) as { events: { fqn: string; module: string; fields: { name: string; type: string }[] }[]; commands: { fqn: string }[] };
+  test("mesh build --check finds the committed tree current, and mesh inspect shows the declarations in the model", async () => {
+    expect(await mesh(root, "build", "--check")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    const model = JSON.parse((await mesh(root, "inspect")).stdout) as { events: { fqn: string; module: string; fields: { name: string; type: string }[] }[]; commands: { fqn: string }[] };
     expect(model.events.map((event) => [event.fqn, event.module])).toEqual([["billing.InvoicePaid", "billing"], ["billing.InvoiceOpened", "billing"], ["billing.InvoiceVoided", "billing"], ["billing.Promise", "billing"], ["sales.refunds.RefundIssued", "sales/refunds"]]);
     expect(model.events[0]!.fields.map((field) => [field.name, field.type])).toEqual([
       ["invoiceId", "uuid"], ["amount", "decimal"], ["reference", "string"], ["method", "enum"], ["paidAt", "datetime"], ["extra", "json"],
@@ -242,13 +266,13 @@ describe("events and commands in files of their own", () => {
     expect(instance instanceof InvoicePaid).toBe(true);
   });
 
-  test("mesh explain lists a publish step as plain code with the reason publish-step, after the write", () => {
-    const pay = mesh(root, "explain", "billing.Invoice", "pay");
+  test("mesh explain lists a publish step as plain code with the reason publish-step, after the write", async () => {
+    const pay = await mesh(root, "explain", "billing.Invoice", "pay");
     expect(pay.code).toBe(0);
     expect(pay.stdout).toContain("  steps        set &paid = true\n");
     expect(pay.stdout).toMatch(/  after write {2}self is the stored record\n {15}publish \(\) => new InvoicePaid\(\{ invoiceId: &id, .* \}\) \(plain, publish-step: it raises the event after the write\)\n/);
     // inside a `when`, the condition is read before the write and the publish runs after it
-    const refund = mesh(root, "explain", "billing.Invoice", "refund");
+    const refund = await mesh(root, "explain", "billing.Invoice", "refund");
     expect(refund.stdout).toContain("when () => &paid (as it held before the write)\n");
     expect(refund.stdout).toContain("publish async () =>");
   }, 30_000);
@@ -773,11 +797,11 @@ describe("the outbox", () => {
     } finally { await layer.close(); }
   });
 
-  test("mesh explain shows the command an action answers, and mesh inspect records its FQN", () => {
-    const explained = mesh(root, "explain", "billing.Invoice", "payInvoice");
+  test("mesh explain shows the command an action answers, and mesh inspect records its FQN", async () => {
+    const explained = await mesh(root, "explain", "billing.Invoice", "payInvoice");
     expect(explained.code).toBe(0);
     expect(explained.stdout).toContain("  answers      command billing.PayInvoice (on=PayInvoice): `dispatch` of an instance runs this action with the command's fields as its input\n");
-    const model = JSON.parse(mesh(root, "inspect", "billing.Invoice").stdout) as { actions: { name: string; command?: { fqn: string; identifier: string } }[] };
+    const model = JSON.parse((await mesh(root, "inspect", "billing.Invoice")).stdout) as { actions: { name: string; command?: { fqn: string; identifier: string } }[] };
     expect(model.actions.filter((action) => action.command).map((action) => [action.name, action.command!.fqn, action.command!.identifier])).toEqual([["payInvoice", "billing.PayInvoice", "PayInvoice"], ["openInvoice", "billing.OpenInvoice", "OpenInvoice"], ["voidInvoice", "billing.VoidInvoice", "VoidInvoice"]]);
   }, 30_000);
 
@@ -827,20 +851,20 @@ describe("mesh events forget", () => {
 
   test("drops a removed handler's row, a closed subscription's and one a crash left open; refuses the live deliverer's", async () => {
     const { dir, rows } = await withRows();
-    expect(mesh(dir, "events", "forget", "removed")).toEqual({ code: 0, stdout: "forgot the handler removed, which was at position 2\n", stderr: "" });
-    expect(mesh(dir, "events", "forget", "closed")).toEqual({ code: 0, stdout: "forgot the subscription closed, which was at position 7\n", stderr: "" });
+    expect(await mesh(dir, "events", "forget", "removed")).toEqual({ code: 0, stdout: "forgot the handler removed, which was at position 2\n", stderr: "" });
+    expect(await mesh(dir, "events", "forget", "closed")).toEqual({ code: 0, stdout: "forgot the subscription closed, which was at position 7\n", stderr: "" });
     // open under generation 1, while the live claim is at 3: a crash's leftover
-    expect(mesh(dir, "events", "forget", "crashed")).toEqual({ code: 0, stdout: "forgot the subscription crashed, which was at position 6\n", stderr: "" });
-    const running = mesh(dir, "events", "forget", "running");
+    expect(await mesh(dir, "events", "forget", "crashed")).toEqual({ code: 0, stdout: "forgot the subscription crashed, which was at position 6\n", stderr: "" });
+    const running = await mesh(dir, "events", "forget", "running");
     expect(running.code).toBe(1);
     expect(running.stderr).toContain('events forget failed: The handler "running" is registered by the live deliverer (generation 3), so its progress is not dropped');
-    const open = mesh(dir, "events", "forget", "open");
+    const open = await mesh(dir, "events", "forget", "open");
     expect(open.code).toBe(1);
     expect(open.stderr).toContain('events forget failed: The subscription "open" is open in the deliverer\'s process (generation 3); close it there first');
-    const both = mesh(dir, "events", "forget", "both");
+    const both = await mesh(dir, "events", "forget", "both");
     expect(both.code).toBe(1);
     expect(both.stderr).toContain('The name "both" is held by a handler\'s progress row and by a subscription\'s row');
-    const unknown = mesh(dir, "events", "forget", "nobody");
+    const unknown = await mesh(dir, "events", "forget", "nobody");
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toContain('No handler and no subscription named "nobody" has a row in this database');
     expect(await rows()).toEqual({ handlers: ["both", "running"], subscriptions: ["both", "open"] });
@@ -848,10 +872,10 @@ describe("mesh events forget", () => {
 
   test("a usage mistake is exit 2 and touches nothing", async () => {
     const dir = await project();
-    expect(mesh(dir, "events")).toEqual({ code: 2, stdout: "", stderr: "Missing events command; use mesh events forget <name>\n" });
-    expect(mesh(dir, "events", "drop", "x")).toEqual({ code: 2, stdout: "", stderr: 'Unknown events command "drop"; use mesh events forget <name>\n' });
-    expect(mesh(dir, "events", "forget")).toEqual({ code: 2, stdout: "", stderr: "Missing name for mesh events forget; use mesh events forget <name>\n" });
-    expect(mesh(dir, "events", "forget", "a", "b")).toEqual({ code: 2, stdout: "", stderr: "Extra argument for mesh events forget; use mesh events forget <name>\n" });
-    expect(mesh(dir, "--help").stdout).toContain("events forget <name>");
+    expect(await mesh(dir, "events")).toEqual({ code: 2, stdout: "", stderr: "Missing events command; use mesh events forget <name>\n" });
+    expect(await mesh(dir, "events", "drop", "x")).toEqual({ code: 2, stdout: "", stderr: 'Unknown events command "drop"; use mesh events forget <name>\n' });
+    expect(await mesh(dir, "events", "forget")).toEqual({ code: 2, stdout: "", stderr: "Missing name for mesh events forget; use mesh events forget <name>\n" });
+    expect(await mesh(dir, "events", "forget", "a", "b")).toEqual({ code: 2, stdout: "", stderr: "Extra argument for mesh events forget; use mesh events forget <name>\n" });
+    expect((await mesh(dir, "--help")).stdout).toContain("events forget <name>");
   }, 30_000);
 });
