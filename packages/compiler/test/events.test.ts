@@ -509,6 +509,9 @@ entity :Invoice
     const binding = text(generated, "generated/binding.ts");
     expect(binding).toContain("export function subscribe(");
     expect(binding).toContain("export function readEvents(");
+    expect(binding).toContain("export function listSubscriptions(): $Promise<readonly $SubscriptionProgress[]>");
+    expect(index).toContain("  listSubscriptions,");
+    expect(index).toContain('export type { Delivery, SubscriptionProgress } from "@meshfw/runtime";');
     // disconnect stops delivery before it releases the binding, so the running round's handlers finish on it
     expect(binding.indexOf("await delivery.stop()")).toBeGreaterThan(-1);
     expect(binding.indexOf("await delivery.stop()")).toBeLessThan(binding.indexOf("$releaseBinding(binding)"));

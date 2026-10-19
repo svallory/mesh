@@ -552,7 +552,7 @@ describe("the command functions", () => {
   test("follow Hyper's method names in camelCase, and none is a name `#mesh` or a module's index exports", () => {
     // `#mesh` holds only the framework's names; every entity value is its module's.
     expect(Object.keys(mesh).sort()).toEqual([
-      "bind", "connect", "disconnect", "eventClasses", "forgetHandler", "forgetSubscription", "published", "readEvents", "resumeHandler",
+      "bind", "connect", "disconnect", "eventClasses", "forgetHandler", "forgetSubscription", "listSubscriptions", "published", "readEvents", "resumeHandler",
       "subscribe", "tables", "transaction",
     ]);
     const exported = new Set([mesh, audit, execution, identity, work].flatMap((module) => Object.keys(module)));

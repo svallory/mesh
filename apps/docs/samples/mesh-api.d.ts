@@ -209,6 +209,13 @@ declare module "@meshfw/runtime" {
     readonly done: Promise<unknown>;
   }
 
+  /** A persisted subscription, open or closed, as `listSubscriptions()` returns it. */
+  export interface SubscriptionProgress {
+    readonly name: string;
+    /** The stored acknowledged position, including rows its filter passed; not its in-memory read cursor. */
+    readonly position: number;
+  }
+
   /** What the project's `metadata` function returns for each event; a project declares its fields by augmenting this interface. */
   export interface EventMetadata {}
 
@@ -250,10 +257,16 @@ declare module "@meshfw/runtime" {
     key?: Readonly<Record<string, unknown>>;
   }
 
-  /** A page of `readEvents`: its events, and the cursor to pass as `after` next. */
+  /** A page of `readEvents`: its events, the next cursor and the outbox's high-water position. */
   export interface ReadEventsPage<E extends object = object> {
     readonly events: readonly EventRecord<E>[];
     readonly cursor: number;
+    /**
+     * The highest position ever assigned, from the same snapshot as the rows; 0 before the first append, retained after
+     * deletion. SQLite includes only committed assignments. Read outside any transaction, it can be ahead of what the
+     * caller's earlier transaction saw, and of a page whose limit stops it before the head.
+     */
+    readonly highest: number;
   }
 
   /** The storage operations a seam gets, by table handle (`tables` from `#mesh`): the four by key. Writes through it run no seams. */
@@ -851,7 +864,7 @@ declare module "#mesh/domain/billing" {
 }
 
 declare module "#mesh" {
-  import type { ActionContext, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription } from "@meshfw/runtime";
+  import type { ActionContext, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
   import type { Invoice, InvoicePaid, PayInvoice } from "#mesh/domain/billing";
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
@@ -879,7 +892,7 @@ declare module "#mesh" {
   export type DomainEvent = InvoicePaid;
   export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
   export type MetadataFunction = $MetadataFunction<DomainEvent>;
-  export type { Delivery, EventMetadata, ReadEventsPage, ReadEventsQuery, SubscribeQuery, Subscription } from "@meshfw/runtime";
+  export type { Delivery, EventMetadata, ReadEventsPage, ReadEventsQuery, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
   /** The events the running transaction has published so far, in order; outside a transaction it throws. */
   export function published(): readonly EventRecord[];
   /** Every command class an action answers with `on=`: what `dispatch` takes. A command no action answers is not in it. */
@@ -904,6 +917,11 @@ declare module "#mesh" {
   export function subscribe(query: SubscribeQuery, callback: (event: EventRecord) => unknown): Promise<Subscription>;
   /** Drop the progress row of a handler that was removed or renamed without `renamedFrom`; one the running deliverer registered is refused. */
   export function forgetHandler(name: string): Promise<void>;
+  /**
+   * Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer.
+   * Reads through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
+   */
+  export function listSubscriptions(): Promise<readonly SubscriptionProgress[]>;
   /** Drop the row of a subscription whose client is not coming back; an open one is refused. */
   export function forgetSubscription(name: string): Promise<void>;
   /** Resume a handler the running bus stopped at a failing event, from its progress row; where delivery is started, else a `FrameworkError`. */

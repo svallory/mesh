@@ -929,6 +929,27 @@ export async function forgetHandler(binding: Binding, name: string): Promise<voi
   });
 }
 
+/** A persisted subscription's identity and acknowledged position, whether its stream is open or closed. */
+export interface SubscriptionProgress {
+  readonly name: string;
+  /** The stored acknowledged position, including rows its filter passed. Not its in-memory read cursor. */
+  readonly position: number;
+}
+
+/**
+ * `listSubscriptions()` of `#mesh`: a frozen snapshot of every persisted subscription on the binding's database,
+ * ordered by name. Includes closed and abandoned subscriptions until forgotten; needs no running deliverer.
+ * Runs through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
+ */
+export async function listSubscriptions(binding: Binding): Promise<readonly SubscriptionProgress[]> {
+  const { layer } = bindingParts(binding);
+  return layer.transaction(async (tx) => {
+    const rows = await operations(tx).readSubscriptionProgress();
+    return Object.freeze(rows.map(({ name, position }) => Object.freeze({ name, position }))
+      .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  });
+}
+
 /** `forgetSubscription(name)` of `#mesh`: drop a subscription's row; refuses one that is open in this process. */
 export async function forgetSubscription(binding: Binding, name: string): Promise<void> {
   const { layer } = bindingParts(binding);
