@@ -96,7 +96,10 @@ An action with `on=` and no name is named after the command: the command's class
 The command and the action describe one request, so they must agree:
 
 - An action answers at most one command, and a command is answered by at most one action in the whole project.
-- Every field of the command is an input of the action, and every required input of the action is a field of the command. The key that selects the row of an update or a destroy counts as an input, which is why `PayInvoice` above has the field `id`. The `input` section decides which inputs are required: on an update every member input is optional, so the command carries only the ones it changes, and a create's required inputs must all be fields. A command's constructor sets a `nullable` field you leave out to `null`, and `dispatch` sends that `null` to the action, so on an update it overwrites the attribute with `null`. A command that answers an update should therefore carry only non-nullable fields, or ones the action is meant to set.
+- Every field of the command is an input of the action, and every required input of the action is a required field of the command. The key that selects the row of an update or a destroy counts as an input, which is why `PayInvoice` above has the field `id`. The `input` section decides which inputs are required: on an update every member input is optional, so the command carries only the ones it changes, and a create's required inputs must all be fields.
+- The command field's values must fit the input's type. Scalar kinds must match exactly (`uuid` is not `string`, `integer` is not `float`, and `datetime` is not `timestamp`, even when their TypeScript types coincide). An enum's values must be a subset of the input's values; order does not matter. A nullable command field cannot fill a non-nullable input, but a non-nullable field can fill a nullable input. A `belongs-to` input takes its target's key type. `min`, `max` and `match` constrain values and are not part of this type check.
+
+A command's constructor preserves a nullable field you leave out as `undefined`. `dispatch` leaves that field out of the action's input entirely, so an update keeps the stored attribute. Explicit `null` is sent as `null` and clears it. Events keep their own rule: an omitted nullable event field is `null`.
 
 A command that no action answers builds with a warning, since nothing runs when it is dispatched. These are the build errors of `on=`:
 
@@ -105,7 +108,7 @@ A command that no action answers builds with a warning, since nothing runs when 
 | `MESH_NAME` | an action with neither a name nor `on=` |
 | `MESH_UNKNOWN_COMMAND` | `on=` names anything but an imported command: an event, an entity, a name nothing imports, or a value that is not an identifier or a member of a namespace import. The message suggests the nearest imported command |
 | `MESH_DUPLICATE_MEMBER` | the name taken from the command clashes with another member of the entity; the message names the command. Name the action to avoid it |
-| `MESH_COMMAND_INPUT` | a field of the command is no input of the action, or a required input of the action is no field of the command |
+| `MESH_COMMAND_INPUT` | at the `on=`: a command field is no input of the action, a required input has no required command field, or a command field's type does not fit the input of the same name |
 | `MESH_COMMAND_ANSWERED_TWICE` | two actions answer one command, in one entity or in two |
 | `MESH_COMMAND_UNANSWERED` | a warning: no action answers the command |
 | `MESH_UNKNOWN_OPTION` | `on=` on a `read` |
@@ -124,7 +127,7 @@ export function pay(invoiceId: string) {
 }
 ```
 
-The command's constructor checks its fields first, as an event's does. `dispatch` hands the action an input object built from the fields, `{ id: command.id, paidAt: command.paidAt }`, in code the project's type check covers: a command field whose type differs from the action's input (a `string` field for a `datetime` input) is a type error in `.mesh/index.ts`, not a failure at the first dispatch. `dispatch(command, context)` then calls the action with the command's fields as its input and the `context` you give it, so the action validates the input and runs its policies exactly as `Invoice.payInvoice(...)` does, and resolves with what the action returns (here the updated `Invoice`). It runs on the binding in scope and joins the running transaction when there is one, so a `dispatch` inside `transaction(...)` or inside a `process` handler commits or rolls back with it, and the event the action publishes appears in `published()` before the commit. Outside a transaction it opens its own, as a plain call does.
+The command's constructor checks its fields first, as an event's does. `dispatch` hands the action an input object built from the fields that are not `undefined`; explicit `null` is kept. `mesh build` checks the command's field types against the action's inputs in the model: a `string` field for a `datetime` input is `MESH_COMMAND_INPUT` at the `on=`, before code is generated. The generated call remains covered by the project's TypeScript check too. `dispatch(command, context)` then calls the action with the command's fields as its input and the `context` you give it, so the action validates the input and runs its policies exactly as `Invoice.payInvoice(...)` does, and resolves with what the action returns (here the updated `Invoice`). It runs on the binding in scope and joins the running transaction when there is one, so a `dispatch` inside `transaction(...)` or inside a `process` handler commits or rolls back with it, and the event the action publishes appears in `published()` before the commit. Outside a transaction it opens its own, as a plain call does.
 
 A `process` handler runs a command with the `context` it is given:
 

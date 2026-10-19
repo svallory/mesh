@@ -335,6 +335,90 @@ entity :Invoice
   });
 });
 
+describe("MESH_COMMAND_INPUT type agreement", () => {
+  const typed = (field: string, input: string, kind = "update", argument = false) => buildModel(bare(
+    `import { Change } from "./change.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n    ${argument ? "string :value nullable" : input}\n  actions\n    ${kind} on=Change\n      input\n        ${argument ? input : "&value"}\n`,
+    { "billing/change.mesh.mx": `command :Change\n${kind === "update" ? "  uuid :id\n" : ""}  ${field}\n` },
+  ));
+  const mismatch = (result: ReturnType<typeof buildModel>) => {
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ code: "MESH_COMMAND_INPUT", severity: "error", position: { file: "billing/invoice.mesh.mx", line: 7, column: 14 } });
+    return result.diagnostics[0]!;
+  };
+
+  test.each(["string", "uuid", "integer", "float", "decimal", "boolean", "date", "datetime", "timestamp", "json"])("matching %s kinds build", (type) => {
+    expect(typed(`${type} :value`, `${type} :value`).diagnostics).toEqual([]);
+  });
+  test.each([["string", "datetime"], ["uuid", "string"], ["integer", "float"], ["datetime", "timestamp"]])("%s is not the model kind %s, even when TypeScript types coincide", (command, input) => {
+    expect(mismatch(typed(`${command} :value`, `${input} :value`)).message).toContain("type");
+  });
+  test("an argument's model kind is checked too", () => {
+    mismatch(typed("integer :value", "string :value", "update", true));
+  });
+  test("a non-nullable command field may fill a nullable input", () => {
+    expect(typed("string :value", "string :value nullable").diagnostics).toEqual([]);
+  });
+  test("a nullable command field may fill an optional nullable input", () => {
+    expect(typed("string :value nullable", "string :value nullable").diagnostics).toEqual([]);
+  });
+  test("a nullable field cannot fill a non-nullable update member, even though the input is optional", () => {
+    expect(mismatch(typed("string :value nullable", "string :value")).message).toContain("nullable");
+  });
+  test("a required create input cannot be supplied by an optional command field", () => {
+    const result = typed("string :value nullable", "string :value", "create");
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ code: "MESH_COMMAND_INPUT", message: expect.stringContaining("requires the input") });
+  });
+  test("an optional command field with the wrong kind reports both problems in one build", () => {
+    const result = typed("integer :value nullable", "string :value", "create");
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "MESH_COMMAND_INPUT", position: expect.objectContaining({ line: 7, column: 14 }), message: expect.stringContaining("requires the input") }),
+      expect.objectContaining({ code: "MESH_COMMAND_INPUT", position: expect.objectContaining({ line: 7, column: 14 }), message: expect.stringContaining("of type `integer nullable`") }),
+    ]);
+  });
+  test.each([
+    ["[:draft, :paid]", "[:paid, :draft]"],
+    ["[:paid]", "[:draft, :paid]"],
+  ])("enum set %s can fill %s (order-independent subset)", (command, input) => {
+    expect(typed(`enum :value values=${command}`, `enum :value values=${input}`).diagnostics).toEqual([]);
+  });
+  test.each([
+    ["[:draft, :paid]", "[:paid]"],
+    ["[:other]", "[:draft, :paid]"],
+  ])("enum set %s cannot fill %s", (command, input) => {
+    expect(mismatch(typed(`enum :value values=${command}`, `enum :value values=${input}`)).message).toContain("enum");
+  });
+  test("min, max and match constrain values, not the type agreement", () => {
+    expect(typed('string :value min=1 max=40 match=/x/', 'string :value min=5 max=10 match=/y/').diagnostics).toEqual([]);
+  });
+  test("a belongs-to input takes its target's key kind, not an entity reference", () => {
+    const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
+    const files = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    integer :id primary-key\n" };
+    expect(buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  integer :customer\n" })).diagnostics).toEqual([]);
+    const result = buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" }));
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ code: "MESH_COMMAND_INPUT", position: { line: 9, column: 14 }, message: expect.stringContaining("customer") });
+  });
+  test.each(["MESH_PRIMARY_KEY", "MESH_UNKNOWN_IMPORT"])("an unresolved relationship key reports only its root error: %s", (code) => {
+    const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
+    const extra: Record<string, string> = { "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" };
+    if (code === "MESH_PRIMARY_KEY") extra["billing/customer.mesh.mx"] = "entity :Customer\n  attributes\n    string :name\n";
+    const result = buildModel(bare(entity, extra));
+    expect(result.document).toBeNull();
+    expect(codes(result.diagnostics)).toEqual([code]);
+  });
+  test("the row-selecting key's type is checked on update and destroy", () => {
+    for (const kind of ["update", "destroy"]) {
+      const result = build(`    ${kind} on=PayInvoice\n`, IMPORT, {}, "command :PayInvoice\n  string :id\n");
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]).toMatchObject({ code: "MESH_COMMAND_INPUT", position: { line: 8, column: kind === "update" ? 14 : 15 }, message: expect.stringContaining("id") });
+    }
+  });
+});
+
 describe("the generated #mesh", () => {
   const golden = async (name: string, actual: string) => {
     const path = resolve(import.meta.dir, "fixtures/commands-golden", name);
@@ -389,12 +473,8 @@ describe("the generated #mesh", () => {
     expect(await typeCheck(PAY)).toEqual({ code: 0, output: "" });
   }, 30_000);
 
-  test("a command field of another type than the action's input fails the project's type check, at the generated index.ts", async () => {
-    // `paidAt` is a datetime in the command's and the action's declarations alike; here the command declares a string
-    const checked = await typeCheck(PAY.replace("datetime :paidAt", "string :paidAt"));
-    expect(checked.code).toBe(1);
-    expect(checked.output).toContain("generated/index.ts");
-    expect(checked.output).toContain("Type 'string' is not assignable to type 'Date");
+  test("nullable command fields preserve undefined and dispatch omits them under exactOptionalPropertyTypes", async () => {
+    expect(await typeCheck(PAY.replace("datetime :paidAt", "datetime :paidAt nullable"))).toEqual({ code: 0, output: "" });
   }, 30_000);
 
   test("the generated dispatch builds each input from the command's fields and imports the classes as types", async () => {
