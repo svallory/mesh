@@ -90,11 +90,20 @@ From the repository root:
 ```bash
 bun install        # at the repository root; the @mxlang scope resolves from the registry
 bun run verify      # every package's tests, type check, build, validate and conformance, plus the docs checks
-bun run test        # tests only
+bun run test        # tests only, every file in every package
 bun run typecheck   # type checks only
+bun run test:affected [--dry-run] [--slow] [--base <ref>]
+                   # only the tests the current change affects; see below
+bun run test:fast   # every package's tests, the six slowest files skipped
 ```
 
 `bun install` at the repository root is all there is. The compiler's MX dependency, `@mxlang/core`, is pinned to an exact version and installed from the registry; there is no `bun link` step, no local MX checkout and no token. The install and `bun run verify` are also what a GitHub Actions run does for every pull request and every push to `main`; see [Continuous integration](#continuous-integration).
+
+### Running only the tests a change affects
+
+An agent, or a contributor checking a change locally, runs `bun run test:affected` (`scripts/test-affected.ts`), never the full suite: the full suite runs in `verify`, in the pre-merge gate and in CI. The script takes the files changed against a base (default `origin/main`; `--base <ref>` overrides; uncommitted and untracked files count), maps each changed file to its workspace package (`packages/*`, `apps/*`, `examples/*`) and adds every workspace package that depends on a changed one, transitively, then runs each selected package's own `test` script one at a time, the examples' `mesh build --check` pre-step included. A package whose changed files are all test files runs only those files. A change outside every package that is not documentation (the root manifest, `bun.lock`, the root `tsconfig*.json`, `scripts/`, `.github/`) runs everything; a change only under `notes/` or to `*.md` outside `apps/docs` runs nothing and says so.
+
+The six slowest test files (listed in `scripts/slow-tests.json`: about 200 s of the suite's 392 s) are skipped unless `--slow` is passed or the file itself changed, and the script prints what it skipped. `--dry-run` prints the selection without running anything. A package's own `test` script, `bun run test`, `bun run verify` and CI always run every file; the slow lane never changes what they run.
 
 To work against an MX commit that is not published yet — the MX lead's own workflow, and useful when a change to MX has to land in Mesh the same day — run `bun link` inside the MX checkout once, then point the `@mxlang/core` dependency in `packages/compiler/package.json` at `link:@mxlang/core` and run `bun install`. That edit is local and never committed: a committed `link:` entry breaks every machine that has no MX checkout, including the CI runner. Revert it and re-run `bun install` before you commit or push. Never run `bun link @mxlang/...` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
 
