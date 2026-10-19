@@ -145,9 +145,9 @@ lowerFile(path: string, options?: LowerSourceOptions): LowerSourceResult // read
 
 A caller's option overrides the dialect's, which is why Mesh passes none (2.3).
 
-**Result.** `LowerSourceResult` is `{ ir: SpannedIr | undefined; diagnostics: IrDiagnostic[] }`.
+**Result.** `LowerSourceResult` is `{ ir: SpannedIr | undefined; diagnostics: IrDiagnostic[]; partial?: true }`.
 
-- Any error means `ir: undefined`, unless the caller passes `partial: true` (since alpha.36). Mesh passes no option, so it never gets a partial IR.
+- Any error means `ir: undefined`. Since alpha.36 a caller that passes `partial: true` may get a spanned IR with the failed subtrees left out, marked `partial: true`, when recovery can build one; a parse failure with no lowered tree, an unresolved dialect or a reserved-name refusal still gives `ir: undefined`. Mesh passes no option, so it never gets a partial IR.
 - Warnings come back with the IR: a duplicate option returns the IR and a `MESH_DUPLICATE_OPTION` warning.
 - The IR is the caller's own copy, and every span in it is checked before it is returned.
 
@@ -168,7 +168,7 @@ The one exception: a tag that fails its own lowering, such as one a closed `chil
 
 ### 3.2 The lowered tree
 
-**IR version.** `IR_VERSION`, exported by `@mxlang/core`, is `7`. It is a constant, not a field of the tree. It goes up by one with every change a reader could observe: a node kind or field added, removed, renamed or given a new meaning. MX's tests pin a hash of the IR's type declarations, so a change of shape fails MX's CI until the number goes up; a change of meaning alone relies on its author to bump it. Mesh fails when the installed version is not the one it reads (section 6).
+**IR version.** `IR_VERSION`, exported by `@mxlang/core`, is `8`. It is a constant, not a field of the tree. It goes up by one with every change a reader could observe: a node kind or field added, removed, renamed or given a new meaning. MX's tests pin a hash of the IR's type declarations, so a change of shape fails MX's CI until the number goes up; a change of meaning alone relies on its author to bump it. Mesh fails when the installed version is not the one it reads (section 6).
 
 **The types Mesh reads**, all exported by `@mxlang/core`:
 
@@ -369,7 +369,7 @@ Mesh skipped alpha.35 and moved from alpha.34 to alpha.36. `IR_VERSION` is 8.
 
 - **`Const.varBindings`** (alpha.35). The IR's `Const` node gains `varBindings`. Mesh does not read it.
 - **Orphan `else` and `else-if`** (MX #655, #671). Under `structural: "reject"` an orphan `else` or `else-if` is `MESH_STRUCTURAL_CONSTRUCT` at the tag, as an `if` is, no longer `MESH_NOT_IN_ENTITY_FILE` (3.1). Its message names the tag written: "`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`". Alpha.35's text did not name the tag written, which is why Mesh waited for alpha.36.
-- **Partial IR, opt-in** (MX #669). `lowerSource` and `lowerFile` return the IR beside the errors when the caller passes `partial: true`. Mesh passes no option (2.3), so its build is unchanged.
+- **Partial IR, opt-in** (MX #669). With `partial: true`, `lowerSource` and `lowerFile` may return the IR beside the errors, failed subtrees left out and the result marked `partial: true`, when recovery can build one (3.1). Mesh passes no option (2.3), so its build is unchanged.
 - **mx-tsc under Bun** (MX #665). The built command runs under Bun; the TS18003 failure is gone.
 - **Attribute arguments in web-UI hosts** (MX #670). Hosts refuse attribute arguments through the opt-in `HostDeclarations.attributeArgs`. Core's default lowering keeps `Attr.args`, so Mesh is unaffected.
 
@@ -416,7 +416,7 @@ Mesh skipped alpha.35 and moved from alpha.34 to alpha.36. `IR_VERSION` is 8.
 | Codes are renamed per the dialect's map at every `lowerSource` exit; tools use `diagnosticCodesOf` | MX | `renameDiagnosticCodes` |
 | Codes are never renamed or reused across releases | MX, by rule; the table test keeps each code listed and reachable | the rule in MX's `diagnostic-codes.ts`; `diagnostic-code-table.test.ts` |
 | A change of the IR's shape bumps `IR_VERSION`; a change of meaning is its author's call | MX, by test | `ir-version.test.ts` (a hash) |
-| The installed `@mxlang/core` speaks IR version 7 | Mesh | `test/ir-version.test.ts` |
+| The installed `@mxlang/core` speaks IR version 8 | Mesh | `test/ir-version.test.ts` |
 | `lowerSource` never throws | MX, by design; probed on four kinds of failure | `lowerSource` |
 | Determinism | Nobody: not promised, probed in one process only | none |
 | MX's tools never build a dialect file | MX | the Vite and Bun plugins refuse it |
@@ -434,7 +434,7 @@ Mesh skipped alpha.35 and moved from alpha.34 to alpha.36. `IR_VERSION` is 8.
 
 Each item names its MX TODO slug or MX decision, where it has one.
 
-- **No partial IR on error.** A file with an error gives no tree, so Mesh runs none of its own checks on that file until MX's errors are fixed. Since alpha.36 `lowerSource` returns a partial IR when the caller passes `partial: true`; Mesh does not pass it yet.
+- **No partial IR on error.** A file with an error gives no tree, so Mesh runs none of its own checks on that file until MX's errors are fixed. Since alpha.36 `lowerSource` can return a partial IR when the caller passes `partial: true` and recovery succeeds (3.1); Mesh does not pass it yet.
 - **A refused tag hides its subtree.** A tag refused by its own lowering hides the errors inside it until the refusal is fixed (3.1). MX decision 162; no TODO.
 - **Wrapped references.** MX lowers `(x)`, `<T>x`, `x!`, `x as T` and `x satisfies T` to `x` and keeps the written value in `valueSpan` (3.2). Mesh's `entity=` hook refuses a wrapped reference, `entity=<T>Customer` or `entity=(billing.Invoice)`, as `MESH_ENTITY_REFERENCE` at the written value, wherever `valueSpan` differs from `value.span` (`isWrapped` in `src/front-end/contracts.ts`). `entity=` is the only option Mesh reads a reference from today; `on=` will take the same check when it is built. A wrapped literal (`max=(5)`, `code=("42" as const)`) is not a reference and still builds.
 - **Dotted line heads.** Mesh's dialect sets `tagShorthands: false` (2.1), so a dotted line head such as `billing.InvoiceVoided` is one tag of that name, and `#x`, `.x` or a `#` inside a head is `MESH_NO_TAG_SHORTHAND`. No section that lists references by line head is built yet (an owner's `events` and `commands` sections are M6 work), so no Mesh contract takes a dotted tag and such a head is `MESH_UNKNOWN_TAG`.
@@ -468,7 +468,7 @@ All of them run in `bun run verify`, which GitHub Actions runs on every pull req
 - **`dialect-registration.test.ts`** routes files in a temporary project. A project that depends on `meshfw` gets its `.mesh.mx` files, and only those, routed to the `mesh` dialect, and one without `meshfw` gets no dialect. With no options, MX takes the vocabulary, tag rules and strictness from the dialect, as strict as the compiler. The module is built JavaScript Node can load, with no TypeScript beside it. The build refuses a manifest whose extensions drift. `reservedTags` equals the contracts' keys. A project's `mx.tags`, `mx.contracts` and `tags/` reach a `.mx` file but not a `.mesh.mx` one, and a project definition or `customTags` entry named like a Mesh tag never replaces Mesh's contract (`MESH_RESERVED_TAG`).
 - **`dialect-deep-freeze.test.ts`** fails when any object or array reachable from `MESH_DIALECT` is not frozen.
 - **`diagnostic-codes.test.ts`** fails when an MX alpha adds a code `MX_TO_MESH_CODES` leaves out, or when the map names a kept code or a code outside MX's catalogue; the type of the map fails the type check too. It also checks that the build and MX give one Mesh code at one place, that a throwing hook is `MX_DIALECT_HOOK_ERROR` and that a dialect that fails to load renames nothing.
-- **`ir-version.test.ts`** fails unless the installed `@mxlang/core` exports `IR_VERSION` 7.
+- **`ir-version.test.ts`** fails unless the installed `@mxlang/core` exports `IR_VERSION` 8.
 - **`dialect-marks.test.ts`** builds a project on disk that installs a second dialect: one whose mark is Mesh's `&` or `:` fails the build at the project-relative file, and one whose mark only shares a prefix with Mesh's builds.
 - **`packages/cli/scripts/build-dialect.ts`**, a `verify` step, fails the build when the manifest's `id`, `extensions` or `module` drift.
 - **The docs fence checks.** `checkDocsSamples` (run by `repository-checks.test.ts`) and the stricter `checkDocsSyntaxV4` (run by [`apps/docs/test/docs-mx-syntax.test.ts`](https://github.com/svallory/mesh/blob/main/apps/docs/test/docs-mx-syntax.test.ts)) walk every `mx` fence of the user pages (`apps/docs/docs/docs/*.md`) and of ADR-0050's reference. A bounded text guard first rejects obsolete spellings, undeclared member heads, unimported entity identifiers and a `self.` read without a destructured `self` in its function; a `resource` root is an error. Then each fence parses as authored through `parseEntitySource`, with no rewriting and no relaxed contracts, so misplaced member lines and assignments in `input` are parse errors. The stricter walker requires every fence to be a complete entity file, and the docs test counts the opening fences on its own, so the walker cannot lose one unnoticed. The checks print the files checked and the findings, fail on an empty set, and name the page and fence line of each finding; planted failures cover both walkers. This guard is not full contract or type checking.

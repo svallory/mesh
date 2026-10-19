@@ -12,7 +12,7 @@ import type {
   SourcePosition,
 } from "@meshfw/model";
 
-/** One node of the IR body: `lowerSource`'s spanned IR (IR version 7). */
+/** One node of the IR body: `lowerSource`'s spanned IR (IR version 8). */
 type IrNode = SpannedIr["body"][number];
 /** A tag as MX lowered it (`DelegatedTag`); the IR wraps it in a node. */
 export type Tag = Extract<IrNode, { kind: "DelegatedTag" }>["tag"];
