@@ -688,13 +688,16 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   }, 30_000);
 });
 
-// The binary wrapper (src/bin.ts) over runCli: one real process, so the thin wrapper stays covered.
-test("the built binary wrapper prints help and exits 0", async () => {
+// The binary wrapper (src/bin.ts) over runCli: one real process, so the thin wrapper and its
+// exit codes stay covered (the other usage checks now test runCli's return value alone).
+test("the built binary wrapper prints help and exits 0; a usage error exits 2", async () => {
   const root = await project(false);
   const result = runSpawn(root, "--help");
   expect(result.code).toBe(0);
   expect(result.stderr).toBe("");
   expect(result.stdout).toContain("Usage: mesh <command> [options]");
+  const usage = runSpawn(root, "frobnicate");
+  expect(usage).toEqual({ code: 2, stdout: "", stderr: 'Unknown command "frobnicate"; use mesh --help\n' });
 }, 30_000);
 
 test("importing meshfw loads the runtime's defineConfig and no compiler code (ADR-0033)", () => {
