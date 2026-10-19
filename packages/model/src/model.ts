@@ -226,7 +226,7 @@ export interface Entity {
  * `primaryKey`, `unique`, `default` or `on`.
  */
 export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "position"> & {
-  /** Command fields only: the caller may omit the field without admitting null. Absent unless written. */
+  /** Command fields only: the caller may omit the field without admitting null. Absent unless enabled on a non-nullable field. */
   optional?: true;
 };
 /**

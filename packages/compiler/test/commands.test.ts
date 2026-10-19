@@ -368,7 +368,10 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
     expect(result.document!.commands![0]!.fields[1]).toMatchObject({ name: "value", nullable: false, optional: true });
   });
   test("optional and nullable together retain nullable semantics", () => {
-    expect(typed("string :value optional nullable", "string :value nullable").diagnostics).toEqual([]);
+    const result = typed("string :value optional nullable", "string :value nullable");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document!.commands![0]!.fields[1]).toMatchObject({ nullable: true });
+    expect(Object.hasOwn(result.document!.commands![0]!.fields[1]!, "optional")).toBe(false);
     mismatch(typed("string :value optional nullable", "string :value"));
   });
   test.each([false, true])("optional cannot fill a required create input (wrong kind: %p)", (wrongKind) => {
@@ -515,6 +518,16 @@ export const optional: Pick<PayInvoice, "title"> = {};
 export const nullTitle = new PayInvoice({ id: "x", title: null });
 `)).toEqual({ code: 0, output: "" });
   }, 30_000);
+
+  test("optional nullable generates the same model and declaration as nullable alone", async () => {
+    const nullable = build(PAY_ACTION, IMPORT, {}, PAY.replace("datetime :paidAt", "datetime :paidAt nullable"));
+    const both = build(PAY_ACTION, IMPORT, {}, PAY.replace("datetime :paidAt", "datetime :paidAt optional nullable"));
+    expect(nullable.diagnostics).toEqual([]);
+    expect(both.diagnostics).toEqual([]);
+    expect(both.document).toEqual(nullable.document);
+    const config = configOf("/project", ".mesh");
+    expect(await generateFiles({ document: both.document!, config })).toEqual(await generateFiles({ document: nullable.document!, config }));
+  });
 
   test("the generated dispatch builds each input from the command's fields and imports the classes as types", async () => {
     const contents = await index({});

@@ -113,6 +113,7 @@ describe("an event and a command file", () => {
     expect(result.document).toBeNull();
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_OPTION", severity: "error" });
+    expect(result.diagnostics[0]!.message).toBe("`optional` is only an option of a command's field" + (source.startsWith("event ") ? ": an event field may be left out only when it is `nullable`" : ""));
   });
 
   test("the name, the fields and the file are checked", () => {

@@ -26,7 +26,7 @@ event :InvoicePaid
   string :reference nullable
 ```
 
-A field takes the options that constrain a value: `nullable`, `values` on an `enum`, `min` and `max`, and `match` on a `string`. The `optional` flag belongs only to command fields; an event field with `optional` is `MESH_UNKNOWN_OPTION`. It takes none that concern storage (`default=`, `unique`, `primary-key`), because an event is a message with no row behind it. A field that refers to a record holds its key (`uuid :invoiceId`), since an event outlives the row it is about.
+A field takes the options that constrain a value: `nullable`, `values` on an `enum`, `min` and `max`, and `match` on a `string`. It takes none that concern storage (`default=`, `unique`, `primary-key`), because an event is a message with no row behind it. The `optional` flag belongs only to command fields; an event field with `optional` is `MESH_UNKNOWN_OPTION`. A field that refers to a record holds its key (`uuid :invoiceId`), since an event outlives the row it is about.
 
 `mesh build` generates a class for each event in its module's barrel, here `#mesh/domain/billing`. Its constructor checks every field against the declaration, with every problem in one `InvalidInputError`, and freezes the instance; a `nullable` field left out is `null`. The class is nominal: an object literal shaped like an `InvoicePaid` is not one. `#mesh` exports `DomainEvent`, the union of every event class's instance type, and `eventClasses`, a table from each event's fully qualified name (FQN) to its class. The FQN is the module's folders, a dot, and the class name, `billing.InvoicePaid`; `Mesh.fqnOf(InvoicePaid)` returns it.
 

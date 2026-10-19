@@ -1028,7 +1028,7 @@ function buildDeclaration(
     names.add(field.name);
     // `default`, which `shape` reads, is no part of a field.
     const { name: fieldName, type, nullable, values, min, max, match, position } = field;
-    fields.push({ name: fieldName, type, nullable, ...(root.name === "command" && opt(tag, "optional") === true ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
+    fields.push({ name: fieldName, type, nullable, ...(root.name === "command" && !nullable && opt(tag, "optional") === true ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
   }
   return {
     name,
