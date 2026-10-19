@@ -167,8 +167,8 @@ async function eventually(holds: () => boolean | Promise<boolean>, what: string,
   }
 }
 
-/** A short claim lapse for the child daemons that crash, so a restart waits a fraction of a second instead of 15. */
-const SHORT_LAPSE = { MESH_TEST_DELIVERY_TIMING: JSON.stringify({ lapseMs: 250, renewMs: 50 }) };
+/** Shorter than production's 15 s, but long enough to remain held through the restarted child's module loading. */
+const SHORT_LAPSE = { MESH_TEST_DELIVERY_TIMING: JSON.stringify({ lapseMs: 1_500, renewMs: 300 }) };
 
 describe("the daemon", () => {
   test("bootstraps a workspace with one owner, prints only READY, and exits 0 on SIGTERM", async () => {

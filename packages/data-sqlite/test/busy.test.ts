@@ -66,12 +66,20 @@ describe("waiting for a lock", () => {
       let enough!: () => void;
       const ticked = new Promise<void>((resolve) => { enough = resolve; });
       const timer = setInterval(() => { if (++ticks >= 15) enough(); }, 10);
+      let deadline!: ReturnType<typeof setTimeout>;
+      const observed = new Promise<void>((resolve) => { deadline = setTimeout(resolve, 400); });
       const waiting = layer.transaction(async (tx) => tx.insert(table, { id: "a", n: 1 }));
-      await ticked;
-      const during = ticks;
-      lock.release();
-      await waiting;
-      clearInterval(timer);
+      let during: number;
+      try {
+        // Finish early when responsive, but sample after at most the original 400 ms observation window.
+        await Promise.race([ticked, observed]);
+        during = ticks;
+      } finally {
+        clearInterval(timer);
+        clearTimeout(deadline);
+        lock.release();
+        await waiting;
+      }
       // A synchronous busy_timeout wait would have stopped the timer before it reached 15 ticks.
       expect(during).toBeGreaterThanOrEqual(15);
       await layer.transaction(async (tx) => expect((await tx.select(table)).map((row) => row.id)).toEqual(["a"]));
