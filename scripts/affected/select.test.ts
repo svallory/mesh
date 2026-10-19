@@ -429,3 +429,30 @@ describe("rootTests and commandFor", () => {
     ]);
   });
 });
+
+describe("slow skips in conservative fallbacks (review round 2, F7)", () => {
+  test("a deletion-only run skips the package's unchanged slow files", () => {
+    const slow = [...SLOW, "packages/jsonrpc/test/slow.test.ts"];
+    const selection = selectAffected(
+      [{ path: "packages/jsonrpc/test/framing.test.ts", kind: "delete" }],
+      graph(),
+      slow,
+      OPTS,
+    );
+    expect(selection.runs[0]!.files).toBe(null);
+    expect(selection.runs[0]!.skipSlow).toEqual(["test/slow.test.ts"]);
+    expect(selection.skippedSlow).toEqual(["packages/jsonrpc/test/slow.test.ts"]);
+  });
+
+  test("a live file-only run carries the skips for the full-script fallback", () => {
+    const slow = [...SLOW, "packages/jsonrpc/test/slow.test.ts"];
+    const selection = selectAffected(
+      [{ path: "packages/jsonrpc/test/server.test.ts", kind: "modify" }],
+      graph(),
+      slow,
+      OPTS,
+    );
+    expect(selection.runs[0]!.files).toEqual(["test/server.test.ts"]);
+    expect(selection.runs[0]!.skipSlow).toEqual(["test/slow.test.ts"]);
+  });
+});
