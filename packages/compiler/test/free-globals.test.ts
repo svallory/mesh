@@ -3,12 +3,13 @@
 // to the same check, and to a strict tsc run, in packages/cli/test/generated-names.test.ts.
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { readdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { freeGlobals } from "./free-globals.ts";
+
+afterAll(closeTypeServer);
 
 const repo = resolve(import.meta.dir, "../../..");
 const roots: string[] = [];

@@ -1,11 +1,12 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 // a check's `message=` is fixed text or a function of the arguments `that=` gets.
 const entity = (message: string) => `entity :Task

@@ -1,6 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
@@ -11,6 +10,8 @@ import { typesView } from "../src/typescript/views/types.ts";
 import { validatorsView } from "../src/typescript/views/validators.ts";
 import { checkTypes, configOf } from "./generated.ts";
 import { build, keyed } from "./v4.ts";
+
+afterAll(closeTypeServer);
 
 const roots: string[] = [];
 afterEach(async () => {

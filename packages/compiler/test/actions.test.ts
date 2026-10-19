@@ -1,6 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
@@ -11,6 +10,8 @@ import { explainAction } from "../src/typescript/explain.ts";
 import { actionsGenerator } from "../src/typescript/emitters/actions.ts";
 import { actionsView } from "../src/typescript/views/actions.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 const roots: string[] = [];
 afterEach(async () => {

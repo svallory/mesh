@@ -2,6 +2,7 @@
 // serve fixture sources and the synthetic config from memory, with lib and node_modules falling back to disk.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
+import { parsers } from "prettier/plugins/typescript";
 import { API, DiagnosticCategory, type Diagnostic } from "typescript/unstable/async";
 
 /** The flags used by the real-tsc smoke tests in generated.ts. */
@@ -39,12 +40,40 @@ function virtualFile(file: string, text: string): void {
 }
 
 /** Capture the whole fixture, including imported helpers and package imports, before afterEach removes it. */
-function capture(root: string): void {
+function capture(root: string, files = new Map<string, string>()): Map<string, string> {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === ".git") continue;
     const file = resolve(root, entry.name);
-    if (entry.isDirectory()) capture(file);
-    else if (entry.isFile() && /\.(?:[cm]?tsx?|json)$/.test(entry.name)) virtualFile(file, readFileSync(file, "utf8"));
+    if (entry.isDirectory()) capture(file, files);
+    else if (entry.isFile() && /\.(?:[cm]?tsx?|json)$/.test(entry.name)) files.set(file, readFileSync(file, "utf8"));
+  }
+  return files;
+}
+
+/** Scripts and ambient augmentations change every fixture's global types, even when their diagnostics are filtered. */
+function assertBatchModules(files: ReadonlyMap<string, string>): void {
+  const hasAugmentation = (value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some(hasAugmentation);
+    const node = value as { type?: string; kind?: string; global?: boolean; id?: { type?: string; name?: string; value?: unknown } };
+    if (node.type === "TSNamespaceExportDeclaration") return true;
+    if (node.type === "TSModuleDeclaration" && (node.kind === "global" || node.kind === "module" || node.global ||
+      node.id?.name === "global" || typeof node.id?.value === "string")) return true;
+    return Object.entries(value).some(([key, child]) =>
+      !["loc", "range", "parent", "tokens", "comments"].includes(key) && hasAugmentation(child));
+  };
+  for (const [file, text] of files) {
+    if (!/\.[cm]?tsx?$/.test(file)) continue;
+    let program: { body: { type: string; moduleReference?: { type: string } }[] };
+    try { program = parsers.typescript.parse(text, {} as never) as typeof program; }
+    catch { throw new Error(`Cannot batch ${file}: TypeScript syntax could not be parsed; use checkTypes for an isolated project`); }
+    if (hasAugmentation(program)) {
+      throw new Error(`Cannot batch ${file}: declare global / declare module can leak types into other fixtures; use checkTypes for an isolated project`);
+    }
+    if (!program.body.some((node) => node.type === "ImportDeclaration" || node.type.startsWith("Export") ||
+      (node.type === "TSImportEqualsDeclaration" && node.moduleReference?.type === "TSExternalModuleReference") || node.type === "TSExportAssignment")) {
+      throw new Error(`Cannot batch ${file}: no top-level import/export; script globals can leak into other fixtures; use checkTypes for an isolated project`);
+    }
   }
 }
 
@@ -100,9 +129,13 @@ function renderDiagnostic(diagnostic: Diagnostic, root: string): string {
  */
 export async function checkTypesInMemory(root: string, files: readonly string[], batch = false): Promise<{ code: number; output: string }> {
   const absolute = files.map((file) => resolve(root, file));
+  const captured = capture(root);
+  // Validate before changing shared state: a refused fixture must not contaminate a later snapshot either.
+  if (batch) assertBatchModules(captured);
   // Drop old copies when a test rewrites a fixture, rather than serving stale or deleted helper files.
+  const deleted = [...contents.keys()].filter((file) => file.startsWith(`${root}${sep}`) && !captured.has(file));
   for (const file of contents.keys()) if (file.startsWith(`${root}${sep}`)) contents.delete(file);
-  capture(root);
+  for (const [file, text] of captured) virtualFile(file, text);
   const config = batch ? batchConfig : resolve(root, "tsconfig.check.json");
   if (batch) {
     batchRoots.add(root);
@@ -111,7 +144,9 @@ export async function checkTypesInMemory(root: string, files: readonly string[],
   virtualFile(config, JSON.stringify({ compilerOptions: STRICT_OPTIONS, files: batch ? [...batchFiles] : absolute }));
   const next = await typeServer().updateSnapshot({
     ...(openConfig === config ? {} : { openProjects: [config], ...(openConfig ? { closeProjects: [openConfig] } : {}) }),
-    fileChanges: { invalidateAll: true },
+    // invalidateAll refreshes source contents but does not reload this virtual config's growing root list.
+    // Explicit config/file events ensure later batched fixtures actually join the program.
+    fileChanges: { changed: [config, ...captured.keys()], created: [...captured.keys()], deleted: deleted.filter((file) => file !== config) },
   });
   openConfig = config;
   const previous = lastSnapshot;
@@ -119,15 +154,26 @@ export async function checkTypesInMemory(root: string, files: readonly string[],
   try {
     const project = next.getProject(config);
     if (!project) throw new Error(`TypeScript did not open ${config}`);
-    // Like tsc, check imported implementation files too, not merely the explicit root files.
+    for (const file of absolute) {
+      if (!project.rootFiles.includes(file)) throw new Error(`TypeScript did not include ${file} in ${config}`);
+    }
+    const visible = (file: string): boolean => !batch || ![...batchRoots].some((other) =>
+      other !== root && file.startsWith(`${other}${sep}`));
+    // Like tsc, check imported implementation files too, not merely the explicit root files. In a batch, ask for
+    // diagnostics only in this fixture and shared dependencies, rather than rechecking discarded earlier fixtures.
+    const visibleFiles = batch ? (await project.program.getSourceFileNames()).filter(visible) : undefined;
+    const fileDiagnostics = visibleFiles
+      ? (await Promise.all(visibleFiles.map(async (file) => [
+        ...await project.program.getSyntacticDiagnostics(file),
+        ...await project.program.getSemanticDiagnostics(file),
+      ]))).flat()
+      : [...await project.program.getSyntacticDiagnostics(), ...await project.program.getSemanticDiagnostics()];
     const diagnostics = [
       ...await project.program.getConfigFileParsingDiagnostics(),
       ...await project.program.getProgramDiagnostics(),
       ...await project.program.getGlobalDiagnostics(),
-      ...await project.program.getSyntacticDiagnostics(),
-      ...await project.program.getSemanticDiagnostics(),
-    ].filter((diagnostic) => !batch || !diagnostic.fileName || ![...batchRoots].some((other) =>
-      other !== root && diagnostic.fileName!.startsWith(`${other}${sep}`)));
+      ...fileDiagnostics,
+    ].filter((diagnostic) => !diagnostic.fileName || visible(diagnostic.fileName));
     const unique = [...new Map(diagnostics.map((diagnostic) => [
       `${diagnostic.fileName}:${diagnostic.pos}:${diagnostic.code}:${diagnostic.text}`, diagnostic,
     ])).values()];

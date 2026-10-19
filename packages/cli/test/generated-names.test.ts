@@ -19,6 +19,7 @@ import { join, resolve } from "node:path";
 import { ForbiddenError, InvalidInputError } from "@meshfw/runtime";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
 import { closeTypeServer } from "../../compiler/test/type-server.ts";
+
 afterAll(closeTypeServer);
 
 const repo = resolve(import.meta.dir, "../../..");

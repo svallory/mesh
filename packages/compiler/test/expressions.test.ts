@@ -1,6 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { FUNCTIONS, type Expression, type ExprNode, type FunctionId } from "@meshfw/model";
@@ -10,6 +9,8 @@ import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { printTree } from "../src/typescript/expression-printer.ts";
 import { checkBatchedTypes as checkTypes, checkTypesBinary, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });

@@ -5,7 +5,6 @@
 // entity's `.expressions.ts`. What `mesh build` does end to end, with the classes run, is `packages/cli/test/events.test.ts`.
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity, Step } from "@meshfw/model";
@@ -14,6 +13,8 @@ import { buildModel as buildWithWarnings } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { explainAction } from "../src/typescript/explain.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 /**
  * These tests declare `PayInvoice` to name it in a `publish`, and nothing answers it: `MESH_COMMAND_UNANSWERED` (a warning,

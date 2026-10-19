@@ -1,12 +1,13 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { scope } from "@meshfw/runtime";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 // A plain function with one parameter, whatever its pattern, is called with the scope (`(s) => s.self.n`).
 const roots: string[] = [];

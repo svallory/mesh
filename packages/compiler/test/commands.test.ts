@@ -5,13 +5,14 @@
 // `mesh explain`, are `packages/cli/test/events.test.ts`.
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { checkTypes, configOf } from "./generated.ts";
+
+afterAll(closeTypeServer);
 
 const PAY = `command :PayInvoice
   uuid :id

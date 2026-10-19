@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { closeTypeServer } from "./type-server.ts";
-afterAll(closeTypeServer);
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, type EmitInput } from "../src/typescript/emit.ts";
@@ -13,6 +12,8 @@ import { typesView } from "../src/typescript/views/types.ts";
 import { checkTypes, configOf } from "./generated.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { resolve } from "node:path";
+
+afterAll(closeTypeServer);
 
 /** The `load` generator's view, and the pieces of the types, module and read views that name what it generates (M7). */
 const author = `import { Post } from "./post.mesh.mx"
