@@ -31,7 +31,7 @@ beforeEach(async () => {
     },
   };
   const binding = bind(db, { events: { ...events, bus } });
-  attachEventLog({ layer: db, binding });
+  attachEventLog({ binding });
   await bootstrap(binding);
   delivery = await binding.startDelivery();
   server = await serve({
