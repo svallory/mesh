@@ -665,7 +665,7 @@ describe("the outbox", () => {
     } finally { await layer.close(); }
   });
 
-  test.each([false, true])("dispatch leaves an omitted update field out of the input (explicit undefined: %s)", async (explicit) => {
+  test.each([false, true])("dispatch leaves an omitted update field out of the input (explicit undefined: %p)", async (explicit) => {
     const seen: unknown[] = [];
     const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
     try {

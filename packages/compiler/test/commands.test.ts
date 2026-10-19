@@ -370,6 +370,15 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({ code: "MESH_COMMAND_INPUT", message: expect.stringContaining("requires the input") });
   });
+  test("an optional command field with the wrong kind reports both problems in one build", () => {
+    const result = typed("integer :value nullable", "string :value", "create");
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "MESH_COMMAND_INPUT", position: expect.objectContaining({ line: 7, column: 14 }), message: expect.stringContaining("requires the input") }),
+      expect.objectContaining({ code: "MESH_COMMAND_INPUT", position: expect.objectContaining({ line: 7, column: 14 }), message: expect.stringContaining("of type `integer nullable`") }),
+    ]);
+  });
   test.each([
     ["[:draft, :paid]", "[:paid, :draft]"],
     ["[:paid]", "[:draft, :paid]"],
@@ -392,6 +401,14 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
     const result = buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" }));
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({ code: "MESH_COMMAND_INPUT", position: { line: 9, column: 14 }, message: expect.stringContaining("customer") });
+  });
+  test.each(["MESH_PRIMARY_KEY", "MESH_UNKNOWN_IMPORT"])("an unresolved relationship key reports only its root error: %s", (code) => {
+    const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
+    const extra: Record<string, string> = { "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" };
+    if (code === "MESH_PRIMARY_KEY") extra["billing/customer.mesh.mx"] = "entity :Customer\n  attributes\n    string :name\n";
+    const result = buildModel(bare(entity, extra));
+    expect(result.document).toBeNull();
+    expect(codes(result.diagnostics)).toEqual([code]);
   });
   test("the row-selecting key's type is checked on update and destroy", () => {
     for (const kind of ["update", "destroy"]) {

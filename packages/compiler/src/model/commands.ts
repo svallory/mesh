@@ -2,10 +2,13 @@ import type { Action, Diagnostic, Entity, Field, ModelDocument } from "@meshfw/m
 import { error } from "./diagnostics.ts";
 import { inputOptional } from "./input-optional.ts";
 
+type InputType = Pick<Field, "type" | "nullable" | "values">;
+
 /** An input as a caller supplies it: its value type, and whether the caller must give it a value. */
 interface ActionInput {
   name: string;
-  shape: Pick<Field, "type" | "nullable" | "values">;
+  /** Null when a relationship's target key could not resolve; the input still exists. */
+  shape: InputType | null;
   required: boolean;
   /** What the message calls it when it is required and missing. */
   what: string;
@@ -32,15 +35,16 @@ function inputsOf(entity: Entity, action: Action): ActionInput[] {
     const name = input.kind === "argument" ? input.name : input.ref.name;
     const optional = inputOptional(action.kind, input.kind, shape);
     // Relationships take the referenced record's key, never the record. An unresolved key has its own diagnostic.
-    if (!("type" in shape) && !shape.keyType) continue;
-    const value = "type" in shape ? shape : { type: shape.keyType!, nullable: shape.nullable };
+    let value: InputType | null = null;
+    if ("type" in shape) value = shape;
+    else if (shape.keyType) value = { type: shape.keyType, nullable: shape.nullable };
     inputs.push({ name, shape: value, required: !optional, what: `\`${name}\`` });
   }
   return inputs;
 }
 
 /** Command values must fit the input: exact scalar kind, an enum subset, and no extra null. Value constraints are not types. */
-function accepts(input: ActionInput["shape"], field: Field): boolean {
+function accepts(input: InputType, field: Field): boolean {
   if (input.type !== field.type || (field.nullable && !input.nullable)) return false;
   if (field.type !== "enum") return true;
   const values = new Set(input.values?.map((atom) => atom.value));
@@ -48,7 +52,7 @@ function accepts(input: ActionInput["shape"], field: Field): boolean {
 }
 
 /** The model's type as the author writes it, for a mismatch message. */
-function describeType(field: ActionInput["shape"]): string {
+function describeType(field: InputType): string {
   return `${field.type}${field.type === "enum" ? ` values=[${(field.values ?? []).map((atom) => `:${atom.value}`).join(", ")}]` : ""}${field.nullable ? " nullable" : ""}`;
 }
 
@@ -88,15 +92,19 @@ export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[]
           diagnostics.push(error("MESH_COMMAND_INPUT",
             `Command ${ref.fqn} has the field \`${field.name}\`, which is no input of ${entity.fqn}#${action.name}: every field of the command is an input of the action it answers`,
             ref.position, `add \`&${field.name}\` or an argument \`${field.name}\` to the input of the action, or remove the field`));
-        } else if (input.required && field.nullable) {
+          continue;
+        }
+        const optional = input.required && field.nullable;
+        if (optional)
           diagnostics.push(error("MESH_COMMAND_INPUT",
             `${entity.fqn}#${action.name} requires the input ${input.what}, but the field of ${ref.fqn} is optional: a nullable command field may be left out`,
             ref.position, `make the command field \`${field.name}\` required, or make the input optional`));
-        } else if (!accepts(input.shape, field)) {
+        // Requiredness already explains omission/null here, but must not hide a different kind or enum set.
+        const value = optional ? { ...field, nullable: false } : field;
+        if (input.shape && !accepts(input.shape, value))
           diagnostics.push(error("MESH_COMMAND_INPUT",
             `Command ${ref.fqn} has the field \`${field.name}\` of type \`${describeType(field)}\`, which does not fit the input of ${entity.fqn}#${action.name} of type \`${describeType(input.shape)}\``,
             ref.position, `give the command field \`${field.name}\` the input's scalar kind, a subset of its enum values, and no null unless the input is nullable`));
-        }
       }
       const fields = new Set(command.fields.map((field) => field.name));
       for (const input of inputs)
