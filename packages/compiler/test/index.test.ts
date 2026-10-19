@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
+afterAll(closeTypeServer);
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
@@ -119,7 +121,7 @@ async function generated(config = memoryConfig) {
 describe("the generated index", () => {
   test("typechecks with strict unused-name and exact-optional flags", async () => {
     const { root, files } = await generated(descriptorConfig);
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
   }, 30_000);
 
@@ -189,7 +191,7 @@ describe("the generated index", () => {
     await writeGeneratedFiles(files, config);
     await writeFile(resolve(root, ".mesh/schema.ts"), "export const tables = { tag: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     // With no action, the binding is still `run` and `transaction`, whose callback is handed nothing.
@@ -251,7 +253,7 @@ describe("entity names never break the generated files", () => {
     await writeFile(resolve(root, ".mesh/schema.ts"), [
       `export const tables = { ${names.map((name) => `${table(name)}: {}`).join(", ")} };`, ""].join("\n"));
     await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
-    expect(checkTypes(root, [...generatedFiles.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
+    expect(await checkTypes(root, [...generatedFiles.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
     const mesh = await import(resolve(root, ".mesh/index.ts"));
     const domain = await import(resolve(root, ".mesh/domain/index.ts"));

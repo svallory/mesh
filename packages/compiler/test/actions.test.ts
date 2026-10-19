@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
+afterAll(closeTypeServer);
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
@@ -348,7 +350,7 @@ describe("the generated file", () => {
 
   test("typechecks with strict unused-name and exact-optional flags", async () => {
     const { root, files } = await generated();
-    expect(checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"]))
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"]))
       .toEqual({ code: 0, output: "" });
   }, 30_000);
 

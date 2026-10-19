@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../src/config.ts";
+import { checkTypesInMemory } from "./type-server.ts";
 
 /** A resolved config rooted at `root`, writing to `<root>/<output>`, with the SQLite descriptor. */
 export const configOf = (
@@ -14,8 +15,18 @@ export const configOf = (
   output: resolve(root, output),
 });
 
-/** Type-check generated files with the strictest flags a consuming project might use. */
-export function checkTypes(root: string, files: string[]) {
+/** Type-check a fixture through the shared TypeScript API server, with its own compiler options and augmentations. */
+export async function checkTypes(root: string, files: readonly string[]) {
+  return checkTypesInMemory(root, files);
+}
+
+/** Batch independent module fixtures in one program; do not use for fixtures declaring global/module augmentations. */
+export async function checkBatchedTypes(root: string, files: readonly string[]) {
+  return checkTypesInMemory(root, files, true);
+}
+
+/** The real `tsc` binary on a fixture, keeping the CLI path covered. */
+export function checkTypesBinary(root: string, files: string[]) {
   const child = Bun.spawnSync(
     [
       resolve(import.meta.dir, "../../../node_modules/.bin/tsc"),

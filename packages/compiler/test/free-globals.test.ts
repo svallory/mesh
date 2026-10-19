@@ -1,7 +1,9 @@
 // the committed generated trees of the two examples read no global by its own name outside `$globals.ts`, as
 // the TypeScript checker resolves their names (`free-globals.ts`). The fixture of entities named after globals is held
 // to the same check, and to a strict tsc run, in packages/cli/test/generated-names.test.ts.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
+afterAll(closeTypeServer);
 import { readdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,4 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
+afterAll(closeTypeServer);
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { scope } from "@meshfw/runtime";
@@ -34,7 +36,7 @@ async function generated(source: string) {
   const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
   return { root, built, expressions: expressions as Record<string, (s: unknown) => unknown> };
 }
-const types = (root: string) => checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"]);
+const types = async (root: string) => await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"]);
 const sc = (self: object, input: object = {}) => scope({ self, input } as never);
 
 test.each([
@@ -54,7 +56,7 @@ test.each([
           message="m"
         ]
 `));
-  expect(types(root)).toEqual({ code: 0, output: "" });
+  expect(await types(root)).toEqual({ code: 0, output: "" });
   const that = expressions["go.check.c.that"]!, when = expressions["go.check.c.when"]!;
   expect(that(sc({ n: 2 }))).toBe(true);
   expect(that(sc({ n: 0 }))).toBe(holds);
@@ -65,7 +67,7 @@ test.each([
 test("a computed field and a run body with a plain parameter get the scope", async () => {
   const { root, expressions } = await generated(entity("", "").replace("      validate\n", "      do\n        run(s) { if (s.self.n < 0) throw new Error(\"negative\") }\n")
     .replace("  actions auto", "  computed\n    boolean :big(s) { return s.self.n > 1 }\n  actions auto"));
-  expect(types(root)).toEqual({ code: 0, output: "" });
+  expect(await types(root)).toEqual({ code: 0, output: "" });
   expect(expressions["computed.big"]!(sc({ n: 2 }))).toBe(true);
   expect(expressions["computed.big"]!(sc({ n: 0 }))).toBe(false);
   const run = Object.entries(expressions).find(([id]) => id.startsWith("go.") && id.includes("run"))![1];
@@ -80,7 +82,7 @@ test("the parameter has the scope type: a member the scope lacks fails the type 
           message="m"
         ]
 `));
-  const result = types(root);
+  const result = await types(root);
   expect(result.code).toBe(1);
   expect(result.output).toContain("nope");
 });

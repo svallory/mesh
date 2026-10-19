@@ -3,7 +3,9 @@
 // checks the command against the action: `MESH_NAME`, `MESH_UNKNOWN_COMMAND`, `MESH_DUPLICATE_MEMBER`,
 // `MESH_COMMAND_INPUT`, `MESH_COMMAND_ANSWERED_TWICE` and `MESH_COMMAND_UNANSWERED`. What `dispatch` does at run time, and
 // `mesh explain`, are `packages/cli/test/events.test.ts`.
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { closeTypeServer } from "./type-server.ts";
+afterAll(closeTypeServer);
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity } from "@meshfw/model";
@@ -379,7 +381,7 @@ describe("the generated #mesh", () => {
     await writeGeneratedFiles(generated, config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
     await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
-    return checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    return await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
   }
 
   test("a command field of the action's input type type-checks: dispatch builds the input from the fields, with no cast", async () => {
