@@ -51,6 +51,8 @@ export interface Selection {
   runs: PackageRun[];
   /** Repository-relative slow files skipped, for the CLI to print. */
   skippedSlow: string[];
+  /** Run the repository's own script tests (`bun test scripts/`): a root/config change or `--all`. */
+  rootTests: boolean;
 }
 
 /**
@@ -98,6 +100,29 @@ export function parseNameStatus(text: string): FileChange[] {
   return out;
 }
 
+/** A manifest as read from disk, before its workspace edges are resolved. */
+export interface Manifest {
+  dir: string;
+  name: string;
+  /** Every dependency field merged: name -> spec as written. */
+  deps: Record<string, string>;
+}
+
+/**
+ * Resolve the workspace graph from manifests. A workspace dependency is a
+ * `workspace:` spec or any dependency name that is itself a workspace package,
+ * whatever order the manifests come in (forward references included) and
+ * whatever the version spec says.
+ */
+export function buildWorkspaceGraph(manifests: Manifest[]): Workspace[] {
+  const names = new Set(manifests.map((m) => m.name));
+  return manifests.map((m) => ({
+    dir: m.dir,
+    name: m.name,
+    dependsOn: Object.keys(m.deps).filter((name) => name !== m.name && names.has(name)),
+  }));
+}
+
 function relativeTo(dir: string, path: string): string {
   return path.slice(dir.length + 1);
 }
@@ -106,12 +131,14 @@ function relativeTo(dir: string, path: string): string {
  * Select what to test.
  *
  * - A change outside every package that is not documentation (root `package.json`,
- *   `bun.lock`, `tsconfig*.json`, `scripts/`, `.github/`, anything else at the
- *   root) selects every package.
+ *   `bun.lock`, `tsconfig*.json`, `scripts/`, `.github/`), or inside a package-shaped
+ *   directory no manifest covers (an unregistered directory, or a package deleted or
+ *   renamed away), selects every package and the repository's own script tests.
  * - A package with a non-test change selects itself and every workspace package
  *   that depends on it, transitively.
- * - A package whose changed files are all test files runs only those files, and
- *   selects no dependents.
+ * - A package whose changed files are all test files runs only those files; a package
+ *   whose changed test files are all deletions runs its full `test` script (the
+ *   remaining tests) instead, since a deleted path cannot run. No dependents either way.
  * - Slow files are skipped in script runs unless `slow` or the file changed.
  * - A change that is documentation only selects nothing.
  */
@@ -124,8 +151,9 @@ export function selectAffected(
   const byDir = new Map(workspaces.map((w) => [w.dir, w]));
   const byName = new Map(workspaces.map((w) => [w.name, w]));
 
-  // A package with only test-file changes runs only those files.
-  const fileChanges = new Map<string, FileChange[]>();
+  // A package with only live test-file changes runs only those files; a package
+  // whose test-file changes are all deletions runs its full `test` script.
+  const fileChanges = new Map<string, { live: FileChange[]; deleted: FileChange[] }>();
   // A package with any other change runs its full `test` script, and pulls in dependents.
   const fullReasons = new Map<string, string[]>();
 
@@ -141,11 +169,15 @@ export function selectAffected(
         return allRuns(workspaces, changes, slowFiles, options, `changed file outside every package: ${change.path}`);
       }
       const w = byDir.get(dir);
-      if (!w) continue; // an unknown directory shape; the manifest scan decides what exists
+      if (!w) {
+        // A package-shaped directory no manifest covers: an unregistered directory,
+        // or a package that was deleted or renamed away. Never silent: run everything.
+        return allRuns(workspaces, changes, slowFiles, options, `changed file in a directory no workspace package covers: ${change.path}`);
+      }
       if (isTestFile(change.path)) {
-        const list = fileChanges.get(dir) ?? [];
-        list.push(change);
-        fileChanges.set(dir, list);
+        const entry = fileChanges.get(dir) ?? { live: [], deleted: [] };
+        (change.kind === "delete" ? entry.deleted : entry.live).push(change);
+        fileChanges.set(dir, entry);
       } else {
         const reasons = fullReasons.get(dir) ?? [];
         reasons.push(change.kind === "delete" ? `deleted ${change.path}` : `changed ${change.path}`);
@@ -189,9 +221,17 @@ export function selectAffected(
       skippedSlow.push(...skipSlow.map((f) => `${w.dir}/${f}`));
       runs.push({ dir: w.dir, name: w.name, reason: reason.join(", "), files: null, skipSlow });
     } else if (fileChanges.has(w.dir)) {
-      // Only test files changed here: run exactly those, and no dependents.
-      const files = (fileChanges.get(w.dir) ?? []).map((c) => relativeTo(w.dir, c.path));
-      runs.push({ dir: w.dir, name: w.name, reason: `changed test files only: ${files.join(", ")}`, files, skipSlow: [] });
+      const entry = fileChanges.get(w.dir)!;
+      if (entry.live.length > 0) {
+        // Only live test files changed here: run exactly those, and no dependents.
+        const files = entry.live.map((c) => relativeTo(w.dir, c.path));
+        runs.push({ dir: w.dir, name: w.name, reason: `changed test files only: ${files.join(", ")}`, files, skipSlow: [] });
+      } else {
+        // Every test-file change here is a deletion: a deleted path cannot run, so
+        // the package's full `test` script (its remaining tests) runs instead.
+        const deleted = entry.deleted.map((c) => relativeTo(w.dir, c.path));
+        runs.push({ dir: w.dir, name: w.name, reason: `deleted test files: ${deleted.join(", ")}`, files: null, skipSlow: [] });
+      }
     }
   }
 
@@ -201,9 +241,10 @@ export function selectAffected(
       note: changes.length === 0 ? "no changes against the base" : "documentation-only change (notes/ or *.md outside apps/docs): no tests to run",
       runs: [],
       skippedSlow: [],
+      rootTests: false,
     };
   }
-  return { mode: options.all ? "all" : "packages", note: null, runs, skippedSlow };
+  return { mode: options.all ? "all" : "packages", note: null, runs, skippedSlow, rootTests: options.all };
 }
 
 function allRuns(
@@ -223,5 +264,36 @@ function allRuns(
     skippedSlow.push(...skipSlow.map((f) => `${w.dir}/${f}`));
     runs.push({ dir: w.dir, name: w.name, reason: "run everything", files: null, skipSlow });
   }
-  return { mode: "all", note, runs, skippedSlow };
+  return { mode: "all", note, runs, skippedSlow, rootTests: true };
+}
+
+/**
+ * A `test` script whose final command is a bare `bun test` (flags allowed, no
+ * positional path filter), so arguments appended after `--` become the only
+ * test-file filters.
+ */
+function endsInBareBunTest(script: string): boolean {
+  const last = script.split(/&&|;/).pop()!.trim();
+  return /^bun\s+test(\s+-\S+)*$/.test(last);
+}
+
+/**
+ * The `bun` argv (run with the package directory as cwd) for one package's
+ * selection. File-only runs append the files to the package's own `test` script
+ * when that is safe — its final command is a bare `bun test`, so prerequisites
+ * like `mesh build --check` still run; anything else (a directory filter such
+ * as `bun test test/`, a form we do not recognise) runs the full `test` script,
+ * because appending a file to a directory filter broadens bun's selection.
+ */
+export function commandFor(run: PackageRun, testScript: string | undefined): string[] {
+  const skipArgs =
+    run.skipSlow.length > 0
+      ? // --pass-with-no-tests: a package whose every test file is slow (blog)
+        // would otherwise fail on the empty run.
+        ["--", "--pass-with-no-tests", ...run.skipSlow.flatMap((f) => ["--path-ignore-patterns", f])]
+      : [];
+  if (run.files !== null && testScript !== undefined && endsInBareBunTest(testScript)) {
+    return ["run", "test", "--", ...run.files];
+  }
+  return ["run", "test", ...skipArgs];
 }

@@ -3,6 +3,8 @@
 // no git, no filesystem, no spawned tests.
 import { describe, expect, test } from "bun:test";
 import {
+  buildWorkspaceGraph,
+  commandFor,
   isDocChange,
   isTestFile,
   packageDirOf,
@@ -252,18 +254,26 @@ describe("selectAffected", () => {
       expect(sorted).toEqual([...SLOW].sort());
   });
 
-  test("a deleted file selects its former package", () => {
+  test("a deleted test file runs the package's full script, not the deleted path", () => {
     const selection = selectAffected(
       [{ path: "packages/jsonrpc/test/framing.test.ts", kind: "delete" }],
       graph(),
       SLOW,
       OPTS,
     );
-    expect(selection.runs[0]!.files).toEqual(["test/framing.test.ts"]);
+    expect(selection.runs).toEqual([
+      {
+        dir: "packages/jsonrpc",
+        name: "@meshfw/jsonrpc",
+        reason: "deleted test files: test/framing.test.ts",
+        files: null,
+        skipSlow: [],
+      },
+    ]);
   });
 
-  test("a renamed file (split into delete + add) selects the new package and runs the new test file", () => {
-    const selection = selectAffected(
+  test("a rename within a package runs the new file; a cross-package rename runs the old package's full script", () => {
+    const within = selectAffected(
       [
         { path: "packages/jsonrpc/test/old.test.ts", kind: "delete" },
         { path: "packages/jsonrpc/test/new.test.ts", kind: "add" },
@@ -272,7 +282,20 @@ describe("selectAffected", () => {
       SLOW,
       OPTS,
     );
-    expect(selection.runs[0]!.files).toEqual(["test/old.test.ts", "test/new.test.ts"]);
+    expect(within.runs[0]!.files).toEqual(["test/new.test.ts"]);
+    const across = selectAffected(
+      [
+        { path: "packages/jsonrpc/test/old.test.ts", kind: "delete" },
+        { path: "packages/runtime/test/new.test.ts", kind: "add" },
+      ],
+      graph(),
+      SLOW,
+      OPTS,
+    );
+    expect(across.runs.map((r) => [r.dir, r.files, r.reason])).toEqual([
+      ["packages/runtime", ["test/new.test.ts"], "changed test files only: test/new.test.ts"],
+      ["packages/jsonrpc", null, "deleted test files: test/old.test.ts"],
+    ]);
   });
 
   test("no changes against the base selects nothing", () => {
@@ -293,5 +316,116 @@ describe("selectAffected", () => {
     );
     expect(dirs(selection)).toContain("packages/model");
     expect(dirs(selection)).not.toContain("apps/docs");
+  });
+});
+
+describe("unknown package-shaped paths", () => {
+  test("a path under a directory no manifest covers runs everything, never doc-only", () => {
+    const selection = selectAffected(
+      [{ path: "packages/unregistered/src/index.ts", kind: "add" }],
+      graph(),
+      SLOW,
+      OPTS,
+    );
+    expect(selection.mode).toBe("all");
+    expect(selection.note).toBe("changed file in a directory no workspace package covers: packages/unregistered/src/index.ts");
+    expect(selection.runs).toHaveLength(graph().length);
+    expect(selection.rootTests).toBe(true);
+  });
+
+  test("a deleted package directory runs everything", () => {
+    const selection = selectAffected(
+      [{ path: "packages/gone/src/index.ts", kind: "delete" }],
+      graph(),
+      SLOW,
+      OPTS,
+    );
+    expect(selection.mode).toBe("all");
+  });
+});
+
+describe("buildWorkspaceGraph", () => {
+  const manifests = (order: "consumer-first" | "producer-first") => {
+    const consumer = {
+      dir: "packages/consumer",
+      name: "consumer",
+      deps: { producer: "0.0.0", runtime: "workspace:*", zod: "4.6.5" },
+    };
+    const producer = {
+      dir: "packages/producer",
+      name: "producer",
+      deps: { runtime: "1.2.3" },
+    };
+    const runtime = { dir: "packages/runtime", name: "runtime", deps: {} };
+    return order === "consumer-first" ? [consumer, producer, runtime] : [runtime, producer, consumer];
+  };
+
+  test("resolves workspace deps by name whatever the spec and the manifest order", () => {
+    for (const order of ["consumer-first", "producer-first"] as const) {
+      const graph0 = buildWorkspaceGraph(manifests(order));
+      expect(graph0.find((w) => w.name === "consumer")!.dependsOn).toEqual(["producer", "runtime"]);
+      expect(graph0.find((w) => w.name === "producer")!.dependsOn).toEqual(["runtime"]);
+      expect(graph0.find((w) => w.name === "runtime")!.dependsOn).toEqual([]);
+    }
+  });
+
+  test("an ordinary version naming a workspace package reaches the transitive dependents", () => {
+    for (const order of ["consumer-first", "producer-first"] as const) {
+      const selection = selectAffected(
+        [{ path: "packages/producer/src/index.ts", kind: "modify" }],
+        buildWorkspaceGraph(manifests(order)),
+        [],
+        OPTS,
+      );
+      expect([...dirs(selection)].sort()).toEqual(["packages/consumer", "packages/producer"]);
+    }
+  });
+
+  test("a self-dependency is dropped", () => {
+    const graph0 = buildWorkspaceGraph([
+      { dir: "packages/a", name: "a", deps: { a: "workspace:*", b: "workspace:*" } },
+      { dir: "packages/b", name: "b", deps: {} },
+    ]);
+    expect(graph0[0]!.dependsOn).toEqual(["b"]);
+  });
+});
+
+describe("rootTests and commandFor", () => {
+  test("a package change does not run the root script tests; a root change and --all do", () => {
+    const pkg = selectAffected([{ path: "packages/model/src/index.ts", kind: "modify" }], graph(), SLOW, OPTS);
+    expect(pkg.rootTests).toBe(false);
+    const root = selectAffected([{ path: "scripts/verify.ts", kind: "modify" }], graph(), SLOW, OPTS);
+    expect(root.mode).toBe("all");
+    expect(root.rootTests).toBe(true);
+    const allSel = selectAffected([], graph(), SLOW, { slow: false, all: true });
+    expect(allSel.rootTests).toBe(true);
+    const none = selectAffected([], graph(), SLOW, OPTS);
+    expect(none.rootTests).toBe(false);
+  });
+
+  test("file-only runs append the files to a script that ends in a bare bun test, keeping prerequisites", () => {
+    const run = { dir: "examples/blog", name: "blog-example", reason: "r", files: ["test/blog.test.ts"], skipSlow: [] };
+    expect(commandFor(run, "mesh build --check && bun test")).toEqual(["run", "test", "--", "test/blog.test.ts"]);
+    expect(commandFor(run, "bun test")).toEqual(["run", "test", "--", "test/blog.test.ts"]);
+  });
+
+  test("file-only runs fall back to the full script when narrowing is unsafe", () => {
+    const run = { dir: "apps/docs", name: "mesh-docs", reason: "r", files: ["test/one.test.js"], skipSlow: [] };
+    // A directory filter (`bun test test/`) plus a file name would broaden, not narrow.
+    expect(commandFor(run, "bun test test/")).toEqual(["run", "test"]);
+    expect(commandFor(run, undefined)).toEqual(["run", "test"]);
+    expect(commandFor(run, "mesh build && bun test ./test")).toEqual(["run", "test"]);
+  });
+
+  test("slow skips append ignore patterns and --pass-with-no-tests to the full script", () => {
+    const run = { dir: "packages/cli", name: "meshfw", reason: "r", files: null, skipSlow: ["test/example-guard.test.ts"] };
+    expect(commandFor(run, "bun test")).toEqual([
+      "run",
+      "test",
+      "--",
+      "--pass-with-no-tests",
+      "--path-ignore-patterns",
+      "test/example-guard.test.ts",
+    ]);
   });
 });

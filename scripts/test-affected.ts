@@ -4,17 +4,21 @@
 // (default origin/main; uncommitted and untracked files count too) plus every
 // workspace package that depends on them, transitively, and runs each selected
 // package's own `test` script one at a time. A package whose changed files are
-// all test files runs only those files. Slow test files (scripts/slow-tests.json)
-// are skipped unless --slow is passed or the file itself changed.
+// all test files runs only those files, through the package's own script when
+// its form makes that safe. Slow test files (scripts/slow-tests.json) are
+// skipped unless --slow is passed or the file itself changed. A root/config
+// change (and --all) also runs the repository's own script tests.
 //
-// Flags: --base <ref>, --dry-run, --slow, --no-slow (the default), --all.
+// Flags: --base <ref>, --dry-run, --slow, --no-slow, --all.
 import { Glob } from "bun";
 import { dirname, join } from "node:path";
 import {
+  buildWorkspaceGraph,
+  commandFor,
   parseNameStatus,
   selectAffected,
   type FileChange,
-  type Workspace,
+  type Manifest,
 } from "./affected/select.ts";
 
 const root = join(import.meta.dir, "..");
@@ -64,34 +68,30 @@ const changes: FileChange[] = [
     .map((path) => ({ path, kind: "add" as const })),
 ];
 
-// Workspace packages and their workspace dependencies.
+// Workspace manifests: raw dependency fields plus each `test` script, resolved
+// into the workspace graph after every manifest is known (order and version
+// specs do not matter; see buildWorkspaceGraph).
 const rootPackage = await Bun.file(join(root, "package.json")).json();
-const names = new Map<string, Workspace>();
-const workspaces: Workspace[] = [];
+const manifests: Manifest[] = [];
+const testScripts = new Map<string, string>();
 for (const pattern of rootPackage.workspaces as string[]) {
-  for await (const manifest of new Glob(`${pattern}/package.json`).scan({ cwd: root })) {
-    const dir = dirname(manifest);
-    const pkg = await Bun.file(join(root, manifest)).json();
-    const deps: Record<string, string> = {
-      ...pkg.dependencies,
-      ...pkg.devDependencies,
-      ...pkg.peerDependencies,
-      ...pkg.optionalDependencies,
-    };
-    workspaces.push({
+  for await (const manifestPath of new Glob(`${pattern}/package.json`).scan({ cwd: root })) {
+    const pkg = await Bun.file(join(root, manifestPath)).json();
+    const dir = dirname(manifestPath);
+    manifests.push({
       dir,
       name: pkg.name,
-      // A workspace dependency is a `workspace:` spec or any dependency name that
-      // is itself a workspace package.
-      dependsOn: Object.keys(deps).filter((name) => name in names || deps[name]?.startsWith("workspace:")),
+      deps: {
+        ...pkg.dependencies,
+        ...pkg.devDependencies,
+        ...pkg.peerDependencies,
+        ...pkg.optionalDependencies,
+      },
     });
-    names.set(pkg.name, workspaces[workspaces.length - 1]!);
+    if (typeof pkg.scripts?.test === "string") testScripts.set(dir, pkg.scripts.test);
   }
 }
-// Second pass: `dependsOn` names were resolved before every manifest was known.
-for (const w of workspaces) {
-  w.dependsOn = w.dependsOn.filter((name) => names.has(name) && name !== w.name);
-}
+const workspaces = buildWorkspaceGraph(manifests);
 
 const slowManifest = await Bun.file(join(root, "scripts", "slow-tests.json")).json();
 const slowFiles: string[] = slowManifest.files;
@@ -113,32 +113,25 @@ for (const run of selection.runs) {
     console.log(`  skipped slow test file(s), run with --slow: ${run.skipSlow.map((f) => `${run.dir}/${f}`).join(", ")}`);
   }
   if (dryRun) continue;
-  const cmd =
-    run.files !== null
-      ? { argv: ["bun", "test", ...run.files], cwd: join(root, run.dir) }
-      : {
-          argv: [
-            "bun",
-            "run",
-            "test",
-            ...(run.skipSlow.length > 0
-              ? // --pass-with-no-tests: a package whose every test file is slow (blog)
-                // would otherwise fail on the empty run.
-                ["--", "--pass-with-no-tests", ...run.skipSlow.flatMap((f) => ["--path-ignore-patterns", f])]
-              : []),
-          ],
-          cwd: join(root, run.dir),
-        };
-  const proc = Bun.spawn(cmd.argv, { cwd: cmd.cwd, stdout: "inherit", stderr: "inherit" });
+  const argv = commandFor(run, testScripts.get(run.dir));
+  const proc = Bun.spawn(["bun", ...argv], { cwd: join(root, run.dir), stdout: "inherit", stderr: "inherit" });
   if ((await proc.exited) !== 0) failed.push(run.dir);
 }
 
+if (selection.rootTests) {
+  console.log(`\n=== scripts (repository root) — root or config change: the scripts' own tests`);
+  if (!dryRun) {
+    const proc = Bun.spawn(["bun", "test", "scripts/"], { cwd: root, stdout: "inherit", stderr: "inherit" });
+    if ((await proc.exited) !== 0) failed.push("scripts (repository root)");
+  }
+}
+
 if (dryRun) {
-  console.log(`\ntest-affected --dry-run: ${selection.runs.length} package(s), nothing run`);
+  console.log(`\ntest-affected --dry-run: ${selection.runs.length} package(s)${selection.rootTests ? " plus the root script tests" : ""}, nothing run`);
   process.exit(0);
 }
 if (failed.length > 0) {
   console.error(`\ntest-affected: FAILED: ${failed.join(", ")}`);
   process.exit(1);
 }
-console.log(`\ntest-affected: ${selection.runs.length} package(s) passed`);
+console.log(`\ntest-affected: ${selection.runs.length} package(s)${selection.rootTests ? " plus the root script tests" : ""} passed`);
