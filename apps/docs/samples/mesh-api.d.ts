@@ -622,6 +622,10 @@ declare module "@meshfw/jsonrpc" {
   export interface Connection {
     /** Writes a notification (a line with no `id`) to this client; does nothing once it is closed. */
     notify(method: string, params: Record<string, unknown>): void;
+    /** Runs once on close (immediately if already closed); failures go to `log`. Returns an unsubscribe function. */
+    onClose(listener: () => void | Promise<void>): () => void;
+    /** Closes immediately, draining queued bytes but discarding pending results without an error response. Idempotent. */
+    close(): void;
     readonly closed: boolean;
   }
 
