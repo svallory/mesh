@@ -24,6 +24,7 @@ export function eventLog(): EventLog {
 /**
  * The highest seq the log has assigned, 0 when it is empty: what `workspace.get` returns as `head`. It is read outside
  * any transaction (`readEvents` refuses one), so it can be ahead of what the caller's own transaction saw.
+ * Reading from 0 relies on Hyper's `keep: "all"`; after deletion that cursor would be MESH_EVENTS_DELETED.
  */
 export async function head(): Promise<number> {
   return eventLog().binding.run(async () => (await readEvents({ limit: 1 })).highest);

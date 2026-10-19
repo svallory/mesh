@@ -241,7 +241,10 @@ export function resumeHandler(name: string): $Promise<void> {
   return $resumeHandler($deliveryBinding("resumeHandler"), name);
 }
 
-/** Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer. */
+/**
+ * Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer.
+ * Reads through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
+ */
 export function listSubscriptions(): $Promise<readonly $SubscriptionProgress[]> {
   return $listSubscriptions($deliveryBinding("listSubscriptions"));
 }

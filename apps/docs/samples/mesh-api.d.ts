@@ -917,7 +917,10 @@ declare module "#mesh" {
   export function subscribe(query: SubscribeQuery, callback: (event: EventRecord) => unknown): Promise<Subscription>;
   /** Drop the progress row of a handler that was removed or renamed without `renamedFrom`; one the running deliverer registered is refused. */
   export function forgetHandler(name: string): Promise<void>;
-  /** Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer. */
+  /**
+   * Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer.
+   * Reads through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
+   */
   export function listSubscriptions(): Promise<readonly SubscriptionProgress[]>;
   /** Drop the row of a subscription whose client is not coming back; an open one is refused. */
   export function forgetSubscription(name: string): Promise<void>;

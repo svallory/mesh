@@ -655,6 +655,13 @@ describe("the outbox", () => {
       expect(await elsewhere.binding.run(list)).toEqual([]);
       await s.close();
       expect(await binding.run(list)).toEqual([{ name: "client", position: 0 }]);
+      await expect(binding.transaction(async () => {
+        expect(await list()).toEqual([{ name: "client", position: 0 }]);
+        await app.forgetSubscription("client");
+        expect(await list()).toEqual([]); // Joins and sees the uncommitted deletion.
+        throw new Error("roll listing back");
+      })).rejects.toThrow("roll listing back");
+      expect(await binding.run(list)).toEqual([{ name: "client", position: 0 }]);
       await binding.run(() => app.forgetSubscription("client"));
       expect(await binding.run(list)).toEqual([]);
       expect(() => app.listSubscriptions()).toThrow("listSubscriptions was called while not connected");

@@ -939,6 +939,7 @@ export interface SubscriptionProgress {
 /**
  * `listSubscriptions()` of `#mesh`: a frozen snapshot of every persisted subscription on the binding's database,
  * ordered by name. Includes closed and abandoned subscriptions until forgotten; needs no running deliverer.
+ * Runs through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
  */
 export async function listSubscriptions(binding: Binding): Promise<readonly SubscriptionProgress[]> {
   const { layer } = bindingParts(binding);

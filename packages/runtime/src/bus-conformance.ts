@@ -330,7 +330,8 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       await first.deliver();
       const second = world.bind({
         handlers: { process: { h: world.recorder("h", [Alpha], { run: (_e, { context }) => { contexts.push(context); } }) } },
-        context: (event) => ({ system: true, origin: event.position } as ActionContext),
+        // SAFETY: This fixture tests system-only contexts; importing projects may augment ActionContext with a required actor.
+        context: (event) => ({ system: true, origin: event.position } as unknown as ActionContext),
       });
       await world.publish(second, [Alpha, 2]);
       await second.deliver();
