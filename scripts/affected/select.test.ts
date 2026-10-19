@@ -33,12 +33,12 @@ function graph(): Workspace[] {
 }
 
 const SLOW = [
-  "packages/cli/test/cli.test.ts",
   "examples/hyper/test/daemon.test.ts",
   "packages/compiler/test/expressions.test.ts",
   "examples/blog/test/blog.test.ts",
+  "packages/data-sqlite/test/busy.test.ts",
+  "packages/data-sqlite/test/bus-conformance.test.ts",
   "packages/cli/test/example-guard.test.ts",
-  "packages/cli/test/events.test.ts",
 ];
 
 const OPTS = { slow: false, all: false };
@@ -109,9 +109,9 @@ describe("selectAffected", () => {
     expect(compiler.skipSlow).toEqual(["test/expressions.test.ts"]);
     expect(selection.skippedSlow).toEqual([
       "packages/compiler/test/expressions.test.ts",
-      "packages/cli/test/cli.test.ts",
       "packages/cli/test/example-guard.test.ts",
-      "packages/cli/test/events.test.ts",
+      "packages/data-sqlite/test/busy.test.ts",
+      "packages/data-sqlite/test/bus-conformance.test.ts",
       "examples/blog/test/blog.test.ts",
       "examples/hyper/test/daemon.test.ts",
     ]);
@@ -231,7 +231,7 @@ describe("selectAffected", () => {
     const compiler = selection.runs.find((r) => r.dir === "packages/compiler")!;
     expect(compiler.skipSlow).toEqual([]);
     const cli = selection.runs.find((r) => r.dir === "packages/cli")!;
-    expect(cli.skipSlow).toEqual(["test/cli.test.ts", "test/example-guard.test.ts", "test/events.test.ts"]);
+    expect(cli.skipSlow).toEqual(["test/example-guard.test.ts"]);
   });
 
   test("--slow skips nothing", () => {
