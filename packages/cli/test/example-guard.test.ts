@@ -26,22 +26,24 @@ async function runInProcess(cwd: string, ...args: string[]) {
   const saved = process.cwd();
   // Application or adapter code may write straight to the process streams, bypassing
   // the CLI's callbacks; capture those writes too so an exact assertion sees every
-  // byte the old child-process assertions saw, in the order they were written.
-  const out = process.stdout.write.bind(process.stdout);
-  const err = process.stderr.write.bind(process.stderr);
-  process.stdout.write = ((chunk: unknown) => { stdout += String(chunk); return true; }) as typeof process.stdout.write;
-  process.stderr.write = ((chunk: unknown) => { stderr += String(chunk); return true; }) as typeof process.stderr.write;
-  process.chdir(cwd);
+  // byte the old child-process assertions saw, in the order they were written. The
+  // original method references (not bound copies) are restored, and the redirect is
+  // installed only inside the protected block, so no failure can leak it.
+  const out = process.stdout.write;
+  const err = process.stderr.write;
   try {
+    process.stdout.write = ((chunk: unknown) => { stdout += String(chunk); return true; }) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: unknown) => { stderr += String(chunk); return true; }) as typeof process.stderr.write;
+    process.chdir(cwd);
     const code = await runCli(args, cwd, {
       stdout: (text) => { stdout += text; },
       stderr: (text) => { stderr += text; },
     });
     return { code, stdout, stderr };
   } finally {
-    process.chdir(saved);
     process.stdout.write = out;
     process.stderr.write = err;
+    process.chdir(saved);
   }
 }
 
