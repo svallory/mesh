@@ -160,18 +160,19 @@ describe("MX's built-in tags are spelled as written, with no MX-syntax example (
 
   test("`else` names the tag bare", () => {
     const [d] = diagnostics("entity :T\n  else\n");
-    expect(d![0]).toBe("MESH_NOT_IN_ENTITY_FILE");
-    expect(d![1]).toBe("`else` must come right after `if` or `else-if`");
+    expect(d![0]).toBe("MESH_STRUCTURAL_CONSTRUCT");
+    expect(d![1]).toBe("`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`");
   });
 
-  // MX alpha.32: an orphan `else` or `else-if`, and a `try`, read in the dialect's words (code unchanged).
+  // MX alpha.32: an orphan `else` or `else-if`, and a `try`, read in the dialect's words. Since alpha.36 (MX #655,
+  // #671) an orphan `else`/`else-if` is MESH_STRUCTURAL_CONSTRUCT under `structural: "reject"`, naming the tag written.
   test.each([
-    ["an orphan `else`", "entity :T\n  else\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
-    ["an orphan `else(x)`", "entity :T\n  else(x)\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
-    ["an orphan `else-if`", "entity :T\n  else-if=1\n", "MESH_NOT_IN_ENTITY_FILE", "`else-if` must come right after `if` or `else-if`"],
-    ["a top-level orphan `else`", "else\n", "MESH_NOT_IN_ENTITY_FILE", "`else` must come right after `if` or `else-if`"],
+    ["an orphan `else`", "entity :T\n  else\n", "MESH_STRUCTURAL_CONSTRUCT", "`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`"],
+    ["an orphan `else(x)`", "entity :T\n  else(x)\n", "MESH_STRUCTURAL_CONSTRUCT", "`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`"],
+    ["an orphan `else-if`", "entity :T\n  else-if=1\n", "MESH_STRUCTURAL_CONSTRUCT", "`else-if` is part of `if`, and Mesh files are static, so they do not evaluate `if`"],
+    ["a top-level orphan `else`", "else\n", "MESH_STRUCTURAL_CONSTRUCT", "`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`"],
     ["a top-level `try`", "try\n", "MESH_NOT_IN_ENTITY_FILE", "`try` cannot be used in a Mesh file: Mesh files are static, so they have no render errors to catch; write its content directly"],
-    ["an orphan `else-if(x)`", "entity :T\n  else-if(x)\n", "MESH_NOT_IN_ENTITY_FILE", "`else-if` must come right after `if` or `else-if`"],
+    ["an orphan `else-if(x)`", "entity :T\n  else-if(x)\n", "MESH_STRUCTURAL_CONSTRUCT", "`else-if` is part of `if`, and Mesh files are static, so they do not evaluate `if`"],
   ])("%s (MX alpha.32)", (_label, source, code, message) => {
     expect(diagnostics(source)).toEqual([[code, message]]);
   });
