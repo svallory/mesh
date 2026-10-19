@@ -8,6 +8,8 @@
   "workspaces": ["packages/*", "apps/*", "examples/*"],
   "scripts": {
     "test": "bun run --filter '*' test",
+    "test:affected": "bun scripts/test-affected.ts",
+    "test:fast": "bun scripts/test-affected.ts --all",
     "typecheck": "tsc --noEmit && bun run --filter '*' typecheck",
     "verify": "bun scripts/verify.ts"
   },
