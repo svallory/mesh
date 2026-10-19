@@ -20,7 +20,7 @@ export async function checkTypes(root: string, files: readonly string[]) {
   return checkTypesInMemory(root, files);
 }
 
-/** Batch independent module fixtures in one program; do not use for fixtures declaring global/module augmentations. */
+/** Reuse one project, replacing its fixture roots each call; reserve this path for independent module fixtures. */
 export async function checkBatchedTypes(root: string, files: readonly string[]) {
   return checkTypesInMemory(root, files, true);
 }

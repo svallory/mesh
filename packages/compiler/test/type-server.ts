@@ -27,8 +27,6 @@ const directories = new Set<string>();
 let server: API | undefined;
 let openConfig: string | undefined;
 let lastSnapshot: Awaited<ReturnType<API["updateSnapshot"]>> | undefined;
-const batchFiles = new Set<string>();
-const batchRoots = new Set<string>();
 const batchConfig = resolve(import.meta.dir, "__mesh_typecheck__/tsconfig.json");
 
 function virtualFile(file: string, text: string): void {
@@ -101,8 +99,6 @@ export async function closeTypeServer(): Promise<void> {
     openConfig = undefined;
     contents.clear();
     directories.clear();
-    batchFiles.clear();
-    batchRoots.clear();
   }
 }
 
@@ -124,8 +120,8 @@ function renderDiagnostic(diagnostic: Diagnostic, root: string): string {
 
 /**
  * Normal checks use an isolated project, so one fixture's ActionContext/EventBusCapabilities augmentation cannot
- * change another's result. The expressions file explicitly opts into batching its independent module fixtures:
- * their unique absolute roots coexist in one program, with captured sources surviving the disk fixture's cleanup.
+ * change another's result. The expressions file reuses one project for its independent module fixtures, replacing
+ * the root list on each call so dependencies stay cached without accumulating every earlier fixture's program.
  */
 export async function checkTypesInMemory(root: string, files: readonly string[], batch = false): Promise<{ code: number; output: string }> {
   const absolute = files.map((file) => resolve(root, file));
@@ -137,15 +133,11 @@ export async function checkTypesInMemory(root: string, files: readonly string[],
   for (const file of contents.keys()) if (file.startsWith(`${root}${sep}`)) contents.delete(file);
   for (const [file, text] of captured) virtualFile(file, text);
   const config = batch ? batchConfig : resolve(root, "tsconfig.check.json");
-  if (batch) {
-    batchRoots.add(root);
-    for (const file of absolute) batchFiles.add(file);
-  }
-  virtualFile(config, JSON.stringify({ compilerOptions: STRICT_OPTIONS, files: batch ? [...batchFiles] : absolute }));
+  virtualFile(config, JSON.stringify({ compilerOptions: STRICT_OPTIONS, files: absolute }));
   const next = await typeServer().updateSnapshot({
     ...(openConfig === config ? {} : { openProjects: [config], ...(openConfig ? { closeProjects: [openConfig] } : {}) }),
-    // invalidateAll refreshes source contents but does not reload this virtual config's growing root list.
-    // Explicit config/file events ensure later batched fixtures actually join the program.
+    // invalidateAll refreshes source contents but does not reload the virtual config's replacement root list.
+    // Explicit config/file events ensure this fixture replaces, rather than accumulates, previous roots.
     fileChanges: { changed: [config, ...captured.keys()], created: [...captured.keys()], deleted: deleted.filter((file) => file !== config) },
   });
   openConfig = config;
@@ -157,23 +149,18 @@ export async function checkTypesInMemory(root: string, files: readonly string[],
     for (const file of absolute) {
       if (!project.rootFiles.includes(file)) throw new Error(`TypeScript did not include ${file} in ${config}`);
     }
-    const visible = (file: string): boolean => !batch || ![...batchRoots].some((other) =>
-      other !== root && file.startsWith(`${other}${sep}`));
-    // Like tsc, check imported implementation files too, not merely the explicit root files. In a batch, ask for
-    // diagnostics only in this fixture and shared dependencies, rather than rechecking discarded earlier fixtures.
-    const visibleFiles = batch ? (await project.program.getSourceFileNames()).filter(visible) : undefined;
-    const fileDiagnostics = visibleFiles
-      ? (await Promise.all(visibleFiles.map(async (file) => [
-        ...await project.program.getSyntacticDiagnostics(file),
-        ...await project.program.getSemanticDiagnostics(file),
-      ]))).flat()
-      : [...await project.program.getSyntacticDiagnostics(), ...await project.program.getSemanticDiagnostics()];
+    for (const file of project.rootFiles) {
+      if (!absolute.includes(file)) throw new Error(`TypeScript retained a previous fixture root ${file} in ${config}`);
+    }
+    // Check the entire current program, including imported implementations. No diagnostic filtering is needed:
+    // earlier fixture roots have left the project, while shared dependency sources remain cached by the server.
     const diagnostics = [
       ...await project.program.getConfigFileParsingDiagnostics(),
       ...await project.program.getProgramDiagnostics(),
       ...await project.program.getGlobalDiagnostics(),
-      ...fileDiagnostics,
-    ].filter((diagnostic) => !diagnostic.fileName || visible(diagnostic.fileName));
+      ...await project.program.getSyntacticDiagnostics(),
+      ...await project.program.getSemanticDiagnostics(),
+    ];
     const unique = [...new Map(diagnostics.map((diagnostic) => [
       `${diagnostic.fileName}:${diagnostic.pos}:${diagnostic.code}:${diagnostic.text}`, diagnostic,
     ])).values()];
