@@ -1,7 +1,7 @@
 import type { BusCapability, BusCore, EventBus, EventBusInstance, Handler } from "./bus.ts";
 import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import { forgetSubscription, markNoDeliver, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
+import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, ForbiddenError, FrameworkError,
@@ -187,7 +187,7 @@ interface World {
   state(): Promise<{ state: DeliveryState; handlers: readonly HandlerProgressRow[]; subscriptions: readonly SubscriptionProgressRow[] }>;
   outbox(): Promise<readonly OutboxRow[]>;
   /** A handler that records each event it is handed under `name`. */
-  recorder(name: string, events: readonly (typeof Alpha)[], extra?: Partial<Handler<object>>): Handler<never>;
+  recorder(name: string, events: readonly (typeof Alpha)[], extra?: Partial<Handler<object>>): Handler<object>;
   readonly bus: EventBus;
 }
 
@@ -248,7 +248,7 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
                 seen.set(name, list);
                 return extra.run?.(event, tools);
               },
-            } as Handler<object> as unknown as Handler<never>;
+            };
           },
         };
         const startDelivery = async (binding: Binding) => { const delivery = await binding.startDelivery(); stops.push(() => delivery.stop()); return delivery; };
@@ -263,7 +263,7 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         }
       };
     };
-    const start = (world: World, binding: Binding) => (world as unknown as { start: (b: Binding) => Promise<{ stop(): Promise<void> }> }).start(binding);
+    const start = (world: World, binding: Binding) => (world as World & { start: (b: Binding) => Promise<{ stop(): Promise<void> }> }).start(binding);
     const positions = (world: World, name: string) => (world.seen.get(name) ?? []).map((event) => event.position);
     const deliverRejects = async (binding: Binding) => {
       const error = await rejection(() => binding.deliver());
@@ -330,6 +330,7 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       await first.deliver();
       const second = world.bind({
         handlers: { process: { h: world.recorder("h", [Alpha], { run: (_e, { context }) => { contexts.push(context); } }) } },
+        // SAFETY: This fixture tests system-only contexts; importing projects may augment ActionContext with a required actor.
         context: (event) => ({ system: true, origin: event.position } as unknown as ActionContext),
       });
       await world.publish(second, [Alpha, 2]);
@@ -675,6 +676,31 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const list: EventRecord[] = [];
         return { list, callback: (event: EventRecord) => { list.push(event); }, positions: () => list.map((event) => event.position) };
       };
+
+      add("listSubscriptions: lists none, one and several persisted subscriptions, their acknowledged progress, and excludes forgotten ones", async (world) => {
+        const binding = world.bind({});
+        const other = world.bind({});
+        assert(JSON.stringify(await listSubscriptions(other)) === "[]", "a fresh database lists no subscriptions");
+        const got = received();
+        const z = await subscribe(binding, { name: "z", after: 0 }, got.callback);
+        const first = await listSubscriptions(other);
+        assert(JSON.stringify(first) === '[{"name":"z","position":0}]', `one subscription: ${JSON.stringify(first)}`);
+        assert(Object.isFrozen(first) && Object.isFrozen(first[0]), "the list and its entries are frozen snapshots");
+        await world.publish(binding, [Alpha, 1], [Alpha, 2]);
+        await binding.deliver();
+        await until(() => got.list.length === 2, "both rows reach the callback");
+        await z.ack(1);
+        const a = await subscribe(binding, { name: "a", after: 1 }, () => {});
+        await z.close();
+        const listed = await listSubscriptions(other);
+        assert(JSON.stringify(listed) === '[{"name":"a","position":1},{"name":"z","position":1}]', `open and closed, by acknowledged position not read cursor: ${JSON.stringify(listed)}`);
+        assert(first[0]!.position === 0, "a later acknowledgement did not change the earlier snapshot");
+        await forgetSubscription(binding, "z");
+        assert(JSON.stringify(await listSubscriptions(other)) === '[{"name":"a","position":1}]', "forgotten z is absent");
+        await a.close();
+        await forgetSubscription(binding, "a");
+        assert(JSON.stringify(await listSubscriptions(other)) === "[]", "forgetting every subscription empties the list");
+      });
 
       add("subscribe: a subscription opened on a backlog larger than a page, while commits land during each read, gets every position once, in order", async (world) => {
         const binding = world.bind({});

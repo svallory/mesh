@@ -93,10 +93,11 @@ export {
   published,
   forgetHandler,
   forgetSubscription,
+  listSubscriptions,
   resumeHandler,
   type ConnectOptions,
 } from "./binding";
-export type { Delivery } from "@meshfw/runtime";
+export type { Delivery, SubscriptionProgress } from "@meshfw/runtime";
 /** `readEvents(query)`, a page of the outbox's kept events: the bus declares replay. */
 export { readEvents } from "./binding";
 export type { ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";

@@ -31,10 +31,11 @@ export {
   published,
   forgetHandler,
   forgetSubscription,
+  listSubscriptions,
   resumeHandler,
   type ConnectOptions,
 } from "./binding";
-export type { Delivery } from "@meshfw/runtime";
+export type { Delivery, SubscriptionProgress } from "@meshfw/runtime";
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   "billing.InvoicePaid": $billing$InvoicePaid$class,

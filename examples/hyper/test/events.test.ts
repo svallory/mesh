@@ -32,8 +32,7 @@ async function wire(after = 0): Promise<WireEvent[]> {
 
 /** The highest position the log holds, read through `readEvents`. */
 async function head(): Promise<number> {
-  const page = await readEvents({ after: 0, limit: 100_000 });
-  return page.events.at(-1)?.position ?? 0;
+  return (await readEvents({ limit: 1 })).highest;
 }
 
 /**
@@ -42,7 +41,7 @@ async function head(): Promise<number> {
  */
 async function engine() {
   const base = await empty();
-  attachEventLog({ layer: base.db, binding: base.hyper });
+  attachEventLog({ binding: base.hyper });
   return base.hyper.run(async () => {
     await bootstrap(base.hyper);
     const [owner] = await Collaborator.read({}, setup);

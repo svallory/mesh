@@ -27,7 +27,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     const names = [...section.matchAll(/export (?:interface|class) (\w+)/g)].map((match) => match[1]!);
     expect(names).toEqual([
       "EventsConfig", "EventsModule", "EventBusCapabilities", "BusManifest", "EventBus", "BusOptions", "EventBusInstance", "RegisteredHandler", "OutboxRow",
-      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription",
+      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress",
       "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
       "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
       "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError",
@@ -53,6 +53,8 @@ type BusCapabilityParity = Assert<Equal<Docs.BusCapability, Actual.BusCapability
 type CapabilityParity = Assert<Equal<Docs.Capability, Actual.Capability>>;
 type HandlerParity = Assert<Same<Docs.Handler, Actual.Handler>>;
 type SubscriptionParity = Assert<Equal<Docs.Subscription, Actual.Subscription>>;
+type SubscriptionProgressParity = Assert<Equal<Docs.SubscriptionProgress, Actual.SubscriptionProgress>>;
+type ReadEventsPageParity = Assert<Equal<Docs.ReadEventsPage, Actual.ReadEventsPage>>;
 type SubscribeQueryParity = Assert<Same<Docs.SubscribeQuery, Actual.SubscribeQuery>>;
 type BindingDeliveryParity = Assert<Same<Pick<Docs.Binding, "deliver" | "startDelivery">, Pick<Actual.Binding, "deliver" | "startDelivery">>>;
 type MetadataFunctionOfParity = Assert<Same<Docs.MetadataFunction<{ n: number }>, Actual.MetadataFunction<{ n: number }>>>;

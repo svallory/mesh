@@ -5,8 +5,8 @@
 import { hostname } from "node:os";
 import { serve, type MethodTable, type Server } from "@meshfw/jsonrpc";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { DelivererTakenError, type ActionContext, type ClaimHolder, type DataLayer, type Delivery } from "@meshfw/runtime";
-import { bind, forgetSubscription, tables, type Binding } from "#mesh";
+import { DelivererTakenError, type ActionContext, type ClaimHolder, type Delivery } from "@meshfw/runtime";
+import { bind, forgetSubscription, listSubscriptions, tables, type Binding } from "#mesh";
 import config from "../../mesh.config";
 import { contextFactory, engineRule } from "../rpc/context";
 import { attachEventLog } from "../rpc/event-log";
@@ -60,7 +60,7 @@ function holderAlive(holder: ClaimHolder): boolean {
  * out once, until it lapses; still held then, the start fails. Every subscription row left by an earlier run is then
  * dropped: a subscription lives as long as its connection, and a client that comes back subscribes again from its cursor.
  */
-async function startDelivery(binding: Binding, layer: DataLayer): Promise<Delivery> {
+async function startDelivery(binding: Binding): Promise<Delivery> {
   let delivery: Delivery;
   try {
     delivery = await binding.startDelivery();
@@ -70,7 +70,7 @@ async function startDelivery(binding: Binding, layer: DataLayer): Promise<Delive
     delivery = await binding.startDelivery();
   }
   try {
-    const rows = await layer.transaction(async (tx) => (await (tx as { readSubscriptionProgress(): Promise<readonly { name: string }[]> }).readSubscriptionProgress()));
+    const rows = await binding.run(() => listSubscriptions());
     for (const { name } of rows) await binding.run(() => forgetSubscription(name));
   } catch (error) {
     await delivery.stop();
@@ -90,8 +90,8 @@ export async function startDaemon(options: DaemonOptions): Promise<Daemon> {
   await createSchema(layer, tables);
   const hyper = bind(layer, { events: config.events });
   await bootstrap(hyper);
-  const delivery = await startDelivery(hyper, layer);
-  attachEventLog({ layer, binding: hyper });
+  const delivery = await startDelivery(hyper);
+  attachEventLog({ binding: hyper });
   const methods = options.methods ?? hyperMethods;
   const server = await serve({
     socket: options.socket,

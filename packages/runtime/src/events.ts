@@ -326,11 +326,18 @@ export interface ReadEventsQuery {
   key?: Key;
 }
 
-/** What `readEvents` resolves with: the events of the page, and the cursor to pass as `after` next. */
+/** What `readEvents` resolves with: the events, the next cursor, and the outbox's high-water position. */
 export interface ReadEventsPage<E extends object = object> {
   readonly events: readonly EventRecord<E>[];
   /** The position of the last row read, filtered rows included; `after` when the page read none. */
   readonly cursor: number;
+  /**
+   * The highest position ever assigned, as `readOutbox` reports it in the same snapshot as the rows; 0 before the first
+   * append, retained after deletion. On SQLite this includes only committed assignments, not a writer's uncommitted
+   * ones. Read outside any transaction, it can be ahead of what the caller's earlier transaction saw. It is not capped
+   * by the page's limit or filters, so it can be ahead of the page's cursor.
+   */
+  readonly highest: number;
 }
 
 const DEFAULT_LIMIT = 100;
@@ -364,7 +371,7 @@ export async function readEventsFrom(layer: DataLayer, classes: ReadonlyMap<stri
     if (key !== undefined && !sameKey(row.key, key)) continue;
     events.push(recordOf(row, eventClass));
   }
-  return Object.freeze({ events: Object.freeze(events), cursor: page.rows.at(-1)?.position ?? after });
+  return Object.freeze({ events: Object.freeze(events), cursor: page.rows.at(-1)?.position ?? after, highest: page.highest });
 }
 
 /** True when two keys hold the same fields with the same values. */
