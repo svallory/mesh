@@ -168,11 +168,12 @@ export function exitOnSignal(daemon: Daemon | Promise<Daemon>, graceMs = 4_000):
  * What `main.ts` does once it has read the flags, and what the tests' daemon does too: it calls `start`, with the
  * signal handlers in place before start-up finishes (so a signal during schema creation or bootstrap still waits for it,
  * closes the database and exits 0), prints `READY` on standard output once the daemon serves, and exits 1 with the
- * reason on standard error when it cannot start.
+ * reason on standard error when it cannot start. `graceMs`, when given, replaces `exitOnSignal`'s default; the tests'
+ * daemon passes a shorter one so a test need not wait the real 4 s.
  */
-export async function runDaemon(start: () => Promise<Daemon>): Promise<void> {
+export async function runDaemon(start: () => Promise<Daemon>, graceMs?: number): Promise<void> {
   const started = start();
-  exitOnSignal(started);
+  exitOnSignal(started, graceMs ?? 4_000);
   try {
     await started;
   } catch (error) {

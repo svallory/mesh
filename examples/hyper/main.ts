@@ -8,8 +8,7 @@
 // no environment variables and no configuration file. Exit codes: 0 after `SIGTERM` or `SIGINT`, 1 when it cannot
 // start, 2 for a usage error.
 import { parseArgs } from "node:util";
-import { runDaemon, startDaemon } from "./src/daemon/daemon";
-import { LEASE_MS } from "./src/domain/work/work.helpers";
+import type { DaemonOptions } from "./src/daemon/daemon";
 
 const USAGE = "usage: bun examples/hyper/main.ts --socket <path> --db <path> [--lease-ms <n>]";
 
@@ -29,7 +28,7 @@ function leaseMs(raw: string): number {
   return lease;
 }
 
-function flags(): { socket: string; db: string; leaseMs: number } {
+function flags(): DaemonOptions {
   let values: { socket?: string; db?: string; "lease-ms"?: string; plugins?: string };
   try {
     ({ values } = parseArgs({
@@ -44,8 +43,12 @@ function flags(): { socket: string; db: string; leaseMs: number } {
   if (values.plugins !== undefined) usage("--plugins is not supported yet: the plugin host is not built (ADR-0073)");
   if (!values.socket) usage("--socket is required");
   if (!values.db) usage("--db is required");
-  return { socket: values.socket, db: values.db, leaseMs: values["lease-ms"] === undefined ? LEASE_MS : leaseMs(values["lease-ms"]) };
+  return values["lease-ms"] === undefined
+    ? { socket: values.socket, db: values.db }
+    : { socket: values.socket, db: values.db, leaseMs: leaseMs(values["lease-ms"]) };
 }
 
+// Parse the flags before loading the daemon and the domain, so a bad flag exits 2 at once without loading them.
 const options = flags();
+const { runDaemon, startDaemon } = await import("./src/daemon/daemon");
 await runDaemon(() => startDaemon(options));
