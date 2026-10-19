@@ -39,11 +39,13 @@ export interface DeclarationField {
   readonly access: string;
   /** What the property holds, as printed: `string`, or `string | null`. */
   readonly type: string;
-  /** True when the constructor may leave it out: a nullable field, which then holds `null`. */
+  /** The instance property's type: an optional command field also admits `undefined`; an event field never does. */
+  readonly instanceType: string;
+  /** True when the constructor may leave it out: a nullable field, kept undefined on a command and null on an event. */
   readonly optional: boolean;
   /** The Zod expression the constructor checks it with, as printed in a validator. */
   readonly schema: string;
-  /** What the constructor assigns to the property: `$checked.invoiceId`, or `$checked.note ?? null`. */
+  /** What the constructor assigns: `$checked.invoiceId`; only an optional event field adds `?? null`. */
   readonly assignment: string;
 }
 
@@ -83,9 +85,10 @@ export function declarationView(declaration: Declaration): DeclarationView {
       key: propertyName(field.name),
       access: IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`,
       type,
+      instanceType: type + (optional && declaration.kind === "command" ? " | undefined" : ""),
       optional,
       schema: fieldSchema(field, optional),
-      assignment: `$checked${IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}${optional ? " ?? null" : ""}`,
+      assignment: `$checked${IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}${optional && declaration.kind === "event" ? " ?? null" : ""}`,
     };
   });
   const view = {

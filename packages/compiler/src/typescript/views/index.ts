@@ -78,7 +78,12 @@ function commandsView(input: EmitInput, declarations: ReturnType<typeof declarat
       command: classLocal(command),
       // a command with no fields leaves its parameter unread, which the strictest flags (`noUnusedParameters`) refuse
       param: command.fields.length ? "command" : "_command",
-      input: `{ ${command.fields.map((field) => `${propertyName(field.name)}: command${/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}`).join(", ")} }`,
+      input: `{ ${command.fields.map((field) => {
+        const access = `command${/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}`;
+        const property = `${propertyName(field.name)}: ${access}`;
+        // A command's optional field keeps undefined. Do not turn omission into null or an own undefined input.
+        return field.nullable ? `...(${access} === undefined ? {} : { ${property} })` : property;
+      }).join(", ")} }`,
       entity: entityLocal(entity, "value"),
       action: action.name,
     })),
