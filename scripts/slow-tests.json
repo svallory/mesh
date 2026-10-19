@@ -1,11 +1,9 @@
 {
-  "$comment": "Test files that take 7 s or more on forge (measured at main 4aad416, after PR #153 made the CLI tests fast). `bun run test:affected` skips these unless --slow is passed or the file itself changed; the packages' own `test` scripts, `bun run test`, `bun run verify` and CI always run them. Paths are repository-relative.",
+  "$comment": "Test files that take 7 s or more on forge (measured at main b9a6ea6, after PRs #153, #156 and #157). `bun run test:affected` skips these unless --slow is passed or the file itself changed; the packages' own `test` scripts, `bun run test`, `bun run verify` and CI always run them. Paths are repository-relative.",
   "files": [
-    "examples/hyper/test/daemon.test.ts",
     "packages/compiler/test/expressions.test.ts",
-    "examples/blog/test/blog.test.ts",
-    "packages/data-sqlite/test/busy.test.ts",
-    "packages/data-sqlite/test/bus-conformance.test.ts",
-    "packages/cli/test/example-guard.test.ts"
+    "examples/hyper/test/daemon.test.ts",
+    "packages/cli/test/example-guard.test.ts",
+    "packages/data-sqlite/test/bus-conformance.test.ts"
   ]
 }
