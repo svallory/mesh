@@ -8,7 +8,7 @@ description: "What Mesh gives MX, what MX gives Mesh, who checks each rule, what
 This page is the contract between Mesh and MX, the language project that parses Mesh's entity files. It replaces the site's earlier MX integration page, and MX may keep a mirror of it. Mesh's lead wrote Mesh's side: sections 1 and 2, Mesh's rows of section 4 and Mesh's items in section 5. MX's lead wrote MX's side: section 3, MX's rows of section 4 and MX's items in section 5, checked against MX's code. A change on either side is checked against this page, so that a broken promise is found in review rather than by a broken build. A Mesh change that alters a statement here updates the page in the same pull request. An MX change that alters one gives a `Contract:` line in its pull request, and the Mesh pull request that moves to the MX release carrying it updates the page.
 
 ::: callout info "Versions this page describes"
-`@mxlang/core` `0.1.0-alpha.34`, IR version 7. Section 5 lists everything still open on either side.
+`@mxlang/core` `0.1.0-alpha.36`, IR version 8. Section 5 lists everything still open on either side.
 :::
 
 ## Why there is a contract
@@ -147,7 +147,7 @@ A caller's option overrides the dialect's, which is why Mesh passes none (2.3).
 
 **Result.** `LowerSourceResult` is `{ ir: SpannedIr | undefined; diagnostics: IrDiagnostic[] }`.
 
-- Any error means `ir: undefined`. There is no partial IR.
+- Any error means `ir: undefined`, unless the caller passes `partial: true` (since alpha.36). Mesh passes no option, so it never gets a partial IR.
 - Warnings come back with the IR: a duplicate option returns the IR and a `MESH_DUPLICATE_OPTION` warning.
 - The IR is the caller's own copy, and every span in it is checked before it is returned.
 
@@ -156,7 +156,7 @@ A caller's option overrides the dialect's, which is why Mesh passes none (2.3).
 - every parse error, since the parser recovers: two broken expressions give two parse errors (`MESH_PARSE_EXPRESSION` under Mesh's dialect);
 - every contract error on independent tags: a missing required option, a bad enum value and an unknown option in one file give three errors;
 - every unknown tag under `unknownTags: "reject"`;
-- every structural hit under `structural: "reject"`. Since alpha.31 a `for` or `if` under a tag with a contract is reported as the construct (`MESH_STRUCTURAL_CONSTRUCT`), at the construct, as it is everywhere else; since alpha.32 that holds for every authored form: `if(x)`, `for(x)`, `for|x|(y)`, `if|x|=a`, and an `if` or `for` with no condition or params, each reported once; an `else(x)` or `else-if(x)` that follows an `if` is folded into that `if`'s single error, while an orphan `else` or `else-if` is still `MX_NOT_IN_DATA_FILE` until MX's announced later change. A shape hint ("Tag does not support arguments...") stays only where the construct is legal. What it holds is not checked against the parent's `children` or its own `parents` until the construct is removed, so it gives no second error. This holds anywhere under a tag with a `transform`, too, where the construct is reported while the tag lowers.
+- every structural hit under `structural: "reject"`. Since alpha.31 a `for` or `if` under a tag with a contract is reported as the construct (`MESH_STRUCTURAL_CONSTRUCT`), at the construct, as it is everywhere else; since alpha.32 that holds for every authored form: `if(x)`, `for(x)`, `for|x|(y)`, `if|x|=a`, and an `if` or `for` with no condition or params, each reported once; an `else(x)` or `else-if(x)` that follows an `if` is folded into that `if`'s single error, and since alpha.36 an orphan `else` or `else-if` is `MESH_STRUCTURAL_CONSTRUCT` too, at the tag, naming the tag written ("`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`"). A shape hint ("Tag does not support arguments...") stays only where the construct is legal. What it holds is not checked against the parent's `children` or its own `parents` until the construct is removed, so it gives no second error. This holds anywhere under a tag with a `transform`, too, where the construct is reported while the tag lowers.
 
 The one exception: a tag that fails its own lowering, such as one a closed `children` refuses, is skipped with its subtree. Errors inside that subtree are reported once the refusal is fixed; its siblings are still checked.
 
@@ -275,7 +275,7 @@ MX's editor tools check `.mesh.mx` files. They share `checkDialectFile(filePath,
 
 On top of it:
 
-- **mx-tsc** reports the diagnostics of dialect files. `@mxlang/tsc` is not released, and its built command fails under Bun today (section 5).
+- **mx-tsc** reports the diagnostics of dialect files. `@mxlang/tsc` is not released; since alpha.35 its built command runs under Bun.
 - **The language server** publishes them as you type, and watches dialect files.
 - **The TypeScript plugin** is check-only: it emits virtual code carrying diagnostics, ranges, codes and fixes.
 - **The Vite plugin and the Bun plugin** refuse to import a dialect file ("Mesh files cannot be imported: the dialect registers no emit"). A dialect with no emit step is check-only.
@@ -363,6 +363,16 @@ The release takes members out of core, makes node schemas mandatory and drops th
 - **The golden tree changed accordingly.** Every `extra.mxAtom` and `extra.mxMember` mark left the goldens, every member expression's `Expr.nodes` lists a `mesh:Member`, a member after a kind became `node: { type: "mesh:Member", span, name }`, and the one message that named `mesh:Atom` names `atom`.
 - **Also in the release.** A lone `static` line is accepted, a top-level `export default` with no `static`, `server` or `client` before it is `MX_INVALID_STATEMENT` (#649), and Angular fixes (#641, #645). A Mesh file refuses module statements, so none reaches Mesh, and no Mesh test changed.
 
+### 3.15 New in alpha.35 and alpha.36
+
+Mesh skipped alpha.35 and moved from alpha.34 to alpha.36. `IR_VERSION` is 8.
+
+- **`Const.varBindings`** (alpha.35). The IR's `Const` node gains `varBindings`. Mesh does not read it.
+- **Orphan `else` and `else-if`** (MX #655, #671). Under `structural: "reject"` an orphan `else` or `else-if` is `MESH_STRUCTURAL_CONSTRUCT` at the tag, as an `if` is, no longer `MESH_NOT_IN_ENTITY_FILE` (3.1). Its message names the tag written: "`else` is part of `if`, and Mesh files are static, so they do not evaluate `if`". Alpha.35's text did not name the tag written, which is why Mesh waited for alpha.36.
+- **Partial IR, opt-in** (MX #669). `lowerSource` and `lowerFile` return the IR beside the errors when the caller passes `partial: true`. Mesh passes no option (2.3), so its build is unchanged.
+- **mx-tsc under Bun** (MX #665). The built command runs under Bun; the TS18003 failure is gone.
+- **Attribute arguments in web-UI hosts** (MX #670). Hosts refuse attribute arguments through the opt-in `HostDeclarations.attributeArgs`. Core's default lowering keeps `Attr.args`, so Mesh is unaffected.
+
 ## 4. Who checks what
 
 "Mesh's hook, run by MX" means a rule Mesh writes in its dialect or a contract, which MX runs inside `lowerSource`. Mesh's own checks run on the tree, after `lowerSource`, for every file MX parsed. Paths without a package are in `packages/compiler/`.
@@ -424,7 +434,7 @@ The release takes members out of core, makes node schemas mandatory and drops th
 
 Each item names its MX TODO slug or MX decision, where it has one.
 
-- **No partial IR on error.** A file with an error gives no tree, so Mesh runs none of its own checks on that file until MX's errors are fixed. MX TODO `ir-entry-partial-ir`.
+- **No partial IR on error.** A file with an error gives no tree, so Mesh runs none of its own checks on that file until MX's errors are fixed. Since alpha.36 `lowerSource` returns a partial IR when the caller passes `partial: true`; Mesh does not pass it yet.
 - **A refused tag hides its subtree.** A tag refused by its own lowering hides the errors inside it until the refusal is fixed (3.1). MX decision 162; no TODO.
 - **Wrapped references.** MX lowers `(x)`, `<T>x`, `x!`, `x as T` and `x satisfies T` to `x` and keeps the written value in `valueSpan` (3.2). Mesh's `entity=` hook refuses a wrapped reference, `entity=<T>Customer` or `entity=(billing.Invoice)`, as `MESH_ENTITY_REFERENCE` at the written value, wherever `valueSpan` differs from `value.span` (`isWrapped` in `src/front-end/contracts.ts`). `entity=` is the only option Mesh reads a reference from today; `on=` will take the same check when it is built. A wrapped literal (`max=(5)`, `code=("42" as const)`) is not a reference and still builds.
 - **Dotted line heads.** Mesh's dialect sets `tagShorthands: false` (2.1), so a dotted line head such as `billing.InvoiceVoided` is one tag of that name, and `#x`, `.x` or a `#` inside a head is `MESH_NO_TAG_SHORTHAND`. No section that lists references by line head is built yet (an owner's `events` and `commands` sections are M6 work), so no Mesh contract takes a dotted tag and such a head is `MESH_UNKNOWN_TAG`.
@@ -432,7 +442,6 @@ Each item names its MX TODO slug or MX decision, where it has one.
 - **Members leave core.** Shipped in alpha.34 (3.14): a member is Mesh's `mesh:Member` node, and core has no member vocabulary. With it the marks gap of `mesh build` closed: the build passes the absolute file path, so core checks Mesh's marks against the project's installed dialects as the editor does (2.3). MX TODO `member-to-dialect-registry`, MX decision 218.
 - **Dialect files are check-only.** The Vite and Bun plugins refuse to import them. MX TODO `dialect-emit-step`, MX decision 218.
 - **`stripTypes` is not a dialect field**, so the editor and a build that passed the option could see different nodes. MX TODO `strip-types-dialect-field`.
-- **mx-tsc under Bun.** Its built command fails under Bun (TS18003). MX TODO `mx-tsc-bun-ts18003`.
 - **Overlapping splices.** Two `ctx.expression` values from one trigger are spliced twice. MX TODO `trigger-splice-overlap`.
 - **An unchecked `defaultTag`.** An invalid `defaultTag` inside `children["*"]` is not checked when the contract is registered. MX TODO `contract-default-tag-scan-children-wildcard`.
 - **Reloading a dialect.** A dialect module is not reloaded in watch mode (MX TODO `sync-esm-reload-node`), and reloading is untested (MX TODO `dialect-reload-untested`).
