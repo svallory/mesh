@@ -222,15 +222,23 @@ export function selectAffected(
       runs.push({ dir: w.dir, name: w.name, reason: reason.join(", "), files: null, skipSlow });
     } else if (fileChanges.has(w.dir)) {
       const entry = fileChanges.get(w.dir)!;
+      // A live-file run names its files, but a package whose script cannot be
+      // narrowed (a directory filter) falls back to the full script, and a
+      // deletion-only run always does; both then skip the package's unchanged
+      // slow files, like any other full-script run.
+      const skipSlow = slowFiles
+        .filter((f) => f.startsWith(`${w.dir}/`) && !options.slow && !changedSlow.has(f))
+        .map((f) => relativeTo(w.dir, f));
+      skippedSlow.push(...skipSlow.map((f) => `${w.dir}/${f}`));
       if (entry.live.length > 0) {
         // Only live test files changed here: run exactly those, and no dependents.
         const files = entry.live.map((c) => relativeTo(w.dir, c.path));
-        runs.push({ dir: w.dir, name: w.name, reason: `changed test files only: ${files.join(", ")}`, files, skipSlow: [] });
+        runs.push({ dir: w.dir, name: w.name, reason: `changed test files only: ${files.join(", ")}`, files, skipSlow });
       } else {
         // Every test-file change here is a deletion: a deleted path cannot run, so
         // the package's full `test` script (its remaining tests) runs instead.
         const deleted = entry.deleted.map((c) => relativeTo(w.dir, c.path));
-        runs.push({ dir: w.dir, name: w.name, reason: `deleted test files: ${deleted.join(", ")}`, files: null, skipSlow: [] });
+        runs.push({ dir: w.dir, name: w.name, reason: `deleted test files: ${deleted.join(", ")}`, files: null, skipSlow });
       }
     }
   }
