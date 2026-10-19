@@ -1,19 +1,16 @@
-// What the event methods need beyond an entity call (PROTOCOL.md §5, §8): the data layer, for the log's head
-// (`workspace.get`'s `head`, `events.read`'s `hasMore`), and the binding, for a subscription's filter, which runs after
-// the call that opened it has returned. The daemon attaches both when it starts; an in-process test attaches its own.
-import type { DataLayer } from "@meshfw/runtime";
+// The binding the event methods use (PROTOCOL.md §5, §8), including callbacks that run after the call that opened
+// a subscription has returned. The daemon attaches it when it starts; an in-process test attaches its own.
 import { Mesh } from "meshfw";
-import type { Binding } from "#mesh";
+import { readEvents, type Binding } from "#mesh";
 import { Workspace } from "#mesh/domain/identity";
 
 interface EventLog {
-  readonly layer: DataLayer;
   readonly binding: Binding;
 }
 
 let attached: EventLog | undefined;
 
-/** Attaches the data layer and the binding the event methods use; `undefined` detaches them. */
+/** Attaches the binding the event methods use; `undefined` detaches it. */
 export function attachEventLog(log: EventLog | undefined): void {
   attached = log;
 }
@@ -26,12 +23,10 @@ export function eventLog(): EventLog {
 
 /**
  * The highest seq the log has assigned, 0 when it is empty: what `workspace.get` returns as `head`. It is read outside
- * any transaction (the data layer's `readOutbox` refuses one), so it can be ahead of what the caller's own transaction saw.
+ * any transaction (`readEvents` refuses one), so it can be ahead of what the caller's own transaction saw.
  */
 export async function head(): Promise<number> {
-  const { layer } = eventLog();
-  if (typeof layer.readOutbox !== "function") throw new Error("the data layer has no readOutbox");
-  return (await layer.readOutbox(0, 1)).highest;
+  return eventLog().binding.run(async () => (await readEvents({ limit: 1 })).highest);
 }
 
 /** The workspace's id, which every wire event carries (`toWire` in `src/events.ts`), read with no policy on the binding in scope. */

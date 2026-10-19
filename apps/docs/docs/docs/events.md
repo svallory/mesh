@@ -410,6 +410,18 @@ A handler that is removed, or renamed without `renamedFrom`, leaves a progress r
 - `forgetHandler(name)` or `forgetSubscription(name)`, from `#mesh`, in the deliverer's process. `forgetHandler` refuses a handler the running deliverer registered, so a typo cannot drop a running handler's progress, and `forgetSubscription` refuses an open subscription;
 - or `mesh events forget <name>`, from any process (see [Command line](./command-line.md#events-forget)).
 
+`listSubscriptions()`, from `#mesh` in every project that declares events, lists every persisted subscription on the binding's database, open, closed or abandoned, until forgotten. It resolves with a frozen array of `SubscriptionProgress` entries, `{ name, position }`, ordered by name. `position` is the stored acknowledged position (including rows its filter passed), not the stream's in-memory read cursor. It needs no running deliverer and runs on the binding in scope or the connected one.
+
+```ts "src/subscriptions.ts"
+import { connect, disconnect, listSubscriptions } from "#mesh";
+
+await connect({ deliver: false });
+for (const { name, position } of await listSubscriptions()) {
+  console.log(name, position);
+}
+await disconnect();
+```
+
 An application whose subscriptions end for good closes each, then forgets it.
 
 ## The events module and metadata
@@ -463,7 +475,7 @@ await disconnect();
 
 ## Reading the outbox
 
-`readEvents(query)`, from `#mesh` when the configured bus declares `replay`, reads a page of the events the outbox keeps, committed ones only, on the binding in scope or the connected one, in any process. Under the default `keep` little is kept beyond what is not yet delivered, so an application that reads its history, or whose clients resume from cursors of their own, sets `keep: "all"`. It resolves with `{ events, cursor }`: each event an `EventRecord` whose `payload` is an instance of its class (dates are `Date` again), and `cursor`, the position to pass as `after` next.
+`readEvents(query)`, from `#mesh` when the configured bus declares `replay`, reads a page of the events the outbox keeps, committed ones only, on the binding in scope or the connected one, in any process. Under the default `keep` little is kept beyond what is not yet delivered, so an application that reads its history, or whose clients resume from cursors of their own, sets `keep: "all"`. It resolves with `{ events, cursor, highest }`: each event an `EventRecord` whose `payload` is an instance of its class (dates are `Date` again), `cursor`, the position to pass as `after` next, and `highest`, the highest position the outbox ever assigned, as the data adapter reports it in the same snapshot as the rows. `highest` is 0 before the first append and stays after deletion; it is not bounded by the page's `limit` or filters. On SQLite it includes only committed assignments, never a writer's uncommitted ones. The read runs outside any transaction, so `highest` can be ahead of what the caller's earlier transaction saw. Compare `cursor < highest` to tell whether this snapshot has more positions to read; it does not promise that another event matches the filters.
 
 | Field of `query` | Default | What it does |
 |:--|:--|:--|
