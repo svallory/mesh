@@ -68,8 +68,10 @@ export interface Connection {
   onClose(listener: () => void | Promise<void>): () => void;
   /**
    * Stops reading and marks this connection closed immediately, then ends it after previously queued bytes are
-   * written. Idempotent. Pending calls are not cancelled, but their results are discarded: no error response is sent.
-   * Send any final notification before calling this. Unlike `Server.close()`, it does not wait for pending calls.
+   * written. Idempotent. A call still validating never reaches its context factory; a call still building context
+   * never reaches `run`. Work already in `run` is not cancelled, but its result is discarded without an error response.
+   * Unlike `Server.close()`, this does not wait for running calls. Send any final notification before calling this.
+   * The byte drain has no deadline: a client that never reads can keep its socket and queued bytes open indefinitely.
    */
   close(): void;
   /** True once the client or the server closed the connection. */

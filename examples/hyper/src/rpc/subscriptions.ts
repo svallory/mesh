@@ -78,9 +78,9 @@ function end(id: string): Promise<void> {
   if (entry === undefined) return Promise.resolve();
   served.delete(id);
   entry.unwatch();
-  const { binding } = eventLog();
   const task = (async () => {
     await entry.subscription.close();
+    const { binding } = eventLog();
     await binding.run(() => forgetSubscription(id));
   })().finally(() => ending.delete(task));
   ending.add(task);

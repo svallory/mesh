@@ -115,7 +115,16 @@ test("one overflowing stream disconnects the client, ends both subscriptions, an
   } finally { log.mockRestore(); }
 });
 
-test("unsubscribe removes only its own close listener and keeps the connection and other subscription open", async () => {
+test("teardown still closes the stream when the event log was detached", async () => {
+  const client = await connect();
+  const id = await subscribe(client, 3);
+  expect(core.subscriptions()).toHaveLength(1);
+  attachEventLog(undefined);
+  await expect(closeSubscription(id)).rejects.toThrow();
+  expect(core.subscriptions()).toHaveLength(0);
+});
+
+test("unsubscribe ends only its own stream and keeps the connection and other subscription open", async () => {
   const client = await connect();
   const first = await subscribe(client, 3);
   const second = await subscribe(client, 3, 2);

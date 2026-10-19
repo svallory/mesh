@@ -712,12 +712,18 @@ describe("connection lifecycle", () => {
 
   test("a final notification queued before close drains whole, even under backpressure", async () => {
     const big = "x".repeat(4 * 1024 * 1024);
+    let notified = false;
+    let notifiedAtClose = false;
     const server = await start({ stop: { run: (_params, _context, { connection }) => {
+      connection.onClose(() => { notified = true; });
       connection.notify("final", { big });
       connection.close();
+      // Capture synchronously while the paused client has not read the queued notification.
+      notifiedAtClose = notified;
       return "discarded";
     } } });
     const result = await exchange(server.socket, '{"jsonrpc":"2.0","id":1,"method":"stop"}\n', { readAfterMs: 100, halfClose: true });
+    expect(notifiedAtClose).toBe(true);
     expect(result.lines).toHaveLength(1);
     expect(JSON.parse(result.lines[0]!)).toEqual({ jsonrpc: "2.0", method: "final", params: { big } });
     expect(result.endedByServer).toBe(true);
