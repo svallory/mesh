@@ -665,6 +665,46 @@ describe("the outbox", () => {
     } finally { await layer.close(); }
   });
 
+  test.each([false, true])("dispatch leaves an omitted update field out of the input (explicit undefined: %p)", async (explicit) => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      const paidAt = new Date("2026-01-02T03:04:05.000Z");
+      await stored(layer, ID, { paidAt });
+      const command = new billing.PayInvoice(explicit ? { id: ID, paidAt: undefined } : { id: ID });
+      expect(command.paidAt).toBeUndefined();
+      const result = await binding.run(() => app.dispatch(command, {}));
+      expect(result).toMatchObject({ id: ID, paidAt });
+      expect(seen).toEqual([{ id: ID }]);
+      expect(Object.hasOwn(seen[0] as object, "paidAt")).toBe(false);
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch sends an explicit null update field and clears the attribute", async () => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      await stored(layer, ID, { paidAt: new Date(0) });
+      const command = new billing.PayInvoice({ id: ID, paidAt: null });
+      expect(command.paidAt).toBeNull();
+      expect(await binding.run(() => app.dispatch(command, {}))).toMatchObject({ id: ID, paidAt: null });
+      expect(seen).toEqual([{ id: ID, paidAt: null }]);
+      expect(Object.hasOwn(seen[0] as object, "paidAt")).toBe(true);
+    } finally { await layer.close(); }
+  });
+
+  test("dispatch leaves an omitted optional create field out of the input", async () => {
+    const seen: unknown[] = [];
+    const { layer, binding } = await open({ seams: { beforeTransaction: ({ input }: { input: unknown }) => { seen.push(input); } } });
+    try {
+      const command = new billing.OpenInvoice({});
+      expect(command.note).toBeUndefined();
+      expect(await binding.run(() => app.dispatch(command, {}))).toMatchObject({ paid: false });
+      expect(seen).toEqual([{}]);
+      expect(Object.hasOwn(seen[0] as object, "note")).toBe(false);
+    } finally { await layer.close(); }
+  });
+
   test("dispatch joins the running transaction: its events show in published(), and a rollback undoes the action and its event", async () => {
     const { layer, binding } = await open();
     const { PayInvoice } = billing;
