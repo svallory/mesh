@@ -132,15 +132,16 @@ describe("package pool", () => {
     expect(events).toEqual(["\n=== single\n", "start single"]);
   });
 
-  test.each(["SIGINT", "SIGTERM"] as const)("%s flushes real hung children, names interrupted and pending work, and exits non-zero", async (signal) => {
+  test.each(["SIGINT", "SIGTERM", "SIGHUP"] as const)("%s flushes real hung children, names interrupted and pending work, and exits non-zero", async (signal) => {
     const pool = join(import.meta.dir, "pool.ts");
+    const childCode = 'const grandchild = Bun.spawn([process.execPath, "--eval", "setInterval(() => {}, 1000)"], { stdout: "ignore", stderr: "ignore" }); process.stdout.write("partial stdout PID=" + process.pid + " GRANDCHILD=" + grandchild.pid + "\\n"); process.stderr.write("partial stderr\\n"); setInterval(() => {}, 1000);';
     const source = `
       import { runPool, executeTask } from ${JSON.stringify(pool)};
       const ready = new Set();
       const pids = new Set();
       const tasks = ["hung-a", "hung-b", "pending"].map(id => ({
         id, header: "\\n=== " + id + "\\n", cwd: process.cwd(),
-        argv: [process.execPath, "--eval", 'process.stdout.write("partial stdout PID=" + process.pid + "\\\\n"); process.stderr.write("partial stderr\\\\n"); setInterval(() => {}, 1000);']
+        argv: [process.execPath, "--eval", ${JSON.stringify(childCode)}]
       }));
       await runPool(tasks, 2, (task, streaming, live) => {
         let seen = "";
@@ -148,8 +149,9 @@ describe("package pool", () => {
         live.onOutput = chunk => {
           capture(chunk);
           seen += Buffer.from(chunk).toString();
-          if (seen.includes("partial stdout") && seen.includes("partial stderr")) {
+          if (!ready.has(task.id) && seen.includes("partial stdout") && seen.includes("partial stderr")) {
             pids.add(seen.match(/PID=(\\d+)/)[1]);
+            process.stderr.write("GRANDCHILD " + seen.match(/GRANDCHILD=(\\d+)/)[1] + "\\n");
             ready.add(task.id);
             if (ready.size === 2) process.stderr.write("READY " + [...pids].join(" ") + "\\n");
           }
@@ -164,21 +166,32 @@ describe("package pool", () => {
     const reader = proc.stderr.getReader();
     let diagnostics = "";
     let children: number[] = [];
+    let grandchildren: number[] = [];
     const deadline = setTimeout(() => { proc.kill("SIGKILL"); }, 10_000);
     try {
       while (!diagnostics.includes("READY ")) {
         const chunk = await reader.read();
         if (chunk.done) throw new Error(`fixture ended before readiness: ${diagnostics}`);
         diagnostics += Buffer.from(chunk.value).toString();
-        children = [...diagnostics.matchAll(/CHILD (\d+)/g)].map((match) => Number(match[1]));
+        children = [...diagnostics.matchAll(/^CHILD (\d+)/gm)].map((match) => Number(match[1]));
+        grandchildren = [...diagnostics.matchAll(/^GRANDCHILD (\d+)/gm)].map((match) => Number(match[1]));
       }
       expect(children).toHaveLength(2);
+      expect(grandchildren).toHaveLength(2);
       expect(diagnostics).toContain("test-affected: started hung-a");
       expect(diagnostics).toContain("test-affected: started hung-b");
       expect(diagnostics).not.toContain("test-affected: started pending");
       process.kill(-proc.pid, signal);
-      expect(await proc.exited).toBe(signal === "SIGINT" ? 130 : 143);
-      const text = await output;
+      expect(await proc.exited).toBe(signal === "SIGINT" ? 130 : signal === "SIGHUP" ? 129 : 143);
+      const stdout = await output;
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        diagnostics += Buffer.from(chunk.value).toString();
+      }
+      expect(diagnostics).toContain("FAILED: hung-a, hung-b, pending");
+      expect(stdout).not.toContain("FAILED:");
+      const text = stdout + diagnostics;
       expect(text).toContain("=== hung-a\n");
       expect(text).toContain("=== hung-b\n");
       expect(text.match(/partial stdout/g)).toHaveLength(2);
@@ -186,9 +199,20 @@ describe("package pool", () => {
       expect(text).toContain(`interrupted hung-a (${signal})`);
       expect(text).toContain(`interrupted hung-b (${signal})`);
       expect(text).toContain("FAILED: hung-a, hung-b, pending");
+      // Assert before fallback cleanup: removing the pool's stop() must fail this test.
+      for (const pid of [...children, ...grandchildren]) {
+        let code: string | undefined;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          try { process.kill(pid, 0); }
+          catch (error) { code = (error as NodeJS.ErrnoException).code; break; }
+          await Bun.sleep(10);
+        }
+        expect(code, `process ${pid} must be gone after ${signal}`).toBe("ESRCH");
+      }
     } finally {
       clearTimeout(deadline);
       for (const pid of children) { try { process.kill(-pid, "SIGKILL"); } catch { /* Already stopped by the pool. */ } }
+      for (const pid of grandchildren) { try { process.kill(pid, "SIGKILL"); } catch { /* Already stopped with its group. */ } }
       try { process.kill(-proc.pid, "SIGKILL"); } catch { /* The parent already exited. */ }
       reader.releaseLock();
       await proc.exited;

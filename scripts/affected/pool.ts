@@ -98,21 +98,23 @@ export async function runPool(
   const running = new Map<TestTask, { chunks: Uint8Array[]; live: LiveExecution }>();
   const concurrency = Math.min(jobs, queue.length);
   const streaming = concurrency === 1;
-  function interrupt(signal: "SIGINT" | "SIGTERM"): never {
+  function interrupt(signal: "SIGINT" | "SIGTERM" | "SIGHUP"): never {
     for (const [task, state] of running) {
       print(Buffer.concat([Buffer.from(task.header), ...state.chunks, Buffer.from(`\ntest-affected: interrupted ${task.id} (${signal})\n`)]));
       try { state.live.stop?.(); } catch { /* The child may already have exited. */ }
     }
     // Include pending work as failed too: interruption must never imply it passed.
     for (const task of tasks) if (!completed.has(task.id)) failed.add(task.id);
-    print(Buffer.from(`\ntest-affected: FAILED: ${tasks.filter((task) => failed.has(task.id)).map((task) => task.id).join(", ")}\n`));
-    process.exit(signal === "SIGINT" ? 130 : 143);
+    writeOutput(Buffer.from(`\ntest-affected: FAILED: ${tasks.filter((task) => failed.has(task.id)).map((task) => task.id).join(", ")}\n`), 2);
+    process.exit(signal === "SIGINT" ? 130 : signal === "SIGHUP" ? 129 : 143);
   }
   const onInt = () => interrupt("SIGINT");
   const onTerm = () => interrupt("SIGTERM");
+  const onHup = () => interrupt("SIGHUP");
   if (!streaming && concurrency > 0) {
     process.on("SIGINT", onInt);
     process.on("SIGTERM", onTerm);
+    process.on("SIGHUP", onHup);
   }
   let next = 0;
   async function worker() {
@@ -142,5 +144,6 @@ export async function runPool(
   } finally {
     process.off("SIGINT", onInt);
     process.off("SIGTERM", onTerm);
+    process.off("SIGHUP", onHup);
   }
 }
