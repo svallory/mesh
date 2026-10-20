@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
-import { DEFAULT_JOBS, executeTask, orderedTasks, parseJobs, runPool, type TestResult, type TestTask } from "./pool.ts";
+import { dirname, join } from "node:path";
+import { Glob } from "bun";
+import { DEFAULT_JOBS, PACKAGE_WEIGHTS, executeTask, orderedTasks, parseJobs, runPool, type TestResult, type TestTask } from "./pool.ts";
 
 const task = (id: string): TestTask => ({ id, header: `\n=== ${id}\n`, cwd: process.cwd(), argv: [] });
 const result = (text: string, code = 0): TestResult => ({ code, output: Buffer.from(text) });
@@ -110,6 +111,89 @@ describe("package pool", () => {
     expect(ran).toEqual(["only"]);
     await expect(runPool([task("no")], 0, execute)).rejects.toThrow("positive whole number");
   });
+
+  test("every workspace has a scheduling weight, including test-count estimates", async () => {
+    const root = join(import.meta.dir, "../..");
+    const pkg = await Bun.file(join(root, "package.json")).json();
+    for (const pattern of pkg.workspaces as string[]) {
+      for await (const path of new Glob(`${pattern}/package.json`).scan({ cwd: root })) {
+        expect(PACKAGE_WEIGHTS[dirname(path)]).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("a single selected task streams live even with a larger jobs limit", async () => {
+    const events: string[] = [];
+    expect(await runPool([task("single")], 4, async (item, streaming) => {
+      expect(streaming).toBe(true);
+      events.push(`start ${item.id}`);
+      return result("");
+    }, (output) => events.push(Buffer.from(output).toString()))).toEqual([]);
+    expect(events).toEqual(["\n=== single\n", "start single"]);
+  });
+
+  test.each(["SIGINT", "SIGTERM"] as const)("%s flushes real hung children, names interrupted and pending work, and exits non-zero", async (signal) => {
+    const pool = join(import.meta.dir, "pool.ts");
+    const source = `
+      import { runPool, executeTask } from ${JSON.stringify(pool)};
+      const ready = new Set();
+      const pids = new Set();
+      const tasks = ["hung-a", "hung-b", "pending"].map(id => ({
+        id, header: "\\n=== " + id + "\\n", cwd: process.cwd(),
+        argv: [process.execPath, "--eval", 'process.stdout.write("partial stdout PID=" + process.pid + "\\\\n"); process.stderr.write("partial stderr\\\\n"); setInterval(() => {}, 1000);']
+      }));
+      await runPool(tasks, 2, (task, streaming, live) => {
+        let seen = "";
+        const capture = live.onOutput;
+        live.onOutput = chunk => {
+          capture(chunk);
+          seen += Buffer.from(chunk).toString();
+          if (seen.includes("partial stdout") && seen.includes("partial stderr")) {
+            pids.add(seen.match(/PID=(\\d+)/)[1]);
+            ready.add(task.id);
+            if (ready.size === 2) process.stderr.write("READY " + [...pids].join(" ") + "\\n");
+          }
+        };
+        const result = executeTask(task, streaming, live);
+        process.stderr.write("CHILD " + live.pid + "\\n");
+        return result;
+      });
+    `;
+    const proc = Bun.spawn([process.execPath, "--eval", source], { stdout: "pipe", stderr: "pipe", detached: true });
+    const output = new Response(proc.stdout).text();
+    const reader = proc.stderr.getReader();
+    let diagnostics = "";
+    let children: number[] = [];
+    const deadline = setTimeout(() => { proc.kill("SIGKILL"); }, 10_000);
+    try {
+      while (!diagnostics.includes("READY ")) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error(`fixture ended before readiness: ${diagnostics}`);
+        diagnostics += Buffer.from(chunk.value).toString();
+        children = [...diagnostics.matchAll(/CHILD (\d+)/g)].map((match) => Number(match[1]));
+      }
+      expect(children).toHaveLength(2);
+      expect(diagnostics).toContain("test-affected: started hung-a");
+      expect(diagnostics).toContain("test-affected: started hung-b");
+      expect(diagnostics).not.toContain("test-affected: started pending");
+      process.kill(-proc.pid, signal);
+      expect(await proc.exited).toBe(signal === "SIGINT" ? 130 : 143);
+      const text = await output;
+      expect(text).toContain("=== hung-a\n");
+      expect(text).toContain("=== hung-b\n");
+      expect(text.match(/partial stdout/g)).toHaveLength(2);
+      expect(text.match(/partial stderr/g)).toHaveLength(2);
+      expect(text).toContain(`interrupted hung-a (${signal})`);
+      expect(text).toContain(`interrupted hung-b (${signal})`);
+      expect(text).toContain("FAILED: hung-a, hung-b, pending");
+    } finally {
+      clearTimeout(deadline);
+      for (const pid of children) { try { process.kill(-pid, "SIGKILL"); } catch { /* Already stopped by the pool. */ } }
+      try { process.kill(-proc.pid, "SIGKILL"); } catch { /* The parent already exited. */ }
+      reader.releaseLock();
+      await proc.exited;
+    }
+  }, 15_000);
 
   test("real child pipes are drained beyond capacity and a non-zero exit is retained", async () => {
     const actual = await executeTask({ ...task("child"), argv: [process.execPath, "--eval", 'process.stdout.write("A".repeat(200000)); process.stderr.write("B".repeat(200000)); process.exitCode = 7;'] }, false);
