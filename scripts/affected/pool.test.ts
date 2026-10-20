@@ -219,6 +219,76 @@ describe("package pool", () => {
     }
   }, 15_000);
 
+  test("SIGHUP stops every child and grandchild even when printing throws and stderr is closed", async () => {
+    const pool = join(import.meta.dir, "pool.ts");
+    const childCode = 'const grandchild = Bun.spawn([process.execPath, "--eval", "setInterval(() => {}, 1000)"], { stdout: "ignore", stderr: "ignore" }); process.stdout.write("PID=" + process.pid + " GRANDCHILD=" + grandchild.pid + "\\n"); setInterval(() => {}, 1000);';
+    const source = `
+      import { runPool, executeTask } from ${JSON.stringify(pool)};
+      import { writeSync, closeSync } from "node:fs";
+      const ready = new Set();
+      const tasks = ["hung-a", "hung-b"].map(id => ({
+        id, header: "\\n=== " + id + "\\n", cwd: process.cwd(),
+        argv: [process.execPath, "--eval", ${JSON.stringify(childCode)}]
+      }));
+      await runPool(tasks, 2, (task, streaming, live) => {
+        let seen = "";
+        const capture = live.onOutput;
+        live.onOutput = chunk => {
+          capture(chunk);
+          seen += Buffer.from(chunk).toString();
+          const ids = seen.match(/PID=(\\d+) GRANDCHILD=(\\d+)\\n/);
+          if (ids && !ready.has(task.id)) {
+            ready.add(task.id);
+            writeSync(2, "GRANDCHILD " + ids[2] + "\\n");
+            if (ready.size === 2) { writeSync(2, "READY\\n"); closeSync(2); }
+          }
+        };
+        const result = executeTask(task, streaming, live);
+        writeSync(2, "CHILD " + live.pid + "\\n");
+        return result;
+      }, () => { throw Object.assign(new Error("closed terminal"), { code: "EIO" }); });
+    `;
+    const proc = Bun.spawn([process.execPath, "--eval", source], { stdout: "pipe", stderr: "pipe", detached: true });
+    const output = new Response(proc.stdout).text();
+    const reader = proc.stderr.getReader();
+    let diagnostics = "";
+    let children: number[] = [];
+    let grandchildren: number[] = [];
+    const deadline = setTimeout(() => { proc.kill("SIGKILL"); }, 10_000);
+    try {
+      while (!diagnostics.includes("READY\n")) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error(`fixture ended before readiness: ${diagnostics}`);
+        diagnostics += Buffer.from(chunk.value).toString();
+        children = [...diagnostics.matchAll(/^CHILD (\d+)/gm)].map((match) => Number(match[1]));
+        grandchildren = [...diagnostics.matchAll(/^GRANDCHILD (\d+)/gm)].map((match) => Number(match[1]));
+      }
+      expect(children).toHaveLength(2);
+      expect(grandchildren).toHaveLength(2);
+      process.kill(-proc.pid, "SIGHUP");
+      const code = await proc.exited;
+      // These checks precede fallback cleanup, so the old print-before-stop order fails.
+      for (const pid of [...children, ...grandchildren]) {
+        let errorCode: string | undefined;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          try { process.kill(pid, 0); }
+          catch (error) { errorCode = (error as NodeJS.ErrnoException).code; break; }
+          await Bun.sleep(10);
+        }
+        expect(errorCode, `process ${pid} must be gone despite output failure`).toBe("ESRCH");
+      }
+      expect(code).toBe(129);
+      expect(await output).toBe("");
+    } finally {
+      clearTimeout(deadline);
+      for (const pid of children) { try { process.kill(-pid, "SIGKILL"); } catch { /* Already stopped by the pool. */ } }
+      for (const pid of grandchildren) { try { process.kill(pid, "SIGKILL"); } catch { /* Already stopped with its group. */ } }
+      try { process.kill(-proc.pid, "SIGKILL"); } catch { /* Parent already exited. */ }
+      reader.releaseLock();
+      await proc.exited;
+    }
+  }, 15_000);
+
   test("real child pipes are drained beyond capacity and a non-zero exit is retained", async () => {
     const actual = await executeTask({ ...task("child"), argv: [process.execPath, "--eval", 'process.stdout.write("A".repeat(200000)); process.stderr.write("B".repeat(200000)); process.exitCode = 7;'] }, false);
     expect(actual.code).toBe(7);

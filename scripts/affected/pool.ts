@@ -99,13 +99,20 @@ export async function runPool(
   const concurrency = Math.min(jobs, queue.length);
   const streaming = concurrency === 1;
   function interrupt(signal: "SIGINT" | "SIGTERM" | "SIGHUP"): never {
-    for (const [task, state] of running) {
-      print(Buffer.concat([Buffer.from(task.header), ...state.chunks, Buffer.from(`\ntest-affected: interrupted ${task.id} (${signal})\n`)]));
+    // A hung-up terminal can reject every write. Stop all groups before any I/O.
+    for (const state of running.values()) {
       try { state.live.stop?.(); } catch { /* The child may already have exited. */ }
+    }
+    for (const [task, state] of running) {
+      try {
+        print(Buffer.concat([Buffer.from(task.header), ...state.chunks, Buffer.from(`\ntest-affected: interrupted ${task.id} (${signal})\n`)]));
+      } catch { /* Best effort: the terminal or redirected stream may be gone. */ }
     }
     // Include pending work as failed too: interruption must never imply it passed.
     for (const task of tasks) if (!completed.has(task.id)) failed.add(task.id);
-    writeOutput(Buffer.from(`\ntest-affected: FAILED: ${tasks.filter((task) => failed.has(task.id)).map((task) => task.id).join(", ")}\n`), 2);
+    try {
+      writeOutput(Buffer.from(`\ntest-affected: FAILED: ${tasks.filter((task) => failed.has(task.id)).map((task) => task.id).join(", ")}\n`), 2);
+    } catch { /* Best effort on stderr too; cleanup and the signal exit still hold. */ }
     process.exit(signal === "SIGINT" ? 130 : signal === "SIGHUP" ? 129 : 143);
   }
   const onInt = () => interrupt("SIGINT");
