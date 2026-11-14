@@ -124,7 +124,8 @@ describe("localBus(options)", () => {
     [{ pollInterval: 0.5 }, "pollInterval"], [{ pollInterval: 2_147_483_648 }, "pollInterval"],
     [{ retryDelays: [1.5] }, "retryDelays"], [{ retryDelays: [2_147_483_648] }, "retryDelays"],
     [{ maxQueue: 0 }, "maxQueue"], [{ maxQueue: 1.5 }, "maxQueue"], [{ maxQueue: "10" }, "maxQueue"],
-    [{ poll: 10 }, '"poll"'], [null, "takes"], [[], "takes"], ["fast", "takes"],
+    [{ onStopped: "log" }, "onStopped"], [{ onStopped: null }, "onStopped"], [{ onStopped: { error() {} } }, "onStopped"], [{ onStopped: true }, "onStopped"],
+    [{ poll: 10 }, '"poll"'], [{ onStop: () => undefined }, '"onStop"'], [null, "takes"], [[], "takes"], ["fast", "takes"],
   ])("a wrong option %p is a FrameworkError naming it", (options, named) => {
     let thrown: unknown;
     try { localBus(options as never); } catch (error) { thrown = error; }
@@ -136,6 +137,21 @@ describe("localBus(options)", () => {
     expect(() => localBus({ retryDelays: [], pollInterval: 1, maxQueue: 1 })).not.toThrow();
     expect(() => localBus({ retryDelays: [0, 2_147_483_647], pollInterval: 2_147_483_647 })).not.toThrow();
     expect(() => localBus({})).not.toThrow();
+    // onStopped is any function, an async one included; undefined is the option left out
+    expect(() => localBus({ onStopped: () => undefined })).not.toThrow();
+    expect(() => localBus({ onStopped: async () => undefined })).not.toThrow();
+    expect(() => localBus({ onStopped: undefined } as never)).not.toThrow();
+  });
+
+  test("the messages name onStopped among the options, and say what it is", () => {
+    const message = (options: unknown): string => {
+      try { localBus(options as never); } catch (error) { return (error as Error).message; }
+      return "(accepted)";
+    };
+    expect(message("fast")).toBe('localBus takes { pollInterval, retryDelays, maxQueue, onStopped }, and was given "fast"');
+    expect(message({ onStop: () => undefined })).toBe('localBus has no option "onStop"; its options are pollInterval, retryDelays, maxQueue and onStopped');
+    expect(message({ onStopped: "log" })).toBe('localBus: onStopped is the function called with the HandlerStoppedError when a handler stops after start(), and is "log"');
+    expect(message({ onStopped: {} })).toBe("localBus: onStopped is the function called with the HandlerStoppedError when a handler stops after start(), and is a value of type object");
   });
 
   test("the descriptor starts nothing, and create calls nothing on core but onClaimLost, and sets no timer", () => {
@@ -488,6 +504,127 @@ describe("started delivery", () => {
       await instance.stop();
       expect(errors.length).toBeGreaterThanOrEqual(1);
     } finally { console.error = original; }
+  });
+
+  test("onStopped is handed the HandlerStoppedError of each stop, in place of the stderr line; the other handler goes on", async () => {
+    const stops: HandlerStoppedError[] = [];
+    const a: number[] = [];
+    const b: number[] = [];
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args); };
+    try {
+      // the public factory, with the options an application writes: no internal reporter stands in
+      const bus = localBus({ pollInterval: 20, retryDelays: [5], onStopped: (error) => { stops.push(error); } });
+      const { layer, binding } = await open(bus, { process: {
+        a: recorder(a, () => { throw Object.assign(new Error("refused"), { retryable: false }); }),
+        b: recorder(b, (event) => { if (event.position === 2) throw new Error("down"); }),
+      } });
+      const delivery = await binding.startDelivery();
+      try {
+        await sleep(30);
+        await publish(binding);
+        await until(() => stops.length === 1, "onStopped is called for a");
+        expect(stops[0]).toBeInstanceOf(HandlerStoppedError);
+        expect(stops[0]).toMatchObject({ code: "MESH_HANDLER_STOPPED", stopped: [{ handler: "a", position: 1, event: "InvoicePaid" }] });
+        expect((stops[0]!.stopped[0]!.cause as Error).message).toBe("refused");
+        await until(() => b.length === 1, "b handles the first event");
+        // a handler that stays stopped is reported once, however many rounds follow
+        await sleep(60);
+        expect(stops).toHaveLength(1);
+        // a handler whose retries run out is the other way to stop: its own call, with its own error
+        await publish(binding);
+        await until(() => stops.length === 2, "onStopped is called for b");
+        expect(stops[1]!.stopped).toMatchObject([{ handler: "b", position: 2, event: "InvoicePaid" }]);
+        expect((stops[1]!.stopped[0]!.cause as Error).message).toBe("down");
+        expect(b).toEqual([1, 2, 2]);
+        // each stop is one call: resumed while its cause stands, a stops again at the same event
+        await resumeHandler(binding as never, "a");
+        await until(() => stops.length === 3, "onStopped is called for a again");
+        expect(stops[2]!.stopped).toMatchObject([{ handler: "a", position: 1 }]);
+        expect(a).toEqual([1, 1]);
+      } finally {
+        await delivery.stop();
+        await layer.close();
+      }
+      // the callback took every report: the bus wrote nothing to stderr
+      expect(logged.filter(([first]) => String(first).startsWith("Mesh (localBus)"))).toEqual([]);
+    } finally { console.error = original; }
+  });
+
+  /** A core with one handler, `a`, whose cursor cannot be read: every started round stops it, with no database. */
+  function coreWithBrokenCursor() {
+    const state = { passes: 0, wake: undefined as (() => void) | undefined };
+    const deleted = Object.assign(new Error("the events after 0 were deleted"), { code: "MESH_EVENTS_DELETED" });
+    const core = fakeCore({
+      handlers: [{ name: "a" }],
+      position: async () => 0,
+      rows: async () => { throw deleted; },
+      deletionPass: async () => { state.passes++; },
+      onPublished: (wake: () => void) => { state.wake = wake; return () => { state.wake = undefined; }; },
+    });
+    return { core, state, deleted };
+  }
+  const STOPPED_LINE = "Mesh (localBus): a handler stopped. Fix the cause, then call resumeHandler(name), or restart delivery:";
+
+  test.each([
+    ["no options", undefined], ["no onStopped", { pollInterval: 60_000 }], ["onStopped: undefined", { pollInterval: 60_000, onStopped: undefined }],
+  ])("with %s a stop goes to stderr, as the one line it always was", async (_what, options) => {
+    const { core, state, deleted } = coreWithBrokenCursor();
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args); };
+    try {
+      const instance = localBus(options as never).create(core, { keep: "until-delivered" });
+      await instance.start();
+      await until(() => state.passes === 1, "the first round");
+      await instance.stop();
+      expect(logged).toHaveLength(1);
+      expect(logged[0]![0]).toBe(STOPPED_LINE);
+      expect(logged[0]![1]).toBeInstanceOf(HandlerStoppedError);
+      expect((logged[0]![1] as HandlerStoppedError).stopped).toMatchObject([{ handler: "a", position: 1, cause: deleted }]);
+    } finally { console.error = original; }
+  });
+
+  test.each([
+    ["throws", () => { throw new Error("the pager is down"); }],
+    ["returns a promise that rejects", async () => { throw new Error("the pager is down"); }],
+  ])("an onStopped that %s ends nothing: its error and the stop go to stderr, and the next round runs", async (_what, onStopped) => {
+    const { core, state } = coreWithBrokenCursor();
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { logged.push(args); };
+    try {
+      const instance = localBus({ pollInterval: 60_000, onStopped }).create(core, { keep: "until-delivered" });
+      await instance.start();
+      await until(() => state.passes === 1, "the first round");
+      await until(() => logged.length === 2, "the failure and the stop are logged", 1000);
+      expect(logged[0]![0]).toBe("Mesh (localBus): onStopped threw:");
+      expect((logged[0]![1] as Error).message).toBe("the pager is down");
+      // the stop is not lost with the callback: it is reported as it is without one
+      expect(logged[1]![0]).toBe(STOPPED_LINE);
+      expect(logged[1]![1]).toBeInstanceOf(HandlerStoppedError);
+      state.wake!();
+      await until(() => state.passes === 2, "the next round");
+      await instance.stop();
+      // the stopped handler is skipped by the next round, so nothing more is reported
+      expect(logged).toHaveLength(2);
+    } finally { console.error = original; }
+  });
+
+  test("a deliver() round does not call onStopped: its rejection is the HandlerStoppedError", async () => {
+    const stops: unknown[] = [];
+    const { layer, binding } = await open(localBus({ onStopped: (error) => { stops.push(error); } }), {
+      process: { broken: recorder([], () => { throw new Error("the card was declined"); }) },
+    });
+    try {
+      await binding.deliver();
+      await publish(binding);
+      const error = await rejection(binding.deliver());
+      expect(error).toBeInstanceOf(HandlerStoppedError);
+      expect(error).toMatchObject({ stopped: [{ handler: "broken", position: 1 }] });
+      expect(stops).toEqual([]);
+    } finally { await layer.close(); }
   });
 
   test("resumeHandler is a FrameworkError on a started bus whose instance cannot resume", async () => {

@@ -51,7 +51,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
-        publish=({ self }) => new ClaimAcquired({ claimId: &id, taskId: self.taskId, holderId: self.holderId, fence: &fence, expiresAt: structuredClone(&expiresAt) })
+        publish=({ self }) => new ClaimAcquired({ claimId: &id, taskId: self.taskId, holderId: self.holderId, fence: &fence, expiresAt: &expiresAt })
         // The lapsed claims end after claim.acquired is published, so the command's first event is its own and its
         // cause is the command (PROTOCOL.md §4.2); each claim.expired that follows names the lease-expiry rule.
         run [after=:write] ({ self, context }) {
@@ -93,7 +93,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
-        publish=() => new ClaimRenewed({ claimId: &id, fence: &fence, expiresAt: structuredClone(&expiresAt) })
+        publish=() => new ClaimRenewed({ claimId: &id, fence: &fence, expiresAt: &expiresAt })
     update :release
       input
         integer :fence
@@ -173,7 +173,7 @@ entity :Claim table="claims"
         run [after=:write] ({ self, context }) {
           await Task.touch({ id: self.taskId }, { ...context, system: true });
         }
-        publish=() => new ClaimExpired({ claimId: &id, fence: &fence, expiredAt: structuredClone(&expiresAt) })
+        publish=() => new ClaimExpired({ claimId: &id, fence: &fence, expiredAt: &expiresAt })
     update :end
       input
         enum :outcome values=[:released, :revoked, :expired]
@@ -194,7 +194,7 @@ entity :Claim table="claims"
         when=({ input }) => input.outcome === :revoked
           publish=({ input, actor }) => new ClaimRevoked({ claimId: &id, fence: &fence, revokedBy: actor.id, reason: input.reason })
         when=({ input }) => input.outcome === :expired
-          publish=() => new ClaimExpired({ claimId: &id, fence: &fence, expiredAt: structuredClone(&expiresAt) })
+          publish=() => new ClaimExpired({ claimId: &id, fence: &fence, expiredAt: &expiresAt })
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null
