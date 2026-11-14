@@ -547,8 +547,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
       "  computed",
       // Each name is spelled: in code, in a string, in a comment and through an escape (`$today` is `$today`).
       "    boolean :spelled() { const $now = 1, $self = 2, $\\u0074oday = 3; /* $now1 */ return String(\"$self1\").length > 0 && %.now.getTime() + %.today.getTime() + &n + $now + $self + $today > 0 }",
-      // A translated quantifier the type pass demotes (`:open` against a string) keeps its parameter `$`, its authored name.
-      "    boolean :demoted() { return &children.some(($) => $.title === :open && $.dueAt !== null && $.dueAt < %.now) }",
+      // A translated quantifier the type pass demotes (a string tested for truthiness) keeps its parameter `$`, its authored name.
+      "    boolean :demoted() { return &children.some(($) => $.state === :open && $.title && $.dueAt !== null && $.dueAt < %.now) }",
       "  actions auto",
     ].join("\n"));
     const { root, built, files } = await generated(plain);
@@ -561,13 +561,15 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).toContain("const $now2 = () => $.now($s);");
     expect(printed).toContain("const $today1 = () => $.today($s);");
     expect(printed).toContain("$now2().getTime() + $today1().getTime() + $self2.n + $now + $self + $today > 0");
-    expect(printed).toContain("$self.children.some(($) => $.title === \"open\" && $.dueAt !== null && $.dueAt < $now())");
+    // Prettier breaks the call after `some(`: the function is on a line of its own.
+    expect(printed).toContain("return $self.children.some(\n");
+    expect(printed).toContain("($) => $.state === \"open\" && $.title && $.dueAt !== null && $.dueAt < $now(),\n");
     expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.spelled"](scope({ self: { n: 1 } }, at))).toBe(true);
-    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000) }] } }, at))).toBe(true);
-    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000 * 3) }] } }, at))).toBe(false);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ state: "open", title: "t", dueAt: new Date(86_400_000) }] } }, at))).toBe(true);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ state: "open", title: "t", dueAt: new Date(86_400_000 * 3) }] } }, at))).toBe(false);
   }, 30_000);
 
   test("each Mesh.isSystem resolves against its own enclosing scopes: a parameter named Mesh shadows the import only inside its function; %.now has no binding to hide", async () => {
