@@ -387,13 +387,20 @@ function answers(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
       ctx.fail("on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=PayInvoice`, `on=billing.PayInvoice`)", { at: a.valueSpan, code: "MESH_UNKNOWN_COMMAND" });
   }
 }
+/** A read answers no command (`on=` is no option of it), so a read line with no name has nothing to be named after: `MESH_NAME`, as for the other three. */
+function namedRead(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
+  for (const call of calls)
+    if (!get(call, "name"))
+      ctx.fail("an action needs a name: write `read :name`; `actions auto=[:read]` generates the plain read", { at: call.loc, code: "MESH_NAME" });
+}
 for (const kind of ACTION_TYPES)
   contracts[kind] = closed({
     parents: ["actions"],
+    // The name is optional in every contract so that a line without one is `MESH_NAME` from the hook, not MX's `MESH_MISSING_OPTION`.
     attributes: kind === "read"
-      ? { ...named(), filter: fn() }
+      ? { name: atom(), filter: fn() }
       : { name: atom(), on: { type: "expression" } },
-    ...(kind === "read" ? {} : { analyze: answers }),
+    analyze: kind === "read" ? namedRead : answers,
     children: {
       input: {},
       ...body,
