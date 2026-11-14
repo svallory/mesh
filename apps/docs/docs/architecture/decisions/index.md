@@ -103,7 +103,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0057](./0057-one-domain-modules-as-folders.md) | One domain at `src/domain/`; its folders are modules | Accepted, amended by operator ruling, 2026-10-10 | operator |
 | [0058](./0058-generated-code-in-mesh-imported-as-hash-mesh.md) | Generated code in `.mesh/`, committed, imported as `#mesh` | Accepted, amended 2026-10-11: imports follow folder modules (`#mesh/domain/<module>`); amended 2026-10-12 by 0086 | operator; lead, delegated |
 | [0059](./0059-action-context.md) | The second argument is the flat `ActionContext`; tenancy is a user key | Accepted, amended by 0071 | operator |
-| [0060](./0060-meshfw-package-scope.md) | Packages are `@meshfw/*`; the command is `mesh` | Accepted | operator |
+| [0060](./0060-meshfw-package-scope.md) | Packages are `@meshfw/*`; the command is `mesh` | Accepted; amended 2026-11-14: the package list also holds `@meshfw/bus-local` and `@meshfw/jsonrpc` | operator |
 | [0061](./0061-generators-are-jig-templates.md) | Generators are Jig templates; export and per-template override | Accepted | operator |
 | [0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md) | Zod 4 stays; direct dependencies on Zod, Drizzle, OpenTelemetry | Accepted, amended by 0072 | operator; lead, delegated |
 | [0063](./0063-user-docs-first-and-the-hold.md) | User docs first, in the 1.0 voice; development on hold until approved | Accepted, amended by 0072 | operator |
@@ -121,7 +121,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079); amended 2026-10-12 by 0086 | operator |
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
-| [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17 | operator |
+| [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct) | operator |
 | [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted | operator |
 | [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted | operator; one lead note on DOM-31, for operator review |
 | [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |

@@ -1,11 +1,17 @@
 ---
 title: "0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies"
-description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct (DOM-09) and general publish-subscribe (DOM-08), open when written, are decided (amended 2026-10-17)."
+description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct (DOM-09) and general publish-subscribe (DOM-08), open when written, are decided (amended 2026-10-17). Amended 2026-11-14 (how to read the illustration and item 5: how `uses` is enforced is decided with the service construct, after 1.0)."
 ---
 
 # 0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies
 
 ## Status
+
+> **Amendment, 2026-11-14 (how to read the illustration and Decision item 5).** Three statements below are out of date. They are kept as written, and no new decision is made here: each point repeats a ruling that another record already holds.
+>
+> 1. **The illustration's caption says "DOM-09 is open".** DOM-09 is decided: a service's shape is decided after 1.0 (amendment of 2026-10-17, below).
+> 2. **The illustration's `command :complete-task` line is the study's proposal**, in which `command` and `query` are members of a service. A later ruling gave the word another meaning: a `command` declares the fields of a request, in its own file or in an owner's `commands` section, and an action answers it with `on=` ([ADR-0079](./0079-commands-events-and-the-outbox.md), Decision item 1 and its amendment of 2026-10-15). Read the illustration for its three `uses` lines only; what a service's operations are called is part of the shape, decided after 1.0.
+> 3. **Decision item 5 says declared dependencies "narrow the handles a service receives, and `tsc` enforces them".** The sentence was written when code received the `actions` and `tx` handles. Both handles are gone, and handles keyed by entity (`actions.Task.complete`, `tx.Task.read`) were rejected ([ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md), "Options considered", option 1): code now calls an entity value it imports, so no handle is left to narrow and `tsc` enforces nothing here. Declared dependencies stay, as `uses` lines. How Mesh holds a service to them is decided with the service construct, after 1.0, as the amendment of 2026-10-17 below already says ("enforcing `uses` comes with it"). The rest of item 5 (the warning for a service operation that touches one entity, and its switch) is unchanged.
 
 > **Amendment, 2026-10-17 (the events-spec review).** Core has two handler kinds, `process` and `listen`; `project` belongs to the event-sourcing extension ([ADR-0079](./0079-commands-events-and-the-outbox.md), amended). Where the amendment below says the third kind, read the second.
 

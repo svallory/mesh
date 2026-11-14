@@ -33,7 +33,7 @@ The source's `conformance/` folder is `cases/` here, and `harness/` and `schemas
 
 Until the event log (Mesh's M6) the files of groups 01 to 07 were edited copies that removed the cases reading the events a command returns or the event log, and the cases of command-id idempotency (`07.1`); groups 08 and 09 were not copied. The Hyper port on domain events (M6 PR 6) copied all nine files whole.
 
-Not copied: the specification's prose; group 10 (`conformance/10-plugins.test.ts`) and `conformance/plugins/`, the plugins it loads, which wait for the extension host; `schemas/bundle.ts`, `schemas/build.ts` and `schemas/protocol.schema.json`, which build the protocol's JSON Schema bundle from `schemas/protocol.ts`; and `harness/harness.test.ts` and `harness/fixtures/`, the harness's own tests.
+Not copied: the specification's prose; group 10 (`conformance/10-plugins.test.ts`) and `conformance/plugins/`, the plugins it loads, which wait for the plugin host, application code in `examples/hyper` that is not written yet ([ADR-0073](../../../apps/docs/docs/architecture/decisions/0073-plugins-follow-the-specs-single-hook.md)); `schemas/bundle.ts`, `schemas/build.ts` and `schemas/protocol.schema.json`, which build the protocol's JSON Schema bundle from `schemas/protocol.ts`; and `harness/harness.test.ts` and `harness/fixtures/`, the harness's own tests.
 
 The harness imports `@sinclair/typebox`, which is a dev dependency of `examples/hyper` pinned to 0.34.52, the version the specification's lockfile resolved.
 
