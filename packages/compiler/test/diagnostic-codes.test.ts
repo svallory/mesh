@@ -55,6 +55,10 @@ describe("the map", () => {
 
 describe("a .mesh.mx file with an MX error builds to Mesh's code", () => {
   const source = "entity :Todo\n  mystery :x\n";
+  const keyed = "entity :Todo\n  attributes\n    uuid :id primary-key\n";
+  /** What Mesh's build reports for one entity file, as `[code, line, column]`. */
+  const built = (text: string) =>
+    buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source: text }] }).diagnostics.map((d) => [d.code, d.position.line, d.position.column]);
 
   test("an unknown tag is MESH_UNKNOWN_TAG, at MX's position, with MX's message", () => {
     const result = buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source }] });
@@ -79,7 +83,8 @@ describe("a .mesh.mx file with an MX error builds to Mesh's code", () => {
   // MX raises `MX_DUPLICATE_DECLARATION` for a name two module statements declare, but it checks the module scope only under
   // tag rules other than `none`, and Mesh's dialect has `tagRules: "none"`: MX never checks an entity file's imports, and
   // Mesh's own check gives `MESH_DUPLICATE_IMPORT` at the same place. Mesh's dialect with MX's `html` rules shows the map's
-  // rename of MX's code to that same one.
+  // rename of MX's code to that same one. One case of MX's code does reach a Mesh file (since MX 0.1.0-alpha.37): a namespace
+  // that holds a value followed by an enum of its name, inside a function's body, which MX refuses whatever the tag rules.
   describe("MX_DUPLICATE_DECLARATION is MESH_DUPLICATE_IMPORT", () => {
     const twice = 'import { List } from "./list.mesh.mx"\nimport { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n';
     const list = { file: "list.mesh.mx", source: "entity :List\n  attributes\n    uuid :id primary-key\n" };
@@ -96,6 +101,68 @@ describe("a .mesh.mx file with an MX error builds to Mesh's code", () => {
     test("Mesh's build of the file gives the same code at the same place, and no MX code", () => {
       const result = buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source: twice }, list] });
       expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_DUPLICATE_IMPORT", 2, 9]]);
+    });
+
+    describe("a namespace with a value, then an enum of its name, in a function's body", () => {
+      // The body of a check's arrow function (line 8) and of a computed field's method (line 5).
+      const inCheck = (body: string) =>
+        `${keyed}    string :title\n  actions\n    update :rename\n      validate\n        check :named code="named" message="Named" that=() => { ${body} }\n`;
+      const inMethod = (body: string) => `${keyed}  computed\n    boolean :named() { ${body} }\n`;
+      const clash = "namespace A { export const x = 1 } enum A { y } return A.x === 1";
+
+      test.each([
+        ["an arrow function's body", inCheck(clash), 8, 103],
+        ["a method's body", inMethod(clash), 5, 63],
+      ])("in %s it is MESH_DUPLICATE_IMPORT at the enum's name, in Mesh's build", (_label, source, line, column) => {
+        expect(built(source)).toEqual([["MESH_DUPLICATE_IMPORT", line, column]]);
+        // The control: MX's own code at the same place, so this is MX's check renamed, not Mesh's check of the imports.
+        expect(codesOf(lowerSource(source, "/v/todo.mesh.mx", { dialect: unmapped(MESH_DIALECT) }).diagnostics)).toEqual([
+          ["MX_DUPLICATE_DECLARATION", line, column],
+        ]);
+      });
+
+      test.each([
+        ["the enum written first", "enum A { y } namespace A { export const x = 1 } return A.x === 1"],
+        ["a namespace that holds only a type", "namespace A { export type T = string } enum A { y } return A.y === 0"],
+        ["two enums of one name", "enum A { y } enum A { z = 1 } return A.y === 0"],
+      ])("%s gives no diagnostic", (_label, body) => {
+        expect(built(inCheck(body))).toEqual([]);
+        expect(built(inMethod(body))).toEqual([]);
+      });
+    });
+  });
+
+  // MX 0.1.0-alpha.37 added three codes, for a tag variable, a `const` and a `define`. MX checks them only under tag rules other
+  // than `none`, and a Mesh file refuses each construct as such, so none reaches a Mesh file. Mesh's dialect with MX's `html`
+  // rules shows the map's rename of each.
+  describe("the three codes MX 0.1.0-alpha.37 added", () => {
+    const label = (body: string) => `${keyed}  computed\n    string :label() { ${body} }\n`;
+    const checking = deepFreeze({ ...MESH_DIALECT, tagRules: "html" as const });
+
+    test.each([
+      ["MX_TAG_VAR_SELF_READ", `${keyed}const/a=a\n`, [["MESH_TAG_VAR_SELF_READ", 4, 8]], ["MESH_STRUCTURAL_CONSTRUCT", 4, 0]],
+      [
+        "MX_CONST_WRITE_BEFORE_DECLARATION",
+        `${label('a = 2; return "x"')}const/a=1\n`,
+        [["MESH_CONST_WRITE_BEFORE_DECLARATION", 5, 22]],
+        ["MESH_STRUCTURAL_CONSTRUCT", 6, 0],
+      ],
+      [
+        "MX_DEFINE_READ_BEFORE_DECLARATION",
+        `${label("return String(Foo)")}define/Foo\n  entity :X\n`,
+        [["MESH_DEFINE_READ_BEFORE_DECLARATION", 5, 36], ["MESH_NOT_IN_ENTITY_FILE", 6, 0]],
+        ["MESH_NOT_IN_ENTITY_FILE", 6, 0],
+      ],
+    ])("%s is renamed where MX checks it, and a Mesh file gets Mesh's refusal of the construct alone", (code, source, renamed, refused) => {
+      expect(codesOf(lowerSource(source, "/v/todo.mesh.mx", { dialect: unmapped(checking) }).diagnostics)[0]?.[0]).toBe(code);
+      expect(codesOf(lowerSource(source, "/v/todo.mesh.mx", { dialect: checking }).diagnostics)).toEqual(renamed);
+      expect(built(source)).toEqual([refused]);
+    });
+
+    test("a tag variable on a Mesh line that reads itself stays MESH_SYNTAX, at the variable, under either tag rules", () => {
+      const selfRead = `${keyed}    string/t :title default=t\n`;
+      expect(built(selfRead)).toEqual([["MESH_SYNTAX", 4, 11]]);
+      expect(codesOf(lowerSource(selfRead, "/v/todo.mesh.mx", { dialect: checking }).diagnostics)).toEqual([["MESH_SYNTAX", 4, 11]]);
     });
   });
 });

@@ -53,13 +53,18 @@ export const MX_TO_MESH_CODES = Object.freeze({
   MX_RESERVED_EFFECT_TAG: "MESH_RESERVED_EFFECT_TAG",
   MX_LET_WRITE_IN_RENDER: "MESH_LET_WRITE_IN_RENDER",
   MX_LET_WRITE_BEFORE_DECLARATION: "MESH_LET_WRITE_BEFORE_DECLARATION",
+  MX_CONST_WRITE_BEFORE_DECLARATION: "MESH_CONST_WRITE_BEFORE_DECLARATION",
   MX_LET_LOOP_ASSIGNMENT: "MESH_LET_LOOP_ASSIGNMENT",
+  MX_TAG_VAR_SELF_READ: "MESH_TAG_VAR_SELF_READ",
+  MX_DEFINE_READ_BEFORE_DECLARATION: "MESH_DEFINE_READ_BEFORE_DECLARATION",
   MX_READONLY_BINDING_WRITE: "MESH_READONLY_BINDING_WRITE",
   MX_STALE_DERIVED_READ: "MESH_STALE_DERIVED_READ",
   MX_RENDER_ONLY_IN_MODULE: "MESH_RENDER_ONLY_IN_MODULE",
   // In an entity file every module binding is an import (`static`, `server`, `client` and `export` are refused first), and Mesh
   // reports a name two imports bind as `MESH_DUPLICATE_IMPORT` at the same name. MX checks the module scope only under tag rules
-  // other than `none`, so on a Mesh file today only Mesh's check fires; the entry keeps one code if MX ever checks it.
+  // other than `none`, so for an import only Mesh's check fires on a Mesh file. One case of MX's code does reach a Mesh file,
+  // where nothing is imported: inside a function's body, a namespace that holds a value followed by an enum of its name
+  // (`() => { namespace A { ... } enum A { ... } }`), at the enum's name (since MX 0.1.0-alpha.37).
   MX_DUPLICATE_DECLARATION: "MESH_DUPLICATE_IMPORT",
   MX_UNDECLARED_EXPORT: "MESH_UNDECLARED_EXPORT",
   MX_UNSUPPORTED_MARKO_FILE: "MESH_UNSUPPORTED_MARKO_FILE",
