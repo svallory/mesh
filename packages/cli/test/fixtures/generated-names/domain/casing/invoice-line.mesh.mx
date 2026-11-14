@@ -1,0 +1,25 @@
+import { Todo } from "./todo.mesh.mx"
+
+entity :invoice_line
+  attributes
+    uuid :id primary-key
+    integer :quantity min=1
+  relationships
+    belongs-to :todo entity=Todo
+  computed
+    boolean :bulk() { return &quantity > 10 }
+  actions auto=[:read]
+    create :create
+      input
+        &quantity
+        &todo
+    update :restock
+      input
+        &quantity
+      validate
+        check :typed that=() => { const none: InvoiceLine | Todo | null = null; return none === null } code="typed" message="The types are wrong"
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true
+    policy :keeper actions=[&restock]
+      forbid-if=({ actor }) => actor.id === "intruder"

@@ -12,6 +12,11 @@
 // Its computed field names two helpers only in types (`Count`, `typeof tally`), which the expressions file imports as types.
 // Its `typed` check imports a helper under an alias (`shout as loudly`), reads the root `input` only in a type (`typeof
 // input.name`, not the helper) and names Promise only as a type (`Promise | null`, the entity's record, not the global).
+//
+// The same project holds `fixtures/generated-names/domain/casing`: `entity :todo` and `entity :invoice_line`, names written in
+// another casing than the one Mesh generates. Each is converted (`Todo`, `InvoiceLine`), and the converted name is its FQN, its
+// table's source (`todo`, `invoice_line`), its files (`invoiceLine.actions.ts`), its barrel export, the name the other file
+// imports and the name its own file relates to itself and calls itself by.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -33,6 +38,12 @@ const FILES: Record<(typeof RING)[number], string> = {
   Promise: "promise", Partial: "partial", Date: "date", Object: "object", Record: "record",
   Pick: "pick", Omit: "omit", Set: "set", RegExp: "regExp", Map: "map", Boolean: "boolean",
 };
+/** The module `casing`: each entity's converted name, to the name it is written with and the files and table that follow from the converted one. */
+const CASING = {
+  Todo: { written: "todo", files: "todo", table: "todo" },
+  InvoiceLine: { written: "invoice_line", files: "invoiceLine", table: "invoice_line" },
+} as const;
+const CASED = Object.keys(CASING) as (keyof typeof CASING)[];
 
 // The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
 // stricter flags; the generated code reads only `data` and its `name`.
@@ -70,6 +81,14 @@ export const seen: Boolean["seen"] = null;
 // @ts-expect-error an entity's record is not the global it is named after
 export const notGlobal: Date = new globalThis.Date();
 `;
+/** The same for the module `casing`: its specifier exports each entity under the converted name, value and record type. */
+const CASING_CHECK = `import { InvoiceLine, Todo, type InvoiceLineLoadable, type TodoLoadable } from "#mesh/domain/casing";
+
+export const lines: TodoLoadable["lines"] = [] as InvoiceLine[];
+export const owner: InvoiceLineLoadable["todo"] = null as unknown as Todo;
+export const quantity: number = null as unknown as InvoiceLine["quantity"];
+export const cased: [typeof Todo, typeof InvoiceLine] = [Todo, InvoiceLine];
+`;
 
 /** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
 async function project(): Promise<string> {
@@ -80,6 +99,7 @@ async function project(): Promise<string> {
   await writeFile(join(root, "context.ts"), CONTEXT);
   await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
   await writeFile(join(root, "check.ts"), CHECK);
+  await writeFile(join(root, "casing-check.ts"), CASING_CHECK);
   await writeFile(join(root, "tsconfig.json"), `${JSON.stringify(TSCONFIG, null, 2)}\n`);
   // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
   await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
@@ -123,9 +143,12 @@ const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 describe("entities named after the globals generated code uses", () => {
   test("build writes every entity's files and $globals.ts, and the barrel exports each entity under its own name", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).sort();
-    const perEntity = RING.flatMap((name) => ["actions", "expressions", "types", "validators"].map((kind) => `domain/globals/${FILES[name]}.${kind}.ts`));
+    const perEntity = [
+      ...RING.map((name) => `domain/globals/${FILES[name]}`),
+      ...CASED.map((name) => `domain/casing/${CASING[name].files}`),
+    ].flatMap((path) => ["actions", "expressions", "types", "validators"].map((kind) => `${path}.${kind}.ts`));
     expect(files).toEqual(
-      ["$globals.ts", "binding.ts", "domain/globals/index.ts", ...perEntity, "domain/index.ts", "index.ts", "load.ts", "schema.ts"].sort(),
+      ["$globals.ts", "binding.ts", "domain/casing/index.ts", "domain/globals/index.ts", ...perEntity, "domain/index.ts", "index.ts", "load.ts", "schema.ts"].sort(),
     );
     const barrel = await generated("domain/globals/index.ts");
     for (const name of RING) expect(barrel).toContain(`export { ${name}, load${name}Fields } from "./${FILES[name]}.actions";`);
@@ -216,7 +239,7 @@ describe("entities named after the globals generated code uses", () => {
       join(repo, "node_modules/.bin/tsc"), "--ignoreConfig", "--noEmit", "--strict", "--noUncheckedIndexedAccess",
       "--module", "esnext", "--moduleResolution", "bundler", "--target", "es2022", "--skipLibCheck", "--noUnusedLocals", "--noUnusedParameters",
       "--exactOptionalPropertyTypes", "--verbatimModuleSyntax", "--isolatedModules", "--allowImportingTsExtensions", "--types", "bun",
-      "mesh.config.ts", "context.ts", "check.ts", ...files,
+      "mesh.config.ts", "context.ts", "check.ts", "casing-check.ts", ...files,
     ], { cwd: root });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
     expect(child.exitCode).toBe(0);
@@ -292,6 +315,88 @@ describe("entities named after the globals generated code uses", () => {
         expect(await globals.Boolean.hold({ id: boolean, holder: map }, anyone)).toMatchObject({ holderId: map });
         const [held] = await globals.Boolean.read({ filter: { id: { eq: boolean } }, load: ["holder"] }, anyone);
         expect(held.holder).toEqual({ ...rows.get("Map")!, name: "Map two" });
+      });
+    } finally {
+      await layer.close();
+    }
+  }, 30_000);
+});
+
+describe("entities written in another casing: entity :todo and entity :invoice_line", () => {
+  test("the model holds the converted name: the FQN and the table follow from it", async () => {
+    const model = JSON.parse(await generated("model.json")) as { entities: { name: string; fqn: string; table: string; module: string; file: string }[] };
+    const cased = model.entities.filter((entity) => entity.module === "casing").map(({ name, fqn, table, file }) => ({ name, fqn, table, file }));
+    expect(cased.sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+      { name: "InvoiceLine", fqn: "casing.InvoiceLine", table: "invoice_line", file: "domain/casing/invoice-line.mesh.mx" },
+      { name: "Todo", fqn: "casing.Todo", table: "todo", file: "domain/casing/todo.mesh.mx" },
+    ]);
+  });
+
+  test("the barrel exports each entity under its converted name, from files named after it", async () => {
+    const barrel = await generated("domain/casing/index.ts");
+    for (const name of CASED) expect(barrel).toContain(`export { ${name}, load${name}Fields } from "./${CASING[name].files}.actions";`);
+    // The spelling the file wrote is exported nowhere.
+    expect(barrel).not.toContain("invoice_line");
+    expect(await generated("domain/index.ts")).toContain('export * as casing from "./casing/index";');
+    const types = await generated("domain/casing/invoiceLine.types.ts");
+    expect(types).toMatch(/\bexport (interface|type) InvoiceLine\b/);
+    expect(types).toMatch(/\btodoId: string;/);
+  });
+
+  test("a function names its own entity and the one it imports by the converted names", async () => {
+    // Todo's `count` reads both entity values, and its `typed` check names its own record type.
+    const todo = await generated("domain/casing/todo.expressions.ts");
+    expect(todo).toContain("const Todo: $casing$Todo$ReadOnly = $casing$Todo$value;");
+    expect(todo).toContain("const InvoiceLine: $casing$InvoiceLine$ReadOnly = $casing$InvoiceLine$value;");
+    expect(todo).toContain('from "./invoiceLine.actions";');
+    const line = await generated("domain/casing/invoiceLine.expressions.ts");
+    expect(line).toContain("const none: InvoiceLine | Todo | null = null;");
+    expect(line).toContain('import type { Todo as $casing$Todo$Record } from "./todo.actions";');
+    expect(line).toContain("type Todo = $casing$Todo$Record;");
+    expect(line).toContain("type InvoiceLine = $casing$InvoiceLine$Record;");
+  });
+
+  test("on SQLite each is stored in the table of its converted name, and creates, validates, loads and counts", async () => {
+    const app = await import(join(root, ".mesh/index.ts"));
+    const { casing } = await import(join(root, ".mesh/domain/index.ts"));
+    const { sqlite, createSchema } = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    expect(Object.keys(casing).sort()).toEqual(expect.arrayContaining(CASED));
+    for (const name of CASED) {
+      expect(Object.keys(app.tables)).toContain(CASING[name].table);
+      expect(Object.keys(casing)).not.toContain(CASING[name].written);
+    }
+    const layer = sqlite({ file: ":memory:" });
+    await createSchema(layer, app.tables);
+    const anyone = { actor: { id: "someone" } };
+    const intruder = { actor: { id: "intruder" } };
+    try {
+      await app.bind(layer).run(async () => {
+        // Todo relates to itself by its converted name, with no import.
+        const top = await casing.Todo.create({ title: "Top", parent: null }, anyone);
+        const child = await casing.Todo.create({ title: "Child", parent: top.id }, anyone);
+        expect(child).toMatchObject({ title: "Child", parentId: top.id });
+        const line = await casing.InvoiceLine.create({ quantity: 12, todo: top.id }, anyone);
+        expect(line).toMatchObject({ quantity: 12, todoId: top.id });
+        await casing.InvoiceLine.create({ quantity: 1, todo: top.id }, anyone);
+
+        // Errors name the entity by its FQN, which carries the converted name.
+        const denied = await rejection(casing.InvoiceLine.restock({ id: line.id, quantity: 3 }, intruder), ForbiddenError);
+        expect(denied).toMatchObject({ entity: "casing.InvoiceLine", action: "restock", policies: ["keeper"] });
+        expect((await rejection(casing.InvoiceLine.restock({ id: line.id, quantity: 0 }, anyone), InvalidInputError)).message).toContain("quantity");
+        expect(await casing.InvoiceLine.restock({ id: line.id, quantity: 20 }, anyone)).toMatchObject({ id: line.id, quantity: 20 });
+        expect(await casing.Todo.rename({ id: top.id, title: "Top two" }, anyone)).toMatchObject({ id: top.id, title: "Top two" });
+
+        // Each relationship loads the other entity's records, and the rollup counts them.
+        const [loaded] = await casing.Todo.read({ filter: { id: { eq: top.id } }, load: ["children", "lines", "lineCount"] }, anyone);
+        expect(loaded.children).toEqual([child]);
+        expect(loaded.lines.map((row: { quantity: number }) => row.quantity).sort((a: number, b: number) => a - b)).toEqual([1, 20]);
+        expect(loaded.lineCount).toBe(2);
+        const [read] = await casing.InvoiceLine.read({ filter: { id: { eq: line.id } }, load: ["todo", "bulk"] }, anyone);
+        expect(read.todo).toEqual({ ...top, title: "Top two" });
+        expect(read.bulk).toBe(true);
+
+        // Todo's `set` step calls both entity values: two todos and two lines.
+        expect((await casing.Todo.count({ id: top.id }, anyone)).counted).toBe(4);
       });
     } finally {
       await layer.close();

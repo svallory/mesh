@@ -52,7 +52,13 @@ test.each([
 ])("%s accepts formatted default %s", (type, value) => {
   expect(build(`${keyed}    ${type} :value default=${value}\n`).diagnostics).toEqual([]);
 });
-test.each(["todo", "todoItem", "Todo_item", "_Todo"])("entity %s needs PascalCase", (name) => {
+// Casing is never an error: the name is converted (`entity-name-conversion.test.ts` covers what it converts to).
+test.each([["todo", "Todo"], ["todoItem", "TodoItem"], ["Todo_item", "TodoItem"], ["_Todo", "Todo"]])("entity %s is converted to %s", (name, converted) => {
+  const result = build(keyed.replace(":Todo", `:${name}`));
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities[0]).toMatchObject({ name: converted, fqn: `todo.${converted}` });
+});
+test.each(["_1", "__"])("entity %s converts to no identifier", (name) => {
   expect(build(keyed.replace(":Todo", `:${name}`)).diagnostics).toMatchObject([
     { code: "MESH_ENTITY_NAME", position: { line: 1, column: 0 } },
   ]);

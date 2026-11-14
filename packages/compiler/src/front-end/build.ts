@@ -391,10 +391,15 @@ function buildEntity(
   const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
   const sections = tags(root.children);
   const section = (name: string) => sections.find((t) => t.name === name);
+  // The name is written in any casing and converted as an event's or a command's is (`notes/spec/names.md`): `entity :todo`
+  // is `Todo` and `entity :invoice_line` is `InvoiceLine`. The converted name is the entity's name from here on: its FQN, its
+  // default table, what another file imports and what this file names its own entity by. The written name is kept nowhere.
+  const written = declaredName(root);
+  const converted = classNameOf(written);
   const entity: Entity = {
-    name: declaredName(root),
-    fqn: declaredName(root),
-    table: String(opt(root, "table") ?? snakeCase(declaredName(root))),
+    name: converted,
+    fqn: converted,
+    table: String(opt(root, "table") ?? snakeCase(converted)),
     file,
     module: "",
     imports: [],
@@ -407,8 +412,9 @@ function buildEntity(
     policies: [],
     position: pos(root),
   };
-  if (!/^[A-Z][A-Za-z0-9]*$/.test(entity.name))
-    fail("MESH_ENTITY_NAME", `Entity :${entity.name} must have a PascalCase name, such as :Todo`, root);
+  // Casing is never an error: only a name that converts to no identifier is (`_1` is `1`, `__` is nothing).
+  if (!isClassName(converted))
+    fail("MESH_ENTITY_NAME", `Entity :${written} converts to ${converted ? `\`${converted}\`` : "nothing"}, which is no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter before any digit, such as :Todo`, root);
   const { module, bareUnderscore } = moduleOfFolder(folder);
   entity.module = module;
   entity.fqn = [...module.split("/").filter(Boolean), entity.name].join(".");
@@ -1146,10 +1152,11 @@ export function buildModel(project: ProjectDescription): BuildResult {
     );
     if (!parsed.ir) continue;
     parsedFiles.push({ input, path, ir: parsed.ir });
-    // The root line decides what the file declares (`notes/spec/file-kinds.md`): its kind, and the names of the roots of that kind.
+    // The root line decides what the file declares (`notes/spec/file-kinds.md`): its kind, and the names of the roots of that kind,
+    // each as Mesh converts it (`entity :todo` declares `Todo`): the name an import of the file takes.
     const roots = tags(parsed.ir.body);
     const kind = DECLARING_ROOTS.has(roots[0]?.name ?? "") ? roots[0]!.name as DeclaredFile["kind"] : "entity";
-    declaredByPath.set(resolve(rootPath, path.file), { kind, names: roots.filter((root) => root.name === kind).flatMap((root) => atomOf(attr(root, "name"))?.name ?? []).map((name) => (kind === "entity" ? name : classNameOf(name))) });
+    declaredByPath.set(resolve(rootPath, path.file), { kind, names: roots.filter((root) => root.name === kind).flatMap((root) => atomOf(attr(root, "name"))?.name ?? []).map((name) => classNameOf(name)) });
   }
   for (const { input, path, ir } of parsedFiles) {
     const file = path.file;
