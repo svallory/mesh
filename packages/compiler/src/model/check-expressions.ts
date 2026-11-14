@@ -76,6 +76,8 @@ interface Scope {
   validate?: boolean;
   /** In a policy, which sees `self` as `validate` does, before the input: the policy's message name, `policy :owner`. */
   policy?: string;
+  /** In a computed field's body, which is worked out on a loaded record and has no `before`: the field's message name, `computed :total of Order`. */
+  computed?: string;
   /** When the function can run on a create: the members of `self` that may still be null there (see `newInstanceGaps`). */
   fresh?: ReadonlySet<string>;
   /** The members every create the function runs in takes as a member input, so `input.x ?? &x` has a value on a create. */
@@ -218,6 +220,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_POLICY_BEFORE",
             `${scope.policy} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``, n.position,
             "write `&x` for the stored value and `input.x` for the caller's");
+          return { c: "any", nullable: false };
+        }
+        if (n.name === "before" && scope.computed) {
+          report("error", "MESH_COMPUTED_BEFORE",
+            `${scope.computed} reads \`before\`, which a computed field does not have: it is worked out on a loaded record, which has no earlier version`, n.position,
+            "compute it from `&x`; a rule about the value before a write belongs in a `do` step or a `run`");
           return { c: "any", nullable: false };
         }
         if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity, stored: true };
@@ -513,7 +521,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const base: Scope = { entity, beforeNullable: true, inputs: null, locals: new Map() };
     for (const computed of entity.computed as Computed[]) {
       if (!computed.body) continue;
-      const t = visit(computed.body, base, false);
+      const t = visit(computed.body, { ...base, computed: `computed :${computed.name} of ${entity.fqn}` }, false);
       computed.nullable = t ? t.nullable : false;
     }
     for (const action of entity.actions) {

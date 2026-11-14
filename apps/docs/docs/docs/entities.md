@@ -736,7 +736,7 @@ Run `mesh inspect Todo` to see the declarations with source positions, and `mesh
 | a policy on a read | The row |
 | a policy on an update or destroy | The stored record, before the input; the caller's values are in `input` |
 | a policy on a create | The new record before the input: defaults and a `uuid` or `string` key; the caller's values are in `input` |
-| a computed field | The loaded record |
+| a computed field | The loaded record. `before` is not available: a loaded record has no earlier version, and reading it is a build error (`MESH_COMPUTED_BEFORE`) |
 
 ## In short
 

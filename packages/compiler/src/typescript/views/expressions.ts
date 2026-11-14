@@ -422,6 +422,13 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
           `${f.what} reads \`before\` in a type, which ${policy ? "a policy" : "`validate`"} does not have: it sees \`self\` before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``,
           f.expression.position, "write `typeof self` for the record before the input, and `typeof input` for the caller's values");
       }
+      // A computed field has no `before` either (MESH_COMPUTED_BEFORE at build for a value); found by its body, since an
+      // action may be named `computed`.
+      const computed = roots.includes("before") ? entity.computed.find((c) => c.body === f.expression) : undefined;
+      if (computed)
+        throw emitError("MESH_COMPUTED_BEFORE",
+          `computed :${computed.name} of ${entity.fqn} reads \`before\` in a type, which a computed field does not have: it is worked out on a loaded record, which has no earlier version`,
+          f.expression.position, "write `typeof self` for the loaded record");
       if (inTypes.roots.length || inTypes.values.length || inTypes.types.length) {
         inTypes.values.forEach((name) => valued.add(name));
         inTypes.types.forEach((name) => recordTypes.add(name));

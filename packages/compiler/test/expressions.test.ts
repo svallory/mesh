@@ -1105,13 +1105,17 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(await logged(async () => { await expressions["make.step.1.run"]!(scope(create)); })).toEqual([["before is", null]]);
   }, 30_000);
 
-  test("item 6: a check or a policy that reads `before` only in a type is refused when the file is emitted", async () => {
+  test("item 6: a check, a policy or a computed field that reads `before` only in a type is refused when the file is emitted", async () => {
     // The front end cannot see a type (MX strips them), so the back end reports it where `typeNames` finds it, with the
     // code the front end gives a `before` read as a value; binding it would fail tsc with TS2339 on the check's scope.
     const that = "() => { const b: typeof before = null; return b === null }";
     const cases = [
       [entity(check(that)), "MESH_VALIDATE_BEFORE", "check :c that"],
       [entity(check("() => true")).replace("  actions auto", `  policies\n    policy :p types=[:update]\n      authorize-if=${that}\n  actions auto`), "MESH_POLICY_BEFORE", "policy :p authorize-if"],
+      // A computed field has no `before` either: its type there would promise a record the field never gets.
+      [entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :b() { const b: typeof before = null; return b === null }\n  actions auto"), "MESH_COMPUTED_BEFORE", "computed :b of Task"],
+      // An action named `computed` is not a computed field: its check keeps the check's code.
+      [entity(check(that)).replace("update :go", "update :computed"), "MESH_VALIDATE_BEFORE", "check :c that"],
     ] as const;
     for (const [source, code, what] of cases) {
       const built = build(source);
