@@ -106,7 +106,7 @@ export function lowerMember(text: string, span: SourceSpan, ctx: TriggerContext)
 }
 
 /** The expression inside the type wrappers MX lowers away (`x as T`, `x!`, `x satisfies T`, `<T>x`, `(x)`). */
-function unwrapped(node: object | null): object | null {
+export function unwrapped(node: object | null): object | null {
   let current = node as { type?: string; expression?: object } | null;
   while (
     current?.expression &&

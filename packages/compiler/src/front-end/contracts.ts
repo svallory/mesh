@@ -454,8 +454,9 @@ for (const contract of Object.values(contracts)) {
         if (["auto", "types", "values"].includes(key)) {
           if (n?.type !== "ArrayExpression")
             ctx.fail(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });
-          const names = n?.elements?.map((e) => e?.value) ?? [];
-          if (!names.length || new Set(names).size !== names.length)
+          // Only atoms can repeat: an item that is none (`values=[a, b]`) is refused where it is written (`checkAtomSlots`).
+          const names = (n?.elements ?? []).flatMap((e) => (typeof e?.value === "string" ? [e.value] : []));
+          if (!n?.elements?.length || new Set(names).size !== names.length)
             ctx.fail(`${key} must be non-empty with no repeated values`, { at: a.loc, code: "MESH_ATOM_LIST" });
         }
         if (

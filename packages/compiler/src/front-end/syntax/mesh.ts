@@ -21,7 +21,7 @@
  * It imports types only from `@mxlang/core`'s public entry.
  */
 import type { Dialect, NodeType, Trigger } from "@mxlang/core";
-import { ATOM, NAME_SUGAR, atomsHooks, checkAtomUse, type AtomNode } from "./atoms-sugars.ts";
+import { ATOM, NAME_SUGAR, atomsHooks, checkAtomSlots, checkAtomUse, type AtomNode } from "./atoms-sugars.ts";
 import { MEMBER, MEMBER_NODE, Member, checkMemberSlots, lowerMember } from "./member.ts";
 import { TRANSACTION, lowerTransaction } from "./transaction.ts";
 import { checkFieldOptions } from "./field-options.ts";
@@ -91,6 +91,7 @@ export const MESH_SYNTAX = {
   describeAttribute: atomsHooks.describeAttribute,
   afterLower(unit) {
     atomsHooks.afterLower(unit);
+    checkAtomSlots(unit);
     checkMemberSlots(unit);
     checkFieldOptions(unit);
   },
