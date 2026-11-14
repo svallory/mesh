@@ -2061,7 +2061,7 @@ export const after: number = written.self.seq;
   });
 });
 
-// mx-mesh-delete-member-rule: no decision row covers `delete` on a member, and `delete self.name` is accepted, so `delete &name` is
+// mesh-delete-member-rule: no decision row covers `delete` on a member, and `delete self.name` is accepted, so `delete &name` is
 // accepted alike. Before MX alpha.31, `delete &name` gave MESH_PARSE_EXPRESSION "Deleting local variable in strict mode." (Babel's
 // message about the stand-in a trigger lowers to, not about what the author wrote).
 describe("`delete &name` in a computed method behaves as `delete self.name`", () => {
