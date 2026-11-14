@@ -1,13 +1,14 @@
 import { dirname, resolve } from "node:path";
-import type { ActionType, Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
+import type { Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
- * computed field, an `always` block with a `validate` or `do` scoped to a read, which has no record to check or change (a
- * read's own `validate` or `do` is refused by its contract), a `set` or `load` in a destroy, and in a policy
+ * computed field, an `always` block whose `actions=` names a read, which runs neither `validate` nor `do` (a read's own
+ * `validate` or `do`, and `:read` in an always block's `types=`, are refused by the contracts), a `set` or `load` in a
+ * destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
  * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
@@ -168,14 +169,14 @@ export function checkLifecycleLimits(
       const covers = always.types?.includes("destroy") || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "destroy" || (ref.name === "destroy" && entity.auto.includes("destroy")));
       if (covers) refuseDestroyStep(always.do, `an always block of ${entity.fqn} that covers a destroy`);
     }
-    for (const always of entity.always) {
-      if (!always.validate.length && !always.do.length) continue;
-      const reads = (always.types ?? []).includes("read" satisfies ActionType)
-        || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "read" || (ref.name === "read" && entity.auto.includes("read")));
-      if (reads)
-        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `always declares ${always.validate.length ? "validate" : "do"} for a read, which does not run it: a read has no record to check or change`,
-          always.position, "Scope the block to :create, :update or :destroy"));
-    }
+    // A read runs neither `validate` nor `do`, so an always block scoped to one never applies to it: each reference of
+    // `actions=` that names a read (a declared one, or the auto read) is refused where it is written, whatever the block
+    // holds. `types=[:read]` is refused by the `always` contract, which has the atom's position.
+    for (const always of entity.always)
+      for (const ref of always.actions ?? [])
+        if (entity.actions.find((a) => a.name === ref.name)?.kind === "read" || (ref.name === "read" && entity.auto.includes("read")))
+          diagnostics.push(error("MESH_OPTION_VALUE",
+            `\`actions=\` names read :${ref.name} of ${entity.fqn}, and a read runs neither \`validate\` nor \`do\`, so an always block never applies to it`,
+            ref.position, `Remove \`&${ref.name}\` from \`actions=\``));
   }
 }

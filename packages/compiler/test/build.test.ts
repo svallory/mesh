@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { ATTRIBUTE_TYPES, findNonJsonValue } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { postDocument, postFile, postSource } from "../../model/test/sample.ts";
@@ -66,6 +66,35 @@ test("all currently parseable v4 constructs are represented", () => {
   });
   expect(entity.policies[0]!.authorizeIf).toHaveLength(2);
   expect(entity.policies[0]!.forbidIf).toHaveLength(1);
+});
+// An `always` block scoped to a read never applies to it (a read runs neither `validate` nor `do`): the reference that
+// names the read is the error. The `types=[:read]` half is a contract hook, in `contracts.test.ts`.
+describe("always actions= cannot name a read", () => {
+  const BODY = '      validate\n        check :ok that=() => true code="x" message="m"\n';
+  const always = (line: string, body = BODY, auto = " auto=[:read]") =>
+    build(`${keyed}    integer :n\n  actions${auto}\n    update :change\n    read :all\n${line}\n${body}`).diagnostics.map((d) => [d.position.line, d.position.column, d.severity, d.code, d.message, d.fix]);
+  const refused = (column: number, name: string) =>
+    [8, column, "error", "MESH_OPTION_VALUE", `\`actions=\` names read :${name} of todo.Todo, and a read runs neither \`validate\` nor \`do\`, so an always block never applies to it`, `Remove \`&${name}\` from \`actions=\``];
+  test("a declared read and the auto read, each at its own reference", () => {
+    expect(always("    always actions=[&all]")).toEqual([refused(20, "all")]);
+    expect(always("    always actions=[&read]")).toEqual([refused(20, "read")]);
+    expect(always("    always actions=[&all, &read]")).toEqual([refused(20, "all"), refused(26, "read")]);
+  });
+  test("beside a write, only the read's reference is reported", () => {
+    expect(always("    always actions=[&change, &all]")).toEqual([refused(29, "all")]);
+  });
+  test("with no validate and no do too, and with a do alone", () => {
+    expect(always("    always actions=[&all]", "")).toEqual([refused(20, "all")]);
+    expect(always("    always actions=[&all]", "      do\n        run (ctx) { return ctx }\n")).toEqual([refused(20, "all")]);
+  });
+  test("the legal neighbours stay legal: a write, a block with no scope beside a read, and a policy scoped to the read", () => {
+    expect(always("    always actions=[&change]")).toEqual([]);
+    expect(always("    always")).toEqual([]);
+    expect(build(`${keyed}  actions auto=[:read]\n    read :all\n  policies\n    policy :readers actions=[&all, &read] authorize-if=({ actor }) => !!actor\n`).diagnostics).toEqual([]);
+  });
+  test("&read with no auto read and no action of that name is still MESH_UNKNOWN_ACTION", () => {
+    expect(always("    always actions=[&read]", BODY, "").map((d) => d[3])).toEqual(["MESH_UNKNOWN_ACTION"]);
+  });
 });
 test("reference fixture is the hand-built model's authored file", () =>
   expect(fixture("post.mesh.mx").source).toBe(postSource));

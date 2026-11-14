@@ -16,7 +16,9 @@ export function coverageProject(tag: string, option: string | undefined, example
   const attributes = node("attributes", [node("uuid :id primary-key"), node("string :title"), node("boolean :done")]);
   // A `has-one` example follows Line's only `belongs-to` back, which a `has-many` beside it could not follow too (`MESH_HAS_ONE_SHARED_KEY`).
   const relationships = node("relationships", tag === "has-one" ? [] : [node("has-many :lines entity=Line")]);
-  const actions = node("actions", [node("read :custom")]);
+  // `&custom` is a read, which `on:load=`, a policy and a sort can name; an `always` block's `actions=` names no read
+  // (`MESH_OPTION_VALUE`), so for that cell it is an update.
+  const actions = node("actions", [node(tag === "always" && option === "actions" ? "update :custom" : "read :custom")]);
   const root = node("entity :Sample", [attributes, relationships, actions]);
   const chain = option === "member" && contracts[tag]!.children?.["*"] ? [tag, "member"] : [tag];
   let parent = ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number]) && option === "value" ? "computed" : contracts[tag]!.parents![0]!;

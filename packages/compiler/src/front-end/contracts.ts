@@ -217,7 +217,20 @@ const contracts: ContractMap = {
     parents: ["actions"],
     attributes: scope(),
     children: body,
-    analyze: references(["actions"]),
+    analyze(calls, ctx) {
+      references(["actions"])(calls, ctx);
+      // A read runs neither `validate` nor `do`, so a block scoped to reads never applies: the `:read` item is the error,
+      // at its own span (`Expr.nodes`), since the model keeps no position for a `types` item. `policy` shares `scope()`
+      // and keeps `:read`; an `actions=` reference that names a read is the build's (`model/lifecycle-limits.ts`).
+      for (const call of calls) {
+        const a = get(call, "types");
+        const read = a && (a.kind === "dynamic" || a.kind === "bound")
+          ? (a.value.nodes ?? []).find((each) => each.type === "mesh:Atom" && (each.forward as Node).value === "read")
+          : undefined;
+        if (read)
+          ctx.fail("`types` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", { at: read.span, code: "MESH_OPTION_VALUE" });
+      }
+    },
   }),
   input: closed({
     parents: [...ACTION_TYPES],
