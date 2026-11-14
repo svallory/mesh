@@ -46,9 +46,10 @@ entity :Invoice
 
 test.each([
   ["count", "lines", "integer", false],
+  ["max", "lines.units", "integer", true],
   ["max", "lines.amount", "decimal", true],
   ["max", "lines.dueOn", "date", true],
-  ["max", "lines.createdAt", "timestamp", true],
+  ["max", "lines.paidAt", "datetime", true],
 ] as const)("%s of %s infers %s, nullable %s", (fn, path, type, nullable) => {
   const { result } = build(fn, path);
   expect(result.diagnostics).toEqual([]);
@@ -62,7 +63,7 @@ test.each([
 // sum, avg and min are valid, typed and not built: the build says so, naming when (ADR-0018).
 test.each([
   ["sum", "lines.units"], ["sum", "lines.amount"], ["avg", "lines.units"], ["avg", "lines.amount"],
-  ["min", "lines.units"], ["min", "lines.paidAt"], ["min", "lines.createdAt"],
+  ["min", "lines.units"], ["min", "lines.amount"], ["min", "lines.dueOn"], ["min", "lines.paidAt"],
 ] as const)("%s of %s is not implemented yet, and the build says when", (fn, path) => {
   const { result } = build(fn, path);
   expect(result.document).toBeNull();
@@ -150,7 +151,27 @@ test.each([
     "min",
     "lines.done",
     "MESH_ROLLUP_TYPE",
-    "min needs a number, date, datetime or timestamp, &done is :boolean",
+    "min needs a number, date or datetime, &done is :boolean",
+  ],
+  // A timestamp is not an operand of min or max (integer, decimal, date and datetime are), even though it is stored like a datetime.
+  [
+    "max",
+    "lines.createdAt",
+    "MESH_ROLLUP_TYPE",
+    "max needs a number, date or datetime, &createdAt is :timestamp",
+  ],
+  // The type is checked before what is built: a min over a timestamp is the type error, not MESH_NOT_IMPLEMENTED.
+  [
+    "min",
+    "lines.createdAt",
+    "MESH_ROLLUP_TYPE",
+    "min needs a number, date or datetime, &createdAt is :timestamp",
+  ],
+  [
+    "max",
+    "lines.ratio",
+    "MESH_ROLLUP_TYPE",
+    "max needs a number, date or datetime, &ratio is :float",
   ],
   [
     "count",
