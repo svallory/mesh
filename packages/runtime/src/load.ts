@@ -298,7 +298,7 @@ export function guarded(plan: LoadPlan, entity: string, row: Work, what = "compu
   const unloaded = (key: string) =>
     what === "before"
       ? new FrameworkError(`\`before\` holds the stored columns of ${entity} only, so ${entity}#${key} is not on it: Mesh never loads a relationship or computed field onto \`before\`. Compare the stored key (\`before.${key}Id\` for a relationship), or read the proposed record's in an expression Mesh can see (\`&${key}\`)`)
-      : new FrameworkError(`A plain ${what} read ${entity}#${key}, which was not loaded: Mesh could not tell from the body that it reads it. Write it as one expression (an arrow with comparisons, ?., ?? and the list methods) so Mesh loads what it reads`);
+      : new FrameworkError(`A plain ${what} read ${entity}#${key}, which was not loaded: Mesh could not tell from the body that it reads it. Read it as \`&${key}\` in the same body (a related record's as the whole chain, \`&relationship.${key}\`) so Mesh loads what it reads: \`self.${key}\` and a read through a variable are not followed`);
   const wrap = (key: string, value: unknown): unknown => {
     const relation = Object.hasOwn(entityPlan.relations, key) ? entityPlan.relations[key] : undefined;
     if (!relation || value === null || typeof value !== "object") return value;
