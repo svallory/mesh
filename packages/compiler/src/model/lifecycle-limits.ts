@@ -41,6 +41,22 @@ export function checkLifecycleLimits(
         relation.position,
         `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
     }
+  // Where SQL is required (a read's filter, a condition of a policy that covers a read or a load), code Mesh does not
+  // translate is an error once the SQL evaluator runs it (M10). Until then it is a warning, whatever made the function
+  // plain: a block body, or a helper given the record, draws no warning anywhere else. A function the expression pass
+  // already warned about (JavaScript's rules for null), or one that holds an error, is not reported a second time.
+  const warnUntranslated = (expression: Expression, subject: string): void => {
+    const plain = expression.plain;
+    if (!plain) return;
+    const end = expression.position.offset + expression.source.length;
+    const said = diagnostics.some((d) => (d.severity === "error" || d.code === "MESH_EXPR_PLAIN")
+      && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end);
+    if (said) return;
+    diagnostics.push({ ...error("MESH_EXPR_PLAIN",
+      `${subject}, and Mesh does not translate it (${plain.detail}): a warning until the SQL evaluator (M10), an error from then`,
+      plain.position,
+      "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record"), severity: "warning" });
+  };
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in:
     // it reads the record and what it loads, never through `privileged`, and runs no action. A helper it calls
@@ -98,6 +114,8 @@ export function checkLifecycleLimits(
           expression.position, "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store"));
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
+    for (const action of entity.actions)
+      if (action.kind === "read" && action.filter) warnUntranslated(action.filter, `the filter of read :${action.name} of ${entity.fqn} must run as SQL`);
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
     // A policy decides; it does not act, and it sees no `before` (it runs before `validate`). A read policy that
     // reads the record is a filter on the query, which the SQL evaluator folds in M10.
@@ -148,11 +166,15 @@ export function checkLifecycleLimits(
               "Move the condition into a write policy (scope this one to the writes with `types=` or `actions=`) or a check, or into a computed field that the filter compares"));
         }
       const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression, "read")) : undefined;
-      if (!reading) continue;
-      diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-        `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
-        reading.expression.position,
-        "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
+      if (reading)
+        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
+          `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+          reading.expression.position,
+          "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
+      // A condition that reads the record is that refusal's (once per policy); any other plain one is the warning.
+      if (covered.length)
+        for (const { expression, what } of policyExpressions(policy))
+          if (!recordReason(expression, "read")) warnUntranslated(expression, `${what} must run as SQL, since the policy covers ${covered.join(", ")} of ${entity.fqn}`);
     }
     // A destroy returns nothing and writes nothing: a `set` or `load` in one would be dropped, so it is refused.
     const refuseDestroyStep = (steps: Step[], where: string): void => {

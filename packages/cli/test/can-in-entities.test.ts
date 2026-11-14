@@ -78,7 +78,14 @@ async function rejection<E>(call: Promise<unknown>, type: new (...args: never[])
 let root: string;
 beforeAll(async () => {
   root = await project();
-  expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+  // `Ledger`'s read policy `:looking` is a block body, so that its helper can hide the question from the build: plain
+  // code where SQL is required, which the build warns about until M10 makes it an error.
+  expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: [
+    "domain/billing/ledger.mesh.mx:50:20 warning MESH_EXPR_PLAIN policy :looking authorize-if must run as SQL, since the policy covers read :read of billing.Ledger, and Mesh does not translate it (a block body of 2 statements): a warning until the SQL evaluator (M10), an error from then",
+    "  fix: rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record",
+    "0 errors, 1 warning",
+    "",
+  ].join("\n") });
 }, 30_000);
 afterAll(async () => {
   for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
