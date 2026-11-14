@@ -215,6 +215,34 @@ test(
     ).toContain("MESH_ON_LOAD");
   },
 );
+// A read writes nothing, so it has no step to run and no write for a check to guard: its contract leaves `validate` and
+// `do` out of its children, and MX refuses either at its own line, whatever it holds.
+describe("a read takes no validate and no do", () => {
+  const CHECK = '        check :ok that=() => true code="x" message="m"\n';
+  const RUN = "        run (ctx) { return ctx }\n";
+  const read = (body: string) =>
+    build(`${keyed}    integer :n\n  actions\n    read :open\n${body}`).diagnostics.map((d) => [d.position.line, d.position.column, d.severity, d.code, d.message, d.fix]);
+  const refused = (child: string, line = 7) =>
+    [line, 6, "error", "MESH_TAG_NOT_ALLOWED", `\`read\`: \`${child}\` is not allowed here; allowed children: \`input\`, \`filter\`, \`sort\``, null];
+  test.each([
+    ["a validate with a check", `      validate\n${CHECK}`, "validate"],
+    ["an empty validate", "      validate\n", "validate"],
+    ["a do with a step", `      do\n${RUN}`, "do"],
+    ["an empty do", "      do\n", "do"],
+    ["a do under the read's own input and filter", `      do\n${RUN}      input\n        integer :m\n      filter=({ self, input }) => self.n > input.m\n`, "do"],
+  ])("%s is MESH_TAG_NOT_ALLOWED at its own line", (_, body, child) => {
+    expect(read(body)).toEqual([refused(child)]);
+  });
+  test("a read with both is refused at the one written first: MX stops at the first child a tag does not take", () => {
+    expect(read(`      validate\n${CHECK}      do\n${RUN}`)).toEqual([refused("validate")]);
+    expect(read(`      do\n${RUN}      validate\n${CHECK}`)).toEqual([refused("do")]);
+  });
+  test("the legal neighbours stay legal: a read's input, filter and sort; validate and do on the three writes and in an always block beside a read", () => {
+    expect(read("      input\n        integer :m\n      filter=({ self, input }) => self.n > input.m\n      sort\n        asc &n\n")).toEqual([]);
+    const body = `      validate\n${CHECK}      do\n${RUN}`;
+    expect(build(`${keyed}    integer :n\n  actions auto=[:read]\n    read :open\n    create :add\n${body}    update :change\n${body}    destroy :remove\n${body}    always\n${body}`).diagnostics).toEqual([]);
+  });
+});
 test(
   "reference fixture parses",
   () => expect(parseFixture("post.mesh.mx").diagnostics).toEqual([]),

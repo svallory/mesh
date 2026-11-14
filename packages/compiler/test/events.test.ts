@@ -252,13 +252,14 @@ describe("MESH_PUBLISH", () => {
       `${NOT_AN_EVENT}, as in \`new InvoicePaid({ ... })\`: this \`new\` names no event`]);
   });
 
-  test("a publish in validate, in a check or in a read", () => {
+  test("a publish in validate or in a check; in a read there is no do to hold one", () => {
     const where = (actions: string) => brief(build(invoice(actions)).diagnostics);
     const rule = (what: string) => `a \`publish\` step is not allowed in ${what}: it raises an event after the action's row is written, in the action's \`do\``;
     expect(where(`    update :pay\n      validate\n        ${PUBLISH_PAID}\n`)).toEqual([["billing/invoice.mesh.mx", 10, 8, "error", "MESH_PUBLISH", rule("`validate`"), "move it under `do`"]]);
     expect(where(`    update :pay\n      validate\n        check :ok that=() => true code="x" message="m"\n          ${PUBLISH_PAID}\n`))
       .toEqual([["billing/invoice.mesh.mx", 11, 10, "error", "MESH_PUBLISH", rule("a `check`"), "move it under `do`"]]);
-    expect(where(`    read :list\n      do\n        ${PUBLISH_PAID}\n`)).toEqual([["billing/invoice.mesh.mx", 10, 8, "error", "MESH_PUBLISH", rule("a read action"), "move it under `do`"]]);
+    // A read's contract has no `do`, so the `do` line is refused and the publish under it is never built.
+    expect(where(`    read :list\n      do\n        ${PUBLISH_PAID}\n`)).toEqual([["billing/invoice.mesh.mx", 9, 6, "error", "MESH_TAG_NOT_ALLOWED", "`read`: `do` is not allowed here; allowed children: `input`, `filter`, `sort`", null]]);
   });
 
   test("an event is no entity: it is not a relationship's target, and not a member (&name)", () => {

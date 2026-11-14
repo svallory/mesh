@@ -656,13 +656,9 @@ function buildEntity(
       return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
     });
   };
-  /** The steps under a `do` or a `when`; `inRead` says the action is a read, which has no row to write and raises nothing. */
-  const steps = (holder: Tag, inRead = false): Step[] =>
-    tags(holder.children).flatMap((tag): Step[] => {
-      const step = buildStep(tag, inRead);
-      return step ? [step] : [];
-    });
-  const buildStep = (tag: Tag, inRead: boolean): Step | undefined => {
+  /** The steps under a `do` or a `when`. */
+  const steps = (holder: Tag): Step[] => tags(holder.children).map(buildStep);
+  const buildStep = (tag: Tag): Step => {
       const position = pos(tag);
       const assigned = new Set<string>();
       if (tag.name === "set")
@@ -707,7 +703,7 @@ function buildEntity(
         return {
           kind: "when",
           condition: expr(attr(tag, "value")),
-          steps: steps(tag, inRead),
+          steps: steps(tag),
           position,
         };
       if (tag.name === "load")
@@ -723,17 +719,15 @@ function buildEntity(
         const after = atomOf(attr(tag, "after"))?.name === "write";
         return { kind: "run", fn: expr(attr(tag, "value"), "expression", "run"), ...(after ? { after: "write" as const } : {}), position };
       }
-      if (tag.name === "publish") {
-        // A read has no row to write, so nothing to raise an event about (`MESH_PUBLISH`). The fourth case of that code, an
-        // event that owners list and the action's owner does not, is vacuous until owner sections exist (aggregates).
-        if (inRead) { refusePublish(tag, "in a read action"); return undefined; }
+      // A read has no `do` (its contract leaves it out), so no publish is written in one. The fourth case of `MESH_PUBLISH`,
+      // an event that owners list and the action's owner does not, is vacuous until owner sections exist (aggregates).
+      if (tag.name === "publish")
         return { kind: "publish", fn: expr(attr(tag, "value"), "expression", "publish"), position };
-      }
       throw new Error(`Unexpected step ${tag.name}`);
   };
   const body = (holder: Tag) => {
     const block = tags(holder.children).find((t) => t.name === "do");
-    return { validate: checks(holder), do: block ? steps(block, holder.name === "read") : [] };
+    return { validate: checks(holder), do: block ? steps(block) : [] };
   };
   const types = (a: Attr) =>
     atomList(a).map((value): ActionType => {

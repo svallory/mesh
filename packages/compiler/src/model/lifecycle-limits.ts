@@ -6,7 +6,8 @@ import { loadPolicies, policiesCovering, policyExpressions, recordReason } from 
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
- * computed field, a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
+ * computed field, an `always` block with a `validate` or `do` scoped to a read, which has no record to check or change (a
+ * read's own `validate` or `do` is refused by its contract), a `set` or `load` in a destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
  * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
@@ -151,13 +152,6 @@ export function checkLifecycleLimits(
         `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
         reading.expression.position,
         "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
-    }
-    for (const action of entity.actions) {
-      if (action.kind !== "read") continue;
-      if (action.validate.length || action.do.length)
-        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `read :${action.name} of ${entity.fqn} declares ${action.validate.length ? "validate" : "do"}, which a read does not run: it has no record to check or change`,
-          action.position, "A read narrows its rows with `filter`; its caller narrows them further with `filter`, `sort`, `limit` and `offset`"));
     }
     // A destroy returns nothing and writes nothing: a `set` or `load` in one would be dropped, so it is refused.
     const refuseDestroyStep = (steps: Step[], where: string): void => {

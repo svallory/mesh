@@ -155,6 +155,8 @@ const options = (type: string) => ({
 });
 const steps = children("set", "when", "load", "run", "publish");
 const body = { validate: {}, do: {} };
+/** The action types that take `validate` and `do`. A read writes nothing, so it has no step to run and no write for a check to guard: its contract leaves both out, and either under a read is `MESH_TAG_NOT_ALLOWED`. */
+const WRITE_TYPES = ACTION_TYPES.filter((type) => type !== "read");
 // The `member` child MX lowers a tagless `&name` line to (`MESH_DIALECT`). An
 // inline wildcard contract, so no `member` tag is authorable at large; under
 // input/set the builder still refuses an authored `member name="x"`.
@@ -225,7 +227,7 @@ const contracts: ContractMap = {
     },
   }),
   validate: closed({
-    parents: [...ACTION_TYPES, "always"],
+    parents: [...WRITE_TYPES, "always"],
     // `publish` is no `validate` line: the contract admits it where it is written wrongly, so that the build says why
     // (`MESH_PUBLISH`, `front-end/build.ts`) instead of calling it an unknown tag.
     children: children("check", "publish"),
@@ -258,7 +260,7 @@ const contracts: ContractMap = {
       }
     },
   }),
-  do: closed({ parents: [...ACTION_TYPES, "always"], children: steps }),
+  do: closed({ parents: [...WRITE_TYPES, "always"], children: steps }),
   set: closed({
     parents: ["do", "when"],
     children: {
@@ -403,8 +405,7 @@ for (const kind of ACTION_TYPES)
     analyze: kind === "read" ? namedRead : answers,
     children: {
       input: {},
-      ...body,
-      ...(kind === "read" ? { filter: {}, sort: {} } : {}),
+      ...(kind === "read" ? { filter: {}, sort: {} } : body),
     },
   });
 for (const kind of ROLLUPS)
