@@ -215,7 +215,8 @@ const FREE_VARIABLE = (name: string) =>
 /**
  * What fixes an unknown name: a Mesh function written bare is a member of `Mesh`, which the file may not import yet. The
  * fix names the file's `Mesh` import where it can be read: an alias that a binding hides at the reference (`shadowed`), or
- * that is a scope name (`input`, refused at the import), is not one, and the fix says so instead of naming it.
+ * that is a scope name (`input`: the import is accepted, and in every function the name is the root), is not one, and the
+ * fix says so instead of naming it.
  */
 function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
   // A bare `now` or `today` is the transaction's.

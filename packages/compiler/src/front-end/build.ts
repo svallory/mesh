@@ -38,7 +38,7 @@ import {
 } from "@meshfw/model";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
-import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf, SCOPE_NAMES } from "./expression.ts";
+import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
@@ -479,17 +479,8 @@ function buildEntity(
     const helper = entry.helper === true;
     if (helper) helperImports.set(name, entry.from);
     if (entry.mesh) meshImports.add(name);
-    // A scope name (`input`) is the root in every function of the file, and a function is the one place a
-    // file reads `Mesh`: under that name the import could never be read.
-    if (entry.mesh && SCOPE_NAMES.has(name)) {
-      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-      fail(
-        "MESH_HELPER_NAME",
-        `The Mesh import name ${name} is a scope name: in every function of the file \`${name}\` is the scope's \`${name}\`, so \`Mesh\` imported as ${name} could never be read`,
-        localOffset === undefined ? entry.position : at(localOffset),
-        `import it as \`Mesh\`, or under a name other than ${[...SCOPE_NAMES].map((root) => `\`${root}\``).join(", ").replace(/, ([^,]*)$/, " and $1")}`,
-      );
-    }
+    // An import named like a scope root (`input`) is not refused, `Mesh`'s included: inside a function the name is the
+    // root, as a parameter shadows an import in JavaScript, so there the import is simply not reachable under it.
     // Generated code names its own internals `$...` (an entity's locals `$work$Task$value`) and prints every authored
     // local as `l$...`: no name an import binds, a helper's or an entity's alias, may start with either.
     if (/^(\$|l\$)/.test(name)) {
