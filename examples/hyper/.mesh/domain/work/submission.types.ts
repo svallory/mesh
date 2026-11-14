@@ -41,6 +41,7 @@ export type WithdrawSubmissionInput = {
 export type SettleSubmissionInput = {
   id: string;
   outcome: "accepted" | "returned" | "withdrawn";
+  reason?: string | null | undefined;
 };
 
 export type RecordAcceptedSubmissionInput = {

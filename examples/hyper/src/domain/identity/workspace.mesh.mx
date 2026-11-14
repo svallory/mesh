@@ -1,6 +1,6 @@
 import { WorkspaceCreated } from "./workspace-created.mesh.mx"
 import { WorkspaceRenamed } from "./workspace-renamed.mesh.mx"
-import { memberOf, noWorkspaceOf, roleIn } from "./identity.helpers"
+import { collaboratorActiveOf, memberOf, noWorkspaceOf, roleIn } from "./identity.helpers"
 import { Mesh } from "meshfw"
 
 entity :Workspace table="workspaces"
@@ -21,6 +21,11 @@ entity :Workspace table="workspaces"
           that=async () => await noWorkspaceOf()
           code="workspace.exists"
           message="this engine already hosts its workspace; read it with workspace.get, or rename it"
+        ]
+        check :firstOwnerActive [
+          that=async ({ input }) => input.firstOwner == null || await collaboratorActiveOf(input.firstOwner)
+          code="collaborator.active"
+          message="the first owner does not exist or is retired; name an active collaborator"
         ]
       do
         publish=({ input, actor }) => new WorkspaceCreated({ name: &name, location: &location, firstOwnerId: input.firstOwner ?? actor.id })

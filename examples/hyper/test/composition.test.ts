@@ -5,14 +5,14 @@
 import { describe, expect, test } from "bun:test";
 import { FrameworkError, type DataLayer, type DataOperations, type TableHandle } from "@meshfw/runtime";
 import * as mesh from "#mesh";
-import { bind, tables } from "#mesh";
+import { bind, readEvents, tables } from "#mesh";
 import * as audit from "#mesh/domain/audit";
 import * as execution from "#mesh/domain/execution";
 import * as identity from "#mesh/domain/identity";
 import * as work from "#mesh/domain/work";
 import { Attempt, Machine, Run } from "#mesh/domain/execution";
 import { Collaborator, Membership } from "#mesh/domain/identity";
-import { Assignment, Claim, Completion, Dependency, LateResult, Review, Submission, Task } from "#mesh/domain/work";
+import { Assignment, Claim, Completion, Dependency, LateResult, Review, Submission, SubmissionWithdrawn, Task } from "#mesh/domain/work";
 import * as executionCommands from "../src/domain/execution/execution.commands";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import * as identityCommands from "../src/domain/identity/identity.commands";
@@ -33,6 +33,10 @@ async function submitted(w: World, task: string) {
   if (result.outcome !== "submitted") throw new Error(result.outcome);
   return result.submission;
 }
+
+/** The `submission.withdrawn` events the log holds, in order: each one's payload. */
+const withdrawals = async () => (await readEvents({ after: 0, limit: 1000 })).events
+  .flatMap((event) => event.payload instanceof SubmissionWithdrawn ? [{ ...event.payload }] : []);
 
 /** A layer that fails the first write `refuse` matches, as a failing step would: the error rolls the transaction back. */
 function refusing(layer: DataLayer, refuse: (table: TableHandle, changes: Record<string, unknown>) => boolean): DataLayer {
@@ -175,12 +179,37 @@ describe("acceptance 2: task.cancel revokes the claims, withdraws the submission
     expect(runs.find((run) => run.id === finished.id)).toMatchObject({ state: "succeeded", version: 2 });
   }));
 
-  test("a task in review: the pending submission is withdrawn", () => within(async (w) => {
+  test("a task in review: the pending submission is withdrawn, and submission.withdrawn carries the reason Task :cancel passes", () => within(async (w) => {
     const claim = await Claim.acquire({ task: w.task.id }, as(w.bot));
     const submitted = await submissionSubmit({ task: w.task.id, fence: claim.fence, summary: "ready" }, as(w.bot), w.binding);
     if (submitted.outcome !== "submitted") throw new Error(submitted.outcome);
     await taskCancel({ id: w.task.id, reason: "dropped" }, as(w.alice), w.binding);
     expect(await one(Submission.read({}, as(w.alice)))).toMatchObject({ id: submitted.submission.id, state: "withdrawn" });
+    // The event's reason is the spec's fixed word (PROTOCOL.md §6, conformance `06:117`), not the cancel's own reason.
+    expect(await withdrawals()).toEqual([{ submissionId: submitted.submission.id, reason: "task-canceled" }]);
+  }));
+
+  test("Submission :settle publishes submission.withdrawn with the reason its caller passes, null with none, and nothing for the other outcomes", () => within(async (w) => {
+    // Five Tasks, each with Bot's pending submission, settled as the engine does (settle is internal).
+    const pending = async (title: string) => submitted(w, (await Task.create({ title }, as(w.alice))).id);
+    const named = await pending("Named");
+    const unnamed = await pending("Unnamed");
+    const nulled = await pending("Nulled");
+    const accepted = await pending("Accepted");
+    const returned = await pending("Returned");
+    await Submission.settle({ id: named.id, outcome: "withdrawn", reason: "superseded" }, asSystem(w.alice));
+    await Submission.settle({ id: unnamed.id, outcome: "withdrawn" }, asSystem(w.alice));
+    await Submission.settle({ id: nulled.id, outcome: "withdrawn", reason: null }, asSystem(w.alice));
+    // The calls of Review :accept, Review :return and Task :complete, which pass no reason.
+    await Submission.settle({ id: accepted.id, outcome: "accepted" }, asSystem(w.alice));
+    await Submission.settle({ id: returned.id, outcome: "returned" }, asSystem(w.alice));
+    expect(await withdrawals()).toEqual([
+      { submissionId: named.id, reason: "superseded" },
+      { submissionId: unnamed.id, reason: null },
+      { submissionId: nulled.id, reason: null },
+    ]);
+    const states = new Map((await Submission.read({}, as(w.alice))).map((submission) => [submission.id, submission.state]));
+    expect([named, unnamed, nulled, accepted, returned].map((submission) => states.get(submission.id))).toEqual(["withdrawn", "withdrawn", "withdrawn", "accepted", "returned"]);
   }));
 
   test("calling the generated Task.cancel directly skips the effect across aggregates: the run keeps running", () => within(async (w) => {

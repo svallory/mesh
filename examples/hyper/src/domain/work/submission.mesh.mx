@@ -96,6 +96,7 @@ entity :Submission table="submissions"
     update :settle
       input
         enum :outcome values=[:accepted, :returned, :withdrawn]
+        string :reason nullable
       validate
         check :pending [
           that=() => &state === :pending
@@ -105,10 +106,11 @@ entity :Submission table="submissions"
       do
         set
           &state=({ input }) => input.outcome
-        // Only task.cancel settles a submission as withdrawn (the submitter's own withdrawal is `withdraw`), so the
-        // event names the cancel as its reason (PROTOCOL.md §6, `submission.withdrawn`).
+        // A submission settled as withdrawn publishes `submission.withdrawn` with the reason its caller passes, null
+        // when it passes none (PROTOCOL.md §6). Only Task :cancel settles one as withdrawn (the submitter's own
+        // withdrawal is `withdraw`), and it passes "task-canceled".
         when=({ input }) => input.outcome === :withdrawn
-          publish=() => new SubmissionWithdrawn({ submissionId: &id, reason: "task-canceled" })
+          publish=({ input }) => new SubmissionWithdrawn({ submissionId: &id, reason: input.reason ?? null })
     create :recordAccepted
       input
         &task

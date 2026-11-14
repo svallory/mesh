@@ -185,6 +185,13 @@ export function bindWorkspace(
               source: { file: "src/domain/identity/workspace.mesh.mx", line: 20, column: 9 },
               that: $expressions["create.check.workspaceUnique.that"],
             });
+            await $runCheck($issues, $checks, {
+              label: "firstOwnerActive",
+              code: "collaborator.active",
+              message: "the first owner does not exist or is retired; name an active collaborator",
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 25, column: 9 },
+              that: $expressions["create.check.firstOwnerActive.that"],
+            });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
             if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
@@ -221,7 +228,7 @@ export function bindWorkspace(
                     entity: "identity.Workspace",
                     action: "create",
                     key: { id: $written.id },
-                    at: "src/domain/identity/workspace.mesh.mx:26:17",
+                    at: "src/domain/identity/workspace.mesh.mx:31:17",
                   },
                   $event,
                   $context,
@@ -327,14 +334,14 @@ export function bindWorkspace(
               label: "workspaceActive",
               code: "workspace.active",
               message: "the workspace has moved; it can no longer be changed",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 32, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 37, column: 9 },
               that: $expressions["rename.check.workspaceActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 37, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 42, column: 9 },
               that: $expressions["rename.check.versionMatches.that"],
               details: $expressions["rename.check.versionMatches.details"],
             });
@@ -348,7 +355,7 @@ export function bindWorkspace(
               const $value = await $expressions["rename.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/workspace.mesh.mx:46:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/workspace.mesh.mx:51:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -392,7 +399,7 @@ export function bindWorkspace(
                     entity: "identity.Workspace",
                     action: "rename",
                     key: { id: $written.id },
-                    at: "src/domain/identity/workspace.mesh.mx:47:17",
+                    at: "src/domain/identity/workspace.mesh.mx:52:17",
                   },
                   $event,
                   $context,
