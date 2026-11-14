@@ -17,7 +17,7 @@ entity :Todo table="todos"
     json :metadata
   relationships
     belongs-to :list entity=List
-    has-many :children entity=List
+    has-many :children entity=List inverse=:owner
     has-one :detail entity=List
   computed
     string :label({ self }) { return self.title }
@@ -60,7 +60,7 @@ entity :Todo table="todos"
     policy :staff types=[:create, :update, :destroy] authorize-if=({ actor }) => !!actor
 `;
 export const list =
-  'import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n    decimal :amount\n  relationships\n    belongs-to :owner entity=Todo nullable\n';
+  'import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n    decimal :amount\n  relationships\n    belongs-to :owner entity=Todo nullable\n    belongs-to :todo entity=Todo nullable\n';
 export const project = (source = todo) => ({
   root: "/project",
   files: [

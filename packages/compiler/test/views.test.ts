@@ -68,6 +68,7 @@ describe("typesView", () => {
           { name: "id", optional: false, key: "id", type: "string" },
           { name: "amount", optional: false, key: "amount", type: "number" },
           { name: "ownerId", optional: false, key: "ownerId", type: "string | null" },
+          { name: "todoId", optional: false, key: "todoId", type: "string | null" },
         ],
       },
       inputs: [],
@@ -78,10 +79,16 @@ describe("typesView", () => {
         tx: null,
         namesName: "ListLoadNames",
         argName: "ListLoadArg",
-        members: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Record | null" }],
+        members: [
+          { name: "owner", optional: false, key: "owner", type: "$todo$Todo$Record | null" },
+          { name: "todo", optional: false, key: "todo", type: "$todo$Todo$Record | null" },
+        ],
         // What a function of the entity file sees as `self`: every relationship and computed field, related records loaded alike.
         loadedName: "ListLoaded",
-        loadedMembers: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Loaded | null" }],
+        loadedMembers: [
+          { name: "owner", optional: false, key: "owner", type: "$todo$Todo$Loaded | null" },
+          { name: "todo", optional: false, key: "todo", type: "$todo$Todo$Loaded | null" },
+        ],
       },
       // The loaded types name `Pick` as `$Pick`, from `$globals.ts`: no entity name can hide it.
       globals: { typeOnly: true, keyword: "import type", names: "$Pick", fromLiteral: '"../../$globals"' },

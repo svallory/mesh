@@ -94,4 +94,27 @@ export function resolveRelationships(
         );
     }
   }
+
+  // A has-one is at most one row for the key it follows, so a has-many of the same entity cannot follow that key too
+  // (ADR-0045). Two has-one over one key are accepted. A relationship whose key was not found has its own error above
+  // and shares nothing.
+  for (const entity of document.entities) {
+    const followers = entity.relationships.filter((relation) => relation.kind !== "belongs-to" && relation.inverse !== undefined);
+    for (const one of followers) {
+      if (one.kind !== "has-one") continue;
+      const target = targetOf(entity, one);
+      if (!target) continue;
+      const many = followers
+        .filter((other) => other.kind === "has-many" && other.inverse === one.inverse && targetOf(entity, other) === target)
+        .map((other) => `has-many :${other.name}`);
+      if (many.length === 0) continue;
+      const alone = many.length === 1;
+      fail(
+        "MESH_HAS_ONE_SHARED_KEY",
+        `has-one :${one.name} of ${entity.fqn} follows belongs-to :${one.inverse} of ${target.fqn}, and ${alone ? many[0] : `${many.slice(0, -1).join(", ")} and ${many.at(-1)}`} ${alone ? "follows" : "follow"} it too: a has-one is at most one row for that key, so ${alone ? "the two" : "they"} cannot share it`,
+        one.position,
+        "Keep the has-many and take the one row from its list, or give the has-many its own belongs-to with `inverse=`",
+      );
+    }
+  }
 }
