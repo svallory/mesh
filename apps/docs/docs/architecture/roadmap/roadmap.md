@@ -123,7 +123,7 @@ HA the Hyper application: examples/hyper, runs beside everything above, from tod
 
 after 1.0, in no fixed order:
   M9 Postgres and migrations     M10 SQL translation, atomic updates, filtered relationships
-  M11 extension host             identities, upsert, state machines, shared checks, bulk
+  M11 extension host             identities, upsert, state machines, bulk
 ```
 
 **Rules across tracks.** M7 needs M3 for loading and self-reference and M4 for computed fields; it comes before M5 because many of the 57 rules and the relationship policies read a related row (`&task.state`), a loaded has-many (`&children.every(...)`) or a rollup (`&task.maxFence`), and M5's and M8's acceptance tests run them. M6 needs M5's phase structure (it adds the seams to it). M8 needs M5 (policies run in the lifecycle's slots) and M7 (the relationship checks), not M6. The gate needs M5 to M8 and HA. A milestone that adds a data-layer capability implements it in SQLite, the only adapter until M9.
@@ -299,6 +299,16 @@ The acceptance tests of this task and of the Jig port below are the lead's desig
 - **Acceptance tests.** (1) A guest cannot create a Task; a member can; the error names the policy. (2) An action no policy covers is forbidden, and the error shows how to write an open one. (3) `Claim :acquire` on a Task assigned to someone else is forbidden to anyone but the assignee. (4) A non-member's `readTask` returns no rows and no error; a member's returns the rows. The specification answers a non-member's query with `permission_denied` (`conformance/02-permissions.test.ts:42-50`): that error is HA's to return, by checking the membership before it runs the read. (5) An owner can revoke a claim; the delegator and the reviewer can; a member who is neither cannot; a membership revoked inside the same transaction is seen by the next write's policy. (6) A nested call from `Task :complete` into `Completion :record` passes because it carries `context.system`, and the written event's actor is still the human; the same direct call from a worker is forbidden. (7) Moving a policy, or a check inside one, changes no decision. (8) A policy whose `actions=` names a missing action fails the build. (9) A read policy that reads the record fails with the error that names M10.
 - **Risks.** Every write policy of an internal-only action carries `|| isSystem(context)`. If that repeats too much, shared checks (after 1.0) are the fix, and not `bypass`. `system` is a flag any code holding the context can set; it is as trustworthy as the application that builds the context. Until M8 nothing restricts a caller; a project built on M2 to M7 must not be exposed.
 
+### Before 1.0, milestone not assigned
+
+Three features come before 1.0 and belong to none of the milestones above. No ruling or record assigns any of them a milestone, so none is given here. None is built.
+
+| Item | What | Why it is before 1.0 |
+|---|---|---|
+| Raw-SQL escape hatch | SQL written by hand where an expression cannot be translated, like Ash's `fragment`. It has no design yet | The operator moved it here from "Also after 1.0" (section 6) on 2026-10-18 ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md), amended 2026-11-14) |
+| A `has-many` through a link entity | A many-to-many relationship: `has-many :courses entity=Course through=Enrollment` in `Student` | The operator moved it here on 2026-10-18; until then this page listed many-to-many as not planned ([ADR-0070](../decisions/0070-has-many-via.md), amended 2026-11-14) |
+| Named checks | An entity-level `checks` section; an action's `validate` refers to one of its checks by name ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)) | Core since 2026-10-11, so they do not wait for the extension host ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md), amendment of 2026-10-11). The lead placed them before 1.0 on 2026-11-14, as the work tracker already did; that placement awaits the operator's review |
+
 ### HA — The Hyper application (S to M, Mesh-team work in `examples/hyper`, starts now)
 
 - **Goal.** The parts of Hyper that need nothing from Mesh beyond what M2 has, built so they are ready when M5 to M8 land. The application lives in `examples/hyper` until it passes the gate; then it moves to its own repository.
@@ -329,7 +339,7 @@ For each item, the evidence that Hyper does without it, and the record that move
 | Rollups translated to SQL (joins, filtering and sorting by a rollup); `sum`, `avg`, `min` | M7 | Hyper uses `max` and counts, evaluated in memory over M3's primitives | M |
 | Tracing: eight OpenTelemetry spans per action and the `@opentelemetry/api` dependency | M5, [ADR-0029](../decisions/0029-tracing-opentelemetry-api.md), [ADR-0062](../decisions/0062-direct-dependencies-zod-drizzle-opentelemetry.md) | Hyper has no OpenTelemetry or `:telemetry` code under `lib/`; generated code imports no `@opentelemetry/api` until it returns | S |
 | `on:load` | M7, [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) | Hyper loads relationships explicitly; a relationship loads through the entity's auto read | S |
-| The extension host: composed contracts module, named phases, cross-extension write conflicts, attribute-type contributions, loading by discovery, **named reusable checks** (revision 4 M6 test 5; now core as an entity-level `checks` section, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)) | M6, [ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md), [ADR-0021](../decisions/0021-composed-contracts-module.md) | The port needs the three seams only. Named checks are the one run-time point Hyper would use (57 rules, 94 uses); they are now a core `checks` section, not a host point | L |
+| The extension host: composed contracts module, named phases, cross-extension write conflicts, attribute-type contributions, loading by discovery | M6, [ADR-0020](../decisions/0020-extension-contributions-through-declared-points.md), [ADR-0021](../decisions/0021-composed-contracts-module.md) | The port needs the three seams only. Named reusable checks (revision 4 M6 test 5), the one run-time point Hyper would use (57 rules, 94 uses), are not part of the host and do not wait for it: they are a core `checks` section ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)) and come before 1.0 (section 5, "Before 1.0, milestone not assigned") | L |
 | Keyset pagination | M3 | Hyper pages with `after` (a `seq` filter) and `limit` (`pipeline/event.ex:56-76`) | S |
 | Capability names for joins, upserts, atomic expressions beyond declaring them | M3, M5, M7 | No Hyper path uses them | S |
 | Generated path types for `of=` | M7 | `of=` paths are strings checked at build today | S |
@@ -347,7 +357,6 @@ For each item, the evidence that Hyper does without it, and the record that move
 | Execution entities and export | Run, Attempt, Invocation, Machine, SessionReference; `workspace.export` and import with a restore write | Outside the specification's v0 and its 126 cases; M5 covers their shapes, so they are ported after the gate or in parallel |
 | Bulk actions | Per-record `stream` bulk | Moved out of v1 by the review ruling "After v1". Batched-atomic later still |
 | Planned steps | `lock="version"`, `relate=...`; further declared steps if the operator adds them | [ADR-0053](../decisions/0053-validate-then-do.md) |
-| Raw-SQL escape hatch | Like Ash's `fragment` | [ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md) |
 | Agent and test surface | `.mesh/rules.md` describing the project's entities and the vocabulary; test data builders; a seed path | No MCP server ([ADR-0027](../decisions/0027-no-mcp-agent-surface.md)) |
 | Command-line adapter for agents | A CLI generated from a `surface`, built for agents to call | [ADR-0027](../decisions/0027-no-mcp-agent-surface.md). It builds an action context from its own input |
 | Jobs, workflows | Background work and multi-step operations. The outbox is not here: it is core and comes in M6 | [ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md), [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md). Durable engines is the design input |
@@ -357,7 +366,7 @@ For each item, the evidence that Hyper does without it, and the record that move
 | Multitenancy | An extension that reads a declared `ActionContext` key | [ADR-0059](../decisions/0059-action-context.md) |
 | Named hooks in templates | A smaller escape hatch than overriding a whole template | Considered in [ADR-0061](../decisions/0061-generators-are-jig-templates.md) |
 
-Not planned at all, with reasons: reusable step files (dropped: reuse is a TypeScript helper or a `mixin` included with `use`, and named checks are an entity-level `checks` section, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)); a policy solver (Ruling 6 defers it); `bypass` policies (they fail open, [ADR-0055](../decisions/0055-policies-are-core.md)); many-to-many, embedded entities, manual and generic actions (deferrable per Synthesis section 8, gap 4); audit trail, event log, state machine, soft delete, encryption, rate limits as Mesh features (the port builds its own event log on domain events); GraphQL, an admin interface (it would be a reader of a surface, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md); Synthesis section 8, "Do not build yet"); a second authoring syntax (MX is core, [ADR-0043](../decisions/0043-mx-is-core.md)); `mesh watch`; Node, Deno and edge runtimes ([ADR-0025](../decisions/0025-bun-only.md)).
+Not planned at all, with reasons: reusable step files (dropped: reuse is a TypeScript helper or a `mixin` included with `use`, and named checks are an entity-level `checks` section, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)); a policy solver (Ruling 6 defers it); `bypass` policies (they fail open, [ADR-0055](../decisions/0055-policies-are-core.md)); embedded entities, manual and generic actions (deferrable per Synthesis section 8, gap 4); audit trail, event log, state machine, soft delete, encryption, rate limits as Mesh features (the port builds its own event log on domain events); GraphQL, an admin interface (it would be a reader of a surface, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md); Synthesis section 8, "Do not build yet"); a second authoring syntax (MX is core, [ADR-0043](../decisions/0043-mx-is-core.md)); `mesh watch`; Node, Deno and edge runtimes ([ADR-0025](../decisions/0025-bun-only.md)).
 
 ## 7. Build or reuse
 
@@ -458,6 +467,10 @@ The operator ruled the domain concepts study on 2026-10-10 and 2026-10-11 ([rese
 ### 2026-10-12 amendment (generated code follows modules)
 
 [ADR-0086](../decisions/0086-entity-values-privileged-barrels-and-fqns.md) changes how the action composition of M5 is written, not what it does: an action is called on its entity value, `Mesh.privileged` replaces the `tx` handle, and each domain folder has a barrel. The milestones and their order are unchanged. Three behaviours change: a nested call carries only the context it is passed, with nothing inherited (which amends [ADR-0071](../decisions/0071-system-key-on-the-action-context.md) and [ADR-0075](../decisions/0075-seams-use-the-extension-hosts-names.md)); a policy check that calls an imported function runs after the locked read; and `transaction` takes no context and hands its function nothing.
+
+### 2026-11-14 amendments
+
+- **Before 1.0, milestone not assigned** (new part of section 5). The operator moved the raw-SQL escape hatch and a `has-many` through a link entity (`through=`) before 1.0 on 2026-10-18: the first leaves "Also after 1.0", and many-to-many leaves the "Not planned at all" list ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md), [ADR-0050](../decisions/0050-entity-file-syntax.md) and [ADR-0070](../decisions/0070-has-many-via.md), each amended 2026-11-14). Named checks join them: section 6 and the order diagram still filed them under the after-1.0 extension host although they are core since 2026-10-11 ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)); the lead placed them before 1.0, awaiting the operator's review.
 
 ### Revision 5, 2026-10-10
 
