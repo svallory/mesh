@@ -44,7 +44,7 @@ import type {
   RevokeClaimInput as $work$Claim$RevokeClaimInput,
 } from "./claim.types";
 import type { DomainEvent as $DomainEvent } from "../../index";
-import type { $Omit, $Promise } from "../../$globals";
+import type { $Omit, $Partial, $Promise } from "../../$globals";
 
 /** What every expression of Claim reads; `I` is the input of the action it runs in. */
 export type $work$Claim$Scope<I = unknown> = $Scope<{
@@ -83,10 +83,15 @@ export type $work$Claim$NewScope<I = unknown> = $Omit<$work$Claim$CheckScope<I>,
     }
   >;
 };
+/** What a computed field's body reads: a read with no context computes it too, so `actor` may be undefined and every key of `context` is optional. */
+export type $work$Claim$ComputedScope<I = unknown> = $Omit<
+  $work$Claim$Scope<I>,
+  "actor" | "context"
+> & { actor: $work$Claim$Scope<I>["actor"] | undefined; context: $Partial<$ActionContext> };
 
 export const $expressions = {
   // computed lapsed, translated (src/domain/work/claim.mesh.mx:26:20)
-  "computed.lapsed": ($s: $work$Claim$Scope<unknown>) =>
+  "computed.lapsed": ($s: $work$Claim$ComputedScope<unknown>) =>
     $.and($.eq($s.self.state, "active"), () => $.lte($s.self.expiresAt, $.now($s))),
   // check :taskReady that, plain (awaits-helper) (src/domain/work/claim.mesh.mx:34:16)
   "acquire.check.taskReady.that": ($s: $work$Claim$NewScope<$work$Claim$AcquireClaimInput>) => {

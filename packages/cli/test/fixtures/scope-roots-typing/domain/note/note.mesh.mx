@@ -1,3 +1,4 @@
+import { Mesh } from "meshfw"
 import { isStaff } from "./staff"
 
 entity :Note
@@ -7,6 +8,12 @@ entity :Note
     string :owner nullable
     string :memo nullable
     string :memo2 nullable
+
+  computed
+    boolean :mine({ actor }) { return actor.id === &owner }
+    string :viewer({ actor }) { const who = actor === undefined ? "nobody" : actor.id; return who }
+    string :locale({ context }) { const locale = context.locale ?? "en"; return locale.toUpperCase() }
+    boolean :internal({ context }) { return Mesh.isSystem(context) }
 
   actions auto=[:read]
     create :make
@@ -19,6 +26,7 @@ entity :Note
         check :titled that=({ input }) => input.title !== null && input.title !== "" code="no" message="no"
         check :ownerOrStaff that=({ actor, self }) => self.owner === actor.id || isStaff(actor) code="no" message="no"
         check :contextRead that=({ context }) => context.system === true code="no" message="no"
+        check :plainRoots that=({ actor, context }) => { const who = actor.id; return who !== context.locale.toUpperCase() } code="no" message="no"
       do
         set
           &owner=({ actor, before }) => before === null ? actor.id : before.owner

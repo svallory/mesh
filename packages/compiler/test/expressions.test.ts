@@ -1969,6 +1969,8 @@ ${actions}`;
       expect(squash(text)).toContain(squash('export type $Item$CheckScope<I = unknown> = $Omit<$Item$Scope<I>, "before">;'));
       expect(squash(text)).toContain(squash('export type $Item$NewScope<I = unknown> = $Omit<$Item$CheckScope<I>, "self"> & { self: $DeepReadonly<$Omit<$Item$Loaded, "n" | "ownerId" | "owner"> & { [K in "n" | "ownerId" | "owner"]: $Item$Loaded[K] | null }> };'));
       expect(text).not.toContain("$Item$CreateScope");
+      // No computed field has a body, so no scope is declared for one.
+      expect(text).not.toContain("$Item$ComputedScope");
       await writeFile(resolve(root, "check.ts"), `import type { $Item$CheckScope, $Item$NewScope } from "./generated/domain/item.expressions";
 declare const check: $Item$CheckScope<unknown>;
 declare const fresh: $Item$NewScope<unknown>;
@@ -2009,6 +2011,32 @@ export const notYetOrSelf: number = fresh.self.orSelf;
 export const open: boolean = fresh.self.isOpen;
 export const plain: number = fresh.self.plain;
 export const set: number = stored.self.double;
+`);
+      const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
+      expect(await checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });
+    }, 30_000);
+    test("a computed body gets $Item$ComputedScope, where actor may be undefined and every key of context is optional; a step keeps $Item$Scope", async () => {
+      // A translated body and a plain one that reads both roots.
+      const computed = "  computed\n    integer :double() { return &n * 2 }\n    boolean :anonymous({ actor, context }) { const who = actor; return who === undefined && context.system !== true }\n  actions auto=[:read]";
+      const source = item(make("      do\n        set\n          &m=() => &n\n") + go("")).replace("  actions auto=[:read]", computed);
+      const { root, text, files } = await generated(source);
+      expect(signature(text, "computed.double")).toBe("$Item$ComputedScope");
+      expect(signature(text, "computed.anonymous")).toBe("$Item$ComputedScope");
+      expect(signature(text, "make.step.0.set.m")).toBe("$Item$Scope");
+      expect(squash(text)).toContain(squash('export type $Item$ComputedScope<I = unknown> = $Omit<$Item$Scope<I>, "actor" | "context"> & { actor: $Item$Scope<I>["actor"] | undefined; context: $Partial<$ActionContext> };'));
+      expect(text).toMatch(/import type \{[^}]*\$Omit[^}]*\$Partial[^}]*\} from "\.\.\/\$globals";/);
+      // This project declares no `ActionContext` key: `actor` is `undefined` in every scope and `context` holds the reserved
+      // `system` key alone. `packages/cli/test/scope-roots-typing.test.ts` checks a project that declares a required actor.
+      await writeFile(resolve(root, "check.ts"), `import type { $Item$ComputedScope, $Item$Scope } from "./generated/domain/item.expressions";
+declare const computed: $Item$ComputedScope;
+declare const step: $Item$Scope;
+export const nobody: undefined = computed.actor;
+export const same: undefined = step.actor;
+export const system: boolean | undefined = computed.context.system;
+// @ts-expect-error a key the project did not declare is not on a computed body's context either
+export const undeclared = computed.context.tenant;
+export const self: number = computed.self.n;
+export const before: number | undefined = computed.before?.n;
 `);
       const paths = files.map((f) => f.path).filter((path) => path.endsWith(".ts") && !path.endsWith("index.ts") && !path.endsWith("binding.ts"));
       expect(await checkTypes(root, [...paths, "generated/schema.ts", "check.ts"])).toEqual({ code: 0, output: "" });

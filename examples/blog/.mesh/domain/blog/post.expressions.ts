@@ -17,7 +17,7 @@ import type {
   PublishPostInput as $blog$Post$PublishPostInput,
   PublishedPostInput as $blog$Post$PublishedPostInput,
 } from "./post.types";
-import type { $Omit } from "../../$globals";
+import type { $Omit, $Partial } from "../../$globals";
 
 /** What every expression of Post reads; `I` is the input of the action it runs in. */
 export type $blog$Post$Scope<I = unknown> = $Scope<{
@@ -45,10 +45,15 @@ export type $blog$Post$NewScope<I = unknown> = $Omit<$blog$Post$CheckScope<I>, "
     }
   >;
 };
+/** What a computed field's body reads: a read with no context computes it too, so `actor` may be undefined and every key of `context` is optional. */
+export type $blog$Post$ComputedScope<I = unknown> = $Omit<
+  $blog$Post$Scope<I>,
+  "actor" | "context"
+> & { actor: $blog$Post$Scope<I>["actor"] | undefined; context: $Partial<$ActionContext> };
 
 export const $expressions = {
   // computed excerpt, plain (unsupported-construct) (src/domain/blog/post.mesh.mx:23:20)
-  "computed.excerpt": ($s: $blog$Post$Scope<unknown>) => {
+  "computed.excerpt": ($s: $blog$Post$ComputedScope<unknown>) => {
     const $self = $s.self;
     return (function () {
       return ($self.body ?? "").slice(0, 200);

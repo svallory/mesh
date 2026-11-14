@@ -68,7 +68,8 @@ export interface ExpressionsView {
   readonly shadowsStructuredClone: boolean;
   /**
    * The scope type's exported name, `entityLocal(entity, "Scope")`, e.g. `$billing$Invoice$Scope`; it takes the input type
-   * as its parameter. Every scope type is named the same way (`StoredScope`, `CheckScope`, `NewScope`, `CreateScope`).
+   * as its parameter. Every scope type is named the same way (`StoredScope`, `CheckScope`, `NewScope`, `CreateScope`,
+   * `ComputedScope`).
    */
   readonly scopeName: string;
   /** The scope type's definition, a generic over `I`, the input. */
@@ -84,6 +85,12 @@ export interface ExpressionsView {
   readonly newScope: ScopeDeclaration | null;
   /** The scope of a step that can run on a create before the write, where the integer key is still null; null when none uses it. */
   readonly createScope: ScopeDeclaration | null;
+  /**
+   * The scope of a computed field's body, where `actor` may be `undefined` and every key of `context` is optional: a
+   * `Mesh.privileged` read takes an optional context whatever the project declares, and the fields it loads are computed
+   * with the context it was given. Null when no computed field has a body.
+   */
+  readonly computedScope: ScopeDeclaration | null;
   /**
    * The import of `DomainEvent`, the return type of a `publish` function (`DomainEvent | Promise<DomainEvent>`), from the
    * project's `#mesh` file as a quoted string literal; null when no function is a `publish` step.
@@ -130,11 +137,12 @@ const SCOPE_NAMES: readonly string[] = ROOTS;
 const IDENTIFIER = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u;
 
 /**
- * Which scope an expression reads: `base` (a computed field, a step that can run on a create after the write),
+ * Which scope an expression reads: `base` (an action's filter, a step that can run on a create after the write),
  * `stored` (a step on an update or a destroy), `check` (a check or a policy on a stored record), `new` (a check or a policy
- * that can run on a create) or `create` (a step that can run on a create before the write).
+ * that can run on a create), `create` (a step that can run on a create before the write) or `computed` (a computed
+ * field's body, which a read with no context can run).
  */
-type ScopeKind = "base" | "stored" | "check" | "new" | "create";
+type ScopeKind = "base" | "stored" | "check" | "new" | "create" | "computed";
 /** `actions`: the actions whose input the expression reads as `input`; none (a computed field) reads no input. */
 interface Found { id: string; what: string; expression: Expression; boolean: boolean; run?: true; publish?: true; scope: ScopeKind; actions: readonly Action[] }
 
@@ -142,15 +150,16 @@ function collect(entity: Entity): Found[] {
   const found: Found[] = [];
   let stored = false;
   let actions: readonly Action[] = [];
-  let phase: "other" | "check" | "step" = "other";
+  let phase: "computed" | "other" | "check" | "step" = "computed";
   const add = (id: string, what: string, expression: Expression, boolean: boolean, run?: "before" | "after", publish?: true) => {
     const scope: ScopeKind = phase === "check" ? (stored ? "check" : "new")
       : phase === "step" ? (stored ? "stored" : run === "after" ? "base" : "create")
-        : "base";
+        : phase === "computed" ? "computed" : "base";
     found.push({ id, what, expression, boolean, actions, scope, ...(run && !publish ? { run: true as const } : {}), ...(publish ? { publish: true as const } : {}) });
   };
   const covers = (scope: { types?: readonly string[]; actions?: readonly { name: string }[] }) => effectiveActions(entity).filter((action) => action.kind !== "read"
     && ((!scope.types && !scope.actions) || scope.types?.includes(action.kind) || scope.actions?.some((ref) => ref.name === action.name)));
+  // The computed bodies come first, while `phase` is still `computed`; every action, block and policy below sets its own.
   entity.computed.forEach((c) => { if (c.body) add(`computed.${c.name}`, `computed ${c.name}`, c.body, false); });
   const checks = (prefix: string, list: { label: string; that: Expression; when?: Expression; details?: Expression; message: string | Expression }[]) => {
     phase = "check";
@@ -254,6 +263,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   const checkScopeName = entityLocal(entity, "CheckScope");
   const newScopeName = entityLocal(entity, "NewScope");
   const createScopeName = entityLocal(entity, "CreateScope");
+  const computedScopeName = entityLocal(entity, "ComputedScope");
   // `self` carries every relationship and computed field, each related record the same way (M7): the action loads what
   // a function reads before calling it, and a member that was not loaded throws instead of being undefined.
   const loaded = hasLoader(entity);
@@ -280,7 +290,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     kind === "new" ? (unfilled.length ? newScopeName : checkScopeName)
       : kind === "check" ? checkScopeName
         : kind === "create" ? (gaps.key ? createScopeName : scopeName)
-          : kind === "stored" ? storedScopeName : scopeName;
+          : kind === "stored" ? storedScopeName
+            : kind === "computed" ? computedScopeName : scopeName;
   const usedScopes = new Set(found.map((f) => scopeOf(f.scope)));
   const checkScope = usedScopes.has(checkScopeName) || usedScopes.has(newScopeName)
     ? { name: checkScopeName, type: `$Omit<${scopeName}<I>, "before">` } : null;
@@ -288,6 +299,14 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     ? { name: newScopeName, type: `$Omit<${checkScopeName}<I>, "self"> & { self: ${withNulls(nullOnNew)} }` } : null;
   const createScope = usedScopes.has(createScopeName) && gaps.key
     ? { name: createScopeName, type: `$Omit<${scopeName}<I>, "self"> & { self: ${withNulls([gaps.key])} }` } : null;
+  // A computed body is the one function a call with no context reaches: `Mesh.privileged(E).read(input)` takes an optional
+  // context whatever the project declares (`privilegedMembers` in `views/actions.ts`), and so does the entity's load
+  // function (`load<Entity>Fields`, whose options are optional). A read binds `(context ?? {})` and its `actor`, and the
+  // load hands both to each body it runs (`loadRows`: `actor: options.actor, context: options.context ?? {}`). So `actor`
+  // is the declared type or `undefined`, and `context` is an object whose every key may be missing, never `undefined`
+  // itself. A read of either without a guard fails tsc here, where a check, a step or a policy keeps the declared types.
+  const computedScope = usedScopes.has(computedScopeName)
+    ? { name: computedScopeName, type: `$Omit<${scopeName}<I>, "actor" | "context"> & { actor: ${scopeName}<I>["actor"] | undefined; context: $Partial<$ActionContext> }` } : null;
   // The input an expression reads: its action's, the fields the covered actions share for an `always` block or a policy, none for a computed field.
   const inputs = entityInputs(entity, document);
   const inputNames = new Map(effectiveActions(entity).map((action, index) => [action.name, inputs[index]!.name]));
@@ -523,10 +542,11 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     checkScope,
     newScope,
     createScope,
+    computedScope,
     domainEventFromLiteral: publishes ? JSON.stringify(indexFrom) : null,
     helperImports,
     entries,
     // Only the scope types: the functions' code is authored, and a `$Omit` in a string there is no reference.
-    globals: globalsImport(`${entityPath(entity)}.expressions`, { checkScope, newScope, createScope }, publishes ? ["Promise"] : []),
+    globals: globalsImport(`${entityPath(entity)}.expressions`, { checkScope, newScope, createScope, computedScope }, publishes ? ["Promise"] : []),
   };
 }

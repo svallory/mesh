@@ -77,7 +77,7 @@ import type {
   UpdateTaskInput as $work$Task$UpdateTaskInput,
 } from "./task.types";
 import type { DomainEvent as $DomainEvent } from "../../index";
-import type { $Omit, $Promise } from "../../$globals";
+import type { $Omit, $Partial, $Promise } from "../../$globals";
 
 /** What every expression of Task reads; `I` is the input of the action it runs in. */
 export type $work$Task$Scope<I = unknown> = $Scope<{
@@ -105,32 +105,37 @@ export type $work$Task$NewScope<I = unknown> = $Omit<$work$Task$CheckScope<I>, "
     }
   >;
 };
+/** What a computed field's body reads: a read with no context computes it too, so `actor` may be undefined and every key of `context` is optional. */
+export type $work$Task$ComputedScope<I = unknown> = $Omit<
+  $work$Task$Scope<I>,
+  "actor" | "context"
+> & { actor: $work$Task$Scope<I>["actor"] | undefined; context: $Partial<$ActionContext> };
 
 export const $expressions = {
   // computed childrenSettled, translated (src/domain/work/task.mesh.mx:39:29)
-  "computed.childrenSettled": ($s: $work$Task$Scope<unknown>) =>
+  "computed.childrenSettled": ($s: $work$Task$ComputedScope<unknown>) =>
     $.every($s.self.children, (l$c: any) => $.ne(l$c.state, "open")),
   // computed claimed, translated (src/domain/work/task.mesh.mx:40:21)
-  "computed.claimed": ($s: $work$Task$Scope<unknown>) =>
+  "computed.claimed": ($s: $work$Task$ComputedScope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), () => $.gt(l$c.expiresAt, $.now($s))),
     ),
   // computed lapsedClaim, translated (src/domain/work/task.mesh.mx:41:25)
-  "computed.lapsedClaim": ($s: $work$Task$Scope<unknown>) =>
+  "computed.lapsedClaim": ($s: $work$Task$ComputedScope<unknown>) =>
     $.some($s.self.claims, (l$c: any) =>
       $.and($.eq(l$c.state, "active"), () => $.lte(l$c.expiresAt, $.now($s))),
     ),
   // computed inReview, translated (src/domain/work/task.mesh.mx:42:22)
-  "computed.inReview": ($s: $work$Task$Scope<unknown>) =>
+  "computed.inReview": ($s: $work$Task$ComputedScope<unknown>) =>
     $.some($s.self.submissions, (l$s: any) => $.eq(l$s.state, "pending")),
   // computed assigned, translated (src/domain/work/task.mesh.mx:43:22)
-  "computed.assigned": ($s: $work$Task$Scope<unknown>) =>
+  "computed.assigned": ($s: $work$Task$ComputedScope<unknown>) =>
     $.some($s.self.assignments, (l$a: any) => $.isNull(l$a.endedAt)),
   // computed blocked, translated (src/domain/work/task.mesh.mx:44:21)
-  "computed.blocked": ($s: $work$Task$Scope<unknown>) =>
+  "computed.blocked": ($s: $work$Task$ComputedScope<unknown>) =>
     $.some($s.self.dependencies, (l$d: any) => $.ne(l$d.prerequisite?.state, "done")),
   // computed derivedState, translated (src/domain/work/task.mesh.mx:46:96)
-  "computed.derivedState": ($s: $work$Task$Scope<unknown>) =>
+  "computed.derivedState": ($s: $work$Task$ComputedScope<unknown>) =>
     $.cond(
       $.eq($s.self.state, "done"),
       () => "done",
