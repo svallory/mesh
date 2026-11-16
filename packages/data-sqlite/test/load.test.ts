@@ -37,7 +37,7 @@ entity :Post table="posts"
     uuid :id primary-key
     string :title
     integer :score nullable
-    timestamp :postedAt
+    datetime :postedAt
   relationships
     belongs-to :author entity=Author
     belongs-to :reviewer entity=Author nullable
@@ -356,7 +356,7 @@ describe("rollups", () => {
     } finally { await db.close(); }
   });
 
-  test("max over a timestamp is a Date; on no rows it is null", async () => {
+  test("max over a datetime is a Date; on no rows it is null", async () => {
     const db = await fresh();
     try {
       await run(db, async (tx) => {

@@ -64,17 +64,19 @@ entity :Invoice
   attributes
     uuid :id primary-key
   relationships
-    has-many :lines entity=ledger.Line
+    has-many :lines entity=ledger.Line inverse=:batch
     has-one :first entity=ledger.Line
 `;
-    const result = build(line('import * as billing from "../billing/invoice.mesh.mx"', "    belongs-to :invoice entity=billing.Invoice\n"), { "billing/invoice.mesh.mx": invoice });
+    // Two keys back: a has-one and a has-many cannot follow one (`MESH_HAS_ONE_SHARED_KEY`).
+    const result = build(line('import * as billing from "../billing/invoice.mesh.mx"', "    belongs-to :invoice entity=billing.Invoice\n    belongs-to :batch entity=billing.Invoice nullable\n"), { "billing/invoice.mesh.mx": invoice });
     expect(result.diagnostics).toEqual([]);
     expect(entityOf(result, "Line").relationships.map((r) => [r.kind, r.entity])).toEqual([
+      ["belongs-to", { identifier: "billing.Invoice", from: "../billing/invoice.mesh.mx" }],
       ["belongs-to", { identifier: "billing.Invoice", from: "../billing/invoice.mesh.mx" }],
     ]);
     // The inverse, the belongs-to of the other side, is found through the namespaces as through named imports.
     expect(entityOf(result, "Invoice").relationships.map((r) => [r.kind, r.entity, r.inverse])).toEqual([
-      ["has-many", { identifier: "ledger.Line", from: "../ledger/line.mesh.mx" }, "invoice"],
+      ["has-many", { identifier: "ledger.Line", from: "../ledger/line.mesh.mx" }, "batch"],
       ["has-one", { identifier: "ledger.Line", from: "../ledger/line.mesh.mx" }, "invoice"],
     ]);
     // The alias is never part of an FQN, nor of the module: those follow the folders.

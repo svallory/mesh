@@ -14,7 +14,8 @@ export function coverageProject(tag: string, option: string | undefined, example
     { file: "docs/sample.mesh.mx", source: `import { Change } from "./change.mesh.mx"\nentity :Sample\n  attributes\n    uuid :id primary-key\n    ${tag} :field${tag === "enum" ? " values=[:draft, :sent]" : ""}\n  actions\n    update on=Change\n      input\n        &field\n` },
   ] };
   const attributes = node("attributes", [node("uuid :id primary-key"), node("string :title"), node("boolean :done")]);
-  const relationships = node("relationships", [node("has-many :lines entity=Line")]);
+  // A `has-one` example follows Line's only `belongs-to` back, which a `has-many` beside it could not follow too (`MESH_HAS_ONE_SHARED_KEY`).
+  const relationships = node("relationships", tag === "has-one" ? [] : [node("has-many :lines entity=Line")]);
   const actions = node("actions", [node("read :custom")]);
   const root = node("entity :Sample", [attributes, relationships, actions]);
   const chain = option === "member" && contracts[tag]!.children?.["*"] ? [tag, "member"] : [tag];

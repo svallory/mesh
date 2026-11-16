@@ -36,7 +36,7 @@ const post = `import { Author } from "./author.mesh.mx"
 entity :Post table="posts"
   attributes
     uuid :id primary-key
-    timestamp :postedAt
+    datetime :postedAt
   relationships
     belongs-to :author entity=Author
     belongs-to :replyTo entity=Post nullable

@@ -280,6 +280,121 @@ entity :Task
   });
 });
 
+// A has-one is at most one row for the key it follows, so a has-many of the same entity cannot follow that key too.
+describe("a has-one and a has-many over one key (MESH_HAS_ONE_SHARED_KEY)", () => {
+  const user = (relationships: string, imports = 'import { Profile } from "./profile.mesh.mx"') => `${imports}
+entity :User
+  attributes
+    uuid :id primary-key
+  relationships
+${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
+`;
+  const profile = (relationships = "belongs-to :user entity=User") => `import { User } from "./user.mesh.mx"
+entity :Profile
+  attributes
+    uuid :id primary-key
+  relationships
+${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
+`;
+  const one = "has-one :profile entity=Profile";
+  const many = "has-many :profiles entity=Profile";
+  const twoKeys = "belongs-to :user entity=User\nbelongs-to :invitedBy entity=User nullable";
+  const fix = "Keep the has-many and take the one row from its list, or give the has-many its own belongs-to with `inverse=`";
+  const shared = "has-one :profile of app.User follows belongs-to :user of app.Profile, and has-many :profiles follows it too: a has-one is at most one row for that key, so the two cannot share it";
+  const inverses = (result: ReturnType<typeof build>) => entityOf(result, "User").relationships.map((r) => [r.kind, r.name, r.inverse]);
+
+  test("both follow the only belongs-to back: one error at the has-one, naming both and the key", () => {
+    const result = build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": profile() });
+    expect(result.diagnostics).toEqual([{
+      severity: "error",
+      code: "MESH_HAS_ONE_SHARED_KEY",
+      message: shared,
+      fix,
+      position: expect.objectContaining({ file: "app/user.mesh.mx", line: 6, column: 4 }),
+    }]);
+    expect(result.document).toBeNull();
+  });
+
+  test("the error is the has-one's, whichever line comes first", () => {
+    const result = build({ "user.mesh.mx": user(`${many}\n${one}`), "profile.mesh.mx": profile() });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_HAS_ONE_SHARED_KEY", message: shared, position: expect.objectContaining({ line: 7 }) })]);
+  });
+
+  test("a has-many that names the has-one's key with inverse= shares it too", () => {
+    const result = build({ "user.mesh.mx": user(`${one}\n${many} inverse=:user`), "profile.mesh.mx": profile() });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_HAS_ONE_SHARED_KEY", message: shared, fix })]);
+  });
+
+  test("of several belongs-to back, both follow the one named after the entity", () => {
+    const result = build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": profile(twoKeys) });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_HAS_ONE_SHARED_KEY", message: shared })]);
+  });
+
+  test("the fix: a has-many with its own belongs-to, named by inverse=, builds beside the has-one", () => {
+    const result = build({ "user.mesh.mx": user(`${one}\n${many} inverse=:invitedBy`), "profile.mesh.mx": profile(twoKeys) });
+    expect(result.diagnostics).toEqual([]);
+    expect(inverses(result)).toEqual([["has-one", "profile", "user"], ["has-many", "profiles", "invitedBy"]]);
+  });
+
+  test("two has-one over one key are accepted", () => {
+    const result = build({ "user.mesh.mx": user(`${one}\nhas-one :card entity=Profile`), "profile.mesh.mx": profile() });
+    expect(result.diagnostics).toEqual([]);
+    expect(inverses(result)).toEqual([["has-one", "profile", "user"], ["has-one", "card", "user"]]);
+  });
+
+  test("two has-many over one key are accepted", () => {
+    const result = build({ "user.mesh.mx": user(`${many}\nhas-many :cards entity=Profile`), "profile.mesh.mx": profile() });
+    expect(result.diagnostics).toEqual([]);
+    expect(inverses(result)).toEqual([["has-many", "profiles", "user"], ["has-many", "cards", "user"]]);
+  });
+
+  test("a has-one and a has-many to different entities share nothing, though both keys are named alike", () => {
+    const badge = `import { User } from "../user.mesh.mx"\nentity :Profile\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :user entity=User\n`;
+    const result = build({
+      "user.mesh.mx": user(`${one}\nhas-many :profiles entity=Public`, 'import { Profile } from "./profile.mesh.mx"\nimport { Profile as Public } from "./public/profile.mesh.mx"'),
+      "profile.mesh.mx": profile(),
+      "public/profile.mesh.mx": badge,
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(inverses(result)).toEqual([["has-one", "profile", "user"], ["has-many", "profiles", "user"]]);
+  });
+
+  test("every has-many on the key is named once, and each has-one on it gets its own error", () => {
+    const result = build({ "user.mesh.mx": user(`${one}\n${many}\nhas-many :drafts entity=Profile\nhas-many :cards entity=Profile inverse=:user\nhas-one :card entity=Profile`), "profile.mesh.mx": profile() });
+    const tail = "and has-many :profiles, has-many :drafts and has-many :cards follow it too: a has-one is at most one row for that key, so they cannot share it";
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "MESH_HAS_ONE_SHARED_KEY", message: `has-one :profile of app.User follows belongs-to :user of app.Profile, ${tail}`, fix, position: expect.objectContaining({ line: 6 }) }),
+      expect.objectContaining({ code: "MESH_HAS_ONE_SHARED_KEY", message: `has-one :card of app.User follows belongs-to :user of app.Profile, ${tail}`, fix, position: expect.objectContaining({ line: 10 }) }),
+    ]);
+  });
+
+  test("an entity that relates to its own type shares a key the same way", () => {
+    const source = task.replace("    has-many", "    has-one :firstChild entity=Task\n    has-many");
+    const result = build({ "task.mesh.mx": source });
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      code: "MESH_HAS_ONE_SHARED_KEY",
+      message: "has-one :firstChild of app.Task follows belongs-to :parent of app.Task, and has-many :children follows it too: a has-one is at most one row for that key, so the two cannot share it",
+      position: expect.objectContaining({ line: 6 }),
+    })]);
+  });
+
+  test("a relationship whose key was not found keeps its own error and shares nothing", () => {
+    // A bad inverse= on the has-many: its error alone.
+    expect(codes(build({ "user.mesh.mx": user(`${one}\n${many} inverse=:nope`), "profile.mesh.mx": profile() }))).toEqual(["MESH_INVERSE_UNKNOWN"]);
+    // Several belongs-to back and none named after the entity: neither relationship knows its key.
+    const unnamedKeys = "belongs-to :holder entity=User\nbelongs-to :invitedBy entity=User nullable";
+    expect(codes(build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": profile(unnamedKeys) }))).toEqual(["MESH_INVERSE_REQUIRED", "MESH_INVERSE_REQUIRED"]);
+    // No belongs-to back at all.
+    const bare = "entity :Profile\n  attributes\n    uuid :id primary-key\n";
+    expect(codes(build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": bare }))).toEqual(["MESH_NO_INVERSE", "MESH_NO_INVERSE"]);
+  });
+
+  test("a rollup or a computed field that reads either relationship adds no second error", () => {
+    const source = `${user(`${one}\n${many}`)}  computed\n    count :profileCount of=&profiles\n    boolean :hasProfile() { return &profile !== null }\n`;
+    expect(codes(build({ "user.mesh.mx": source, "profile.mesh.mx": profile() }))).toEqual(["MESH_HAS_ONE_SHARED_KEY"]);
+  });
+});
+
 describe("the type of a belongs-to key follows the target's key", () => {
   const target = (type: string) => `entity :Customer\n  attributes\n    ${type} :id primary-key\n`;
   const invoice = `import { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n`;
