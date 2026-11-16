@@ -294,6 +294,7 @@ entity :User
     uuid :id primary-key
   relationships
 ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
+  actions auto=[:read]
 `;
   const profile = (relationships = "belongs-to :user entity=User") => `import { User } from "./user.mesh.mx"
 entity :Profile
@@ -301,6 +302,7 @@ entity :Profile
     uuid :id primary-key
   relationships
 ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
+  actions auto=[:read]
 `;
   const one = "has-one :profile entity=Profile";
   const many = "has-many :profiles entity=Profile";
@@ -355,7 +357,7 @@ ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
   });
 
   test("a has-one and a has-many to different entities share nothing, though both keys are named alike", () => {
-    const badge = `import { User } from "../user.mesh.mx"\nentity :Profile\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :user entity=User\n`;
+    const badge = `import { User } from "../user.mesh.mx"\nentity :Profile\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :user entity=User\n  actions auto=[:read]\n`;
     const result = build({
       "user.mesh.mx": user(`${one}\nhas-many :profiles entity=Public`, 'import { Profile } from "./profile.mesh.mx"\nimport { Profile as Public } from "./public/profile.mesh.mx"'),
       "profile.mesh.mx": profile(),
@@ -391,7 +393,7 @@ ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
     const unnamedKeys = "belongs-to :holder entity=User\nbelongs-to :invitedBy entity=User nullable";
     expect(codes(build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": profile(unnamedKeys) }))).toEqual(["MESH_INVERSE_REQUIRED", "MESH_INVERSE_REQUIRED"]);
     // No belongs-to back at all.
-    const bare = "entity :Profile\n  attributes\n    uuid :id primary-key\n";
+    const bare = "entity :Profile\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     expect(codes(build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": bare }))).toEqual(["MESH_NO_INVERSE", "MESH_NO_INVERSE"]);
   });
 

@@ -46,7 +46,7 @@ ${at.computed ? `    ${at.computed}\n` : ""}  policies
       authorize-if=() => true
     policy :writers types=[:create, :update, :destroy]
       authorize-if=({ actor }) => actor.id !== null
-${at.policy ? `      ${at.policy}\n` : ""}  actions auto=[:destroy]
+${at.policy ? `      ${at.policy}\n` : ""}  actions auto=[:read, :destroy]
 ${at.always ? `    always actions=[&go]\n      validate\n        check :every that=${at.always} code="every" message="m"\n` : ""}    read :some
       filter=${at.filter ?? "() => &state !== :done"}
     create :open

@@ -79,7 +79,6 @@ describe("typesView", () => {
           { name: "id", optional: false, key: "id", type: "string" },
           { name: "amount", optional: false, key: "amount", type: "number" },
           { name: "ownerId", optional: false, key: "ownerId", type: "string | null" },
-          { name: "todoId", optional: false, key: "todoId", type: "string | null" },
         ],
       },
       inputs: [],
