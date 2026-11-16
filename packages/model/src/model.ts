@@ -159,7 +159,10 @@ export interface Check {
   when?: Expression;
   /** A function returning data the caller receives on the failed check's issue (`details`, G22). */
   details?: Expression;
+  /** Where the check is declared: its `check :name` line, in a `validate` block or under `checks`. */
   position: SourcePosition;
+  /** Only on a check a `validate` block uses by reference: where its `check &name` is written. */
+  reference?: SourcePosition;
 }
 export type Step = (
   | {
