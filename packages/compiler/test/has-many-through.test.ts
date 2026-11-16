@@ -351,8 +351,50 @@ describe("MESH_HAS_ONE_SHARED_KEY", () => {
       severity: "error",
       message: "has-one :enrollment of app.Student follows belongs-to :student of app.Enrollment, and has-many :courses enters app.Enrollment by it too: a has-one is at most one row for that key, so the two cannot share it",
       at: "app/student.mesh.mx:8:4",
-      fix: "Replace the has-one with `has-many :enrollments entity=Enrollment` and take the one row from its list, or give has-many :courses its own belongs-to on app.Enrollment with `inverse=`",
+      fix: "Replace the has-one with `has-many :<name> entity=Enrollment` and take the one row from its list, or give has-many :courses its own belongs-to on app.Enrollment with `inverse=`",
     }]);
+  });
+
+  test("the suggested has-many is unnamed, never a made-up plural", () => {
+    const result = school({ student: student("has-many :courses entity=Course through=Enrollment", "\n    has-one :entry entity=Enrollment") });
+    expect(result.diagnostics.map((d) => d.fix)).toEqual([
+      "Replace the has-one with `has-many :<name> entity=Enrollment` and take the one row from its list, or give has-many :courses its own belongs-to on app.Enrollment with `inverse=`",
+    ]);
+  });
+
+  test("a through and a plain has-many by the entry: the through enters, the plain one follows, and the fix keeps the plain one", () => {
+    const result = school({ student: student("has-many :courses entity=Course through=Enrollment", "\n    has-many :enrollments entity=Enrollment\n    has-one :enrollment entity=Enrollment") });
+    expect(result.diagnostics.map(brief)).toEqual([{
+      code: "MESH_HAS_ONE_SHARED_KEY",
+      severity: "error",
+      message: "has-one :enrollment of app.Student follows belongs-to :student of app.Enrollment, and has-many :courses enters app.Enrollment by it and has-many :enrollments follows it too: a has-one is at most one row for that key, so they cannot share it",
+      at: "app/student.mesh.mx:9:4",
+      fix: "Remove the has-one and take the one row from the list of has-many :enrollments, or give has-many :courses and has-many :enrollments each its own belongs-to on app.Enrollment with `inverse=`",
+    }]);
+  });
+
+  test("two throughs by the entry are both named as entering", () => {
+    const result = school({ student: student("has-many :courses entity=Course through=Enrollment", "\n    has-many :classes entity=Course through=Enrollment\n    has-one :enrollment entity=Enrollment") });
+    expect(result.diagnostics.map((d) => [d.code, d.message, d.fix])).toEqual([[
+      "MESH_HAS_ONE_SHARED_KEY",
+      "has-one :enrollment of app.Student follows belongs-to :student of app.Enrollment, and has-many :courses enters app.Enrollment by it and has-many :classes enters app.Enrollment by it too: a has-one is at most one row for that key, so they cannot share it",
+      "Replace the has-one with `has-many :<name> entity=Enrollment` and take the one row from its list, or give has-many :courses and has-many :classes each its own belongs-to on app.Enrollment with `inverse=`",
+    ]]);
+  });
+
+  test("a through whose exit failed still shares its entry: the exit's error and the shared key are two causes", () => {
+    const line = student("has-many :courses entity=Course through=Enrollment", "\n    has-one :enrollment entity=Enrollment");
+    const without = school({ student: line, enrollment: enrollment("    belongs-to :student entity=Student\n") });
+    expect(without.diagnostics.map((d) => [d.code, `${d.position.line}:${d.position.column}`])).toEqual([
+      ["MESH_NO_INVERSE", "7:44"],
+      ["MESH_HAS_ONE_SHARED_KEY", "8:4"],
+    ]);
+    expect(school({ student: line }).diagnostics.map((d) => d.code)).toEqual(["MESH_HAS_ONE_SHARED_KEY"]);
+  });
+
+  test("a through refused by D26 shares nothing, even with an authored inverse=", () => {
+    const result = work(task("belongs-to :parent entity=Task nullable\n    has-many :grand entity=Task through=Task inverse=:parent\n    has-one :child entity=Task"));
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_ENTITY_REFERENCE"]);
   });
 
   test("a has-one to the far entity follows a different key and is not compared with the entry", () => {

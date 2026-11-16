@@ -149,6 +149,8 @@ export function resolveRelationships(
     );
   };
 
+  // The through relationships whose entry was chosen: the key they enter the link by is known, whatever their exit.
+  const entered = new Set<Relationship>();
   for (const entity of document.entities) {
     for (const relation of entity.relationships) {
       const target = targetOf(entity, relation);
@@ -173,6 +175,7 @@ export function resolveRelationships(
         continue;
       }
       const entry = entryOf(entity, relation, holder);
+      if (relation.through && entry !== undefined) entered.add(relation);
       if (relation.through) exitOf(entity, relation, relation.through, holder, target, entry);
     }
   }
@@ -181,9 +184,10 @@ export function resolveRelationships(
   // (ADR-0045). Two has-one over one key are accepted. A relationship whose key was not found has its own error above
   // and shares nothing.
   for (const entity of document.entities) {
-    // A through whose exit was not found has its own error and shares nothing either.
+    // A through shares the key it enters the link by once that entry is chosen, even when its exit has an error of its
+    // own: the shared entry is a separate cause. A through refused or unresolved shares nothing.
     const followers = entity.relationships.filter(
-      (relation) => relation.kind !== "belongs-to" && relation.inverse !== undefined && (!relation.through || relation.through.exit !== undefined),
+      (relation) => relation.kind !== "belongs-to" && relation.inverse !== undefined && (!relation.through || entered.has(relation)),
     );
     for (const one of followers) {
       if (one.kind !== "has-one") continue;
@@ -195,13 +199,20 @@ export function resolveRelationships(
       const many = sharing.map((other) => `has-many :${other.name}`);
       if (many.length === 0) continue;
       const alone = many.length === 1;
-      // A has-many through the has-one's target enters it by the same key; its list holds far records, not the target's rows.
-      if (alone && sharing[0]!.through) {
+      const and = (items: readonly string[]) => (items.length === 1 ? items[0]! : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+      // A has-many through the has-one's target enters it by the same key; its list holds far records, not the target's
+      // rows, so the fix keeps a plain has-many to the target where there is one and otherwise asks for one, unnamed.
+      if (sharing.some((other) => other.through)) {
+        const clauses = sharing.map((other) => (other.through ? `has-many :${other.name} enters ${target.fqn} by it` : `has-many :${other.name} follows it`));
+        const plain = sharing.find((other) => !other.through);
+        const keep = plain
+          ? `Remove the has-one and take the one row from the list of has-many :${plain.name}`
+          : `Replace the has-one with \`has-many :<name> entity=${one.entity.identifier}\` and take the one row from its list`;
         fail(
           "MESH_HAS_ONE_SHARED_KEY",
-          `has-one :${one.name} of ${entity.fqn} follows belongs-to :${one.inverse} of ${target.fqn}, and ${many[0]} enters ${target.fqn} by it too: a has-one is at most one row for that key, so the two cannot share it`,
+          `has-one :${one.name} of ${entity.fqn} follows belongs-to :${one.inverse} of ${target.fqn}, and ${and(clauses)} too: a has-one is at most one row for that key, so ${alone ? "the two" : "they"} cannot share it`,
           one.position,
-          `Replace the has-one with \`has-many :${one.name}s entity=${one.entity.identifier}\` and take the one row from its list, or give ${many[0]} its own belongs-to on ${target.fqn} with \`inverse=\``,
+          `${keep}, or give ${alone ? `${many[0]} its own` : `${and(many)} each its own`} belongs-to on ${target.fqn} with \`inverse=\``,
         );
         continue;
       }
