@@ -47,7 +47,7 @@ import type {
   TriggerResult,
 } from "@mxlang/core";
 import { tagLabel } from "../tag-spelling.ts";
-import type { MemberNode } from "./member.ts";
+import { unwrapped, type MemberNode } from "./member.ts";
 
 /** An atom's name: an identifier, `-` between words (`:rename-all`). */
 const NAME = "[A-Za-z_$][\\w$]*(?:-[\\w$]+)*";
@@ -980,6 +980,83 @@ function checkAtomContracts(unit: LoweredUnit): void {
     queueAttributeTags(unit, call, scopes, refs, label, call.attributeTags);
   }
   for (const check of refs) check();
+}
+
+/** A host expression node, as far as `checkAtomSlots` reads one: its type, an identifier's name, a list's items and the source offsets MX keeps on it. */
+interface HostNode {
+  readonly type?: string;
+  readonly name?: unknown;
+  readonly start?: number | null;
+  readonly end?: number | null;
+  readonly elements?: ReadonlyArray<HostNode | null>;
+}
+
+/**
+ * The fix for an identifier where an atom is required: `read` is written `:read`. Only when the slot takes that atom
+ * (its `values` and `pattern`), so the fix never names an atom the next check refuses, and never for a global value
+ * (`undefined`, `NaN`, `Infinity`), which nobody means as a name.
+ */
+const GLOBAL_VALUES: ReadonlySet<string> = new Set(["undefined", "NaN", "Infinity"]);
+function atomFix(node: HostNode | null, declaration: AtomDeclaration): string {
+  if (node?.type !== "Identifier" || typeof node.name !== "string") return "";
+  const { name } = node;
+  const { values, pattern } = declaration;
+  if (GLOBAL_VALUES.has(name) || !new RegExp(`^${NAME}$`).test(name)) return "";
+  if (values && !values.includes(name)) return "";
+  if (pattern !== undefined && !new RegExp(pattern).test(name)) return "";
+  return `; write it as \`:${name}\``;
+}
+
+/**
+ * An atom slot (`inverse=:owner`, `on=:create`, `after=:write`) takes one atom and nothing else, and a list of atoms
+ * (`auto=[:read]`, `types=[:update]`, `values=[:a, :b]`) takes atoms only. Core's node-type check refuses what it can
+ * type (a string, a number, a list, a function, a member) and passes an expression with no type it can know
+ * (`inverse=other`, `on=create`, `auto=[read]`), which the builder read as no atom at all. This hook refuses those
+ * where they are written: a single slot's value is the atom node itself, or an expression that is exactly one
+ * `mesh:Atom`'s forward (`Expr.nodes`), and every item of a list is one. An identifier whose atom the slot takes gets
+ * the fix in the message.
+ *
+ * Two values stay with their own error. A plain string is core's (`must be atom, got string`), which core holds
+ * until this hook has run when the slot states `values`, `pattern` or `ref`. A value that is no list where a list is
+ * required is the contract's (`MESH_ATOM_LIST`, its `analyze`).
+ *
+ * Run from Mesh's `afterLower`, after the atom contract checks, so a wrong atom inside the expression
+ * (`on=(c ? :create : :bogus)`) is still reported first.
+ */
+export function checkAtomSlots(unit: LoweredUnit): void {
+  for (const call of unit.calls) {
+    const attributes = call.contract.attributes;
+    if (!attributes) continue;
+    for (const attr of call.attrs) {
+      if ("spread" in attr || attr.value?.type !== "mx:Expression" || !Object.hasOwn(attributes, attr.name)) continue;
+      const declaration = attributes[attr.name] as AtomDeclaration | undefined;
+      if (!declaration || !isAtomSlot(declaration)) continue;
+      const expression = attr.value as ContractExpression;
+      const atoms = new Set<unknown>();
+      for (const each of expression.nodes ?? []) if (each.type === "mesh:Atom") atoms.add(each.forward);
+      const whole = unwrapped(expression.node) as HostNode | null;
+      const refuse = (item: string, got: string, node: HostNode | null, at: SourceSpan | undefined): never =>
+        unit.fail(
+          `${tagLabel(call.tag)}: option ${attr.label}${item} must be atom, got ${got}${describeAttribute(declaration as Readonly<Record<string, unknown>>)}${atomFix(node, declaration)}`,
+          { code: "MESH_OPTION_VALUE", ...(at ? { at } : {}) },
+        );
+      if (declaration.type === "mesh:Atom") {
+        if (expression.nodes?.length === 1 && atoms.has(whole)) continue;
+        if (whole?.type === "StringLiteral" && !atoms.has(whole)) continue;
+        refuse("", "expression", whole, expression.span);
+      }
+      if (whole?.type !== "ArrayExpression") continue;
+      for (const [index, element] of (whole.elements ?? []).entries()) {
+        const item = unwrapped(element) as HostNode | null;
+        if (item && atoms.has(item)) continue;
+        // The first item that is no atom is the one reported: a string by core, after this hook.
+        if (item?.type === "StringLiteral") break;
+        // An empty item (`[:a, , :b]`) has no place of its own: the list is where it is.
+        const at = typeof item?.start === "number" && typeof item.end === "number" ? { sourceStart: item.start, sourceEnd: item.end } : expression.span;
+        refuse(` item ${index + 1}`, item ? "expression" : "nothing", item, at);
+      }
+    }
+  }
 }
 
 /** The hooks Mesh's dialect (`mesh.ts`) takes from this module. */
