@@ -72,6 +72,13 @@ const membersOf = (a: Attr | undefined): ReadonlySet<unknown> =>
       ? (a.value.nodes ?? []).filter((each) => each.type === "mesh:Member").map((each) => each.forward)
       : [],
   );
+/** The forwards of an option's atoms, found the same way: an atom's forward is a string node, as a written string is. */
+const atomsOf = (a: Attr | undefined): ReadonlySet<unknown> =>
+  new Set(
+    a && (a.kind === "dynamic" || a.kind === "bound")
+      ? (a.value.nodes ?? []).filter((each) => each.type === "mesh:Atom").map((each) => each.forward)
+      : [],
+  );
 /** `&a`, `&a.b`, `&a.b.c`: plain property accesses from one member. */
 const isMemberPath = (n: Node | null | undefined, members: ReadonlySet<unknown>): boolean => {
   let cursor = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
@@ -454,8 +461,11 @@ for (const contract of Object.values(contracts)) {
         if (["auto", "types", "values"].includes(key)) {
           if (n?.type !== "ArrayExpression")
             ctx.fail(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });
-          // Only atoms can repeat: an item that is none (`values=[a, b]`) is refused where it is written (`checkAtomSlots`).
-          const names = (n?.elements ?? []).flatMap((e) => (typeof e?.value === "string" ? [e.value] : []));
+          // Only atoms can repeat: an item that is none (`values=[a, b]`, `values=[:a, "a"]`) is refused where it is
+          // written (`checkAtomSlots`, or core for a string). A string's node has a string `value` too, so an item counts
+          // only when it is an atom's forward.
+          const atoms = atomsOf(a);
+          const names = (n?.elements ?? []).flatMap((e) => (e && atoms.has(e) && typeof e.value === "string" ? [e.value] : []));
           if (!n?.elements?.length || new Set(names).size !== names.length)
             ctx.fail(`${key} must be non-empty with no repeated values`, { at: a.loc, code: "MESH_ATOM_LIST" });
         }

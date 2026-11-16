@@ -993,14 +993,15 @@ interface HostNode {
 
 /**
  * The fix for an identifier where an atom is required: `read` is written `:read`. Only when the slot takes that atom
- * (its `values` and `pattern`), so the fix never names an atom the next check refuses, and never for `undefined`,
- * which nobody means as a name.
+ * (its `values` and `pattern`), so the fix never names an atom the next check refuses, and never for a global value
+ * (`undefined`, `NaN`, `Infinity`), which nobody means as a name.
  */
+const GLOBAL_VALUES: ReadonlySet<string> = new Set(["undefined", "NaN", "Infinity"]);
 function atomFix(node: HostNode | null, declaration: AtomDeclaration): string {
   if (node?.type !== "Identifier" || typeof node.name !== "string") return "";
   const { name } = node;
   const { values, pattern } = declaration;
-  if (name === "undefined" || !new RegExp(`^${NAME}$`).test(name)) return "";
+  if (GLOBAL_VALUES.has(name) || !new RegExp(`^${NAME}$`).test(name)) return "";
   if (values && !values.includes(name)) return "";
   if (pattern !== undefined && !new RegExp(pattern).test(name)) return "";
   return `; write it as \`:${name}\``;

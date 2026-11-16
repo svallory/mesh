@@ -138,6 +138,8 @@ describe("an atom slot refuses an identifier or any other expression", () => {
     ["a call", inverse("pick()"), "6:37", "`has-many`: option `inverse` must be atom, got expression"],
     ["`null`", inverse("null"), "6:37", "`has-many`: option `inverse` must be atom, got expression"],
     ["`undefined` is an identifier nobody means as a name", inverse("undefined"), "6:37", "`has-many`: option `inverse` must be atom, got expression"],
+    ["`NaN` is a global value, not a name", inverse("NaN"), "6:37", "`has-many`: option `inverse` must be atom, got expression"],
+    ["`Infinity` is a global value, not a name", inverse("Infinity"), "6:37", "`has-many`: option `inverse` must be atom, got expression"],
     ["the transaction's instant", inverse("%.now"), "6:37", "`has-many`: option `inverse` must be atom, got expression"],
     ["two atoms in a conditional, at the expression inside the parentheses", inverse("(c ? :owner : :other)"), "6:38", "`has-many`: option `inverse` must be atom, got expression"],
     ["an identifier in parentheses", inverse("(other)"), "6:38", "`has-many`: option `inverse` must be atom, got expression; write it as `:other`"],
@@ -196,6 +198,7 @@ describe("an atom slot refuses an identifier or any other expression", () => {
     ["an identifier in the name slot is the name's error", "    string name=title\n", ["MESH_NAME", "5:11", "`string`: a declaration needs one atom name"]],
     ["an identifier for the whole list", auto("read"), ["MESH_ATOM_LIST", "5:10", "`actions`: auto must be a list of atoms"]],
     ["an empty list", auto("[]"), ["MESH_ATOM_LIST", "5:10", "`actions`: auto must be non-empty with no repeated values"]],
+    ["a string equal to an atom is the string's error, not a repeat", values('[:a, "a"]'), ["MESH_OPTION_VALUE", "5:24", "`enum`: option `values` item 2 must be atom, got string"]],
     ["a repeated atom beside an identifier", values("[:a, b, :a]"), ["MESH_ATOM_LIST", "5:12", "`enum`: values must be non-empty with no repeated values"]],
   ])("the errors around it keep their code: %s", (_name, body, expected) => {
     expect(found(body)).toEqual([expected]);
