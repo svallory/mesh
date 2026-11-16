@@ -128,6 +128,7 @@ export type TaskLoadable = {
   children: Task[];
   dependencies: $work$Dependency$Record[];
   dependents: $work$Dependency$Record[];
+  prerequisites: Task[];
   assignments: $work$Assignment$Record[];
   claims: $work$Claim$Record[];
   submissions: $work$Submission$Record[];
@@ -152,6 +153,7 @@ export type TaskTxLoadable = {
   children: Task[];
   dependencies: $work$Dependency$Record[];
   dependents: $work$Dependency$Record[];
+  prerequisites: Task[];
   assignments: $work$Assignment$Record[];
   claims: $work$Claim$Record[];
   submissions: $work$Submission$Record[];
@@ -188,6 +190,7 @@ export type TaskLoaded = Task & {
   children: TaskLoaded[];
   dependencies: $work$Dependency$Loaded[];
   dependents: $work$Dependency$Loaded[];
+  prerequisites: TaskLoaded[];
   assignments: $work$Assignment$Loaded[];
   claims: $work$Claim$Loaded[];
   submissions: $work$Submission$Loaded[];

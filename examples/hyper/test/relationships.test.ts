@@ -164,6 +164,11 @@ describe("acceptance 2: Collaborator.memberships follows collaboratorId, not gra
     expect(relationships("Collaborator").find((r) => r.name === "memberships")!.inverse).toBe("collaborator");
     expect(relationships("Task").filter((r) => r.name === "dependencies" || r.name === "dependents").map((r) => [r.name, r.inverse])).toEqual([["dependencies", "dependent"], ["dependents", "prerequisite"]]);
     expect(relationships("Task").find((r) => r.name === "children")!.inverse).toBe("parent");
+    // A has-many through Dependency enters it by `dependent` and leaves it by `prerequisite`.
+    expect(relationships("Task").find((r) => r.name === "prerequisites")).toMatchObject({
+      inverse: "dependent",
+      through: { entity: { identifier: "Dependency", from: "./dependency.mesh.mx" }, exit: "prerequisite" },
+    });
   });
 
   test("Task.dependencies and Task.dependents follow the two keys Dependency holds to Task", async () => {

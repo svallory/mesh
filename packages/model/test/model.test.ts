@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { findNonJsonValue, isProjectRelativePath } from "../src/index.ts";
-import { bareDocument, postDocument, postFile } from "./sample.ts";
+import { bareDocument, postDocument, postFile, throughDocument } from "./sample.ts";
 import { positionOf } from "./source.ts";
 
 describe("v4 model", () => {
-  for (const document of [postDocument, bareDocument]) {
+  for (const document of [postDocument, bareDocument, throughDocument]) {
     test("round trips as plain JSON, with absent properties omitted", () => {
       expect(findNonJsonValue(document)).toBeNull();
       expect(JSON.parse(JSON.stringify(document))).toStrictEqual(document);

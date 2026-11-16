@@ -101,9 +101,25 @@ export interface Relationship {
   keyColumn?: string;
   /** `belongs-to` only: the type of the target's primary key, which is the type of `keyColumn`. Set when the build resolves the target. */
   keyType?: AttributeType;
-  /** `has-many` and `has-one`: the name of the target's `belongs-to` this relationship follows, authored (`inverse=:name`), the only candidate, or the candidate named after the owning entity. Set when the build resolves the target. */
+  /**
+   * `has-many` and `has-one`: the name of the `belongs-to` this relationship follows, authored (`inverse=:name`), the only
+   * candidate, or the candidate named after the owning entity. It is a `belongs-to` of the target, or, with `through`, of
+   * the link entity. Set when the build resolves the target.
+   */
   inverse?: string;
+  /** `has-many` only, written `through=Link`: the relationship reaches its target through a link entity (many-to-many). Absent otherwise. */
+  through?: Through;
   position: SourcePosition;
+}
+/**
+ * The link of a `has-many ... through=`: the relationship enters the link entity by the `belongs-to` that
+ * `Relationship.inverse` names (the entry) and leaves it by `exit`.
+ */
+export interface Through {
+  /** The link entity, as `through=` writes it. */
+  entity: EntityRef;
+  /** The link's `belongs-to` that leads to the target: its only one, the entry aside, whose entity is the target. Set when the build resolves the link. */
+  exit?: string;
 }
 export type Rollup = {
   fn: "count" | "sum" | "avg" | "min" | "max";

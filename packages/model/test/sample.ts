@@ -4,6 +4,7 @@ import type {
   Attribute,
   AttributeType,
   Check,
+  Entity,
   Expression,
   MemberRef,
   ModelDocument,
@@ -361,3 +362,73 @@ export const postDocument: ModelDocument = {
   ],
 };
 export const bareDocument: ModelDocument = { entities: [] };
+
+/** A hand-built document with one many-to-many: `Student` lists `Course` through the link entity `Enrollment`. */
+const schoolEntity = (
+  name: string,
+  file: string,
+  relationships: Entity["relationships"],
+  line: number,
+): Entity => {
+  const position = { file: `src/domain/school/${file}`, line, column: 0, offset: 0 };
+  return {
+    name,
+    fqn: `school.${name}`,
+    table: `${name.toLowerCase()}s`,
+    file: `src/domain/school/${file}`,
+    module: "school",
+    imports: [],
+    attributes: [
+      { name: "id", type: "uuid", nullable: false, primaryKey: true, unique: false, position },
+    ],
+    relationships,
+    computed: [],
+    auto: ["read"],
+    actions: [],
+    always: [],
+    policies: [],
+    position,
+  };
+};
+const enrollmentFile = "src/domain/school/enrollment.mesh.mx";
+export const throughDocument: ModelDocument = {
+  entities: [
+    schoolEntity(
+      "Student",
+      "student.mesh.mx",
+      [
+        {
+          kind: "has-many",
+          name: "courses",
+          entity: { identifier: "Course", from: "./course.mesh.mx" },
+          nullable: false,
+          inverse: "student",
+          through: {
+            entity: { identifier: "Enrollment", from: "./enrollment.mesh.mx" },
+            exit: "course",
+          },
+          position: { file: "src/domain/school/student.mesh.mx", line: 5, column: 2, offset: 60 },
+        },
+      ],
+      1,
+    ),
+    schoolEntity("Course", "course.mesh.mx", [], 1),
+    schoolEntity(
+      "Enrollment",
+      "enrollment.mesh.mx",
+      ["student", "course"].map((name, index) => ({
+        kind: "belongs-to" as const,
+        name,
+        entity: {
+          identifier: name === "student" ? "Student" : "Course",
+          from: `./${name}.mesh.mx`,
+        },
+        nullable: name === "course",
+        keyColumn: `${name}Id`,
+        keyType: "uuid" as const,
+        position: { file: enrollmentFile, line: 5 + index, column: 2, offset: 80 + index * 40 },
+      })),
+      1,
+    ),
+  ],
+};

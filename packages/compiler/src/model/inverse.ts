@@ -1,9 +1,10 @@
 import { dirname, resolve } from "node:path";
 import type { Entity, ModelDocument, Relationship } from "@meshfw/model";
+import { entitiesByFile, keyHolderOf } from "./key-holder.ts";
 
 /**
- * Why a relationship a rollup or computed field reads cannot be loaded, when `inverse` was not found: the target
- * has several `belongs-to` back and none was chosen (the relationship's own `MESH_INVERSE_REQUIRED` already says so
+ * Why a relationship a rollup or computed field reads cannot be loaded, when `inverse` was not found: the key holder (the
+ * target, or the link entity of a `through=`) has several `belongs-to` back and none was chosen (the relationship's own `MESH_INVERSE_REQUIRED` already says so
  * where it is declared; this says it where it is used, listing the candidates). Null when the declaration already
  * carries the one error: a target with no `belongs-to` back is `MESH_NO_INVERSE` at the `has-many` or `has-one` line,
  * and a bad `inverse=` is `MESH_INVERSE_UNKNOWN` or `MESH_INVERSE_ENTITY` there.
@@ -13,9 +14,9 @@ export function inverseProblem(
   owner: Entity,
   relation: Relationship,
 ): { code: "MESH_INVERSE_REQUIRED"; because: string; fix: string } | null {
-  const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
+  const byFile = entitiesByFile(document);
   const targetOf = (from: Entity, other: Relationship) => byFile.get(resolve(dirname(from.file), other.entity.from));
-  const target = targetOf(owner, relation);
+  const target = keyHolderOf(byFile, owner, relation);
   const names = (target?.relationships ?? [])
     .filter((other) => other.kind === "belongs-to" && targetOf(target!, other) === owner)
     .map((other) => other.name);

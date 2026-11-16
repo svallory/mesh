@@ -44,11 +44,14 @@ export function coverageProject(tag: string, option: string | undefined, example
   // A `publish` raises an event the file imports: the project has one, `Paid`.
   const answers = option === "on" && ["create", "update", "destroy"].includes(tag);
   const paid = tag === "publish" || answers ? 'import { Paid } from "./paid.mesh.mx"\n' : "";
+  // `through=` names a link entity with a belongs-to to each side: the project has one, `Tie`.
+  const tie = tag === "has-many" && option === "through";
   return { root: "/project", files: [
     ...(tag === "publish" ? [{ file: "docs/paid.mesh.mx", source: "event :Paid\n  uuid :id\n" }] : []),
     // `on=` answers a command: its fields are the action's inputs, and a create has none, nor the key an update and a destroy select by.
     ...(answers ? [{ file: "docs/paid.mesh.mx", source: `command :Paid\n${tag === "create" ? "" : "  uuid :id\n"}` }] : []),
-    { file: "docs/sample.mesh.mx", source: paid + 'import { Line } from "./line.mesh.mx"\n' + render(root) },
+    ...(tie ? [{ file: "docs/tie.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nimport { Line } from "./line.mesh.mx"\nentity :Tie\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :sample entity=Sample\n    belongs-to :line entity=Line\n  actions auto=[:read]\n' }] : []),
+    { file: "docs/sample.mesh.mx", source: paid + (tie ? 'import { Tie } from "./tie.mesh.mx"\n' : "") + 'import { Line } from "./line.mesh.mx"\n' + render(root) },
     { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n  relationships\n    belongs-to :owner entity=Sample nullable\n  actions auto=[:read]\n' },
   ] };
 }

@@ -6,6 +6,7 @@ import { orderedEntities } from "../emitters/order.ts";
 import { entityLocal, entityPath, propertyName, typeName } from "./inputs.ts";
 import { tableAccess } from "./actions.ts";
 import { loadPolicies } from "../../model/policies.ts";
+import { entitiesByFile, keyHolderOf } from "../../model/key-holder.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { relationTarget } from "./types.ts";
 
@@ -65,6 +66,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
   const ordered = orderedEntities(document);
   const expressionImports: { local: string; fromLiteral: string }[] = [];
   const locals = new Map<string, string>();
+  const byFile = entitiesByFile(document);
   const entities = ordered.map((entity): LoadEntity => {
     const key = entity.attributes.find((attribute) => attribute.primaryKey);
     if (!key) throw emitError("MESH_EMIT_KEY", `Entity ${entity.fqn} has no primary key`, entity.position);
@@ -75,8 +77,15 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
       const parts = [`kind: ${JSON.stringify(relation.kind)}`, `target: ${JSON.stringify(target.fqn)}`];
       if (relation.kind === "belongs-to") parts.push(`column: ${JSON.stringify(relation.keyColumn)}`, `nullable: ${relation.nullable}`);
       else {
-        const back = relation.inverse === undefined ? undefined : target.relationships.find((other) => other.name === relation.inverse);
+        // The key is on the key holder: the target, or the link entity of a `through=`.
+        const holder = keyHolderOf(byFile, entity, relation);
+        const back = relation.inverse === undefined ? undefined : holder?.relationships.find((other) => other.name === relation.inverse);
         parts.push(`column: ${back?.keyColumn === undefined ? "null" : JSON.stringify(back.keyColumn)}`);
+        // A has-many through a link entity: the link's FQN and its column that holds the far entity's key.
+        if (relation.through && holder) {
+          const exit = relation.through.exit === undefined ? undefined : holder.relationships.find((other) => other.name === relation.through!.exit);
+          parts.push(`through: { target: ${JSON.stringify(holder.fqn)}, exit: ${exit?.keyColumn === undefined ? "null" : JSON.stringify(exit.keyColumn)} }`);
+        }
       }
       return { key: propertyName(relation.name), plan: `{ ${parts.join(", ")} }` };
     });
