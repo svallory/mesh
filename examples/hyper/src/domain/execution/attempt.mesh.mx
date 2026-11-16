@@ -27,6 +27,18 @@ entity :Attempt table="attempts"
     belongs-to :delegator entity=Collaborator
     belongs-to :machine entity=Machine nullable
     belongs-to :session entity=SessionReference nullable
+  checks
+    check :running [
+      that=() => &state === :running
+      code="attempt.running"
+      message="the attempt has ended"
+    ]
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+      code="expected-version"
+      message="the record is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+    ]
   actions auto=[:read]
     create :start
       input
@@ -54,7 +66,7 @@ entity :Attempt table="attempts"
           code="attempt.step-idle"
           message="an attempt of this step is already running"
         ]
-        check :session [
+        check :sessionExists [
           that=async ({ input }) => input.session == null || (await Mesh.privileged(SessionReference).read({ filter: { id: { eq: input.session } }, limit: 1 })).length > 0
           code="attempt.session"
           message="the session reference does not exist"
@@ -79,11 +91,7 @@ entity :Attempt table="attempts"
         json :error
         integer :expectedVersion nullable
       validate
-        check :running [
-          that=() => &state === :running
-          code="attempt.running"
-          message="the attempt has ended"
-        ]
+        check &running
         check :error [
           that=({ input }) => input.result === :failed || input.error == null
           code="attempt.error"
@@ -95,12 +103,7 @@ entity :Attempt table="attempts"
           message="an evidence reference does not exist"
           details=async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) })
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &state=({ input }) => input.result
@@ -117,17 +120,8 @@ entity :Attempt table="attempts"
         string :reason min=1
         integer :expectedVersion nullable
       validate
-        check :running [
-          that=() => &state === :running
-          code="attempt.running"
-          message="the attempt has ended"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &running
+        check &versionMatches
       do
         set
           &state=:stopped
@@ -139,17 +133,8 @@ entity :Attempt table="attempts"
         string :note nullable
         integer :expectedVersion nullable
       validate
-        check :running [
-          that=() => &state === :running
-          code="attempt.running"
-          message="the attempt has ended"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &running
+        check &versionMatches
       do
         set
           &state=:abandoned

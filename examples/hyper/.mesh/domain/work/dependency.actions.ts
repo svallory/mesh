@@ -405,12 +405,12 @@ export function bindDependency(
             const $checks = $checkScope($s);
             await $loadInto($loadPlan, "work.Dependency", tx, $record, ["dependent"], $load);
             await $runCheck($issues, $checks, {
-              label: "versionMatches",
+              label: "versionMatchesOnRemove",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
               source: { file: "src/domain/work/dependency.mesh.mx", line: 63, column: 9 },
-              that: $expressions["remove.check.versionMatches.that"],
-              details: $expressions["remove.check.versionMatches.details"],
+              that: $expressions["remove.check.versionMatchesOnRemove.that"],
+              details: $expressions["remove.check.versionMatchesOnRemove.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // data layer

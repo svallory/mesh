@@ -220,7 +220,7 @@ export function bindMachine(
               label: "nameFree",
               code: "machine.name-free",
               message: "a machine already has that name",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 23, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 18, column: 5 },
               that: $expressions["register.check.nameFree.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -331,7 +331,7 @@ export function bindMachine(
               label: "nameFree",
               code: "machine.name-free",
               message: "a machine already has that name",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 35, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 18, column: 5 },
               that: $expressions["report.check.nameFree.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -454,14 +454,14 @@ export function bindMachine(
               label: "machineActive",
               code: "machine.active",
               message: "the machine is retired",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 48, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 23, column: 5 },
               that: $expressions["update.check.machineActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 53, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 28, column: 5 },
               that: $expressions["update.check.versionMatches.that"],
               details: $expressions["update.check.versionMatches.details"],
             });
@@ -600,21 +600,21 @@ export function bindMachine(
               label: "machineActive",
               code: "machine.active",
               message: "the machine is retired",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 67, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 23, column: 5 },
               that: $expressions["retire.check.machineActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "machineIdle",
               code: "machine.idle",
               message: "an attempt on this machine is reported running",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 72, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 68, column: 9 },
               that: $expressions["retire.check.machineIdle.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 77, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 28, column: 5 },
               that: $expressions["retire.check.versionMatches.that"],
               details: $expressions["retire.check.versionMatches.details"],
             });
@@ -625,7 +625,7 @@ export function bindMachine(
               const $value = await $expressions["retire.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/machine.mesh.mx:86:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/machine.mesh.mx:77:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }

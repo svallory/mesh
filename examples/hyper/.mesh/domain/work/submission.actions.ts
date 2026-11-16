@@ -252,14 +252,14 @@ export function bindSubmission(
               label: "taskOpen",
               code: "task.open",
               message: "the task is not open; reopen it first",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 31, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 37, column: 9 },
               that: $expressions["submit.check.taskOpen.that"],
             });
             await $runCheck($issues, $checks, {
               label: "currentFence",
               code: "claim.current-fence",
               message: "the fence is not your current claim; claim the task again",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 36, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 42, column: 9 },
               that: $expressions["submit.check.currentFence.that"],
               details: $expressions["submit.check.currentFence.details"],
             });
@@ -267,14 +267,14 @@ export function bindSubmission(
               label: "nonePending",
               code: "submission.none-pending",
               message: "a submission is already pending; wait for its review or withdraw it",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 42, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 48, column: 9 },
               that: $expressions["submit.check.nonePending.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidenceExists",
               code: "evidence.exists",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 47, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 53, column: 9 },
               that: $expressions["submit.check.evidenceExists.that"],
               details: $expressions["submit.check.evidenceExists.details"],
             });
@@ -282,7 +282,7 @@ export function bindSubmission(
               label: "versionMatches",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 53, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 59, column: 9 },
               that: $expressions["submit.check.versionMatches.that"],
               details: $expressions["submit.check.versionMatches.details"],
             });
@@ -297,7 +297,7 @@ export function bindSubmission(
               const $value = await $expressions["submit.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/submission.mesh.mx:61:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/submission.mesh.mx:67:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -314,7 +314,7 @@ export function bindSubmission(
               const $value = await $expressions["submit.step.0.set.taskVersion"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &taskVersion (src/domain/work/submission.mesh.mx:64:24) produced no value, and taskVersion is required",
+                  "set &taskVersion (src/domain/work/submission.mesh.mx:70:24) produced no value, and taskVersion is required",
                 );
               $changes.taskVersion = $record.taskVersion = $value;
             }
@@ -353,7 +353,7 @@ export function bindSubmission(
                     entity: "work.Submission",
                     action: "submit",
                     key: { id: $written.id },
-                    at: "src/domain/work/submission.mesh.mx:68:17",
+                    at: "src/domain/work/submission.mesh.mx:74:17",
                   },
                   $event,
                   $context,
@@ -481,16 +481,16 @@ export function bindSubmission(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 78, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 23, column: 5 },
               that: $expressions["withdraw.check.pending.that"],
             });
             await $runCheck($issues, $checks, {
-              label: "versionMatches",
+              label: "versionMatchesOnWithdraw",
               code: "expected-version",
               message: "the task is at another version; read it again and retry",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 83, column: 9 },
-              that: $expressions["withdraw.check.versionMatches.that"],
-              details: $expressions["withdraw.check.versionMatches.details"],
+              source: { file: "src/domain/work/submission.mesh.mx", line: 85, column: 9 },
+              that: $expressions["withdraw.check.versionMatchesOnWithdraw.that"],
+              details: $expressions["withdraw.check.versionMatchesOnWithdraw.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
@@ -540,7 +540,7 @@ export function bindSubmission(
                     entity: "work.Submission",
                     action: "withdraw",
                     key: { id: $written.id },
-                    at: "src/domain/work/submission.mesh.mx:95:17",
+                    at: "src/domain/work/submission.mesh.mx:97:17",
                   },
                   $event,
                   $context,
@@ -636,7 +636,7 @@ export function bindSubmission(
               label: "pending",
               code: "submission.pending",
               message: "the submission is not pending",
-              source: { file: "src/domain/work/submission.mesh.mx", line: 101, column: 9 },
+              source: { file: "src/domain/work/submission.mesh.mx", line: 23, column: 5 },
               that: $expressions["settle.check.pending.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -646,7 +646,7 @@ export function bindSubmission(
               const $value = await $expressions["settle.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/work/submission.mesh.mx:108:18) produced no value, and state is required",
+                  "set &state (src/domain/work/submission.mesh.mx:106:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -695,7 +695,7 @@ export function bindSubmission(
                       entity: "work.Submission",
                       action: "settle",
                       key: { id: $written.id },
-                      at: "src/domain/work/submission.mesh.mx:113:19",
+                      at: "src/domain/work/submission.mesh.mx:111:19",
                     },
                     $event,
                     $context,
@@ -811,7 +811,7 @@ export function bindSubmission(
               const $value = await $expressions["recordAccepted.step.0.set.submitter"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &submitter (src/domain/work/submission.mesh.mx:123:22) produced no value, and the relationship submitter is required",
+                  "set &submitter (src/domain/work/submission.mesh.mx:121:22) produced no value, and the relationship submitter is required",
                 );
               $changes.submitterId = $record.submitterId = $value;
             }
@@ -849,7 +849,7 @@ export function bindSubmission(
                     entity: "work.Submission",
                     action: "recordAccepted",
                     key: { id: $written.id },
-                    at: "src/domain/work/submission.mesh.mx:125:17",
+                    at: "src/domain/work/submission.mesh.mx:123:17",
                   },
                   $event,
                   $context,

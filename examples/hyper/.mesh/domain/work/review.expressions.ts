@@ -69,13 +69,13 @@ export type $work$Review$NewScope<I = unknown> = $Omit<$work$Review$CheckScope<I
 };
 
 export const $expressions = {
-  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:27:16)
+  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:22:12)
   "accept.check.pending.that": ($s: $work$Review$NewScope<$work$Review$AcceptReviewInput>) => {
     return (async ({ input }) => (await submittedVersionsOf(input.submission)).state === "pending")(
       $s,
     );
   },
-  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:32:16)
+  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:27:12)
   "accept.check.versionMatches.that": (
     $s: $work$Review$NewScope<$work$Review$AcceptReviewInput>,
   ) => {
@@ -83,7 +83,7 @@ export const $expressions = {
       input.expectedVersion == null ||
       input.expectedVersion === (await submittedVersionsOf(input.submission)).current)($s);
   },
-  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:35:19)
+  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:30:15)
   "accept.check.versionMatches.details": (
     $s: $work$Review$NewScope<$work$Review$AcceptReviewInput>,
   ) => {
@@ -92,15 +92,15 @@ export const $expressions = {
       actualVersion: (await submittedVersionsOf(input.submission)).current,
     }))($s);
   },
-  // set &reviewer, translated (src/domain/work/review.mesh.mx:40:21)
+  // set &reviewer, translated (src/domain/work/review.mesh.mx:43:21)
   "accept.step.0.set.reviewer": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) =>
     $s.actor?.id,
-  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:41:24)
+  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:44:24)
   "accept.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
     const $self = $s.self;
     return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
-  // run, plain (run-step) (src/domain/work/review.mesh.mx:42:28)
+  // run, plain (run-step) (src/domain/work/review.mesh.mx:45:28)
   "accept.step.1.run": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     const Task: $work$Task$ReadOnly = $work$Task$value;
@@ -112,7 +112,7 @@ export const $expressions = {
       await Task.touch({ id: submission.taskId }, { ...context, system: true });
     })($s);
   },
-  // publish, plain (publish-step) (src/domain/work/review.mesh.mx:46:17)
+  // publish, plain (publish-step) (src/domain/work/review.mesh.mx:49:17)
   "accept.step.2.publish": (
     $s: $work$Review$Scope<$work$Review$AcceptReviewInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -126,7 +126,7 @@ export const $expressions = {
         ruleApplied: $self.ruleApplied,
       }))($s);
   },
-  // run, plain (run-step) (src/domain/work/review.mesh.mx:47:28)
+  // run, plain (run-step) (src/domain/work/review.mesh.mx:50:28)
   "accept.step.3.run": ($s: $work$Review$Scope<$work$Review$AcceptReviewInput>) => {
     const Task: $work$Task$ReadOnly = $work$Task$value;
     return (async function ({ self, context }) {
@@ -141,13 +141,13 @@ export const $expressions = {
       );
     })($s);
   },
-  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:58:16)
+  // check :pending that, plain (awaits-helper) (src/domain/work/review.mesh.mx:22:12)
   "return.check.pending.that": ($s: $work$Review$NewScope<$work$Review$ReturnReviewInput>) => {
     return (async ({ input }) => (await submittedVersionsOf(input.submission)).state === "pending")(
       $s,
     );
   },
-  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:63:16)
+  // check :versionMatches that, plain (awaits-helper) (src/domain/work/review.mesh.mx:27:12)
   "return.check.versionMatches.that": (
     $s: $work$Review$NewScope<$work$Review$ReturnReviewInput>,
   ) => {
@@ -155,7 +155,7 @@ export const $expressions = {
       input.expectedVersion == null ||
       input.expectedVersion === (await submittedVersionsOf(input.submission)).current)($s);
   },
-  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:66:19)
+  // check :versionMatches details, plain (awaits-helper) (src/domain/work/review.mesh.mx:30:15)
   "return.check.versionMatches.details": (
     $s: $work$Review$NewScope<$work$Review$ReturnReviewInput>,
   ) => {
@@ -164,18 +164,18 @@ export const $expressions = {
       actualVersion: (await submittedVersionsOf(input.submission)).current,
     }))($s);
   },
-  // set &reasons, translated (src/domain/work/review.mesh.mx:71:20)
+  // set &reasons, translated (src/domain/work/review.mesh.mx:65:20)
   "return.step.0.set.reasons": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) =>
     $s.input?.reasons,
-  // set &reviewer, translated (src/domain/work/review.mesh.mx:72:21)
+  // set &reviewer, translated (src/domain/work/review.mesh.mx:66:21)
   "return.step.0.set.reviewer": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) =>
     $s.actor?.id,
-  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:73:24)
+  // set &ruleApplied, plain (awaits-helper) (src/domain/work/review.mesh.mx:67:24)
   "return.step.0.set.ruleApplied": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
     const $self = $s.self;
     return (async ({}) => await reviewerRuleOf($self.submission.taskId))($s);
   },
-  // run, plain (run-step) (src/domain/work/review.mesh.mx:74:28)
+  // run, plain (run-step) (src/domain/work/review.mesh.mx:68:28)
   "return.step.1.run": ($s: $work$Review$Scope<$work$Review$ReturnReviewInput>) => {
     const Submission: $work$Submission$ReadOnly = $work$Submission$value;
     const Task: $work$Task$ReadOnly = $work$Task$value;
@@ -187,7 +187,7 @@ export const $expressions = {
       await Task.touch({ id: submission.taskId }, { ...context, system: true });
     })($s);
   },
-  // publish, plain (publish-step) (src/domain/work/review.mesh.mx:78:17)
+  // publish, plain (publish-step) (src/domain/work/review.mesh.mx:72:17)
   "return.step.2.publish": (
     $s: $work$Review$Scope<$work$Review$ReturnReviewInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -201,10 +201,10 @@ export const $expressions = {
         reasons: input.reasons,
       }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:81:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/review.mesh.mx:75:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Review$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:83:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:77:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Review$NewScope<
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
@@ -212,7 +212,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:85:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:79:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$Review$NewScope<
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>
@@ -221,7 +221,7 @@ export const $expressions = {
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :reviewReviewer authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:87:20)
+  // policy :reviewReviewer authorize-if, plain (awaits-helper) (src/domain/work/review.mesh.mx:81:20)
   "policy.reviewReviewer.authorize-if.0": (
     $s: $work$Review$NewScope<
       $SharedInput<$work$Review$AcceptReviewInput | $work$Review$ReturnReviewInput>

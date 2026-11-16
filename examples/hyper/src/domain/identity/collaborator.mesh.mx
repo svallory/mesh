@@ -15,6 +15,18 @@ entity :Collaborator table="collaborators"
     integer :version default=1
   relationships
     has-many :memberships entity=Membership
+  checks
+    check :collaboratorActive [
+      that=() => &state === :active
+      code="collaborator.active"
+      message="the collaborator is retired"
+    ]
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+      code="expected-version"
+      message="the record is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+    ]
   actions auto=[:read]
     create :register
       input
@@ -34,27 +46,18 @@ entity :Collaborator table="collaborators"
         enum :kind values=[:human, :agent] nullable
         integer :expectedVersion nullable
       validate
-        check :collaboratorActive [
-          that=() => &state === :active
-          code="collaborator.active"
-          message="the collaborator is retired"
-        ]
+        check &collaboratorActive
         check :kindImmutable [
           that=({ input }) => input.kind == null || input.kind === &kind
           code="collaborator.kind-immutable"
           message="a collaborator keeps its kind"
         ]
-        check :nameUnique [
+        check :nameStaysUnique [
           that=async ({ input }) => await nameFreeOf(input.name ?? &name, &id)
           code="collaborator.name-unique"
           message="another active collaborator has that name"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -64,22 +67,13 @@ entity :Collaborator table="collaborators"
         string :reason nullable
         integer :expectedVersion nullable
       validate
-        check :collaboratorActive [
-          that=() => &state === :active
-          code="collaborator.active"
-          message="the collaborator is retired"
-        ]
+        check &collaboratorActive
         check :lastOwner [
           that=async ({}) => await retireKeepsAnOwnerOf(&id)
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &state=:retired

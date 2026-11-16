@@ -24,6 +24,34 @@ entity :Claim table="claims"
     belongs-to :holder entity=Collaborator
   computed
     boolean :lapsed() { return &state === :active && &expiresAt <= %.now }
+  checks
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
+      code="expected-version"
+      message="the task is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
+    ]
+    check :currentFence [
+      that=({ input }) => input.fence === &fence && input.fence === &task.maxFence
+      code="claim.current-fence"
+      message="the fence is not the current claim's; claim the task again"
+      details=() => ({ currentFence: &task.maxFence, stale: false })
+    ]
+    check :claimActive [
+      that=() => &state !== :released && &state !== :revoked
+      code="claim.active"
+      message="the claim was released or revoked; claim the task again"
+    ]
+    check :claimNotEnded [
+      that=() => &state === :active
+      code="claim.active"
+      message="the claim has ended; claim the task again"
+    ]
+    check :claimNotExpired [
+      that=() => &state !== :expired && &expiresAt > %.now
+      code="claim.expired"
+      message="the lease has expired; claim the task again"
+    ]
   actions auto=[:read]
     create :acquire
       input
@@ -36,7 +64,7 @@ entity :Claim table="claims"
           message="the task is not ready to claim"
           details=async ({ input }) => await readinessOf(input.task)
         ]
-        check :versionMatches [
+        check :versionMatchesOnAcquire [
           that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === await taskVersionOf(input.task)
           code="expected-version"
           message="the task is at another version; read it again and retry"
@@ -65,28 +93,10 @@ entity :Claim table="claims"
         integer :fence
         integer :expectedVersion nullable
       validate
-        check :currentFence [
-          that=({ input }) => input.fence === &fence && input.fence === &task.maxFence
-          code="claim.current-fence"
-          message="the fence is not the current claim's; claim the task again"
-          details=() => ({ currentFence: &task.maxFence, stale: false })
-        ]
-        check :claimActive [
-          that=() => &state !== :released && &state !== :revoked
-          code="claim.active"
-          message="the claim was released or revoked; claim the task again"
-        ]
-        check :claimNotExpired [
-          that=() => &state !== :expired && &expiresAt > %.now
-          code="claim.expired"
-          message="the lease has expired; claim the task again"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
-          code="expected-version"
-          message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
-        ]
+        check &currentFence
+        check &claimActive
+        check &claimNotExpired
+        check &versionMatches
       do
         set
           &expiresAt=({ context }) => leaseEnd(%.now, context.leaseMs)
@@ -100,28 +110,10 @@ entity :Claim table="claims"
         string :reason nullable
         integer :expectedVersion nullable
       validate
-        check :currentFence [
-          that=({ input }) => input.fence === &fence && input.fence === &task.maxFence
-          code="claim.current-fence"
-          message="the fence is not the current claim's; claim the task again"
-          details=() => ({ currentFence: &task.maxFence, stale: false })
-        ]
-        check :claimActive [
-          that=() => &state !== :released && &state !== :revoked
-          code="claim.active"
-          message="the claim was released or revoked; claim the task again"
-        ]
-        check :claimNotExpired [
-          that=() => &state !== :expired && &expiresAt > %.now
-          code="claim.expired"
-          message="the lease has expired; claim the task again"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
-          code="expected-version"
-          message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
-        ]
+        check &currentFence
+        check &claimActive
+        check &claimNotExpired
+        check &versionMatches
       do
         set
           &state=:released
@@ -136,17 +128,12 @@ entity :Claim table="claims"
         string :reason min=1
         integer :expectedVersion nullable
       validate
-        check :claimActive [
+        check :activeClaimToRevoke [
           that=() => &state === :active && !&lapsed
           code="claim.active"
           message="the claim has ended or its lease has run out; there is no active claim to revoke"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
-          code="expected-version"
-          message="the task is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &task.version })
-        ]
+        check &versionMatches
       do
         set
           &state=:revoked
@@ -160,11 +147,7 @@ entity :Claim table="claims"
       input
         string :reason nullable
       validate
-        check :claimActive [
-          that=() => &state === :active
-          code="claim.active"
-          message="the claim has ended; claim the task again"
-        ]
+        check &claimNotEnded
       do
         set
           &state=:expired
@@ -179,11 +162,7 @@ entity :Claim table="claims"
         enum :outcome values=[:released, :revoked, :expired]
         string :reason
       validate
-        check :claimActive [
-          that=() => &state === :active
-          code="claim.active"
-          message="the claim has ended; claim the task again"
-        ]
+        check &claimNotEnded
       do
         set
           &state=({ input }) => input.outcome

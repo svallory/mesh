@@ -477,7 +477,7 @@ check :taskReady [
 **A message that names the record.** `message=` is either fixed text or a function taking the same arguments as `that=` and `details=`. Use the function when the sentence depends on the call: it can read `self`, `input`, `actor`, `context`, and what the check loads through a relationship.
 
 ```text "src/domain/work/task.mesh.mx (excerpt)"
-check :childrenSettled [
+check :noOpenChildren [
   that=() => &childrenSettled
   code="task.children-settled"
   message=() => childrenSettledReason(&children)

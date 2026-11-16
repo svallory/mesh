@@ -119,7 +119,7 @@ export async function activeClaimOf(taskId: string, context: ActionContext): Pro
     ...((await revokesClaimOf(taskId, context.actor.id)) ? [] : ["claimRevoker"]),
   ];
   if (policies.length > 0) throw new ForbiddenError({ entity: "work.Claim", action: "revoke", policies, breakdown: [] });
-  throw nothingToActOn("claimActive", "claim.active", "the task has no active claim to revoke");
+  throw nothingToActOn("activeClaimToRevoke", "claim.active", "the task has no active claim to revoke");
 }
 
 /**

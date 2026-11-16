@@ -19,6 +19,12 @@ entity :Submission table="submissions"
   relationships
     belongs-to :task entity=Task
     belongs-to :submitter entity=Collaborator
+  checks
+    check :pending [
+      that=() => &state === :pending
+      code="submission.pending"
+      message="the submission is not pending"
+    ]
   actions auto=[:read]
     create :submit
       input
@@ -75,12 +81,8 @@ entity :Submission table="submissions"
         string :reason nullable
         integer :expectedVersion nullable
       validate
-        check :pending [
-          that=() => &state === :pending
-          code="submission.pending"
-          message="the submission is not pending"
-        ]
-        check :versionMatches [
+        check &pending
+        check :versionMatchesOnWithdraw [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &task.version
           code="expected-version"
           message="the task is at another version; read it again and retry"
@@ -98,11 +100,7 @@ entity :Submission table="submissions"
         enum :outcome values=[:accepted, :returned, :withdrawn]
         string :reason nullable
       validate
-        check :pending [
-          that=() => &state === :pending
-          code="submission.pending"
-          message="the submission is not pending"
-        ]
+        check &pending
       do
         set
           &state=({ input }) => input.outcome
