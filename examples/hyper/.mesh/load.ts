@@ -615,6 +615,12 @@ export const loadPlan = {
       children: { kind: "has-many", target: "work.Task", column: "parentId" },
       dependencies: { kind: "has-many", target: "work.Dependency", column: "dependentId" },
       dependents: { kind: "has-many", target: "work.Dependency", column: "prerequisiteId" },
+      prerequisites: {
+        kind: "has-many",
+        target: "work.Task",
+        column: "dependentId",
+        through: { target: "work.Dependency", exit: "prerequisiteId" },
+      },
       assignments: { kind: "has-many", target: "work.Assignment", column: "taskId" },
       claims: { kind: "has-many", target: "work.Claim", column: "taskId" },
       submissions: { kind: "has-many", target: "work.Submission", column: "taskId" },
@@ -648,7 +654,7 @@ export const loadPlan = {
       },
       blocked: {
         kind: "body",
-        needs: ["dependencies", "dependencies.prerequisite"],
+        needs: ["prerequisites"],
         evaluate: ($s: never) => $work$Task$expressions["computed.blocked"]($s),
       },
       maxFence: { kind: "rollup", fn: "max", of: ["claims", "fence"] },

@@ -240,6 +240,7 @@ export const readTaskInputSchema = z.strictObject({
         "children",
         "dependencies",
         "dependents",
+        "prerequisites",
         "assignments",
         "claims",
         "submissions",

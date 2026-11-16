@@ -31,6 +31,7 @@ entity :Task table="tasks"
     has-many :children entity=Task
     has-many :dependencies entity=Dependency inverse=:dependent
     has-many :dependents entity=Dependency inverse=:prerequisite
+    has-many :prerequisites entity=Task through=Dependency inverse=:dependent
     has-many :assignments entity=Assignment
     has-many :claims entity=Claim
     has-many :submissions entity=Submission
@@ -41,7 +42,7 @@ entity :Task table="tasks"
     boolean :lapsedClaim() { return &claims.some((c) => c.state === :active && c.expiresAt <= %.now) }
     boolean :inReview() { return &submissions.some((s) => s.state === :pending) }
     boolean :assigned() { return &assignments.some((a) => a.endedAt === null) }
-    boolean :blocked() { return &dependencies.some((d) => d.prerequisite.state !== :done) }
+    boolean :blocked() { return &prerequisites.some((t) => t.state !== :done) }
     max :maxFence of=&claims.fence
     enum :derivedState values=[:ready, :blocked, :claimed, :in-review, :done, :canceled] value=() => &state === :done ? :done : &state === :canceled ? :canceled : &inReview ? :in-review : &claimed ? :claimed : &blocked ? :blocked : :ready
   actions auto=[:read]
