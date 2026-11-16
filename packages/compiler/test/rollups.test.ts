@@ -16,6 +16,7 @@ entity :Line
   relationships
     belongs-to :parent entity=Line
     belongs-to :invoice entity=Invoice nullable
+  actions auto=[:read]
 `;
 function build(
   fn: string,
@@ -31,6 +32,7 @@ entity :Invoice
     ${relationship}
   computed
     ${fn} :value of=&${path}
+  actions auto=[:read]
 `;
   return {
     source,
@@ -95,7 +97,7 @@ test("a rollup over a relationship that nothing points back at is the one MESH_N
   const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :lineCount of=&lines\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
-    { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n" },
+    { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
   ] });
   expect(result.diagnostics).toEqual([expect.objectContaining({
     code: "MESH_NO_INVERSE",
@@ -105,7 +107,7 @@ test("a rollup over a relationship that nothing points back at is the one MESH_N
   // Nothing reading it changes nothing: the error is the relationship's.
   const unused = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source: source.replace('  computed\n    count :lineCount of=&lines\n', "") },
-    { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n" },
+    { file: "billing/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
   ] });
   expect(unused.diagnostics.map((d) => d.code)).toEqual(["MESH_NO_INVERSE"]);
 });
@@ -221,7 +223,7 @@ test.each([
   ["max", "lines.amount", "of=&lines.amount"],
   ["sum", "lines.amount", "of=&lines.amount"],
 ] as const)("%s of the string %s is an error that says to write %s", (fn, path, fix) => {
-  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    ${fn} :value of="${path}"\n`;
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    ${fn} :value of="${path}"\n  actions auto=[:read]\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
     { file: "billing/line.mesh.mx", source: target },
@@ -238,12 +240,10 @@ test.each([
 test.each([
   ["a computed index", "&lines[0]"],
   ["a call", "&lines.amount()"],
-  ["a space before the dot", "&lines .amount"],
-  ["a space after the dot", "&lines. amount"],
   ["a plain name", "lines"],
   ["an atom", ":lines"],
 ] as const)("of= with %s is not a member reference", (_, written) => {
-  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n`;
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n  actions auto=[:read]\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
     { file: "billing/line.mesh.mx", source: target },
@@ -251,6 +251,35 @@ test.each([
   expect(result.document).toBeNull();
   expect(result.diagnostics.length).toBeGreaterThan(0);
   expect(result.diagnostics.every((d) => d.position.line === 8)).toBe(true);
+});
+
+test.each([
+  ["a space before the dot", "&lines .amount"],
+  ["a space after the dot", "&lines. amount"],
+  ["spaces on both sides of the dot", "&lines . amount"],
+  ["a comment before the dot", "&lines/**/.amount"],
+  ["a comment after the dot", "&lines./* c */amount"],
+  ["a comment after the path", "&lines.amount /* c */"],
+  // Not ruled (D11): a parenthesised path builds, as it did before.
+  ["parentheses around the path", "(&lines.amount)"],
+] as const)("of= with %s is the same member path", (_, written) => {
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n  actions auto=[:read]\n`;
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target },
+  ] });
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities.find((e) => e.name === "Invoice")!.computed[0]!.rollup).toEqual({ fn: "max", of: "lines.amount" });
+});
+
+test("a count's path may hold whitespace and comments too", () => {
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :value of=&lines /* all */\n  actions auto=[:read]\n`;
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target },
+  ] });
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities.find((e) => e.name === "Invoice")!.computed[0]!.rollup).toEqual({ fn: "count", of: "lines" });
 });
 
 test("a rollup through a relationship the entity lacks is reported at the reference", () => {
@@ -265,4 +294,18 @@ test("a rollup through a relationship the entity lacks is reported at the refere
 test("a rollup keeps its path as text in the model, so generated code is unchanged", () => {
   const { result } = build("max", "lines.amount");
   expect(result.document!.entities[0]!.computed[0]!.rollup).toEqual({ fn: "max", of: "lines.amount" });
+});
+
+test("the entity a rollup reads needs a read like any relationship's target: the error is the relationship's, not the rollup's", () => {
+  const { source } = build("count", "lines");
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target.replace("  actions auto=[:read]\n", "") },
+  ] });
+  expect(result.document).toBeNull();
+  // Invoice's has-many reaches Line, and so does Line's own belongs-to; Invoice has its auto read.
+  expect(result.diagnostics.map((d) => [d.code, d.position.file, d.position.line, d.message])).toEqual([
+    ["MESH_ON_LOAD", "billing/invoice.mesh.mx", 7, "has-many :lines of billing.Invoice reaches billing.Line, which has neither `on:load=` nor an auto read, so Mesh has no read to load it with"],
+    ["MESH_ON_LOAD", "billing/line.mesh.mx", 15, "belongs-to :parent of billing.Line reaches billing.Line, which has neither `on:load=` nor an auto read, so Mesh has no read to load it with"],
+  ]);
 });

@@ -171,7 +171,7 @@ const members = [
   ],
   [
     "always actions",
-    keyed + "  actions\n    always actions=[&custom]\n    read :custom\n",
+    keyed + "  actions\n    always actions=[&custom]\n    update :custom\n",
   ],
   [
     "policy actions",
@@ -215,6 +215,58 @@ test(
     ).toContain("MESH_ON_LOAD");
   },
 );
+// A read writes nothing, so it has no step to run and no write for a check to guard: its contract leaves `validate` and
+// `do` out of its children, and MX refuses either at its own line, whatever it holds.
+describe("a read takes no validate and no do", () => {
+  const CHECK = '        check :ok that=() => true code="x" message="m"\n';
+  const RUN = "        run (ctx) { return ctx }\n";
+  const read = (body: string) =>
+    build(`${keyed}    integer :n\n  actions\n    read :open\n${body}`).diagnostics.map((d) => [d.position.line, d.position.column, d.severity, d.code, d.message, d.fix]);
+  const refused = (child: string, line = 7) =>
+    [line, 6, "error", "MESH_TAG_NOT_ALLOWED", `\`read\`: \`${child}\` is not allowed here; allowed children: \`input\`, \`filter\`, \`sort\``, null];
+  test.each([
+    ["a validate with a check", `      validate\n${CHECK}`, "validate"],
+    ["an empty validate", "      validate\n", "validate"],
+    ["a do with a step", `      do\n${RUN}`, "do"],
+    ["an empty do", "      do\n", "do"],
+    ["a do under the read's own input and filter", `      do\n${RUN}      input\n        integer :m\n      filter=({ self, input }) => self.n > input.m\n`, "do"],
+  ])("%s is MESH_TAG_NOT_ALLOWED at its own line", (_, body, child) => {
+    expect(read(body)).toEqual([refused(child)]);
+  });
+  test("a read with both is refused at the one written first: MX stops at the first child a tag does not take", () => {
+    expect(read(`      validate\n${CHECK}      do\n${RUN}`)).toEqual([refused("validate")]);
+    expect(read(`      do\n${RUN}      validate\n${CHECK}`)).toEqual([refused("do")]);
+  });
+  test("the legal neighbours stay legal: a read's input, filter and sort; validate and do on the three writes and in an always block beside a read", () => {
+    expect(read("      input\n        integer :m\n      filter=({ self, input }) => self.n > input.m\n      sort\n        asc &n\n")).toEqual([]);
+    const body = `      validate\n${CHECK}      do\n${RUN}`;
+    expect(build(`${keyed}    integer :n\n  actions auto=[:read]\n    read :open\n    create :add\n${body}    update :change\n${body}    destroy :remove\n${body}    always\n${body}`).diagnostics).toEqual([]);
+  });
+});
+// An `always` block holds `validate` and `do`, and a read runs neither: a block scoped to a read never applies to it. The
+// `types=` half is a contract hook (the model keeps no position for a `types` item); the `actions=` half needs the
+// entity's actions and is in `build.test.ts`.
+describe("always types= cannot list :read", () => {
+  const BODY = '      validate\n        check :ok that=() => true code="x" message="m"\n';
+  const always = (line: string, body = BODY) =>
+    build(`${keyed}    integer :n\n  actions auto=[:read]\n    update :change\n    read :all\n${line}\n${body}`).diagnostics.map((d) => [d.position.line, d.position.column, d.severity, d.code, d.message, d.fix]);
+  const refused = (column: number) =>
+    [8, column, "error", "MESH_OPTION_VALUE", "`always`: `types=` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", null];
+  test("at the :read atom, alone or among the other types, wherever it is in the list", () => {
+    expect(always("    always types=[:read]")).toEqual([refused(18)]);
+    expect(always("    always types=[:read, :update]")).toEqual([refused(18)]);
+    expect(always("    always types=[:create, :read, :destroy]")).toEqual([refused(27)]);
+    expect(always("    always types=[\n      :update,\n      :read\n    ]").map((d) => [d[0], d[1], d[3]])).toEqual([[10, 6, "MESH_OPTION_VALUE"]]);
+  });
+  test("with no validate and no do too: the rule is about the scope, not about what the block holds", () => {
+    expect(always("    always types=[:read]", "")).toEqual([refused(18)]);
+  });
+  test("the legal neighbours stay legal: the three write types, a block with no scope beside a read, and a policy's types=[:read]", () => {
+    expect(always("    always types=[:create, :update, :destroy]")).toEqual([]);
+    expect(always("    always")).toEqual([]);
+    expect(build(`${keyed}  actions auto=[:read]\n  policies\n    policy :readers types=[:read] authorize-if=({ actor }) => !!actor\n`).diagnostics).toEqual([]);
+  });
+});
 test(
   "reference fixture parses",
   () => expect(parseFixture("post.mesh.mx").diagnostics).toEqual([]),

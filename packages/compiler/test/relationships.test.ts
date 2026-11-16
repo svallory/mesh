@@ -15,6 +15,7 @@ const task = `entity :Task
   relationships
     belongs-to :parent entity=Task nullable
     has-many :children entity=Task
+  actions auto=[:read]
 `;
 const collaborator = (inverse = "") => `import { Membership } from "./membership.mesh.mx"
 entity :Collaborator
@@ -22,6 +23,7 @@ entity :Collaborator
     uuid :id primary-key
   relationships
     has-many :memberships entity=Membership${inverse}
+  actions auto=[:read]
 `;
 const membership = (extra = "") => `import { Collaborator } from "./collaborator.mesh.mx"
 entity :Membership
@@ -31,6 +33,7 @@ entity :Membership
     belongs-to :collaborator entity=Collaborator
     belongs-to :grantedBy entity=Collaborator
     belongs-to :revokedBy entity=Collaborator nullable${extra}
+  actions auto=[:read]
 `;
 
 describe("self-reference (acceptance 1)", () => {
@@ -122,8 +125,8 @@ describe("inverse (acceptance 2, ADR-0070)", () => {
   });
 
   test("the entity's name is matched in lower camel case", () => {
-    const worker = `import { Shift } from "./shift.mesh.mx"\nentity :WorkItem\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :shifts entity=Shift\n`;
-    const shift = `import { WorkItem } from "./work-item.mesh.mx"\nentity :Shift\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :workItem entity=WorkItem\n    belongs-to :swappedFor entity=WorkItem\n`;
+    const worker = `import { Shift } from "./shift.mesh.mx"\nentity :WorkItem\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :shifts entity=Shift\n  actions auto=[:read]\n`;
+    const shift = `import { WorkItem } from "./work-item.mesh.mx"\nentity :Shift\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :workItem entity=WorkItem\n    belongs-to :swappedFor entity=WorkItem\n  actions auto=[:read]\n`;
     const result = build({ "work-item.mesh.mx": worker, "shift.mesh.mx": shift });
     expect(result.diagnostics).toEqual([]);
     expect(entityOf(result, "WorkItem").relationships[0]).toMatchObject({ inverse: "workItem" });
@@ -167,8 +170,9 @@ entity :Membership
   relationships
     belongs-to :collaborator entity=Collaborator
     belongs-to :workspace entity=Workspace
+  actions auto=[:read]
 `;
-    const workspace = "entity :Workspace\n  attributes\n    uuid :id primary-key\n";
+    const workspace = "entity :Workspace\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const result = build({ "collaborator.mesh.mx": collaborator(" inverse=:workspace"), "membership.mesh.mx": source, "workspace.mesh.mx": workspace });
     expect(result.diagnostics).toEqual([expect.objectContaining({
       code: "MESH_INVERSE_ENTITY",
@@ -200,7 +204,7 @@ entity :Membership
   });
 
   describe("a has-many or has-one needs a belongs-to back", () => {
-    const bare = "entity :Membership\n  attributes\n    uuid :id primary-key\n";
+    const bare = "entity :Membership\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const expected = (kind: string) => [expect.objectContaining({
       code: "MESH_NO_INVERSE",
       message: `${kind} :memberships of app.Collaborator needs a belongs-to back, and app.Membership has none to app.Collaborator: add \`belongs-to :collaborator entity=Collaborator\` to app.Membership`,
@@ -219,7 +223,7 @@ entity :Membership
 
     test("a belongs-to to some other entity is not a belongs-to back", () => {
       const other = `import { Other } from "./other.mesh.mx"\n${bare}  relationships\n    belongs-to :other entity=Other\n`;
-      const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": other, "other.mesh.mx": "entity :Other\n  attributes\n    uuid :id primary-key\n" });
+      const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": other, "other.mesh.mx": "entity :Other\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" });
       expect(codes(result)).toEqual(["MESH_NO_INVERSE"]);
     });
 
@@ -241,7 +245,7 @@ entity :Membership
     });
 
     test("a belongs-to alone still builds: it declares the key and needs nothing back", () => {
-      const result = build({ "collaborator.mesh.mx": "entity :Collaborator\n  attributes\n    uuid :id primary-key\n", "membership.mesh.mx": membership().replace("belongs-to :grantedBy entity=Collaborator\n    belongs-to :revokedBy entity=Collaborator nullable", "") });
+      const result = build({ "collaborator.mesh.mx": "entity :Collaborator\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n", "membership.mesh.mx": membership().replace("belongs-to :grantedBy entity=Collaborator\n    belongs-to :revokedBy entity=Collaborator nullable", "") });
       expect(result.diagnostics).toEqual([]);
     });
 
@@ -265,6 +269,7 @@ entity :Dependency
   relationships
     belongs-to :dependent entity=Task
     belongs-to :prerequisite entity=Task${extra}
+  actions auto=[:read]
 `;
     const owner = `import { Dependency } from "./dependency.mesh.mx"
 entity :Task
@@ -273,6 +278,7 @@ entity :Task
   relationships
     has-many :dependencies entity=Dependency inverse=:dependent
     has-many :dependents entity=Dependency inverse=:prerequisite
+  actions auto=[:read]
 `;
     const result = build({ "task.mesh.mx": owner, "dependency.mesh.mx": dependency("") });
     expect(result.diagnostics).toEqual([]);
@@ -288,6 +294,7 @@ entity :User
     uuid :id primary-key
   relationships
 ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
+  actions auto=[:read]
 `;
   const profile = (relationships = "belongs-to :user entity=User") => `import { User } from "./user.mesh.mx"
 entity :Profile
@@ -295,6 +302,7 @@ entity :Profile
     uuid :id primary-key
   relationships
 ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
+  actions auto=[:read]
 `;
   const one = "has-one :profile entity=Profile";
   const many = "has-many :profiles entity=Profile";
@@ -349,7 +357,7 @@ ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
   });
 
   test("a has-one and a has-many to different entities share nothing, though both keys are named alike", () => {
-    const badge = `import { User } from "../user.mesh.mx"\nentity :Profile\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :user entity=User\n`;
+    const badge = `import { User } from "../user.mesh.mx"\nentity :Profile\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :user entity=User\n  actions auto=[:read]\n`;
     const result = build({
       "user.mesh.mx": user(`${one}\nhas-many :profiles entity=Public`, 'import { Profile } from "./profile.mesh.mx"\nimport { Profile as Public } from "./public/profile.mesh.mx"'),
       "profile.mesh.mx": profile(),
@@ -385,7 +393,7 @@ ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
     const unnamedKeys = "belongs-to :holder entity=User\nbelongs-to :invitedBy entity=User nullable";
     expect(codes(build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": profile(unnamedKeys) }))).toEqual(["MESH_INVERSE_REQUIRED", "MESH_INVERSE_REQUIRED"]);
     // No belongs-to back at all.
-    const bare = "entity :Profile\n  attributes\n    uuid :id primary-key\n";
+    const bare = "entity :Profile\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     expect(codes(build({ "user.mesh.mx": user(`${one}\n${many}`), "profile.mesh.mx": bare }))).toEqual(["MESH_NO_INVERSE", "MESH_NO_INVERSE"]);
   });
 
@@ -396,7 +404,7 @@ ${relationships.split("\n").map((line) => `    ${line}`).join("\n")}
 });
 
 describe("the type of a belongs-to key follows the target's key", () => {
-  const target = (type: string) => `entity :Customer\n  attributes\n    ${type} :id primary-key\n`;
+  const target = (type: string) => `entity :Customer\n  attributes\n    ${type} :id primary-key\n  actions auto=[:read]\n`;
   const invoice = `import { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n`;
   for (const type of ["uuid", "string", "integer"])
     test(`a ${type} key gives a ${type} key column`, () => {
@@ -445,7 +453,7 @@ describe("helper names that collide with generated internals", () => {
   // The refusal of a `$` at the start of an import binding holds for an entity's alias too: `$b$List$value` is the local generated code imports b.List's value under,
   // so `import { List as $b$List$value }` would make the function bind the name to itself.
   test.each(["$b$List$value", "$List", "l$List"])("an entity import aliased %s is a build error at the alias", (alias) => {
-    const list = "entity :List\n  attributes\n    uuid :id primary-key\n";
+    const list = "entity :List\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const board = `import { List as ${alias} } from "./b/list.mesh.mx"\nentity :Board\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :list entity=${alias}\n`;
     const result = buildModel({ root: "/project", files: [{ file: "b/list.mesh.mx", source: list }, { file: "board.mesh.mx", source: board }] });
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([expect.objectContaining({
@@ -467,6 +475,7 @@ entity :User
     has-many :docs entity=Doc inverse=:owner
   computed
     count :docCount of=&docs
+  actions auto=[:read]
 `;
   const doc = (computed: string) => `import { User } from "./user.mesh.mx"
 import { Note } from "./note.mesh.mx"
@@ -482,6 +491,7 @@ entity :Doc
     has-many :notes entity=Note
   computed
 ${computed.split("\n").map((line) => `    ${line}`).join("\n")}
+  actions auto=[:read]
 `;
   const note = `import { Doc } from "./doc.mesh.mx"
 entity :Note
@@ -491,6 +501,7 @@ entity :Note
   relationships
     belongs-to :doc entity=Doc
     belongs-to :author entity=User
+  actions auto=[:read]
 `.replace("import { Doc }", 'import { User } from "./user.mesh.mx"\nimport { Doc }');
   const needs = (computed: string) => {
     const result = build({ "user.mesh.mx": user, "doc.mesh.mx": doc(computed), "note.mesh.mx": note });
@@ -557,7 +568,7 @@ string :three() { return JSON.stringify(&notes?.at(0)?.doc?.owner?.docCount) }`)
   });
 
   test("a body that reads a has-many nothing points back at is the one MESH_NO_INVERSE, at the has-many line, not one per reader", () => {
-    const orphan = "entity :Orphan\n  attributes\n    uuid :id primary-key\n";
+    const orphan = "entity :Orphan\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
     const owner = `import { Orphan } from "./orphan.mesh.mx"\nentity :Doc\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :orphans entity=Orphan\n  computed\n    boolean :hasOrphans() { return &orphans.length > 0 }\n`;
     const result = build({ "doc.mesh.mx": owner, "orphan.mesh.mx": orphan });
     expect(result.diagnostics).toEqual([expect.objectContaining({
@@ -642,5 +653,104 @@ describe("a used has-many with several candidates and no inverse lists them", ()
   test("choosing one with inverse clears both", () => {
     const result = build({ "collaborator.mesh.mx": withUse("    boolean :member() { return &memberships.length > 0 }").replace("entity=Membership", "entity=Membership inverse=:holder"), "membership.mesh.mx": unnamed() });
     expect(result.diagnostics).toEqual([]);
+  });
+});
+
+describe("an entity reached through a relationship needs a read to load it with (ACT-20)", () => {
+  // A load through a relationship runs the read `on:load=` names, or else the auto read. A target with neither is an
+  // error at each relationship that reaches it.
+  const order = (actions = "  actions auto=[:read]\n") => `import { Line } from "./line.mesh.mx"
+entity :Order
+  attributes
+    uuid :id primary-key
+  relationships
+    has-many :lines entity=Line
+${actions}`;
+  const line = (actions = "  actions auto=[:read]\n") => `import { Order } from "./order.mesh.mx"
+entity :Line
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :order entity=Order
+${actions}`;
+  const missing = (relation: string, from: string, target: string) => ({
+    severity: "error" as const,
+    code: "MESH_ON_LOAD",
+    message: `${relation} of app.${from} reaches app.${target}, which has neither \`on:load=\` nor an auto read, so Mesh has no read to load it with`,
+    fix: `List \`:read\` in \`auto=\` on the \`actions\` line of app.${target} (\`actions auto=[:read]\`), or name one of its reads there with \`on:load=&name\``,
+  });
+
+  test("a target with no actions at all is refused at the relationship that reaches it, and only there", () => {
+    const result = build({ "order.mesh.mx": order(), "line.mesh.mx": line("") });
+    expect(result.diagnostics).toEqual([{ ...missing("has-many :lines", "Order", "Line"), position: expect.objectContaining({ file: "app/order.mesh.mx", line: 6, column: 4 }) }]);
+    expect(result.document).toBeNull();
+    // The other way round, the belongs-to is the relationship that reaches the entity with no read.
+    expect(build({ "order.mesh.mx": order(""), "line.mesh.mx": line() }).diagnostics)
+      .toEqual([{ ...missing("belongs-to :order", "Line", "Order"), position: expect.objectContaining({ file: "app/line.mesh.mx", line: 6, column: 4 }) }]);
+  });
+
+  test("a written read, or another auto action, is not the read a load runs", () => {
+    for (const actions of ["  actions\n    read :visible\n", "  actions auto=[:destroy]\n", "  actions\n    create :add\n", "  actions auto=[:destroy]\n    read :read\n"])
+      expect(build({ "order.mesh.mx": order(), "line.mesh.mx": line(actions) }).diagnostics, actions).toEqual([expect.objectContaining(missing("has-many :lines", "Order", "Line"))]);
+  });
+
+  test("legal neighbours: an auto read, `on:load=` naming a written read, and both", () => {
+    for (const actions of [
+      "  actions auto=[:read]\n",
+      "  actions auto=[:read, :destroy]\n    create :add\n",
+      "  actions on:load=&visible\n    read :visible\n",
+      "  actions auto=[:destroy] on:load=&visible\n    read :visible\n",
+      "  actions auto=[:read] on:load=&read\n",
+      "  actions auto=[:read] on:load=&visible\n    read :visible\n",
+    ]) {
+      const result = build({ "order.mesh.mx": order(), "line.mesh.mx": line(actions) });
+      expect(result.diagnostics, actions).toEqual([]);
+      expect(result.document, actions).not.toBeNull();
+    }
+  });
+
+  test("an entity no relationship reaches needs no read", () => {
+    // A belongs-to alone: Line reaches Order, which has its read, and nothing reaches Line.
+    const target = "entity :Order\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n";
+    for (const actions of ["", "  actions\n    create :add\n", "  actions auto=[:destroy]\n", "  actions\n    read :visible\n"])
+      expect(build({ "order.mesh.mx": target, "line.mesh.mx": line(actions) }).diagnostics, actions).toEqual([]);
+    expect(build({ "solo.mesh.mx": "entity :Solo\n  attributes\n    uuid :id primary-key\n" }).diagnostics).toEqual([]);
+  });
+
+  test("each relationship that reaches the entity is reported, in every file, a has-one included", () => {
+    const shelf = `import { Line } from "./line.mesh.mx"
+entity :Shelf
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :first entity=Line
+    belongs-to :last entity=Line nullable
+  actions auto=[:read]
+`;
+    const result = build({ "order.mesh.mx": order().replace("has-many :lines", "has-one :line"), "line.mesh.mx": line(""), "shelf.mesh.mx": shelf });
+    expect(result.diagnostics.map((d) => [d.code, d.position.file, d.position.line, d.message.split(" reaches ")[0]])).toEqual([
+      ["MESH_ON_LOAD", "app/order.mesh.mx", 6, "has-one :line of app.Order"],
+      ["MESH_ON_LOAD", "app/shelf.mesh.mx", 6, "belongs-to :first of app.Shelf"],
+      ["MESH_ON_LOAD", "app/shelf.mesh.mx", 7, "belongs-to :last of app.Shelf"],
+    ]);
+  });
+
+  test("an entity that relates to itself is its own target", () => {
+    const result = build({ "task.mesh.mx": task.replace("  actions auto=[:read]\n", "") });
+    expect(result.diagnostics.map((d) => [d.code, d.position.line, d.message])).toEqual([
+      ["MESH_ON_LOAD", 5, missing("belongs-to :parent", "Task", "Task").message],
+      ["MESH_ON_LOAD", 6, missing("has-many :children", "Task", "Task").message],
+    ]);
+    expect(build({ "task.mesh.mx": task }).diagnostics).toEqual([]);
+  });
+
+  test("`on:load=` that names something other than a read stays its own error, with no second one at the relationship", () => {
+    const result = build({ "order.mesh.mx": order(), "line.mesh.mx": line("  actions on:load=&add\n    create :add\n") });
+    expect(result.diagnostics.map((d) => [d.code, d.position.file, d.message])).toEqual([["MESH_ON_LOAD", "app/line.mesh.mx", "on:load must name a read action"]]);
+  });
+
+  test("a target whose policies leave out the read keeps its warning beside the error", () => {
+    const guarded = line("  actions\n    create :add\n  policies\n    policy :adding types=[:create]\n      authorize-if=() => true\n");
+    expect(build({ "order.mesh.mx": order(), "line.mesh.mx": guarded }).diagnostics.map((d) => `${d.severity}:${d.code}`).sort()).toEqual(["error:MESH_ON_LOAD", "warning:MESH_LOAD_NO_POLICY"]);
   });
 });

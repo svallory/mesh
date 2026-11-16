@@ -19,6 +19,17 @@ function documentOf(): ModelDocument {
   expect(built.diagnostics).toEqual([]);
   return built.document!;
 }
+/**
+ * The project plus a Note: an entity with no actions, which only one that no relationship reaches may be (a
+ * relationship's target needs a read, `MESH_ON_LOAD`). It refers to a Todo, as a List does.
+ */
+function documentWithNote(): ModelDocument {
+  const { root, files } = project();
+  const note = 'import { Todo } from "./todo.mesh.mx"\nentity :Note\n  attributes\n    uuid :id primary-key\n    decimal :amount\n  relationships\n    belongs-to :owner entity=Todo nullable\n';
+  const built = buildModel({ root, files: [...files, { file: "todo/note.mesh.mx", source: note }] });
+  expect(built.diagnostics).toEqual([]);
+  return built.document!;
+}
 const config: ResolvedConfig = {
   root: "/project",
   configFile: "/project/mesh.config.ts",
@@ -59,36 +70,29 @@ describe("views are plain data", () => {
 
 describe("typesView", () => {
   test("an entity with no actions and one reference: its import, no inputs, the record's members in order", () => {
-    expect(types(documentOf(), "List")).toEqual({
-      entityFile: "todo/list.mesh.mx",
+    expect(types(documentWithNote(), "Note")).toEqual({
+      entityFile: "todo/note.mesh.mx",
       imports: [{ name: "$todo$Todo$Record", names: "Todo as $todo$Todo$Record, TodoLoaded as $todo$Todo$Loaded", fromLiteral: '"./todo.types"' }],
       record: {
-        name: "List",
+        name: "Note",
         members: [
           { name: "id", optional: false, key: "id", type: "string" },
           { name: "amount", optional: false, key: "amount", type: "number" },
           { name: "ownerId", optional: false, key: "ownerId", type: "string | null" },
-          { name: "todoId", optional: false, key: "todoId", type: "string | null" },
         ],
       },
       inputs: [],
       query: null,
       loadable: {
-        name: "ListLoadable",
-        withName: "ListWith",
+        name: "NoteLoadable",
+        withName: "NoteWith",
         tx: null,
-        namesName: "ListLoadNames",
-        argName: "ListLoadArg",
-        members: [
-          { name: "owner", optional: false, key: "owner", type: "$todo$Todo$Record | null" },
-          { name: "todo", optional: false, key: "todo", type: "$todo$Todo$Record | null" },
-        ],
+        namesName: "NoteLoadNames",
+        argName: "NoteLoadArg",
+        members: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Record | null" }],
         // What a function of the entity file sees as `self`: every relationship and computed field, related records loaded alike.
-        loadedName: "ListLoaded",
-        loadedMembers: [
-          { name: "owner", optional: false, key: "owner", type: "$todo$Todo$Loaded | null" },
-          { name: "todo", optional: false, key: "todo", type: "$todo$Todo$Loaded | null" },
-        ],
+        loadedName: "NoteLoaded",
+        loadedMembers: [{ name: "owner", optional: false, key: "owner", type: "$todo$Todo$Loaded | null" }],
       },
       // The loaded types name `Pick` as `$Pick`, from `$globals.ts`: no entity name can hide it.
       globals: { typeOnly: true, keyword: "import type", names: "$Pick", fromLiteral: '"../../$globals"' },
@@ -211,10 +215,10 @@ describe("typesView", () => {
 
 describe("validatorsView", () => {
   test("an entity with no actions has no inputs and no schemas", () => {
-    expect(validators(documentOf(), "List")).toEqual({
-      entityFile: "todo/list.mesh.mx",
+    expect(validators(documentWithNote(), "Note")).toEqual({
+      entityFile: "todo/note.mesh.mx",
       hasInputs: false,
-      typesFromLiteral: '"./list.types"',
+      typesFromLiteral: '"./note.types"',
       schemas: [],
       json: false,
       query: null,

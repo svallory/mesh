@@ -49,7 +49,7 @@ ${at.computed ? `  computed\n    ${at.computed}\n` : ""}  policies
       authorize-if=() => true
     policy :writers types=[:create, :update, :destroy]
       authorize-if=({ actor }) => actor.id !== null
-${at.policy ? `      ${at.policy}\n` : ""}  actions auto=[:destroy]
+${at.policy ? `      ${at.policy}\n` : ""}  actions auto=[:read, :destroy]
     read :some
       filter=${at.filter ?? "() => &n > 0"}
     update :go

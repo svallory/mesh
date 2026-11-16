@@ -1,12 +1,14 @@
 import { dirname, resolve } from "node:path";
-import type { ActionType, Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
+import type { Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
- * computed field, a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
+ * computed field, an `always` block whose `actions=` names a read, which runs neither `validate` nor `do` (a read's own
+ * `validate` or `do`, and `:read` in an always block's `types=`, are refused by the contracts), a `set` or `load` in a
+ * destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
  * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
@@ -32,6 +34,14 @@ export function checkLifecycleLimits(
   for (const from of document.entities)
     for (const relation of from.relationships) {
       const target = byFile.get(resolve(dirname(from.file), relation.entity.from));
+      // A load through a relationship runs the read `on:load=` names, or else the auto read: a target with neither has
+      // no read to load with, which is refused at each relationship that reaches it (ACT-20). A written read does not
+      // count until `on:load=` names it.
+      if (target && !target.onLoad && !target.auto.includes("read"))
+        diagnostics.push(error("MESH_ON_LOAD",
+          `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, which has neither \`on:load=\` nor an auto read, so Mesh has no read to load it with`,
+          relation.position,
+          `List \`:read\` in \`auto=\` on the \`actions\` line of ${target.fqn} (\`actions auto=[:read]\`), or name one of its reads there with \`on:load=&name\``));
       if (!target?.policies.length || loadPolicies(target).length) continue;
       const empty = relation.kind === "has-many" ? "[]" : "null";
       diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
@@ -39,6 +49,22 @@ export function checkLifecycleLimits(
         relation.position,
         `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
     }
+  // Where SQL is required (a read's filter, a condition of a policy that covers a read or a load), code Mesh does not
+  // translate is an error once the SQL evaluator runs it (M10). Until then it is a warning, whatever made the function
+  // plain: a block body, or a helper given the record, draws no warning anywhere else. A function the expression pass
+  // already warned about (JavaScript's rules for null), or one that holds an error, is not reported a second time.
+  const warnUntranslated = (expression: Expression, subject: string): void => {
+    const plain = expression.plain;
+    if (!plain) return;
+    const end = expression.position.offset + expression.source.length;
+    const said = diagnostics.some((d) => (d.severity === "error" || d.code === "MESH_EXPR_PLAIN")
+      && d.position.file === expression.position.file && d.position.offset >= expression.position.offset && d.position.offset < end);
+    if (said) return;
+    diagnostics.push({ ...error("MESH_EXPR_PLAIN",
+      `${subject}, and Mesh does not translate it (${plain.detail}): a warning until the SQL evaluator (M10), an error from then`,
+      plain.position,
+      "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record"), severity: "warning" });
+  };
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in:
     // it reads the record and what it loads, never through `privileged`, and runs no action. A helper it calls
@@ -96,6 +122,8 @@ export function checkLifecycleLimits(
           expression.position, "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store"));
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
+    for (const action of entity.actions)
+      if (action.kind === "read" && action.filter) warnUntranslated(action.filter, `the filter of read :${action.name} of ${entity.fqn} must run as SQL`);
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
     // A policy decides; it does not act, and it sees no `before` (it runs before `validate`). A read policy that
     // reads the record is a filter on the query, which the SQL evaluator folds in M10.
@@ -146,18 +174,15 @@ export function checkLifecycleLimits(
               "Move the condition into a write policy (scope this one to the writes with `types=` or `actions=`) or a check, or into a computed field that the filter compares"));
         }
       const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression, "read")) : undefined;
-      if (!reading) continue;
-      diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-        `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
-        reading.expression.position,
-        "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
-    }
-    for (const action of entity.actions) {
-      if (action.kind !== "read") continue;
-      if (action.validate.length || action.do.length)
+      if (reading)
         diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `read :${action.name} of ${entity.fqn} declares ${action.validate.length ? "validate" : "do"}, which a read does not run: it has no record to check or change`,
-          action.position, "A read narrows its rows with `filter`; its caller narrows them further with `filter`, `sort`, `limit` and `offset`"));
+          `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
+          reading.expression.position,
+          "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
+      // A condition that reads the record is that refusal's (once per policy); any other plain one is the warning.
+      if (covered.length)
+        for (const { expression, what } of policyExpressions(policy))
+          if (!recordReason(expression, "read")) warnUntranslated(expression, `${what} must run as SQL, since the policy covers ${covered.join(", ")} of ${entity.fqn}`);
     }
     // A destroy returns nothing and writes nothing: a `set` or `load` in one would be dropped, so it is refused.
     const refuseDestroyStep = (steps: Step[], where: string): void => {
@@ -174,14 +199,14 @@ export function checkLifecycleLimits(
       const covers = always.types?.includes("destroy") || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "destroy" || (ref.name === "destroy" && entity.auto.includes("destroy")));
       if (covers) refuseDestroyStep(always.do, `an always block of ${entity.fqn} that covers a destroy`);
     }
-    for (const always of entity.always) {
-      if (!always.validate.length && !always.do.length) continue;
-      const reads = (always.types ?? []).includes("read" satisfies ActionType)
-        || always.actions?.some((ref) => entity.actions.find((a) => a.name === ref.name)?.kind === "read" || (ref.name === "read" && entity.auto.includes("read")));
-      if (reads)
-        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `always declares ${always.validate.length ? "validate" : "do"} for a read, which does not run it: a read has no record to check or change`,
-          always.position, "Scope the block to :create, :update or :destroy"));
-    }
+    // A read runs neither `validate` nor `do`, so an always block scoped to one never applies to it: each reference of
+    // `actions=` that names a read (a declared one, or the auto read) is refused where it is written, whatever the block
+    // holds. `types=[:read]` is refused by the `always` contract, which has the atom's position.
+    for (const always of entity.always)
+      for (const ref of always.actions ?? [])
+        if (entity.actions.find((a) => a.name === ref.name)?.kind === "read" || (ref.name === "read" && entity.auto.includes("read")))
+          diagnostics.push(error("MESH_OPTION_VALUE",
+            `\`actions=\` names read :${ref.name} of ${entity.fqn}, and a read runs neither \`validate\` nor \`do\`, so an always block never applies to it`,
+            ref.position, `Remove \`&${ref.name}\` from \`actions=\``));
   }
 }

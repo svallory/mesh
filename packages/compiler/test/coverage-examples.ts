@@ -16,7 +16,10 @@ export function coverageProject(tag: string, option: string | undefined, example
   const attributes = node("attributes", [node("uuid :id primary-key"), node("string :title"), node("boolean :done")]);
   // A `has-one` example follows Line's only `belongs-to` back, which a `has-many` beside it could not follow too (`MESH_HAS_ONE_SHARED_KEY`).
   const relationships = node("relationships", tag === "has-one" ? [] : [node("has-many :lines entity=Line")]);
-  const actions = node("actions", [node("read :custom")]);
+  // `&custom` is a read, which `on:load=`, a policy and a sort can name; an `always` block's `actions=` names no read
+  // (`MESH_OPTION_VALUE`), so for that cell it is an update. Line reaches Sample through its `belongs-to`, so Sample has
+  // the auto read a load runs (`MESH_ON_LOAD`), unless the cell is an `actions` line of its own.
+  const actions = node("actions auto=[:read]", [node(tag === "always" && option === "actions" ? "update :custom" : "read :custom")]);
   const root = node("entity :Sample", [attributes, relationships, actions]);
   const chain = option === "member" && contracts[tag]!.children?.["*"] ? [tag, "member"] : [tag];
   let parent = ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number]) && option === "value" ? "computed" : contracts[tag]!.parents![0]!;
@@ -32,7 +35,7 @@ export function coverageProject(tag: string, option: string | undefined, example
   }
   if (tag === "entity") root.line = example;
   else {
-    const section = current.children.find((child) => child.line === tag);
+    const section = tag === "actions" ? actions : current.children.find((child) => child.line === tag);
     if (section) section.line = example;
     else current.children.push(node(example));
   }
@@ -46,6 +49,6 @@ export function coverageProject(tag: string, option: string | undefined, example
     // `on=` answers a command: its fields are the action's inputs, and a create has none, nor the key an update and a destroy select by.
     ...(answers ? [{ file: "docs/paid.mesh.mx", source: `command :Paid\n${tag === "create" ? "" : "  uuid :id\n"}` }] : []),
     { file: "docs/sample.mesh.mx", source: paid + 'import { Line } from "./line.mesh.mx"\n' + render(root) },
-    { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n  relationships\n    belongs-to :owner entity=Sample nullable\n' },
+    { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n  relationships\n    belongs-to :owner entity=Sample nullable\n  actions auto=[:read]\n' },
   ] };
 }

@@ -105,7 +105,7 @@ describe("MESH_DUPLICATE_ENTITY: two names of one module that convert alike", ()
 });
 
 describe("another file names the entity by its converted name", () => {
-  const line = entity("invoice_line");
+  const line = `${entity("invoice_line")}  actions auto=[:read]\n`;
   const invoice = (imports: string, reference: string) => `${imports}\nentity :invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :line entity=${reference}\n`;
   const files = (imports: string, reference: string) => ({ "billing/line.mesh.mx": line, "billing/invoice.mesh.mx": invoice(imports, reference) });
 
@@ -139,6 +139,7 @@ describe("inside its own file an entity names itself by the converted name", () 
   relationships
     belongs-to :parent entity=${reference} nullable
     has-many :children entity=${reference}
+  actions auto=[:read]
 `;
 
   test("entity=WorkItem in entity :work_item needs no import", () => {
@@ -169,8 +170,9 @@ describe("inside its own file an entity names itself by the converted name", () 
 ${entity("work_item")}  relationships
     belongs-to :board entity=work_item
     belongs-to :parent entity=WorkItem nullable
+  actions auto=[:read]
 `;
-    const result = build({ "work/item.mesh.mx": item, "work/board.mesh.mx": entity("board") });
+    const result = build({ "work/item.mesh.mx": item, "work/board.mesh.mx": `${entity("board")}  actions auto=[:read]\n` });
     expect(result.diagnostics).toEqual([]);
     expect(result.document!.entities.find((e) => e.name === "WorkItem")!.relationships).toMatchObject([
       { name: "board", entity: { identifier: "work_item", from: "./board.mesh.mx" } },
@@ -186,8 +188,8 @@ ${entity("work_item")}  relationships
   });
 
   test("a has-many finds the belongs-to named after the converted name in lower camel case", () => {
-    const owner = `import { Step } from "./step.mesh.mx"\n${entity("work_item")}  relationships\n    has-many :steps entity=Step\n`;
-    const step = `import { WorkItem } from "./item.mesh.mx"\n${entity("step")}  relationships\n    belongs-to :workItem entity=WorkItem\n    belongs-to :blockedBy entity=WorkItem nullable\n`;
+    const owner = `import { Step } from "./step.mesh.mx"\n${entity("work_item")}  relationships\n    has-many :steps entity=Step\n  actions auto=[:read]\n`;
+    const step = `import { WorkItem } from "./item.mesh.mx"\n${entity("step")}  relationships\n    belongs-to :workItem entity=WorkItem\n    belongs-to :blockedBy entity=WorkItem nullable\n  actions auto=[:read]\n`;
     const result = build({ "work/item.mesh.mx": owner, "work/step.mesh.mx": step });
     expect(result.diagnostics).toEqual([]);
     expect(result.document!.entities.find((e) => e.name === "WorkItem")!.relationships).toMatchObject([{ kind: "has-many", inverse: "workItem" }]);

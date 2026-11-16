@@ -137,6 +137,38 @@ describe("MESH_NAME", () => {
       ["billing/invoice.mesh.mx", 8, 4, "error", "MESH_NAME", `\`${kind}\`: an action needs a name or \`on=\`: write \`${kind} :name\`, or \`${kind} on=PayInvoice\` to take the name from the command`, null],
     ]);
   });
+
+  // A read answers no command, so its message offers no `on=`: the plain read is `actions auto=[:read]`. The fixture's
+  // unanswered command is a warning of its own; these cases read the errors.
+  const errors = (actions: string) => brief(build(actions).diagnostics.filter((d) => d.severity === "error"));
+  test.each([
+    ["alone", "    read\n"],
+    ["with a filter option", "    read filter=({ self }) => self.paid\n"],
+    ["with children", "    read\n      input\n        boolean :settled\n      filter=({ self, input }) => self.paid === input.settled\n"],
+  ])("a bare read %s needs a name, at the read line, and the message names the auto read instead of on=", (_, actions) => {
+    expect(errors(actions)).toEqual([
+      ["billing/invoice.mesh.mx", 8, 4, "error", "MESH_NAME", "`read`: an action needs a name: write `read :name`; `actions auto=[:read]` generates the plain read", null],
+    ]);
+  });
+
+  test("the error sits at the bare read, not at a named read before it", () => {
+    expect(errors("    read :settled filter=({ self }) => self.paid\n    read\n").map((d) => [d[1], d[2], d[4]])).toEqual([[9, 4, "MESH_NAME"]]);
+  });
+
+  test("a read whose name is written as name= is still one MESH_NAME, about the atom, with no second error about a missing name", () => {
+    expect(errors('    read name="settled"\n')).toEqual([
+      ["billing/invoice.mesh.mx", 8, 9, "error", "MESH_NAME", "`read`: a declaration needs one atom name", null],
+    ]);
+  });
+
+  test("a read still takes no on=: with a name it is MESH_UNKNOWN_OPTION alone", () => {
+    expect(errors("    read :settled on=PayInvoice\n").map((d) => d[4])).toEqual(["MESH_UNKNOWN_OPTION"]);
+  });
+
+  test("the legal neighbours stay legal: a named read, and the auto read with no read line at all", () => {
+    expect(errors("    read :settled filter=({ self }) => self.paid\n")).toEqual([]);
+    expect(errors("")).toEqual([]);
+  });
 });
 
 describe("MESH_UNKNOWN_COMMAND", () => {
@@ -315,7 +347,7 @@ entity :Invoice
         string :reason
         string :aside nullable
 `;
-    const customer = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    uuid :id primary-key\n" };
+    const customer = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" };
     const complete = buildModel(bare(entity, { ...customer, "billing/open-invoice.mesh.mx": "command :OpenInvoice\n  string :title\n  uuid :customer\n  string :reason\n" }));
     expect(complete.diagnostics).toEqual([]);
     const missing = buildModel(bare(entity, { ...customer, "billing/open-invoice.mesh.mx": "command :OpenInvoice\n  string :title\n" }));
@@ -418,7 +450,7 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
   });
   test("a belongs-to input takes its target's key kind, not an entity reference", () => {
     const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
-    const files = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    integer :id primary-key\n" };
+    const files = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    integer :id primary-key\n  actions auto=[:read]\n" };
     expect(buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  integer :customer\n" })).diagnostics).toEqual([]);
     const result = buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" }));
     expect(result.diagnostics).toHaveLength(1);
@@ -427,7 +459,7 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
   test.each(["MESH_PRIMARY_KEY", "MESH_UNKNOWN_IMPORT"])("an unresolved relationship key reports only its root error: %s", (code) => {
     const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
     const extra: Record<string, string> = { "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" };
-    if (code === "MESH_PRIMARY_KEY") extra["billing/customer.mesh.mx"] = "entity :Customer\n  attributes\n    string :name\n";
+    if (code === "MESH_PRIMARY_KEY") extra["billing/customer.mesh.mx"] = "entity :Customer\n  attributes\n    string :name\n  actions auto=[:read]\n";
     const result = buildModel(bare(entity, extra));
     expect(result.document).toBeNull();
     expect(codes(result.diagnostics)).toEqual([code]);

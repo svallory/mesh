@@ -6,13 +6,16 @@ import { buildModel } from "../src/front-end/build.ts";
 import { fixture } from "./helpers.ts";
 import { build, keyed, list, project } from "./v4.ts";
 
+/** The List of `project()` refers to the Todo, so a Todo that builds has a read to be loaded with (`MESH_ON_LOAD`). */
+const READ = "  actions auto=[:read]\n";
+
 test("fix2: imported name must be exported by the target entity", () => {
-  const result = buildModel(project(fixture("fix1/import-name-mismatch.mesh.mx").source));
+  const result = buildModel(project(fixture("fix1/import-name-mismatch.mesh.mx").source + READ));
   expect(result.document).toBeNull();
   expect(result.diagnostics).toHaveLength(1);
   // At the imported name (`DataImportName.span`), not the statement.
   expect(result.diagnostics[0]).toMatchObject({ code: "MESH_UNKNOWN_IMPORT", message: "`Usr` is not what ./list.mesh.mx declares; it declares `List`", position: { line: 1, column: 9 } });
-  const alias = fixture("fix1/import-name-mismatch.mesh.mx").source.replace("{ Usr }", "{ List as Usr }");
+  const alias = fixture("fix1/import-name-mismatch.mesh.mx").source.replace("{ Usr }", "{ List as Usr }") + READ;
   expect(buildModel(project(alias)).diagnostics).toEqual([]);
 });
 
@@ -46,26 +49,26 @@ test("fix6: member is not an authored tag", () => {
 });
 
 test("fix10: import diagnostics distinguish duplicates, forms and relative paths", () => {
-  const duplicate = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List } from "./list.mesh.mx"\n' + keyed));
+  const duplicate = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List } from "./list.mesh.mx"\n' + keyed + READ));
   expect(duplicate.diagnostics.map((d) => d.code)).toEqual(["MESH_DUPLICATE_IMPORT"]);
   // Positioned at the second `List` (line 2, column 9), not at the statement.
   expect(duplicate.diagnostics[0]!.position).toMatchObject({ line: 2, column: 9 });
-  const aliased = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List as Other, List as List } from "./list.mesh.mx"\n' + keyed));
+  const aliased = buildModel(project('import { List } from "./list.mesh.mx"\nimport { List as Other, List as List } from "./list.mesh.mx"\n' + keyed + READ));
   expect(aliased.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_DUPLICATE_IMPORT", 2, 32]]);
   // A wrong imported name is positioned at the name, an alias is not what is wrong.
-  const wrongAlias = buildModel(project('import { Usr as List } from "./list.mesh.mx"\n' + keyed));
+  const wrongAlias = buildModel(project('import { Usr as List } from "./list.mesh.mx"\n' + keyed + READ));
   expect(wrongAlias.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([["MESH_UNKNOWN_IMPORT", 1, 9]]);
   // A default or side-effect import is neither form; a namespace import is one, and is accepted.
   for (const declaration of ['import List from "./list.mesh.mx"', 'import "./list.mesh.mx"', 'import List, * as lists from "./list.mesh.mx"']) {
-    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace: `import { List } from …` or `import * as billing from …`" })]);
+    expect(buildModel(project(declaration + '\n' + keyed + READ)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace: `import { List } from …` or `import * as billing from …`" })]);
   }
-  expect(buildModel(project('import * as List from "./list.mesh.mx"\n' + keyed)).diagnostics).toEqual([]);
+  expect(buildModel(project('import * as List from "./list.mesh.mx"\n' + keyed + READ)).diagnostics).toEqual([]);
   for (const declaration of ['import type { List } from "./list.mesh.mx"', 'import { type List } from "./list.mesh.mx"', 'import type * as lists from "./list.mesh.mx"']) {
-    expect(buildModel(project(declaration + '\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace, not as a type: `import { List } from …` or `import * as billing from …`", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+    expect(buildModel(project(declaration + '\n' + keyed + READ)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", message: "import the entity by name or as a namespace, not as a type: `import { List } from …` or `import * as billing from …`", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   }
-  expect(buildModel(project('import List, { List as L } from "./list.mesh.mx"\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+  expect(buildModel(project('import List, { List as L } from "./list.mesh.mx"\n' + keyed + READ)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_IMPORT_FORM", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   // MX itself refuses an import that is not one ES import declaration (decision 193).
-  expect(buildModel(project('import x = require("./list.mesh.mx")\n' + keyed)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_INVALID_STATEMENT", position: expect.objectContaining({ line: 1, column: 0 }) })]);
+  expect(buildModel(project('import x = require("./list.mesh.mx")\n' + keyed + READ)).diagnostics).toEqual([expect.objectContaining({ code: "MESH_INVALID_STATEMENT", position: expect.objectContaining({ line: 1, column: 0 }) })]);
   const nonrelative = build('import { List } from "lists"\n' + keyed);
   expect(nonrelative.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_IMPORT", message: "The import path must be relative (start with ./ or ../), or be \"meshfw\" for Mesh's own functions (`import { Mesh } from \"meshfw\"`)" })]);
 });
@@ -75,7 +78,7 @@ test("fix11: existing but unconfigured entity imports are rejected", () => {
   try {
     mkdirSync(join(root, "todo"));
     writeFileSync(join(root, "todo/list.mesh.mx"), list);
-    const configured = project('import { List } from "./list.mesh.mx"\n' + keyed);
+    const configured = project('import { List } from "./list.mesh.mx"\n' + keyed + READ);
     const result = buildModel({ root, files: configured.files.slice(0, 1) });
     expect(result.document).toBeNull();
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_ENTITY", message: "./list.mesh.mx exists but is not under the configured entity directories", position: expect.objectContaining({ line: 1, column: 0 }) })]);

@@ -5,3 +5,4 @@ entity :InvoiceLine
     decimal :amount
   relationships
     belongs-to :invoice entity=Invoice
+  actions auto=[:read]

@@ -82,8 +82,8 @@ describe("json in an entity file (ADR-0069)", () => {
   });
 
   test("a json attribute is not a rollup operand", () => {
-    const list = "import { Todo } from \"./todo.mesh.mx\"\nentity :List\n  attributes\n    uuid :id primary-key\n    json :data\n  relationships\n    belongs-to :todo entity=Todo\n";
-    const source = `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lists entity=List\n  computed\n    max :biggest of=&lists.data\n`;
+    const list = "import { Todo } from \"./todo.mesh.mx\"\nentity :List\n  attributes\n    uuid :id primary-key\n    json :data\n  relationships\n    belongs-to :todo entity=Todo\n  actions auto=[:read]\n";
+    const source = `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lists entity=List\n  computed\n    max :biggest of=&lists.data\n  actions auto=[:read]\n`;
     const result = buildModel({ root: "/project", files: [{ file: "todo/todo.mesh.mx", source }, { file: "todo/list.mesh.mx", source: list }] });
     expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_ROLLUP_TYPE"]);
   });
@@ -305,8 +305,8 @@ describe("the data adapter's capabilities", () => {
       const root = await mkdtemp(resolve(import.meta.dir, "../mesh-cap-"));
       roots.push(root);
       await mkdir(resolve(root, "src/domain"), { recursive: true });
-      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n  computed\n    ${computed}\n`);
-      await writeFile(resolve(root, "src/domain/todo.mesh.mx"), `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n    integer :rank\n  relationships\n    belongs-to :list entity=List\n`);
+      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n  computed\n    ${computed}\n  actions auto=[:read]\n`);
+      await writeFile(resolve(root, "src/domain/todo.mesh.mx"), `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n    integer :rank\n  relationships\n    belongs-to :list entity=List\n  actions auto=[:read]\n`);
       await writeFile(resolve(root, "mesh.config.ts"), `export default { domain: "src/domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: "./none", ${adapter} options: {} } };\n`);
       return root;
     }

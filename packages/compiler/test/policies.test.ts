@@ -161,12 +161,13 @@ describe("a read policy that reads the record is refused until M10", () => {
     }
   });
 
-  test("a policy a caller's load runs that reads the record is refused too, with no read action to cover", () => {
-    const comment = (policies: string) => ({ file: "blog/comment.mesh.mx", source: `entity :Comment
+  test("a policy a caller's load runs that reads the record is refused too, and names the loads it covers", () => {
+    // Reached by a Post, a Comment has the auto read a load runs (`MESH_ON_LOAD`); reached by nothing, it needs none.
+    const comment = (policies: string, actions = "actions auto=[:read]") => ({ file: "blog/comment.mesh.mx", source: `entity :Comment
   attributes
     uuid :id primary-key
     string :authorId
-  actions
+  ${actions}
     create :add
 ${policies}` });
     const blog = (policies: string, from = "belongs-to :comment entity=Comment") => buildModel({ root: "/project", files: [comment(policies), { file: "blog/post.mesh.mx", source: `import { Comment } from "./comment.mesh.mx"
@@ -182,13 +183,13 @@ entity :Post
 ` }] });
     const built = blog("  policies\n    policy :mine\n      authorize-if=({ actor }) => &authorId === actor.id\n");
     expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers the loads of it (a relationship or a rollup that reaches it) of blog.Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
+    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
     // Scoped to reads by type, it covers the loads too.
     expect(codes(blog("  policies\n    policy :mine types=[:read]\n      authorize-if=() => &authorId !== null\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
     // Scoped to the writes, it builds, with the warning that no caller then loads a Comment (R2-N2); so does an entity no
     // relationship reaches, with no warning.
     expect(codes(blog("  policies\n    policy :mine types=[:create]\n      authorize-if=({ input, actor }) => input.authorId === actor.id\n").diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY"]);
-    expect(codes(buildModel({ root: "/project", files: [comment("  policies\n    policy :mine\n      authorize-if=({ actor, input }) => (input.authorId ?? &authorId) === actor.id\n")] }).diagnostics)).toEqual([]);
+    expect(codes(buildModel({ root: "/project", files: [comment("  policies\n    policy :mine\n      authorize-if=({ actor, input }) => (input.authorId ?? &authorId) === actor.id\n", "actions")] }).diagnostics)).toEqual([]);
   });
 
   test("a relationship to an entity whose policies leave out the read a load runs warns: every caller's load of it is empty (R2-N2)", () => {
@@ -232,6 +233,119 @@ ${covered}` }] });
 
   test("scoped to the writes, the same policy builds; an actor-only read policy builds", () => {
     expect(build(post("  policies\n    policy :mine types=[:update, :destroy]\n      authorize-if=({ actor }) => &authorId === actor.id\n    policy :signedIn types=[:create, :read]\n      authorize-if=({ actor }) => actor.id !== null\n")).diagnostics).toEqual([]);
+  });
+});
+
+describe("a read policy's condition that does not translate warns until M10", () => {
+  // A read policy's conditions run as SQL from M10, where one that does not translate is an error. Until then the build
+  // warns, whatever made the condition plain: a block body and an awaited helper draw no warning anywhere else.
+  const fix = "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record";
+  const warning = (what: string, covers: string, reason: string) =>
+    `${what} must run as SQL, since the policy covers ${covers} of blog.Post, and Mesh does not translate it (${reason}): a warning until the SQL evaluator (M10), an error from then`;
+  const rest = (types: string) => `    policy :rest types=[${types}]\n      authorize-if=() => true\n`;
+  /** Build one Post beside a real `helpers.ts`, which an awaited helper needs to resolve. */
+  async function withHelpers(run: (build: (policies: string) => ReturnType<typeof buildModel> & { source: string }) => void): Promise<void> {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-plain-"));
+    try {
+      await mkdir(resolve(root, "blog"));
+      await writeFile(resolve(root, "blog/helpers.ts"), "export const staff = async (id: string) => id === \"a\";\nexport const known = (id: string) => id === \"a\";\n");
+      run((policies) => {
+        const source = `import { staff, known } from "./helpers"\n${post(policies)}`;
+        return { ...buildModel({ root, files: [{ file: "blog/post.mesh.mx", source }] }), source };
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+  // Each is plain and reads only the caller: [the condition, the reason the front end gives, where the warning sits].
+  const block = '({ actor }) => { const id = actor.id; return id === "a" }';
+  const method = '({ actor }) => ["a"].includes(actor.id)';
+  const awaited = "async ({ actor }) => await staff(actor.id)";
+  const plain: [string, string, string][] = [
+    [block, "a block body of 2 statements", block],
+    [method, "a method call", '["a"].includes(actor.id)'],
+    [awaited, "awaits an imported function", awaited],
+  ];
+
+  test("each plain condition of a policy that covers a read is one warning, at the construct, naming the policy and the read", async () => {
+    await withHelpers((build) => {
+      for (const [condition, reason, at] of plain) {
+        const built = build(`  policies\n    policy :p types=[:read]\n      authorize-if=${condition}\n${rest(":create, :update, :destroy")}`);
+        expect(built.diagnostics, condition).toEqual([{
+          severity: "warning",
+          code: "MESH_EXPR_PLAIN",
+          message: warning("policy :p authorize-if", "read :read", reason),
+          position: expect.objectContaining({ file: "blog/post.mesh.mx", offset: built.source.indexOf(at) }),
+          fix,
+        }]);
+        // A warning: the model is built.
+        expect(built.document, condition).not.toBeNull();
+      }
+    });
+  });
+
+  test("the policy covers the read by type, by name or with no scope, and a `forbid-if` and a `when` warn as an `authorize-if` does", async () => {
+    await withHelpers((build) => {
+      const messages = (policies: string) => build(policies).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`);
+      expect(messages(`  policies\n    policy :p actions=[&read]\n      forbid-if=${method}\n${rest(":create, :update, :destroy")}`))
+        .toEqual([`warning:MESH_EXPR_PLAIN:${warning("policy :p forbid-if", "read :read", "a method call")}`]);
+      // No scope: the policy covers every action, the read among them. Each plain function is named once, in written order.
+      expect(messages(`  policies\n    policy :all when=${method}\n      authorize-if=${block}\n      authorize-if=() => true\n`)).toEqual([
+        `warning:MESH_EXPR_PLAIN:${warning("policy :all when", "read :read", "a method call")}`,
+        `warning:MESH_EXPR_PLAIN:${warning("policy :all authorize-if", "read :read", "a block body of 2 statements")}`,
+      ]);
+    });
+  });
+
+  test("a policy that covers the loads of its entity names them", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-plain-"));
+    try {
+      // A Post reaches a Comment, so a caller's load of it runs the policy, through the auto read a load needs (`MESH_ON_LOAD`).
+      const comment = { file: "blog/comment.mesh.mx", source: `entity :Comment\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n    create :add\n  policies\n    policy :p\n      authorize-if=${method}\n` };
+      const reaching = { file: "blog/post.mesh.mx", source: 'import { Comment } from "./comment.mesh.mx"\nentity :Post\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :comment entity=Comment\n  actions auto=[:read]\n  policies\n    policy :open\n      authorize-if=() => true\n' };
+      expect(buildModel({ root, files: [comment, reaching] }).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`)).toEqual([
+        "warning:MESH_EXPR_PLAIN:policy :p authorize-if must run as SQL, since the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment, and Mesh does not translate it (a method call): a warning until the SQL evaluator (M10), an error from then",
+      ]);
+      // Reached by no relationship and with no read, the same policy covers only a write and builds clean.
+      expect(buildModel({ root, files: [{ ...comment, source: comment.source.replace("actions auto=[:read]", "actions") }] }).diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("legal neighbours: a condition Mesh translates, and the same plain code in a policy that covers no read, build clean", async () => {
+    await withHelpers((build) => {
+      // Translated: a comparison over the caller, and a helper called without `await` (a pure call, bound as a parameter).
+      for (const condition of ['({ actor }) => actor.id === "a"', "({ actor }) => known(actor.id)", "({ actor, context }) => actor.id === context.tenant"])
+        expect(build(`  policies\n    policy :p types=[:read]\n      authorize-if=${condition}\n${rest(":create, :update, :destroy")}`).diagnostics, condition).toEqual([]);
+      // Plain code is allowed in a write policy: it runs in memory, before the write.
+      for (const [condition] of plain) {
+        expect(build(`  policies\n    policy :p types=[:create, :update, :destroy]\n      authorize-if=${condition}\n${rest(":read")}`).diagnostics, condition).toEqual([]);
+        expect(build(`  policies\n    policy :p actions=[&publish]\n      authorize-if=${condition}\n${rest(":create, :read, :destroy")}`).diagnostics, condition).toEqual([]);
+      }
+    });
+  });
+
+  test("nothing is said twice: the null-rules warning, and each error a read policy already gets, stand alone", async () => {
+    await withHelpers((build) => {
+      const read = (condition: string, more = "") => build(`  policies\n    policy :p types=[:read]\n      authorize-if=${condition}\n${more}${rest(":create, :update, :destroy")}`);
+      // A differing operator already draws the warning of the expression pass.
+      const concat = read('({ actor }) => actor.id + "x" === "ax"');
+      expect(concat.diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`)).toEqual([
+        "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers",
+      ]);
+      // Plain code that reads the record is the M10 refusal, once per policy, and no warning beside it: on the first
+      // condition, and on a second one that the refusal does not name.
+      expect(codes(read("({ self }) => { return self.title === null }").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+      expect(codes(read("() => &title === null", "      forbid-if=({ self }) => { return self.title === null }\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+      // A plain condition that does not read the record still warns beside the refusal of another one.
+      expect(codes(read(method, "      forbid-if=() => &title === null\n").diagnostics)).toEqual(["warning:MESH_EXPR_PLAIN", "error:MESH_NOT_IMPLEMENTED"]);
+    });
+    // `Mesh.privileged`, an entity's action and a question to another policy are each their own error, with no warning.
+    const scoped = (condition: string) => MESH + post(`  policies\n    policy :q types=[:read]\n      authorize-if=${condition}\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);
+    expect(codes(build(scoped("async () => (await Mesh.privileged(Post).read({})).length > 9")).diagnostics)).toEqual(["error:MESH_READ_POLICY_PRIVILEGED"]);
+    expect(codes(build(scoped('async ({ context }) => (await Post.draft({ authorId: "a" }, context)) !== null')).diagnostics)).toEqual(["error:MESH_POLICY_ACTS"]);
+    expect(codes(build(scoped("async ({ context }) => await Mesh.can(Post.publish, {}, context)")).diagnostics)).toEqual(["error:MESH_POLICY_ASKS"]);
   });
 });
 

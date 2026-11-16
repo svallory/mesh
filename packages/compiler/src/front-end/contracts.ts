@@ -155,6 +155,8 @@ const options = (type: string) => ({
 });
 const steps = children("set", "when", "load", "run", "publish");
 const body = { validate: {}, do: {} };
+/** The action types that take `validate` and `do`. A read writes nothing, so it has no step to run and no write for a check to guard: its contract leaves both out, and either under a read is `MESH_TAG_NOT_ALLOWED`. */
+const WRITE_TYPES = ACTION_TYPES.filter((type) => type !== "read");
 // The `member` child MX lowers a tagless `&name` line to (`MESH_DIALECT`). An
 // inline wildcard contract, so no `member` tag is authorable at large; under
 // input/set the builder still refuses an authored `member name="x"`.
@@ -215,7 +217,20 @@ const contracts: ContractMap = {
     parents: ["actions"],
     attributes: scope(),
     children: body,
-    analyze: references(["actions"]),
+    analyze(calls, ctx) {
+      references(["actions"])(calls, ctx);
+      // A read runs neither `validate` nor `do`, so a block scoped to reads never applies: the `:read` item is the error,
+      // at its own span (`Expr.nodes`), since the model keeps no position for a `types` item. `policy` shares `scope()`
+      // and keeps `:read`; an `actions=` reference that names a read is the build's (`model/lifecycle-limits.ts`).
+      for (const call of calls) {
+        const a = get(call, "types");
+        const read = a && (a.kind === "dynamic" || a.kind === "bound")
+          ? (a.value.nodes ?? []).find((each) => each.type === "mesh:Atom" && (each.forward as Node).value === "read")
+          : undefined;
+        if (read)
+          ctx.fail("`types=` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", { at: read.span, code: "MESH_OPTION_VALUE" });
+      }
+    },
   }),
   input: closed({
     parents: [...ACTION_TYPES],
@@ -225,7 +240,7 @@ const contracts: ContractMap = {
     },
   }),
   validate: closed({
-    parents: [...ACTION_TYPES, "always"],
+    parents: [...WRITE_TYPES, "always"],
     // `publish` is no `validate` line: the contract admits it where it is written wrongly, so that the build says why
     // (`MESH_PUBLISH`, `front-end/build.ts`) instead of calling it an unknown tag.
     children: children("check", "publish"),
@@ -258,7 +273,7 @@ const contracts: ContractMap = {
       }
     },
   }),
-  do: closed({ parents: [...ACTION_TYPES, "always"], children: steps }),
+  do: closed({ parents: [...WRITE_TYPES, "always"], children: steps }),
   set: closed({
     parents: ["do", "when"],
     children: {
@@ -387,17 +402,23 @@ function answers(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
       ctx.fail("on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=PayInvoice`, `on=billing.PayInvoice`)", { at: a.valueSpan, code: "MESH_UNKNOWN_COMMAND" });
   }
 }
+/** A read answers no command (`on=` is no option of it), so a read line with no name has nothing to be named after: `MESH_NAME`, as for the other three. */
+function namedRead(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
+  for (const call of calls)
+    if (!get(call, "name"))
+      ctx.fail("an action needs a name: write `read :name`; `actions auto=[:read]` generates the plain read", { at: call.loc, code: "MESH_NAME" });
+}
 for (const kind of ACTION_TYPES)
   contracts[kind] = closed({
     parents: ["actions"],
+    // The name is optional in every contract so that a line without one is `MESH_NAME` from the hook, not MX's `MESH_MISSING_OPTION`.
     attributes: kind === "read"
-      ? { ...named(), filter: fn() }
+      ? { name: atom(), filter: fn() }
       : { name: atom(), on: { type: "expression" } },
-    ...(kind === "read" ? {} : { analyze: answers }),
+    analyze: kind === "read" ? namedRead : answers,
     children: {
       input: {},
-      ...body,
-      ...(kind === "read" ? { filter: {}, sort: {} } : {}),
+      ...(kind === "read" ? { filter: {}, sort: {} } : body),
     },
   });
 for (const kind of ROLLUPS)
@@ -419,7 +440,7 @@ for (const kind of ROLLUPS)
             `of takes a member reference, not a string: ${path ? `write of=&${path}` : "write of=&relationship for a count, of=&relationship.attribute for the others"}`,
             { at: a.loc, code: "MESH_ROLLUP_PATH_STRING" },
           );
-        } else if (!isMemberPath(node(a), membersOf(a)) || /\s/.test((a.kind === "dynamic" ? a.value.code : "") ?? ""))
+        } else if (!isMemberPath(node(a), membersOf(a)))
           ctx.fail("of takes a member reference: &relationship for a count, &relationship.attribute for the others", { at: a.loc, code: "MESH_ROLLUP_PATH" });
       }
     },

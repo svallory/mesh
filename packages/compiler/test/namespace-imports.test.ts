@@ -24,9 +24,12 @@ const CUSTOMER = `entity :Customer
   attributes
     uuid :id primary-key
     string :name
+  actions auto=[:read]
 `;
-/** A Line in ledger/, whose relationships and imports the test writes. */
-const line = (imports: string, relationships: string, rest = "") => `${imports}
+/** The auto read an entity needs once a relationship reaches it (`MESH_ON_LOAD`). */
+const READ = "  actions auto=[:read]\n";
+/** A Line in ledger/, whose relationships and imports the test writes; it has the auto read unless `rest` says otherwise. */
+const line = (imports: string, relationships: string, rest = READ) => `${imports}
 entity :Line
   attributes
     uuid :id primary-key
@@ -66,6 +69,7 @@ entity :Invoice
   relationships
     has-many :lines entity=ledger.Line inverse=:batch
     has-one :first entity=ledger.Line
+  actions auto=[:read]
 `;
     // Two keys back: a has-one and a has-many cannot follow one (`MESH_HAS_ONE_SHARED_KEY`).
     const result = build(line('import * as billing from "../billing/invoice.mesh.mx"', "    belongs-to :invoice entity=billing.Invoice\n    belongs-to :batch entity=billing.Invoice nullable\n"), { "billing/invoice.mesh.mx": invoice });

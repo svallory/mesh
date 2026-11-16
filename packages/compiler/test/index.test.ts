@@ -284,7 +284,7 @@ describe("entity names never break the generated files", () => {
       "  attributes\n    uuid :id primary-key\n  actions\n    read :__proto__\n",
       "  attributes\n    uuid :id primary-key\n  policies\n    policy :__proto__\n      authorize-if=() => true\n",
       "  attributes\n    uuid :id primary-key\n  computed\n    string :__proto__() { return \"x\" }\n",
-      "  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :__proto__ entity=Odd nullable\n",
+      "  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :__proto__ entity=Odd nullable\n  actions auto=[:read]\n",
     ]) {
       const refused = buildModel({ root: "/project", files: [{ file: "odd.mesh.mx", source: `entity :Odd\n${member}` }] });
       expect(refused.diagnostics.map((d) => [d.code, d.message])).toEqual([["MESH_ATTRIBUTE_NAME", message]]);

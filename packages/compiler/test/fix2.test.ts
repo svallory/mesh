@@ -82,14 +82,15 @@ test.each([
   ["(() => { &done++; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
   ["(() => { &done.x = 1; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
   ["(() => { &done[0] = 1; return true })", [["MESH_MEMBER_ASSIGN", 6, 33]]],
-  ["(() => { const o = {}; o[&done] = 1; return true })", []],
+  // No assignment to a member. A block body is plain code, which a read's filter warns about until M10 (`MESH_EXPR_PLAIN`).
+  ["(() => { const o = {}; o[&done] = 1; return true })", [["MESH_EXPR_PLAIN", 6, 25]]],
   ["(() => &done === true)", []],
-  ["(() => { const done = &done; return done })", []],
+  ["(() => { const done = &done; return done })", [["MESH_EXPR_PLAIN", 6, 25]]],
 ] as const)("MESH_MEMBER_ASSIGN is positioned on the assignment: %s", (filter, expected) => {
   const source = keyed + `    boolean :done\n  actions\n    read :custom filter=${filter}\n`;
   const result = build(source);
   expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual(expected.map((e) => [...e]));
-  if (expected.length) expect(result.diagnostics[0]!.message).toBe("`&done` cannot be assigned inside an expression; use a `set` line");
+  if (expected[0]?.[0] === "MESH_MEMBER_ASSIGN") expect(result.diagnostics[0]!.message).toBe("`&done` cannot be assigned inside an expression; use a `set` line");
 });
 
 test.each([

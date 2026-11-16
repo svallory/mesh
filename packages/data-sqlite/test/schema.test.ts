@@ -40,6 +40,7 @@ const user = `entity :User table="users"
   attributes
     uuid :id primary-key
     float :score
+  actions auto=[:read]
 `;
 
 describe("schemaView", () => {

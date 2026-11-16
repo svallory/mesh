@@ -74,6 +74,7 @@ entity :Comment table="comments"
     boolean :pinned default=false
   relationships
     belongs-to :post entity=Post
+  actions auto=[:read]
 `;
 const profile = `import { Author } from "./author.mesh.mx"
 entity :Profile table="profiles"
@@ -82,6 +83,7 @@ entity :Profile table="profiles"
     string :bio
   relationships
     belongs-to :author entity=Author
+  actions auto=[:read]
 `;
 const ticket = `entity :Ticket table="tickets"
   attributes
