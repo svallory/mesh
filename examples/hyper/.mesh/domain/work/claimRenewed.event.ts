@@ -36,7 +36,7 @@ export class ClaimRenewed {
     const $checked = $checkFields($fields, fields, "event", "work.ClaimRenewed");
     this.claimId = $checked.claimId;
     this.fence = $checked.fence;
-    this.expiresAt = $checked.expiresAt;
+    this.expiresAt = new $Date($checked.expiresAt.getTime());
     $Object.freeze(this);
   }
 }

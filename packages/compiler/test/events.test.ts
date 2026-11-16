@@ -663,7 +663,19 @@ entity :Invoice
     const event = new InvoiceDue({ invoiceId: "0190a000-0000-7000-8000-000000000000", dueAt: self.dueAt, remindAt: self.remindAt, issuedOn: self.issuedOn });
     expect(event.dueAt).toBeInstanceOf(Date);
     expect(event.dueAt.getTime()).toBe(5);
+    // the instance holds a plain copy, not the read-only view: a real Date that `structuredClone` copies
+    expect(Object.prototype.toString.call(event.dueAt)).toBe("[object Date]");
+    expect(Object.prototype.toString.call(event.issuedOn)).toBe("[object Date]");
+    expect(() => structuredClone(event)).not.toThrow();
+    expect(self.dueAt.getTime()).toBe(5);
     expect(event.remindAt).toBeNull();
+    // a command's optional date keeps undefined, its nullable one keeps null, and a given one is copied too
+    const { Remind } = await import(resolve(root, "generated/domain/billing/remind.command.ts")) as { Remind: new (fields: object) => { at: Date; until?: Date; snoozedTo: Date | null } };
+    const command = new Remind({ id: "0190a000-0000-7000-8000-000000000000", at: self.dueAt, snoozedTo: self.remindAt });
+    expect(Object.prototype.toString.call(command.at)).toBe("[object Date]");
+    expect(command.at.getTime()).toBe(5);
+    expect(command.until).toBeUndefined();
+    expect(command.snoozedTo).toBeNull();
     expect(JSON.parse(JSON.stringify(event))).toEqual({ invoiceId: "0190a000-0000-7000-8000-000000000000", dueAt: "1970-01-01T00:00:00.005Z", remindAt: null, issuedOn: "1970-01-01T00:00:00.000Z" });
   }, 30_000);
 

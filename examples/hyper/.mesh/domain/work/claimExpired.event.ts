@@ -36,7 +36,7 @@ export class ClaimExpired {
     const $checked = $checkFields($fields, fields, "event", "work.ClaimExpired");
     this.claimId = $checked.claimId;
     this.fence = $checked.fence;
-    this.expiredAt = $checked.expiredAt;
+    this.expiredAt = new $Date($checked.expiredAt.getTime());
     $Object.freeze(this);
   }
 }

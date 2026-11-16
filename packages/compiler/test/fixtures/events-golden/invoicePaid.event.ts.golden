@@ -48,7 +48,7 @@ export class InvoicePaid {
     this.amount = $checked.amount;
     this.note = $checked.note ?? null;
     this.method = $checked.method;
-    this.paidAt = $checked.paidAt;
+    this.paidAt = new $Date($checked.paidAt.getTime());
     $Object.freeze(this);
   }
 }

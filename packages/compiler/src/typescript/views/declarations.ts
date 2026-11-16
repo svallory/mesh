@@ -42,7 +42,8 @@ export interface DeclarationField {
   /**
    * What the constructor takes for it, as printed: `type`, except that a date is `$DeepReadonly<$Date>`, the `Date`
    * without its setters that a function reads off its scope (`&paidAt`) and off a record an action returned. A `Date`
-   * fits it too, so a caller hands over either without a copy; the property itself stays a `$Date`.
+   * fits it too, so a caller hands over either; the constructor stores a fresh `$Date` of the same instant (see
+   * `assignment`), so the property really is the `$Date` it is typed as, never the read-only view.
    */
   readonly parameterType: string;
   /** The instance property's type: an optional command field also admits `undefined`; an event field never does. */
@@ -53,7 +54,11 @@ export interface DeclarationField {
   readonly optional: boolean;
   /** The Zod expression the constructor checks it with, as printed in a validator. */
   readonly schema: string;
-  /** What the constructor assigns: `$checked.invoiceId`; only an optional event field adds `?? null`. */
+  /**
+   * What the constructor assigns: `$checked.invoiceId`; an optional event field adds `?? null`. A date is copied,
+   * `new $Date($checked.paidAt.getTime())`, so the instance never holds the read-only view a caller may pass (which
+   * `structuredClone` refuses); a nullable or optional date keeps its null or undefined (an event's turns into null).
+   */
   readonly assignment: string;
 }
 
@@ -87,6 +92,13 @@ export interface DeclarationView {
 /** True for a field whose values are a `Date`: `date`, `datetime` and `timestamp`. */
 const holdsDate = (field: Pick<Declaration["fields"][number], "type">): boolean => attributeTypeInfo(field.type).tsType === "Date";
 
+/** What the constructor assigns to a field read as `read` off the checked fields (see `DeclarationField.assignment`). */
+function assignmentOf(read: string, date: boolean, optional: boolean, kind: Declaration["kind"]): string {
+  const absent = kind === "event" ? "null" : read;
+  if (date) return optional ? `${read} == null ? ${absent} : new $Date(${read}.getTime())` : `new $Date(${read}.getTime())`;
+  return optional && kind === "event" ? `${read} ?? null` : read;
+}
+
 /** The view of one event or command. Pure and synchronous. */
 export function declarationView(declaration: Declaration): DeclarationView {
   const name = className(declaration);
@@ -103,7 +115,7 @@ export function declarationView(declaration: Declaration): DeclarationView {
       instanceOptional: declaration.kind === "command" && field.optional === true,
       optional,
       schema: fieldSchema(field, optional),
-      assignment: `$checked${IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}${optional && declaration.kind === "event" ? " ?? null" : ""}`,
+      assignment: assignmentOf(`$checked${IDENTIFIER.test(field.name) ? `.${field.name}` : `[${JSON.stringify(field.name)}]`}`, holdsDate(field), optional, declaration.kind),
     };
   });
   const view = {

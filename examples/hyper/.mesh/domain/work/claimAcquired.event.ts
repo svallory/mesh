@@ -48,7 +48,7 @@ export class ClaimAcquired {
     this.taskId = $checked.taskId;
     this.holderId = $checked.holderId;
     this.fence = $checked.fence;
-    this.expiresAt = $checked.expiresAt;
+    this.expiresAt = new $Date($checked.expiresAt.getTime());
     $Object.freeze(this);
   }
 }
