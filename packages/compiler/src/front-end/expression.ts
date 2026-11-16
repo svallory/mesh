@@ -497,7 +497,12 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           const namespace = ctx.namespaces?.has(n.name!) === true;
           const member = key === "object" && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") ? parent! : undefined;
           if (!callees.has(n) && !(namespace && member && callees.has(member))) {
-            const property = namespace && member && !member.computed && (member.property as N).type === "Identifier" ? (member.property as N).name! : undefined;
+            // `h.LIMIT`, or `h["LIMIT"]`, which names the same member.
+            const memberKey = member?.property as N | undefined;
+            const property = !namespace || !member || !memberKey ? undefined
+              : !member.computed && memberKey.type === "Identifier" ? memberKey.name!
+              : member.computed && memberKey.type === "StringLiteral" ? String(memberKey.value)
+              : undefined;
             // A namespace import is never a function, so handing it over is no function passed along.
             const handed = handedOver.has(property !== undefined ? member! : n) && !(namespace && property === undefined);
             (names.values ??= []).push({ name: property !== undefined ? `${n.name}.${property}` : n.name!, position: ctx.at(start(n)), ...(handed ? { handed: true as const } : {}) });
@@ -1102,6 +1107,25 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       ...(names.asks ? { askCalls: names.asks } : {}),
     };
   };
+  // A helper module hands values out through functions, so one of its names read as a value is an error in every
+  // one-expression function (an arrow with an expression body, or a method whose one statement is a `return`), wherever
+  // the read sits: which construct stops the translation first does not decide it, so this runs before any of them.
+  // Run and publish steps are plain code by position. An object literal (a check's `details`) is plain code because of
+  // the literal, and its values are the author's.
+  const written = f.body as N;
+  const statements = written?.type === "BlockStatement" ? (written.body as N[]) : undefined;
+  const single = !statements ? written
+    : f.type === "FunctionExpression" && statements.length === 1 && statements[0]!.type === "ReturnStatement" ? (statements[0]!.argument as N | undefined)
+    : undefined;
+  if (single && !ctx.runStep && !ctx.publishStep && unwrapped(single)?.type !== "ObjectExpression")
+    for (const value of names.values ?? [])
+      ctx.report({
+        severity: "error",
+        code: "MESH_EXPR_CAPTURED_VALUE",
+        message: `\`${value.name}\` is read as a value, and an expression only calls what it imports from a helper module: a helper module hands values out through functions`,
+        position: value.position,
+        fix: `export a function from the helper module and call it: \`limit()\`${value.handed ? `; if \`${value.name}\` is a function, pass an arrow that calls it: \`(x) => ${value.name}(x)\`` : ""}`,
+      });
   try {
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);
     if (ctx.publishStep) throw new Plain("publish-step", "a publish step is plain code", f);
@@ -1134,18 +1158,6 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
         throw new Plain("block-body", `a block body of ${statements.length} statement${statements.length === 1 ? "" : "s"}`, f);
       body = statements[0]!.argument as N;
     }
-    // A helper module hands values out through functions, so one of its names read as a value is an error in every
-    // one-expression function, wherever the read sits: which construct stops the translation first does not decide
-    // it. An object literal (a check's `details`) is plain code because of the literal, and its values are the author's.
-    if (unwrapped(body)?.type !== "ObjectExpression")
-      for (const value of names.values ?? [])
-        ctx.report({
-          severity: "error",
-          code: "MESH_EXPR_CAPTURED_VALUE",
-          message: `\`${value.name}\` is read as a value, and an expression only calls what it imports from a helper module: a helper module hands values out through functions`,
-          position: value.position,
-          fix: `export a function from the helper module and call it: \`limit()\`${value.handed ? `; if \`${value.name}\` is a function, pass an arrow that calls it: \`(x) => ${value.name}(x)\`` : ""}`,
-        });
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
     // A method (`() { return ... }`) printed as plain code needs `function` before it, whatever arrows its body holds.
     return { tree, demotion: { edits, roots: free, ...clocked, ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) } };

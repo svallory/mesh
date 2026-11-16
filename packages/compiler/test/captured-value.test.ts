@@ -33,6 +33,7 @@ interface Places {
 }
 /** A Task that imports every export of the helper module by name and the module as the namespace `h`. */
 const task = (at: Places) => `import { Task } from "./task.mesh.mx"
+import { Mesh } from "meshfw"
 import { LIMIT, limits, limit, big, isOpen } from "./rules"
 import * as h from "./rules"
 entity :Task
@@ -93,6 +94,7 @@ describe("a helper module's value read in a one-expression function is MESH_EXPR
     ["a member of an imported object", { check: "() => &n > limits.max" }, "limits", FIX],
     ["a method of an imported object, which is no helper call", { check: "() => limits.toString() === &title" }, "limits", FIX],
     ["a member of a namespace import", { check: "() => &n > h.LIMIT" }, "h.LIMIT", FIX],
+    ["a member of a namespace import, read with a string key", { check: '() => &n > h["LIMIT"]' }, "h.LIMIT", FIX],
     ["a member of a member of a namespace import", { check: "() => &n > h.limits.max" }, "h.limits", FIX],
     ["the namespace import itself", { check: "() => h === null" }, "h", FIX],
     ["a constant handed to a helper", { check: "() => big(LIMIT)" }, "LIMIT", passed("LIMIT")],
@@ -108,12 +110,19 @@ describe("a helper module's value read in a one-expression function is MESH_EXPR
     ["a step's `when=`", { step: "when=() => &n > LIMIT\n          set\n            &n=0" }, "LIMIT", FIX],
     ["a check's `when=`", { message: '"m" when=() => &n > LIMIT' }, "LIMIT", FIX],
     ["a check's message function", { message: "() => `at most ${LIMIT}`" }, "LIMIT", FIX],
+    // Plain code for a reason found before the body is read: the read is reported all the same.
+    ["a function that takes the scope whole", { check: "(s) => s.self.n > LIMIT" }, "LIMIT", FIX],
+    ["a function that names an entity", { check: "() => Task !== null && &n > LIMIT" }, "LIMIT", FIX],
+    ["a function that awaits a helper", { check: "async () => await big(LIMIT)" }, "LIMIT", passed("LIMIT")],
+    ["a function that reads through `Mesh.privileged`", { check: "async () => (await Mesh.privileged(Task).read({})).length > LIMIT" }, "LIMIT", FIX],
+    ["a function that asks another action's policies", { check: "async ({ input, context }) => (await Mesh.can(Task.go, input, context)) && &n > LIMIT" }, "LIMIT", FIX],
   ])("%s", (_, places, name, fix) => {
     const source = task(places);
     const diagnostics = build(source).diagnostics;
     expect(diagnostics.map((d) => [d.severity, d.code, d.message, d.fix])).toEqual([["error", "MESH_EXPR_CAPTURED_VALUE", message(name), fix]]);
     const { offset, line, column } = diagnostics[0]!.position;
-    expect(source.slice(offset)).toStartWith(name);
+    // The error sits at the name as written: `h["LIMIT"]` is named `h.LIMIT`, as the dot form is.
+    expect(source.slice(offset)).toStartWith(name.includes(".") && source.includes(`${name.split(".")[0]}["`) ? `${name.split(".")[0]}["` : name);
     expect(line).toBe(source.slice(0, offset).split("\n").length);
     expect(column).toBe(offset - source.lastIndexOf("\n", offset - 1) - 1);
   });
@@ -148,7 +157,6 @@ describe("what stays legal beside MESH_EXPR_CAPTURED_VALUE", () => {
     ["a computed field written as a method with statements", { computed: "integer :cap() { const cap = LIMIT; return cap }" }],
     ["an object-literal body, a check's details", { details: "() => ({ limit: LIMIT, max: limits.max, cap: h.LIMIT, open: isOpen })" }],
     ["a run step", { step: "run () { void LIMIT; void h.limits }" }],
-    ["a function that takes the scope whole", { check: "(s) => s.self.n > LIMIT" }],
     // A name of the function's own hides the import, and a member or a key only spells it.
     ["a list method's parameter named as the import", { check: "() => &children.some((LIMIT) => LIMIT.n > 0)" }],
     ["a member and an object key spelled as the import", { check: "({ actor }) => actor.LIMIT > 0 && actor.h !== null", details: "() => ({ LIMIT: 1, limits: 2 })" }],
