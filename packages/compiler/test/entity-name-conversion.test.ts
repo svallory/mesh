@@ -62,7 +62,7 @@ describe("MESH_ENTITY_NAME: a name that converts to no identifier", () => {
     const result = build({ "billing/thing.mesh.mx": entity(written) });
     expect(result.document).toBeNull();
     expect(brief(result.diagnostics)).toEqual([["billing/thing.mesh.mx", 1, 0, "MESH_ENTITY_NAME",
-      `Entity :${written} converts to ${converted}, which is no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter before any digit, such as :Todo`]]);
+      `Entity :${written} converts to ${converted}, which is no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter${converted === "nothing" ? "" : " before any digit"}, such as :Todo`]]);
   });
 
   // A digit is refused only in front: after a letter it is part of the name.

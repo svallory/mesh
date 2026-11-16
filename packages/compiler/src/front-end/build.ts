@@ -414,7 +414,7 @@ function buildEntity(
   };
   // Casing is never an error: only a name that converts to no identifier is (`_1` is `1`, `__` is nothing).
   if (!isClassName(converted))
-    fail("MESH_ENTITY_NAME", `Entity :${written} converts to ${converted ? `\`${converted}\`` : "nothing"}, which is no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter before any digit, such as :Todo`, root);
+    fail("MESH_ENTITY_NAME", `Entity :${written} converts to ${converted ? `\`${converted}\`` : "nothing"}, which is no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter${converted ? " before any digit" : ""}, such as :Todo`, root);
   const { module, bareUnderscore } = moduleOfFolder(folder);
   entity.module = module;
   entity.fqn = [...module.split("/").filter(Boolean), entity.name].join(".");
