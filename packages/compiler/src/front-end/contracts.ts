@@ -243,13 +243,13 @@ const contracts: ContractMap = {
   validate: closed({
     parents: [...WRITE_TYPES, "always"],
     // `publish` is no `validate` line: the contract admits it where it is written wrongly, so that the build says why
-    // (`MESH_PUBLISH`, `front-end/build.ts`) instead of calling it an unknown tag.
-    children: children("check", "publish"),
+    // (`MESH_PUBLISH`, `front-end/build.ts`) instead of calling it an unknown tag. A `when` line nests checks under a condition.
+    children: children("check", "when", "publish"),
   }),
   // The entity's named checks: each line declares one, which a `validate` block uses with `check &name`.
   checks: closed({ parents: ["entity"], children: children("check") }),
   check: closed({
-    parents: ["validate", "checks"],
+    parents: ["validate", "when", "checks"],
     children: children("publish"),
     attributes: {
       // A line declares a check (`:name`, `that`, `code`, `message`) or uses one (`&name` alone). Nothing is required here:
@@ -289,10 +289,13 @@ const contracts: ContractMap = {
       "*": memberLine({ value: {} }),
     },
   }),
+  // One contract serves the step `when` under `do` and the `when` line under `validate`, so its child list is the union of
+  // both: the builder refuses a step under a `when` in `validate` and a `check` under one in `do` (`front-end/build.ts`).
+  // `check` is not added to `steps`, which `do` uses too: `do > check` stays MX's error.
   when: closed({
-    parents: ["do", "when"],
+    parents: ["do", "when", "validate"],
     attributes: { value: fn(true) },
-    children: steps,
+    children: { ...steps, ...children("check") },
   }),
   load: closed({
     parents: ["do", "when"],

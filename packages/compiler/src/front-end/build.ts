@@ -19,6 +19,7 @@ import {
   type AttributeType,
   type Action,
   type Check,
+  type ValidateItem,
   type CommandDeclaration,
   type Computed,
   type Diagnostic,
@@ -708,50 +709,67 @@ function buildEntity(
     ...(declared.details ? { details: copyExpression(declared.details) } : {}),
     reference,
   });
-  /** The checks of a `validate` block, in order: inline declarations, and named checks the block uses by reference. */
-  const checks = (holder: Tag): Check[] => {
-    const listed = new Map<string, "inline" | "reference">();
-    return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).flatMap((tag): Check[] => {
-      if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return []; }
-      const reference = attr(tag, "member");
-      if (reference && !attr(tag, "name")) {
-        const ref = readMember(reference, at);
-        usedChecks.add(ref.name);
-        const option = tag.attrs.find((a) => a.kind === "spread" || a.name !== "member");
-        if (option) {
-          fail("MESH_UNKNOWN_OPTION", `\`check\`: a reference to a check takes no option: remove \`${option.kind === "spread" ? "..." : option.name}\`, or change the check where \`checks\` declares it`, optionAt(option));
-          return [];
-        }
-        const child = tags(tag.children)[0];
-        if (child) {
-          fail("MESH_TAG_NOT_ALLOWED", `\`check\`: a reference to a check takes no line under it: remove \`${child.name}\``, child);
-          return [];
-        }
-        checkRef(ref, "check");
-        const declared = namedChecks.get(ref.name);
-        if (!declared) return [];
-        const before = listed.get(ref.name);
-        if (before === "reference") {
-          fail("MESH_DUPLICATE_MEMBER", `Duplicate check &${ref.name}: this \`validate\` already lists it, and a check runs once`, ref.position);
-          return [];
-        }
-        // An inline check of the block took the name: the member list reports the pair once, at the later line.
-        if (before === "inline") return [];
-        listed.set(ref.name, "reference");
-        return [usedCheck(declared, ref.position)];
+  /**
+   * One `check` line of a `validate` block, at its top or under a `when` in it: an inline declaration, or a named check the
+   * block uses by reference. `listed` is the block's, one map for the whole nesting, so a reference listed twice anywhere
+   * in one `validate` is a duplicate (ruling D27, point 5).
+   */
+  const checkOf = (tag: Tag, listed: Map<string, "inline" | "reference">): Check[] => {
+    const reference = attr(tag, "member");
+    if (reference && !attr(tag, "name")) {
+      const ref = readMember(reference, at);
+      usedChecks.add(ref.name);
+      const option = tag.attrs.find((a) => a.kind === "spread" || a.name !== "member");
+      if (option) {
+        fail("MESH_UNKNOWN_OPTION", `\`check\`: a reference to a check takes no option: remove \`${option.kind === "spread" ? "..." : option.name}\`, or change the check where \`checks\` declares it`, optionAt(option));
+        return [];
       }
-      // An inline check's name is a member of the entity, counted once however many blocks write it (SYN-08): the member
-      // list reports a repeat, here or in another block, and a name another member has.
-      const check = declaredCheck(tag);
-      if (!check) return [];
-      checkMembers.push({ name: check.label, position: check.position });
-      listed.set(check.label, "inline");
-      return [check];
+      const child = tags(tag.children)[0];
+      if (child) {
+        fail("MESH_TAG_NOT_ALLOWED", `\`check\`: a reference to a check takes no line under it: remove \`${child.name}\``, child);
+        return [];
+      }
+      checkRef(ref, "check");
+      const declared = namedChecks.get(ref.name);
+      if (!declared) return [];
+      const before = listed.get(ref.name);
+      if (before === "reference") {
+        fail("MESH_DUPLICATE_MEMBER", `Duplicate check &${ref.name}: this \`validate\` already lists it, and a check runs once`, ref.position);
+        return [];
+      }
+      // An inline check of the block took the name: the member list reports the pair once, at the later line.
+      if (before === "inline") return [];
+      listed.set(ref.name, "reference");
+      return [usedCheck(declared, ref.position)];
+    }
+    // An inline check's name is a member of the entity, counted once however many blocks write it (SYN-08): the member
+    // list reports a repeat, here or in another block, and a name another member has.
+    const check = declaredCheck(tag);
+    if (!check) return [];
+    checkMembers.push({ name: check.label, position: check.position });
+    listed.set(check.label, "inline");
+    return [check];
+  };
+  /** The lines under a `validate`, or under a `when` inside one, in order: checks, and `when` lines with theirs. */
+  const validateLines = (holder: Tag, listed: Map<string, "inline" | "reference">): ValidateItem[] =>
+    tags(holder.children).flatMap((tag): ValidateItem[] => {
+      if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return []; }
+      if (tag.name === "when")
+        return [{ kind: "when", condition: expr(attr(tag, "value")), lines: validateLines(tag, listed), position: pos(tag) }];
+      if (tag.name === "check") return checkOf(tag, listed);
+      // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a step here; directly under
+      // `validate` it admits only `check`, `when` and `publish`.
+      fail("MESH_TAG_NOT_ALLOWED", `\`when\` in \`validate\`: \`${tag.name}\` is not allowed here; allowed children: \`check\`, \`when\``, tag);
+      return [];
     });
+  /** The lines of an action's or an `always` block's `validate`. */
+  const checks = (holder: Tag): ValidateItem[] => {
+    const block = tags(holder.children).find((t) => t.name === "validate");
+    return block ? validateLines(block, new Map()) : [];
   };
   /** The steps under a `do` or a `when`. */
-  const steps = (holder: Tag): Step[] => tags(holder.children).map(buildStep);
-  const buildStep = (tag: Tag): Step => {
+  const steps = (holder: Tag): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag) ?? []);
+  const buildStep = (tag: Tag): Step | undefined => {
       const position = pos(tag);
       const assigned = new Set<string>();
       if (tag.name === "set")
@@ -816,6 +834,12 @@ function buildEntity(
       // an event that owners list and the action's owner does not, is vacuous until owner sections exist (aggregates).
       if (tag.name === "publish")
         return { kind: "publish", fn: expr(attr(tag, "value"), "expression", "publish"), position };
+      // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a `check` under a step `when`
+      // (`do` itself does not take one).
+      if (tag.name === "check") {
+        fail("MESH_TAG_NOT_ALLOWED", "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`", tag);
+        return undefined;
+      }
       throw new Error(`Unexpected step ${tag.name}`);
   };
   const body = (holder: Tag) => {
