@@ -1,0 +1,32 @@
+import { InvoiceLine } from "./invoice-line.mesh.mx"
+
+entity :todo
+  attributes
+    uuid :id primary-key
+    string :title min=1 max=40
+    integer :counted nullable
+  relationships
+    belongs-to :parent entity=Todo nullable
+    has-many :children entity=Todo
+    has-many :lines entity=InvoiceLine
+  computed
+    count :lineCount of=&lines
+  actions auto=[:read]
+    create :create
+      input
+        &title
+        &parent
+    update :rename
+      input
+        &title
+      validate
+        check :typed that=() => { const none: Todo | null = null; return none === null } code="typed" message="The types are wrong"
+    update :count
+      do
+        set
+          &counted=async () => (await Todo.read({}, { actor: { id: "counter" } })).length + (await InvoiceLine.read({}, { actor: { id: "counter" } })).length
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true
+    policy :keeper actions=[&rename]
+      forbid-if=({ actor }) => actor.id === "intruder"
