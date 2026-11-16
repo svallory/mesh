@@ -9,8 +9,9 @@
 // A computed field's body is the one function whose caller may be absent: a `Mesh.privileged(E).read(input)` takes an
 // optional context whatever the project declares, and the load binds `actor` to `undefined` and `context` to `{}` for the
 // fields it computes. So there `actor` is the declared type or `undefined` and every key of `context` is optional, where a
-// check, a step or a policy keeps the declared types: the fixture's computed fields read both with a guard, its
-// `:plainRoots` check reads both without one, and a last project drops the guards from the computed fields.
+// check, a step or a policy keeps the declared types: the fixture's plain computed bodies (`:viewer`, `:locale`) read both
+// with a guard, and its translated `:mine` needs none because `actor.id` prints as `$s.actor?.id`; its `:plainRoots`
+// check reads both without a guard, and a last project replaces the computed fields with five unguarded bodies.
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -176,7 +177,9 @@ entity :Note
 
   test("a computed body sees actor and each key of context as possibly undefined: a read without a guard fails tsc, where the same read in a check does not", async () => {
     const source = await readFile(join(fixture, "domain/note/note.mesh.mx"), "utf8");
-    // The fixture's four computed fields without their guards, and the helper call the fixture's `:ownerOrStaff` check makes.
+    // Five unguarded plain bodies replace the fixture's computed fields: `:viewer` and `:locale` without their guards,
+    // `:staff` making the helper call the fixture's `:ownerOrStaff` check makes, `:typed` assigning a context key to its
+    // declared type, and `:actorOfContext` reading `context.actor`.
     const unguarded = [
       "string :viewer({ actor }) { const who = actor.id; return who }",
       "boolean :staff({ actor }) { return isStaff(actor) }",
