@@ -209,4 +209,19 @@ describe("an atom compared with an enum stays legal", () => {
     expect(diagnosticsOf(ticket({ computed: "boolean :isA() { const t = &title; return t === :a }" }))).toEqual([]);
     expect(diagnosticsOf(ticket({ step: "run ({ actor }) { if (actor.role === :admin) return }" }))).toEqual([]);
   });
+
+  // Known gaps, pinned so a change to them is seen: the check reads an atom literal operand of `===`, `!==` and the
+  // orderings only. An atom-valued conditional and a loose comparison are plain code with the warning; `includes` over
+  // atoms, and an atom compared with `null`, draw nothing.
+  test.each([
+    ["an atom-valued conditional on the right", "() => &title === (&ok ? :open : :done)", [["warning", "MESH_EXPR_PLAIN", "&title"]]],
+    ["an atom-valued conditional on the left", "() => (&n > 0 ? :a : :b) === &title", [["warning", "MESH_EXPR_PLAIN", "(&n > "]]],
+    ["a loose `==`", "() => &title == :a", [["warning", "MESH_EXPR_PLAIN", "&title"]]],
+    ["a loose `!=`", "() => &title != :a", [["warning", "MESH_EXPR_PLAIN", "&title"]]],
+    ["a list of atoms asked whether it includes a string", "() => [:open, :done].includes(&title)", []],
+    ["a list of strings asked whether it includes an atom", "() => &children.map((c) => c.title).includes(:open)", []],
+    ["an atom compared with null", "() => :a === null", []],
+  ])("not yet MESH_EXPR_ATOM: %s", (_, that, expected) => {
+    expect(brief(ticket({ check: that }), 6)).toEqual(expected);
+  });
 });
