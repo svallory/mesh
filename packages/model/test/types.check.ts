@@ -6,6 +6,7 @@ import type {
   Expression,
   InputField,
   ModelDocument,
+  Relationship,
   SourcePosition,
 } from "../src/index.ts";
 const position: SourcePosition = {
@@ -72,6 +73,11 @@ const oldAction: Action = {
 const oldDocument: ModelDocument = { records: [] };
 // @ts-expect-error an entity table is resolved, not nullable
 const nullTable: Pick<Entity, "table"> = { table: null };
+// @ts-expect-error a through names its link entity by reference, not by table
+const throughByTable: Relationship["through"] = { entity: "enrollments" };
+const throughUnresolved: Relationship["through"] = {
+  entity: { identifier: "Enrollment", from: "./enrollment.mesh.mx" },
+};
 export type Assertions = [
   typeof fn,
   typeof missing,
@@ -84,4 +90,6 @@ export type Assertions = [
   typeof oldAction,
   typeof oldDocument,
   typeof nullTable,
+  typeof throughByTable,
+  typeof throughUnresolved,
 ];
