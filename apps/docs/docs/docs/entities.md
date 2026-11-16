@@ -254,6 +254,7 @@ entity :Todo
 | `belongs-to` | Many todos belong to one list; the key column is on this entity, and `todo.list` arrives when you load it |
 | `has-many` | One todo has many comments; the key is on the other entity, and `todo.comments` arrives when loaded |
 | `has-one` | At most one attachment, through that entity's own `belongs-to`; its foreign key is unique |
+| `has-many ... through=` | Many-to-many: the records a link entity joins this one to, such as a student's courses through enrollments ([below](#many-to-many-a-has-many-through-a-link-entity)) |
 
 A `belongs-to` stands alone: it declares the key column, and nothing requires a `has-many` back. The other direction is not free: a `has-many` or `has-one` needs a `belongs-to` back on the other entity, because that line is what declares the key column. Without one the build fails at the `has-many` line and names the line to add, for example ``add `belongs-to :list entity=List` to todo.Todo``.
 
@@ -273,6 +274,64 @@ has-many :dependents entity=Dependency inverse=:prerequisite
 Here `dependency.mesh.mx` declares `belongs-to :dependent entity=Task` and `belongs-to :prerequisite entity=Task`. Neither is named `task`, so each `has-many` says which key it follows. `inverse=` also wins when you want a key other than the one Mesh would pick: `has-many :grants entity=Membership inverse=:grantedBy` follows `grantedBy`, and one that names the key Mesh would pick anyway is legal. `inverse` is an atom and not `&dependent`, because `&name` refers to a member of this entity and `dependent` is a member of `Dependency`.
 
 With several `belongs-to` back and none named after this entity, and no `inverse=`, the build lists the candidates. An `inverse=` that names no `belongs-to` from that entity to this one is a build error with a suggestion. A `has-one` takes no `inverse=`: when its target has several `belongs-to` back and none is named after the entity, the build says so. A `has-one` and a `has-many` cannot follow the same key, because a `has-one` is at most one row for it: the build fails at the `has-one` line (`MESH_HAS_ONE_SHARED_KEY`). Keep the `has-many` and take the one row from its list, or give the `has-many` a `belongs-to` of its own and name it with `inverse=`. An entity relates to its own type by its own name, with no import: `belongs-to :parent entity=Task nullable` and `has-many :children entity=Task`. With a second `belongs-to` to the same type, say which one the `has-many` follows: `has-many :children entity=Task inverse=:parent`.
+
+### Many-to-many: a has-many through a link entity
+
+A student takes many courses and a course has many students. Neither entity holds the other's key: a third entity, the **link**, holds one row per enrollment, with a `belongs-to` to each side. `through=` names it:
+
+```mx "src/domain/school/student.mesh.mx"
+import { Course } from "./course.mesh.mx"
+import { Enrollment } from "./enrollment.mesh.mx"
+
+entity :Student
+  attributes
+    uuid :id primary-key
+    string :name
+
+  relationships
+    has-many :courses entity=Course through=Enrollment
+    has-many :enrollments entity=Enrollment
+
+  actions auto=[:read]
+```
+
+```mx "src/domain/school/enrollment.mesh.mx"
+import { Student } from "./student.mesh.mx"
+import { Course } from "./course.mesh.mx"
+
+entity :Enrollment
+  attributes
+    uuid :id primary-key
+    date :enrolledOn
+
+  relationships
+    belongs-to :student entity=Student
+    belongs-to :course entity=Course
+
+  actions auto=[:read, :create, :destroy]
+```
+
+```mx "src/domain/school/course.mesh.mx"
+entity :Course
+  attributes
+    uuid :id primary-key
+    string :title
+
+  actions auto=[:read]
+```
+
+`entity=` names what the list holds, `Course`; `through=` names the link, `Enrollment`, an ordinary entity of its own. A through relationship only reads: you add and remove a student's courses by creating and destroying `Enrollment` rows with the link's own actions. Like any entity that a relationship loads, the link needs a read (`actions auto=[:read]`, or `on:load=`), and so does `Course`.
+
+The relationship enters the link by the link's `belongs-to` back to this entity, chosen exactly as for any `has-many`: the only one, else the one named after this entity, else the one `inverse=` names. With `through=`, `inverse=` names a `belongs-to` of the link. It leaves the link by the link's only other `belongs-to` to the listed entity. A link may hold further `belongs-to` to other entities (an `approvedBy`), but it must have exactly one, besides the entry, to the listed entity: with none or several the build fails at `through=`, and no option chooses among several yet. The link is a third entity, never this entity or the one listed. An entity may list its own type through a link:
+
+```text "src/domain/work/task.mesh.mx (excerpt)"
+has-many :prerequisites entity=Task through=Dependency inverse=:dependent
+has-many :blocking entity=Task through=Dependency inverse=:prerequisite
+```
+
+`Dependency` holds `belongs-to :dependent entity=Task` and `belongs-to :prerequisite entity=Task`. Both point at `Task`, so `inverse=` says which one the relationship enters by, and the other is the one it leaves by.
+
+Loaded, `student.courses` is a list of `Course` records: each course once, however many enrollments join the two, in the courses' primary-key order. An enrollment whose `course` is null (on a `nullable` key) adds nothing; one whose key points at a course that does not exist is an error. To read the link's own fields, a grade or `enrolledOn`, load the plain `has-many :enrollments` beside it. A rollup over a through relationship (`count :courseCount of=&courses`) is not available before the SQL evaluator (M10); a computed field can count the loaded list instead (`integer :courseCount() { return &courses.length }`). A `has-one` to the link that follows the same `belongs-to` the through relationship enters by is refused, as a `has-one` and a `has-many` that share a key are. `through=` belongs to `has-many` only.
 
 Two entity files may import each other: `todo.mesh.mx` imports `List` while `list.mesh.mx` imports `Todo`. The other side is not automatic. The list knows nothing about its todos until `list.mesh.mx` imports `Todo` and declares `has-many :todos entity=Todo`.
 

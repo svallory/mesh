@@ -308,12 +308,12 @@ The acceptance tests of this task and of the Jig port below are the lead's desig
 
 ### Before 1.0, milestone not assigned
 
-Three features come before 1.0 and belong to none of the milestones above. No ruling or record assigns any of them a milestone, so none is given here. None is built.
+Three features come before 1.0 and belong to none of the milestones above. No ruling or record assigns any of them a milestone, so none is given here. The `has-many` through a link entity is built (2026-11-16; [ADR-0070](../decisions/0070-has-many-via.md), amended that day); the other two are not.
 
 | Item | What | Why it is before 1.0 |
 |---|---|---|
 | Raw-SQL escape hatch | SQL written by hand where an expression cannot be translated, like Ash's `fragment`. It has no design yet | The operator moved it here from "Also after 1.0" (section 6) on 2026-10-18 ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md), amended 2026-11-14) |
-| A `has-many` through a link entity | A many-to-many relationship: `has-many :courses entity=Course through=Enrollment` in `Student` | The operator moved it here on 2026-10-18; until then this page listed many-to-many as not planned ([ADR-0070](../decisions/0070-has-many-via.md), amended 2026-11-14) |
+| A `has-many` through a link entity | A many-to-many relationship: `has-many :courses entity=Course through=Enrollment` in `Student` | The operator moved it here on 2026-10-18; until then this page listed many-to-many as not planned. Built on 2026-11-16 ([ADR-0070](../decisions/0070-has-many-via.md), amended 2026-11-14 and 2026-11-16) |
 | Named checks | An entity-level `checks` section; an action's `validate` refers to one of its checks by name ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)) | Core since 2026-10-11, so they do not wait for the extension host ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md), amendment of 2026-10-11). The lead placed them before 1.0 on 2026-11-14, as the work tracker already did; that placement awaits the operator's review |
 
 ### HA — The Hyper application (S to M, Mesh-team work in `examples/hyper`, starts now)
