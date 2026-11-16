@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Expression, ModelDocument, Relationship, SourcePosition, Step } from "@meshfw/model";
-import { actionExpressions } from "./action-expressions.ts";
+import { actionExpressions, checksOf, VALIDATE_KINDS } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
@@ -129,7 +129,7 @@ export function checkLifecycleLimits(
     // `before` parameter is caught here.
     for (const { expression, kind, what } of actionExpressions(entity)) {
       // In a step or `run`, `before` is legal: the stored record, null on a create (the docs' `do` steps and `run` keep it).
-      if (kind !== "that" && kind !== "check-when" && kind !== "details" && kind !== "message") continue;
+      if (!VALIDATE_KINDS.has(kind)) continue;
       // A destructured `before`, or a rest parameter that can reach it, or a free one (the root).
       const reads = expression.params.includes("before") || (expression.rest && /\bbefore\b/.test(expression.source))
         || expression.plain?.roots.includes("before");
@@ -239,8 +239,8 @@ export function checkLifecycleLimits(
     for (const action of [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, validate: [] }))]) {
       if (action.kind === "read") continue;
       const listings = [
-        ...entity.always.filter((block) => alwaysCovers(block, action)).flatMap((block) => block.validate.flatMap((check) => check.reference ? [{ name: check.label, at: check.reference, block }] : [])),
-        ...action.validate.flatMap((check) => check.reference ? [{ name: check.label, at: check.reference, block: undefined }] : []),
+        ...entity.always.filter((block) => alwaysCovers(block, action)).flatMap((block) => checksOf(block.validate).flatMap((check) => check.reference ? [{ name: check.label, at: check.reference, block }] : [])),
+        ...checksOf(action.validate).flatMap((check) => check.reference ? [{ name: check.label, at: check.reference, block: undefined }] : []),
       ];
       const first = new Map<string, (typeof listings)[number]>();
       for (const listing of listings) {

@@ -6,6 +6,7 @@ import { FUNCTIONS, type Expression, type ExprNode, type FunctionId } from "@mes
 import { expr, scope } from "@meshfw/runtime";
 import { EXPRESSION_TABLES, QUANTIFIER_TABLES } from "@meshfw/runtime/testing";
 import { buildModel } from "../src/front-end/build.ts";
+import { checksOf } from "../src/model/action-expressions.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { printTree } from "../src/typescript/expression-printer.ts";
 import { checkBatchedTypes as checkTypes, checkTypesBinary, configOf } from "./generated.ts";
@@ -123,7 +124,7 @@ const check = (that: string, extra = "") => `        check :c [
 function build(source: string) {
   return buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source }] });
 }
-const exprOf = (source: string): Expression => build(source).document!.entities[0]!.actions[0]!.validate[0]!.that;
+const exprOf = (source: string): Expression => checksOf(build(source).document!.entities[0]!.actions[0]!.validate)[0]!.that;
 const codes = (source: string) => build(source).diagnostics.map((d) => `${d.severity}:${d.code}`);
 
 describe("conversion", () => {
@@ -437,7 +438,7 @@ describe("type rules", () => {
     const build = (that: string) => buildModel({ root, files: [{ file: "task.mesh.mx", source: withHelper(that) }] });
     const ok = build("({ actor }) => isStaff(actor) && &n > 1");
     expect(ok.diagnostics).toEqual([]);
-    const tree = ok.document!.entities[0]!.actions[0]!.validate[0]!.that.tree!;
+    const tree = checksOf(ok.document!.entities[0]!.actions[0]!.validate)[0]!.that.tree!;
     expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "isStaff", from: "./helpers" }, {}] });
     expect(ok.document!.entities[0]!.imports[0]).toMatchObject({ helper: true, identifiers: ["isStaff", "big"] });
     // Through `$.pure`, which refuses a promise: by type where the helper's type says so, at run time otherwise.
@@ -445,10 +446,10 @@ describe("type rules", () => {
     if (tree.kind !== "call") throw new Error("expected a call");
     expect(printTree(tree.args[0]!, false)).toBe('$.pure(isStaff($s.actor), "isStaff")');
     const plain = build("() => big(&n)");
-    expect(plain.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
+    expect(checksOf(plain.document!.entities[0]!.actions[0]!.validate)[0]!.that.plain).toMatchObject({ why: "reads-record-in-helper" });
     // An awaited helper (one that reads through `Mesh.privileged`, say) makes the function plain, with no warning for the await.
     const awaited = build("async ({ input }) => (await big(input.n)) === true");
-    expect(awaited.document!.entities[0]!.actions[0]!.validate[0]!.that.plain).toMatchObject({ why: "awaits-helper", helpers: ["big"] });
+    expect(checksOf(awaited.document!.entities[0]!.actions[0]!.validate)[0]!.that.plain).toMatchObject({ why: "awaits-helper", helpers: ["big"] });
     expect(awaited.diagnostics).toEqual([]);
     // An await of anything else still warns.
     expect(build("async ({ input }) => (await Promise.resolve(input.n)) === 1").diagnostics.map((d) => d.code)).toContain("MESH_EXPR_PLAIN");
@@ -628,7 +629,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const entityOf = built.document!.entities[0]!;
     expect(entityOf.computed.find((c) => c.name === "plainNow")!.body?.plain?.clock).toBeUndefined();
-    expect(entityOf.actions.find((a) => a.name === "go")!.validate[0]!.that.tree).toBeDefined();
+    expect(checksOf(entityOf.actions.find((a) => a.name === "go")!.validate)[0]!.that.tree).toBeDefined();
     const config = configOf(root);
     await writeGeneratedFiles(await generateFiles({ document: built.document!, config }), config);
     await writeFile(resolve(root, "generated/schema.ts"), "export const tables = {};\n");
@@ -696,7 +697,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // Outside the functions the alias is the entity.
     expect(task.relationships.find((r) => r.name === "held")).toMatchObject({ entity: { identifier: name, from: "./task.mesh.mx" }, keyColumn: "heldId" });
     const go = task.actions.find((a) => a.name === "go")!;
-    expect(go.validate[0]!.that.tree).toBeDefined();
+    expect(checksOf(go.validate)[0]!.that.tree).toBeDefined();
     const run = go.do[0]!;
     const plain = run.kind === "run" ? run.fn.plain : undefined;
     expect(plain).toMatchObject({ why: "run-step", roots: [name] });
@@ -757,7 +758,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
-    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "gt" });
+    expect(checksOf(go.validate)[0]!.that.tree).toMatchObject({ fn: "gt" });
     const run = go.do[0]!;
     const plain = run.kind === "run" ? run.fn.plain : undefined;
     expect(plain).toMatchObject({ roots: ["input", "actor", "context", "before"] });
@@ -811,7 +812,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     const helpersOf = (index: number) => { const step = go.do[index]!; return step.kind === "run" ? step.fn.plain?.helpers : undefined; };
     // The front end sees only the value read.
     expect([helpersOf(0), helpersOf(1), helpersOf(2), helpersOf(3)]).toEqual([undefined, ["big"], undefined, undefined]);
-    expect(go.validate[0]!.that.plain?.helpers).toBeUndefined();
+    expect(checksOf(go.validate)[0]!.that.plain?.helpers).toBeUndefined();
     const config = configOf(root);
     const files = await generateFiles({ document: built.document!, config });
     await writeGeneratedFiles(files, config);
@@ -1173,7 +1174,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     const task = built.document!.entities[0]!;
     expect(task.computed[0]!.body!.tree).toMatchObject({ fn: "lt", args: [{}, { kind: "call", fn: "now", args: [] }] });
     const go = task.actions.find((a) => a.name === "go")!;
-    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{ fn: "or", args: [{ kind: "call", fn: "isSystem" }, {}] }, { fn: "gte", args: [{}, { kind: "call", fn: "today" }] }] });
+    expect(checksOf(go.validate)[0]!.that.tree).toMatchObject({ fn: "or", args: [{ fn: "or", args: [{ kind: "call", fn: "isSystem" }, {}] }, { fn: "gte", args: [{}, { kind: "call", fn: "today" }] }] });
     const [set, run] = go.do;
     expect(set!.kind === "set" ? (set!.assignments[0]!.value as Expression).tree : undefined).toMatchObject({ kind: "call", fn: "now", args: [] });
     expect(run!.kind === "run" ? run!.fn.plain : undefined).toMatchObject({ why: "run-step", clock: ["now", "today"], isSystem: true, mesh: ["Mesh"] });
@@ -1209,7 +1210,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
       "      do\n        run async () { const rows = await M.privileged(Task).read({}); console.log(rows.length, %.today.getTime()) }\n"));
     const { built, printed, typeCheck, load } = await emitted(source);
     const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
-    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{ fn: "or", args: [{ kind: "call", fn: "isSystem" }, {}] }, { fn: "lt", args: [{}, { kind: "call", fn: "now" }] }] });
+    expect(checksOf(go.validate)[0]!.that.tree).toMatchObject({ fn: "or", args: [{ fn: "or", args: [{ kind: "call", fn: "isSystem" }, {}] }, { fn: "lt", args: [{}, { kind: "call", fn: "now" }] }] });
     expect(go.do[0]!.kind === "run" ? go.do[0]!.fn.plain : undefined).toMatchObject({ privileged: true, clock: ["today"], mesh: ["M"] });
     expect(printed).toMatch(/import \{[^}]*\bMesh as M,[^}]*\} from "@meshfw\/runtime";/);
     expect(printed).not.toMatch(/\bMesh,|const M\b|const Mesh/);
@@ -1343,7 +1344,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
       ["MESH_READ_POLICY_PRIVILEGED", policy.lastIndexOf("{ privileged }") + 2],
     ]);
     const that = buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source: entity(check("({ self }) => { const { privileged } = Mesh; return privileged(Task) !== null && self.n > 0 }")) }] });
-    expect(that.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate[0]!.that.plain).toMatchObject({ privileged: true, mesh: ["Mesh"] });
+    expect(checksOf(that.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate)[0]!.that.plain).toMatchObject({ privileged: true, mesh: ["Mesh"] });
     // A key Mesh does not have is named at the key; a rest element or a computed key names no member, as passing Mesh does not.
     const later = computed("() { const { later } = Mesh; return later !== null }");
     expect(problems(later)).toMatchObject([{ code: "MESH_UNKNOWN_MESH_FUNCTION", offset: later.indexOf("later }") }]);
@@ -1363,7 +1364,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     ].join("\n"));
     const { built, printed, typeCheck, load } = await emitted(source);
     const task = built.document!.entities[0]!;
-    expect(task.actions.find((a) => a.name === "go")!.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { kind: "call", fn: "isSystem" }] });
+    expect(checksOf(task.actions.find((a) => a.name === "go")!.validate)[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { kind: "call", fn: "isSystem" }] });
     const run = task.actions.find((a) => a.name === "go")!.do[0]!;
     expect(run.kind === "run" ? run.fn.plain : undefined).toMatchObject({ isSystem: true, mesh: ["Mesh"] });
     expect(await typeCheck()).toEqual({ code: 0, output: "" });
@@ -1390,7 +1391,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     // Inside a function the name is the root, as a parameter shadows an import in JavaScript: `input.n` is the caller's input.
     const reading = build(withImport('import { Mesh as input } from "meshfw"', "({ input }) => input.n > 0"));
     expect(reading.diagnostics).toEqual([]);
-    expect(reading.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate[0]!.that.tree)
+    expect(checksOf(reading.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate)[0]!.that.tree)
       .toMatchObject({ fn: "gt", args: [{ kind: "member", object: { kind: "var", name: "input" }, name: "n" }, { kind: "literal", value: 0 }] });
     // So `Mesh` cannot be read there, under either name. A bare `isSystem()`: the fix does not say `input.isSystem()`.
     const bare = withImport('import { Mesh as input } from "meshfw"', "({ context }) => isSystem(context)");
@@ -1405,7 +1406,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     const onInput = build(withImport('import { Mesh as input } from "meshfw"', "({ input, context }) => input.isSystem(context)") +
       "  policies\n    policy :q types=[:read]\n      authorize-if=({ input, context }) => input.privileged(context) !== null\n    policy :w types=[:update]\n      authorize-if=() => true\n");
     expect(onInput.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-    expect(onInput.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate[0]!.that.plain?.mesh).toBeUndefined();
+    expect(checksOf(onInput.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate)[0]!.that.plain?.mesh).toBeUndefined();
     // An alias a binding hides where the bare name is read: the fix names it and says to rename the binding.
     expect(problems(withImport('import { Mesh as M } from "meshfw"', "({ context }) => [context].some((M) => M !== null && isSystem(context))")).map((p) => p.fix))
       .toEqual(["write `M.isSystem(context)`, renaming the binding that hides `M` here"]);
@@ -1421,7 +1422,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     const { built, printed, typeCheck, load } = await emitted(source);
     expect(built.diagnostics).toEqual([]);
     const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
-    expect(go.validate[0]!.that.tree).toBeDefined();
+    expect(checksOf(go.validate)[0]!.that.tree).toBeDefined();
     // No function reads Mesh, so no function of the model lists it (`plain.mesh`) and the file imports it under no name;
     // `input` is bound by no import.
     expect(JSON.stringify(built.document)).not.toContain('"mesh":[');
@@ -1499,8 +1500,8 @@ describe("%.now and %.today are the current transaction's instant and date", () 
     const task = built.document!.entities[0]!;
     const go = task.actions.find((a) => a.name === "go")!;
     const call = (fn: string) => ({ kind: "call", fn, args: [] });
-    expect(go.validate[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { fn: "lt", args: [{}, call("now")] }] });
-    expect(go.validate[0]!.when!.tree).toMatchObject({ fn: "isNotNull", args: [call("today")] });
+    expect(checksOf(go.validate)[0]!.that.tree).toMatchObject({ fn: "or", args: [{}, { fn: "lt", args: [{}, call("now")] }] });
+    expect(checksOf(go.validate)[0]!.when!.tree).toMatchObject({ fn: "isNotNull", args: [call("today")] });
     expect(task.computed[0]!.body!.tree).toMatchObject({ fn: "and", args: [{}, { fn: "lt", args: [{}, call("today")] }] });
     // `%.now.getTime()`: a method of the instant, which Mesh does not translate; the body is plain and reads the clock.
     expect(task.computed[1]!.body!.plain).toMatchObject({ clock: ["now"] });
@@ -1512,7 +1513,7 @@ describe("%.now and %.today are the current transaction's instant and date", () 
     expect(task.policies[0]!.authorizeIf[0]!.tree).toMatchObject({ fn: "isNotNull", args: [call("now")] });
     expect(task.policies[0]!.forbidIf[0]!.tree).toMatchObject({ fn: "and", args: [{}, { fn: "gt", args: [{}, call("now")] }] });
     // Positions are the authored `%.now`.
-    expect(go.validate[0]!.that.tree).toMatchObject({ args: [{}, { args: [{}, { position: { offset: source.indexOf("< %.now\n") + 2 } }] }] });
+    expect(checksOf(go.validate)[0]!.that.tree).toMatchObject({ args: [{}, { args: [{}, { position: { offset: source.indexOf("< %.now\n") + 2 } }] }] });
 
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-transaction-"));
     roots.push(root);

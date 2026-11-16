@@ -60,7 +60,7 @@ The same name twice in one `input` is a build error, including a member referenc
 
 ### Static files
 
-An entity file is static: it has no conditionals or loops that add or remove declarations. A condition belongs on the line it conditions, as `when=` on a policy or a check, or inside its expression. A rule over a has-many is an expression such as `&lines.every(...)`, not a loop that creates checks. Expressions still obey the [translation rules](#what-a-translated-arrow-may-use) where SQL is required.
+An entity file is static: it has no conditionals or loops that add or remove declarations. A condition belongs on the line it conditions, as `when=` on a policy or a check, or inside its expression, or on a `when` line that conditions the checks or steps under it. A rule over a has-many is an expression such as `&lines.every(...)`, not a loop that creates checks. Expressions still obey the [translation rules](#what-a-translated-arrow-may-use) where SQL is required.
 
 Names and lists are written out, not computed from variables. Imported entity identifiers and function-valued options are the explicit exceptions; Mesh does not run the file to discover its declarations.
 
@@ -463,7 +463,7 @@ The atom after `check` names the rule and is the label the caller sees. Name wha
 
 A failed check throws `InvalidInputError`, whose own code is always `invalid_input`. Each failure has its own entry in `error.issues`, with the label, code, message, `details` (when the check declares them) and source position of the check. Several checks may fail in one call.
 
-**An unknown result.** A comparison with a null is neither true nor false but unknown ([ADR-0012](../architecture/decisions/0012-expression-semantics.md)). An unknown `that` fails the check, so a rule never passes because a value was missing; an unknown `when` skips the check, so a condition that cannot be decided does not apply the rule. Write `?? value` or an explicit null test when you want the other outcome.
+**An unknown result.** A comparison with a null is neither true nor false but unknown ([ADR-0012](../architecture/decisions/0012-expression-semantics.md)). An unknown `that` fails the check, so a rule never passes because a value was missing; an unknown `when` skips the check, so a condition that cannot be decided does not apply the rule, and an unknown `when` line skips every check under it. Write `?? value` or an explicit null test when you want the other outcome.
 
 ```text "src/domain/work/claim.mesh.mx (excerpt)"
 check :taskReady [
@@ -486,6 +486,31 @@ check :noOpenChildren [
 ```
 
 The function runs only when the check fails, so a check that passes, or that `when=` skips, never computes it; it may be `async`. It must return text that is not blank, as `message=""` is refused at build time. One that throws, or returns anything else (`null`, `undefined` and blank text included), is a bug in your rule, so the call fails with a `FrameworkError` that names the entity, the check and the line of the check in the entity file, never with some other text in its place.
+
+#### Checks under a condition
+
+A `when=condition` line in `validate` guards the lines written under it: `check` lines (inline or `check &name`) and further `when` lines, to any depth. The condition is a function that sees what a check sees (`self` before the input, `input`, `actor`, `context`, and no `before`). It runs once per call, at its place in the list, and when it is false or unknown none of the lines under it runs. Several checks that share a condition say it once this way instead of repeating `when=` on each:
+
+```mx "src/domain/billing/invoice.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    integer :version default=0
+    decimal :amount
+    enum :status values=[:draft, :sent] default=:draft
+
+  actions
+    update :send
+      input
+        integer :expectedVersion
+      validate
+        when=() => &version > 0
+          check :versionIsCurrent that=({ input }) => input.expectedVersion === &version code="stale_update" message="the invoice changed since you read it"
+          check :isDraft that=() => &status === :draft code="not_draft" message="only a draft can be sent"
+        check :positive that=() => &amount > 0 code="no_amount" message="the invoice has no amount"
+```
+
+A check under a `when` line may carry its own `when=`; it runs when both hold. A `when` line in `validate` holds checks only: a `set`, `load` or `run` under it, and a `check` under a `when` in `do`, are build errors (`MESH_TAG_NOT_ALLOWED`). A `when` line with nothing under it builds and does nothing.
 
 #### A rule several actions share
 
@@ -546,7 +571,7 @@ entity :Membership
         ]
 ```
 
-**The value the action will store** is `input.x ?? &x`: what the caller sent, or the stored value when they sent nothing. A check that holds whatever the caller sends, such as `dueAfterIssue` in an `always` over creates and updates, is written with it: `(input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)`. On a create `&x` is the default, or `null` when there is none, so a check there reads `input.x`. Reading `&x` in a create's check for a member the create takes as input draws a warning (`MESH_VALIDATE_NOT_APPLIED`), because it is never the caller's value. It stays a warning because the stored value can be what a rule means: in an `always` over creates and updates, `&status !== :archived` refuses an edit of an archived row and sees the default on a create, and `input.status ?? &status` would change its meaning on an update. An operator over a required member that nothing has filled yet draws one too (`MESH_VALIDATE_UNFILLED`), because the member is `null` on every create, so a result that depends on it is unknown: in `that` the check fails, in `when` the check is skipped, and in `details` the value is `null`.
+**The value the action will store** is `input.x ?? &x`: what the caller sent, or the stored value when they sent nothing. A check that holds whatever the caller sends, such as `dueAfterIssue` in an `always` over creates and updates, is written with it: `(input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)`. On a create `&x` is the default, or `null` when there is none, so a check there reads `input.x`. Reading `&x` in a create's check for a member the create takes as input draws a warning (`MESH_VALIDATE_NOT_APPLIED`), because it is never the caller's value. It stays a warning because the stored value can be what a rule means: in an `always` over creates and updates, `&status !== :archived` refuses an edit of an archived row and sees the default on a create, and `input.status ?? &status` would change its meaning on an update. An operator over a required member that nothing has filled yet draws one too (`MESH_VALIDATE_UNFILLED`), because the member is `null` on every create, so a result that depends on it is unknown: in `that` the check fails, in `when` the check is skipped, in a `when` line the checks under it are skipped, and in `details` the value is `null`. Both warnings apply to the condition of a `when` line in `validate` as to a check.
 
 **A value sent as `null` is not a value left out**, but a translated expression reads both as `null`, so `input.x ?? &x` gives the stored value for either. When a `nullable` field can be cleared and the rule must tell the two apart, write the check as plain code, where a field left out is `undefined` and a cleared one is `null`: `that=({ input }) => { return input.intent === undefined || isAllowed(input.intent) }`.
 

@@ -5,6 +5,7 @@
 // project built and run, is `packages/cli/test/can-in-entities.test.ts`.
 import { describe, expect, test } from "bun:test";
 import { buildModel } from "../src/front-end/build.ts";
+import { checksOf } from "../src/model/action-expressions.ts";
 
 const ASK = "async ({ input, context }) => await Mesh.can(Task.go, input, context)";
 
@@ -40,12 +41,12 @@ describe("where they may be called: a step, a check, a set value and a helper's 
     );
     expect(build(source).diagnostics).toEqual([]);
     const action = go(source);
-    expect(action.validate[0]!.that.plain).toMatchObject({ why: "asks-policies", asks: true, mesh: ["Mesh"], entities: ["Task"] });
+    expect(checksOf(action.validate)[0]!.that.plain).toMatchObject({ why: "asks-policies", asks: true, mesh: ["Mesh"], entities: ["Task"] });
     const [set, after, before] = action.do;
     expect(set!.kind === "set" ? (set!.assignments[0]!.value as { plain?: unknown }).plain : undefined).toMatchObject({ why: "asks-policies", asks: true });
     for (const step of [after, before]) expect(step!.kind === "run" ? step!.fn.plain : undefined).toMatchObject({ why: "run-step", asks: true, mesh: ["Mesh"] });
     // A function that does not ask is not marked.
-    expect(go(entity(check("() => true"))).validate[0]!.that.plain).toBeUndefined();
+    expect(checksOf(go(entity(check("() => true"))).validate)[0]!.that.plain).toBeUndefined();
     const reading = go(entity(run("await Mesh.privileged(Task).read({})"))).do[0]!;
     expect(reading.kind === "run" ? reading.fn.plain : undefined).toMatchObject({ privileged: true });
     expect(reading.kind === "run" ? reading.fn.plain?.asks : "x").toBeUndefined();

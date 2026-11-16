@@ -151,6 +151,8 @@ export interface SortKey {
   member: MemberRef;
 }
 export interface Check {
+  /** Never set: it makes `kind` the discriminant of `ValidateItem` without adding a key to `model.json`. */
+  kind?: never;
   label: string;
   that: Expression;
   code: string;
@@ -164,6 +166,21 @@ export interface Check {
   /** Only on a check a `validate` block uses by reference: where its `check &name` is written. */
   reference?: SourcePosition;
 }
+/**
+ * A `when=condition` line in `validate`: the lines under it run only when the condition holds (ADR-0053). The
+ * condition sees what a check sees and is evaluated once per call; false or unknown skips the lines.
+ */
+export interface CheckGroup {
+  kind: "when";
+  condition: Expression;
+  /** The lines under it, in written order: checks, and `when` lines nested further. */
+  lines: ValidateItem[];
+  position: SourcePosition;
+}
+/** One line of a `validate` block. */
+export type ValidateItem = Check | CheckGroup;
+/** Tells a group from the other lines of a `validate` block. Every consumer uses this, so a new line kind changes one function. */
+export const isCheckGroup = (item: ValidateItem): item is CheckGroup => item.kind === "when";
 export type Step = (
   | {
       kind: "set";
@@ -197,7 +214,7 @@ export interface Action {
   /** The command this action answers, when it has an `on=`. */
   command?: CommandRef;
   input: InputField[];
-  validate: Check[];
+  validate: ValidateItem[];
   do: Step[];
   filter?: Expression;
   sort?: SortKey[];
@@ -206,7 +223,7 @@ export interface Action {
 export interface Always {
   types?: ActionType[];
   actions?: MemberRef[];
-  validate: Check[];
+  validate: ValidateItem[];
   do: Step[];
   position: SourcePosition;
 }
