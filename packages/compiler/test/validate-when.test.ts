@@ -188,16 +188,33 @@ describe("a `when` line in `validate`: what builds", () => {
       validate
         when=() => &version > 0
 `],
-    // The legal neighbours: a step `when` takes every step kind, nested, with a `publish` under it.
-    ["a step `when` holding every step kind", sendWith(`        ${ok("a")}\n        check :b that=() => true when=() => &version > 1 code="b" message="b"\n`, `        when=() => &version > 0
+    // The legal neighbours: a step `when` takes every step kind (`set`, `when`, `load`, `run`, `publish`), nested.
+    ["a step `when` holding every step kind", `import { Paid } from "./paid.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    integer :version default=0
+  computed
+    boolean :fresh() { return self.version === 0 }
+  actions auto=[:read]
+    update :send
+      validate
+        ${ok("a")}
+        check :b that=() => true when=() => &version > 1 code="b" message="b"
+      do
+        when=() => &version > 0
           set
             &version=1
           when=() => true
+            load=[&fresh]
             run=() => null
+          load=[&fresh]
           run=() => null
-`)],
+          publish=() => new Paid({})
+`],
   ])("%s builds with no diagnostic", (_name, source) => {
-    expect(said(source)).toEqual([]);
+    const result = buildModel({ root: "/p", files: [{ file: FILE, source }, { file: "billing/paid.mesh.mx", source: "event :paid\n" }] });
+    expect(result.diagnostics.map((d) => `${d.position.line}:${d.position.column} ${d.code} ${d.message}`)).toEqual([]);
   });
 
   test("the model keeps the nesting, with the `when` lines' positions", () => {
@@ -393,6 +410,52 @@ describe("a `when` line's condition in the model pass", () => {
     const [first, second] = actionOf(entity, "send").validate as CheckGroup[];
     expect(first!.condition.needs).toEqual(["owner"]);
     expect(second!.condition.needs).toEqual(expect.arrayContaining(["owner"]));
+  });
+
+  test("a condition's needs: a rollup", () => {
+    const line = `import { Invoice } from "./invoice.mesh.mx"
+entity :Line
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :invoice entity=Invoice
+  actions auto=[:read]
+`;
+    const result = buildModel({ root: "/p", files: [{ file: "billing/line.mesh.mx", source: line }, { file: FILE, source: `import { Line } from "./line.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+  relationships
+    has-many :lines entity=Line
+  computed
+    count :lineCount of=&lines
+  actions auto=[:read]
+    update :send
+      validate
+        when=() => &lineCount > 0
+          ${ok("a")}
+` }] });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const [group] = actionOf(result.document!.entities.find((e) => e.name === "Invoice")!, "send").validate as CheckGroup[];
+    expect(group!.condition.needs).toEqual(["lineCount"]);
+  });
+
+  test("in an `always` block over a create and an update, a condition and a check under it are typed", () => {
+    const found = project(owned(`    always types=[:create, :update]
+      validate
+        when=() => &total > 0
+          check :a that=() => &note !== "y" code="a" message="a"
+    create :issue
+      input
+        &amount
+        &owner
+      do
+        set
+          &total=1
+    update :send
+`)).diagnostics.map((d) => `${d.position.line} ${d.code}`);
+    // Line 15 is the `when` line, line 16 the check under it.
+    expect(found).toEqual(["15 MESH_VALIDATE_UNFILLED", "16 MESH_EXPR_NEGATED_UNKNOWN"]);
   });
 });
 
@@ -603,6 +666,41 @@ describe("`check &name` under a `when` line", () => {
         check &positive
 `, CHECKS);
     expect(errorsOf(source).map((d) => d.code)).toEqual(["MESH_DUPLICATE_MEMBER"]);
+  });
+
+  test("a reference at the top of an `always` block and again under a group in the action it covers is a duplicate at the action's line", () => {
+    const source = owned(`    always types=[:update]
+      validate
+        check &positive
+    update :send
+      validate
+        when=() => &version > 0
+          check &positive
+`, CHECKS);
+    expect(errorsOf(source).map((d) => `${d.position.line} ${d.code}`)).toEqual(["21 MESH_DUPLICATE_MEMBER"]);
+  });
+
+  test("a reference under a group in an `always` block is typed for each action the block covers", () => {
+    const source = owned(`    always types=[:update]
+      validate
+        when=() => &version > 0
+          check &needsX
+    update :other
+`, `  checks
+    check :needsX that=({ input }) => input.x > 0 code="x" message="x"
+`);
+    expect(errorsOf(source).map((d) => [d.code, d.message.split(",")[0]])).toEqual([["MESH_CHECK_INPUT", "`input.x` is read by a check that update :other uses through the `always` block at line 15"]]);
+  });
+
+  test("a reference under a step `when` is refused, and its check is not also reported unused", () => {
+    const source = owned(`    update :send
+      validate
+        check :local that=() => true code="l" message="l"
+      do
+        when=() => &version > 0
+          check &positive
+`, CHECKS);
+    expect(project(source).diagnostics.map((d) => `${d.position.line} ${d.code}`)).toEqual(["20 MESH_TAG_NOT_ALLOWED"]);
   });
 
   test("a reference with an option is still refused under a group", () => {

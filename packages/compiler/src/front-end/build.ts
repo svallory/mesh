@@ -837,6 +837,9 @@ function buildEntity(
       // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a `check` under a step `when`
       // (`do` itself does not take one).
       if (tag.name === "check") {
+        // A reference is still a use of its check: refused here, it is not also reported unused.
+        const reference = attr(tag, "member");
+        if (reference && !attr(tag, "name")) usedChecks.add(readMember(reference, at).name);
         fail("MESH_TAG_NOT_ALLOWED", "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`", tag);
         return undefined;
       }
