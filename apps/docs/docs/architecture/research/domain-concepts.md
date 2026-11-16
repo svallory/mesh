@@ -131,7 +131,9 @@ of the file's own declaration, imported identifiers for other entities ([ADR-005
 [ADR-0067]). A member of *another* entity is an atom beside that entity's reference, as
 `entity=Membership inverse=:collaborator` does ([ADR-0070], whose first draft called the option `via=`): Mesh has "no qualified-name spelling"
 ([Entities: names and references][d-names]; [ADR-0067]), so `Task.completed` is never used. Tag and
-option names are proposals.
+option names are proposals. The **Hyper** field is a gate check, not a reason for the concept: it
+records whether the Hyper port, the acceptance case for Mesh 1.0 ([ADR-0072]), needs the concept, and it
+feeds **When** only; **Form** and **Ring** are argued from the literature and from what Mesh has today.
 
 ### 2.1 Entity (the baseline)
 
