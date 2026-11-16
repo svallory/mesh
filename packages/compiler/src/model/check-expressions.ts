@@ -265,7 +265,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       case "member": {
         const owner = infer(n.object, scope);
         // A named check is typed in each referrer's scope: `input.x` where that action takes no `x` is an error at the read.
-        if (owner.c === "input" && !owner.entity && via?.lacks(n.name))
+        // Only in translated code (D25 point 2): code printed as the author's TypeScript (an object literal's parts, a
+        // demoted tree) is left to tsc, as a plain function is.
+        if (owner.c === "input" && !owner.entity && via?.lacks(n.name) && !scope.printedAsJavaScript)
           report("error", "MESH_CHECK_INPUT",
             `\`input.${n.name}\` is read by a check that ${via.who} uses${via.through}, and ${via.who} takes no \`${n.name}\``, n.position,
             `add \`${n.name}\` to the input of ${via.who}, or write the check for that action in its own \`validate\``);

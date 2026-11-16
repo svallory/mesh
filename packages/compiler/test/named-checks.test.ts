@@ -407,6 +407,17 @@ ${RESCHEDULE("        check &dueAfterIssue\n")}`)}`;
     expect(build(source).diagnostics.map((d) => [d.code, d.message.split(",")[0]])).toEqual([["MESH_CHECK_INPUT", "`input.note` is read by a check that update :reschedule uses"]]);
   });
 
+  test("D-11 holds for translated code only (D25): plain code, an object literal's parts and a demoted tree are left to tsc", () => {
+    const plain = (part: string) => invoice(`    check :reads that=() => true code="r" ${part.startsWith("message") ? "" : 'message="m" '}${part}\n`, RESCHEDULE("        check &reads\n") + "    update :annotate\n      validate\n        check &reads\n");
+    expect(codes(plain("details=({ input }) => ({ d: input.note })"))).toEqual([]);
+    expect(codes(plain("message=({ input }) => `x ${input.note}`"))).toEqual([]);
+    // A non-boolean operand of `&&` demotes the tree to plain code.
+    const demoted = invoice(READS("({ input }) => input.note !== null && &note"), RESCHEDULE("        check &reads\n"));
+    expect(codes(demoted)).toEqual(["8:37 MESH_EXPR_PLAIN"]);
+    // The same read, translated, is the error.
+    expect(codes(plain("when=({ input }) => input.note !== null"))).toEqual(["8:74 MESH_CHECK_INPUT", "8:74 MESH_CHECK_INPUT"]);
+  });
+
   test("D-11 legal neighbours: an input every referrer takes, required in one and optional in another; an inline check", () => {
     const takes = invoice(READS("({ input }) => input.dueOn !== null"), `${ISSUE("        check &reads\n")}${RESCHEDULE("        check &reads\n")}`);
     expect(said(takes)).toEqual([]);
