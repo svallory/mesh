@@ -20,7 +20,7 @@ entity :Invoice
       message="the due date cannot be before the issue date"
     ]
     check :noteShort [
-      that=({ input }) => (input.note ?? "").length <= 10
+      that=({ input }) => input.note !== null && input.note.length <= 10
       when=({ input }) => input.note !== null
       code="note_long"
       message=({ input }) => `the note has ${(input.note ?? "").length} characters`

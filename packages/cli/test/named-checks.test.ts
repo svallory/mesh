@@ -107,7 +107,10 @@ describe("named checks", () => {
         const invoice = await Invoice.issue({ issuedOn: new Date("2026-01-01"), dueOn: new Date("2026-02-01"), customer: nameless.id, note: null }, anyone);
         expect(await issuesOf(Invoice.reschedule({ id: invoice.id, dueOn: new Date("2025-12-01") }, anyone))).toMatchObject([dates]);
         expect(await Invoice.reschedule({ id: invoice.id, dueOn: new Date("2026-03-01") }, anyone)).toMatchObject({ id: invoice.id });
-        // `when` skips the check (no note); a message function and `details` give their values when it fails.
+        // `when` skips the check: its `that` fails on a null note, which `when` rules out, so no issue comes of it, in the
+        // create and in the update. A message function and `details` give their values when it fails.
+        expect(invoice.note).toBeNull();
+        expect(await Invoice.annotate({ id: invoice.id, note: null }, anyone)).toMatchObject({ note: null });
         expect(await issuesOf(Invoice.annotate({ id: invoice.id, note: "far too long a note" }, anyone))).toMatchObject([
           { label: "noteShort", code: "note_long", message: "the note has 19 characters", source: { file, line: 22 }, details: { length: 19 } },
         ]);
