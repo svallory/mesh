@@ -674,7 +674,7 @@ function buildEntity(
     return { label: declaredName(tag), that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
   };
   // The checks the `checks` section declares, by name (the first of a name; a second is a duplicate member, below), and
-  // every check name that counts as a member of the entity, with where it is written.
+  // every check name that counts as a member of the entity, named or inline, with where it is written.
   const namedChecks = new Map<string, Check>();
   const checkMembers: { name: string; position: SourcePosition }[] = [];
   for (const tag of tags(section("checks")?.children ?? [])) {
@@ -726,16 +726,16 @@ function buildEntity(
           fail("MESH_DUPLICATE_MEMBER", `Duplicate check &${ref.name}: this \`validate\` already lists it, and a check runs once`, ref.position);
           return [];
         }
-        if (before === "inline") {
-          fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${ref.name}`, ref.position);
-          return [];
-        }
+        // An inline check of the block took the name: the member list reports the pair once, at the later line.
+        if (before === "inline") return [];
         listed.set(ref.name, "reference");
         return [usedCheck(declared, ref.position)];
       }
+      // An inline check's name is a member of the entity, counted once however many blocks write it (SYN-08): the member
+      // list reports a repeat, here or in another block, and a name another member has.
       const check = declaredCheck(tag);
       if (!check) return [];
-      if (listed.has(check.label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${check.label}`, tag);
+      checkMembers.push({ name: check.label, position: check.position });
       listed.set(check.label, "inline");
       return [check];
     });
@@ -970,15 +970,21 @@ function buildEntity(
     const action = entity.actions.find((candidate) => candidate === member);
     return action?.command && !authorNamed.has(action) ? action : undefined;
   };
+  const isCheck = (member: unknown) => checkMembers.includes(member as (typeof checkMembers)[number]);
   for (const member of members) {
     if (names.has(member.name)) {
       const taken = fromCommand(member) ?? fromCommand(holders.get(member.name));
+      // Checks come last in the list, so a repeat that involves a check is reported at the check (the later one of two).
+      const fix = !isCheck(member) ? undefined
+        : isCheck(holders.get(member.name)) ? `declare the check once under \`checks\` and use it with \`check &${member.name}\` in each \`validate\`, or give each rule its own name`
+        : "rename the check";
       fail(
         "MESH_DUPLICATE_MEMBER",
         taken === undefined
           ? `Duplicate member :${member.name}`
           : `Duplicate member :${member.name}: the ${taken.kind} that answers ${taken.command!.identifier} takes its name from the command; write a name for it (\`${taken.kind} :name on=${taken.command!.identifier}\`) or rename the other member`,
         member.position,
+        fix,
       );
     }
     if (!holders.has(member.name)) holders.set(member.name, member);
@@ -1058,12 +1064,16 @@ function buildEntity(
       entity.onLoad.position,
     );
   for (const relation of entity.relationships)
-    if (relation.keyColumn && names.has(relation.keyColumn))
+    if (relation.keyColumn && names.has(relation.keyColumn)) {
+      // A check named like the key column is the check's mistake: it is reported there.
+      const holder = holders.get(relation.keyColumn);
       fail(
         "MESH_DUPLICATE_MEMBER",
         `Generated key column ${relation.keyColumn} conflicts with a declared member`,
-        relation.position,
+        isCheck(holder) ? holder!.position : relation.position,
+        isCheck(holder) ? "rename the check" : undefined,
       );
+    }
   return entity;
 }
 

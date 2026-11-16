@@ -511,7 +511,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
 
   test("plain code type-checks strictly: quantifier callbacks, atoms without &, a bare self, and only the scope names read are declared", async () => {
     // A string or an object key that spells a scope name declares nothing, so --noUnusedLocals finds nothing unused.
-    const plain = (entity(check("() => true")) + "      do\n        run ({ context }) { console.log({ actor: \"before the write\" }, context) }\n").replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => (c.title ?? \"\").startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
+    // The computed field is :c, so the check takes another name (a check's name is a member of the entity).
+    const plain = (entity(check("() => true").replace("check :c [", "check :passes [")) + "      do\n        run ({ context }) { console.log({ actor: \"before the write\" }, context) }\n").replace("  actions auto", "  computed\n    boolean :a() { return &children.some((c) => (c.title ?? \"\").startsWith(\"a\")) }\n    boolean :b({ self }) { return self.state.toString() === :open }\n    boolean :c() { return self.n.toFixed(0) === \"1\" }\n  actions auto");
     const { root } = await generated(plain);
     expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
@@ -1320,7 +1321,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
 
   test("a member destructured from Mesh counts as a read of it: privileged so read is still MESH_COMPUTED_COMPOSES and MESH_READ_POLICY_PRIVILEGED", () => {
     const computed = (body: string, line = 'import { Mesh } from "meshfw"') =>
-      entity(check("() => true")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`).replace('import { Mesh } from "meshfw"', line);
+      entity(check("() => true").replace("check :c [", "check :passes [")).replace("  actions auto", `  computed\n    boolean :c${body}\n  actions auto`).replace('import { Mesh } from "meshfw"', line);
     for (const [body, line] of [
       ["() { const { privileged } = Mesh; return privileged(Task).read({}) !== null }", undefined],
       ["() { const { privileged: p } = Mesh; return p(Task) !== null }", undefined],
@@ -1996,12 +1997,13 @@ ${actions}`;
     const squash = (text: string) => text.replace(/[\s;]+/g, "");
     const signature = (text: string, id: string) => new RegExp(`"${id.replaceAll(".", "\\.")}": (?:async )?\\(\\s*\\$s: ([\\w$]+)<`).exec(text)?.[1];
     test("checks, steps and runs after the write each get the scope that says what self is there; the files type-check", async () => {
-      const source = item(`    always types=[:create, :update]\n${checkOf("({ input }) => (input.n ?? &n) > 0")}`
-        + make(checkOf("({ input }) => input.n > 0") + "      do\n        set\n          &m=() => &n\n        run [after=:write] ({ self }) { console.log(self.id) }\n")
+      // A check's name counts once per entity: each block's check has its own.
+      const source = item(`    always types=[:create, :update]\n${checkOf("({ input }) => (input.n ?? &n) > 0").replace("check :c [", "check :always [")}`
+        + make(checkOf("({ input }) => input.n > 0").replace("check :c [", "check :made [") + "      do\n        set\n          &m=() => &n\n        run [after=:write] ({ self }) { console.log(self.id) }\n")
         + go(checkOf("() => &n > 0") + "      do\n        set\n          &m=({ before }) => before.n\n"));
       const { root, text, files } = await generated(source);
-      expect(signature(text, "always.0.check.c.that")).toBe("$Item$NewScope");
-      expect(signature(text, "make.check.c.that")).toBe("$Item$NewScope");
+      expect(signature(text, "always.0.check.always.that")).toBe("$Item$NewScope");
+      expect(signature(text, "make.check.made.that")).toBe("$Item$NewScope");
       expect(signature(text, "go.check.c.that")).toBe("$Item$CheckScope");
       expect(signature(text, "make.step.0.set.m")).toBe("$Item$Scope");
       expect(signature(text, "make.step.1.run")).toBe("$Item$Scope");

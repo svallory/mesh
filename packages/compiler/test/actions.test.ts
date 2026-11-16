@@ -329,7 +329,7 @@ entity :Item
   actions
 ${actions}    create :add
       validate
-        check :sized that=({ self }) => { const m = self.m; return m > 1 } code="s" message="s"
+        check :mAboveOne that=({ self }) => { const m = self.m; return m > 1 } code="s" message="s"
         check :open that=({ self }) => open(self) code="o" message="o"
   policies
     policy :everyone

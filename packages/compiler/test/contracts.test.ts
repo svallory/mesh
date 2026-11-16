@@ -243,8 +243,9 @@ describe("a read takes no validate and no do", () => {
   });
   test("the legal neighbours stay legal: a read's input, filter and sort; validate and do on the three writes and in an always block beside a read", () => {
     expect(read("      input\n        integer :m\n      filter=({ self, input }) => self.n > input.m\n      sort\n        asc &n\n")).toEqual([]);
-    const body = `      validate\n${CHECK}      do\n${RUN}`;
-    expect(build(`${keyed}    integer :n\n  actions auto=[:read]\n    read :open\n    create :add\n${body}    update :change\n${body}    destroy :remove\n${body}    always\n${body}`).diagnostics).toEqual([]);
+    // A check's name is a member of the entity, counted once (SYN-08): each block names its own.
+    const body = (name: string) => `      validate\n${CHECK.replace(":ok", `:${name}`)}      do\n${RUN}`;
+    expect(build(`${keyed}    integer :n\n  actions auto=[:read]\n    read :open\n    create :add\n${body("addOk")}    update :change\n${body("changeOk")}    destroy :remove\n${body("removeOk")}    always\n${body("alwaysOk")}`).diagnostics).toEqual([]);
   });
 });
 // An `always` block holds `validate` and `do`, and a read runs neither: a block scoped to a read never applies to it. The

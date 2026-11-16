@@ -246,9 +246,10 @@ describe("references the build refuses", () => {
     expect(codes(invoice(DUE + '    check :dueAfterIssue that=() => true code="n" message="m"\n', ISSUE("        check &dueAfterIssue\n")))).toEqual(["13:4 MESH_DUPLICATE_MEMBER"]);
   });
 
-  test("an inline check and a reference of one name in one block: one duplicate, at the later line, in either order", () => {
+  test("an inline check and a reference of one name in one block: one duplicate, at the inline check, in either order", () => {
+    // The inline check's name is the declaration's (SYN-08): the member list reports the pair at the later line.
     const inline = '        check :dueAfterIssue that=() => true code="i" message="m"\n';
-    for (const [lines, at] of [[`${inline}        check &dueAfterIssue\n`, "20:14"], [`        check &dueAfterIssue\n${inline}`, "20:8"]] as const)
+    for (const [lines, at] of [[`${inline}        check &dueAfterIssue\n`, "19:8"], [`        check &dueAfterIssue\n${inline}`, "20:8"]] as const)
       expect(said(invoice(DUE, ISSUE(lines)))).toEqual([`${at} MESH_DUPLICATE_MEMBER Duplicate member :dueAfterIssue`]);
   });
 
@@ -278,12 +279,14 @@ describe("generated code", () => {
     expect(actions.match(/source: \{ file: "billing\/invoice\.mesh\.mx", line: 8, column: 5 \}/g)).toHaveLength(2);
   });
 
-  test("F1 generates what the same check written inline in each action does, positions aside", async () => {
+  test("a named check generates what the same check written inline does, positions aside", async () => {
+    // One referrer each: written inline in two actions, one name would be a duplicate member.
     const body = DUE.replace(/^ {4}/gm, "        ");
-    const inline = invoice("", ISSUE(body) + RESCHEDULE(body));
+    const inline = invoice("", ISSUE(body) + RESCHEDULE('        check :ok that=() => true code="ok" message="ok"\n'));
+    const named = invoice(DUE, ISSUE("        check &dueAfterIssue\n") + RESCHEDULE('        check :ok that=() => true code="ok" message="ok"\n'));
     const strip = (text: string) => text.replace(/line: \d+, column: \d+/g, "").replace(/mesh\.mx:\d+:\d+/g, "").replace(/"line": \d+|"column": \d+|"offset": \d+/g, "");
-    const named = await generate(F1), written = await generate(inline);
-    for (const file of named.filter((file) => /\.(actions|expressions|types|validators)\.ts$/.test(file.path)))
+    const fromNamed = await generate(named), written = await generate(inline);
+    for (const file of fromNamed.filter((file) => /\.(actions|expressions|types|validators)\.ts$/.test(file.path)))
       expect(strip(file.contents)).toBe(strip(written.find((other) => other.path === file.path)!.contents));
   });
 
@@ -470,5 +473,85 @@ ${bump}        check :ok that=() => true code="ok" message="ok"
     expect(said(plain)[0]).toContain("8:28 MESH_EXPR_PLAIN this expression runs as plain TypeScript");
     const before = invoice(READS("({ before }) => { return before === null }"), RESCHEDULE("        check &reads\n") + "    update :annotate\n      validate\n        check &reads\n");
     expect(codes(before)).toEqual(["8:22 MESH_VALIDATE_BEFORE"]);
+  });
+});
+
+describe("SYN-08: a check's name is a member of its entity, counted once", () => {
+  const TWO = "declare the check once under `checks` and use it with `check &noteGiven` in each `validate`, or give each rule its own name";
+  const inline = (name: string) => `        check :${name} that=() => true code="c" message="m"\n`;
+  const entity = (actions: string, extra = "") => `import { Customer } from "./customer.mesh.mx"
+import { Close } from "./close.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    string :note nullable
+  relationships
+    belongs-to :customer entity=Customer
+  computed
+    boolean :noted() { return &note !== null }
+${extra}  actions auto=[:read]
+${actions}  policies
+    policy :open
+      authorize-if=() => true
+`;
+  const project = (source: string) => buildModel({ root: "/p", files: [
+    { file: FILE, source },
+    { file: "billing/customer.mesh.mx", source: "entity :Customer\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
+    { file: "billing/close.mesh.mx", source: "command :Close\n  uuid :id\n" },
+  ] });
+  const duplicates = (source: string) => project(source).diagnostics.filter((d) => d.code !== "MESH_COMMAND_UNANSWERED").map((d) => [`${d.position.line}:${d.position.column}`, d.code, d.message, d.fix]);
+  const update = (name: string, lines: string) => `    update :${name}\n      validate\n${lines}`;
+
+  test("one inline name in two actions, or in an action and an `always` block, is a duplicate at the later line", () => {
+    expect(duplicates(entity(update("a", inline("noteGiven")) + update("b", inline("noteGiven"))))).toEqual([
+      ["17:8", "MESH_DUPLICATE_MEMBER", "Duplicate member :noteGiven", TWO],
+    ]);
+    expect(duplicates(entity(`    always types=[:update]\n      validate\n${inline("noteGiven")}` + update("a", inline("noteGiven"))))).toEqual([
+      ["17:8", "MESH_DUPLICATE_MEMBER", "Duplicate member :noteGiven", TWO],
+    ]);
+  });
+
+  test("a named check and an inline check of one name are a duplicate at the later line", () => {
+    const named = `  checks\n    check :noteGiven that=() => true code="c" message="m"\n`;
+    expect(duplicates(entity(update("a", "        check &noteGiven\n") + update("b", inline("noteGiven")), named))).toEqual([
+      ["19:8", "MESH_DUPLICATE_MEMBER", "Duplicate member :noteGiven", TWO],
+    ]);
+  });
+
+  test.each([
+    ["an attribute", "note"],
+    ["a relationship", "customer"],
+    ["a computed field", "noted"],
+    ["a declared action", "a"],
+    ["an action `auto=` generates", "read"],
+    ["a policy", "open"],
+  ])("a check named like %s is a duplicate at the check, with the fix to rename it", (_name, name) => {
+    expect(duplicates(entity(update("a", inline(name))))).toEqual([["14:8", "MESH_DUPLICATE_MEMBER", `Duplicate member :${name}`, "rename the check"]]);
+  });
+
+  test("a check named like an action that takes its name from a command gives the command's message, at the check", () => {
+    expect(duplicates(entity(`    update on=Close\n      validate\n${inline("close")}`))).toEqual([
+      ["14:8", "MESH_DUPLICATE_MEMBER", "Duplicate member :close: the update that answers Close takes its name from the command; write a name for it (`update :name on=Close`) or rename the other member", "rename the check"],
+    ]);
+  });
+
+  test("a check named like a belongs-to's key column is reported at the check", () => {
+    expect(duplicates(entity(update("a", inline("customerId"))))).toEqual([
+      ["14:8", "MESH_DUPLICATE_MEMBER", "Generated key column customerId conflicts with a declared member", "rename the check"],
+    ]);
+  });
+
+  test("a check named __proto__ is MESH_ATTRIBUTE_NAME", () => {
+    expect(duplicates(entity(update("a", inline("__proto__")))).map(([, code]) => code)).toEqual(["MESH_ATTRIBUTE_NAME"]);
+  });
+
+  test("legal: one name in two entities, one code for two checks, one body under two names", () => {
+    const customer = "entity :Customer\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n    update :a\n      validate\n        check :note that=() => true code=\"c\" message=\"m\"\n";
+    const result = buildModel({ root: "/p", files: [
+      { file: FILE, source: entity(update("a", inline("note2")) + update("b", inline("other"))) },
+      { file: "billing/customer.mesh.mx", source: customer },
+      { file: "billing/close.mesh.mx", source: "command :Close\n  uuid :id\n" },
+    ] });
+    expect(result.diagnostics.filter((d) => d.code !== "MESH_COMMAND_UNANSWERED")).toEqual([]);
   });
 });

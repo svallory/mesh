@@ -25,6 +25,8 @@ entity :Doc table="docs"
     integer :level nullable
     boolean :locked default=false
     timestamp :insertedAt on=:create
+  checks
+    check :titled that=({ input }) => seen("validate") && input.title.length > 0 code="titled" message="a title is required"
   actions auto=[:read]
     create :draft
       input
@@ -32,7 +34,7 @@ entity :Doc table="docs"
         &title
         &level
       validate
-        check :titled that=({ input }) => seen("validate") && input.title.length > 0 code="titled" message="a title is required"
+        check &titled
       do
         run() {
           seen("step")
@@ -45,7 +47,7 @@ entity :Doc table="docs"
       input
         &title
       validate
-        check :titled that=({ input }) => seen("validate") && input.title.length > 0 code="titled" message="a title is required"
+        check &titled
       do
         run() {
           seen("step")
