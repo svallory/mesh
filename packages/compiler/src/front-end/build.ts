@@ -38,7 +38,7 @@ import {
 } from "@meshfw/model";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
-import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf, scopeReachOf } from "./expression.ts";
+import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
@@ -465,7 +465,7 @@ function buildEntity(
     }
   const pending: {
     ref: MemberRef;
-    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter";
+    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter" | "check";
   }[] = [];
   const checkRef = (
     ref: MemberRef,
@@ -651,17 +651,93 @@ function buildEntity(
    */
   const refusePublish = (tag: Tag, where: string) =>
     fail("MESH_PUBLISH", `a \`publish\` step is not allowed ${where}: it raises an event after the action's row is written, in the action's \`do\``, tag, "move it under `do`");
+  /** Where an option is written: its name (`when` of `when=...`). */
+  const optionAt = (a: Attr) => at("nameSpan" in a && a.nameSpan ? a.nameSpan.sourceStart : attrOffset(a));
+  /**
+   * One declared check, inline in a `validate` or under `checks`: its functions are built here, once. The contract
+   * requires nothing of a `check` line, since a reference (`check &name`) takes none of a declaration's options, so the
+   * form rules are here, reported line by line: a line that declares and refers, and a declaration missing an option
+   * (the first missing, with MX's text for a required option). Such a line declares no check.
+   */
+  const declaredCheck = (tag: Tag): Check | undefined => {
+    const reference = attr(tag, "member");
+    if (reference) {
+      fail("MESH_MEMBER_REFERENCE", "`check`: a line declares a check (`check :name` with its options) or uses one (`check &name` alone), not both", optionAt(reference));
+      return undefined;
+    }
+    const missing = ["name", "that", "code", "message"].find((key) => !attr(tag, key));
+    if (missing) {
+      fail("MESH_MISSING_OPTION", `\`check\`: missing required option \`${missing}\``, tag);
+      return undefined;
+    }
+    for (const inner of tags(tag.children)) if (inner.name === "publish") refusePublish(inner, "in a `check`");
+    return { label: declaredName(tag), that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
+  };
+  // The checks the `checks` section declares, by name (the first of a name; a second is a duplicate member, below), and
+  // every check name that counts as a member of the entity, with where it is written.
+  const namedChecks = new Map<string, Check>();
+  const checkMembers: { name: string; position: SourcePosition }[] = [];
+  for (const tag of tags(section("checks")?.children ?? [])) {
+    const reference = attr(tag, "member");
+    if (reference) {
+      fail("MESH_MEMBER_REFERENCE", "`checks` declares checks: a line under it is `check :name` with its options, and `check &name` is how a `validate` block uses one", optionAt(reference));
+      continue;
+    }
+    const check = declaredCheck(tag);
+    if (!check) continue;
+    checkMembers.push({ name: check.label, position: check.position });
+    if (!namedChecks.has(check.label)) namedChecks.set(check.label, check);
+  }
+  /** The named checks some `validate` refers to, a refused reference included: one no block uses never runs. */
+  const usedChecks = new Set<string>();
+  /** A named check as one `validate` block uses it: its own expression objects, so the model pass types it in that block's scope. */
+  const usedCheck = (declared: Check, reference: SourcePosition): Check => ({
+    ...declared,
+    that: copyExpression(declared.that),
+    message: typeof declared.message === "string" ? declared.message : copyExpression(declared.message),
+    ...(declared.when ? { when: copyExpression(declared.when) } : {}),
+    ...(declared.details ? { details: copyExpression(declared.details) } : {}),
+    reference,
+  });
+  /** The checks of a `validate` block, in order: inline declarations, and named checks the block uses by reference. */
   const checks = (holder: Tag): Check[] => {
-    const names = new Set<string>();
-    return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).filter((tag) => {
-      if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return false; }
-      for (const inner of tags(tag.children)) if (inner.name === "publish") refusePublish(inner, "in a `check`");
-      return true;
-    }).map((tag) => {
-      const label = declaredName(tag);
-      if (names.has(label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${label}`, tag);
-      names.add(label);
-      return { label, that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
+    const listed = new Map<string, "inline" | "reference">();
+    return tags(tags(holder.children).find((t) => t.name === "validate")?.children ?? []).flatMap((tag): Check[] => {
+      if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return []; }
+      const reference = attr(tag, "member");
+      if (reference && !attr(tag, "name")) {
+        const ref = readMember(reference, at);
+        usedChecks.add(ref.name);
+        const option = tag.attrs.find((a) => a.kind === "spread" || a.name !== "member");
+        if (option) {
+          fail("MESH_UNKNOWN_OPTION", `\`check\`: a reference to a check takes no option: remove \`${option.kind === "spread" ? "..." : option.name}\`, or change the check where \`checks\` declares it`, optionAt(option));
+          return [];
+        }
+        const child = tags(tag.children)[0];
+        if (child) {
+          fail("MESH_TAG_NOT_ALLOWED", `\`check\`: a reference to a check takes no line under it: remove \`${child.name}\``, child);
+          return [];
+        }
+        checkRef(ref, "check");
+        const declared = namedChecks.get(ref.name);
+        if (!declared) return [];
+        const before = listed.get(ref.name);
+        if (before === "reference") {
+          fail("MESH_DUPLICATE_MEMBER", `Duplicate check &${ref.name}: this \`validate\` already lists it, and a check runs once`, ref.position);
+          return [];
+        }
+        if (before === "inline") {
+          fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${ref.name}`, ref.position);
+          return [];
+        }
+        listed.set(ref.name, "reference");
+        return [usedCheck(declared, ref.position)];
+      }
+      const check = declaredCheck(tag);
+      if (!check) return [];
+      if (listed.has(check.label)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${check.label}`, tag);
+      listed.set(check.label, "inline");
+      return [check];
     });
   };
   /** The steps under a `do` or a `when`. */
@@ -882,7 +958,11 @@ function buildEntity(
       position: actionSection ? pos(actionSection) : entity.position,
     })),
     ...entity.policies,
+    ...checkMembers.sort((a, b) => a.position.offset - b.position.offset),
   ];
+  for (const [name, check] of namedChecks)
+    if (!usedChecks.has(name))
+      diagnostics.push({ severity: "warning", code: "MESH_CHECK_UNUSED", message: `check :${name} is declared and no \`validate\` uses it, so it never runs`, position: check.position, fix: `list it in the \`validate\` of each action it is a rule of: \`check &${name}\`` });
   const names = new Set<string>();
   // The action each name belongs to, for a name taken from a command: the message names the command (`notes/spec/events-and-commands.md`, "Answering a command").
   const holders = new Map<string, (typeof members)[number]>();
@@ -920,6 +1000,17 @@ function buildEntity(
     const inputAttribute = scope === "input" ? entity.attributes.find((field) => field.name === ref.name) : undefined;
     if (inputAttribute && (inputAttribute.primaryKey || inputAttribute.on))
       fail("MESH_INPUT_MANAGED", `&${ref.name} is set by Mesh and cannot be an input`, ref.position);
+    if (scope === "check") {
+      // `check &name` uses a check of the entity's `checks` section, and nothing else: not an inline check, not another member.
+      if (!namedChecks.has(ref.name)) {
+        const candidates = new Set(namedChecks.keys());
+        const member = unknownMember(entity, ref, candidates);
+        const names = [...candidates].map((name) => `&${name}`).join(", ");
+        diagnostics.push({ ...member,
+          message: `&${ref.name} is not a check of ${entity.fqn}: \`check &name\` uses a check the entity's \`checks\` section declares${names ? ` (${names})` : ", and it declares none"}.${member.message.includes("Did you mean") ? member.message.slice(member.message.indexOf(" Did you mean")) : ""}` });
+      }
+      continue;
+    }
     const allowed =
       scope === "actions"
         ? [...entity.actions, ...entity.auto.map((name) => ({ name }))]

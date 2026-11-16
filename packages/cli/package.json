@@ -28,6 +28,7 @@
         "attributes",
         "relationships",
         "computed",
+        "checks",
         "actions",
         "always",
         "input",

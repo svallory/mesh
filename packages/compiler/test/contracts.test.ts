@@ -79,12 +79,16 @@ describe("v4 contracts", () => {
     "  actions\n    always types=[:upsert]\n",
     "  actions\n    read :read\n      sort\n        asc :id\n",
     "  actions\n    create :create\n      input\n        :id\n",
-    '  actions\n    create :create\n      validate\n        check :ok code="bad" message="bad"\n',
     '  actions\n    create :create\n      validate\n        check :ok that=() => true code=:bad message="bad"\n',
     "  actions\n    read :read filter=someFunction\n",
     "  policies\n    policy :owner actions=[:read]\n",
   ])("rejects old options or invalid shapes %s", (suffix) =>
     expect(parse(keyed + suffix).diagnostics.length).toBeGreaterThan(0),
+  );
+  // A `check` line may declare a check or use a named one (`check &name`), so the contract requires none of a
+  // declaration's options: the builder reports the one missing, with MX's text.
+  test("rejects a check without `that`", () =>
+    expect(buildModel({ root: "/p", files: [{ file: "todo/todo.mesh.mx", source: `${keyed}  actions\n    create :create\n      validate\n        check :ok code="bad" message="bad"\n` }] }).diagnostics.map((d) => d.code)).toContain("MESH_MISSING_OPTION"),
   );
   test("a single atom in a list slot is refused with the list spelling (MX alpha.33: list slots are arrays of `mesh:Atom`)", () => {
     const result = parse(`${keyed}  actions auto=:read\n`);

@@ -1,0 +1,74 @@
+import { Customer } from "./customer.mesh.mx"
+import { Line } from "./line.mesh.mx"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    date :issuedOn
+    date :dueOn
+    string :note nullable
+    boolean :locked default=false
+  relationships
+    belongs-to :customer entity=Customer
+    has-many :lines entity=Line
+  computed
+    count :lineCount of=&lines
+  checks
+    check :dueAfterIssue [
+      that=({ input }) => (input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)
+      code="invalid_dates"
+      message="the due date cannot be before the issue date"
+    ]
+    check :noteShort [
+      that=({ input }) => (input.note ?? "").length <= 10
+      when=({ input }) => input.note !== null
+      code="note_long"
+      message=({ input }) => `the note has ${(input.note ?? "").length} characters`
+      details=({ input }) => ({ length: (input.note ?? "").length })
+    ]
+    check :hasLines that=() => &lineCount > 0 code="no_lines" message="the invoice has no lines"
+    check :customerNamed that=() => &customer.name !== "" code="no_customer_name" message="the customer has no name"
+    check :notLocked that=() => !&locked code="locked" message="the invoice is locked"
+    check :explodes that=() => false code="boom" message=() => { throw new Error("nope") }
+  actions auto=[:read]
+    always types=[:update]
+      validate
+        check &notLocked
+    create :issue
+      input
+        &issuedOn
+        &dueOn
+        &customer
+        &note
+      validate
+        check &dueAfterIssue
+        check &noteShort
+    update :reschedule
+      input
+        &issuedOn
+        &dueOn
+      validate
+        check &dueAfterIssue
+    update :annotate
+      input
+        &note
+      validate
+        check &noteShort
+    update :send
+      validate
+        check &hasLines
+        check &customerNamed
+    update :pay
+      validate
+        check &customerNamed
+        check &hasLines
+    update :explode
+      validate
+        check &explodes
+    update :lock
+      do
+        set
+          &locked=true
+  policies
+    policy :open
+      authorize-if=() => true

@@ -175,6 +175,7 @@ const contracts: ContractMap = {
       attributes: {},
       relationships: {},
       computed: {},
+      checks: {},
       actions: {},
       policies: {},
     },
@@ -245,15 +246,21 @@ const contracts: ContractMap = {
     // (`MESH_PUBLISH`, `front-end/build.ts`) instead of calling it an unknown tag.
     children: children("check", "publish"),
   }),
+  // The entity's named checks: each line declares one, which a `validate` block uses with `check &name`.
+  checks: closed({ parents: ["entity"], children: children("check") }),
   check: closed({
-    parents: ["validate"],
+    parents: ["validate", "checks"],
     children: children("publish"),
     attributes: {
-      ...named(),
-      that: fn(true),
-      code: text(true),
+      // A line declares a check (`:name`, `that`, `code`, `message`) or uses one (`&name` alone). Nothing is required here:
+      // the builder says what each form needs, line by line (`declaredCheck` and `checks` in `front-end/build.ts`), since a
+      // contract cannot say "required unless `member` is written" and a hook stops at its first failing line.
+      name: atom(),
+      member: member(),
+      that: fn(),
+      code: text(),
       // Text, or a function of the arguments `that` gets: the contract leaves the type open, `check` in the builder tells them apart.
-      message: { required: true },
+      message: {},
       when: fn(),
       details: fn(),
     },

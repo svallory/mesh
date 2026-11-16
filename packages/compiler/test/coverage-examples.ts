@@ -20,7 +20,9 @@ export function coverageProject(tag: string, option: string | undefined, example
   // (`MESH_OPTION_VALUE`), so for that cell it is an update. Line reaches Sample through its `belongs-to`, so Sample has
   // the auto read a load runs (`MESH_ON_LOAD`), unless the cell is an `actions` line of its own.
   const actions = node("actions auto=[:read]", [node(tag === "always" && option === "actions" ? "update :custom" : "read :custom")]);
-  const root = node("entity :Sample", [attributes, relationships, actions]);
+  // `check &valid` uses a check the entity's `checks` section declares.
+  const named = tag === "check" && option === "member" ? [node("checks", [node('check :valid that=() => true code="invalid" message="Invalid input"')])] : [];
+  const root = node("entity :Sample", [attributes, relationships, ...named, actions]);
   const chain = option === "member" && contracts[tag]!.children?.["*"] ? [tag, "member"] : [tag];
   let parent = ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number]) && option === "value" ? "computed" : contracts[tag]!.parents![0]!;
   while (parent !== "#root") {
