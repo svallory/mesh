@@ -559,7 +559,7 @@ describe("the contract", () => {
         "`has-many`: through must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)"]]);
   });
   test("a wrapped reference is MESH_ENTITY_REFERENCE at the value", () => {
-    for (const value of ["(Enrollment)", "Enrollment!", "Enrollment as X"])
+    for (const value of ["(Enrollment)", "Enrollment!", "Enrollment as X", "Enrollment satisfies X", "<X>Enrollment"])
       expect(only(withLine(`has-many :courses entity=Course through=${value}`))).toEqual([["MESH_ENTITY_REFERENCE", "7:44",
         "`has-many`: through must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`through=List`, `through=billing.Invoice`)"]]);
   });
