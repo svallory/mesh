@@ -327,6 +327,7 @@ The running deliverer renews its claim every 5 seconds, whatever the bus; a clai
 | `pollInterval` | `1000` | After start, how often in milliseconds a round also runs, to pick up what processes connected with `{ deliver: false }` committed |
 | `retryDelays` | `[100, 1000, 10000]` after start; `[0, 0, 0]` in `deliver()` rounds | The wait in milliseconds before each retry of a failing handler; when they are used up, the handler stops. A value you set applies to both |
 | `maxQueue` | `10000` | How many events a live subscription may have waiting for its callback before it ends with `SubscriptionOverflowError` |
+| `onStopped` | writes the error with `console.error` | After start, the function called with the `HandlerStoppedError` each time a handler stops, in place of the default report; see "A stopped handler" below |
 
 ```ts "mesh.config.ts"
 import { localBus } from "@meshfw/bus-local";
@@ -338,18 +339,25 @@ export default defineConfig({
   output: ".mesh",
   data: sqlite({ file: "app.db" }),
   events: {
-    bus: localBus({ pollInterval: 250, retryDelays: [500, 5000, 30000], maxQueue: 50_000 }),
+    bus: localBus({
+      pollInterval: 250,
+      retryDelays: [500, 5000, 30000],
+      maxQueue: 50_000,
+      onStopped: (error) => {
+        for (const stop of error.stopped) console.warn(`${stop.handler} stopped at event ${stop.position} (${stop.event})`);
+      },
+    }),
   },
 });
 ```
 
-`pollInterval` and each delay are whole milliseconds, at most 2147483647 (about 24.8 days, the longest wait a timer keeps); `pollInterval` is at least 1. A wrong option, such as a `pollInterval` of 0 or a negative delay, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
+`pollInterval` and each delay are whole milliseconds, at most 2147483647 (about 24.8 days, the longest wait a timer keeps); `pollInterval` is at least 1. A wrong option, such as a `pollInterval` of 0, a negative delay or an `onStopped` that is not a function, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
 
 **Rounds.** Each round feeds every handler from its own progress row, in position order, one event at a time, then every live subscription from its own position, then deletes what every reader has passed. Once delivery is started (`connect()` or `startDelivery()`), a round runs at once, after each transaction in this process that published commits, and every `pollInterval`. Creating the bus starts nothing, and `disconnect()` or `delivery.stop()` waits for the running round and leaves no timer behind.
 
 **Retries.** After start, a handler that throws waits out its delay on its own timer, outside the rounds, so a handler that backs off delays no other handler or subscription; the next try is the same event. An error with `retryable: false`, such as a `ForbiddenError`, stops the handler at once, without the delays. A try that `DatabaseBusyError` ends is not counted: the round ends, and the next one tries again. In a `deliver()` round the retries run inline with no wait, because the started defaults add up to 11.1 seconds, past `bun test`'s 5-second timeout, which would turn a handler's error into a timeout.
 
-**A stopped handler.** A started `localBus` reports a handler that stops with `console.error`, as a `HandlerStoppedError` that names the handler, the position and the event. The other handlers go on; the stopped one is fed nothing until it resumes, and the outbox keeps every row from its position on. It resumes at the next start, in the next `deliver()` round, or when you call `resumeHandler(name)`, from `#mesh`, in the process that delivers, once its cause is fixed:
+**A stopped handler.** A started `localBus` reports a handler that stops as a `HandlerStoppedError` that names the handler, the position and the event. Without `onStopped` it writes the error with `console.error`. With it, it calls `onStopped(error)` instead, once for each stop, so the stop reaches your logger or your alerts; if `onStopped` throws, or returns a promise that rejects, the bus writes that error and the stop with `console.error` and goes on. A `deliver()` round never calls `onStopped`: its rejection is the error. The other handlers go on; the stopped one is fed nothing until it resumes, and the outbox keeps every row from its position on. It resumes at the next start, in the next `deliver()` round, or when you call `resumeHandler(name)`, from `#mesh`, in the process that delivers, once its cause is fixed:
 
 ```ts "src/resume.ts"
 import { connect, resumeHandler } from "#mesh";

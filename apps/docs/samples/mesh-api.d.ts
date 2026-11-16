@@ -585,7 +585,7 @@ declare module "@meshfw/data-postgres" {
 }
 
 declare module "@meshfw/bus-local" {
-  import type { EventBus } from "@meshfw/runtime";
+  import type { EventBus, HandlerStoppedError } from "@meshfw/runtime";
 
   /** What `localBus` takes. */
   export interface LocalBusOptions {
@@ -595,6 +595,8 @@ declare module "@meshfw/bus-local" {
     readonly retryDelays?: readonly number[];
     /** The rows a live subscription may have waiting for its callback before it ends with `MESH_SUBSCRIPTION_OVERFLOW`; default 10 000. */
     readonly maxQueue?: number;
+    /** After `start()`, called with the `HandlerStoppedError` each time a handler stops, in place of the line the bus writes to stderr by default; a `deliver()` round rejects with that error and does not call it. */
+    readonly onStopped?: (error: HandlerStoppedError) => void;
   }
 
   /** The first event bus: delivers in the deliverer's process, on any data adapter. Declares `ordered-delivery`, `replay` and `subscribe`. */

@@ -6,6 +6,9 @@ import { DECLARATION as $DECLARATION, checkFields as $checkFields, type Declarat
 @if(json)
 import { jsonValue as $jsonValue } from "@meshfw/runtime";
 @end
+@if(deepReadonly)
+import type { DeepReadonly as $DeepReadonly } from "@meshfw/runtime";
+@end
 @if(globals)
 {{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
 @end
@@ -38,13 +41,17 @@ export class {{ className }} {
   constructor(fields: {
     @each(field in fields)
     @if(field.optional)~
-    {{ field.key }}?: {{ field.type }} | undefined;
+    {{ field.key }}?: {{ field.parameterType }} | undefined;
     @else~
-    {{ field.key }}: {{ field.type }};
+    {{ field.key }}: {{ field.parameterType }};
     @end~
     @end
   }) {
+    @if(fields.length)~
     const $checked = $checkFields($fields, fields, {{ kindLiteral }}, {{ fqnLiteral }});
+    @else~
+    $checkFields($fields, fields, {{ kindLiteral }}, {{ fqnLiteral }});
+    @end~
     @each(field in fields)
     this{{ field.access }} = {{ field.assignment }};
     @end

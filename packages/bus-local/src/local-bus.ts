@@ -22,6 +22,11 @@ export interface LocalBusOptions {
   readonly retryDelays?: readonly number[];
   /** The rows a live subscription may have waiting for its callback before it ends with `MESH_SUBSCRIPTION_OVERFLOW`; default 10 000. */
   readonly maxQueue?: number;
+  /**
+   * After `start()`, called with the `HandlerStoppedError` each time a handler stops, in place of the line the bus
+   * writes to stderr by default. A `deliver()` round does not call it: its rejection is that error.
+   */
+  readonly onStopped?: (error: HandlerStoppedError) => void;
 }
 
 /** The timer functions the bus uses; tests pass their own to count what is left after `stop()`. */
@@ -35,14 +40,14 @@ export interface LocalBusTimers {
 /** What the internal factory takes beside the public options. Not exported from the package. */
 export interface LocalBusInternals {
   readonly timers?: LocalBusTimers;
-  /** Where a stopped handler and a failed background round are reported; default `console.error`. */
+  /** Where a stopped handler and a failed background round are reported, in place of `onStopped` and `console.error`. */
   readonly report?: (error: unknown) => void;
 }
 
 const STARTED_DELAYS: readonly number[] = Object.freeze([100, 1000, 10_000]);
 const DELIVER_DELAYS: readonly number[] = Object.freeze([0, 0, 0]);
 const POLL_INTERVAL = 1000;
-const OPTION_NAMES = new Set(["pollInterval", "retryDelays", "maxQueue"]);
+const OPTION_NAMES = new Set(["pollInterval", "retryDelays", "maxQueue", "onStopped"]);
 /** The rows one read asks for. */
 const PAGE = 100;
 
@@ -68,20 +73,45 @@ const MAX_DELAY = 2_147_483_647;
 const isDelay = (value: unknown, least: number): boolean => typeof value === "number" && Number.isInteger(value) && value >= least && value <= MAX_DELAY;
 
 /** The options, checked: a `FrameworkError` names the first one that is wrong. */
-function checked(options: LocalBusOptions | undefined): { pollInterval: number; retryDelays: readonly number[] | undefined; maxQueue: number | undefined } {
-  if (options === undefined) return { pollInterval: POLL_INTERVAL, retryDelays: undefined, maxQueue: undefined };
+function checked(options: LocalBusOptions | undefined): {
+  pollInterval: number; retryDelays: readonly number[] | undefined; maxQueue: number | undefined; onStopped: ((error: HandlerStoppedError) => void) | undefined;
+} {
+  if (options === undefined) return { pollInterval: POLL_INTERVAL, retryDelays: undefined, maxQueue: undefined, onStopped: undefined };
   if (typeof options !== "object" || options === null || Array.isArray(options))
-    throw new FrameworkError(`localBus takes { pollInterval, retryDelays, maxQueue }, and was given ${describe(options)}`);
+    throw new FrameworkError(`localBus takes { pollInterval, retryDelays, maxQueue, onStopped }, and was given ${describe(options)}`);
   for (const key of Object.keys(options))
-    if (!OPTION_NAMES.has(key)) throw new FrameworkError(`localBus has no option ${JSON.stringify(key)}; its options are pollInterval, retryDelays and maxQueue`);
-  const { pollInterval, retryDelays, maxQueue } = options;
+    if (!OPTION_NAMES.has(key)) throw new FrameworkError(`localBus has no option ${JSON.stringify(key)}; its options are pollInterval, retryDelays, maxQueue and onStopped`);
+  const { pollInterval, retryDelays, maxQueue, onStopped } = options;
   if (pollInterval !== undefined && !isDelay(pollInterval, 1))
     throw new FrameworkError(`localBus: pollInterval is how often a round runs after start(), in milliseconds, a whole number from 1 to ${MAX_DELAY}, and is ${describe(pollInterval)}`);
   if (retryDelays !== undefined && (!Array.isArray(retryDelays) || retryDelays.some((delay) => !isDelay(delay, 0))))
     throw new FrameworkError(`localBus: retryDelays is the delay before each retry, in milliseconds, an array of whole numbers from 0 to ${MAX_DELAY} (such as [100, 1000, 10000]), and is ${describe(retryDelays)}`);
   if (maxQueue !== undefined && (typeof maxQueue !== "number" || !Number.isSafeInteger(maxQueue) || maxQueue < 1))
     throw new FrameworkError(`localBus: maxQueue is how many rows a subscription may have waiting for its callback, a whole number of 1 or more, and is ${describe(maxQueue)}`);
-  return { pollInterval: pollInterval ?? POLL_INTERVAL, retryDelays: retryDelays === undefined ? undefined : Object.freeze([...retryDelays]), maxQueue };
+  if (onStopped !== undefined && typeof onStopped !== "function")
+    throw new FrameworkError(`localBus: onStopped is the function called with the HandlerStoppedError when a handler stops after start(), and is ${describe(onStopped)}`);
+  return { pollInterval: pollInterval ?? POLL_INTERVAL, retryDelays: retryDelays === undefined ? undefined : Object.freeze([...retryDelays]), maxQueue, onStopped };
+}
+
+/** The line a stopped handler gets on stderr when the application takes no `onStopped`, or its `onStopped` fails. */
+const logStopped = (error: HandlerStoppedError): void => {
+  console.error("Mesh (localBus): a handler stopped. Fix the cause, then call resumeHandler(name), or restart delivery:", error);
+};
+
+/**
+ * Hand a stop to the application's `onStopped`. The callback runs in the round loop, with no caller to throw to: one
+ * that throws, or whose promise rejects (an unhandled rejection ends the process), is logged, and the stop it was
+ * handed goes to stderr as it does without a callback, so no stop is lost with it.
+ */
+function handStopped(onStopped: (error: HandlerStoppedError) => unknown, error: HandlerStoppedError): void {
+  const failed = (thrown: unknown): void => {
+    console.error("Mesh (localBus): onStopped threw:", thrown);
+    logStopped(error);
+  };
+  try {
+    const result = onStopped(error);
+    if (typeof (result as { then?: unknown } | null | undefined)?.then === "function") Promise.resolve(result).catch(failed);
+  } catch (thrown) { failed(thrown); }
 }
 
 /** A started handler's state: stopped at an event, or backing off before the next try of one. */
@@ -106,10 +136,11 @@ export function createLocalBus(options: LocalBusOptions | undefined, internals: 
   // Core's default maxQueue applies unless the project sets one: the option is handed to feed only when given.
   const feedOptions = settings.maxQueue === undefined ? undefined : Object.freeze({ maxQueue: settings.maxQueue });
   const timers = internals.timers ?? SYSTEM_TIMERS;
+  const { onStopped } = settings;
   const report = internals.report ?? ((error: unknown) => {
-    if (error instanceof HandlerStoppedError)
-      console.error("Mesh (localBus): a handler stopped. Fix the cause, then call resumeHandler(name), or restart delivery:", error);
-    else console.error("Mesh (localBus): a delivery round failed; the next round runs at the next commit or poll:", error);
+    if (!(error instanceof HandlerStoppedError)) console.error("Mesh (localBus): a delivery round failed; the next round runs at the next commit or poll:", error);
+    else if (onStopped === undefined) logStopped(error);
+    else handStopped(onStopped, error);
   });
   return Object.freeze({
     manifest: MANIFEST,

@@ -8,6 +8,7 @@ import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Diagnostic, Entity, Step } from "@meshfw/model";
+import { InvalidInputError, readOnlyRecord } from "@meshfw/runtime";
 import { eventsDiagnostics } from "../src/capabilities.ts";
 import { buildModel as buildWithWarnings } from "../src/front-end/build.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
@@ -550,6 +551,132 @@ entity :Invoice
     expect(checked.code).toBe(1);
     expect(checked.output).toContain("invoice.expressions.ts");
     expect(checked.output).toContain("Type '{ id: string; }' is not assignable to type");
+  }, 30_000);
+
+  test("a declaration with no field checks its fields and binds nothing, so the tree passes the strict type check", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    roots.push(root);
+    const config = configOf(root);
+    // `event :Ping` and `command :Reset` carry no field: the name is the whole message
+    const result = buildWithWarnings(files({ "billing/ping.mesh.mx": "event :Ping\n", "billing/reset.mesh.mx": "command :Reset\n" }));
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const generated = await generateFiles({ document: result.document!, config });
+    for (const [path, kind, fqn] of [["ping.event.ts", "event", "billing.Ping"], ["reset.command.ts", "command", "billing.Reset"]] as const) {
+      const file = text(generated, `generated/domain/billing/${path}`);
+      // the check runs for what it throws; its result has no field to assign, so no `$checked` is bound (TS6133 under --noUnusedLocals)
+      expect(file).toContain(`  constructor(fields: {}) {\n    $checkFields($fields, fields, "${kind}", "${fqn}");\n    $Object.freeze(this);\n  }\n`);
+      expect(file).not.toContain("$checked");
+    }
+    // a declaration with a field still binds the checked value and assigns from it
+    expect(text(generated, "generated/domain/billing/payInvoice.command.ts")).toContain('    const $checked = $checkFields($fields, fields, "command", "billing.PayInvoice");\n    this.id = $checked.id;\n');
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts")]);
+    expect(checked).toEqual({ code: 0, output: "" });
+    // at run time the constructor still checks what it is handed: an empty object, and nothing else
+    const { Ping } = await import(resolve(root, "generated/domain/billing/ping.event.ts")) as { Ping: new (fields: unknown) => object };
+    const { Reset } = await import(resolve(root, "generated/domain/billing/reset.command.ts")) as { Reset: new (fields: unknown) => object };
+    for (const Declared of [Ping, Reset]) {
+      const made = new Declared({});
+      expect(Object.isFrozen(made)).toBe(true);
+      expect(Object.keys(made)).toEqual([]);
+      expect(() => new Declared({ extra: 1 })).toThrow(InvalidInputError);
+      expect(() => new Declared(null)).toThrow(InvalidInputError);
+      expect(() => new Declared(undefined)).toThrow(InvalidInputError);
+    }
+  }, 30_000);
+
+  test("a date field's constructor parameter takes the read-only date of a scope value, and the instance holds a Date", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    roots.push(root);
+    const config = configOf(root);
+    // `&dueAt` and `self.remindAt` are DeepReadonly in a function's scope: a publish hands a stored date to the event as it is
+    const result = buildWithWarnings({
+      root: "/project",
+      files: Object.entries({
+        "billing/invoice-due.mesh.mx": "event :InvoiceDue\n  uuid :invoiceId\n  datetime :dueAt\n  timestamp :remindAt nullable\n  date :issuedOn\n",
+        "billing/remind.mesh.mx": "command :Remind\n  uuid :id\n  datetime :at\n  datetime :until optional\n  datetime :snoozedTo nullable\n",
+        "billing/pay-invoice.mesh.mx": PAY,
+        "billing/invoice.mesh.mx": `import { InvoiceDue } from "./invoice-due.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    datetime :dueAt
+    timestamp :remindAt nullable
+    date :issuedOn
+  actions auto=[:read]
+    update :remind
+      do
+        publish=({ self }) => new InvoiceDue({ invoiceId: &id, dueAt: &dueAt, remindAt: self.remindAt, issuedOn: &issuedOn })
+    update :remindNow
+      do
+        publish=() => new InvoiceDue({ invoiceId: &id, dueAt: %.now, issuedOn: %.today })
+`,
+      }).map(([file, source]) => ({ file, source })),
+    });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const generated = await generateFiles({ document: result.document!, config });
+    const due = text(generated, "generated/domain/billing/invoiceDue.event.ts");
+    expect(due).toContain('import type { DeepReadonly as $DeepReadonly } from "@meshfw/runtime";\n');
+    // the parameter takes the read-only date; the property is a Date, as a reader of the event gets it
+    expect(due).toContain("  constructor(fields: {\n    invoiceId: string;\n    dueAt: $DeepReadonly<$Date>;\n    remindAt?: $DeepReadonly<$Date> | null | undefined;\n    issuedOn: $DeepReadonly<$Date>;\n  }) {");
+    expect(due).toContain("  readonly invoiceId: string;\n  readonly dueAt: $Date;\n  readonly remindAt: $Date | null;\n  readonly issuedOn: $Date;\n");
+    // a command's constructor is typed by the same rule, optional and nullable fields included
+    const remind = text(generated, "generated/domain/billing/remind.command.ts");
+    expect(remind).toContain("  constructor(fields: {\n    id: string;\n    at: $DeepReadonly<$Date>;\n    until?: $DeepReadonly<$Date> | undefined;\n    snoozedTo?: $DeepReadonly<$Date> | null | undefined;\n  }) {");
+    expect(remind).toContain("  readonly id: string;\n  readonly at: $Date;\n  readonly until?: $Date | undefined;\n  readonly snoozedTo: $Date | null | undefined;\n");
+    // a declaration with no date field imports no type it does not name (an unused import is TS6133)
+    expect(text(generated, "generated/domain/billing/payInvoice.command.ts")).not.toContain("DeepReadonly");
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    await writeFile(resolve(root, "check.ts"), [
+      'import type { DeepReadonly } from "@meshfw/runtime";',
+      'import { InvoiceDue } from "./generated/domain/billing/invoiceDue.event";',
+      'import { Remind } from "./generated/domain/billing/remind.command";',
+      "declare const stored: DeepReadonly<{ dueAt: Date; remindAt: Date | null }>;",
+      'const id = "0190a000-0000-7000-8000-000000000000";',
+      "// a record an action returned is read-only too: its dates go in as they are, and so does a Date",
+      "export const fromStored = new InvoiceDue({ invoiceId: id, dueAt: stored.dueAt, remindAt: stored.remindAt, issuedOn: stored.dueAt });",
+      "export const fromDate = new InvoiceDue({ invoiceId: id, dueAt: new Date(), issuedOn: new Date() });",
+      "export const dueAt: Date = fromStored.dueAt;",
+      "export const remindAt: Date | null = fromStored.remindAt;",
+      "export const command = new Remind({ id, at: stored.dueAt, until: stored.dueAt, snoozedTo: stored.remindAt });",
+      "export const at: Date = command.at;",
+      "export const until: Date | undefined = command.until;",
+      "// @ts-expect-error text is not a date",
+      'export const text = new InvoiceDue({ invoiceId: id, dueAt: "2026-01-01", issuedOn: new Date() });',
+      "// @ts-expect-error a number is not a date",
+      "export const number = new InvoiceDue({ invoiceId: id, dueAt: 0, issuedOn: new Date() });",
+      "// @ts-expect-error a required date takes no null",
+      "export const missing = new InvoiceDue({ invoiceId: id, dueAt: stored.remindAt, issuedOn: new Date() });",
+      "// @ts-expect-error an optional command field that is not nullable takes no null",
+      "export const cleared = new Remind({ id, at: new Date(), until: null });",
+      "",
+    ].join("\n"));
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "check.ts")]);
+    expect(checked).toEqual({ code: 0, output: "" });
+    // at run time the read-only date a function reads off its record passes the constructor's check, and its instant is kept
+    const { InvoiceDue } = await import(resolve(root, "generated/domain/billing/invoiceDue.event.ts")) as { InvoiceDue: new (fields: object) => { dueAt: Date; remindAt: Date | null; issuedOn: Date } };
+    const self = readOnlyRecord({ dueAt: new Date(5), remindAt: null, issuedOn: new Date(0) }, "the test") as { dueAt: Date; remindAt: Date | null; issuedOn: Date };
+    const event = new InvoiceDue({ invoiceId: "0190a000-0000-7000-8000-000000000000", dueAt: self.dueAt, remindAt: self.remindAt, issuedOn: self.issuedOn });
+    expect(event.dueAt).toBeInstanceOf(Date);
+    expect(event.dueAt.getTime()).toBe(5);
+    // the instance holds a plain copy, not the read-only view: a real Date that `structuredClone` copies
+    expect(Object.prototype.toString.call(event.dueAt)).toBe("[object Date]");
+    expect(Object.prototype.toString.call(event.issuedOn)).toBe("[object Date]");
+    expect(() => structuredClone(event)).not.toThrow();
+    expect(self.dueAt.getTime()).toBe(5);
+    expect(event.remindAt).toBeNull();
+    // a command's optional date keeps undefined, its nullable one keeps null, and a given one is copied too
+    const { Remind } = await import(resolve(root, "generated/domain/billing/remind.command.ts")) as { Remind: new (fields: object) => { at: Date; until?: Date; snoozedTo: Date | null } };
+    const command = new Remind({ id: "0190a000-0000-7000-8000-000000000000", at: self.dueAt, snoozedTo: self.remindAt });
+    expect(Object.prototype.toString.call(command.at)).toBe("[object Date]");
+    expect(command.at.getTime()).toBe(5);
+    expect(command.until).toBeUndefined();
+    expect(command.snoozedTo).toBeNull();
+    expect(JSON.parse(JSON.stringify(event))).toEqual({ invoiceId: "0190a000-0000-7000-8000-000000000000", dueAt: "1970-01-01T00:00:00.005Z", remindAt: null, issuedOn: "1970-01-01T00:00:00.000Z" });
   }, 30_000);
 
   test("mesh explain lists a publish with the reason publish-step, after the write", () => {

@@ -7,6 +7,7 @@ import {
   checkFields as $checkFields,
   type Declaration as $Declaration,
 } from "@meshfw/runtime";
+import type { DeepReadonly as $DeepReadonly } from "@meshfw/runtime";
 import { $Date, $Object } from "../../$globals";
 
 const $fields = z.strictObject({
@@ -40,14 +41,14 @@ export class InvoicePaid {
     amount: number;
     note?: string | null | undefined;
     method: "card" | "wire";
-    paidAt: $Date;
+    paidAt: $DeepReadonly<$Date>;
   }) {
     const $checked = $checkFields($fields, fields, "event", "billing.InvoicePaid");
     this.invoiceId = $checked.invoiceId;
     this.amount = $checked.amount;
     this.note = $checked.note ?? null;
     this.method = $checked.method;
-    this.paidAt = $checked.paidAt;
+    this.paidAt = new $Date($checked.paidAt.getTime());
     $Object.freeze(this);
   }
 }

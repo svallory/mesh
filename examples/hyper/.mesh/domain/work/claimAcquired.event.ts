@@ -7,6 +7,7 @@ import {
   checkFields as $checkFields,
   type Declaration as $Declaration,
 } from "@meshfw/runtime";
+import type { DeepReadonly as $DeepReadonly } from "@meshfw/runtime";
 import { $Date, $Object } from "../../$globals";
 
 const $fields = z.strictObject({
@@ -40,14 +41,14 @@ export class ClaimAcquired {
     taskId: string;
     holderId: string;
     fence: number;
-    expiresAt: $Date;
+    expiresAt: $DeepReadonly<$Date>;
   }) {
     const $checked = $checkFields($fields, fields, "event", "work.ClaimAcquired");
     this.claimId = $checked.claimId;
     this.taskId = $checked.taskId;
     this.holderId = $checked.holderId;
     this.fence = $checked.fence;
-    this.expiresAt = $checked.expiresAt;
+    this.expiresAt = new $Date($checked.expiresAt.getTime());
     $Object.freeze(this);
   }
 }
