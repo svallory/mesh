@@ -848,6 +848,13 @@ entity :Invoice table="invoices"
     count :lineCount of=&lines
     sum :total of=&lines.amount
 
+  checks
+    check :invoiceHasLines [
+      that=() => &lineCount > 0
+      code="invalid_state"
+      message="an invoice needs at least one line"
+    ]
+
   actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]
       validate
@@ -868,11 +875,7 @@ entity :Invoice table="invoices"
 
     update :send
       validate
-        check :invoiceHasLines [
-          that=() => &lineCount > 0
-          code="invalid_state"
-          message="an invoice needs at least one line"
-        ]
+        check &invoiceHasLines
       do
         set
           &status=:sent
@@ -886,11 +889,7 @@ entity :Invoice table="invoices"
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
-        check :invoiceHasLines [
-          that=() => &lineCount > 0
-          code="invalid_state"
-          message="an invoice needs at least one line"
-        ]
+        check &invoiceHasLines
       do
         set
           &status=:paid
