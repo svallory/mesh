@@ -1,15 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK, FrameworkError, guarded, loadRows, rejectComputedQuery, scope, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
+import { CHUNK, FrameworkError, guarded, loadInto, loadRows, rejectComputedQuery, unloadFrom, scope, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
 
-/** An in-memory data layer that understands the two filters loading uses (`eq`, `in`) and records every call. */
+/**
+ * An in-memory data layer that understands the filters loading uses (`eq`, `in`, `nil`) and an ascending `sort` with the
+ * key (`id`) appended, and records every call.
+ */
 function memory(tables: Record<string, Row[]>) {
   const calls: string[] = [];
   const handle = (name: string) => ({ name }) as never;
   const rowsOf = (table: unknown) => tables[(table as { name: string }).name] ?? [];
-  const matches = (row: Row, filter: Record<string, { eq?: unknown; in?: unknown[] }> | undefined) =>
-    Object.entries(filter ?? {}).every(([key, cmp]) => ("eq" in cmp ? row[key] === cmp.eq : cmp.in!.includes(row[key])));
+  const matches = (row: Row, filter: Record<string, { eq?: unknown; in?: unknown[]; nil?: boolean }> | undefined) =>
+    Object.entries(filter ?? {}).every(([key, cmp]) =>
+      "eq" in cmp ? row[key] === cmp.eq : "nil" in cmp ? (row[key] === null || row[key] === undefined) === cmp.nil : cmp.in!.includes(row[key]));
+  const compare = (a: unknown, b: unknown) => (a === b ? 0 : (a as number) < (b as number) ? -1 : 1);
+  const sorted = (rows: Row[], sort: readonly string[] | undefined) =>
+    sort ? [...rows].sort((a, b) => [...sort, "id"].reduce((order, key) => order || compare(a[key], b[key]), 0)) : rows;
   const tx = {
-    select: async (table: unknown, query?: { filter?: never }) => { calls.push(`select ${(table as { name: string }).name}`); return rowsOf(table).filter((row) => matches(row, query?.filter)).map((row) => ({ ...row })); },
+    select: async (table: unknown, query?: { filter?: never; sort?: readonly string[] }) => {
+      calls.push(`select ${(table as { name: string }).name}${query?.sort ? ` sort=${query.sort.join(",")}` : ""}`);
+      return sorted(rowsOf(table).filter((row) => matches(row, query?.filter)), query?.sort).map((row) => ({ ...row }));
+    },
     count: async (table: unknown, attribute: string, filter?: never) => { calls.push(`count ${(table as { name: string }).name}.${attribute}`); return rowsOf(table).filter((row) => matches(row, filter) && row[attribute] != null).length; },
     max: async (table: unknown, attribute: string, filter?: never) => {
       calls.push(`max ${(table as { name: string }).name}.${attribute}`);
@@ -395,5 +405,206 @@ describe("what a caller loads runs the read policies of the entity it reaches", 
     const reading: PolicySpec = { ...open, checks: [{ ...open.checks[0]!, record: true }] };
     const rows = (await tx.select(handle("nodes"))) as Row[];
     await expect(loadRows({ ...base, Owner: { ...base.Owner!, reads: [reading] } }, "Node", tx, rows, ["owner"], { policies: true })).rejects.toThrow(/M10/);
+  });
+});
+
+describe("a has-many through a link entity", () => {
+  /** `Student` lists `Course` through `Enrollment` (entry `studentId`, exit `courseId`); `Task` lists `Task` through `Dependency`. */
+  const school = (handle: (name: string) => never, exit: string | null = "courseId", extra: Partial<LoadPlan> = {}): LoadPlan => ({
+    Student: {
+      table: handle("students"), key: "id",
+      relations: {
+        courses: { kind: "has-many", target: "Course", column: "studentId", through: { target: "Enrollment", exit } },
+        enrollments: { kind: "has-many", target: "Enrollment", column: "studentId" },
+      },
+      computed: {
+        courseCount: { kind: "body", needs: ["courses"], evaluate: (s: { self: { courses: unknown[] } }) => s.self.courses.length } as never,
+        courseRollup: { kind: "rollup", fn: "count", of: ["courses"] },
+      },
+    },
+    Course: { table: handle("courses"), key: "id", relations: {}, computed: {} },
+    Enrollment: {
+      table: handle("enrollments"), key: "id",
+      relations: {
+        student: { kind: "belongs-to", target: "Student", column: "studentId", nullable: false },
+        course: { kind: "belongs-to", target: "Course", column: "courseId", nullable: true },
+      },
+      computed: {},
+    },
+    Task: {
+      table: handle("tasks"), key: "id",
+      relations: {
+        blockers: { kind: "has-many", target: "Task", column: "dependentId", through: { target: "Dependency", exit: "prerequisiteId" } },
+        blocking: { kind: "has-many", target: "Task", column: "prerequisiteId", through: { target: "Dependency", exit: "dependentId" } },
+      },
+      computed: {},
+    },
+    Dependency: { table: handle("dependencies"), key: "id", relations: {}, computed: {} },
+    ...extra,
+  });
+  const ids = (list: unknown) => (list as Row[]).map((row) => row.id);
+  const enrolments = (...pairs: [string, string | null][]) => pairs.map(([studentId, courseId], index) => ({ id: `e${index + 1}`, studentId, courseId }));
+  const data = () => memory({
+    students: [{ id: "s1" }, { id: "s2" }, { id: "s3" }],
+    courses: [{ id: "c11" }, { id: "c12" }, { id: "c13" }, { id: "c14" }],
+    // Out of order, c13 twice and one with no course for s1; s2 shares c12; s3 has none.
+    enrollments: enrolments(["s1", "c13"], ["s1", "c11"], ["s1", "c13"], ["s1", null], ["s1", "c12"], ["s2", "c12"]),
+  });
+
+  test("each far record once, in key order, with no null exit; an owner with no link row gets []; two queries", async () => {
+    const { tx, calls, handle } = data();
+    const loaded = await loadRows(school(handle), "Student", tx, [{ id: "s1" }, { id: "s2" }, { id: "s3" }], ["courses"]);
+    expect(loaded.map((row) => ids(row.courses))).toEqual([["c11", "c12", "c13"], ["c12"], []]);
+    expect(calls).toEqual(["select enrollments sort=courseId", "select courses"]);
+    // A far row shared by two owners is selected once and is the same object in both lists.
+    expect((loaded[0]!.courses as Row[])[1]).toBe((loaded[1]!.courses as Row[])[0]!);
+  });
+
+  test("no owner rows makes no query; link rows with only null exits make one query, not two", async () => {
+    const { tx, calls, handle } = memory({ enrollments: enrolments(["s1", null]), courses: [{ id: "c11" }] });
+    expect(await loadRows(school(handle), "Student", tx, [], ["courses"])).toEqual([]);
+    expect(calls).toEqual([]);
+    const loaded = await loadRows(school(handle), "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courses"]);
+    expect(loaded.map((row) => row.courses)).toEqual([[], []]);
+    expect(calls).toEqual(["select enrollments sort=courseId"]);
+  });
+
+  test("more owner keys and more exit keys than a chunk are several queries, and every list is whole and in order", async () => {
+    const students = Array.from({ length: CHUNK + 200 }, (_, i) => ({ id: i + 1 }));
+    const courses = Array.from({ length: CHUNK + 100 }, (_, i) => ({ id: i + 1 }));
+    // Student 1 takes every course, written in reverse; every other student one course.
+    const links = [
+      ...courses.map((course, i) => ({ id: i + 1, studentId: 1, courseId: courses.length - course.id + 1 })),
+      ...students.slice(1).map((student, i) => ({ id: courses.length + i + 1, studentId: student.id, courseId: (student.id % 7) + 1 })),
+    ];
+    const { tx, calls, handle } = memory({ students, courses, enrollments: links });
+    const loaded = await loadRows(school(handle), "Student", tx, students, ["courses"]);
+    expect(ids(loaded[0]!.courses)).toEqual(courses.map((course) => course.id));
+    expect(loaded.slice(1).every((row, i) => ids(row.courses).join() === String((students[i + 1]!.id % 7) + 1))).toBe(true);
+    expect(calls.filter((call) => call.startsWith("select enrollments"))).toHaveLength(2);
+    expect(calls.filter((call) => call === "select courses")).toHaveLength(2);
+  });
+
+  test("a self-reference over one table in both directions; a row linked to itself; numeric keys in numeric order", async () => {
+    const tasks = [2, 7, 10, 100].map((id) => ({ id }));
+    const dependencies = [[100, 10], [100, 2], [10, 7], [10, 2], [2, 2], [7, 100]].map(([dependentId, prerequisiteId], i) => ({ id: i + 1, dependentId, prerequisiteId }));
+    const { tx, handle } = memory({ tasks, dependencies });
+    const loaded = await loadRows(school(handle), "Task", tx, tasks, ["blockers", "blocking"]);
+    expect(loaded.map((row) => [row.id, ids(row.blockers), ids(row.blocking)])).toEqual([
+      [2, [2], [2, 10, 100]],
+      [7, [100], [10]],
+      [10, [2, 7], [100]],
+      [100, [2, 10], [7]],
+    ]);
+  });
+
+  test("an exit key that names no far row is an error naming the row, through loadRows and through loadInto", async () => {
+    const { tx, handle } = memory({ courses: [{ id: "c11" }], enrollments: enrolments(["s1", "c11"], ["s1", "c9"]) });
+    const message = "has-many :courses of Student goes through a row of Enrollment that points at Course \"c9\", which does not exist";
+    await expect(loadRows(school(handle), "Student", tx, [{ id: "s1" }], ["courses"])).rejects.toThrow(message);
+    await expect(loadInto(school(handle), "Student", tx, { id: "s1" }, ["courses"])).rejects.toThrow(message);
+  });
+
+  describe("read policies", () => {
+    const allow = (yes: boolean): PolicySpec => ({ name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => x", record: false, run: (() => yes) as never }] });
+    const guardedBy = (handle: (name: string) => never, link: boolean, far: boolean, exit: string | null = "courseId") => {
+      const base = school(handle, exit);
+      return { ...base, Enrollment: { ...base.Enrollment!, reads: [allow(link)] }, Course: { ...base.Course!, reads: [allow(far)] } } as LoadPlan;
+    };
+    test("a caller's load needs the link's and the far entity's read policies both; a denied name makes no query", async () => {
+      for (const [link, far] of [[true, true], [true, false], [false, true], [false, false]] as const) {
+        const { tx, calls, handle } = data();
+        const loaded = await loadRows(guardedBy(handle, link, far), "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courses", "enrollments"], { policies: true });
+        expect([link, far, loaded.map((row) => ids(row.courses))]).toEqual([link, far, link && far ? [["c11", "c12", "c13"], ["c12"]] : [[], []]]);
+        // The plain has-many to the link runs the link's policies alone.
+        expect(ids(loaded[0]!.enrollments).length).toBe(link ? 5 : 0);
+        if (!(link && far)) expect(calls.some((call) => call.includes("courses"))).toBe(false);
+        // Two rows never share one emptied list.
+        if (!(link && far)) expect(loaded[0]!.courses).not.toBe(loaded[1]!.courses);
+      }
+    });
+    test("with no policies everything loads, and a computed body named by a denied caller still reads every row", async () => {
+      const { tx, handle } = data();
+      const closed = guardedBy(handle, false, false);
+      const open = await loadRows(closed, "Student", tx, [{ id: "s1" }], ["courses"]);
+      expect(ids(open[0]!.courses)).toEqual(["c11", "c12", "c13"]);
+      const counted = await loadRows(closed, "Student", tx, [{ id: "s1" }], ["courseCount", "courses"], { policies: true });
+      expect(counted[0]).toMatchObject({ courseCount: 3, courses: [] });
+    });
+    test("an exit that was not resolved is an error for a denied caller, with no query", async () => {
+      const { tx, calls, handle } = data();
+      await expect(loadRows(guardedBy(handle, false, true, null), "Student", tx, [{ id: "s1" }], ["courses"], { policies: true }))
+        .rejects.toThrow("has-many :courses of Student cannot be loaded: Enrollment, the link entity, has not exactly one belongs-to to Course to leave by");
+      expect(calls).toEqual([]);
+    });
+  });
+
+  describe("the errors a load that cannot be served gives", () => {
+    const noExit = "has-many :courses of Student cannot be loaded: Enrollment, the link entity, has not exactly one belongs-to to Course to leave by";
+    test("no exit: with no policies, through a computed body, and through loadInto", async () => {
+      const { tx, calls, handle } = data();
+      const plan = school(handle, null);
+      await expect(loadRows(plan, "Student", tx, [{ id: "s1" }], ["courses"])).rejects.toThrow(noExit);
+      await expect(loadRows(plan, "Student", tx, [{ id: "s1" }], ["courseCount"])).rejects.toThrow(noExit);
+      await expect(loadInto(plan, "Student", tx, { id: "s1" }, ["courses"])).rejects.toThrow(noExit);
+      expect(calls).toEqual([]);
+    });
+    test("no entry names the link entity", async () => {
+      const { tx, handle } = data();
+      const base = school(handle);
+      const entryless = { ...base, Student: { ...base.Student!, relations: { courses: { kind: "has-many", target: "Course", column: null, through: { target: "Enrollment", exit: "courseId" } } } } } as LoadPlan;
+      await expect(loadRows(entryless, "Student", tx, [{ id: "s1" }], ["courses"]))
+        .rejects.toThrow("has-many :courses of Student cannot be loaded: Enrollment has no belongs-to back to Student. Declare one in Enrollment, and name it with inverse=:name if there are several");
+    });
+    test("a rollup over it waits for M10, for every caller", async () => {
+      const { tx, calls, handle } = data();
+      const message = "count :courseRollup of=&courses on Student cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now";
+      await expect(loadRows(school(handle), "Student", tx, [{ id: "s1" }], ["courseRollup"])).rejects.toThrow(message);
+      const base = school(handle);
+      const denied = { ...base, Course: { ...base.Course!, reads: [] } } as LoadPlan;
+      await expect(loadRows(denied, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true })).rejects.toThrow(message);
+      expect(calls).toEqual([]);
+    });
+  });
+
+  describe("loadInto", () => {
+    test("a create's new record has no key: the list is [] and no query runs", async () => {
+      const { tx, calls, handle } = data();
+      const record: Row = { id: null };
+      await loadInto(school(handle), "Student", tx, record, ["courses"], { newInstance: true });
+      expect(record.courses).toEqual([]);
+      expect(calls).toEqual([]);
+    });
+    test("a path where it follows a has-many and a belongs-to; a far row shared by two owners is selected once", async () => {
+      const { tx, calls, handle } = data();
+      const record: Row = { id: "s2" };
+      // s2's enrollment leads back to s2, whose courses are loaded once on that one student row.
+      await loadInto(school(handle), "Student", tx, record, ["enrollments.student.courses"]);
+      const student = (record.enrollments as Row[])[0]!.student as Row;
+      expect(ids(student.courses)).toEqual(["c12"]);
+      expect(calls).toEqual(["select enrollments", "select students", "select enrollments sort=courseId", "select courses"]);
+      const both: Row = { id: "s1" };
+      calls.length = 0;
+      await loadInto(school(handle), "Student", tx, both, ["enrollments.student.courses"]);
+      expect(calls.filter((call) => call === "select courses")).toHaveLength(1);
+    });
+    test("unloadFrom drops the list and the next loadInto loads it again", async () => {
+      const { tx, calls, handle } = data();
+      const record: Row = { id: "s2" };
+      await loadInto(school(handle), "Student", tx, record, ["courses"]);
+      await loadInto(school(handle), "Student", tx, record, ["courses"]);
+      expect(calls).toHaveLength(2);
+      unloadFrom(school(handle), "Student", record);
+      expect(Object.hasOwn(record, "courses")).toBe(false);
+      await loadInto(school(handle), "Student", tx, record, ["courses"]);
+      expect(ids(record.courses)).toEqual(["c12"]);
+      expect(calls).toHaveLength(4);
+    });
+  });
+
+  test("a guard wraps the listed rows as rows of the far entity", () => {
+    const { handle } = memory({});
+    const row = guarded(school(handle), "Student", { id: "s1", courses: [{ id: "c11" }] }) as { courses: { id: string }[] };
+    expect(row.courses[0]!.id).toBe("c11");
   });
 });

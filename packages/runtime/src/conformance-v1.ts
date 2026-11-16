@@ -165,6 +165,10 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       await expectIds(read, { filter, sort: ["createdAt", "id"], limit: 2, offset: 1 }, ["a3", "a4"], "second and third");
       await expectIds(read, { filter: { and: [filter, { createdAt: { gte: day(3) } }] }, sort: ["id"] }, ["a4", "a6"], "since a date");
     })],
+    ["in, nil and sort in one query return the link rows a has-many through a link entity loads", withTasks(async (read) => {
+      // The loader's shape: the link rows of several owners, those with an exit key, in the exit key's order, ties by key.
+      await expectIds(read, { filter: { parentId: { in: ["p1", "p2"] }, rank: { nil: false } }, sort: ["rank"] }, ["a2", "a6", "a4", "a5"], "in, nil: false, sort");
+    })],
     ["an undefined query field is the same as an absent one", withTasks(async (read) => {
       const everything = await read({});
       await expectIds(read, { filter: undefined, sort: undefined, limit: undefined, offset: undefined }, everything, "all four undefined");

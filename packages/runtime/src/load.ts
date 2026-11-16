@@ -31,12 +31,14 @@ function evaluating<T>(what: string, fn: () => T): T {
  * - A relationship is loaded by a second query for the whole list of rows: `belongs-to` selects
  *   the targets by key, `has-many` and `has-one` select the rows whose key column holds one of
  *   the keys. Each query names up to `CHUNK` keys, so a long list is a few queries, not one per row.
+ *   A `has-many` through a link entity makes two queries: the link rows whose entry column holds one of
+ *   the keys, sorted by their exit column, then the far rows whose key is one of their exit keys.
  * - A computed field with a body first loads what its body reads (its `needs`), then runs the body in
  *   memory once per row, with the scope the expression functions take.
  * - A `count` or `max` rollup calls the data layer's `count` and `max` once per row. That is one query
  *   per row until M10 translates rollups into one statement.
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
- *   reaches, with the caller's scope: a relationship to an entity they do not admit is `[]` (has-many) or `null`
+ *   reaches, and of the link entity of a `through`, with the caller's scope: a relationship to an entity they do not admit is `[]` (has-many) or `null`
  *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
  *   so a denied name is not queried at all. What a computed field's body reads, and anything read through `privileged`,
  *   runs no policy: a body is the entity's own rule, so it sees every related row.
@@ -53,8 +55,17 @@ export interface HasPlan {
   kind: "has-many" | "has-one";
   /** The target entity's FQN (a key of the plan). */
   target: string;
-  /** The column on the target that holds this entity's key; null when the target has no belongs-to back (loading it is an error). */
+  /**
+   * The column on the target, or, with `through`, on the link entity, that holds this entity's key; null when there is no
+   * belongs-to back (loading it is an error).
+   */
   column: string | null;
+  /**
+   * `has-many` only: the relationship reaches `target` through a link entity. `target` here is the link entity's FQN (a key
+   * of the plan); `exit` is the link's column that holds the far entity's key, null when the link has not exactly one
+   * belongs-to to the far entity (loading it is an error).
+   */
+  through?: { target: string; exit: string | null };
 }
 export type RelationPlan = BelongsToPlan | HasPlan;
 export type ComputedPlan =
@@ -183,6 +194,7 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
   const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
   if (relation) {
     if (relation.kind !== "belongs-to" && relation.column === null) throw new FrameworkError(noBelongsToBack(entity, name, relation));
+    if (relation.kind !== "belongs-to" && relation.through?.exit === null) throw new FrameworkError(noExit(entity, name, relation));
     return;
   }
   const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
@@ -193,8 +205,8 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
 const emptied = (value: unknown) => (Array.isArray(value) ? [] : value);
 
 /**
- * The names, of those a caller asked for, that reach an entity whose read policies do not admit the caller, each with what
- * it gives instead: `[]` for a has-many, `null` for a belongs-to or has-one, `0` for a count and `null` for a max. The read
+ * The names, of those a caller asked for, that reach an entity whose read policies do not admit the caller (for a
+ * `through`, the link entity or the far entity), each with what it gives instead: `[]` for a has-many, `null` for a belongs-to or has-one, `0` for a count and `null` for a max. The read
  * policies run once per entity per call: they read only the caller (a read policy that reads the record is the build's M10
  * error, and the run time's).
  */
@@ -213,7 +225,8 @@ async function deniedNames(plan: LoadPlan, entity: string, names: readonly strin
   for (const name of names) {
     const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
     if (relation) {
-      if (!(await admits(relation.target))) denied.set(name, relation.kind === "has-many" ? [] : null);
+      const link = relation.kind === "has-many" ? relation.through?.target : undefined;
+      if ((link !== undefined && !(await admits(link))) || !(await admits(relation.target))) denied.set(name, relation.kind === "has-many" ? [] : null);
       continue;
     }
     const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
@@ -455,8 +468,12 @@ async function ensurePath(
 }
 
 const describe = (entity: string, name: string, relation: RelationPlan) => `${relation.kind} :${name} of ${entity}`;
+/** The entity whose belongs-to a has-many or has-one follows: the link entity of a `through`, the target otherwise. */
+const keyHolder = (relation: RelationPlan) => (relation.kind === "has-many" && relation.through ? relation.through.target : relation.target);
 const noBelongsToBack = (entity: string, name: string, relation: RelationPlan) =>
-  `${describe(entity, name, relation)} cannot be loaded: ${relation.target} has no belongs-to back to ${entity}. Declare one in ${relation.target}, and name it with inverse=:name if there are several`;
+  `${describe(entity, name, relation)} cannot be loaded: ${keyHolder(relation)} has no belongs-to back to ${entity}. Declare one in ${keyHolder(relation)}, and name it with inverse=:name if there are several`;
+const noExit = (entity: string, name: string, relation: RelationPlan) =>
+  `${describe(entity, name, relation)} cannot be loaded: ${keyHolder(relation)}, the link entity, has not exactly one belongs-to to ${relation.target} to leave by`;
 
 function chunks<T>(list: readonly T[]): T[][] {
   const out: T[][] = [];
@@ -489,6 +506,10 @@ async function loadRelation(
   if (relation.column === null) throw new FrameworkError(noBelongsToBack(entity, name, relation));
   // A row with no key yet (a create's pending record) has nothing pointing at it.
   const keys = [...new Set(rows.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
+  if (relation.kind === "has-many" && relation.through) {
+    await loadThrough(entity, entityPlan, name, relation as HasPlan & { column: string; through: object }, planOf(plan, relation.through.target), target, tx, rows, keys);
+    return;
+  }
   const grouped = new Map<unknown, Work[]>();
   for (const chunk of chunks(keys))
     for (const row of await tx.select(target.table, { filter: { [relation.column]: { in: chunk as never } } })) {
@@ -505,6 +526,38 @@ async function loadRelation(
   }
 }
 
+/**
+ * A has-many through a link entity: the link rows whose entry column holds one of the keys, with a key in their exit column,
+ * sorted by it; then the far rows those exit keys name. One chunk holds every link row of an owner, so each owner's exit
+ * keys arrive in the order the database gives the exit column, which is the far key's own; equal keys are neighbours, so
+ * comparing with the last one kept leaves each far record once. A link row with no exit key contributes nothing; one whose
+ * exit key names no far row is an error.
+ */
+async function loadThrough(
+  entity: string, entityPlan: EntityPlan, name: string, relation: HasPlan & { column: string; through: { target: string; exit: string | null } },
+  link: EntityPlan, far: EntityPlan, tx: DataOperations, rows: Work[], keys: unknown[],
+): Promise<void> {
+  const exit = relation.through.exit;
+  if (exit === null) throw new FrameworkError(noExit(entity, name, relation));
+  const exits = new Map<unknown, unknown[]>();
+  for (const chunk of chunks(keys))
+    for (const row of await tx.select(link.table, { filter: { [relation.column]: { in: chunk as never }, [exit]: { nil: false } }, sort: [exit] })) {
+      const list = exits.get(row[relation.column]);
+      if (!list) exits.set(row[relation.column], [row[exit]]);
+      else if (list[list.length - 1] !== row[exit]) list.push(row[exit]);
+    }
+  const wanted = [...new Set([...exits.values()].flat())];
+  const found = new Map<unknown, Work>();
+  for (const chunk of chunks(wanted))
+    for (const row of await tx.select(far.table, { filter: { [far.key]: { in: chunk as never } } })) found.set(row[far.key], row);
+  for (const row of rows)
+    row[name] = (exits.get(row[entityPlan.key]) ?? []).map((key) => {
+      const related = found.get(key);
+      if (!related) throw new FrameworkError(`${describe(entity, name, relation)} goes through a row of ${relation.through.target} that points at ${relation.target} ${JSON.stringify(key)}, which does not exist`);
+      return related;
+    });
+}
+
 /** What a rollup counts over, or the error that says why it cannot be loaded (the same for every row and every caller). */
 function rollupShape(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
@@ -515,6 +568,8 @@ function rollupShape(
   const [path, attribute, ...more] = computed.of as [string, string?, ...string[]];
   const relation = Object.hasOwn(entityPlan.relations, path) ? entityPlan.relations[path] : undefined;
   if (!relation) throw new FrameworkError(`${label} cannot be loaded: ${entity} has no relationship ${path}`);
+  if (relation.kind === "has-many" && relation.through)
+    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now`);
   const through = relation.kind === "belongs-to" || more.length > 0 || (attribute !== undefined && Object.hasOwn(planOf(plan, relation.target).relations, attribute));
   if (through)
     throw new FrameworkError(`${label} cannot be loaded yet: a rollup over ${relation.kind === "belongs-to" ? "a belongs-to" : "more than one relationship"} needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now`);
