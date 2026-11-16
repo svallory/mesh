@@ -474,6 +474,22 @@ ${bump}        check :ok that=() => true code="ok" message="ok"
     const before = invoice(READS("({ before }) => { return before === null }"), RESCHEDULE("        check &reads\n") + "    update :annotate\n      validate\n        check &reads\n");
     expect(codes(before)).toEqual(["8:22 MESH_VALIDATE_BEFORE"]);
   });
+
+  test("R12 through an `always` block: a warning that demotes the check is reported once, as for the same check inline", () => {
+    const always = (validate: string) => invoice(READS("() => &note").repeat(validate.includes("&reads") ? 1 : 0), `    always types=[:update]
+      validate
+${validate}    update :reschedule
+    update :annotate
+`);
+    const inline = always('        check :reads that=() => &note code="r" message="m"\n');
+    expect(codes(inline)).toEqual(["10:32 MESH_EXPR_PLAIN"]);
+    // Covering two updates, one update, or none: the warning holds for every referrer, so it carries no prefix.
+    const named = always("        check &reads\n");
+    expect(codes(named)).toEqual(["8:28 MESH_EXPR_PLAIN"]);
+    expect(said(named)[0]).toContain("8:28 MESH_EXPR_PLAIN this expression runs as plain TypeScript");
+    expect(codes(named.replace("    update :annotate\n", ""))).toEqual(["8:28 MESH_EXPR_PLAIN"]);
+    expect(codes(named.replace("types=[:update]", "types=[:destroy]"))).toEqual(["8:28 MESH_EXPR_PLAIN"]);
+  });
 });
 
 describe("SYN-08: a check's name is a member of its entity, counted once", () => {

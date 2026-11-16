@@ -642,18 +642,22 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       const referenced = block.validate.filter((check) => check.reference);
       if (!referenced.length) continue;
       const covered = every.filter((action) => action.kind !== "read" && alwaysCovers(block, action));
+      const copied = () => referenced.map((check) => ({
+        ...check,
+        that: copy(check.that),
+        message: typeof check.message === "string" ? check.message : copy(check.message),
+        ...(check.when ? { when: copy(check.when) } : {}),
+        ...(check.details ? { details: copy(check.details) } : {}),
+      }));
+      // Copied before the block-scope visit, which changes what it visits (a warning demotes a tree to plain code): a copy
+      // taken after it would be plain already and lose every warning that demotes.
+      const pristine = covered.map(copied);
       const kept = diagnostics.length;
       blocks(entity, referenced, [], scope, creates);
       if (!covered.length) continue;
       diagnostics.length = kept;
-      for (const action of covered) {
-        const copies = referenced.map((check) => ({
-          ...check,
-          that: copy(check.that),
-          message: typeof check.message === "string" ? check.message : copy(check.message),
-          ...(check.when ? { when: copy(check.when) } : {}),
-          ...(check.details ? { details: copy(check.details) } : {}),
-        }));
+      for (const [index, action] of covered.entries()) {
+        const copies = pristine[index]!;
         const own: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action as Action) };
         blocks(entity, copies, [], own, action.kind === "create" ? [action] : [], referrerOf(entity, action, ` through the \`always\` block at line ${block.position.line}`));
       }
