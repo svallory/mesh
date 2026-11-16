@@ -81,6 +81,11 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
         const holder = keyHolderOf(byFile, entity, relation);
         const back = relation.inverse === undefined ? undefined : holder?.relationships.find((other) => other.name === relation.inverse);
         parts.push(`column: ${back?.keyColumn === undefined ? "null" : JSON.stringify(back.keyColumn)}`);
+        // A has-many through a link entity: the link's FQN and its column that holds the far entity's key.
+        if (relation.through && holder) {
+          const exit = relation.through.exit === undefined ? undefined : holder.relationships.find((other) => other.name === relation.through!.exit);
+          parts.push(`through: { target: ${JSON.stringify(holder.fqn)}, exit: ${exit?.keyColumn === undefined ? "null" : JSON.stringify(exit.keyColumn)} }`);
+        }
       }
       return { key: propertyName(relation.name), plan: `{ ${parts.join(", ")} }` };
     });

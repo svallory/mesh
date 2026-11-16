@@ -1,5 +1,5 @@
 import { dirname, resolve } from "node:path";
-import type { Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
+import type { Diagnostic, Entity, Expression, ModelDocument, Relationship, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
@@ -12,7 +12,8 @@ import { loadPolicies, policiesCovering, policyExpressions, recordReason } from 
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
  * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
- * `scopeReachOf` which scope names a rest or plain parameter reads, all kept by the front end.
+ * `scopeReachOf` which scope names a rest or plain parameter reads, and `throughPositionOf` where a `through=` value is
+ * written, all kept by the front end.
  */
 export function checkLifecycleLimits(
   document: ModelDocument,
@@ -22,10 +23,15 @@ export function checkLifecycleLimits(
     askCallsOf?: (expression: Expression) => readonly SourcePosition[];
     asynchronyOf?: (expression: Expression) => "async" | "await" | undefined;
     scopeReachOf?: (expression: Expression) => ReadonlySet<string> | "any" | undefined;
+    throughPositionOf?: (relation: Relationship) => SourcePosition | undefined;
   } = {},
 ): void {
-  // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies.
-  const loaded = new Set(document.entities.flatMap((from) => from.relationships.map((relation) => resolve(dirname(from.file), relation.entity.from))));
+  // The entities a relationship (and so a rollup) reaches, and the link entity of a `through=`: a caller's load of one
+  // runs its read policies.
+  const loaded = new Set(document.entities.flatMap((from) => from.relationships.flatMap((relation) => [
+    resolve(dirname(from.file), relation.entity.from),
+    ...(relation.through ? [resolve(dirname(from.file), relation.through.entity.from)] : []),
+  ])));
   // A relationship to an entity whose policies leave out the read a load runs gives every caller's load of it nothing,
   // with no error: say so (R2-N2 of the PR #79 review). Legal, since `privileged` and a computed field's body still
   // read it. An entity with no policy at all is left out: it denies every caller everything (deny by default), loads
@@ -42,10 +48,25 @@ export function checkLifecycleLimits(
           `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, which has neither \`on:load=\` nor an auto read, so Mesh has no read to load it with`,
           relation.position,
           `List \`:read\` in \`auto=\` on the \`actions\` line of ${target.fqn} (\`actions auto=[:read]\`), or name one of its reads there with \`on:load=&name\``));
-      if (!target?.policies.length || loadPolicies(target).length) continue;
+      // A has-many through a link entity loads the link's rows too: the link needs a read, and its policies decide the load.
+      const link = relation.through && byFile.get(resolve(dirname(from.file), relation.through.entity.from));
+      if (link && !link.onLoad && !link.auto.includes("read"))
+        diagnostics.push(error("MESH_ON_LOAD",
+          `${relation.kind} :${relation.name} of ${from.fqn} goes through ${link.fqn}, which has neither \`on:load=\` nor an auto read, so Mesh has no read to load it with`,
+          options.throughPositionOf?.(relation) ?? relation.position,
+          `List \`:read\` in \`auto=\` on the \`actions\` line of ${link.fqn} (\`actions auto=[:read]\`), or name one of its reads there with \`on:load=&name\``));
+      const unloadable = (entity: Entity | undefined) => !!entity?.policies.length && !loadPolicies(entity).length;
+      if (link && unloadable(link))
+        diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
+          `${relation.kind} :${relation.name} of ${from.fqn} goes through ${link.fqn}, and no policy of ${link.fqn} covers the read a load runs, so every caller's load of it is [] (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
+          relation.position,
+          `If callers may load it, give ${link.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
+      if (!target || !unloadable(target)) continue;
       const empty = relation.kind === "has-many" ? "[]" : "null";
+      // No rollup runs over a has-many through a link entity, so its warning says nothing of rollups.
+      const rollups = relation.through ? "" : ", a count over it 0 and any other rollup null";
       diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
-        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
+        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}${rollups} (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
         relation.position,
         `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
     }

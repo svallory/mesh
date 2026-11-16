@@ -63,7 +63,7 @@ function policyLines(entity: Entity, action: Action): string[] {
   if (covering.some((policy) => policy.when))
     lines.push(`a policy whose when is false does not apply; with none applying, ${action.kind === "read" ? "the caller gets no rows" : "the call is forbidden"}`);
   if (action.kind === "read" && entity.relationships.length)
-    lines.push("what the caller loads runs the read policies of the entity it reaches: a record it may not read is null, a list of them empty, and a rollup counts none");
+    lines.push(`what the caller loads runs the read policies of the entity it reaches${entity.relationships.some((relation) => relation.through) ? ", and of the link entity of a `through=`" : ""}: a record it may not read is null, a list of them empty, and a rollup counts none`);
   return lines;
 }
 

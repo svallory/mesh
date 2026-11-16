@@ -367,19 +367,23 @@ for (const kind of ["belongs-to", "has-many", "has-one"])
       ...named(),
       entity: { type: "expression", required: true },
       ...(kind === "belongs-to" ? { nullable: flag() } : {}),
-      // The other entity's belongs-to this follows (ADR-0070).
-      ...(kind === "has-many" ? { inverse: atom() } : {}),
+      // The other entity's belongs-to this follows (ADR-0070); with `through`, the link entity's.
+      ...(kind === "has-many" ? { inverse: atom(), through: { type: "expression" as const } } : {}),
     },
     analyze(calls, ctx) {
       for (const call of calls) {
-        const a = get(call, "entity");
-        if (!isReference(a))
-          ctx.fail("entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)", { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
-        // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
-        // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
-        // error above alone, which says what to write.
-        else if (isWrapped(a))
-          ctx.fail("entity must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`entity=List`, `entity=billing.Invoice`)", { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
+        // `through=` is a reference like `entity=`, checked the same way; it is optional, so only a written one is checked.
+        for (const option of kind === "has-many" ? ["entity", "through"] : ["entity"]) {
+          const a = get(call, option);
+          if (!a && option !== "entity") continue;
+          if (!isReference(a))
+            ctx.fail(`${option} must be an imported identifier (\`List\`) or a member of a namespace import (\`billing.Invoice\`)`, { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
+          // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
+          // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
+          // error above alone, which says what to write.
+          else if (isWrapped(a))
+            ctx.fail(`${option} must be the reference alone, with no parentheses, \`!\`, \`as\`, \`satisfies\` or \`<T>\` around it (\`${option}=List\`, \`${option}=billing.Invoice\`)`, { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
+        }
       }
     },
   });

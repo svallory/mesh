@@ -385,6 +385,7 @@ function buildEntity(
   rollups: PendingRollup[],
   importDetails: Map<Import, ParsedImport>,
   inversePositions: Map<Relationship, SourcePosition>,
+  throughPositions: Map<Relationship, SourcePosition>,
   folder: string,
   declaredFile: (from: string) => DeclaredFile | undefined,
 ): Entity {
@@ -578,6 +579,11 @@ function buildEntity(
     const name = declaredName(tag);
     const kind = tag.name as Relationship["kind"];
     const inverse = atomOf(attr(tag, "inverse"))?.name;
+    // `through=Link` (has-many only): the link entity, resolved as `entity=` is and reported the same way.
+    const throughAttr = kind === "has-many" ? attr(tag, "through") : undefined;
+    const writtenLink = throughAttr ? writtenReference(nodeOf(throughAttr)) : undefined;
+    const link = writtenLink ? resolveReference(writtenLink, references, entityKind) : undefined;
+    if (link && !link.ok && "code" in link) fail(link.code, link.message, at(link.offset), link.fix);
     const relation: Relationship = {
       kind,
       name,
@@ -585,10 +591,12 @@ function buildEntity(
       nullable: opt(tag, "nullable") === true,
       ...(kind === "belongs-to" ? { keyColumn: `${name}Id` } : {}),
       ...(inverse !== undefined ? { inverse } : {}),
+      ...(writtenLink ? { through: { entity: { identifier: referenceText(writtenLink), from: link?.ok ? link.from : "" } } } : {}),
       position: pos(tag),
     };
     entity.relationships.push(relation);
     if (inverse !== undefined) inversePositions.set(relation, at(attrOffset(attr(tag, "inverse")!)));
+    if (writtenLink) throughPositions.set(relation, at(attrOffset(throughAttr!)));
   }
   for (const tag of tags(section("computed")?.children ?? [])) {
     const base = { name: declaredName(tag), position: pos(tag) };
@@ -1090,6 +1098,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const rollups: PendingRollup[] = [];
   const importDetails = new Map<Import, ParsedImport>();
   const inversePositions = new Map<Relationship, SourcePosition>();
+  const throughPositions = new Map<Relationship, SourcePosition>();
   if (foreignAbsolute(project.root))
     return {
       document: null,
@@ -1172,6 +1181,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             rollups,
             importDetails,
             inversePositions,
+            throughPositions,
             normalizePath(relative(domainRoot, dirname(path.absolute))),
             declared,
           ),
@@ -1262,11 +1272,13 @@ export function buildModel(project: ProjectDescription): BuildResult {
         );
     }
   }
-  resolveRelationships(document, inversePositions, diagnostics);
+  resolveRelationships(document, inversePositions, throughPositions, diagnostics);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf });
   computeNeeds(document, diagnostics);
-  checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, askCallsOf, asynchronyOf, scopeReachOf });
+  checkLifecycleLimits(document, diagnostics, {
+    privilegedCallsOf, askCallsOf, asynchronyOf, scopeReachOf, throughPositionOf: (relation) => throughPositions.get(relation),
+  });
   checkPublishSteps(document, diagnostics);
   // A file that did not parse may hold the action that answers a command: with one missing, "unanswered" is not known.
   checkCommands(document, diagnostics, parsedFiles.length === project.files.length);

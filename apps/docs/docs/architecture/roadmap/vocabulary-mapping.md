@@ -176,6 +176,7 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `has-many.name` | `has-many :related entity=Line` | `has-many.name` | on main |
 | `has-many.entity` | `has-many :related entity=Line` | `has-many.entity` | on main |
 | `has-many.inverse` | `has-many :related entity=Line inverse=:owner` | `has-many.inverse` | on main |
+| `has-many.through` | `has-many :related entity=Line through=Tie` | `has-many.through` | on main |
 | `has-one` | `has-one :related entity=Line` | `has-one` | on main |
 | `has-one.name` | `has-one :related entity=Line` | `has-one.name` | on main |
 | `has-one.entity` | `has-one :related entity=Line` | `has-one.entity` | on main |
