@@ -1365,7 +1365,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   resolveRelationships(document, inversePositions, throughPositions, diagnostics);
   resolveRollups(document, rollups, diagnostics);
-  checkExpressions(document, diagnostics, { demotionOf });
+  checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });
   computeNeeds(document, diagnostics);
   checkLifecycleLimits(document, diagnostics, {
     privilegedCallsOf, askCallsOf, asynchronyOf, scopeReachOf, throughPositionOf: (relation) => throughPositions.get(relation),

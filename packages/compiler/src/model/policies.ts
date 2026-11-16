@@ -1,4 +1,4 @@
-import type { Action, ActionType, Entity, Expression, ExprNode, Policy } from "@meshfw/model";
+import type { Action, ActionType, Always, Entity, Expression, ExprNode, Policy } from "@meshfw/model";
 
 /** One function of a policy: an `authorize-if`, a `forbid-if` or its `when`, with its id in the expressions file. */
 export interface PolicyExpression {
@@ -78,6 +78,15 @@ export function readsRecord(expression: Expression, on: "write" | "read" = "writ
 /** Does the policy cover actions of this kind, or this action, by its scope (`when=` aside)? One with neither covers every action. */
 export function policyCovers(policy: Policy, action: { kind: ActionType; name: string }): boolean {
   return (!policy.types && !policy.actions) || (policy.types?.includes(action.kind) ?? false) || (policy.actions?.some((ref) => ref.name === action.name) ?? false);
+}
+
+/**
+ * Whether an `always` block applies to an action: one that names the action's type or the action, or one that names
+ * neither, which covers every action of the entity. Shared by the generated actions (`alwaysFor`), the model pass and the
+ * lifecycle rules, so the three agree on what a block covers.
+ */
+export function alwaysCovers(block: Always, action: { kind: ActionType; name: string }): boolean {
+  return (!block.types && !block.actions) || (block.types?.includes(action.kind) ?? false) || (block.actions?.some((ref) => ref.name === action.name) ?? false);
 }
 
 /**

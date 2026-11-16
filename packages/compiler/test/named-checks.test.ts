@@ -303,3 +303,172 @@ describe("generated code", () => {
     expect(lines).toContain("always");
   });
 });
+
+describe("a named check is typed once per referrer, in that referrer's scope (ruling D13)", () => {
+  const SPEC = `    check :dueAfterIssue [
+      that=() => &dueOn >= &issuedOn
+      code="invalid_dates"
+      message="the due date cannot be before the issue date"
+    ]
+`;
+  test("F2: on a create, the warnings are at the declaration, once per create, each naming it; none for an update", () => {
+    const source = `import { OpenInvoice } from "./open-invoice.mesh.mx"
+${invoice(SPEC, `    create :issue
+      validate
+        check &dueAfterIssue
+    create :draft
+      input
+        &dueOn
+      validate
+        check &dueAfterIssue
+    create on=OpenInvoice
+      input
+        &dueOn
+      validate
+        check &dueAfterIssue
+${RESCHEDULE("        check &dueAfterIssue\n")}`)}`;
+    const result = buildModel({ root: "/p", files: [{ file: FILE, source }, { file: "billing/open-invoice.mesh.mx", source: "command :OpenInvoice\n  date :dueOn\n" }] });
+    expect(result.diagnostics.map((d) => `${d.position.line}:${d.position.column} ${d.code} ${d.message.split(":")[0]!.trim()}`)).toEqual([
+      "10:17 MESH_VALIDATE_UNFILLED `&dueOn` is null in create",
+      "10:17 MESH_VALIDATE_NOT_APPLIED in create",
+      "10:17 MESH_VALIDATE_NOT_APPLIED in create",
+      "10:27 MESH_VALIDATE_UNFILLED `&issuedOn` is null in create",
+      "10:27 MESH_VALIDATE_UNFILLED `&issuedOn` is null in create",
+      "10:27 MESH_VALIDATE_UNFILLED `&issuedOn` is null in create",
+    ]);
+    const messages = result.diagnostics.map((d) => d.message);
+    expect(messages).toContain("`&dueOn` is null in create :issue, which uses this check: `validate` sees the new instance before the input is applied, so a result that depends on it is unknown and the check fails");
+    expect(messages).toContain("in create :draft, which uses this check, `&dueOn` here is the new instance's value before the input is applied (its default, or null), not the caller's: `validate` sees `self` before the input");
+    expect(messages).toContain("in create :openInvoice, which uses this check, `&dueOn` here is the new instance's value before the input is applied (its default, or null), not the caller's: `validate` sees `self` before the input");
+    for (const create of ["issue", "draft", "openInvoice"]) expect(messages.filter((m) => m.startsWith(`\`&issuedOn\` is null in create :${create},`))).toHaveLength(1);
+  });
+
+  test("D-12 through an `always` block: one warning per covered create, naming it and the block", () => {
+    const source = invoice(`    check :noted that=() => &dueOn !== null code="due" message="m"\n`, `    always types=[:create]
+      validate
+        check &noted
+    create :issue
+      input
+        &dueOn
+    create :draft
+      input
+        &dueOn
+`);
+    expect(said(source)).toEqual([
+      "8:28 MESH_VALIDATE_NOT_APPLIED in create :issue, which uses this check through the `always` block at line 10, `&dueOn` here is the new instance's value before the input is applied (its default, or null), not the caller's: `validate` sees `self` before the input",
+      "8:28 MESH_VALIDATE_NOT_APPLIED in create :draft, which uses this check through the `always` block at line 10, `&dueOn` here is the new instance's value before the input is applied (its default, or null), not the caller's: `validate` sees `self` before the input",
+    ]);
+  });
+
+  const READS = (body: string) => `    check :reads that=${body} code="r" message="m"\n`;
+  test("F3 and D-11: reading an input a referrer does not take is an error at the read, once per such referrer", () => {
+    const source = invoice(READS("({ input }) => input.note !== null"), `    create :issue
+      input
+        &note
+      validate
+        check &reads
+    update :reschedule
+      input
+        &dueOn
+      validate
+        check &reads
+    destroy :drop
+      validate
+        check &reads
+`);
+    expect(build(source).diagnostics.map((d) => [d.code, d.position.line, d.position.column, d.message, d.fix])).toEqual([
+      ["MESH_CHECK_INPUT", 8, 37, "`input.note` is read by a check that update :reschedule uses, and update :reschedule takes no `note`", "add `note` to the input of update :reschedule, or write the check for that action in its own `validate`"],
+      ["MESH_CHECK_INPUT", 8, 37, "`input.note` is read by a check that destroy :drop uses, and destroy :drop takes no `note`", "add `note` to the input of destroy :drop, or write the check for that action in its own `validate`"],
+    ]);
+  });
+
+  test.each([
+    ["`input?.x`", "({ input }) => input?.note !== null"],
+    ["`input.x ?? &x`", "({ input }) => (input.note ?? &note) !== null"],
+  ])("D-11: %s is a read of the input too", (_name, body) => {
+    const source = invoice(READS(body), `${RESCHEDULE("        check &reads\n")}    update :annotate\n      input\n        &note\n      validate\n        check &reads\n`);
+    expect(build(source).diagnostics.map((d) => [d.code, d.message.split(",")[0]])).toEqual([["MESH_CHECK_INPUT", "`input.note` is read by a check that update :reschedule uses"]]);
+  });
+
+  test("D-11 legal neighbours: an input every referrer takes, required in one and optional in another; an inline check", () => {
+    const takes = invoice(READS("({ input }) => input.dueOn !== null"), `${ISSUE("        check &reads\n")}${RESCHEDULE("        check &reads\n")}`);
+    expect(said(takes)).toEqual([]);
+    // An inline check is not checked against its action's input, as before.
+    expect(said(invoice("", RESCHEDULE('        check :reads that=({ input }) => input.note !== null code="r" message="m"\n')))).toEqual([]);
+  });
+
+  test("D-11 and the key: an update and a destroy take it whatever it is named, a create does not", () => {
+    for (const key of ["id", "code"]) {
+      const keyed = (actions: string) => `entity :Invoice
+  attributes
+    uuid :${key} primary-key
+    date :dueOn
+  checks
+    check :keyed that=({ input }) => input.${key} !== null code="k" message="m"
+  actions auto=[:read]
+${actions}`;
+      const updates = "    update :touch\n      validate\n        check &keyed\n    destroy :drop\n      validate\n        check &keyed\n";
+      expect(said(keyed(updates))).toEqual([]);
+      expect(codes(keyed(`${updates}    create :open\n      input\n        &dueOn\n      validate\n        check &keyed\n`))).toEqual(["6:37 MESH_CHECK_INPUT"]);
+    }
+  });
+
+  const AUTO = (always: string, bump: string) => `entity :Todo
+  attributes
+    uuid :id primary-key
+    integer :version default=0
+  checks
+    check :v that=({ input }) => input.expectedVersion === &version code="v" message="m"
+  actions auto=[:update]
+${always}    update :bump
+      input
+        integer :expectedVersion
+      validate
+${bump}        check :ok that=() => true code="ok" message="ok"
+`;
+  const ALWAYS = "    always types=[:update]\n      validate\n        check &v\n";
+  test("F5: an `always` block is checked in each action it covers, `auto=` ones included", () => {
+    expect(said(AUTO(ALWAYS, ""))).toEqual([
+      "6:33 MESH_CHECK_INPUT `input.expectedVersion` is read by a check that update :update uses through the `always` block at line 8, and update :update takes no `expectedVersion`",
+    ]);
+    expect(said(AUTO("", "        check &v\n"))).toEqual([]);
+  });
+
+  test("D-10: one named check reached twice by one action, through its own `validate` or a second block", () => {
+    expect(said(AUTO(ALWAYS, "        check &v\n")).filter((line) => line.includes("MESH_DUPLICATE_MEMBER"))).toEqual([
+      "15:14 MESH_DUPLICATE_MEMBER Duplicate check &v: update :bump already runs it through the `always` block at line 8, and a check runs once",
+    ]);
+    expect(said(AUTO(ALWAYS + ALWAYS, "")).filter((line) => line.includes("MESH_DUPLICATE_MEMBER"))).toEqual([
+      "13:14 MESH_DUPLICATE_MEMBER Duplicate check &v: update :bump already runs it through the `always` block at line 8, and a check runs once",
+    ]);
+    // With only the generated update covered by both blocks, the message names it.
+    const auto = AUTO(ALWAYS.replace("types=[:update]", "actions=[&update]") + ALWAYS.replace("types=[:update]", "actions=[&update]"), "");
+    expect(said(auto).filter((line) => line.includes("MESH_DUPLICATE_MEMBER"))).toEqual([
+      "13:14 MESH_DUPLICATE_MEMBER Duplicate check &v: update :update already runs it through the `always` block at line 8, and a check runs once",
+    ]);
+    // An `always` block and an action it does not cover may use the same check.
+    expect(said(AUTO(ALWAYS.replace("types=[:update]", "actions=[&update]"), "        check &v\n")).filter((line) => line.includes("MESH_DUPLICATE_MEMBER"))).toEqual([]);
+  });
+
+  const NULLABLE = `    check :datesDiffer that=({ input }) => input.dueOn !== input.issuedOn code="dates" message="m"\n`;
+  test("F6: a warning only some referrers have names them; one every referrer has does not", () => {
+    expect(said(invoice(NULLABLE, ISSUE("        check &datesDiffer\n") + RESCHEDULE("        check &datesDiffer\n")))).toEqual([
+      "8:43 MESH_EXPR_NULL_EQUALITY in update :reschedule, which uses this check, both sides can be null, and a comparison with null is unknown, not true (JavaScript says `null === null`)",
+    ]);
+    const second = RESCHEDULE("        check &datesDiffer\n").replace("reschedule", "postpone");
+    expect(said(invoice(NULLABLE, ISSUE("        check &datesDiffer\n") + RESCHEDULE("        check &datesDiffer\n") + second))).toEqual([
+      "8:43 MESH_EXPR_NULL_EQUALITY in update :reschedule and update :postpone, which use this check, both sides can be null, and a comparison with null is unknown, not true (JavaScript says `null === null`)",
+    ]);
+    expect(said(invoice(NULLABLE, RESCHEDULE("        check &datesDiffer\n") + second))).toEqual([
+      "8:43 MESH_EXPR_NULL_EQUALITY both sides can be null, and a comparison with null is unknown, not true (JavaScript says `null === null`)",
+    ]);
+  });
+
+  test("R12: a mistake every referrer has is reported once, with its own text", () => {
+    const plain = invoice(READS("() => &note"), ISSUE("        check &reads\n") + RESCHEDULE("        check &reads\n") + "    update :annotate\n      validate\n        check &reads\n");
+    expect(codes(plain)).toEqual(["8:28 MESH_EXPR_PLAIN"]);
+    expect(said(plain)[0]).toContain("8:28 MESH_EXPR_PLAIN this expression runs as plain TypeScript");
+    const before = invoice(READS("({ before }) => { return before === null }"), RESCHEDULE("        check &reads\n") + "    update :annotate\n      validate\n        check &reads\n");
+    expect(codes(before)).toEqual(["8:22 MESH_VALIDATE_BEFORE"]);
+  });
+});
