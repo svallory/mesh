@@ -90,7 +90,7 @@ packages/
   data-sqlite/        adapter    data layer on SQLite (file or in-memory), on Drizzle
   bus-local/          adapter    `localBus`, the first event-bus adapter: delivers events from the outbox in the deliverer's process
   jsonrpc/            adapter    newline-delimited JSON-RPC 2.0 over a Unix socket, dispatching to a method table given as plain data
-  create-meshfw/      starter    the package behind `bun create meshfw`; today a placeholder that reserves the name
+  create-meshfw/      tooling    outside the rings: the package behind `bun create meshfw`; today a placeholder that reserves the name
 examples/blog/        the example entities and a script that calls them
 examples/hyper/       the Hyper application on Mesh; the port gate (the gate copy stays here; once it passes, the application may be copied out to its own repository)
 
@@ -108,6 +108,7 @@ after 1.0:
 | `runtime` | core, run time | What generated code imports: the `ActionContext` type, error classes, the data-layer contract with the query and expression-tree types, the re-entrant transaction helper, the seam types, the policy engine's run-time half, and the in-memory implementations of the registered expression functions. Imports nothing from `model`, `compiler` or Drizzle. |
 | `data-sqlite`, `data-drizzle` | adapter | A project picks its database; the contract is Mesh's own (Synthesis section 11), and the query library inside an adapter is that adapter's private choice, Drizzle ([ADR-0014](../decisions/0014-sql-adapters-on-drizzle.md)). Drizzle is imported only here and in the emitted schema. |
 | `jsonrpc` (`@meshfw/jsonrpc`) | adapter | The one transport built before the gate: newline-delimited JSON-RPC 2.0 over a Unix socket, taking a hand-written method table as plain data. Each entry calls generated functions; the project's context factory builds the action context from the request. Surfaces generate the table after 1.0 ([ADR-0077](../decisions/0077-surfaces-and-file-kinds.md)). |
+| `create-meshfw` | tooling, outside the rings | The starter behind `bun create meshfw` ([ADR-0060](../decisions/0060-meshfw-package-scope.md), amended 2026-10-11). It writes a new project's files and is not imported by one, so no project runs it and none can replace it; it is in no ring. Today a placeholder that reserves the name. |
 | `examples/hyper` | example | The Hyper application, written against the generated functions: the method table for `@meshfw/jsonrpc`, idempotency store, plugin host, sweeper, bootstrap (domain events come from M6's outbox, not from a table of its own). It is the gate's subject, not a Mesh feature. |
 
 Policies are core, not an extension: there is no `ext-policies` package ([ADR-0055](../decisions/0055-policies-are-core.md)). Adapter slots of the Synthesis ring table (section 15) with no package in 1.0: the command-line and HTTP transports (core's interface stays a function call, [ADR-0005](../decisions/0005-core-interface-is-a-function-call.md); only JSON-RPC is built before the gate); tracer (after 1.0, [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)); runtime host (Bun only, [ADR-0025](../decisions/0025-bun-only.md)). The authoring syntax and the expression parser are MX's. The actor resolver is dropped ([ADR-0059](../decisions/0059-action-context.md)); the job runner comes with workflows after 1.0 ([ADR-0023](../decisions/0023-workflows-and-jobs-deferred.md)).
@@ -129,6 +130,8 @@ after 1.0, in no fixed order:
   M9 Postgres and migrations     M10 SQL translation, atomic updates, filtered relationships
   M11 extension host             identities, upsert, state machines, bulk
 ```
+
+Before 1.0, with no milestone assigned and not drawn above: the raw-SQL escape hatch, a `has-many` through a link entity (`through=`) and named checks (section 5, "Before 1.0, milestone not assigned").
 
 **Rules across tracks.** M7 needs M3 for loading and self-reference and M4 for computed fields; it comes before M5 because many of the 57 rules and the relationship policies read a related row (`&task.state`), a loaded has-many (`&children.every(...)`) or a rollup (`&task.maxFence`), and M5's and M8's acceptance tests run them. M6 needs M5's phase structure (it adds the seams to it). M8 needs M5 (policies run in the lifecycle's slots) and M7 (the relationship checks), not M6. The gate needs M5 to M8 and HA. A milestone that adds a data-layer capability implements it in SQLite, the only adapter until M9.
 
@@ -301,7 +304,7 @@ The acceptance tests of this task and of the Jig port below are the lead's desig
 - **Out of scope.** As above; a solver; field policies; policy groups; access types.
 - **Packages.** `compiler`, `runtime`.
 - **Acceptance tests.** (1) A guest cannot create a Task; a member can; the error names the policy. (2) An action no policy covers is forbidden, and the error shows how to write an open one. (3) `Claim :acquire` on a Task assigned to someone else is forbidden to anyone but the assignee. (4) A non-member's `readTask` returns no rows and no error; a member's returns the rows. The specification answers a non-member's query with `permission_denied` (`conformance/02-permissions.test.ts:42-50`): that error is HA's to return, by checking the membership before it runs the read. (5) An owner can revoke a claim; the delegator and the reviewer can; a member who is neither cannot; a membership revoked inside the same transaction is seen by the next write's policy. (6) A nested call from `Task :complete` into `Completion :record` passes because it carries `context.system`, and the written event's actor is still the human; the same direct call from a worker is forbidden. (7) Moving a policy, or a check inside one, changes no decision. (8) A policy whose `actions=` names a missing action fails the build. (9) A read policy that reads the record fails with the error that names M10.
-- **Risks.** Every write policy of an internal-only action carries `|| isSystem(context)`. If that repeats too much, shared checks (after 1.0) are the fix, and not `bypass`. `system` is a flag any code holding the context can set; it is as trustworthy as the application that builds the context. Until M8 nothing restricts a caller; a project built on M2 to M7 must not be exposed.
+- **Risks.** Every write policy of an internal-only action carries `|| isSystem(context)`. If that repeats too much, a way to share a policy clause is the fix, and not `bypass`; no record plans one yet. Named checks, which come before 1.0 (section 5, "Before 1.0, milestone not assigned"), do not cover it: they are `validate` checks, referenced from an action's `validate` ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)), not policy clauses. `system` is a flag any code holding the context can set; it is as trustworthy as the application that builds the context. Until M8 nothing restricts a caller; a project built on M2 to M7 must not be exposed.
 
 ### Before 1.0, milestone not assigned
 
