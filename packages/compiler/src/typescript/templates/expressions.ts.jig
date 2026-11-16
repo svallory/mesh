@@ -55,6 +55,10 @@ export type {{ newScope.name }}<I = unknown> = {{ newScope.type }};
 /** What a step that can run on a create reads before the write: the key is null until the data layer writes the row. */
 export type {{ createScope.name }}<I = unknown> = {{ createScope.type }};
 @end
+@if(computedScope)
+/** What a computed field's body reads: a read with no context computes it too, so `actor` may be undefined and every key of `context` is optional. */
+export type {{ computedScope.name }}<I = unknown> = {{ computedScope.type }};
+@end
 
 export const $expressions = {
   @each(entry in entries)

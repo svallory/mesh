@@ -305,7 +305,7 @@ entity :Invoice
     count :lineCount of=&lines
 ```
 
-**A field with a body.** A type, a `:name`, parameters and a body. Leave the parameters empty when it reads only members; add `actor` when it depends on who is asking.
+**A field with a body.** A type, a `:name`, parameters and a body. Leave the parameters empty when it reads only members; add `actor` when it depends on who is asking. A `Mesh.privileged` read may be called with no context, and the fields it loads are computed with none, so in a body `actor` may be `undefined` and every key of `context` is optional: check them before you read them (`actor === undefined ? … : actor.id`). This is the lead's ruling D9, pending the operator's review.
 
 **A rollup.** A kind, a `:name` and `of=`, a path through relationships. The path is a member reference: `&lines` for a `count`, `&lines.amount` for the others, with one step or more. Each name is checked at that position. The string form `of="lines.amount"` is a build error (`MESH_ROLLUP_PATH_STRING`) that says to write `of=&lines.amount`.
 

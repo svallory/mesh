@@ -5,6 +5,13 @@
 // `context.ts`, as the tutorial's `src/context.ts` does, and reads each root correctly; the project is built by the real
 // `mesh` command on the SQLite adapter and type-checked by tsc under the strictest flags. A second project adds one wrong
 // read per root, written in every form a function can take (translated, plain, a namespace import named `context`).
+//
+// A computed field's body is the one function whose caller may be absent: a `Mesh.privileged(E).read(input)` takes an
+// optional context whatever the project declares, and the load binds `actor` to `undefined` and `context` to `{}` for the
+// fields it computes. So there `actor` is the declared type or `undefined` and every key of `context` is optional, where a
+// check, a step or a policy keeps the declared types: the fixture's plain computed bodies (`:viewer`, `:locale`) read both
+// with a guard, and its translated `:mine` needs none because `actor.id` prints as `$s.actor?.id`; its `:plainRoots`
+// check reads both without a guard, and a last project replaces the computed fields with five unguarded bodies.
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -166,5 +173,40 @@ entity :Note
       "TS2345 Argument of type 'undefined' is not assignable to parameter of type 'string'.",
     ]);
     expect(messages).toHaveLength(4);
+  }, 60_000);
+
+  test("a computed body sees actor and each key of context as possibly undefined: a read without a guard fails tsc, where the same read in a check does not", async () => {
+    const source = await readFile(join(fixture, "domain/note/note.mesh.mx"), "utf8");
+    // Five unguarded plain bodies replace the fixture's computed fields: `:viewer` and `:locale` without their guards,
+    // `:staff` making the helper call the fixture's `:ownerOrStaff` check makes, `:typed` assigning a context key to its
+    // declared type, and `:actorOfContext` reading `context.actor`.
+    const unguarded = [
+      "string :viewer({ actor }) { const who = actor.id; return who }",
+      "boolean :staff({ actor }) { return isStaff(actor) }",
+      "string :locale({ context }) { const locale = context.locale; return locale.toUpperCase() }",
+      "string :typed({ context }) { const locale: string = context.locale; return locale }",
+      "boolean :actorOfContext({ context }) { const who = context.actor.id; return who === &owner }",
+    ];
+    const start = source.indexOf("  computed\n");
+    const end = source.indexOf("\n  actions auto");
+    expect(start).toBeGreaterThan(0);
+    const root = await project(`${source.slice(0, start)}  computed\n${unguarded.map((line) => `    ${line}\n`).join("")}${source.slice(end)}`);
+    expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    const { code, errors } = await tsc(root);
+    expect(code).not.toBe(0);
+    // Every error is in a computed function: `:plainRoots` reads `actor.id` and `context.locale` in a check, where both are declared.
+    const expressions = (await readFile(join(root, ".mesh/domain/note/note.expressions.ts"), "utf8")).split("\n");
+    const functionAt = (line: number) => expressions.slice(0, line).findLast((text) => /^\s*"[^"]+": /.test(text))?.trim().split('"')[1];
+    const found = errors.map((line) => {
+      const [, file, at, message] = /^(.*)\((\d+),\d+\): error (TS\d+: .*)$/.exec(line)!;
+      return `${file}:${functionAt(Number(at))} ${message}`;
+    });
+    expect(found.sort()).toEqual([
+      ".mesh/domain/note/note.expressions.ts:computed.actorOfContext TS18048: 'context.actor' is possibly 'undefined'.",
+      ".mesh/domain/note/note.expressions.ts:computed.locale TS18048: 'locale' is possibly 'undefined'.",
+      ".mesh/domain/note/note.expressions.ts:computed.staff TS2345: Argument of type '{ id: string; } | undefined' is not assignable to parameter of type '{ id: string; }'.",
+      ".mesh/domain/note/note.expressions.ts:computed.typed TS2322: Type 'string | undefined' is not assignable to type 'string'.",
+      ".mesh/domain/note/note.expressions.ts:computed.viewer TS18048: 'actor' is possibly 'undefined'.",
+    ]);
   }, 60_000);
 });
