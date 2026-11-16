@@ -234,32 +234,33 @@ export const $expressions = {
     return (({ input }) =>
       new SubmissionWithdrawn({ submissionId: $self.id, reason: input.reason ?? null }))($s);
   },
-  // check :pending that, translated (src/domain/work/submission.mesh.mx:101:16)
+  // check :pending that, translated (src/domain/work/submission.mesh.mx:102:16)
   "settle.check.pending.that": (
     $s: $work$Submission$CheckScope<$work$Submission$SettleSubmissionInput>,
   ) => $.eq($s.self.state, "pending"),
-  // set &state, translated (src/domain/work/submission.mesh.mx:107:18)
+  // set &state, translated (src/domain/work/submission.mesh.mx:108:18)
   "settle.step.0.set.state": (
     $s: $work$Submission$StoredScope<$work$Submission$SettleSubmissionInput>,
   ) => $s.input?.outcome,
-  // step when, translated (src/domain/work/submission.mesh.mx:110:14)
+  // step when, translated (src/domain/work/submission.mesh.mx:112:14)
   "settle.step.1.when": (
     $s: $work$Submission$StoredScope<$work$Submission$SettleSubmissionInput>,
   ) => $.eq($s.input?.outcome, "withdrawn"),
-  // publish, plain (publish-step) (src/domain/work/submission.mesh.mx:111:19)
+  // publish, plain (publish-step) (src/domain/work/submission.mesh.mx:113:19)
   "settle.step.1.0.publish": (
     $s: $work$Submission$StoredScope<$work$Submission$SettleSubmissionInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
     const $self = $s.self;
     const SubmissionWithdrawn: typeof $work$SubmissionWithdrawn$class =
       $work$SubmissionWithdrawn$class;
-    return (() => new SubmissionWithdrawn({ submissionId: $self.id, reason: "task-canceled" }))();
+    return (({ input }) =>
+      new SubmissionWithdrawn({ submissionId: $self.id, reason: input.reason ?? null }))($s);
   },
-  // set &submitter, translated (src/domain/work/submission.mesh.mx:121:22)
+  // set &submitter, translated (src/domain/work/submission.mesh.mx:123:22)
   "recordAccepted.step.0.set.submitter": (
     $s: $work$Submission$Scope<$work$Submission$RecordAcceptedSubmissionInput>,
   ) => $s.actor?.id,
-  // publish, plain (publish-step) (src/domain/work/submission.mesh.mx:123:17)
+  // publish, plain (publish-step) (src/domain/work/submission.mesh.mx:125:17)
   "recordAccepted.step.1.publish": (
     $s: $work$Submission$Scope<$work$Submission$RecordAcceptedSubmissionInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -277,10 +278,10 @@ export const $expressions = {
         fence: $self.fence,
       }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/work/submission.mesh.mx:126:20)
+  // policy :membersRead authorize-if, translated (src/domain/work/submission.mesh.mx:128:20)
   "policy.membersRead.authorize-if.0": ($s: $work$Submission$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:128:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:130:20)
   "policy.isMember.authorize-if.0": (
     $s: $work$Submission$NewScope<
       $SharedInput<
@@ -290,7 +291,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:130:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:132:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $work$Submission$NewScope<
       $SharedInput<
@@ -301,18 +302,18 @@ export const $expressions = {
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :claimHolder authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:132:20)
+  // policy :claimHolder authorize-if, plain (awaits-helper) (src/domain/work/submission.mesh.mx:134:20)
   "policy.claimHolder.authorize-if.0": (
     $s: $work$Submission$NewScope<$work$Submission$SubmitSubmissionInput>,
   ) => {
     return (async ({ input, actor, context }) =>
       Mesh.isSystem(context) || (await heldAClaimOf(input.task, actor.id)))($s);
   },
-  // policy :submissionSubmitter authorize-if, translated (src/domain/work/submission.mesh.mx:134:20)
+  // policy :submissionSubmitter authorize-if, translated (src/domain/work/submission.mesh.mx:136:20)
   "policy.submissionSubmitter.authorize-if.0": (
     $s: $work$Submission$CheckScope<$work$Submission$WithdrawSubmissionInput>,
   ) => $.or($.isSystem($s.context), () => $.eq($s.self.submitterId, $s.actor?.id)),
-  // policy :internal authorize-if, translated (src/domain/work/submission.mesh.mx:136:20)
+  // policy :internal authorize-if, translated (src/domain/work/submission.mesh.mx:138:20)
   "policy.internal.authorize-if.0": (
     $s: $work$Submission$NewScope<
       $SharedInput<

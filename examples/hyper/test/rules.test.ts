@@ -10,8 +10,9 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { NotFoundError } from "@meshfw/runtime";
+import { readEvents } from "#mesh";
 import { Attempt, Invocation, Machine, Run, SessionReference } from "#mesh/domain/execution";
-import { Collaborator, Membership, Workspace } from "#mesh/domain/identity";
+import { Collaborator, Membership, Workspace, WorkspaceCreated } from "#mesh/domain/identity";
 import { Assignment, Claim, Completion, Dependency, EvidenceReference, LateResult, Review, Submission, Task } from "#mesh/domain/work";
 import { attemptStart, sessionRecord } from "../src/domain/execution/execution.commands";
 import { collaboratorRetire, membershipRevoke } from "../src/domain/identity/identity.commands";
@@ -32,6 +33,10 @@ async function refused(call: Promise<unknown>, code: string, details?: unknown):
 const taskOf = (w: World, id: string = w.task.id) => one(Task.read({ filter: { id: { eq: id } } }, as(w.alice)));
 const claim = (w: World, who: Who = w.bot, task: string = w.task.id) => Claim.acquire({ task }, as(who));
 const evidence = (w: World, who: Who = w.bot) => EvidenceReference.record({ kind: "file", locator: "report.md" }, as(who));
+
+/** The `firstOwnerId` of each `workspace.created` event the log holds, in order. */
+const firstOwners = async () => (await readEvents({ after: 0, limit: 1000 })).events
+  .flatMap((event) => event.payload instanceof WorkspaceCreated ? [event.payload.firstOwnerId] : []);
 
 /** `who` claims the task and submits: a pending submission, and the claim released. */
 async function submitted(w: World, who: Who = w.bot, task: string = w.task.id) {
@@ -82,6 +87,9 @@ const RULES: Record<string, Case> = {
   "collaborator.active": {
     pass: async (w) => {
       expect((await Collaborator.update({ id: w.bob.id, name: "Robert" }, as(w.bob))).name).toBe("Robert");
+      // A workspace's first owner, when the call names one, is an active collaborator.
+      await Workspace.create({ name: "Home", firstOwner: w.bob.id }, as(w.alice));
+      expect(await firstOwners()).toEqual([w.bob.id]);
     },
     fail: async (w) => {
       await collaboratorRetire({ id: w.bob.id, reason: "left" }, as(w.alice), w.binding);
@@ -91,6 +99,13 @@ const RULES: Record<string, Case> = {
       await refused(Collaborator.retire({ id: w.bob.id }, as(w.alice)), "collaborator.active");
       await refused(Membership.grant({ collaborator: w.bob.id, role: "member" }, as(w.alice)), "collaborator.active");
       await refused(Task.assign({ id: w.task.id, assignee: w.bob.id }, as(w.alice)), "collaborator.active");
+      // A workspace's first owner: a retired collaborator, and an id no collaborator has.
+      await refused(Workspace.create({ name: "Home", firstOwner: w.bob.id }, as(w.alice)), "collaborator.active");
+      await refused(Workspace.create({ name: "Home", firstOwner: GHOST }, as(w.alice)), "collaborator.active");
+      expect(await Workspace.read({}, as(w.alice))).toEqual([]);
+      // The rule is about the input alone: a call that names no first owner passes, and the event names the actor.
+      await Workspace.create({ name: "Home", firstOwner: null }, as(w.alice));
+      expect(await firstOwners()).toEqual([w.alice.id]);
     },
   },
   "collaborator.name-unique": {

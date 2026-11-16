@@ -9,7 +9,12 @@ import {
   type Scope as $Scope,
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
-import { memberOf, noWorkspaceOf, roleIn } from "../../../src/domain/identity/identity.helpers";
+import {
+  collaboratorActiveOf,
+  memberOf,
+  noWorkspaceOf,
+  roleIn,
+} from "../../../src/domain/identity/identity.helpers";
 import { WorkspaceCreated as $identity$WorkspaceCreated$class } from "./workspaceCreated.event";
 import { WorkspaceRenamed as $identity$WorkspaceRenamed$class } from "./workspaceRenamed.event";
 import type {
@@ -49,7 +54,14 @@ export const $expressions = {
   ) => {
     return (async () => await noWorkspaceOf())();
   },
-  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:26:17)
+  // check :firstOwnerActive that, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:26:16)
+  "create.check.firstOwnerActive.that": (
+    $s: $identity$Workspace$CheckScope<$identity$Workspace$CreateWorkspaceInput>,
+  ) => {
+    return (async ({ input }) =>
+      input.firstOwner == null || (await collaboratorActiveOf(input.firstOwner)))($s);
+  },
+  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:31:17)
   "create.step.0.publish": (
     $s: $identity$Workspace$Scope<$identity$Workspace$CreateWorkspaceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -63,18 +75,18 @@ export const $expressions = {
         firstOwnerId: input.firstOwner ?? actor.id,
       }))($s);
   },
-  // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:33:16)
+  // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:38:16)
   "rename.check.workspaceActive.that": (
     $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :versionMatches that, translated (src/domain/identity/workspace.mesh.mx:38:16)
+  // check :versionMatches that, translated (src/domain/identity/workspace.mesh.mx:43:16)
   "rename.check.versionMatches.that": (
     $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
   ) =>
     $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.version),
     ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:41:19)
+  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:46:19)
   "rename.check.versionMatches.details": (
     $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => {
@@ -84,15 +96,15 @@ export const $expressions = {
       actualVersion: $self.version,
     }))($s);
   },
-  // set &name, translated (src/domain/identity/workspace.mesh.mx:45:17)
+  // set &name, translated (src/domain/identity/workspace.mesh.mx:50:17)
   "rename.step.0.set.name": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => $s.input?.name,
-  // set &version, translated (src/domain/identity/workspace.mesh.mx:46:20)
+  // set &version, translated (src/domain/identity/workspace.mesh.mx:51:20)
   "rename.step.0.set.version": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:47:17)
+  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:52:17)
   "rename.step.1.publish": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -101,10 +113,10 @@ export const $expressions = {
     return (({ before, input }) =>
       new WorkspaceRenamed({ oldName: before.name, newName: input.name }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:50:20)
+  // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:55:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Workspace$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:52:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:57:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Workspace$CheckScope<
       $SharedInput<
@@ -114,7 +126,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:54:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:59:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $identity$Workspace$CheckScope<
       $SharedInput<

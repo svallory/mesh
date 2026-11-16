@@ -111,6 +111,7 @@ export type WithdrawSubmissionInputShape = Assert<
 export const settleSubmissionInputSchema = z.strictObject({
   id: z.uuid(),
   outcome: z.enum(["accepted", "returned", "withdrawn"]),
+  reason: z.string().nullable().optional(),
 }) satisfies z.ZodType<SettleSubmissionInput>;
 
 export type SettleSubmissionInputShape = Assert<

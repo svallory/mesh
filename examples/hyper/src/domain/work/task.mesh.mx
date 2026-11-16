@@ -192,7 +192,7 @@ entity :Task table="tasks"
           for (const claim of liveClaims(await Mesh.privileged(Claim).read({ filter: { taskId: { eq: self.id } } }), %.now))
             await Claim.end({ id: claim.id, outcome: :revoked, reason: "task canceled" }, { ...context, system: true });
           for (const submission of await Mesh.privileged(Submission).read({ filter: { taskId: { eq: self.id }, state: { eq: :pending } } }))
-            await Submission.settle({ id: submission.id, outcome: :withdrawn }, { ...context, system: true });
+            await Submission.settle({ id: submission.id, outcome: :withdrawn, reason: "task-canceled" }, { ...context, system: true });
         }
         publish=({ input }) => new TaskCanceled({ reason: input.reason })
     update :complete

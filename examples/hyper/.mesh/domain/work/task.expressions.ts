@@ -358,7 +358,7 @@ export const $expressions = {
         filter: { taskId: { eq: self.id }, state: { eq: "pending" } },
       }))
         await Submission.settle(
-          { id: submission.id, outcome: "withdrawn" },
+          { id: submission.id, outcome: "withdrawn", reason: "task-canceled" },
           { ...context, system: true },
         );
     })($s);

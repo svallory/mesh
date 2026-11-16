@@ -7,7 +7,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Glob } from "bun";
 import { buildModel } from "@meshfw/compiler";
 import { authorizer, ForbiddenError, NotFoundError, type ActionContext, type DataLayer, type PolicyCheckSpec, type PolicySpec } from "@meshfw/runtime";
 import * as domain from "#mesh/domain";
@@ -203,19 +202,21 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
   }));
 
   test("(8) a policy whose actions= names a missing action fails the build", () => {
+    // Claim's file alone, with the typo: one small compile, so the test's time does not grow with the domain or with the
+    // machine's load. The clean tree is `mesh build --check`'s to hold (the package's `test` and `validate` scripts).
+    // Built alone, the file's eight imports do not resolve (MESH_UNKNOWN_ENTITY each); the verifier of `actions=` runs
+    // all the same, and its diagnostics are the ones asserted.
     const root = resolve(import.meta.dir, "..");
-    const files = [...new Glob("src/domain/**/*.mesh.mx").scanSync(root)].sort().map((file) => ({ file, source: readFileSync(resolve(root, file), "utf8") }));
-    // The 18 entity files and the 30 event declarations.
-    expect(files.filter((entry) => /^entity :/m.test(entry.source))).toHaveLength(18);
-    expect(files.filter((entry) => /^event :/m.test(entry.source))).toHaveLength(30);
-    expect(buildModel({ root, files, domainRoot: "src/domain" }).diagnostics).toEqual([]);
-    const typo = files.map((entry) => entry.file.endsWith("/claim.mesh.mx")
-      ? { ...entry, source: entry.source.replace("policy :claimHolder actions=[&renew, &release]", "policy :claimHolder actions=[&renw, &release]") }
-      : entry);
-    expect(typo).not.toEqual(files);
-    const built = buildModel({ root, files: typo, domainRoot: "src/domain" });
-    expect(built.diagnostics).toMatchObject([{ code: "MESH_UNKNOWN_ACTION", severity: "error", position: { file: "src/domain/work/claim.mesh.mx" } }]);
-    expect(built.diagnostics[0]!.message).toContain("&renw is not an action of work.Claim");
+    const file = "src/domain/work/claim.mesh.mx";
+    const source = readFileSync(resolve(root, file), "utf8");
+    const policy = "policy :claimHolder actions=[&renew, &release]";
+    // A reworded policy line fails here, instead of building the file as it is and finding nothing.
+    expect(source.includes(policy), `${file} has the line "${policy}"`).toBe(true);
+    const typo = source.replace(policy, "policy :claimHolder actions=[&renw, &release]");
+    const { diagnostics } = buildModel({ root, files: [{ file, source: typo }], domainRoot: "src/domain" });
+    const unknownActions = diagnostics.filter((diagnostic) => diagnostic.code === "MESH_UNKNOWN_ACTION");
+    expect(unknownActions).toMatchObject([{ code: "MESH_UNKNOWN_ACTION", severity: "error", position: { file } }]);
+    expect(unknownActions[0]!.message).toContain("&renw is not an action of work.Claim");
   });
 });
 
