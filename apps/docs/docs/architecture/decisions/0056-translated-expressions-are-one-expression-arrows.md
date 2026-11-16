@@ -1,9 +1,11 @@
 ---
 title: "0056. A function whose body is one expression is translated; Mesh builds its own translator"
-description: "Decision record 0056: which functions in an entity file run in SQL, how unsupported code is reported, and the result of the expression-language research. Status: Accepted."
+description: "Decision record 0056: which functions in an entity file run in SQL, how unsupported code is reported, and the result of the expression-language research. Status: Accepted. Amended 2026-11-14 (the raw-SQL escape hatch comes before 1.0)."
 ---
 
 # 0056. A function whose body is one expression is translated; Mesh builds its own translator
+
+> **Amendment, 2026-11-14 (the raw-SQL escape hatch comes before 1.0).** The operator moved the raw-SQL escape hatch before 1.0 on 2026-10-18. Three passages below say it comes after v1 and are kept as written: the ruling quoted in the Decision ("planned, not in v1"), the Decision's last line ("The raw-SQL escape hatch is planned after v1.") and the last action item ("After v1: the raw-SQL escape hatch."). Read each as "before 1.0". No milestone is assigned to it ([roadmap](../roadmap/roadmap.md), section 5, "Before 1.0, milestone not assigned"). It is not built and has no design: where it may appear, how it binds parameters and how it relates to SQL translation, which stays after 1.0 (M10), are for a decision record of its own. Nothing else in this record changes.
 
 ## Status
 

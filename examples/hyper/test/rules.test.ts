@@ -932,9 +932,9 @@ const POLICIES: Record<string, Case> = {
   },
 };
 
-/** Hyper's rules whose cases need plugins, with the milestone that brings them. */
+/** Hyper's rules whose cases need plugins, with what each one waits for. */
 const NOT_PORTED: Record<string, string> = {
-  "task.not-blocked": "asks the blocking-condition providers (`tasks/task/rules.ex:82`); providers arrive with the plugin hook points in M6 (G11)",
+  "task.not-blocked": "asks the blocking-condition providers (`tasks/task/rules.ex:82`); the hook point (`beforeTransaction`) exists since M6, and the plugin host and the providers are application code in `examples/hyper` that is not written yet (G11, ADR-0073)",
 };
 
 /**

@@ -1,9 +1,11 @@
 ---
 title: "0070. A `has-many` names the inverse it follows with `inverse=`"
-description: "Decision record 0070: when Mesh cannot guess which `belongs-to` of the other entity a `has-many` follows, `inverse=:name` chooses the key. Status: Accepted, amended 2026-10-11 (DOM-32)."
+description: "Decision record 0070: when Mesh cannot guess which `belongs-to` of the other entity a `has-many` follows, `inverse=:name` chooses the key. Status: Accepted, amended 2026-10-11 (DOM-32). Amended 2026-11-14 (a `has-many` through a link entity, `through=`, comes before 1.0)."
 ---
 
 # 0070. A `has-many` names the inverse it follows with `inverse=`
+
+> **Amendment, 2026-11-14 (a `has-many` through a link entity comes before 1.0).** A many-to-many relationship is a `has-many` that names its link entity with `through=`: `has-many :courses entity=Course through=Enrollment` in `Student`. `through` is the word Ash, Rails, Sequelize and Django use. The relationship enters the link entity by the link's `belongs-to` back to this entity, chosen as `inverse=` chooses it for any `has-many` (the only one, or the one named when there are several), and leaves by the link's other `belongs-to`, which leads to the far entity. So `has-many :blockers entity=Task through=Dependency inverse=:dependent` in `Task` enters `Dependency` by `dependent` and leaves by its other key. The roadmap listed many-to-many as not planned; the operator moved it before 1.0 on 2026-10-18. No milestone is assigned ([roadmap](../roadmap/roadmap.md), section 5, "Before 1.0, milestone not assigned"). It is not built: the `has-many` contract takes no `through`, so the build refuses the option today as an unknown one (`MESH_UNKNOWN_OPTION`). Nothing else in this record changes.
 
 > **Amendment, 2026-10-11 (DOM-32).** Two changes to the text below.
 >

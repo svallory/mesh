@@ -1,6 +1,6 @@
 ---
 title: "0060. Packages are published as `@meshfw/*`; the command is `mesh`"
-description: "Decision record 0060: the npm scope, the package names and the command name. Status: Accepted."
+description: "Decision record 0060: the npm scope, the package names and the command name. Status: Accepted. Amended 2026-11-14 (the package list also holds `@meshfw/bus-local` and `@meshfw/jsonrpc`)."
 ---
 
 # 0060. Packages are published as `@meshfw/*`; the command is `mesh`
@@ -14,6 +14,8 @@ Accepted. Supersedes [ADR-0040](./0040-package-and-command-names.md).
 **Amended 2026-10-11, operator (PRJ-04):** the starter is **`create-meshfw`**, invoked as `bun create meshfw todo-app` (Bun resolves `bun create X` to the package `create-X`). The CLI stays `meshfw` with binary `mesh`, and the framework packages stay `@meshfw/*`. The operator still has to register `create-meshfw` on npm.
 
 **Amended 2026-10-13, PRJ-22 ([PR #98](https://github.com/svallory/mesh/pull/98)):** a project adds `meshfw` as a regular dependency (`bun add meshfw`), not a dev one, because application code imports `Mesh` from it at run time (see [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md)). `meshfw` and the other Mesh packages that use the runtime (`@meshfw/compiler`, `@meshfw/data-drizzle`, `@meshfw/data-sqlite`) take `@meshfw/runtime` as a peer dependency, so an installed project holds one copy of it: the runtime recognises an entity value by a `Symbol` and `WeakMap`s private to each copy, and a second copy makes `Mesh.privileged(Task)` refuse the project's own `Task`. The project lists `@meshfw/runtime` itself, since its generated code imports it.
+
+**Amended 2026-11-14, package list:** the list of v1 packages in the Decision below was written before two packages that are now built and in the workspace. Read the list with both added; each follows this record's `@meshfw/*` rule. **`@meshfw/bus-local`** holds `localBus`, the first event-bus adapter, which delivers events from the outbox inside the deliverer's process on any data adapter; it was built in milestone M6 ([ADR-0079](./0079-commands-events-and-the-outbox.md), Decision item 3: an event bus delivers what `publish` wrote to the outbox; [Events](../../docs/events.md#localbus)). **`@meshfw/jsonrpc`** is the JSON-RPC transport adapter, newline-delimited JSON-RPC 2.0 over a Unix socket, and the one transport built before the 1.0 gate ([ADR-0077](./0077-surfaces-and-file-kinds.md), Decision item 6). The [roadmap](../roadmap/roadmap.md), section 3, lists every package with its ring.
 
 ## Date
 

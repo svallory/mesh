@@ -1,6 +1,6 @@
 ---
 title: "Open questions and findings"
-description: "Everything the user docs deliberately do not say: the open tooling findings, the DX findings, and what the docs had to invent."
+description: "Everything the user docs deliberately do not say: the tooling findings and what was decided for each, the DX findings, and what the docs had to invent."
 ---
 
 # Open questions and findings
@@ -13,21 +13,21 @@ The rest of this section was brought to the same vocabulary in [PR #24](https://
 **The code and the Docs now share one vocabulary.** PR #47 and PR #48 (merged 2026-10-09) moved `packages/`, `examples/blog` and the compiler's fixtures to `entity`, `src/domain`, `.mesh/` and the action context. What differs from the Docs is what is not built yet; the [roadmap](./roadmap/roadmap.md) says which milestones are done. Where a Docs page and a source file disagree, the Docs page states the target.
 :::
 
-The pages under Docs describe what Mesh will be: no open questions, no milestones, no hedges. Everything below is what those pages had to leave out. No question is open; the open tooling findings come first, and the rest of the page is the record of what writing the Docs found and settled. A page under Docs that has to say "this is not decided" has found a gap, which is the point of writing it first.
+The pages under Docs describe what Mesh will be: no open questions, no milestones, no hedges. Everything below is what those pages had to leave out. No question is open; the three tooling findings come first, each with what was decided for it, and the rest of the page is the record of what writing the Docs found and settled. A page under Docs that has to say "this is not decided" has found a gap, which is the point of writing it first.
 
 ## Open questions
 
 No question is open.
 
-## Open tooling findings
+## Tooling findings
 
-These are tooling work, not language questions. They keep the numbers they had among the findings below.
+These are tooling work, not language questions. They keep the numbers they had among the findings below. All three were listed here as open until 2026-11-14, when the lead decided each one while the operator was away; the three decisions await the operator's review. None is open.
 
-| # | Finding |
-|:--|:--|
-| 7 | Adapter commands wrap drizzle-kit, which is a development dependency, so a user who skips it meets a confusing failure at `mesh db push`. |
-| 10 | No `mesh` watch mode, so every edit needs a manual `mesh build`. MX's own tools do check `.mesh.mx` files as you type (the language server and the TypeScript plugin; `mx-tsc` is not released) and report Mesh's `MESH_*` codes, as [the MX contract](in-depth/mx-integration.md#37-mxs-tools-for-meshmx-files) says; only the build step is manual. |
-| 12 | Whether committed migrations are covered by `mesh build --check` is not stated, so a hand-edited migration and a stale `.mesh/schema.ts` can drift. The Docs pages do not claim the guard covers `migrations/`. See [generated code and the guard](in-depth/generated-code-and-guard.md). |
+| # | Finding | Decided, 2026-11-14 |
+|:--|:--|:--|
+| 7 | Adapter commands wrap drizzle-kit, which is a development dependency, so a user who skips it meets a confusing failure at `mesh db push`. | **Dropped: already fixed in code** ([PR #53](https://github.com/svallory/mesh/pull/53)). Without drizzle-kit, `mesh db push` exits 1 with a message that names the package and the command that installs it (`bun add -d drizzle-kit@0.31.11`), and a test holds that message. [Configuration](../docs/configuration.md) lists the install line. One thing is left for later: the starter (`create-meshfw`, a placeholder today) lists drizzle-kit as a development dependency when it is built. |
+| 10 | No `mesh` watch mode, so every edit needs a manual `mesh build`. MX's own tools do check `.mesh.mx` files as you type (the language server and the TypeScript plugin; `mx-tsc` is not released) and report Mesh's `MESH_*` codes, as [the MX contract](in-depth/mx-integration.md#37-mxs-tools-for-meshmx-files) says; only the build step is manual. | **Dropped: not planned.** The [roadmap](./roadmap/roadmap.md), section 6, already lists `mesh watch` under "Not planned at all". `mesh build` is run by hand, and the editor tools check `.mesh.mx` files as you type. |
+| 12 | Whether committed migrations are covered by `mesh build --check` is not stated, so a hand-edited migration and a stale `.mesh/schema.ts` can drift. The Docs pages do not claim the guard covers `migrations/`. See [generated code and the guard](in-depth/generated-code-and-guard.md). | **Planned with M9.** Today the guard covers the generated tree (`.mesh/`) only, and no migration exists yet: `mesh migrate` comes with milestone M9 (Postgres and migrations), after 1.0 ([roadmap](./roadmap/roadmap.md), section 6). Whether `mesh build --check` also covers `migrations/` is decided there. |
 
 ## DX findings
 
@@ -68,7 +68,7 @@ Measured on `@mxlang/data` alpha.5 with `structural: "reject"`, before the pin m
 
 A declaration name and atom value still have separate colours (`ts-name`, `ts-atom`). A check label and declaration name still share a capture. The `mesh` host package remains necessary for `.mesh.mx` tooling, and its target design is `builtOn: "tree"`. The target is static: no conditional declarations, loops, `let`, `const` or `define`.
 
-**Planned, not v1.** (Reusable step files and the `after-commit` step are no longer planned: [ADR-0082](./decisions/0082-named-checks-and-mixins.md), [ADR-0079](./decisions/0079-commands-events-and-the-outbox.md).) Not in the Docs pages, because a reader would plan on them: `lock="version"` and `relate=…` steps; a raw-SQL escape hatch like Ash's `fragment`; and `bypass` on a policy, which the operator removed because it fails open and is order-dependent (write `isStaff(actor) || …` with a helper instead). Two more items the docs do not show: a cap declared on the entity is planned (a read declares `filter` and `sort`; `limit` and `offset` arrive in the caller's input); an `increment` step is not planned: `set` with an expression covers it.
+**Planned, not v1.** (Reusable step files and the `after-commit` step are no longer planned: [ADR-0082](./decisions/0082-named-checks-and-mixins.md), [ADR-0079](./decisions/0079-commands-events-and-the-outbox.md).) Not in the Docs pages, because a reader would plan on them: `lock="version"` and `relate=…` steps; and `bypass` on a policy, which the operator removed because it fails open and is order-dependent (write `isStaff(actor) || …` with a helper instead). A raw-SQL escape hatch like Ash's `fragment` was in this list until the operator moved it before 1.0 on 2026-10-18; it is not built, has no milestone and is not in the Docs pages yet ([roadmap](./roadmap/roadmap.md), section 5, "Before 1.0, milestone not assigned"). Two more items the docs do not show: a cap declared on the entity is planned (a read declares `filter` and `sort`; `limit` and `offset` arrive in the caller's input); an `increment` step is not planned: `set` with an expression covers it.
 
 **Static by ruling, not just by parser limitation.** Declaration and member names are written out; entities use explicit imports. A condition is `when=` on its policy or check, or part of the expression. The future evaluated `data` target is not Mesh's target (MX decision 187 addendum 2).
 

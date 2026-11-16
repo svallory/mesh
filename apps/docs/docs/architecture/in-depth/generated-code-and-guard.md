@@ -50,7 +50,7 @@ The generated tree lives in `.mesh/` at the project root (the configuration's `o
 | `.mesh/mx-contracts.js` | One self-contained contracts module for MX tooling ([ADR-0021](../decisions/0021-composed-contracts-module.md)) | M6 |
 | `.mesh/rules.md` | A description of the project's entities and of the vocabulary for coding agents ([ADR-0027](../decisions/0027-no-mcp-agent-surface.md)) | after v1 |
 
-([roadmap](../roadmap/roadmap.md), M1, M2, M4, M6.) The example's `mesh explain` output is also committed, as a guarded fixture; it is not stated that every project commits it (M5, acceptance test 5). The file names follow the user page [project structure](../../docs/project-structure.md). Whether migrations written by `mesh migrate generate` (M9) are under the guard is not stated.
+([roadmap](../roadmap/roadmap.md), M1, M2, M4, M6.) The example's `mesh explain` output is also committed, as a guarded fixture; it is not stated that every project commits it (M5, acceptance test 5). The file names follow the user page [project structure](../../docs/project-structure.md). Whether migrations written by `mesh migrate generate` (M9) are under the guard is decided in M9, with `mesh migrate`; until then the guard covers the generated tree only ([open questions and findings](../open-questions.md#tooling-findings), finding 12).
 
 ### The tree emitted in M1
 
