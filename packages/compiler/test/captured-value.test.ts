@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
+import { checksOf } from "../src/model/action-expressions.ts";
 
 const RULES = `export const LIMIT = 100;
 export const limits = { max: 100 };
@@ -77,7 +78,7 @@ const message = (name: string) => `\`${name}\` is read as a value, and an expres
 const FIX = "export a function from the helper module and call it: `limit()`";
 /** The fix where the value is an argument of a call, which is where a function is passed along. */
 const passed = (name: string) => `${FIX}; if \`${name}\` is a function, pass an arrow that calls it: \`(x) => ${name}(x)\``;
-const thatOf = (result: ReturnType<typeof build>) => result.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate[0]!.that;
+const thatOf = (result: ReturnType<typeof build>) => checksOf(result.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate)[0]!.that;
 
 describe("a helper module's value read in a one-expression function is MESH_EXPR_CAPTURED_VALUE", () => {
   test("the fixture builds clean", () => {

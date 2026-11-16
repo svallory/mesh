@@ -1,5 +1,5 @@
 import { dirname, posix, relative } from "node:path";
-import type { Action, Entity, Expression, ExprNode, Policy, Step } from "@meshfw/model";
+import { isCheckGroup, type Action, type Entity, type Expression, type ExprNode, type Policy, type Step, type ValidateItem } from "@meshfw/model";
 import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
@@ -161,14 +161,21 @@ function collect(entity: Entity): Found[] {
     && ((!scope.types && !scope.actions) || scope.types?.includes(action.kind) || scope.actions?.some((ref) => ref.name === action.name)));
   // The computed bodies come first, while `phase` is still `computed`; every action, block and policy below sets its own.
   entity.computed.forEach((c) => { if (c.body) add(`computed.${c.name}`, `computed ${c.name}`, c.body, false); });
-  const checks = (prefix: string, list: { label: string; that: Expression; when?: Expression; details?: Expression; message: string | Expression }[]) => {
+  const checks = (prefix: string, list: readonly ValidateItem[], path = "") => {
     phase = "check";
-    for (const check of list) {
+    list.forEach((check, index) => {
+      // A `when` line in `validate` has no name: its id is positional, as a step's is (`send.validate.0.1.when`).
+      if (isCheckGroup(check)) {
+        const here = path === "" ? String(index) : `${path}.${index}`;
+        add(`${prefix}.validate.${here}.when`, "when in validate", check.condition, true);
+        checks(prefix, check.lines, here);
+        return;
+      }
       add(`${prefix}.check.${check.label}.that`, `check :${check.label} that`, check.that, true);
       if (check.when) add(`${prefix}.check.${check.label}.when`, `check :${check.label} when`, check.when, true);
       if (check.details) add(`${prefix}.check.${check.label}.details`, `check :${check.label} details`, check.details, false);
       if (typeof check.message !== "string") add(`${prefix}.check.${check.label}.message`, `check :${check.label} message`, check.message, false);
-    }
+    });
   };
   const steps = (prefix: string, list: Step[], path: string) => {
     phase = "step";

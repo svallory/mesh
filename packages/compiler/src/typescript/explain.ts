@@ -1,4 +1,5 @@
-import type { Action, Check, Entity, Step } from "@meshfw/model";
+import { isCheckGroup, type Action, type Check, type Entity, type Step, type ValidateItem } from "@meshfw/model";
+import { checksOf, isEmptyGroup } from "../model/action-expressions.ts";
 import { policiesCovering, policyExpressions, readsRecord } from "../model/policies.ts";
 import { alwaysFor, stepsFor } from "./views/actions.ts";
 import { effectiveActions } from "./views/inputs.ts";
@@ -37,6 +38,16 @@ function stepLines(steps: readonly Step[], depth: number, into: string[], after 
 }
 
 const checkLine = (check: Check) => `${check.label} (${check.code})${check.when ? " when " + squash(check.when.source) : ""}${check.details ? ", with details" : ""}${typeof check.message === "string" ? "" : ", with a message function"}`;
+/** The lines of a `validate` list: a check per line, a `when` line once with its lines indented under it, nothing for an empty one. */
+function checkLines(items: readonly ValidateItem[], depth: number, into: string[], prefix: string): void {
+  const pad = "  ".repeat(depth);
+  for (const item of items) {
+    if (!isCheckGroup(item)) { into.push(`${prefix}${pad}${checkLine(item)}`); continue; }
+    if (isEmptyGroup(item)) continue;
+    into.push(`${prefix}${pad}when ${squash(item.condition.source)}`);
+    checkLines(item.lines, depth + 1, into, prefix);
+  }
+}
 
 /**
  * Each policy that covers the action, with each of its functions and where it runs (lead ruling 1 of M8a): a
@@ -89,14 +100,15 @@ export function explainAction(entity: Entity, actionName: string): string[] | un
     return lines;
   }
   const blocks = [...alwaysFor(entity, action).map((block) => ({ validate: block.validate, steps: block.do, always: true })), { validate: action.validate, steps: action.do, always: false }];
-  const checks = blocks.flatMap((block) => block.validate.map((check) => (block.always ? `always: ${checkLine(check)}` : checkLine(check))));
+  const checks: string[] = [];
+  for (const block of blocks) checkLines(block.validate, 0, checks, block.always ? "always: " : "");
   const all = stepsFor(action, blocks.flatMap((block) => block.steps));
   const steps: string[] = [];
   stepLines(stepsAt(all, false), 0, steps);
   const afterWrite: string[] = [];
   stepLines(stepsAt(all, true), 0, afterWrite, true);
   const recordPolicy = policiesCovering(entity, action).some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, action.kind === "read" ? "read" : "write")));
-  const reads = action.kind === "update" || checks.length > 0 || all.length > 0 || recordPolicy;
+  const reads = action.kind === "update" || checksOf(blocks.flatMap((block) => block.validate)).length > 0 || all.length > 0 || recordPolicy;
   const strategy = action.kind === "create" ? "one insert; nothing is read first"
     : action.kind === "update" ? "read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it"
       : reads ? "read-then-write: the body can see the stored record, so the row is read under the lock before it is deleted"

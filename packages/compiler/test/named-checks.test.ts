@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { buildModel } from "../src/front-end/build.ts";
+import { checksOf } from "../src/model/action-expressions.ts";
 import { generateFiles } from "../src/typescript/emit.ts";
 import { explainAction } from "../src/typescript/explain.ts";
 import { configOf } from "./generated.ts";
@@ -23,7 +24,7 @@ entity :Task
 `;
   const result = buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source }] });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-  const checks = result.document!.entities[0]!.actions[0]!.validate;
+  const checks = checksOf(result.document!.entities[0]!.actions[0]!.validate);
   const plain = checks[0]!.that;
   const copy = copyExpression(plain);
   expect(copy).not.toBe(plain);
@@ -105,14 +106,14 @@ describe("the `checks` section and `check &name`: what the contracts take", () =
 ${RESCHEDULE("        check &dueAfterIssue\n")}  checks
 ${DUE}`;
     expect(said(after)).toEqual([]);
-    expect(build(after).document!.entities[0]!.actions[0]!.validate.map((check) => check.label)).toEqual(["dueAfterIssue"]);
+    expect(checksOf(build(after).document!.entities[0]!.actions[0]!.validate).map((check) => check.label)).toEqual(["dueAfterIssue"]);
   });
 
   test("`check member=&a` lowers as `check &a` does", () => {
     const spelled = F1.replace("check &dueAfterIssue\n    update", "check member=&dueAfterIssue\n    update");
     expect(spelled).not.toBe(F1);
     expect(said(spelled)).toEqual([]);
-    expect(build(spelled).document!.entities[0]!.actions[0]!.validate[0]!.label).toBe("dueAfterIssue");
+    expect(checksOf(build(spelled).document!.entities[0]!.actions[0]!.validate)[0]!.label).toBe("dueAfterIssue");
   });
 
   test.each([
@@ -191,7 +192,7 @@ describe("a reference expands into the referring block", () => {
     const result = build(F1);
     expect(result.diagnostics).toEqual([]);
     const [issue, reschedule] = result.document!.entities[0]!.actions;
-    const [a, b] = [issue!.validate[0]!, reschedule!.validate[0]!];
+    const [a, b] = [checksOf(issue!.validate)[0]!, checksOf(reschedule!.validate)[0]!];
     for (const check of [a, b]) {
       expect(check).toMatchObject({ label: "dueAfterIssue", code: "invalid_dates", message: "the due date cannot be before the issue date", position: { line: 8, column: 4 } });
     }
@@ -204,7 +205,7 @@ describe("a reference expands into the referring block", () => {
   test("a reference keeps its place among the block's inline checks", () => {
     const source = invoice(DUE, ISSUE('        check :first that=() => true code="a" message="m"\n        check &dueAfterIssue\n        check :last that=() => true code="b" message="m"\n'));
     expect(said(source)).toEqual([]);
-    expect(build(source).document!.entities[0]!.actions[0]!.validate.map((check) => [check.label, check.reference !== undefined])).toEqual([["first", false], ["dueAfterIssue", true], ["last", false]]);
+    expect(checksOf(build(source).document!.entities[0]!.actions[0]!.validate).map((check) => [check.label, check.reference !== undefined])).toEqual([["first", false], ["dueAfterIssue", true], ["last", false]]);
   });
 
   test("a project with no named check writes no `reference` key in model.json", () => {

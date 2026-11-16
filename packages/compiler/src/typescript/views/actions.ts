@@ -1,5 +1,6 @@
 import { dirname, relative } from "node:path";
-import type { Action, Always, Atom, Attribute, Check, Entity, Expression, Literal, Policy, SourcePosition, Step } from "@meshfw/model";
+import { isCheckGroup, type Action, type Always, type Atom, type Attribute, type Check, type Entity, type Expression, type Literal, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
+import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-expressions.ts";
 import { filledKey } from "../../model/new-instance.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
 import { emitError } from "../emit-error.ts";
@@ -459,11 +460,13 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     }
 
     // ---- create, update, destroy: the lifecycle --------------------------------------------------
-    const blocks: { validate: Check[]; steps: Step[] }[] = [
+    const blocks: { validate: ValidateItem[]; steps: Step[] }[] = [
       ...alwaysFor(entity, action).map((block) => ({ validate: block.validate, steps: block.do })),
       { validate: action.validate, steps: action.do },
     ];
-    const checks = blocks.flatMap((block) => block.validate);
+    const checks = checksOf(blocks.flatMap((block) => block.validate));
+    // Every function of the `validate` blocks that can run: the checks' and the conditions of the `when` lines that guard one.
+    const validateFns = blocks.flatMap((block) => validateExpressions(block.validate));
     const writes = action.kind !== "destroy";
     const steps = stepsFor(action, blocks.flatMap((block) => block.steps));
     // ---- policies (M8): the checks that read the record run inside the transaction, before validate ----
@@ -472,7 +475,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // ---- end policies ------------------------------------------------------------------------------------------
 
     // What the checks read through a relationship or a computed field, loaded onto the record before they run.
-    const checkNeeds = [...new Set(checks.flatMap((check) => [check.that, check.when, check.details, check.message].flatMap((e) => (typeof e === "object" ? e.needs ?? [] : []))))].sort();
+    const checkNeeds = [...new Set(validateFns.flatMap((e) => e.needs ?? []))].sort();
     // Does the call need the stored row? An update always reads it (every update is read then write, ADR-0072);
     // a destroy reads it only when something in its body can see it.
     const reads = action.kind === "update" || checks.length > 0 || steps.length > 0 || recordPolicies.length > 0;
@@ -489,7 +492,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
     const stamped = entity.attributes.filter((a) => a.on === "update");
     // Does any function of the action read a relationship or computed field? Only then is something ever loaded onto the record.
-    const anyNeeds = [...recordPolicies, ...checks.flatMap((check) => [check.that, check.when, check.details, typeof check.message === "string" ? undefined : check.message]), ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
+    const anyNeeds = [...recordPolicies, ...validateFns, ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
       if (step.kind === "set") return step.assignments.map(({ value }) => (isExpression(value) ? value : undefined));
       if (step.kind === "when") return [step.condition, ...step.steps.flatMap(expressionsOf)];
       return step.kind === "run" || step.kind === "publish" ? [step.fn] : [];
@@ -619,7 +622,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       emit("const $checks = $checkScope($s);");
       // On a create the record is the new instance: a required relationship the input has not filled yet is null on it.
       loadFor(checkNeeds, "$record", action.kind === "create" ? "{ ...$load, newInstance: true }" : "$load");
-      for (const check of checks) {
+      const runCheck = (check: Check) => {
         used.scope = true;
         usesExpressions = true;
         const source = `{ file: ${JSON.stringify(check.position.file)}, line: ${check.position.line}, column: ${check.position.column + 1} }`;
@@ -635,7 +638,19 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           ...(check.details ? [`details: ${idOf(check.details)}`] : []),
         ];
         emit(`await $runCheck($issues, $checks, { ${parts.join(", ")} });`);
-      }
+      };
+      // A `when` line in `validate` is one `if` around its lines: its condition runs once, and false or unknown skips them.
+      const emitValidate = (list: readonly ValidateItem[]) => {
+        for (const item of list) {
+          if (!isCheckGroup(item)) { runCheck(item); continue; }
+          // An empty `when` line guards nothing, so nothing runs for it.
+          if (isEmptyGroup(item)) continue;
+          emit(`if (await ${call(item.condition, "$checks")}) {`);
+          emitValidate(item.lines);
+          emit("}");
+        }
+      };
+      for (const block of blocks) emitValidate(block.validate);
       emit("if ($issues.length > 0) throw new $InvalidInputError($issues);");
     }
 

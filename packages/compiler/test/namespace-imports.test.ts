@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Diagnostic, Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
+import { checksOf } from "../src/model/action-expressions.ts";
 import { printTree } from "../src/typescript/expression-printer.ts";
 
 const INVOICE = `entity :Invoice
@@ -408,20 +409,20 @@ entity :Task
     expect(ok.diagnostics).toEqual([]);
     const entity = ok.document!.entities[0]!;
     expect(entity.imports).toEqual([expect.objectContaining({ identifiers: ["h"], from: "./rules", helper: true, namespace: true })]);
-    const tree = entity.actions[0]!.validate[0]!.that.tree!;
+    const tree = checksOf(entity.actions[0]!.validate)[0]!.that.tree!;
     expect(tree).toMatchObject({ fn: "and", args: [{ kind: "helper", name: "h.isStaff", from: "./rules" }, {}] });
     expect(printTree(tree, true)).toContain('$.asBool($.pure(h.isStaff($s.actor), "h.isStaff"))');
     // Given the record, it is plain code, as an imported function given the record is; it still names the import.
-    const plain = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("() => h.big(&n)") }).document!.entities[0]!.actions[0]!.validate[0]!.that.plain;
+    const plain = checksOf(onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("() => h.big(&n)") }).document!.entities[0]!.actions[0]!.validate)[0]!.that.plain;
     expect(plain).toMatchObject({ why: "reads-record-in-helper", helpers: ["h"] });
     // A parameter of the alias's name hides the namespace: `h.isStaff(h)` is a method of the parameter, not a helper call.
     // `actor.roles` is translated, so the quantifier's body reaches the helper-namespace branch of the translation.
-    const hidden = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => actor.roles.some((h) => h.isStaff(h))") }).document!.entities[0]!.actions[0]!.validate[0]!.that;
+    const hidden = checksOf(onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => actor.roles.some((h) => h.isStaff(h))") }).document!.entities[0]!.actions[0]!.validate)[0]!.that;
     expect(hidden.plain).toMatchObject({ why: "unsupported-construct", detail: "a method call", position: { column: 61 } });
     expect(hidden.plain?.helpers).toBeUndefined();
     expect(JSON.stringify(hidden)).not.toContain('"kind":"helper"');
     // The namespace itself is no function.
-    const called = onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => h(actor)") }).document!.entities[0]!.actions[0]!.validate[0]!.that;
+    const called = checksOf(onDisk({ "work/rules.ts": helper, "work/task.mesh.mx": task("({ actor }) => h(actor)") }).document!.entities[0]!.actions[0]!.validate)[0]!.that;
     expect(called.tree).toBeUndefined();
   });
 });

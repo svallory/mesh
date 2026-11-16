@@ -13,7 +13,10 @@ import type {
   SourcePosition,
   Step,
   TypeClass,
+  ValidateItem,
 } from "@meshfw/model";
+import { isCheckGroup } from "@meshfw/model";
+import { checksOf } from "./action-expressions.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 import { alwaysCovers, policyCovers } from "./policies.ts";
 
@@ -102,8 +105,8 @@ interface Scope {
   acceptedOnCreate?: ReadonlySet<string>;
   /** In a check that can run on a create: the members some such create takes as a member input (and a relationship's key column). */
   pending?: ReadonlySet<string>;
-  /** Which part of a check this is: an unknown `that` fails the check, an unknown `when` skips it. */
-  checkPart?: "that" | "when" | "details" | "message";
+  /** Which part of a check this is: an unknown `that` fails the check, an unknown `when` skips it; `group` is a `when` line in `validate`, whose unknown condition skips the checks under it. */
+  checkPart?: "that" | "when" | "details" | "message" | "group";
   /** References (`self.x`, `before.x`, `input.x`, `before`) that the left of an enclosing `&&` or `||` has shown are not null here. */
   nonNull?: ReadonlySet<string>;
   /** True where the expression is printed as the author's TypeScript, where tsc narrows less than Mesh does: nothing narrows. */
@@ -212,7 +215,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   };
   /** What an unknown value does in each part of a check (`runCheck`): `that` fails the check, `when` skips it, `details` is null, in a `message` an unknown condition counts as false and an unknown message fails the call. Elsewhere (a step, a computed field) the outcome depends on the position. */
   const whenUnknown = (part: Scope["checkPart"]) =>
-    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "details" ? "the details value is null" : part === "message" ? "an unknown condition counts as false, and a message that is itself unknown fails the call with a FrameworkError" : "the check fails or the row is left out";
+    part === "that" ? "the check fails" : part === "when" ? "the check is skipped" : part === "group" ? "the checks under this `when` are skipped" : part === "details" ? "the details value is null" : part === "message" ? "an unknown condition counts as false, and a message that is itself unknown fails the call with a FrameworkError" : "the check fails or the row is left out";
   // No reachability analysis: `&n > 0 || true` is not unknown, so the wording says what happens when the result depends on the read.
   const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
     report("warning", "MESH_VALIDATE_UNFILLED",
@@ -552,7 +555,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
    * a member with no default is still null. The steps before the write see the input applied; on a create the key the data
    * layer gives (an `integer` key) is null until the write.
    */
-  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression; message: string | Expression; position: SourcePosition; reference?: SourcePosition }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[], referrer?: Referrer): void {
+  function blocks(entity: Entity, validate: readonly ValidateItem[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[], referrer?: Referrer): void {
     const gaps = newInstanceGaps(entity);
     const accepted = acceptedBy(creates);
     const pending = pendingOn(entity, creates);
@@ -560,7 +563,16 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const checks: Scope = creates.length
       ? { ...scope, validate: true, fresh: new Set([...members, ...newInstanceComputed(entity, new Set(members))]), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
       : { ...scope, validate: true };
-    for (const check of validate) {
+    const walk = (items: readonly ValidateItem[]): void => {
+    for (const check of items) {
+      // A `when` line in `validate`: its condition is typed and warned on as a check's `when=` is, once, then its lines.
+      if (isCheckGroup(check)) {
+        const t = visit(check.condition, { ...checks, checkPart: "group" }, true);
+        if (t?.unfilled !== undefined) unfilled(t.unfilled, check.condition.tree!.position, "group");
+        if (checks.pending?.size && check.condition.plain) plainNotApplied(check.condition, checks.pending);
+        walk(check.lines);
+        continue;
+      }
       via = check.reference && referrer ? { ...referrer, declaration: check.position } : undefined;
       if (via) {
         const referrers = referrersOf.get(keyOf(check.position)) ?? new Map<string, string>();
@@ -575,9 +587,14 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       if (checks.pending?.size) for (const e of [check.that, check.when, check.details, check.message]) if (typeof e === "object" && e.plain) plainNotApplied(e, checks.pending);
       via = undefined;
     }
+    };
+    walk(validate);
     steps(list, entity, creates.length && gaps.key ? { ...scope, fresh: new Set([gaps.key]) } : scope);
   }
 
+  /** A `validate` list without the named checks it uses by reference (typed per covered action below), its `when` lines kept. */
+  const withoutReferences = (items: readonly ValidateItem[]): ValidateItem[] =>
+    items.flatMap((item): ValidateItem[] => isCheckGroup(item) ? [{ ...item, lines: withoutReferences(item.lines) }] : item.reference ? [] : [item]);
   /** The action as a referrer of a named check: it takes its declared inputs and, on an update or a destroy, the key. */
   const referrerOf = (entity: Entity, action: Pick<Action, "kind" | "name" | "input">, through = ""): Referrer => {
     const key = action.kind === "update" || action.kind === "destroy" ? entity.attributes.filter((a) => a.primaryKey).map((a) => a.name) : [];
@@ -638,10 +655,10 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       const creates = every.filter((action) => action.kind === "create"
         && ((!block.types && !block.actions) || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name)));
       const scope: Scope = { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null };
-      blocks(entity, block.validate.filter((check) => !check.reference), block.do, scope, creates);
+      blocks(entity, withoutReferences(block.validate), block.do, scope, creates);
       // A named check the block uses is typed in the block's scope once, for its one generated function, and then in the
       // scope of each action the block covers, on a fresh copy, naming that action: that is where its mistakes are reported.
-      const referenced = block.validate.filter((check) => check.reference);
+      const referenced = checksOf(block.validate).filter((check) => check.reference);
       if (!referenced.length) continue;
       const covered = every.filter((action) => action.kind !== "read" && alwaysCovers(block, action));
       const copied = () => referenced.map((check) => ({

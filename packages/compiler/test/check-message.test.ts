@@ -3,6 +3,7 @@ import { closeTypeServer } from "./type-server.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildModel } from "../src/front-end/build.ts";
+import { checksOf } from "../src/model/action-expressions.ts";
 import { generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
 import { checkTypes, configOf } from "./generated.ts";
 
@@ -23,7 +24,7 @@ const entity = (message: string) => `entity :Task
         ]
 `;
 const built = (message: string) => buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source: entity(message) }] });
-const checkOf = (message: string) => built(message).document?.entities[0]?.actions.find((a) => a.name === "go")?.validate[0];
+const checkOf = (message: string) => checksOf(built(message).document?.entities[0]?.actions.find((a) => a.name === "go")?.validate ?? [])[0];
 const errors = (message: string) => built(message).diagnostics.filter((d) => d.severity === "error");
 
 test("text stays text in the model", () => {
