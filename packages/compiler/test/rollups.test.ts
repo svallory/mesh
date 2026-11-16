@@ -240,8 +240,6 @@ test.each([
 test.each([
   ["a computed index", "&lines[0]"],
   ["a call", "&lines.amount()"],
-  ["a space before the dot", "&lines .amount"],
-  ["a space after the dot", "&lines. amount"],
   ["a plain name", "lines"],
   ["an atom", ":lines"],
 ] as const)("of= with %s is not a member reference", (_, written) => {
@@ -253,6 +251,35 @@ test.each([
   expect(result.document).toBeNull();
   expect(result.diagnostics.length).toBeGreaterThan(0);
   expect(result.diagnostics.every((d) => d.position.line === 8)).toBe(true);
+});
+
+test.each([
+  ["a space before the dot", "&lines .amount"],
+  ["a space after the dot", "&lines. amount"],
+  ["spaces on both sides of the dot", "&lines . amount"],
+  ["a comment before the dot", "&lines/**/.amount"],
+  ["a comment after the dot", "&lines./* c */amount"],
+  ["a comment after the path", "&lines.amount /* c */"],
+  // Not ruled (D11): a parenthesised path builds, as it did before.
+  ["parentheses around the path", "(&lines.amount)"],
+] as const)("of= with %s is the same member path", (_, written) => {
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n  actions auto=[:read]\n`;
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target },
+  ] });
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities.find((e) => e.name === "Invoice")!.computed[0]!.rollup).toEqual({ fn: "max", of: "lines.amount" });
+});
+
+test("a count's path may hold whitespace and comments too", () => {
+  const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    count :value of=&lines /* all */\n  actions auto=[:read]\n`;
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target },
+  ] });
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities.find((e) => e.name === "Invoice")!.computed[0]!.rollup).toEqual({ fn: "count", of: "lines" });
 });
 
 test("a rollup through a relationship the entity lacks is reported at the reference", () => {

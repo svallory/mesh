@@ -440,7 +440,7 @@ for (const kind of ROLLUPS)
             `of takes a member reference, not a string: ${path ? `write of=&${path}` : "write of=&relationship for a count, of=&relationship.attribute for the others"}`,
             { at: a.loc, code: "MESH_ROLLUP_PATH_STRING" },
           );
-        } else if (!isMemberPath(node(a), membersOf(a)) || /\s/.test((a.kind === "dynamic" ? a.value.code : "") ?? ""))
+        } else if (!isMemberPath(node(a), membersOf(a)))
           ctx.fail("of takes a member reference: &relationship for a count, &relationship.attribute for the others", { at: a.loc, code: "MESH_ROLLUP_PATH" });
       }
     },
