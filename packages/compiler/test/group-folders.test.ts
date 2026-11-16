@@ -79,7 +79,7 @@ test("a segment that is only an underscore is an error with a clear message", ()
 test("relative imports keep using real paths through a group", () => {
   const result = build({
     [`${D}/tasks/_x/a.mesh.mx`]: `import { B } from "../b.mesh.mx"\nentity :A\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :b entity=B\n`,
-    [`${D}/tasks/b.mesh.mx`]: entity("B"),
+    [`${D}/tasks/b.mesh.mx`]: entity("B", "  actions auto=[:read]\n"),
   });
   expect(result.diagnostics).toEqual([]);
   expect(result.document!.entities.map((e) => e.module)).toEqual(["tasks", "tasks"]);

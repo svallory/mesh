@@ -715,7 +715,7 @@ When a check reads the stored row, a denied caller is told forbidden, on every w
 mesh build
 ```
 
-The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line, column and code:
+The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, a relationship to an entity that has neither `on:load` nor an auto read, an expression that cannot run in SQL where it must, and a capability the adapter does not declare. Each diagnostic names the file, line, column and code:
 
 ```text
 src/domain/todo/todo.mesh.mx:22:9 error MESH_UNKNOWN_MEMBER &titel is not a member of todo.Todo. Did you mean &title?

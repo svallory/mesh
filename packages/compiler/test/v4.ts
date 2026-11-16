@@ -60,7 +60,7 @@ entity :Todo table="todos"
     policy :staff types=[:create, :update, :destroy] authorize-if=({ actor }) => !!actor
 `;
 export const list =
-  'import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n    decimal :amount\n  relationships\n    belongs-to :owner entity=Todo nullable\n    belongs-to :todo entity=Todo nullable\n';
+  'import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n    decimal :amount\n  relationships\n    belongs-to :owner entity=Todo nullable\n    belongs-to :todo entity=Todo nullable\n  actions auto=[:read]\n';
 export const project = (source = todo) => ({
   root: "/project",
   files: [

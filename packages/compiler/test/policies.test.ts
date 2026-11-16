@@ -161,12 +161,13 @@ describe("a read policy that reads the record is refused until M10", () => {
     }
   });
 
-  test("a policy a caller's load runs that reads the record is refused too, with no read action to cover", () => {
-    const comment = (policies: string) => ({ file: "blog/comment.mesh.mx", source: `entity :Comment
+  test("a policy a caller's load runs that reads the record is refused too, and names the loads it covers", () => {
+    // Reached by a Post, a Comment has the auto read a load runs (`MESH_ON_LOAD`); reached by nothing, it needs none.
+    const comment = (policies: string, actions = "actions auto=[:read]") => ({ file: "blog/comment.mesh.mx", source: `entity :Comment
   attributes
     uuid :id primary-key
     string :authorId
-  actions
+  ${actions}
     create :add
 ${policies}` });
     const blog = (policies: string, from = "belongs-to :comment entity=Comment") => buildModel({ root: "/project", files: [comment(policies), { file: "blog/post.mesh.mx", source: `import { Comment } from "./comment.mesh.mx"
@@ -182,13 +183,13 @@ entity :Post
 ` }] });
     const built = blog("  policies\n    policy :mine\n      authorize-if=({ actor }) => &authorId === actor.id\n");
     expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers the loads of it (a relationship or a rollup that reaches it) of blog.Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
+    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
     // Scoped to reads by type, it covers the loads too.
     expect(codes(blog("  policies\n    policy :mine types=[:read]\n      authorize-if=() => &authorId !== null\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
     // Scoped to the writes, it builds, with the warning that no caller then loads a Comment (R2-N2); so does an entity no
     // relationship reaches, with no warning.
     expect(codes(blog("  policies\n    policy :mine types=[:create]\n      authorize-if=({ input, actor }) => input.authorId === actor.id\n").diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY"]);
-    expect(codes(buildModel({ root: "/project", files: [comment("  policies\n    policy :mine\n      authorize-if=({ actor, input }) => (input.authorId ?? &authorId) === actor.id\n")] }).diagnostics)).toEqual([]);
+    expect(codes(buildModel({ root: "/project", files: [comment("  policies\n    policy :mine\n      authorize-if=({ actor, input }) => (input.authorId ?? &authorId) === actor.id\n", "actions")] }).diagnostics)).toEqual([]);
   });
 
   test("a relationship to an entity whose policies leave out the read a load runs warns: every caller's load of it is empty (R2-N2)", () => {
@@ -296,17 +297,17 @@ describe("a read policy's condition that does not translate warns until M10", ()
     });
   });
 
-  test("a policy that covers only the loads of its entity warns too", async () => {
+  test("a policy that covers the loads of its entity names them", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-plain-"));
     try {
-      // A Comment has no read action of its own; a Post reaches it, so a caller's load of it runs the policy.
-      const comment = { file: "blog/comment.mesh.mx", source: `entity :Comment\n  attributes\n    uuid :id primary-key\n  actions\n    create :add\n  policies\n    policy :p\n      authorize-if=${method}\n` };
+      // A Post reaches a Comment, so a caller's load of it runs the policy, through the auto read a load needs (`MESH_ON_LOAD`).
+      const comment = { file: "blog/comment.mesh.mx", source: `entity :Comment\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n    create :add\n  policies\n    policy :p\n      authorize-if=${method}\n` };
       const reaching = { file: "blog/post.mesh.mx", source: 'import { Comment } from "./comment.mesh.mx"\nentity :Post\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :comment entity=Comment\n  actions auto=[:read]\n  policies\n    policy :open\n      authorize-if=() => true\n' };
       expect(buildModel({ root, files: [comment, reaching] }).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`)).toEqual([
-        "warning:MESH_EXPR_PLAIN:policy :p authorize-if must run as SQL, since the policy covers the loads of it (a relationship or a rollup that reaches it) of blog.Comment, and Mesh does not translate it (a method call): a warning until the SQL evaluator (M10), an error from then",
+        "warning:MESH_EXPR_PLAIN:policy :p authorize-if must run as SQL, since the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment, and Mesh does not translate it (a method call): a warning until the SQL evaluator (M10), an error from then",
       ]);
-      // Reached by no relationship, the same policy covers only a write and builds clean.
-      expect(buildModel({ root, files: [comment] }).diagnostics).toEqual([]);
+      // Reached by no relationship and with no read, the same policy covers only a write and builds clean.
+      expect(buildModel({ root, files: [{ ...comment, source: comment.source.replace("actions auto=[:read]", "actions") }] }).diagnostics).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

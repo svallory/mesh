@@ -42,6 +42,7 @@ entity :Sample table="samples"
 const owner = `entity :Owner table="owners"
   attributes
     uuid :id primary-key
+  actions auto=[:read]
 `;
 
 let dir: string;
@@ -74,8 +75,10 @@ export const ownerMatches: Equal<typeof tables.owners.$inferSelect, Owner> = tru
 export const strict: Equal<typeof tables.samples.$inferSelect, Omit<Sample, "dueOn"> & { dueOn: string }> = false;
 export const map: Equal<keyof typeof tables, "owners" | "samples"> = true;
 `);
+  // Owner has the auto read a relationship load needs (`MESH_ON_LOAD`), so the generated files reach `@meshfw/runtime`,
+  // whose sources import with `.ts`.
   const tsc = join(import.meta.dir, "../../../node_modules/.bin/tsc");
-  const result = Bun.spawnSync([tsc, "--ignoreConfig", "--noEmit", "--strict", "--exactOptionalPropertyTypes", "--skipLibCheck",
+  const result = Bun.spawnSync([tsc, "--ignoreConfig", "--noEmit", "--strict", "--exactOptionalPropertyTypes", "--skipLibCheck", "--allowImportingTsExtensions",
     "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler", "--types", "bun", join(dir, "check.ts")], { cwd: dir });
   expect(result.stdout.toString() + result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);

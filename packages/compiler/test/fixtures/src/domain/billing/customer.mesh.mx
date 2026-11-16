@@ -2,3 +2,4 @@ entity :Customer
   attributes
     uuid :id primary-key
     decimal :amount
+  actions auto=[:read]

@@ -34,6 +34,14 @@ export function checkLifecycleLimits(
   for (const from of document.entities)
     for (const relation of from.relationships) {
       const target = byFile.get(resolve(dirname(from.file), relation.entity.from));
+      // A load through a relationship runs the read `on:load=` names, or else the auto read: a target with neither has
+      // no read to load with, which is refused at each relationship that reaches it (ACT-20). A written read does not
+      // count until `on:load=` names it.
+      if (target && !target.onLoad && !target.auto.includes("read"))
+        diagnostics.push(error("MESH_ON_LOAD",
+          `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, which has neither \`on:load=\` nor an auto read, so Mesh has no read to load it with`,
+          relation.position,
+          `List \`:read\` in \`auto=\` on the \`actions\` line of ${target.fqn} (\`actions auto=[:read]\`), or name one of its reads there with \`on:load=&name\``));
       if (!target?.policies.length || loadPolicies(target).length) continue;
       const empty = relation.kind === "has-many" ? "[]" : "null";
       diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",

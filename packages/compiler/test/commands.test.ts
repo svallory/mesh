@@ -347,7 +347,7 @@ entity :Invoice
         string :reason
         string :aside nullable
 `;
-    const customer = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    uuid :id primary-key\n" };
+    const customer = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" };
     const complete = buildModel(bare(entity, { ...customer, "billing/open-invoice.mesh.mx": "command :OpenInvoice\n  string :title\n  uuid :customer\n  string :reason\n" }));
     expect(complete.diagnostics).toEqual([]);
     const missing = buildModel(bare(entity, { ...customer, "billing/open-invoice.mesh.mx": "command :OpenInvoice\n  string :title\n" }));
@@ -450,7 +450,7 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
   });
   test("a belongs-to input takes its target's key kind, not an entity reference", () => {
     const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
-    const files = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    integer :id primary-key\n" };
+    const files = { "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    integer :id primary-key\n  actions auto=[:read]\n" };
     expect(buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  integer :customer\n" })).diagnostics).toEqual([]);
     const result = buildModel(bare(entity, { ...files, "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" }));
     expect(result.diagnostics).toHaveLength(1);
@@ -459,7 +459,7 @@ describe("MESH_COMMAND_INPUT type agreement", () => {
   test.each(["MESH_PRIMARY_KEY", "MESH_UNKNOWN_IMPORT"])("an unresolved relationship key reports only its root error: %s", (code) => {
     const entity = `import { Change } from "./change.mesh.mx"\nimport { Customer } from "./customer.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :customer entity=Customer\n  actions\n    update on=Change\n      input\n        &customer\n`;
     const extra: Record<string, string> = { "billing/change.mesh.mx": "command :Change\n  uuid :id\n  uuid :customer\n" };
-    if (code === "MESH_PRIMARY_KEY") extra["billing/customer.mesh.mx"] = "entity :Customer\n  attributes\n    string :name\n";
+    if (code === "MESH_PRIMARY_KEY") extra["billing/customer.mesh.mx"] = "entity :Customer\n  attributes\n    string :name\n  actions auto=[:read]\n";
     const result = buildModel(bare(entity, extra));
     expect(result.document).toBeNull();
     expect(codes(result.diagnostics)).toEqual([code]);
