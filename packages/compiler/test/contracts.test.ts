@@ -251,7 +251,7 @@ describe("always types= cannot list :read", () => {
   const always = (line: string, body = BODY) =>
     build(`${keyed}    integer :n\n  actions auto=[:read]\n    update :change\n    read :all\n${line}\n${body}`).diagnostics.map((d) => [d.position.line, d.position.column, d.severity, d.code, d.message, d.fix]);
   const refused = (column: number) =>
-    [8, column, "error", "MESH_OPTION_VALUE", "`always`: `types` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", null];
+    [8, column, "error", "MESH_OPTION_VALUE", "`always`: `types=` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", null];
   test("at the :read atom, alone or among the other types, wherever it is in the list", () => {
     expect(always("    always types=[:read]")).toEqual([refused(18)]);
     expect(always("    always types=[:read, :update]")).toEqual([refused(18)]);

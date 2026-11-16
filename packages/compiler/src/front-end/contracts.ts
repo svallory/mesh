@@ -228,7 +228,7 @@ const contracts: ContractMap = {
           ? (a.value.nodes ?? []).find((each) => each.type === "mesh:Atom" && (each.forward as Node).value === "read")
           : undefined;
         if (read)
-          ctx.fail("`types` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", { at: read.span, code: "MESH_OPTION_VALUE" });
+          ctx.fail("`types=` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", { at: read.span, code: "MESH_OPTION_VALUE" });
       }
     },
   }),
