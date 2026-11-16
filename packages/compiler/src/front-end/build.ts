@@ -677,6 +677,10 @@ function buildEntity(
   // every check name that counts as a member of the entity, named or inline, with where it is written.
   const namedChecks = new Map<string, Check>();
   const checkMembers: { name: string; position: SourcePosition }[] = [];
+  /** The names of declarations under `checks` that a form rule refused: a reference to one is no second error. */
+  const brokenChecks = new Set<string>();
+  /** The members of `checkMembers` declared under `checks`, not inline in a `validate`. */
+  const sectionChecks = new Set<unknown>();
   for (const tag of tags(section("checks")?.children ?? [])) {
     const reference = attr(tag, "member");
     if (reference) {
@@ -684,8 +688,13 @@ function buildEntity(
       continue;
     }
     const check = declaredCheck(tag);
-    if (!check) continue;
-    checkMembers.push({ name: check.label, position: check.position });
+    if (!check) {
+      if (attr(tag, "name")) brokenChecks.add(declaredName(tag));
+      continue;
+    }
+    const member = { name: check.label, position: check.position };
+    checkMembers.push(member);
+    sectionChecks.add(member);
     if (!namedChecks.has(check.label)) namedChecks.set(check.label, check);
   }
   /** The named checks some `validate` refers to, a refused reference included: one no block uses never runs. */
@@ -976,6 +985,7 @@ function buildEntity(
       const taken = fromCommand(member) ?? fromCommand(holders.get(member.name));
       // Checks come last in the list, so a repeat that involves a check is reported at the check (the later one of two).
       const fix = !isCheck(member) ? undefined
+        : sectionChecks.has(member) && sectionChecks.has(holders.get(member.name)) ? "give each rule its own name, or remove one"
         : isCheck(holders.get(member.name)) ? `declare the check once under \`checks\` and use it with \`check &${member.name}\` in each \`validate\`, or give each rule its own name`
         : "rename the check";
       fail(
@@ -1008,7 +1018,7 @@ function buildEntity(
       fail("MESH_INPUT_MANAGED", `&${ref.name} is set by Mesh and cannot be an input`, ref.position);
     if (scope === "check") {
       // `check &name` uses a check of the entity's `checks` section, and nothing else: not an inline check, not another member.
-      if (!namedChecks.has(ref.name)) {
+      if (!namedChecks.has(ref.name) && !brokenChecks.has(ref.name)) {
         const candidates = new Set(namedChecks.keys());
         const member = unknownMember(entity, ref, candidates);
         const names = [...candidates].map((name) => `&${name}`).join(", ");

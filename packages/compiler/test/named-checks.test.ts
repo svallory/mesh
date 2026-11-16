@@ -165,6 +165,10 @@ describe("the form of a `check` line, reported by the builder line by line", () 
       "8:4 MESH_MISSING_OPTION `check`: missing required option `that`",
       "9:4 MESH_MISSING_OPTION `check`: missing required option `code`",
     ]);
+    // A reference to an incomplete declaration is no second error: the check exists, it is only incomplete.
+    expect(said(invoice('    check :x that=() => true message="m"\n    check :y that=() => true code="y" message="m"\n', RESCHEDULE("        check &x\n        check &y\n")))).toEqual([
+      "8:4 MESH_MISSING_OPTION `check`: missing required option `code`",
+    ]);
   });
 
   test("D-5: a reference under `checks`, one per line", () => {
@@ -223,8 +227,7 @@ describe("references the build refuses", () => {
     ["another action's inline check", "check &inlineOnly", DUE, "&inlineOnly is not a check of billing.Invoice: `check &name` uses a check the entity's `checks` section declares (&dueAfterIssue)."],
     ["an entity with no `checks` section", "check &dueAfterIssue", "", "&dueAfterIssue is not a check of billing.Invoice: `check &name` uses a check the entity's `checks` section declares, and it declares none."],
   ])("D-6: a reference to %s", (_name, line, checks, message) => {
-    const extra = checks ? "" : "";
-    const source = invoice(checks, extra + ISSUE(`        ${line}\n`) + ATTEMPTS + (checks ? RESCHEDULE("        check &dueAfterIssue\n") : ""));
+    const source = invoice(checks, ISSUE(`        ${line}\n`) + ATTEMPTS + (checks ? RESCHEDULE("        check &dueAfterIssue\n") : ""));
     expect(build(source).diagnostics.filter((d) => d.code === "MESH_UNKNOWN_MEMBER").map((d) => d.message)).toEqual([message]);
   });
 
@@ -246,11 +249,22 @@ describe("references the build refuses", () => {
     expect(codes(invoice(DUE + '    check :dueAfterIssue that=() => true code="n" message="m"\n', ISSUE("        check &dueAfterIssue\n")))).toEqual(["13:4 MESH_DUPLICATE_MEMBER"]);
   });
 
-  test("an inline check and a reference of one name in one block: one duplicate, at the inline check, in either order", () => {
+  test("two declarations of one name under `checks`: the fix says to rename or remove one", () => {
+    expect(build(invoice(DUE + DUE, ISSUE("        check &dueAfterIssue\n"))).diagnostics.map((d) => [d.position.line, d.code, d.message, d.fix])).toEqual([
+      [13, "MESH_DUPLICATE_MEMBER", "Duplicate member :dueAfterIssue", "give each rule its own name, or remove one"],
+    ]);
+  });
+
+  test("an inline check and a reference of one name in one block: one duplicate, at the later line, in either order", () => {
     // The inline check's name is the declaration's (SYN-08): the member list reports the pair at the later line.
     const inline = '        check :dueAfterIssue that=() => true code="i" message="m"\n';
     for (const [lines, at] of [[`${inline}        check &dueAfterIssue\n`, "19:8"], [`        check &dueAfterIssue\n${inline}`, "20:8"]] as const)
       expect(said(invoice(DUE, ISSUE(lines)))).toEqual([`${at} MESH_DUPLICATE_MEMBER Duplicate member :dueAfterIssue`]);
+    // With `checks` written after `actions`, the declaration is the later line, and the pair is reported there.
+    const after = invoice("", ISSUE(`${inline}        check &dueAfterIssue\n`)) + `  checks\n${DUE}`;
+    expect(build(after).diagnostics.map((d) => [d.position.line, d.code, d.fix])).toEqual([
+      [16, "MESH_DUPLICATE_MEMBER", "declare the check once under `checks` and use it with `check &dueAfterIssue` in each `validate`, or give each rule its own name"],
+    ]);
   });
 
   test("D-9: a named check no `validate` uses is a warning; a refused reference counts as a use", () => {
