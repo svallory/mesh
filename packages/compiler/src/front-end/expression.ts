@@ -377,6 +377,10 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       && namesEntity(object.name!, scope) && ctx.namespaces?.has(object.name!) === true
       && ctx.reference?.({ qualifier: { name: object.name!, offset: start(object) }, name: (n.property as N).name!, offset: start(n.property as N) }).ok !== false;
   };
+  // What a call calls (`limit()`, `h.limit()`, `new Limit()`, a template's tag) and what it is handed, through the
+  // wrappers MX leaves: a parent is walked before its children, so a helper module's name knows whether it is called.
+  const callees = new WeakSet<N>();
+  const handedOver = new WeakSet<N>();
   const walk = (value: unknown, parent: N | undefined, key: string | undefined, scope: ReadonlySet<string>): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
@@ -402,6 +406,13 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     const calledValue = n.type === "CallExpression" || n.type === "OptionalCallExpression" || n.type === "NewExpression" ? n.callee as N
       : n.type === "TaggedTemplateExpression" ? n.tag as N
       : undefined;
+    const calledNode = unwrapped(calledValue);
+    if (calledNode) callees.add(calledNode);
+    if (n.type === "CallExpression" || n.type === "OptionalCallExpression" || n.type === "NewExpression")
+      for (const argument of (n.arguments ?? []) as N[]) {
+        const handed = unwrapped(argument);
+        if (handed) handedOver.add(handed);
+      }
     for (const target of calledTransaction(calledValue)) {
       const mark = transactionMark(target)!;
       const member = TRANSACTION_MEMBERS.get(mark.name);
@@ -479,7 +490,19 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.events?.has(n.name!) || ctx.commands?.has(n.name!)) names.events.add(n.name!);
-        if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
+        if (ctx.helpers.has(n.name!)) {
+          names.helpers.add(n.name!);
+          // A helper module's name is a function to call: `limit()`, or `h.limit()` through a namespace import. Any other
+          // read of it is a read of a value (`LIMIT`, `limits.max`, `h.LIMIT`, `h` itself, a function passed along).
+          const namespace = ctx.namespaces?.has(n.name!) === true;
+          const member = key === "object" && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") ? parent! : undefined;
+          if (!callees.has(n) && !(namespace && member && callees.has(member))) {
+            const property = namespace && member && !member.computed && (member.property as N).type === "Identifier" ? (member.property as N).name! : undefined;
+            // A namespace import is never a function, so handing it over is no function passed along.
+            const handed = handedOver.has(property !== undefined ? member! : n) && !(namespace && property === undefined);
+            (names.values ??= []).push({ name: property !== undefined ? `${n.name}.${property}` : n.name!, position: ctx.at(start(n)), ...(handed ? { handed: true as const } : {}) });
+          }
+        }
         // `billing.Invoice`: what the namespace import's file declares, resolved as `entity=` resolves it.
         // A computed member written as a string (`billing["Invoice"]`) names the same member.
         const member = parent?.property as N | undefined;
@@ -562,11 +585,14 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
 
 /**
  * What a function names besides its scope: the entities, whether it calls an entity's action, the helpers it reads as
- * values, whether it calls the global `structuredClone` and whether it reads the record through `&name` (`record`). The
+ * values, each read of a helper module's name that is no call of it (`values`, which `translate` reports for a
+ * one-expression function), whether it calls the global `structuredClone` and whether it reads the record through `&name` (`record`). The
  * node has no types (MX strips them), so a helper named only in a type is left to the TypeScript back end (`typeNames` in
  * `typescript/type-names.ts`).
  */
-interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true }
+interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true; values?: CapturedValue[] }
+/** A read of a helper module's name that is no call of it: the name as written (`LIMIT`, `h.LIMIT`), and whether a call is handed it. */
+interface CapturedValue { name: string; position: SourcePosition; handed?: true }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -1108,6 +1134,18 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
         throw new Plain("block-body", `a block body of ${statements.length} statement${statements.length === 1 ? "" : "s"}`, f);
       body = statements[0]!.argument as N;
     }
+    // A helper module hands values out through functions, so one of its names read as a value is an error in every
+    // one-expression function, wherever the read sits: which construct stops the translation first does not decide
+    // it. An object literal (a check's `details`) is plain code because of the literal, and its values are the author's.
+    if (unwrapped(body)?.type !== "ObjectExpression")
+      for (const value of names.values ?? [])
+        ctx.report({
+          severity: "error",
+          code: "MESH_EXPR_CAPTURED_VALUE",
+          message: `\`${value.name}\` is read as a value, and an expression only calls what it imports from a helper module: a helper module hands values out through functions`,
+          position: value.position,
+          fix: `export a function from the helper module and call it: \`limit()\`${value.handed ? `; if \`${value.name}\` is a function, pass an arrow that calls it: \`(x) => ${value.name}(x)\`` : ""}`,
+        });
     const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
     // A method (`() { return ... }`) printed as plain code needs `function` before it, whatever arrows its body holds.
     return { tree, demotion: { edits, roots: free, ...clocked, ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) } };
