@@ -1,6 +1,6 @@
 ---
 title: "0075. Three lifecycle seams, named and shaped as the extension host's run-time points"
-description: "Decision record 0075: code the application may run before the transaction, after each write and after commit, and why they are the host's first slice. Status: Accepted. Amended 2026-10-11 (DOM-18, DOM-25). Amended 2026-10-12 (TXN-19)."
+description: "Decision record 0075: code the application may run before the transaction, after each write and after commit, and why they are the host's first slice. Status: Accepted. Amended 2026-10-11 (DOM-18, DOM-25). Amended 2026-10-12 (TXN-19). Note 2026-11-14: re-argued for projects; the decision is unchanged."
 ---
 
 # 0075. Three lifecycle seams, named and shaped as the extension host's run-time points
@@ -10,6 +10,8 @@ description: "Decision record 0075: code the application may run before the tran
 > **Amendment, 2026-10-11 (idempotency record).** The Context paragraph below says Hyper's idempotency record is code at the seams. The `afterWrite` seam cannot write it: the record stores the command's whole result (`PROTOCOL.md` section 4.3; the Hyper specification repository, branch `feat/protocol-phases`, commit `ccc00f9`), which exists only when the command ends, and `afterWrite` runs after each row. HA (the Hyper application) writes the record in the application `transaction`, after the action returns, in the same transaction. The decisions below do not change; `afterWrite` still serves per-row work.
 
 > **Amendment, 2026-10-12 (TXN-19).** A nested call's seams see the context that call was passed. Nothing is inherited from the calling action, so `caller` and `commandId` reach a nested call's events when the calling code passes them on. See [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md).
+
+> **Note, 2026-11-14 (lead, at the operator's request of 2026-10-11; the decision is unchanged).** The Context below argues the three seams from Hyper's engine alone. The reason that holds for any Mesh application is in this record's title: an application runs its own code before the transaction opens, after each row is written and after the commit (an audit row for each write, a refusal before anything is written) without editing generated handlers, and naming those points now with the host's names and payloads lets the extension host wrap them after 1.0 instead of replacing them ([Using your domain: seams](../../docs/using-your-domain.md#seams)). Hyper is the acceptance case, not the reason: two of the four uses the Context lists, the event log and the idempotency record, have since moved elsewhere (the amendments above).
 
 ## Status
 

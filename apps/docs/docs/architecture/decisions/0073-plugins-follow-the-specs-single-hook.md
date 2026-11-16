@@ -1,9 +1,11 @@
 ---
 title: "0073. Plugins follow the spec: one `task.claim` hook, before the transaction"
-description: "Decision record 0073: which plugin tiers the Hyper port keeps. Status: Accepted."
+description: "Decision record 0073: which plugin tiers the Hyper port keeps. Status: Accepted. Note 2026-11-14: it governs the Hyper application, not Mesh's extension model; the decision is unchanged."
 ---
 
 # 0073. Plugins follow the spec: one `task.claim` hook, before the transaction
+
+> **Note, 2026-11-14 (lead, at the operator's request of 2026-10-11; the decision is unchanged).** This record decides what the Hyper application in `examples/hyper` keeps of Hyper's plugin tiers. It is not Mesh's plugin or extension model: how an extension adds to a Mesh project is the extension host, after 1.0 ([extension host](../in-depth/extension-host.md), [ADR-0020](./0020-extension-contributions-through-declared-points.md)). What it says for any Mesh project is in its Consequences: an application that wants a hook able to refuse a write needs no plugin tier from Mesh, because the `beforeTransaction` seam refuses the call before anything is written and a `check` re-runs the rule inside the transaction ([Using your domain: seams](../../docs/using-your-domain.md#seams)).
 
 ## Status
 

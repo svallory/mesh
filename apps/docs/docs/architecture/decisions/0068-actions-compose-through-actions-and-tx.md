@@ -1,9 +1,11 @@
 ---
 title: "0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`"
-description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`). Amended 2026-10-11 (DOM-15). Amended 2026-10-12 (points 1 and 3)."
+description: "Decision record 0068: how an action calls other actions in its own transaction, what the called action checks, and how a step runs after the row is written. Status: Accepted, amended 2026-10-11 (`before` leaves `validate`). Amended 2026-10-11 (DOM-15). Amended 2026-10-12 (points 1 and 3). Note 2026-11-14: re-argued for projects; the decision is unchanged."
 ---
 
 # 0068. Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write`
+
+> **Note, 2026-11-14 (lead, at the operator's request of 2026-10-11; the decision is unchanged).** The Context argues this record from Hyper's cascades, and point 4 calls its additions "needed by the port". The reasons that hold for any Mesh project: an action writes a record and its own parts in one transaction, so a throw rolls them all back ([Entities: calling other actions](../../docs/entities.md#calling-other-actions)); a step after the write is for work that must see the stored record or whose records must follow the action's own ([Entities: do](../../docs/entities.md#do)); `details` gives the caller why a check failed as data it can act on; a check that sees the stored record can compare it with the new value, as a version number that refuses a stale update does ([Entities: a check that compares with the stored record](../../docs/entities.md#a-check-that-compares-with-the-stored-record)); and `set` of a relationship keeps who made a record as a relationship that loads. Hyper is the acceptance case, not the reason.
 
 > **Amendment, 2026-10-12 (CMP-16, TXN-16 to TXN-20).** Points 1 and 3 are replaced by [ADR-0086](./0086-entity-values-privileged-barrels-and-fqns.md): the `actions` handle becomes a call on the entity value (`Claim.end(input, context)`), the `tx` handle becomes `privileged(Claim).read(...)`, and the application's `transaction` stays as `transaction(fn)`, which takes no context and hands `fn` nothing. The record is amended, not superseded: `run [after=:write]` (TXN-09), the join and rollback rules and DOM-15's amendment stay. The body below is kept as history.
 
