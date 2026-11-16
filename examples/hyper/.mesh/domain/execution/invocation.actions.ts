@@ -248,17 +248,17 @@ export function bindInvocation(
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
             await $runCheck($issues, $checks, {
-              label: "session",
+              label: "sessionIsAttempts",
               code: "invocation.session",
               message: "the session is not the attempt's session",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 52, column: 9 },
-              that: $expressions["record.check.session.that"],
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 58, column: 9 },
+              that: $expressions["record.check.sessionIsAttempts.that"],
             });
             await $runCheck($issues, $checks, {
               label: "costUnknown",
               code: "invocation.cost-unknown",
               message: "the cost is unknown while a token count it needs is unknown",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 57, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 34, column: 5 },
               that: $expressions["record.check.costUnknown.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -302,7 +302,7 @@ export function bindInvocation(
               const $value = await $expressions["record.step.0.set.task"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &task (src/domain/execution/invocation.mesh.mx:64:17) produced no value, and the relationship task is required",
+                  "set &task (src/domain/execution/invocation.mesh.mx:66:17) produced no value, and the relationship task is required",
                 );
               $changes.taskId = $record.taskId = $value;
             }
@@ -310,7 +310,7 @@ export function bindInvocation(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:65:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:67:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -471,21 +471,21 @@ export function bindInvocation(
               label: "notCorrected",
               code: "invocation.not-corrected",
               message: "the invocation is already corrected",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 85, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 87, column: 9 },
               that: $expressions["correct.check.notCorrected.that"],
             });
             await $runCheck($issues, $checks, {
-              label: "reason",
+              label: "reasonGiven",
               code: "invocation.reason",
               message: "a correction gives a reason",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 90, column: 9 },
-              that: $expressions["correct.check.reason.that"],
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 92, column: 9 },
+              that: $expressions["correct.check.reasonGiven.that"],
             });
             await $runCheck($issues, $checks, {
               label: "costUnknown",
               code: "invocation.cost-unknown",
               message: "the cost is unknown while a token count it needs is unknown",
-              source: { file: "src/domain/execution/invocation.mesh.mx", line: 95, column: 9 },
+              source: { file: "src/domain/execution/invocation.mesh.mx", line: 34, column: 5 },
               that: $expressions["correct.check.costUnknown.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -530,7 +530,7 @@ export function bindInvocation(
               const $value = await $expressions["correct.step.0.set.attempt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &attempt (src/domain/execution/invocation.mesh.mx:102:20) produced no value, and the relationship attempt is required",
+                  "set &attempt (src/domain/execution/invocation.mesh.mx:100:20) produced no value, and the relationship attempt is required",
                 );
               $changes.attemptId = $record.attemptId = $value;
             }
@@ -538,7 +538,7 @@ export function bindInvocation(
               const $value = await $expressions["correct.step.0.set.task"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &task (src/domain/execution/invocation.mesh.mx:103:17) produced no value, and the relationship task is required",
+                  "set &task (src/domain/execution/invocation.mesh.mx:101:17) produced no value, and the relationship task is required",
                 );
               $changes.taskId = $record.taskId = $value;
             }
@@ -546,7 +546,7 @@ export function bindInvocation(
               const $value = await $expressions["correct.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:104:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/invocation.mesh.mx:102:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }

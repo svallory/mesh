@@ -1,0 +1,14 @@
+import { Invoice } from "./invoice.mesh.mx"
+
+entity :Line
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :invoice entity=Invoice
+  actions auto=[:read]
+    create :add
+      input
+        &invoice
+  policies
+    policy :open
+      authorize-if=() => true

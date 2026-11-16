@@ -22,7 +22,7 @@ ${extra}  actions auto=[:read]
     update :go
 ${steps}`;
 const run = (body: string) => `      do\n        run async ({ input, context }) { ${body} }\n`;
-const check = (that: string) => `      validate\n        check :c that=${that} code="c" message="m"\n`;
+const check = (that: string) => `      validate\n        check :asks that=${that} code="c" message="m"\n`;
 const policies = (...lines: string[]) => `  policies\n${lines.map((line) => `    ${line}\n`).join("")}`;
 
 const build = (source: string) => buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source }] });

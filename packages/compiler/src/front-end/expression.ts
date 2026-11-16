@@ -967,6 +967,25 @@ export type ScopeReach = ReadonlySet<string> | "any";
 const scopeReaches = new WeakMap<object, ScopeReach>();
 export const scopeReachOf = (expression: object): ScopeReach | undefined => scopeReaches.get(expression);
 export const rememberScopeReach = (expression: object, reach: ScopeReach): void => { scopeReaches.set(expression, reach); };
+/**
+ * A copy of a built expression with its own identity, for a named check used by several `validate` blocks: the model pass
+ * changes the object it types, so each block needs its own. The side tables above are keyed by the object, so the copy
+ * gets their entries; a new table keyed by an expression must be copied here too.
+ */
+export function copyExpression<T extends object>(expression: T): T {
+  const copy = structuredClone(expression);
+  const demotion = demotions.get(expression);
+  if (demotion) demotions.set(copy, structuredClone(demotion));
+  const privileged = privilegedCalls.get(expression);
+  if (privileged) privilegedCalls.set(copy, privileged);
+  const asks = askCalls.get(expression);
+  if (asks) askCalls.set(copy, asks);
+  const asynchrony = asynchronous.get(expression);
+  if (asynchrony) asynchronous.set(copy, asynchrony);
+  const reach = scopeReaches.get(expression);
+  if (reach) scopeReaches.set(copy, reach);
+  return copy;
+}
 export function scopeReachOfFunction(fn: SyntaxNode): ScopeReach | undefined {
   const bindings = new Set<string>();
   for (const param of ((fn as N).params ?? []) as N[]) {

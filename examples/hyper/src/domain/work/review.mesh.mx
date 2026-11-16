@@ -17,23 +17,26 @@ entity :Review table="reviews"
   relationships
     belongs-to :submission entity=Submission
     belongs-to :reviewer entity=Collaborator
+  checks
+    check :pending [
+      that=async ({ input }) => (await submittedVersionsOf(input.submission)).state === :pending
+      code="submission.pending"
+      message="the submission is not pending"
+    ]
+    check :versionMatches [
+      that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(input.submission)).current
+      code="expected-version"
+      message="the task is at another version; read it again and retry"
+      details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(input.submission)).current })
+    ]
   actions auto=[:read]
     create :accept
       input
         &submission
         integer :expectedVersion nullable
       validate
-        check :pending [
-          that=async ({ input }) => (await submittedVersionsOf(input.submission)).state === :pending
-          code="submission.pending"
-          message="the submission is not pending"
-        ]
-        check :versionMatches [
-          that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(input.submission)).current
-          code="expected-version"
-          message="the task is at another version; read it again and retry"
-          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(input.submission)).current })
-        ]
+        check &pending
+        check &versionMatches
       do
         set
           &decision=:accept
@@ -54,17 +57,8 @@ entity :Review table="reviews"
         &submission
         integer :expectedVersion nullable
       validate
-        check :pending [
-          that=async ({ input }) => (await submittedVersionsOf(input.submission)).state === :pending
-          code="submission.pending"
-          message="the submission is not pending"
-        ]
-        check :versionMatches [
-          that=async ({ input }) => input.expectedVersion == null || input.expectedVersion === (await submittedVersionsOf(input.submission)).current
-          code="expected-version"
-          message="the task is at another version; read it again and retry"
-          details=async ({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: (await submittedVersionsOf(input.submission)).current })
-        ]
+        check &pending
+        check &versionMatches
       do
         set
           &decision=:return

@@ -14,17 +14,30 @@ entity :Machine table="machines"
   relationships
     belongs-to :firstReportedBy entity=Collaborator nullable
     has-many :attempts entity=Attempt
+  checks
+    check :nameFree [
+      that=async ({ input }) => (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
+      code="machine.name-free"
+      message="a machine already has that name"
+    ]
+    check :machineActive [
+      that=() => &state === :active
+      code="machine.active"
+      message="the machine is retired"
+    ]
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+      code="expected-version"
+      message="the record is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+    ]
   actions auto=[:read]
     create :register
       input
         &name
         &platform
       validate
-        check :nameFree [
-          that=async ({ input }) => (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
-          code="machine.name-free"
-          message="a machine already has that name"
-        ]
+        check &nameFree
       do
         set
           &firstReportedBy=({ actor }) => actor.id
@@ -32,11 +45,7 @@ entity :Machine table="machines"
       input
         &name
       validate
-        check :nameFree [
-          that=async ({ input }) => (await Mesh.privileged(Machine).read({ filter: { name: { eq: input.name } }, limit: 1 })).length === 0
-          code="machine.name-free"
-          message="a machine already has that name"
-        ]
+        check &nameFree
       do
         set
           &firstReportedBy=({ actor }) => actor.id
@@ -45,17 +54,8 @@ entity :Machine table="machines"
         &platform
         integer :expectedVersion nullable
       validate
-        check :machineActive [
-          that=() => &state === :active
-          code="machine.active"
-          message="the machine is retired"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &machineActive
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -64,22 +64,13 @@ entity :Machine table="machines"
         string :reason min=1
         integer :expectedVersion nullable
       validate
-        check :machineActive [
-          that=() => &state === :active
-          code="machine.active"
-          message="the machine is retired"
-        ]
+        check &machineActive
         check :machineIdle [
           that=() => !&attempts.some((a) => a.state === :running)
           code="machine.idle"
           message="an attempt on this machine is reported running"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &state=:retired

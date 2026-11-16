@@ -30,6 +30,12 @@ entity :Invocation table="invocations"
     belongs-to :session entity=SessionReference nullable
     belongs-to :corrects entity=Invocation nullable
     belongs-to :recordedBy entity=Collaborator
+  checks
+    check :costUnknown [
+      that=({ input }) => (input.inputTokens !== null && input.outputTokens !== null) || input.estimatedCost === null
+      code="invocation.cost-unknown"
+      message="the cost is unknown while a token count it needs is unknown"
+    ]
   actions auto=[:read]
     create :record
       input
@@ -49,16 +55,12 @@ entity :Invocation table="invocations"
         &endedAt
         &session
       validate
-        check :session [
+        check :sessionIsAttempts [
           that=async ({ input }) => input.session == null || input.session === await attemptSessionOf(input.attempt)
           code="invocation.session"
           message="the session is not the attempt's session"
         ]
-        check :costUnknown [
-          that=({ input }) => (input.inputTokens !== null && input.outputTokens !== null) || input.estimatedCost === null
-          code="invocation.cost-unknown"
-          message="the cost is unknown while a token count it needs is unknown"
-        ]
+        check &costUnknown
       do
         set
           &task=() => &attempt.taskId
@@ -87,16 +89,12 @@ entity :Invocation table="invocations"
           code="invocation.not-corrected"
           message="the invocation is already corrected"
         ]
-        check :reason [
+        check :reasonGiven [
           that=({ input }) => (input.reason ?? "") !== ""
           code="invocation.reason"
           message="a correction gives a reason"
         ]
-        check :costUnknown [
-          that=({ input }) => (input.inputTokens !== null && input.outputTokens !== null) || input.estimatedCost === null
-          code="invocation.cost-unknown"
-          message="the cost is unknown while a token count it needs is unknown"
-        ]
+        check &costUnknown
       do
         set
           &attempt=async ({ input }) => (await Mesh.privileged(Invocation).read({ filter: { id: { eq: input.corrects ?? "" } } })).map((corrected) => corrected.attemptId)[0]

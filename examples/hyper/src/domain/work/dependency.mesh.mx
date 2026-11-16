@@ -60,7 +60,7 @@ entity :Dependency table="dependencies"
         string :reason nullable
         integer :expectedVersion nullable
       validate
-        check :versionMatches [
+        check :versionMatchesOnRemove [
           that=({ input }) => input.expectedVersion == null || input.expectedVersion === &dependent.version
           code="expected-version"
           message="the task is at another version; read it again and retry"

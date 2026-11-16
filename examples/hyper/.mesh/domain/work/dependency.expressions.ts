@@ -136,15 +136,15 @@ export const $expressions = {
       $s,
     );
   },
-  // check :versionMatches that, translated (src/domain/work/dependency.mesh.mx:64:16)
-  "remove.check.versionMatches.that": (
+  // check :versionMatchesOnRemove that, translated (src/domain/work/dependency.mesh.mx:64:16)
+  "remove.check.versionMatchesOnRemove.that": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) =>
     $.or($.isNull($s.input?.expectedVersion), () =>
       $.eq($s.input?.expectedVersion, $s.self.dependent?.version),
     ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/work/dependency.mesh.mx:67:19)
-  "remove.check.versionMatches.details": (
+  // check :versionMatchesOnRemove details, plain (unsupported-construct) (src/domain/work/dependency.mesh.mx:67:19)
+  "remove.check.versionMatchesOnRemove.details": (
     $s: $work$Dependency$CheckScope<$work$Dependency$RemoveDependencyInput>,
   ) => {
     const $self = $s.self;

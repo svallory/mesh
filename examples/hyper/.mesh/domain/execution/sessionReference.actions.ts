@@ -255,15 +255,15 @@ export function bindSessionReference(
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
             await $runCheck($issues, $checks, {
-              label: "agentProfile",
+              label: "agentProfileExists",
               code: "session.agent-profile",
               message: "the agent profile is not a collaborator",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 30,
+                line: 42,
                 column: 9,
               },
-              that: $expressions["record.check.agentProfile.that"],
+              that: $expressions["record.check.agentProfileExists.that"],
             });
             await $runCheck($issues, $checks, {
               label: "machineRetired",
@@ -271,7 +271,7 @@ export function bindSessionReference(
               message: "the machine is retired; report the host by a new name",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 35,
+                line: 47,
                 column: 9,
               },
               that: $expressions["record.check.machineRetired.that"],
@@ -295,7 +295,7 @@ export function bindSessionReference(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:42:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:54:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -401,8 +401,8 @@ export function bindSessionReference(
               message: "the session is redacted and cannot be changed",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 50,
-                column: 9,
+                line: 21,
+                column: 5,
               },
               that: $expressions["setAvailability.check.notRedacted.that"],
             });
@@ -412,7 +412,7 @@ export function bindSessionReference(
               message: "availability is complete, partial or unavailable; redact with redact",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 55,
+                line: 63,
                 column: 9,
               },
               that: $expressions["setAvailability.check.availabilityKept.that"],
@@ -423,8 +423,8 @@ export function bindSessionReference(
               message: "the record is at another version; read it again and retry",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 60,
-                column: 9,
+                line: 26,
+                column: 5,
               },
               that: $expressions["setAvailability.check.versionMatches.that"],
               details: $expressions["setAvailability.check.versionMatches.details"],
@@ -440,7 +440,7 @@ export function bindSessionReference(
               const $value = await $expressions["setAvailability.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/session-reference.mesh.mx:68:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/session-reference.mesh.mx:71:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -569,8 +569,8 @@ export function bindSessionReference(
               message: "the session is redacted and cannot be changed",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 74,
-                column: 9,
+                line: 21,
+                column: 5,
               },
               that: $expressions["redact.check.notRedacted.that"],
             });
@@ -580,8 +580,8 @@ export function bindSessionReference(
               message: "the record is at another version; read it again and retry",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 79,
-                column: 9,
+                line: 26,
+                column: 5,
               },
               that: $expressions["redact.check.versionMatches.that"],
               details: $expressions["redact.check.versionMatches.details"],
@@ -594,7 +594,7 @@ export function bindSessionReference(
               const $value = await $expressions["redact.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/session-reference.mesh.mx:89:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/session-reference.mesh.mx:83:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }

@@ -1,7 +1,7 @@
 import { dirname, relative } from "node:path";
 import type { Action, Always, Atom, Attribute, Check, Entity, Expression, Literal, Policy, SourcePosition, Step } from "@meshfw/model";
 import { filledKey } from "../../model/new-instance.ts";
-import { policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
+import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
@@ -236,9 +236,7 @@ function printValue(value: Literal | Atom, type: Attribute["type"]): string {
  * action, and one that names neither, which covers every action of the entity.
  */
 export function alwaysFor(entity: Entity, action: Action): Always[] {
-  return entity.always.filter((block) =>
-    (!block.types && !block.actions)
-    || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name));
+  return entity.always.filter((block) => alwaysCovers(block, action));
 }
 
 /**

@@ -225,7 +225,7 @@ export function bindCollaborator(
               label: "nameUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 24, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 36, column: 9 },
               that: $expressions["register.check.nameUnique.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -267,7 +267,7 @@ export function bindCollaborator(
                     entity: "identity.Collaborator",
                     action: "register",
                     key: { id: $written.id },
-                    at: "src/domain/identity/collaborator.mesh.mx:30:17",
+                    at: "src/domain/identity/collaborator.mesh.mx:42:17",
                   },
                   $event,
                   $context,
@@ -379,28 +379,28 @@ export function bindCollaborator(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 37, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 19, column: 5 },
               that: $expressions["update.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "kindImmutable",
               code: "collaborator.kind-immutable",
               message: "a collaborator keeps its kind",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 42, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 50, column: 9 },
               that: $expressions["update.check.kindImmutable.that"],
             });
             await $runCheck($issues, $checks, {
-              label: "nameUnique",
+              label: "nameStaysUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 47, column: 9 },
-              that: $expressions["update.check.nameUnique.that"],
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 55, column: 9 },
+              that: $expressions["update.check.nameStaysUnique.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 52, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 24, column: 5 },
               that: $expressions["update.check.versionMatches.that"],
               details: $expressions["update.check.versionMatches.details"],
             });
@@ -413,7 +413,7 @@ export function bindCollaborator(
               const $value = await $expressions["update.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:60:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/collaborator.mesh.mx:63:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -460,7 +460,7 @@ export function bindCollaborator(
                     entity: "identity.Collaborator",
                     action: "update",
                     key: { id: $written.id },
-                    at: "src/domain/identity/collaborator.mesh.mx:61:17",
+                    at: "src/domain/identity/collaborator.mesh.mx:64:17",
                   },
                   $event,
                   $context,
@@ -572,21 +572,21 @@ export function bindCollaborator(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 67, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 19, column: 5 },
               that: $expressions["retire.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 72, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 71, column: 9 },
               that: $expressions["retire.check.lastOwner.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 77, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 24, column: 5 },
               that: $expressions["retire.check.versionMatches.that"],
               details: $expressions["retire.check.versionMatches.details"],
             });
@@ -597,7 +597,7 @@ export function bindCollaborator(
               const $value = await $expressions["retire.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:86:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/collaborator.mesh.mx:80:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -644,7 +644,7 @@ export function bindCollaborator(
                     entity: "identity.Collaborator",
                     action: "retire",
                     key: { id: $written.id },
-                    at: "src/domain/identity/collaborator.mesh.mx:87:17",
+                    at: "src/domain/identity/collaborator.mesh.mx:81:17",
                   },
                   $event,
                   $context,

@@ -17,6 +17,18 @@ entity :Membership table="memberships"
     belongs-to :collaborator entity=Collaborator
     belongs-to :grantedBy entity=Collaborator
     belongs-to :revokedBy entity=Collaborator nullable
+  checks
+    check :membershipActive [
+      that=() => &state === :active
+      code="membership.active"
+      message="the membership is revoked"
+    ]
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+      code="expected-version"
+      message="the record is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+    ]
   actions auto=[:read]
     create :grant
       input
@@ -43,11 +55,7 @@ entity :Membership table="memberships"
         &role
         integer :expectedVersion nullable
       validate
-        check :membershipActive [
-          that=() => &state === :active
-          code="membership.active"
-          message="the membership is revoked"
-        ]
+        check &membershipActive
         check :roleChanges [
           that=({ input }) => (input.role ?? &role) !== &role
           code="membership.unchanged"
@@ -58,12 +66,7 @@ entity :Membership table="memberships"
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -73,22 +76,13 @@ entity :Membership table="memberships"
         string :reason nullable
         integer :expectedVersion nullable
       validate
-        check :membershipActive [
-          that=() => &state === :active
-          code="membership.active"
-          message="the membership is revoked"
-        ]
-        check :lastOwner [
+        check &membershipActive
+        check :ownerRemains [
           that=async ({}) => await keepsAnOwnerOf(&state === :active && &role === :owner)
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &state=:revoked

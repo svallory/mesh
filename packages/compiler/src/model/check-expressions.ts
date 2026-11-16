@@ -15,7 +15,7 @@ import type {
   TypeClass,
 } from "@meshfw/model";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
-import { policyCovers } from "./policies.ts";
+import { alwaysCovers, policyCovers } from "./policies.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -27,7 +27,23 @@ import { policyCovers } from "./policies.ts";
 export interface CheckOptions {
   /** What printing a translated function as plain code needs, kept by the front end for demotion: the edits that turn it into TypeScript, the scope names it reads, the names its edits read (`internal`) and whether it is a method. */
   demotionOf: (expression: Expression) => { edits: SourceEdit[]; roots: string[]; clock?: ("now" | "today")[]; internal?: InternalNames; isSystem?: true; helpers?: string[]; mesh?: string[]; method?: true };
+  /** A copy of an expression with its own identity and the front end's records of it (`copyExpression`): a named check that an `always` block uses is typed once per action the block covers, on a fresh copy each time. */
+  copyOf?: (expression: Expression) => Expression;
 }
+
+/** An action that runs a named check, while the model pass types the check in its scope (ruling D13). */
+interface Referrer {
+  /** `update :reschedule`. */
+  who: string;
+  /** How it reaches the check: `""` from its own `validate`, or ` through the \`always\` block at line 8`. */
+  through: string;
+  /** Whether the action takes no input under this name. */
+  lacks: (name: string) => boolean;
+}
+/** The codes whose message names the referrer already, so they are neither merged nor prefixed. */
+const NAMES_ITS_REFERRER = new Set(["MESH_CHECK_INPUT", "MESH_VALIDATE_NOT_APPLIED", "MESH_VALIDATE_UNFILLED"]);
+/** `a`, `a and b`, `a, b and c`. */
+const listed = (items: readonly string[]) => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 
 interface Ty {
   c: TypeClass | "input";
@@ -124,8 +140,18 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   const byFile = new Map(document.entities.map((entity) => [resolve(entity.file), entity]));
   const target = (from: Entity, relation: Entity["relationships"][number]): Entity | undefined =>
     byFile.get(resolve(dirname(from.file), relation.entity.from));
-  const report = (severity: "error" | "warning", code: string, message: string, position: SourcePosition, fix: string | null = null) =>
-    diagnostics.push({ severity, code, message, position, fix });
+  /** Set while a named check is typed in one referrer's scope; `declaration` is the check's own position. */
+  let via: (Referrer & { declaration: SourcePosition }) | undefined;
+  /** Each diagnostic reported while `via` was set: who it was found for, and in which declaration. */
+  const found = new WeakMap<Diagnostic, { who: string; through: string; declaration: string }>();
+  /** For each declaration (`file:offset`) of a named check, the referrers it was typed for: `who` to `through`. */
+  const referrersOf = new Map<string, Map<string, string>>();
+  const keyOf = (position: SourcePosition) => `${position.file}:${position.offset}`;
+  const report = (severity: "error" | "warning", code: string, message: string, position: SourcePosition, fix: string | null = null) => {
+    const diagnostic = { severity, code, message, position, fix };
+    diagnostics.push(diagnostic);
+    if (via) found.set(diagnostic, { who: via.who, through: via.through, declaration: keyOf(via.declaration) });
+  };
   /** The `&x` of an `input.x ?? &x`. */
   const storedFallback = new WeakSet<ExprNode>();
 
@@ -165,9 +191,10 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   /** `policy`: the policy's message name when the function is a policy's (S2 of the M8a review), which sees `self` as `validate` does. */
   const notApplied = (name: string, position: SourcePosition, policy?: string) => {
     const code = policy ? "MESH_POLICY_NOT_APPLIED" : "MESH_VALIDATE_NOT_APPLIED";
-    if (diagnostics.some((d) => d.code === code && d.position.file === position.file && d.position.offset === position.offset)) return;
+    // A named check is reported once per create that uses it, each naming its create (ruling D13, point 5).
+    if (!via && diagnostics.some((d) => d.code === code && d.position.file === position.file && d.position.offset === position.offset)) return;
     report("warning", code,
-      `on a create, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: ${policy ? `${policy} sees \`self\` as \`validate\` does,` : "\`validate\` sees \`self\`"} before the input`, position,
+      `${via ? `in ${via.who}, which uses this check${via.through}` : "on a create"}, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: ${policy ? `${policy} sees \`self\` as \`validate\` does,` : "\`validate\` sees \`self\`"} before the input`, position,
       `write \`input.${name}\` for the caller's value, or \`input.${name} ?? &${name}\` for the value the action will store; on an update this changes the meaning (\`input.${name} ?? &${name}\` is the value being sent, \`&${name}\` the stored one), so in a check that also runs on updates and means the stored value, keep \`&${name}\``);
   };
   /** The same for a check Mesh runs as plain code: each `&x` the authored text reads, found through its edits. */
@@ -189,7 +216,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   // No reachability analysis: `&n > 0 || true` is not unknown, so the wording says what happens when the result depends on the read.
   const unfilled = (name: string, position: SourcePosition, part: Scope["checkPart"]) =>
     report("warning", "MESH_VALIDATE_UNFILLED",
-      `\`&${name}\` is null on every create here: \`validate\` sees the new instance before the input is applied, so a result that depends on it is unknown and ${whenUnknown(part)}`, position,
+      `\`&${name}\` is null ${via ? `in ${via.who}, which uses this check${via.through}` : "on every create here"}: \`validate\` sees the new instance before the input is applied, so a result that depends on it is unknown and ${whenUnknown(part)}`, position,
       `write \`input.${name} ?? &${name}\` for the value the action will store, or \`input.${name}\` for the caller's`);
 
   function infer(n: ExprNode, scope: Scope): Ty {
@@ -237,6 +264,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       }
       case "member": {
         const owner = infer(n.object, scope);
+        // A named check is typed in each referrer's scope: `input.x` where that action takes no `x` is an error at the read.
+        // Only in translated code (D25 point 2): code printed as the author's TypeScript (an object literal's parts, a
+        // demoted tree) is left to tsc, as a plain function is.
+        if (owner.c === "input" && !owner.entity && via?.lacks(n.name) && !scope.printedAsJavaScript)
+          report("error", "MESH_CHECK_INPUT",
+            `\`input.${n.name}\` is read by a check that ${via.who} uses${via.through}, and ${via.who} takes no \`${n.name}\``, n.position,
+            `add \`${n.name}\` to the input of ${via.who}, or write the check for that action in its own \`validate\``);
         // On a create, `&x` in a check is the new instance's value before the input: its default, or null. Not the caller's.
         if (owner.pending?.has(n.name) && !storedFallback.has(n)) {
           notApplied(n.name, n.position, scope.policy);
@@ -518,7 +552,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
    * a member with no default is still null. The steps before the write see the input applied; on a create the key the data
    * layer gives (an `integer` key) is null until the write.
    */
-  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression; message: string | Expression }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[]): void {
+  function blocks(entity: Entity, validate: { that: Expression; when?: Expression; details?: Expression; message: string | Expression; position: SourcePosition; reference?: SourcePosition }[], list: Step[], scope: Scope, creates: readonly { input: Action["input"] }[], referrer?: Referrer): void {
     const gaps = newInstanceGaps(entity);
     const accepted = acceptedBy(creates);
     const pending = pendingOn(entity, creates);
@@ -527,6 +561,11 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       ? { ...scope, validate: true, fresh: new Set([...members, ...newInstanceComputed(entity, new Set(members))]), pending, acceptedOnCreate: new Set([...accepted[0]!].filter((name) => accepted.every((set) => set.has(name)))) }
       : { ...scope, validate: true };
     for (const check of validate) {
+      via = check.reference && referrer ? { ...referrer, declaration: check.position } : undefined;
+      if (via) {
+        const referrers = referrersOf.get(keyOf(check.position)) ?? new Map<string, string>();
+        referrersOf.set(keyOf(check.position), referrers.set(via.who, via.through));
+      }
       for (const [e, part] of check.when ? [[check.that, "that"], [check.when, "when"]] as const : [[check.that, "that"]] as const) {
         const t = visit(e, { ...checks, checkPart: part }, true);
         if (t?.unfilled !== undefined) unfilled(t.unfilled, e.tree!.position, part);
@@ -534,12 +573,53 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       if (check.details) visit(check.details, { ...checks, checkPart: "details" }, false);
       if (typeof check.message !== "string") visit(check.message, { ...checks, checkPart: "message" }, false);
       if (checks.pending?.size) for (const e of [check.that, check.when, check.details, check.message]) if (typeof e === "object" && e.plain) plainNotApplied(e, checks.pending);
+      via = undefined;
     }
     steps(list, entity, creates.length && gaps.key ? { ...scope, fresh: new Set([gaps.key]) } : scope);
   }
 
+  /** The action as a referrer of a named check: it takes its declared inputs and, on an update or a destroy, the key. */
+  const referrerOf = (entity: Entity, action: Pick<Action, "kind" | "name" | "input">, through = ""): Referrer => {
+    const key = action.kind === "update" || action.kind === "destroy" ? entity.attributes.filter((a) => a.primaryKey).map((a) => a.name) : [];
+    const takes = new Set([...key, ...action.input.map((field) => (field.kind === "member" ? field.ref.name : field.name))]);
+    return { who: `${action.kind} :${action.name}`, through, lacks: (name) => !takes.has(name) };
+  };
+  const copy = (e: Expression): Expression => options.copyOf ? options.copyOf(e) : structuredClone(e);
+  /**
+   * One report per mistake inside a named check, however many referrers have it (each referrer types its own copy). When
+   * only some of the check's referrers have it, the message says which; a code whose message names its referrer already is
+   * left as it is.
+   */
+  function mergeFound(from: number): void {
+    const groups = new Map<string, Diagnostic[]>();
+    for (const d of diagnostics.slice(from)) {
+      const where = found.get(d);
+      if (!where || NAMES_ITS_REFERRER.has(d.code)) continue;
+      const key = [where.declaration, d.code, d.message, d.position.file, d.position.offset].join("\u0000");
+      groups.set(key, [...(groups.get(key) ?? []), d]);
+    }
+    const dropped = new Set<Diagnostic>();
+    for (const group of groups.values()) {
+      const [kept, ...rest] = group as [Diagnostic, ...Diagnostic[]];
+      rest.forEach((d) => dropped.add(d));
+      const where = found.get(kept)!;
+      const all = referrersOf.get(where.declaration)!;
+      const who = new Map(group.map((d) => [found.get(d)!.who, found.get(d)!.through]));
+      if (who.size >= all.size) continue;
+      const throughs = new Set(who.values());
+      const one = throughs.size === 1 ? [...throughs][0]! : undefined;
+      const names = [...who].map(([name, through]) => one === undefined && through ? `${name} (${through.trim()})` : name);
+      kept.message = `in ${listed(names)}, which use${names.length === 1 ? "s" : ""} this check${one ?? ""}, ${kept.message}`;
+    }
+    if (!dropped.size) return;
+    const rest = diagnostics.slice(from).filter((d) => !dropped.has(d));
+    diagnostics.length = from;
+    diagnostics.push(...rest);
+  }
+
   for (const entity of document.entities) {
     const base: Scope = { entity, beforeNullable: true, inputs: null, locals: new Map() };
+    const from = diagnostics.length;
     for (const computed of entity.computed as Computed[]) {
       if (!computed.body) continue;
       const t = visit(computed.body, { ...base, computed: `computed :${computed.name} of ${entity.fqn}` }, false);
@@ -548,7 +628,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     for (const action of entity.actions) {
       const scope: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
       if (action.filter) visit(action.filter, scope, true);
-      blocks(entity, action.validate, action.do, scope, action.kind === "create" ? [action] : []);
+      blocks(entity, action.validate, action.do, scope, action.kind === "create" ? [action] : [], referrerOf(entity, action));
     }
     // The actions an `always` block can cover: the declared ones and the generated (`auto`) ones, which take no input.
     const every = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, input: [] as Action["input"] }))];
@@ -557,8 +637,34 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
       const creates = every.filter((action) => action.kind === "create"
         && ((!block.types && !block.actions) || block.types?.includes(action.kind) || block.actions?.some((ref) => ref.name === action.name)));
-      blocks(entity, block.validate, block.do, { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null }, creates);
+      const scope: Scope = { ...base, beforeNullable: covers.includes("create") || covers.includes(undefined), inputs: null };
+      blocks(entity, block.validate.filter((check) => !check.reference), block.do, scope, creates);
+      // A named check the block uses is typed in the block's scope once, for its one generated function, and then in the
+      // scope of each action the block covers, on a fresh copy, naming that action: that is where its mistakes are reported.
+      const referenced = block.validate.filter((check) => check.reference);
+      if (!referenced.length) continue;
+      const covered = every.filter((action) => action.kind !== "read" && alwaysCovers(block, action));
+      const copied = () => referenced.map((check) => ({
+        ...check,
+        that: copy(check.that),
+        message: typeof check.message === "string" ? check.message : copy(check.message),
+        ...(check.when ? { when: copy(check.when) } : {}),
+        ...(check.details ? { details: copy(check.details) } : {}),
+      }));
+      // Copied before the block-scope visit, which changes what it visits (a warning demotes a tree to plain code): a copy
+      // taken after it would be plain already and lose every warning that demotes.
+      const pristine = covered.map(copied);
+      const kept = diagnostics.length;
+      blocks(entity, referenced, [], scope, creates);
+      if (!covered.length) continue;
+      diagnostics.length = kept;
+      for (const [index, action] of covered.entries()) {
+        const copies = pristine[index]!;
+        const own: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action as Action) };
+        blocks(entity, copies, [], own, action.kind === "create" ? [action] : [], referrerOf(entity, action, ` through the \`always\` block at line ${block.position.line}`));
+      }
     }
+    mergeFound(from);
     for (const policy of entity.policies) {
       // A policy sees `self` as `validate` does: on a create it covers, `&x` of a member the create takes is the new
       // instance's value before the input, not the caller's.

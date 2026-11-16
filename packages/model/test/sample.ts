@@ -215,11 +215,14 @@ export const postDocument: ModelDocument = {
         }),
         action("update", "send", {
           validate: [
-            check(
-              "invoiceHasLines",
-              "() => &lineCount > 0",
-              "an invoice needs at least one line",
-            ),
+            {
+              ...check(
+                "invoiceHasLines",
+                "() => &lineCount > 0",
+                "an invoice needs at least one line",
+              ),
+              reference: at("&invoiceHasLines"),
+            },
           ],
           do: [
             {
@@ -239,12 +242,14 @@ export const postDocument: ModelDocument = {
               "() => &status === :sent",
               "only a sent invoice can be paid",
             ),
-            check(
-              "invoiceHasLines",
-              "() => &lineCount > 0",
-              "an invoice needs at least one line",
-              1,
-            ),
+            {
+              ...check(
+                "invoiceHasLines",
+                "() => &lineCount > 0",
+                "an invoice needs at least one line",
+              ),
+              reference: at("&invoiceHasLines", 1),
+            },
           ],
           do: [
             {

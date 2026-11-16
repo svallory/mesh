@@ -51,6 +51,17 @@ entity :Task table="tasks"
   computed
     boolean :urgent() { return &priority >= 7 }
     boolean :bad({ self }) { if (self.title === "boom") throw new Error("bad computed"); return false }
+  checks
+    check :openOnly [
+      that=() => &state === :open
+      code="task.open"
+      message="only an open task can start"
+    ]
+    check :mutated [
+      that=({ input }) => { if (input.site === "check") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return true }
+      code="task.mutated"
+      message="mutated"
+    ]
   actions auto=[:read]
     always types=[:create, :update]
       validate
@@ -130,21 +141,13 @@ entity :Task table="tasks"
           &note=({ input }) => input.memo
     update :start
       validate
-        check :openOnly [
-          that=() => &state === :open
-          code="task.open"
-          message="only an open task can start"
-        ]
+        check &openOnly
       do
         set
           &state=:doing
     update :vet
       validate
-        check :openOnly [
-          that=() => &state === :open
-          code="task.open"
-          message="only an open task can start"
-        ]
+        check &openOnly
         check :noteLong [
           that=() => &note?.length > 3
           code="task.note"
@@ -240,11 +243,7 @@ entity :Task table="tasks"
         string :what
         string :site
       validate
-        check :mutated [
-          that=({ input }) => { if (input.site === "check") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return true }
-          code="task.mutated"
-          message="mutated"
-        ]
+        check &mutated
       do
         set
           &openedAt=() => %.now
@@ -263,11 +262,7 @@ entity :Task table="tasks"
         string :what
         string :site
       validate
-        check :mutated [
-          that=({ input }) => { if (input.site === "check") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return true }
-          code="task.mutated"
-          message="mutated"
-        ]
+        check &mutated
       do
         when=({ input }) => { if (input.site === "when") { const m: any = input; if (input.what === "json" && m.meta) m.meta.injected = true; if (input.what === "array" && m.meta) m.meta.list.push(9); if (input.what === "date" && m.doneAt) m.doneAt.setUTCFullYear(2000); if (input.what === "scalar") m.title = "changed"; } return false }
           set
@@ -472,7 +467,7 @@ describe("create", () => {
       expect(error.code).toBe("invalid_input");
       expect(error.issues).toEqual([{
         label: "titleNotShouting", code: "task.shouting", path: [], message: "do not shout", details: null,
-        source: { file: "src/domain/task.mesh.mx", line: 27, column: 9 },
+        source: { file: "src/domain/task.mesh.mx", line: 38, column: 9 },
       }]);
       expect(error.message).toBe("titleNotShouting: do not shout");
     } finally { await world.db.close(); }

@@ -79,12 +79,16 @@ describe("v4 contracts", () => {
     "  actions\n    always types=[:upsert]\n",
     "  actions\n    read :read\n      sort\n        asc :id\n",
     "  actions\n    create :create\n      input\n        :id\n",
-    '  actions\n    create :create\n      validate\n        check :ok code="bad" message="bad"\n',
     '  actions\n    create :create\n      validate\n        check :ok that=() => true code=:bad message="bad"\n',
     "  actions\n    read :read filter=someFunction\n",
     "  policies\n    policy :owner actions=[:read]\n",
   ])("rejects old options or invalid shapes %s", (suffix) =>
     expect(parse(keyed + suffix).diagnostics.length).toBeGreaterThan(0),
+  );
+  // A `check` line may declare a check or use a named one (`check &name`), so the contract requires none of a
+  // declaration's options: the builder reports the one missing, with MX's text.
+  test("rejects a check without `that`", () =>
+    expect(buildModel({ root: "/p", files: [{ file: "todo/todo.mesh.mx", source: `${keyed}  actions\n    create :create\n      validate\n        check :ok code="bad" message="bad"\n` }] }).diagnostics.map((d) => d.code)).toContain("MESH_MISSING_OPTION"),
   );
   test("a single atom in a list slot is refused with the list spelling (MX alpha.33: list slots are arrays of `mesh:Atom`)", () => {
     const result = parse(`${keyed}  actions auto=:read\n`);
@@ -239,8 +243,9 @@ describe("a read takes no validate and no do", () => {
   });
   test("the legal neighbours stay legal: a read's input, filter and sort; validate and do on the three writes and in an always block beside a read", () => {
     expect(read("      input\n        integer :m\n      filter=({ self, input }) => self.n > input.m\n      sort\n        asc &n\n")).toEqual([]);
-    const body = `      validate\n${CHECK}      do\n${RUN}`;
-    expect(build(`${keyed}    integer :n\n  actions auto=[:read]\n    read :open\n    create :add\n${body}    update :change\n${body}    destroy :remove\n${body}    always\n${body}`).diagnostics).toEqual([]);
+    // A check's name is a member of the entity, counted once (SYN-08): each block names its own.
+    const body = (name: string) => `      validate\n${CHECK.replace(":ok", `:${name}`)}      do\n${RUN}`;
+    expect(build(`${keyed}    integer :n\n  actions auto=[:read]\n    read :open\n    create :add\n${body("addOk")}    update :change\n${body("changeOk")}    destroy :remove\n${body("removeOk")}    always\n${body("alwaysOk")}`).diagnostics).toEqual([]);
   });
 });
 // An `always` block holds `validate` and `do`, and a read runs neither: a block scoped to a read never applies to it. The

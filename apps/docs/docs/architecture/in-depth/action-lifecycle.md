@@ -195,11 +195,7 @@ update :pay
       code="invalid_state"
       message="only a sent invoice can be paid"
     ]
-    check :invoiceHasLines [
-      that=() => &lineCount > 0
-      code="invalid_state"
-      message="an invoice needs at least one line"
-    ]
+    check &invoiceHasLines
   do
     set
       &status=:paid
@@ -220,7 +216,7 @@ A check's `message=` is fixed text, as above, or a function of the same argument
 2. **Cast.** `id` and the member input `paidAt` pass; anything else is an error.
 3. **Plan.** Read with lock, then write.
 4. **Pre-check.** `isStaff(actor)` reads nothing stored, so `:staffWrites` runs here. A non-staff caller is forbidden before the transaction opens.
-5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. No policy reads the record, so `validate` runs next, on the stored invoice, with the supplied `paidAt` still in `input`: the `always` check `dueAfterIssue` (`pay` sends no dates, so it compares the stored ones), then `invoiceIsSent` and `invoiceHasLines`. If any fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check (its `message` is the check's text, or what its `message=` function returned) and writes nothing. Then `paidAt` is applied, and `do` runs: the `set` assigns status and payer; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
+5. **Transaction.** Opens; the invoice is read with a write lock; a missing invoice is not found. No policy reads the record, so `validate` runs next, on the stored invoice, with the supplied `paidAt` still in `input`: the `always` check `dueAfterIssue` (`pay` sends no dates, so it compares the stored ones), then `invoiceIsSent` and `invoiceHasLines`, a named check that the entity declares once in its `checks` section and both `send` and `pay` use. If any fails, the call raises `InvalidInputError` (`code` `invalid_input`) with one issue per failed check (its `message` is the check's text, or what its `message=` function returned) and writes nothing. Then `paidAt` is applied, and `do` runs: the `set` assigns status and payer; `when` sees the record as the `set` left it and, for an amount above 10000, sets `needsReview`.
 6. **Data layer.** The row, with `paidAt` and the steps' changes, is written inside the locked transaction.
 7. **Commit.** The transaction closes.
 8. **After commit.** `customer` is loaded onto the returned record, which comes back typed.

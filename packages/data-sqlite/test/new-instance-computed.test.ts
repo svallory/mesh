@@ -28,17 +28,17 @@ const box = `entity :Box table="boxes"
       input
         &qty
       validate
-        check :double that=() => false details=() => ({ v: &double }) code="double" message="m"
-        check :twice that=() => false details=() => ({ v: &twice }) code="twice" message="m"
-        check :plain that=() => false details=() => ({ v: &plain }) code="plain" message="m"
-        check :isOpen that=() => false details=() => ({ v: &isOpen }) code="isOpen" message="m"
+        check :showsDouble that=() => false details=() => ({ v: &double }) code="double" message="m"
+        check :showsTwice that=() => false details=() => ({ v: &twice }) code="twice" message="m"
+        check :showsPlain that=() => false details=() => ({ v: &plain }) code="plain" message="m"
+        check :showsIsOpen that=() => false details=() => ({ v: &isOpen }) code="isOpen" message="m"
         check :usesDouble that=() => &double > 0 code="usesDouble" message="m"
     update :bump
       input
         &qty
       validate
-        check :double that=() => false details=() => ({ v: &double }) code="double" message="m"
-        check :isOpen that=() => false details=() => ({ v: &isOpen }) code="isOpen" message="m"
+        check :bumpShowsDouble that=() => false details=() => ({ v: &double }) code="double" message="m"
+        check :bumpShowsIsOpen that=() => false details=() => ({ v: &isOpen }) code="isOpen" message="m"
 `;
 const SQLITE: ResolvedConfig["data"] = {
   kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build",

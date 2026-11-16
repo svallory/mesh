@@ -20,7 +20,7 @@ Three spellings tell you what a name means: **`:name` declares**, **`&name` refe
 | It is | Written | Examples |
 |:--|:--|:--|
 | A declaration | `kind :name` | `entity :Invoice`, `uuid :id`, `update :pay`, `check :invoiceIsSent` |
-| A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]`, `on:load=&visible` |
+| A member of this entity | `&name` | `&title` in `input`, `asc &dueOn`, `load=[&customer]`, `actions=[&pay]`, `on:load=&visible`, `check &invoiceHasLines` in `validate` |
 | A value of the current transaction | `%.name`, in a function | `&dueOn < %.today`, `stamp(%.now)` |
 | Another file's entity, event or command | an imported identifier, or a member of a namespace import | `import { Customer } from "./customer.mesh.mx"`, then `belongs-to :customer entity=Customer`; `import { InvoicePaid } from "./invoice-paid.mesh.mx"`, then `publish=() => new InvoicePaid({ invoiceId: &id })`; `import * as billing from "../billing/invoice.mesh.mx"`, then `belongs-to :invoice entity=billing.Invoice` |
 | One of a fixed set | an atom | `auto=[:read, :destroy]`, `types=[:create, :update]`, `on=:create` |
@@ -124,7 +124,7 @@ entity :Todo table="todos"
       }
 ```
 
-**Sections group declarations.** `attributes`, `relationships`, `computed`, `actions` and `policies` may be in any order, empty or left out. Inside an action are `input`, `validate` and `do`: validation happens before the steps, however you order those sections. Steps inside `do` run in order. An action no policy covers is forbidden, so a file with no `policies` can be built but nothing in it can be called.
+**Sections group declarations.** `attributes`, `relationships`, `computed`, `checks`, `actions` and `policies` may be in any order, empty or left out. Inside an action are `input`, `validate` and `do`: validation happens before the steps, however you order those sections. Steps inside `do` run in order. An action no policy covers is forbidden, so a file with no `policies` can be built but nothing in it can be called.
 
 **Indentation nests.** A line at the left margin ends the block before it, including a comment. A comment inside an entity is a `//` line indented with the block it belongs to.
 
@@ -451,7 +451,7 @@ entity :Invoice
 
 A line rule carries Mesh's standard message: `string :title min=1` reports `too_short` and "must be at least 1 character". A check is where you write your own message.
 
-The atom after `check` names the rule and is the label the caller sees. Name what must hold: `check :invoiceIsSent`, not the failure you are trying to avoid. Brackets let the options span several lines.
+The atom after `check` names the rule and is the label the caller sees. Name what must hold: `check :invoiceIsSent`, not the failure you are trying to avoid. Brackets let the options span several lines. A check's name is a member of the entity, like an attribute's or an action's: it is unique in the entity, so two checks, or a check and another member, cannot share it (`MESH_DUPLICATE_MEMBER`). Two rules with the same name in two actions are either one rule, declared once as below, or two rules that need two names.
 
 | Option | Meaning |
 |:--|:--|
@@ -477,7 +477,7 @@ check :taskReady [
 **A message that names the record.** `message=` is either fixed text or a function taking the same arguments as `that=` and `details=`. Use the function when the sentence depends on the call: it can read `self`, `input`, `actor`, `context`, and what the check loads through a relationship.
 
 ```text "src/domain/work/task.mesh.mx (excerpt)"
-check :childrenSettled [
+check :noOpenChildren [
   that=() => &childrenSettled
   code="task.children-settled"
   message=() => childrenSettledReason(&children)
@@ -486,6 +486,43 @@ check :childrenSettled [
 ```
 
 The function runs only when the check fails, so a check that passes, or that `when=` skips, never computes it; it may be `async`. It must return text that is not blank, as `message=""` is refused at build time. One that throws, or returns anything else (`null`, `undefined` and blank text included), is a bug in your rule, so the call fails with a `FrameworkError` that names the entity, the check and the line of the check in the entity file, never with some other text in its place.
+
+#### A rule several actions share
+
+A rule that more than one action enforces is declared once, in the entity's `checks` section, and each action lists it in its `validate` with `check &name`:
+
+```mx "src/domain/billing/invoice.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    date :issuedOn
+    date :dueOn
+
+  checks
+    check :dueAfterIssue [
+      that=({ input }) => (input.dueOn ?? &dueOn) >= (input.issuedOn ?? &issuedOn)
+      code="invalid_dates"
+      message="the due date cannot be before the issue date"
+    ]
+
+  actions
+    create :issue
+      input
+        &issuedOn
+        &dueOn
+      validate
+        check &dueAfterIssue
+    update :reschedule
+      input
+        &issuedOn
+        &dueOn
+      validate
+        check &dueAfterIssue
+```
+
+A line under `checks` takes the options of a check written in `validate`. `check &dueAfterIssue` runs the check at that place in the action's list, and a failure reports the check as if it were written there, with the label, code and message of the declaration and the declaration's line. The reference line is the whole of it: options (`check &dueAfterIssue when=...`) and lines under it are build errors, since they belong where the check is declared. One action lists a check once, and `check &name` naming no check of the section is a build error (`MESH_UNKNOWN_MEMBER`).
+
+The check runs in each action with that action's `input` and `self`, and the build checks it once for each of them. Reading `input.x` in a translated arrow where one of those actions takes no `x` is an error at the read, naming the action (`MESH_CHECK_INPUT`); an update and a destroy always take the key. In plain code (a body with statements, an object-literal `details`, an arrow the build runs as plain code) the same read is left to the TypeScript check of the generated code, which types each action's copy with that action's input. A warning that holds in only some of them says which: `input.dueOn !== input.issuedOn`, used by `create :issue` and `update :reschedule`, can compare two left-out inputs in the update and not in the create, so its warning names `update :reschedule`. A check that no `validate` uses never runs, and the build warns (`MESH_CHECK_UNUSED`).
 
 #### A check that compares with the stored record
 
@@ -713,7 +750,7 @@ entity :Invoice
 
 ### always
 
-`always` takes an action body and applies it across a scope. Its checks run before the action's checks, and its steps before the action's steps. It may hold `validate`, `do` or both.
+`always` takes an action body and applies it across a scope. Its checks run before the action's checks, and its steps before the action's steps. It may hold `validate`, `do` or both. Its `validate` may use a named check with `check &name`, which the build then checks for each action the block covers, and an action that lists the same named check itself, or through a second block, is a build error, since it would run the check twice.
 
 The larger example uses `always types=[:create, :update]` for a date rule on every create and update. `actions=[&send, &pay]` instead names particular actions. Neither option means every action in the entity.
 
@@ -804,6 +841,7 @@ Run `mesh inspect Todo` to see the declarations with source positions, and `mesh
 | `attributes` | `type :name options` | `string :title min=1` |
 | `relationships` | `kind :name entity=ImportedName` | `belongs-to :list entity=List` |
 | `computed` | `type :name() { … }` or a rollup | `count :todoCount of=&todos` |
+| `checks` | `check :name` with the options of a check, used as `check &name` in `validate` | `check :invoiceHasLines that=() => &lineCount > 0 code="invalid_state" message="…"` |
 | `actions` | `type :name`, with `input`, `validate`, `do` | `update :send` |
 | `policies` | `policy :name`, scope and checks | `policy :owner types=[:read]` |
 
@@ -848,6 +886,13 @@ entity :Invoice table="invoices"
     count :lineCount of=&lines
     sum :total of=&lines.amount
 
+  checks
+    check :invoiceHasLines [
+      that=() => &lineCount > 0
+      code="invalid_state"
+      message="an invoice needs at least one line"
+    ]
+
   actions auto=[:read, :destroy] on:load=&visible
     always types=[:create, :update]
       validate
@@ -868,11 +913,7 @@ entity :Invoice table="invoices"
 
     update :send
       validate
-        check :invoiceHasLines [
-          that=() => &lineCount > 0
-          code="invalid_state"
-          message="an invoice needs at least one line"
-        ]
+        check &invoiceHasLines
       do
         set
           &status=:sent
@@ -886,11 +927,7 @@ entity :Invoice table="invoices"
           code="invalid_state"
           message="only a sent invoice can be paid"
         ]
-        check :invoiceHasLines [
-          that=() => &lineCount > 0
-          code="invalid_state"
-          message="an invoice needs at least one line"
-        ]
+        check &invoiceHasLines
       do
         set
           &status=:paid
@@ -929,10 +966,11 @@ entity :Invoice table="invoices"
       forbid-if=() => &status === :paid
 ```
 
-Six things to notice:
+Seven things to notice:
 
 - **`&customer` takes the customer's id.** The relationship points at the imported `Customer`, and the create takes it through `input`.
 - **`decimal :amount min=0` says "not negative".** The `always` block holds the rule that needs two fields, `check :dueAfterIssue`.
+- **`invoiceHasLines` is written once.** `send` and `pay` enforce the same rule, so `checks` declares it and both list it with `check &invoiceHasLines`.
 - **`pay` stores its input and makes changes in order.** It takes `&paidAt`, sets the status and payer, and marks a large invoice for review under `when`.
 - **`read :forCustomer` declares an argument.** `input.customerId` is compared with `&customer.id`, without a join. It is an input name, not a stored field declared in the file.
 - **`label` calls a helper on `&total`.** It runs in memory; `isOverdue` is one translatable expression and may be used in a SQL filter.

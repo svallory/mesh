@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Expression, ModelDocument, Relationship, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
-import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
+import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
@@ -231,5 +231,28 @@ export function checkLifecycleLimits(
           diagnostics.push(error("MESH_OPTION_VALUE",
             `\`actions=\` names read :${ref.name} of ${entity.fqn}, and a read runs neither \`validate\` nor \`do\`, so an always block never applies to it`,
             ref.position, `Remove \`&${ref.name}\` from \`actions=\``));
+    // A named check runs once in an action: listed by the action and by an `always` block that covers it, or by two such
+    // blocks, it would run twice (ruling D25, point 1). The same reference twice in one block is the builder's. The
+    // actions `auto=` generates count too: an `always` block covers them. Each reference is reported once, at the later
+    // listing (the action's own, which runs after its blocks, or the later block), naming the first action it happens for.
+    const reported = new Set<string>();
+    for (const action of [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, validate: [] }))]) {
+      if (action.kind === "read") continue;
+      const listings = [
+        ...entity.always.filter((block) => alwaysCovers(block, action)).flatMap((block) => block.validate.flatMap((check) => check.reference ? [{ name: check.label, at: check.reference, block }] : [])),
+        ...action.validate.flatMap((check) => check.reference ? [{ name: check.label, at: check.reference, block: undefined }] : []),
+      ];
+      const first = new Map<string, (typeof listings)[number]>();
+      for (const listing of listings) {
+        const earlier = first.get(listing.name);
+        if (!earlier) { first.set(listing.name, listing); continue; }
+        const key = `${listing.at.file}:${listing.at.offset}`;
+        if (reported.has(key)) continue;
+        reported.add(key);
+        diagnostics.push(error("MESH_DUPLICATE_MEMBER",
+          `Duplicate check &${listing.name}: ${action.kind} :${action.name} already runs it through the \`always\` block at line ${earlier.block!.position.line}, and a check runs once`,
+          listing.at, `remove this \`check &${listing.name}\`, or scope the \`always\` block with \`types=\` or \`actions=\` so it does not cover ${action.kind} :${action.name}`));
+      }
+    }
   }
 }

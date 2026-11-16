@@ -31,7 +31,9 @@ test("fix4: duplicate policy and check names use member diagnostics", () => {
   const check = '        check :a that=() => true code="bad" message="bad"\n';
   const prefix = keyed + "  actions\n    update :change\n      validate\n";
   expect(build(prefix + check + check).diagnostics).toEqual([expect.objectContaining({ code: "MESH_DUPLICATE_MEMBER", message: "Duplicate member :a", position: expect.objectContaining({ line: 8, column: 8 }) })]);
-  expect(build(prefix + check + "    update :other\n      validate\n" + check).diagnostics).toEqual([]);
+  // A check's name counts once per entity (SYN-08): written in two actions, it is a duplicate at the later one.
+  expect(build(prefix + check + "    update :other\n      validate\n" + check).diagnostics).toEqual([expect.objectContaining({ code: "MESH_DUPLICATE_MEMBER", message: "Duplicate member :a", position: expect.objectContaining({ line: 10, column: 8 }), fix: "declare the check once under `checks` and use it with `check &a` in each `validate`, or give each rule its own name" })]);
+  expect(build(prefix + check + "    update :other\n      validate\n" + check.replace(":a", ":b")).diagnostics).toEqual([]);
 });
 
 test.each(["id", "insertedAt", "updatedAt"])("fix5: managed &%s is rejected by the builder", (name) => {

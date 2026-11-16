@@ -45,6 +45,18 @@ entity :Task table="tasks"
     boolean :blocked() { return &prerequisites.some((t) => t.state !== :done) }
     max :maxFence of=&claims.fence
     enum :derivedState values=[:ready, :blocked, :claimed, :in-review, :done, :canceled] value=() => &state === :done ? :done : &state === :canceled ? :canceled : &inReview ? :in-review : &claimed ? :claimed : &blocked ? :blocked : :ready
+  checks
+    check :taskOpen [
+      that=() => &state === :open
+      code="task.open"
+      message="the task is not open; reopen it first"
+    ]
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+      code="expected-version"
+      message="the record is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+    ]
   actions auto=[:read]
     create :create
       input
@@ -68,22 +80,13 @@ entity :Task table="tasks"
         &intent
         integer :expectedVersion nullable
       validate
-        check :taskOpen [
-          that=() => &state === :open
-          code="task.open"
-          message="the task is not open; reopen it first"
-        ]
+        check &taskOpen
         check :taskChanges [
           that=({ self, input }) => taskChanges(self, input)
           code="task.unchanged"
           message="nothing to change: every field already has that value"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -93,17 +96,8 @@ entity :Task table="tasks"
         &priority
         integer :expectedVersion nullable
       validate
-        check :taskOpen [
-          that=() => &state === :open
-          code="task.open"
-          message="the task is not open; reopen it first"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &taskOpen
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -113,12 +107,8 @@ entity :Task table="tasks"
         &parent
         integer :expectedVersion nullable
       validate
-        check :taskOpen [
-          that=() => &state === :open
-          code="task.open"
-          message="the task is not open; reopen it first"
-        ]
-        check :parentOpen [
+        check &taskOpen
+        check :newParentOpen [
           that=async ({ self, input }) => await parentOpenOf(movedParent(self, input.parent))
           code="task.parent-open"
           message="the parent task is not open"
@@ -133,12 +123,7 @@ entity :Task table="tasks"
           code="task.no-active-claim"
           message="release or revoke the active claim first"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -153,12 +138,7 @@ entity :Task table="tasks"
           code="task.settled"
           message="the task is already open"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &state=:open
@@ -174,17 +154,8 @@ entity :Task table="tasks"
         string :reason min=1
         integer :expectedVersion nullable
       validate
-        check :taskOpen [
-          that=() => &state === :open
-          code="task.open"
-          message="the task is not open; reopen it first"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &taskOpen
+        check &versionMatches
       do
         set
           &state=:canceled
@@ -203,12 +174,8 @@ entity :Task table="tasks"
         json :evidence
         integer :expectedVersion nullable
       validate
-        check :taskOpen [
-          that=() => &state === :open
-          code="task.open"
-          message="the task is not open; reopen it first"
-        ]
-        check :childrenSettled [
+        check &taskOpen
+        check :noOpenChildren [
           that=() => &childrenSettled
           code="task.children-settled"
           message=() => childrenSettledReason(&children)
@@ -248,12 +215,7 @@ entity :Task table="tasks"
           message="an evidence reference does not exist"
           details=async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) })
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &state=:done
@@ -287,11 +249,7 @@ entity :Task table="tasks"
         boolean :waiveReview nullable
         integer :expectedVersion nullable
       validate
-        check :taskOpen [
-          that=() => &state === :open
-          code="task.open"
-          message="the task is not open; reopen it first"
-        ]
+        check &taskOpen
         check :assigneeActive [
           that=async ({ input }) => await collaboratorActiveOf(input.assignee)
           code="collaborator.active"
@@ -307,12 +265,7 @@ entity :Task table="tasks"
           code="assignment.unchanged"
           message="assignee and review waiver are unchanged"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -336,12 +289,7 @@ entity :Task table="tasks"
           code="assignment.current"
           message="the task has no current assignment"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1

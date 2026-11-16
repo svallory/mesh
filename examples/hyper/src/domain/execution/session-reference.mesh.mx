@@ -17,6 +17,18 @@ entity :SessionReference table="session_references"
     belongs-to :machine entity=Machine
     belongs-to :agentProfile entity=Collaborator
     belongs-to :recordedBy entity=Collaborator
+  checks
+    check :notRedacted [
+      that=() => &availability !== :redacted
+      code="session.not-redacted"
+      message="the session is redacted and cannot be changed"
+    ]
+    check :versionMatches [
+      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+      code="expected-version"
+      message="the record is at another version; read it again and retry"
+      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+    ]
   actions auto=[:read]
     create :record
       input
@@ -27,7 +39,7 @@ entity :SessionReference table="session_references"
         &machine
         &agentProfile
       validate
-        check :agentProfile [
+        check :agentProfileExists [
           that=async ({ input }) => (await Mesh.privileged(Collaborator).read({ filter: { id: { eq: input.agentProfile } }, limit: 1 })).length > 0
           code="session.agent-profile"
           message="the agent profile is not a collaborator"
@@ -47,22 +59,13 @@ entity :SessionReference table="session_references"
         string :reason nullable
         integer :expectedVersion nullable
       validate
-        check :notRedacted [
-          that=() => &availability !== :redacted
-          code="session.not-redacted"
-          message="the session is redacted and cannot be changed"
-        ]
+        check &notRedacted
         check :availabilityKept [
           that=({ input }) => (input.availability ?? &availability) !== :redacted
           code="session.availability"
           message="availability is complete, partial or unavailable; redact with redact"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &versionMatches
       do
         set
           &version=() => &version + 1
@@ -71,17 +74,8 @@ entity :SessionReference table="session_references"
         string :reason min=1
         integer :expectedVersion nullable
       validate
-        check :notRedacted [
-          that=() => &availability !== :redacted
-          code="session.not-redacted"
-          message="the session is redacted and cannot be changed"
-        ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
+        check &notRedacted
+        check &versionMatches
       do
         set
           &availability=:redacted

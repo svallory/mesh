@@ -238,14 +238,14 @@ export function bindMembership(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 26, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 38, column: 9 },
               that: $expressions["grant.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "noneActive",
               code: "membership.none-active",
               message: "the collaborator already has an active membership; change its role instead",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 31, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 43, column: 9 },
               that: $expressions["grant.check.noneActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -259,7 +259,7 @@ export function bindMembership(
               const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &grantedAt (src/domain/identity/membership.mesh.mx:38:22) produced no value, and grantedAt is required",
+                  "set &grantedAt (src/domain/identity/membership.mesh.mx:50:22) produced no value, and grantedAt is required",
                 );
               $changes.grantedAt = $record.grantedAt = $value;
             }
@@ -267,7 +267,7 @@ export function bindMembership(
               const $value = await $expressions["grant.step.0.set.grantedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &grantedBy (src/domain/identity/membership.mesh.mx:39:22) produced no value, and the relationship grantedBy is required",
+                  "set &grantedBy (src/domain/identity/membership.mesh.mx:51:22) produced no value, and the relationship grantedBy is required",
                 );
               $changes.grantedById = $record.grantedById = $value;
             }
@@ -304,7 +304,7 @@ export function bindMembership(
                     entity: "identity.Membership",
                     action: "grant",
                     key: { id: $written.id },
-                    at: "src/domain/identity/membership.mesh.mx:40:17",
+                    at: "src/domain/identity/membership.mesh.mx:52:17",
                   },
                   $event,
                   $context,
@@ -416,28 +416,28 @@ export function bindMembership(
               label: "membershipActive",
               code: "membership.active",
               message: "the membership is revoked",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 46, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 21, column: 5 },
               that: $expressions["changeRole.check.membershipActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "roleChanges",
               code: "membership.unchanged",
               message: "the member already has that role",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 51, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 59, column: 9 },
               that: $expressions["changeRole.check.roleChanges.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 56, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 64, column: 9 },
               that: $expressions["changeRole.check.lastOwner.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 61, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 26, column: 5 },
               that: $expressions["changeRole.check.versionMatches.that"],
               details: $expressions["changeRole.check.versionMatches.details"],
             });
@@ -450,7 +450,7 @@ export function bindMembership(
               const $value = await $expressions["changeRole.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/membership.mesh.mx:69:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/membership.mesh.mx:72:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -497,7 +497,7 @@ export function bindMembership(
                     entity: "identity.Membership",
                     action: "changeRole",
                     key: { id: $written.id },
-                    at: "src/domain/identity/membership.mesh.mx:70:17",
+                    at: "src/domain/identity/membership.mesh.mx:73:17",
                   },
                   $event,
                   $context,
@@ -609,21 +609,21 @@ export function bindMembership(
               label: "membershipActive",
               code: "membership.active",
               message: "the membership is revoked",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 76, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 21, column: 5 },
               that: $expressions["revoke.check.membershipActive.that"],
             });
             await $runCheck($issues, $checks, {
-              label: "lastOwner",
+              label: "ownerRemains",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 81, column: 9 },
-              that: $expressions["revoke.check.lastOwner.that"],
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 80, column: 9 },
+              that: $expressions["revoke.check.ownerRemains.that"],
             });
             await $runCheck($issues, $checks, {
               label: "versionMatches",
               code: "expected-version",
               message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 86, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 26, column: 5 },
               that: $expressions["revoke.check.versionMatches.that"],
               details: $expressions["revoke.check.versionMatches.details"],
             });
@@ -642,7 +642,7 @@ export function bindMembership(
               const $value = await $expressions["revoke.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/identity/membership.mesh.mx:97:20) produced no value, and version is required",
+                  "set &version (src/domain/identity/membership.mesh.mx:91:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }
@@ -689,7 +689,7 @@ export function bindMembership(
                     entity: "identity.Membership",
                     action: "revoke",
                     key: { id: $written.id },
-                    at: "src/domain/identity/membership.mesh.mx:98:17",
+                    at: "src/domain/identity/membership.mesh.mx:92:17",
                   },
                   $event,
                   $context,

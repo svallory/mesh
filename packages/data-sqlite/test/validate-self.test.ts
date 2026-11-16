@@ -64,6 +64,8 @@ entity :Note table="notes"
     timestamp :createdAt on=:create
   relationships
     belongs-to :owner entity=Person
+  checks
+    check :watch that=({ self, input, context }) => sawNote(context, "validate", self, input) code="watch" message="watch"
   actions auto=[:read]
     always types=[:create, :update]
       validate
@@ -72,7 +74,7 @@ entity :Note table="notes"
           code="note.shouting"
           message="do not shout"
         ]
-        check :watch that=({ self, input, context }) => sawNote(context, "always", self, input) code="watch" message="watch"
+        check :watchAlways that=({ self, input, context }) => sawNote(context, "always", self, input) code="watch" message="watch"
       do
         run({ self, before, context }) {
           sawNote(context, "do", self, before);
@@ -87,7 +89,7 @@ entity :Note table="notes"
         &priority
         &owner
       validate
-        check :watch that=({ self, input, context }) => sawNote(context, "validate", self, input) code="watch" message="watch"
+        check &watch
         check :ownerExists [
           that=async ({ input }) => (await Mesh.privileged(Person).read({ filter: { id: { eq: input.owner } } })).length === 1
           code="note.owner"
@@ -107,7 +109,7 @@ entity :Note table="notes"
         &body
         &priority
       validate
-        check :watch that=({ self, input, context }) => sawNote(context, "validate", self, input) code="watch" message="watch"
+        check &watch
         check :keepsLocked [
           that=({ input }) => &body === null || &body !== "locked" || (input.body ?? &body) === "locked"
           code="note.locked"
@@ -117,22 +119,22 @@ entity :Note table="notes"
       input
         &body
       validate
-        check :keepsLocked [
+        check :keepsLockedStrictly [
           that=({ self, input }) => self.body !== "locked" || input.body === undefined || input.body === "locked"
           code="note.locked"
           message="a locked body cannot change"
         ]
     update :publish
       validate
-        check :watch that=({ self, input, context }) => sawNote(context, "validate publish", self, input) code="watch" message="watch"
+        check :watchPublish that=({ self, input, context }) => sawNote(context, "validate publish", self, input) code="watch" message="watch"
         check :draftOnly that=() => &state === :draft code="note.live" message="only a draft can be published"
       do
         set
           &state=:live
     destroy :drop
       validate
-        check :watch that=({ self, input, context }) => sawNote(context, "validate", self, input) code="watch" message="watch"
-        check :draftOnly that=() => &state === :draft code="note.live" message="only a draft can be dropped"
+        check &watch
+        check :draftOnlyToDrop that=() => &state === :draft code="note.live" message="only a draft can be dropped"
       do
         run({ self, before, context }) {
           sawNote(context, "do", self, before);
@@ -189,7 +191,7 @@ entity :Card table="cards"
         &title
         &owner
       validate
-        check :scope that=({ context, ...rest }) => sawRest(context, "make", rest) code="scope" message="scope"
+        check :scopeMake that=({ context, ...rest }) => sawRest(context, "make", rest) code="scope" message="scope"
         check :noCreatorYet that=() => &creator === null code="card.creator" message="the creator is already set"
       do
         set
@@ -199,14 +201,14 @@ entity :Card table="cards"
       input
         &owner
       validate
-        check :scope that=({ context, ...rest }) => sawRest(context, "reassign", rest) code="scope" message="scope"
+        check :scopeReassign that=({ context, ...rest }) => sawRest(context, "reassign", rest) code="scope" message="scope"
         check :ownerActive that=() => &owner.active code="card.owner" message="the current owner is retired"
       do
         set
           &ownerName=() => &owner.name
     destroy :scrap
       validate
-        check :scope that=({ context, ...rest }) => sawRest(context, "scrap", rest) code="scope" message="scope"
+        check :scopeScrap that=({ context, ...rest }) => sawRest(context, "scrap", rest) code="scope" message="scope"
 `;
 
 // A check against a deadline and a step that stamps the time: both read the action's one instant.
@@ -415,8 +417,8 @@ describe("update: validate sees the stored record, do sees the input applied", (
       expect((await world.mesh.editNote({ id: loose.id, body: null }, world.ctx)).body).toBeNull();
 
       const strict = await written(world, { body: "locked" });
-      expect(labels(await invalid(world.mesh.editStrictNote({ id: strict.id, body: "other" }, world.ctx)))).toEqual(["keepsLocked"]);
-      expect(labels(await invalid(world.mesh.editStrictNote({ id: strict.id, body: null }, world.ctx)))).toEqual(["keepsLocked"]);
+      expect(labels(await invalid(world.mesh.editStrictNote({ id: strict.id, body: "other" }, world.ctx)))).toEqual(["keepsLockedStrictly"]);
+      expect(labels(await invalid(world.mesh.editStrictNote({ id: strict.id, body: null }, world.ctx)))).toEqual(["keepsLockedStrictly"]);
       expect((await world.mesh.editStrictNote({ id: strict.id }, world.ctx)).body).toBe("locked");
     } finally { await world.db.close(); }
   }, 30_000);
@@ -440,7 +442,7 @@ describe("destroy", () => {
     try {
       const row = await written(world);
       await world.mesh.publishNote({ id: row.id }, world.ctx);
-      expect(labels(await invalid(world.mesh.dropNote({ id: row.id }, world.ctx)))).toEqual(["draftOnly"]);
+      expect(labels(await invalid(world.mesh.dropNote({ id: row.id }, world.ctx)))).toEqual(["draftOnlyToDrop"]);
       expect(await world.mesh.readNote({}, world.ctx)).toHaveLength(1);
     } finally { await world.db.close(); }
   }, 30_000);
