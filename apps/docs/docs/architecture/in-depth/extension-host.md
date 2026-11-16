@@ -50,7 +50,7 @@ A **contribution point** is a place in the model or the vocabulary that its owne
 
 ### Worked example: a section on `entity`
 
-`entity` belongs to core, and its children (`attributes`, `relationships`, `computed`, `actions`, `policies`) are closed in its contract. Core publishes a contribution point on `entity` for children. Suppose a project-local extension adds an `audit` section:
+`entity` belongs to core, and its children (`attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`) are closed in its contract. Core publishes a contribution point on `entity` for children. Suppose a project-local extension adds an `audit` section:
 
 ```mx
 entity :Invoice table="invoices"

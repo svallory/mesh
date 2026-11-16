@@ -285,6 +285,7 @@ This reverses §6's "manual and generic actions: not planned" (decision D4).
   > **Replaced by a ruling.** Named checks are an entity-level `checks` section, referenced as `check &name` (amended 2026-10-12; first ruled as a bare `check :name`); they are core, not an extension-host run-time point and not MX `check` files. See [ADR-0082].
 - **Ring.** Core. **Hyper.** 57 rules referenced 94 times would use named checks (G04); the gate
   repeats the `check`. **When.** Computed: now. Named checks: after 1.0 (M11).
+  > **Amended 2026-11-16.** Named checks are built before 1.0, as the core `checks` section ([ADR-0082], amended 2026-11-16; [ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md), amended 2026-11-16).
 
 ### 2.8 Domain event
 
