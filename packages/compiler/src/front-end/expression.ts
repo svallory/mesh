@@ -215,7 +215,8 @@ const FREE_VARIABLE = (name: string) =>
 /**
  * What fixes an unknown name: a Mesh function written bare is a member of `Mesh`, which the file may not import yet. The
  * fix names the file's `Mesh` import where it can be read: an alias that a binding hides at the reference (`shadowed`), or
- * that is a scope name (`input`, refused at the import), is not one, and the fix says so instead of naming it.
+ * that is a scope name (`input`: the import is accepted, and in every function the name is the root), is not one, and the
+ * fix says so instead of naming it.
  */
 function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
   // A bare `now` or `today` is the transaction's.
@@ -376,6 +377,10 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       && namesEntity(object.name!, scope) && ctx.namespaces?.has(object.name!) === true
       && ctx.reference?.({ qualifier: { name: object.name!, offset: start(object) }, name: (n.property as N).name!, offset: start(n.property as N) }).ok !== false;
   };
+  // What a call calls (`limit()`, `h.limit()`, `new Limit()`, a template's tag) and what it is handed, through the
+  // wrappers MX leaves: a parent is walked before its children, so a helper module's name knows whether it is called.
+  const callees = new WeakSet<N>();
+  const handedOver = new WeakSet<N>();
   const walk = (value: unknown, parent: N | undefined, key: string | undefined, scope: ReadonlySet<string>): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { for (const v of value) walk(v, parent, key, scope); return; }
@@ -401,6 +406,13 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     const calledValue = n.type === "CallExpression" || n.type === "OptionalCallExpression" || n.type === "NewExpression" ? n.callee as N
       : n.type === "TaggedTemplateExpression" ? n.tag as N
       : undefined;
+    const calledNode = unwrapped(calledValue);
+    if (calledNode) callees.add(calledNode);
+    if (n.type === "CallExpression" || n.type === "OptionalCallExpression" || n.type === "NewExpression")
+      for (const argument of (n.arguments ?? []) as N[]) {
+        const handed = unwrapped(argument);
+        if (handed) handedOver.add(handed);
+      }
     for (const target of calledTransaction(calledValue)) {
       const mark = transactionMark(target)!;
       const member = TRANSACTION_MEMBERS.get(mark.name);
@@ -478,7 +490,24 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.events?.has(n.name!) || ctx.commands?.has(n.name!)) names.events.add(n.name!);
-        if (ctx.helpers.has(n.name!)) names.helpers.add(n.name!);
+        if (ctx.helpers.has(n.name!)) {
+          names.helpers.add(n.name!);
+          // A helper module's name is a function to call: `limit()`, or `h.limit()` through a namespace import. Any other
+          // read of it is a read of a value (`LIMIT`, `limits.max`, `h.LIMIT`, `h` itself, a function passed along).
+          const namespace = ctx.namespaces?.has(n.name!) === true;
+          const member = key === "object" && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") ? parent! : undefined;
+          if (!callees.has(n) && !(namespace && member && callees.has(member))) {
+            // `h.LIMIT`, or `h["LIMIT"]`, which names the same member.
+            const memberKey = member?.property as N | undefined;
+            const property = !namespace || !member || !memberKey ? undefined
+              : !member.computed && memberKey.type === "Identifier" ? memberKey.name!
+              : member.computed && memberKey.type === "StringLiteral" ? String(memberKey.value)
+              : undefined;
+            // A namespace import is never a function, so handing it over is no function passed along.
+            const handed = handedOver.has(property !== undefined ? member! : n) && !(namespace && property === undefined);
+            (names.values ??= []).push({ name: property !== undefined ? `${n.name}.${property}` : n.name!, position: ctx.at(start(n)), ...(handed ? { handed: true as const } : {}) });
+          }
+        }
         // `billing.Invoice`: what the namespace import's file declares, resolved as `entity=` resolves it.
         // A computed member written as a string (`billing["Invoice"]`) names the same member.
         const member = parent?.property as N | undefined;
@@ -561,11 +590,14 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
 
 /**
  * What a function names besides its scope: the entities, whether it calls an entity's action, the helpers it reads as
- * values, whether it calls the global `structuredClone` and whether it reads the record through `&name` (`record`). The
+ * values, each read of a helper module's name that is no call of it (`values`, which `translate` reports for a
+ * one-expression function), whether it calls the global `structuredClone` and whether it reads the record through `&name` (`record`). The
  * node has no types (MX strips them), so a helper named only in a type is left to the TypeScript back end (`typeNames` in
  * `typescript/type-names.ts`).
  */
-interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true }
+interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true; values?: CapturedValue[] }
+/** A read of a helper module's name that is no call of it: the name as written (`LIMIT`, `h.LIMIT`), and whether a call is handed it. */
+interface CapturedValue { name: string; position: SourcePosition; handed?: true }
 
 /** Whether the code uses an operator whose null rule differs between JavaScript and Mesh (`??` and `?.` do not). */
 function hasDifferingOperator(root: unknown): boolean {
@@ -925,6 +957,60 @@ export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
   return own((fn as N).body) ? "await" : undefined;
 }
 
+/**
+ * The scope names a function reaches through a parameter that binds the scope whole: a rest element (`{ ...rest }`) or a
+ * plain parameter (`(s) => ...`). Each read of a member of it (`rest.before`, `rest["before"]`) names that member; any
+ * other use (`rest[k]`, `const { before } = rest`, `f(rest)`) can reach every name, `"any"`. Undefined when no parameter
+ * binds the scope whole. Shadowing is not followed: a nested binding of the same name counts as a use, the safe side.
+ */
+export type ScopeReach = ReadonlySet<string> | "any";
+const scopeReaches = new WeakMap<object, ScopeReach>();
+export const scopeReachOf = (expression: object): ScopeReach | undefined => scopeReaches.get(expression);
+export const rememberScopeReach = (expression: object, reach: ScopeReach): void => { scopeReaches.set(expression, reach); };
+export function scopeReachOfFunction(fn: SyntaxNode): ScopeReach | undefined {
+  const bindings = new Set<string>();
+  for (const param of ((fn as N).params ?? []) as N[]) {
+    if (param.type === "Identifier") { bindings.add(param.name!); continue; }
+    if (param.type !== "ObjectPattern") return "any";
+    for (const property of (param.properties ?? []) as N[]) {
+      if (property.type === "RestElement") {
+        const argument = property.argument as N | undefined;
+        if (argument?.type !== "Identifier") return "any";
+        bindings.add(argument.name!);
+      } else if (!(property.key as N | undefined)?.name) return "any";
+    }
+  }
+  if (!bindings.size) return undefined;
+  const reached = new Set<string>();
+  let any = false;
+  const walk = (value: unknown, parent: N | undefined, key: string | undefined): void => {
+    if (any || !value || typeof value !== "object") return;
+    if (Array.isArray(value)) { for (const v of value) walk(v, parent, key); return; }
+    const n = value as N;
+    if (typeof n.type !== "string") return;
+    if (n.type === "MemberExpression" || n.type === "OptionalMemberExpression") {
+      const object = unwrapped(n.object as N);
+      if (object?.type === "Identifier" && bindings.has(object.name!)) {
+        const property = n.property as N;
+        if (!n.computed && property.type === "Identifier") reached.add(property.name!);
+        else if (n.computed && property.type === "StringLiteral") reached.add(String(property.value));
+        else any = true;
+        if (n.computed) walk(property, n, "property");
+        return;
+      }
+    }
+    if (n.type === "Identifier" && bindings.has(n.name!)) {
+      const spelled = (parent?.type === "MemberExpression" || parent?.type === "OptionalMemberExpression") && key === "property" && !parent.computed
+        || /^(ObjectProperty|ObjectMethod|ClassMethod|ClassProperty)$/.test(parent?.type ?? "") && key === "key" && !parent!.computed;
+      if (!spelled) any = true;
+      return;
+    }
+    for (const [k, v] of Object.entries(n)) if (k !== "loc" && k !== "extra" && typeof v === "object") walk(v, n, k);
+  };
+  walk((fn as N).body, undefined, undefined);
+  return any ? "any" : reached;
+}
+
 /** The identifier a callee starts with: `InvoicePaid`, or `billing` in `billing.InvoicePaid`. */
 const rootIdentifier = (callee: N | undefined): N | undefined => {
   let at = unwrapped(callee);
@@ -1075,6 +1161,25 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       ...(names.asks ? { askCalls: names.asks } : {}),
     };
   };
+  // A helper module hands values out through functions, so one of its names read as a value is an error in every
+  // one-expression function (an arrow with an expression body, or a method whose one statement is a `return`), wherever
+  // the read sits: which construct stops the translation first does not decide it, so this runs before any of them.
+  // Run and publish steps are plain code by position. An object literal (a check's `details`) is plain code because of
+  // the literal, and its values are the author's.
+  const written = f.body as N;
+  const statements = written?.type === "BlockStatement" ? (written.body as N[]) : undefined;
+  const single = !statements ? written
+    : f.type === "FunctionExpression" && statements.length === 1 && statements[0]!.type === "ReturnStatement" ? (statements[0]!.argument as N | undefined)
+    : undefined;
+  if (single && !ctx.runStep && !ctx.publishStep && unwrapped(single)?.type !== "ObjectExpression")
+    for (const value of names.values ?? [])
+      ctx.report({
+        severity: "error",
+        code: "MESH_EXPR_CAPTURED_VALUE",
+        message: `\`${value.name}\` is read as a value, and an expression only calls what it imports from a helper module: a helper module hands values out through functions`,
+        position: value.position,
+        fix: `export a function from the helper module and call it: \`limit()\`${value.handed ? `; if \`${value.name}\` is a function, pass an arrow that calls it: \`(x) => ${value.name}(x)\`` : ""}`,
+      });
   try {
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);
     if (ctx.publishStep) throw new Plain("publish-step", "a publish step is plain code", f);

@@ -52,6 +52,8 @@ interface Ty {
   input?: string;
   /** `self` in a check that can run on a create: the members a create takes as member inputs, which the checks see before the input is applied. */
   pending?: ReadonlySet<string>;
+  /** On an `any` put in place of a value the build has typed and already reported (`before` where there is none, a create's `&x` of an enum before the input): an atom compared with it is no `MESH_EXPR_ATOM`. */
+  mayBeEnum?: true;
 }
 
 class Demote extends Error {
@@ -76,6 +78,8 @@ interface Scope {
   validate?: boolean;
   /** In a policy, which sees `self` as `validate` does, before the input: the policy's message name, `policy :owner`. */
   policy?: string;
+  /** In a computed field's body, which is worked out on a loaded record and has no `before`: the field's message name, `computed :total of Order`. */
+  computed?: string;
   /** When the function can run on a create: the members of `self` that may still be null there (see `newInstanceGaps`). */
   fresh?: ReadonlySet<string>;
   /** The members every create the function runs in takes as a member input, so `input.x ?? &x` has a value on a create. */
@@ -138,7 +142,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     return owner.fresh?.has(name) && (!result.nullable || owner.entity?.computed.some((c) => c.name === name)) ? { ...result, nullable: true, unfilled: name } : result;
   }
   function ownMemberTy(owner: Ty, name: string): Ty {
-    if (owner.c === "any") return { c: "any", nullable: false };
+    if (owner.c === "any") return { c: "any", nullable: false, ...(owner.mayBeEnum ? { mayBeEnum: true as const } : {}) };
     if (owner.c !== "record" || !owner.entity) throw new Demote(`member access on a ${owner.c}`, undefined as never);
     const e = owner.entity;
     const attribute = e.attributes.find((a) => a.name === name);
@@ -212,13 +216,19 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           report("error", "MESH_VALIDATE_BEFORE",
             "`before` is gone from `validate`: there `self` is the record before the input is applied (the stored record, or a create's new instance), and the caller's values are `input.x`", n.position,
             "write `&x` for the value before the input, `input.x` for the caller's, and `input.x ?? &x` for the value the action will store");
-          return { c: "any", nullable: false };
+          return { c: "any", nullable: false, mayBeEnum: true };
         }
         if (n.name === "before" && scope.policy) {
           report("error", "MESH_POLICY_BEFORE",
             `${scope.policy} reads \`before\`, which a policy does not have: it sees \`self\` as \`validate\` does, before the input is applied (the stored record, or a create's new instance), and the caller's values as \`input.x\``, n.position,
             "write `&x` for the stored value and `input.x` for the caller's");
-          return { c: "any", nullable: false };
+          return { c: "any", nullable: false, mayBeEnum: true };
+        }
+        if (n.name === "before" && scope.computed) {
+          report("error", "MESH_COMPUTED_BEFORE",
+            `${scope.computed} reads \`before\`, which a computed field does not have: it is worked out on a loaded record, which has no earlier version`, n.position,
+            "compute it from `&x`; a rule about the value before a write belongs in a `do` step or a `run`");
+          return { c: "any", nullable: false, mayBeEnum: true };
         }
         if (n.name === "before") return { c: "record", nullable: scope.beforeNullable, entity: scope.entity, stored: true };
         if (n.name === "input") return { c: "input", nullable: false };
@@ -230,7 +240,8 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         // On a create, `&x` in a check is the new instance's value before the input: its default, or null. Not the caller's.
         if (owner.pending?.has(n.name) && !storedFallback.has(n)) {
           notApplied(n.name, n.position, scope.policy);
-          return { c: "any", nullable: false };
+          // The member keeps what an atom may be compared with: an enum is still one.
+          return { c: "any", nullable: false, ...(ownMemberTy(owner, n.name).c === "enum" ? { mayBeEnum: true as const } : {}) };
         }
         if (owner.nullable && !owner.viaOptional && !n.optional && owner.c !== "any") {
           if (owner.unfilled !== undefined)
@@ -293,17 +304,34 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         const same = (x: Ty, y: Ty) => any(x) || any(y) || x.c === y.c;
         const bothClass = (x: Ty, ...classes: TypeClass[]) => any(x) || classes.includes(x.c as TypeClass);
         const nullable = a.some((t) => t.nullable);
+        // An atom names one of an enum's values: compared with anything else (a string, a number, another atom, a value Mesh
+        // has no type for such as `actor.x`) it is an error, reported once at the first atom. An input field Mesh types as an
+        // enum is an enum here. The comparison stays translated, so no plain-code warning follows.
+        const atomAgainstNonEnum = (): boolean => {
+          const [x, y] = a as [Ty, Ty];
+          for (const [i, atom, other] of [[0, x, y], [1, y, x]] as const) {
+            if (atom.atom === undefined || (other.c === "enum" && other.atom === undefined) || other.mayBeEnum) continue;
+            const what = other.atom !== undefined ? "another atom" : other.c === "any" ? "a value Mesh has no type for"
+              : other.c === "json" ? "a json value" : other.c === "input" ? "the input" : `a ${other.c}`;
+            report("error", "MESH_EXPR_ATOM",
+              `:${atom.atom} is compared with ${what}, and an atom is compared only with an enum: it names one of the enum's values`, n.args[i]!.position,
+              other.atom !== undefined ? `write the strings \`${JSON.stringify(atom.atom)}\` and \`${JSON.stringify(other.atom)}\`` : `write the string \`${JSON.stringify(atom.atom)}\``);
+            return true;
+          }
+          return false;
+        };
         switch (n.fn) {
           case "isNull": case "isNotNull": return { c: "boolean", nullable: false };
           case "eq": case "ne": {
             const [x, y] = a as [Ty, Ty];
+            if (atomAgainstNonEnum()) return { c: "boolean", nullable };
             if (!same(x, y)) return fail("a comparison of values of different types");
             if (["json", "record", "list", "input"].includes(x.c) || ["json", "record", "list", "input"].includes(y.c)) return fail(`a comparison of ${x.c} values`);
             for (const [lit, other] of [[x, y], [y, x]] as const)
               if (lit.atom !== undefined && other.c === "enum") {
                 if (other.values && !other.values.includes(lit.atom))
                   report("error", "MESH_EXPR_UNKNOWN_ATOM", `:${lit.atom} is not one of the values of this enum (${other.values.map((v) => `:${v}`).join(", ")})`, n.position);
-              } else if (lit.atom !== undefined && other.c !== "any" && other.c !== "enum") return fail("an atom compared with something that is not an enum");
+              }
             if (x.nullable && y.nullable && !x.literal && !y.literal)
               report("warning", "MESH_EXPR_NULL_EQUALITY",
                 "both sides can be null, and a comparison with null is unknown, not true (JavaScript says `null === null`)", n.position,
@@ -316,6 +344,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
           }
           case "lt": case "lte": case "gt": case "gte": {
             const [x, y] = a as [Ty, Ty];
+            if (atomAgainstNonEnum()) return { c: "boolean", nullable };
             if (!bothClass(x, "number", "date") || !bothClass(y, "number", "date") || !same(x, y)) return fail("an ordering comparison on values that are not both numbers or both dates");
             return { c: "boolean", nullable };
           }
@@ -513,7 +542,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     const base: Scope = { entity, beforeNullable: true, inputs: null, locals: new Map() };
     for (const computed of entity.computed as Computed[]) {
       if (!computed.body) continue;
-      const t = visit(computed.body, base, false);
+      const t = visit(computed.body, { ...base, computed: `computed :${computed.name} of ${entity.fqn}` }, false);
       computed.nullable = t ? t.nullable : false;
     }
     for (const action of entity.actions) {

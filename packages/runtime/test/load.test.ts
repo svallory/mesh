@@ -237,6 +237,43 @@ describe("a relationship and computed fields named like members of Object.protot
   });
 });
 
+// What the message tells the author to do must work in the plain body it is about: Mesh loads what such a body reads as
+// `&name` with the chain written right after it, and follows neither `self.name` nor a read through a variable.
+describe("the message of a guard for a field that was not loaded", () => {
+  const message = (read: () => unknown) => {
+    try { read(); } catch (error) { return (error as Error).message; }
+    return undefined;
+  };
+  const told = (what: string, entity: string, name: string) =>
+    `A plain ${what} read ${entity}#${name}, which was not loaded: Mesh could not tell from the body that it reads it. Read it as \`&${name}\` in the same body (a related record's as the whole chain, \`&relationship.${name}\`) so Mesh loads what it reads: \`self.${name}\` and a read through a variable are not followed`;
+
+  test("says to read the member as `&name` in the same body, and never to rewrite the body as one expression", () => {
+    const { handle } = memory({});
+    const own = guarded(plan(handle), "Node", { id: 1, parentId: null, ownerId: 7 }) as { children: unknown; depth: unknown };
+    // A relationship, a computed field, and `in` on either: one message.
+    expect(message(() => own.children)).toBe(told("computed body", "Node", "children"));
+    expect(message(() => own.depth)).toBe(told("computed body", "Node", "depth"));
+    expect(message(() => "children" in own)).toBe(told("computed body", "Node", "children"));
+    expect(message(() => own.children)).not.toContain("one expression");
+  });
+
+  test("names the kind of plain code and, for a related row, the related entity's member", () => {
+    const { handle } = memory({});
+    const child = guarded(plan(handle), "Node", { id: 2, parentId: 1, ownerId: 7, parent: { id: 1, parentId: null, ownerId: 7 }, owner: { id: 7 } }, "action function") as { parent: { children: unknown; id: unknown }; owner: { badge: unknown } };
+    expect(child.parent.id).toBe(1);
+    expect(message(() => child.parent.children)).toBe(told("action function", "Node", "children"));
+    // Owner has no relationship or computed field, so nothing on it is guarded.
+    expect(child.owner.badge).toBeUndefined();
+  });
+
+  test("`before` keeps its own message", () => {
+    const { handle } = memory({});
+    const before = guarded(plan(handle), "Node", { id: 1, parentId: null, ownerId: 7 }, "before") as { children: unknown };
+    expect(message(() => before.children)).toStartWith("`before` holds the stored columns of Node only, so Node#children is not on it");
+    expect(message(() => before.children)).not.toContain("so Mesh loads what it reads");
+  });
+});
+
 describe("rejectComputedQuery", () => {
   const names = ["total", "depth"];
   const refused = (what: string, name: string) => `A ${what} by Doc#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;

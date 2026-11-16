@@ -159,7 +159,14 @@ describe("name resolution: every rule `Mesh` already follows holds", () => {
 
   test("Mesh not imported, or imported under a scope name, is not the function", () => {
     expect(errors(entity(run("await Mesh.can(Task.go, input, context)"), "", "")).map((e) => e.code)).toEqual(["MESH_EXPR_FREE_VARIABLE"]);
-    expect(errors(entity(run("await Mesh.can(Task.go, input, context)"), "", 'import { Mesh as input } from "meshfw"')).map((e) => e.code)).toContain("MESH_HELPER_NAME");
+    // The import itself is no error: inside a function `input` is the caller's input, so `Mesh` is still unknown there.
+    const asInput = 'import { Mesh as input } from "meshfw"';
+    expect(errors(entity(run("await Mesh.can(Task.go, input, context)"), "", asInput)).map((e) => [e.code, e.fix])).toEqual([["MESH_EXPR_FREE_VARIABLE", 'import it: `import { Mesh } from "meshfw"`']]);
+    // `input.can(...)` is a method of the caller's input, never Mesh's: it asks nothing and no rule about asking applies, in a step or in a policy.
+    const onInput = entity(run("await input.can(Task.go, input, context)"), "", asInput);
+    expect(build(onInput).diagnostics).toEqual([]);
+    expect(asks(onInput)).toBe(false);
+    expect(errors(inPolicy("await input.can(Task.go, input, context)", asInput))).toEqual([]);
   });
 });
 

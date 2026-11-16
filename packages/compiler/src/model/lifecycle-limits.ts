@@ -5,11 +5,12 @@ import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
 /**
- * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check,
- * a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
+ * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
+ * computed field, a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
- * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, and `asynchronyOf` whether it is `async` or awaits, both kept by the front end.
+ * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
+ * `scopeReachOf` which scope names a rest or plain parameter reads, all kept by the front end.
  */
 export function checkLifecycleLimits(
   document: ModelDocument,
@@ -18,6 +19,7 @@ export function checkLifecycleLimits(
     privilegedCallsOf?: (expression: Expression) => readonly SourcePosition[];
     askCallsOf?: (expression: Expression) => readonly SourcePosition[];
     asynchronyOf?: (expression: Expression) => "async" | "await" | undefined;
+    scopeReachOf?: (expression: Expression) => ReadonlySet<string> | "any" | undefined;
   } = {},
 ): void {
   // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies.
@@ -60,6 +62,19 @@ export function checkLifecycleLimits(
         diagnostics.push(error("MESH_COMPUTED_ASYNC",
           `computed :${field.name} of ${entity.fqn} ${asynchrony === "async" ? "is `async`" : "uses `await`"}: a computed field is synchronous, and reads only its record and what it loads`,
           body.position, "Compute it from the record, its relationships and other computed fields; a read through `Mesh.privileged` or anything else that awaits belongs in a step or a check"));
+      // Nor has it a `before`: the record it is worked out on was loaded, not written, so it has no earlier version. The type
+      // pass reports each `before` a translated body reads; this catches a plain body, which reads it free (the root),
+      // destructured or through a rest or plain parameter that can reach it, and a body that only destructures it.
+      // A rest or plain parameter reaches `before` when the body reads it through one (`rest.before`, `rest["before"]`) or
+      // uses one whole; without the front end's answer, the word in the source is the guess.
+      const reach = body.rest ? options.scopeReachOf?.(body) : undefined;
+      const restReads = !body.rest ? false : reach === undefined ? /\bbefore\b/.test(body.source) : reach === "any" || reach.has("before");
+      const readsBefore = body.params.includes("before") || restReads || body.plain?.roots.includes("before");
+      const end = body.position.offset + body.source.length;
+      if (readsBefore && !diagnostics.some((d) => d.code === "MESH_COMPUTED_BEFORE" && d.position.file === body.position.file && d.position.offset >= body.position.offset && d.position.offset < end))
+        diagnostics.push(error("MESH_COMPUTED_BEFORE",
+          `computed :${field.name} of ${entity.fqn} reads \`before\`, which a computed field does not have: it is worked out on a loaded record, which has no earlier version`,
+          body.position, "compute it from `&x`; a rule about the value before a write belongs in a `do` step or a `run`"));
     }
     // A plain function (a `run`, or a body that is not one expression) is not type-checked by the expression pass, so a check's
     // `before` parameter is caught here.

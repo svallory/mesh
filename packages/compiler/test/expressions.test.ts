@@ -547,8 +547,8 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
       "  computed",
       // Each name is spelled: in code, in a string, in a comment and through an escape (`$today` is `$today`).
       "    boolean :spelled() { const $now = 1, $self = 2, $\\u0074oday = 3; /* $now1 */ return String(\"$self1\").length > 0 && %.now.getTime() + %.today.getTime() + &n + $now + $self + $today > 0 }",
-      // A translated quantifier the type pass demotes (`:open` against a string) keeps its parameter `$`, its authored name.
-      "    boolean :demoted() { return &children.some(($) => $.title === :open && $.dueAt !== null && $.dueAt < %.now) }",
+      // A translated quantifier the type pass demotes (a string tested for truthiness) keeps its parameter `$`, its authored name.
+      "    boolean :demoted() { return &children.some(($) => $.state === :open && $.title && $.dueAt !== null && $.dueAt < %.now) }",
       "  actions auto",
     ].join("\n"));
     const { root, built, files } = await generated(plain);
@@ -561,13 +561,15 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(printed).toContain("const $now2 = () => $.now($s);");
     expect(printed).toContain("const $today1 = () => $.today($s);");
     expect(printed).toContain("$now2().getTime() + $today1().getTime() + $self2.n + $now + $self + $today > 0");
-    expect(printed).toContain("$self.children.some(($) => $.title === \"open\" && $.dueAt !== null && $.dueAt < $now())");
+    // Prettier breaks the call after `some(`: the function is on a line of its own.
+    expect(printed).toContain("return $self.children.some(\n");
+    expect(printed).toContain("($) => $.state === \"open\" && $.title && $.dueAt !== null && $.dueAt < $now(),\n");
     expect(await checkTypes(root, ["generated/domain/task.expressions.ts", "generated/domain/task.types.ts"])).toEqual({ code: 0, output: "" });
     const { $expressions: expressions } = await import(resolve(root, "generated/domain/task.expressions.ts"));
     const at = { clock: () => new Date(86_400_000 * 2 + 5_000) };
     expect(expressions["computed.spelled"](scope({ self: { n: 1 } }, at))).toBe(true);
-    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000) }] } }, at))).toBe(true);
-    expect(expressions["computed.demoted"](scope({ self: { children: [{ title: "open", dueAt: new Date(86_400_000 * 3) }] } }, at))).toBe(false);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ state: "open", title: "t", dueAt: new Date(86_400_000) }] } }, at))).toBe(true);
+    expect(expressions["computed.demoted"](scope({ self: { children: [{ state: "open", title: "t", dueAt: new Date(86_400_000 * 3) }] } }, at))).toBe(false);
   }, 30_000);
 
   test("each Mesh.isSystem resolves against its own enclosing scopes: a parameter named Mesh shadows the import only inside its function; %.now has no binding to hide", async () => {
@@ -1105,13 +1107,17 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
     expect(await logged(async () => { await expressions["make.step.1.run"]!(scope(create)); })).toEqual([["before is", null]]);
   }, 30_000);
 
-  test("item 6: a check or a policy that reads `before` only in a type is refused when the file is emitted", async () => {
+  test("item 6: a check, a policy or a computed field that reads `before` only in a type is refused when the file is emitted", async () => {
     // The front end cannot see a type (MX strips them), so the back end reports it where `typeNames` finds it, with the
     // code the front end gives a `before` read as a value; binding it would fail tsc with TS2339 on the check's scope.
     const that = "() => { const b: typeof before = null; return b === null }";
     const cases = [
       [entity(check(that)), "MESH_VALIDATE_BEFORE", "check :c that"],
       [entity(check("() => true")).replace("  actions auto", `  policies\n    policy :p types=[:update]\n      authorize-if=${that}\n  actions auto`), "MESH_POLICY_BEFORE", "policy :p authorize-if"],
+      // A computed field has no `before` either: its type there would promise a record the field never gets.
+      [entity(check("() => true")).replace("  actions auto", "  computed\n    boolean :b() { const b: typeof before = null; return b === null }\n  actions auto"), "MESH_COMPUTED_BEFORE", "computed :b of Task"],
+      // An action named `computed` is not a computed field: its check keeps the check's code.
+      [entity(check(that)).replace("update :go", "update :computed"), "MESH_VALIDATE_BEFORE", "check :c that"],
     ] as const;
     for (const [source, code, what] of cases) {
       const built = build(source);
@@ -1375,26 +1381,60 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     expect(await typeCheck()).toEqual({ code: 0, output: "" });
   }, 30_000);
 
-  test("Mesh imported under a scope name is refused at the import, and a fix never names an alias that cannot be read", () => {
+  test("Mesh imported under a scope name is no error at the import: in a function the name is the scope's root, and a fix never names an alias that cannot be read", () => {
     const withImport = (line: string, that = "() => true") => entity(check(that)).replace('import { Mesh } from "meshfw"', line);
-    const source = withImport('import { Mesh as input } from "meshfw"');
-    expect(problems(source)).toEqual([{
-      code: "MESH_HELPER_NAME",
-      message: "The Mesh import name input is a scope name: in every function of the file `input` is the scope's `input`, so `Mesh` imported as input could never be read",
-      fix: "import it as `Mesh`, or under a name other than `self`, `input`, `actor`, `context` and `before`",
-      offset: source.indexOf("input }"),
+    // No name is refused: the import builds with no diagnostic, whichever root it is named like.
+    for (const root of ["self", "input", "actor", "context", "before"])
+      expect(build(withImport(`import { Mesh as ${root} } from "meshfw"`)).diagnostics, root).toEqual([]);
+    // Inside a function the name is the root, as a parameter shadows an import in JavaScript: `input.n` is the caller's input.
+    const reading = build(withImport('import { Mesh as input } from "meshfw"', "({ input }) => input.n > 0"));
+    expect(reading.diagnostics).toEqual([]);
+    expect(reading.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate[0]!.that.tree)
+      .toMatchObject({ fn: "gt", args: [{ kind: "member", object: { kind: "var", name: "input" }, name: "n" }, { kind: "literal", value: 0 }] });
+    // So `Mesh` cannot be read there, under either name. A bare `isSystem()`: the fix does not say `input.isSystem()`.
+    const bare = withImport('import { Mesh as input } from "meshfw"', "({ context }) => isSystem(context)");
+    expect(problems(bare)).toMatchObject([{
+      code: "MESH_EXPR_FREE_VARIABLE",
+      fix: 'write `Mesh.isSystem(context)` and import `Mesh` under a name that is not a scope name: `import { Mesh } from "meshfw"`',
+      offset: bare.indexOf("isSystem(context)"),
     }]);
-    // A bare `isSystem()` there: the fix does not say `input.isSystem()`.
-    expect(problems(withImport('import { Mesh as input } from "meshfw"', "({ context }) => isSystem(context)")).map((p) => p.fix)).toEqual([
-      "import it as `Mesh`, or under a name other than `self`, `input`, `actor`, `context` and `before`",
-      'write `Mesh.isSystem(context)` and import `Mesh` under a name that is not a scope name: `import { Mesh } from "meshfw"`',
-    ]);
+    const named = withImport('import { Mesh as input } from "meshfw"', "({ context }) => Mesh.isSystem(context)");
+    expect(problems(named)).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: 'import it: `import { Mesh } from "meshfw"`', offset: named.indexOf("Mesh.isSystem") }]);
+    // `input.isSystem(context)` is a call on the caller's input, not Mesh's function: no Mesh rule applies to it.
+    const onInput = build(withImport('import { Mesh as input } from "meshfw"', "({ input, context }) => input.isSystem(context)") +
+      "  policies\n    policy :q types=[:read]\n      authorize-if=({ input, context }) => input.privileged(context) !== null\n    policy :w types=[:update]\n      authorize-if=() => true\n");
+    expect(onInput.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(onInput.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate[0]!.that.plain?.mesh).toBeUndefined();
     // An alias a binding hides where the bare name is read: the fix names it and says to rename the binding.
     expect(problems(withImport('import { Mesh as M } from "meshfw"', "({ context }) => [context].some((M) => M !== null && isSystem(context))")).map((p) => p.fix))
       .toEqual(["write `M.isSystem(context)`, renaming the binding that hides `M` here"]);
     expect(problems(withImport('import { Mesh as M } from "meshfw"', "({ context }) => [1].some((M) => M === 1 && Mesh.isSystem(context))")).map((p) => p.fix))
       .toEqual(["write `M`, the name this file imports `Mesh` under, renaming the binding that hides it here"]);
   });
+
+  test("Mesh imported as `input`: the generated file never imports Mesh under that name, and `input` is the caller's input in translated and plain code", async () => {
+    const source = entity(check("({ input }) => input.n === null || input.n > 0") +
+      "      do\n        run ({ input }) { console.log(input.n) }\n        run (s) { console.log(s.input.n) }\n        run () { console.log(input.n) }\n")
+      .replace("      validate\n", "      input\n        &n\n      validate\n")
+      .replace('import { Mesh } from "meshfw"', 'import { Mesh as input } from "meshfw"');
+    const { built, printed, typeCheck, load } = await emitted(source);
+    expect(built.diagnostics).toEqual([]);
+    const go = built.document!.entities[0]!.actions.find((a) => a.name === "go")!;
+    expect(go.validate[0]!.that.tree).toBeDefined();
+    // No function reads Mesh, so no function of the model lists it (`plain.mesh`) and the file imports it under no name;
+    // `input` is bound by no import.
+    expect(JSON.stringify(built.document)).not.toContain('"mesh":[');
+    expect(printed).not.toMatch(/\bMesh\b/);
+    expect(printed).not.toMatch(/import \{[^}]*\binput\b[^}]*\}/);
+    expect(await typeCheck()).toEqual({ code: 0, output: "" });
+    const expressions = await load();
+    expect(expressions["go.check.c.that"]!(scope({ self: { n: 1 }, input: { n: 2 } }, clock))).toBe(true);
+    expect(expressions["go.check.c.that"]!(scope({ self: { n: 1 }, input: { n: 0 } }, clock))).toBe(false);
+    expect(await logs(() => expressions["go.step.0.run"]!(scope({ self: { n: 1 }, input: { n: 5 } }, clock)))).toEqual([[5]]);
+    expect(await logs(() => expressions["go.step.1.run"]!(scope({ self: { n: 1 }, input: { n: 6 } }, clock)))).toEqual([[6]]);
+    // Not destructured either: every function has the five roots, so a bare `input` is the root, never the import.
+    expect(await logs(() => expressions["go.step.2.run"]!(scope({ self: { n: 1 }, input: { n: 7 } }, clock)))).toEqual([[7]]);
+  }, 30_000);
 
   test("a default, namespace or type import from meshfw is MESH_IMPORT_FORM whose fix imports Mesh by name", () => {
     const withImport = (line: string) => entity(check("() => true")).replace('import { Mesh } from "meshfw"', line);
@@ -2061,7 +2101,7 @@ export const after: number = written.self.seq;
   });
 });
 
-// mx-mesh-delete-member-rule: no decision row covers `delete` on a member, and `delete self.name` is accepted, so `delete &name` is
+// mesh-delete-member-rule: no decision row covers `delete` on a member, and `delete self.name` is accepted, so `delete &name` is
 // accepted alike. Before MX alpha.31, `delete &name` gave MESH_PARSE_EXPRESSION "Deleting local variable in strict mode." (Babel's
 // message about the stand-in a trigger lowers to, not about what the author wrote).
 describe("`delete &name` in a computed method behaves as `delete self.name`", () => {

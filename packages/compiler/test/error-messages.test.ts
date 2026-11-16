@@ -1,4 +1,4 @@
-// The build-error catalogue's findings (beads mx-mesh-error-catalogue-fixes): a message names a construct in the author's
+// The build-error catalogue's findings (beads mesh-error-catalogue-fixes): a message names a construct in the author's
 // own syntax and never an internal name, `for` and `if` in an entity file say what to write instead,
 // and every code Mesh raises has a test that reaches it (or is documented as a guard no source file reaches).
 import { describe, expect, test } from "bun:test";
@@ -10,7 +10,7 @@ import { EmitError, generateFiles } from "../src/typescript/emit.ts";
 import { configOf } from "./generated.ts";
 import { build, keyed, project } from "./v4.ts";
 
-describe("MESH_EXPR_PLAIN names the construct the author wrote (mx-mesh-expr-plain-optionalcall-message)", () => {
+describe("MESH_EXPR_PLAIN names the construct the author wrote (mesh-expr-plain-optionalcall-message)", () => {
   const entity = (that: string) => `import { Task } from "./task.mesh.mx"
 entity :Task
   attributes
@@ -71,7 +71,7 @@ entity :Task
   });
 });
 
-describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-message)", () => {
+describe("`for` and `if` in an entity file say what to write (mesh-for-pipe-message)", () => {
   const FOR = "a Mesh file has no loops; write each declaration out, or write a rule over a list as an expression such as `&lines.every((line) => ...)`";
   const IF = "a Mesh file has no conditionals; put the condition on the line it conditions, as `when=` on a policy or a check, or inside its expression";
   const diagnostic = (body: string) => {
@@ -95,7 +95,7 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
     expect(d).toMatchObject({ code: "MESH_STRUCTURAL_CONSTRUCT", message: "Mesh files are static, so they do not evaluate `if`", fix: IF });
   });
 
-  // MX alpha.31 (mx-mesh-for-if-under-entity): under `structural: "reject"` a `for` or `if` under a closed parent is the one error,
+  // MX alpha.31 (mesh-for-if-under-entity): under `structural: "reject"` a `for` or `if` under a closed parent is the one error,
   // at the construct; what it holds is not checked against the parent's children until the construct is gone. Before, the
   // contract looked through it and reported its first child (`MESH_TAG_NOT_ALLOWED`, `MESH_REPEATED_CHILD`).
   test.each([
@@ -180,7 +180,7 @@ describe("`for` and `if` in an entity file say what to write (mx-mesh-for-pipe-m
   });
 });
 
-describe("MESH_ARGUMENT_OPTIONS (mx-mesh-untested-error-codes)", () => {
+describe("MESH_ARGUMENT_OPTIONS (mesh-untested-error-codes)", () => {
   const input = (line: string) => keyed + `  actions\n    create :c\n      input\n        ${line}\n`;
   test.each(["uuid :x primary-key", "string :x unique", "timestamp :x on=:create", "string :x value=() => 1", "string :x unique primary-key"])(
     "an argument `%s` is refused at its line",
@@ -202,7 +202,7 @@ describe("MESH_ARGUMENT_OPTIONS (mx-mesh-untested-error-codes)", () => {
   });
 });
 
-describe("MESH_PROJECT_PATH (mx-mesh-untested-error-codes)", () => {
+describe("MESH_PROJECT_PATH (mesh-untested-error-codes)", () => {
   const at = { file: "mesh.config.ts", line: 1, column: 0, offset: 0 };
   const files = [{ file: "todo.mesh.mx", source: keyed }];
   test.each(["C:\\project", "c:/project", "//server/share/project"])("the project root %s is not a host path", (root) => {
@@ -220,7 +220,7 @@ describe("MESH_PROJECT_PATH (mx-mesh-untested-error-codes)", () => {
   });
 });
 
-describe("MESH_NON_JSON (mx-mesh-untested-error-codes)", () => {
+describe("MESH_NON_JSON (mesh-untested-error-codes)", () => {
   // The code is reachable: a number literal that overflows (`1e999`) is `Infinity`, which JSON cannot hold. Where a rule
   // checks the number as well (a default, a string bound), the sorted diagnostics put this one first at the entity line.
   const entityPosition = { file: "todo/todo.mesh.mx", line: 1, column: 0, offset: 0 };
@@ -244,7 +244,7 @@ describe("MESH_NON_JSON (mx-mesh-untested-error-codes)", () => {
   });
 });
 
-describe("MESH_EMIT_KEY (mx-mesh-untested-error-codes)", () => {
+describe("MESH_EMIT_KEY (mesh-untested-error-codes)", () => {
   // No source file reaches it: `buildModel` refuses an entity without exactly one primary key as MESH_PRIMARY_KEY and
   // returns no document, in this and every other file of the project, and the emitters take only that document. The check
   // stays because `generateFiles` is exported (`@meshfw/compiler`) and takes any `ModelDocument`, built by hand or read back
