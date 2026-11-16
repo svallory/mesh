@@ -26,20 +26,37 @@ export async function condLater(context: any, tag: string): Promise<boolean> {
 export function pass(context: any, name: string): boolean {
   return !context.fail.includes(name);
 }
+// A condition over a number: records what it saw and holds when it is above zero.
+export function above(context: any, tag: string, n: number): boolean {
+  context.calls.push({ tag, saw: n });
+  return n > 0;
+}
 // What a step saw: that it ran.
 export function ran(context: any, name: string): void {
   context.calls.push({ tag: "step " + name });
 }
 `;
 
-const person = `entity :Person table="people"
+const person = `import { Invoice } from "./invoice.mesh.mx"
+import { above, pass } from "./helpers"
+entity :Person table="people"
   attributes
     uuid :id primary-key
     string :name min=1
+  relationships
+    has-many :invoices entity=Invoice
+  computed
+    count :invoiceCount of=&invoices
   actions auto=[:read]
     create :join
       input
         &name
+    update :rename
+      input
+        &name
+      validate
+        when=({ context }) => above(context, "counted", &invoiceCount)
+          check :countedCheck that=({ context }) => pass(context, "counted") code="counted" message="counted"
   policies
     policy :anyCaller
       authorize-if=() => true
@@ -317,6 +334,20 @@ describe("an update", () => {
       expect(labels(await using(world, { fail: ["disjoint"] }, () => rejected(world.mesh.setAmountInvoice({ id: row.id, amount: 3 }, world.ctx))))).toEqual(["disjointCheck"]);
       await using(world, { answers: { disjoint: false }, fail: ["disjoint"] }, () => world.mesh.setNoteInvoice({ id: row.id, note: "y" }, world.ctx));
       expect(count(world, "disjoint")).toBe(1);
+    } finally { await world.db.close(); }
+  });
+});
+
+describe("a condition reading a rollup", () => {
+  test("sees the counted value: at 0 the checks under it are skipped, at 1 they run", async () => {
+    const world = await fresh();
+    try {
+      await using(world, { fail: ["counted"] }, () => world.mesh.renamePerson({ id: world.ada.id, name: "Ada L" }, world.ctx));
+      expect(world.ctx.calls).toEqual([{ tag: "counted", saw: 0 }]);
+      await issue(world);
+      const error = await using(world, { fail: ["counted"] }, () => rejected(world.mesh.renamePerson({ id: world.ada.id, name: "Ada K" }, world.ctx)));
+      expect(labels(error)).toEqual(["countedCheck"]);
+      expect(world.ctx.calls).toEqual([{ tag: "counted", saw: 1 }]);
     } finally { await world.db.close(); }
   });
 });
