@@ -178,6 +178,33 @@ describe("the through= value", () => {
   });
 });
 
+describe("the through= value, refused (D26), says nothing of the link's read", () => {
+  test("a link that is the owner, with no read, gives the D26 error and the owner's own MESH_ON_LOAD only", () => {
+    const result = school({ student: student("has-many :courses entity=Course through=Student").replace("  actions auto=[:read]\n", "") });
+    // Enrollment's belongs-to :student reaches the readless Student: that is its own cause, at its own line.
+    expect(result.diagnostics.map((d) => [d.code, `${d.position.file}:${d.position.line}:${d.position.column}`])).toEqual([
+      ["MESH_ON_LOAD", "app/enrollment.mesh.mx:7:4"],
+      ["MESH_ENTITY_REFERENCE", "app/student.mesh.mx:7:44"],
+    ]);
+  });
+  test("a link that is the far entity, with no read, gives the D26 error and the relationship's MESH_ON_LOAD only", () => {
+    const result = school({ student: student("has-many :courses entity=Course through=Course"), course: course("", "") });
+    expect(result.diagnostics.map((d) => [d.code, `${d.position.file}:${d.position.line}:${d.position.column}`])).toEqual([
+      ["MESH_ON_LOAD", "app/enrollment.mesh.mx:8:4"],
+      ["MESH_ON_LOAD", "app/student.mesh.mx:7:4"],
+      ["MESH_ENTITY_REFERENCE", "app/student.mesh.mx:7:44"],
+    ]);
+  });
+  test("a link that is the far entity, whose policies cover no read, warns once, as the far entity", () => {
+    const result = school({
+      student: student("has-many :courses entity=Course through=Course"),
+      course: course("  policies\n    policy :writers types=[:create]\n      authorize-if=() => true\n", "  actions auto=[:read, :create]\n"),
+    });
+    expect(result.diagnostics.filter((d) => d.code === "MESH_LOAD_NO_POLICY").map((d) => `${d.position.file}:${d.position.line}:${d.position.column}`))
+      .toEqual(["app/enrollment.mesh.mx:8:4", "app/student.mesh.mx:7:4"]);
+  });
+});
+
 describe("the entry", () => {
   test("no belongs-to to the owner is MESH_NO_INVERSE at the relationship, naming the link", () => {
     const result = school({ enrollment: enrollment("    belongs-to :course entity=Course\n") });

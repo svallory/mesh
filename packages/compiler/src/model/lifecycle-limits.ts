@@ -49,7 +49,9 @@ export function checkLifecycleLimits(
           relation.position,
           `List \`:read\` in \`auto=\` on the \`actions\` line of ${target.fqn} (\`actions auto=[:read]\`), or name one of its reads there with \`on:load=&name\``));
       // A has-many through a link entity loads the link's rows too: the link needs a read, and its policies decide the load.
-      const link = relation.through && byFile.get(resolve(dirname(from.file), relation.through.entity.from));
+      // A link that is the owner or the far entity is refused at the through= value (D26), and nothing else is said of it.
+      const named = relation.through && byFile.get(resolve(dirname(from.file), relation.through.entity.from));
+      const link = named && named !== from && named !== target ? named : undefined;
       if (link && !link.onLoad && !link.auto.includes("read"))
         diagnostics.push(error("MESH_ON_LOAD",
           `${relation.kind} :${relation.name} of ${from.fqn} goes through ${link.fqn}, which has neither \`on:load=\` nor an auto read, so Mesh has no read to load it with`,
