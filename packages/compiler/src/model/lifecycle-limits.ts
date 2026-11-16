@@ -9,7 +9,8 @@ import { loadPolicies, policiesCovering, policyExpressions, recordReason } from 
  * computed field, a `validate` or `do` on a read, which has no record to check or change, a `set` or `load` in a destroy, and in a policy
  * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
- * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, and `asynchronyOf` whether it is `async` or awaits, both kept by the front end.
+ * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
+ * `scopeReachOf` which scope names a rest or plain parameter reads, all kept by the front end.
  */
 export function checkLifecycleLimits(
   document: ModelDocument,
@@ -18,6 +19,7 @@ export function checkLifecycleLimits(
     privilegedCallsOf?: (expression: Expression) => readonly SourcePosition[];
     askCallsOf?: (expression: Expression) => readonly SourcePosition[];
     asynchronyOf?: (expression: Expression) => "async" | "await" | undefined;
+    scopeReachOf?: (expression: Expression) => ReadonlySet<string> | "any" | undefined;
   } = {},
 ): void {
   // The entities a relationship (and so a rollup) reaches: a caller's load of one runs its read policies.
@@ -63,7 +65,11 @@ export function checkLifecycleLimits(
       // Nor has it a `before`: the record it is worked out on was loaded, not written, so it has no earlier version. The type
       // pass reports each `before` a translated body reads; this catches a plain body, which reads it free (the root),
       // destructured or through a rest or plain parameter that can reach it, and a body that only destructures it.
-      const readsBefore = body.params.includes("before") || (body.rest && /\bbefore\b/.test(body.source)) || body.plain?.roots.includes("before");
+      // A rest or plain parameter reaches `before` when the body reads it through one (`rest.before`, `rest["before"]`) or
+      // uses one whole; without the front end's answer, the word in the source is the guess.
+      const reach = body.rest ? options.scopeReachOf?.(body) : undefined;
+      const restReads = !body.rest ? false : reach === undefined ? /\bbefore\b/.test(body.source) : reach === "any" || reach.has("before");
+      const readsBefore = body.params.includes("before") || restReads || body.plain?.roots.includes("before");
       const end = body.position.offset + body.source.length;
       if (readsBefore && !diagnostics.some((d) => d.code === "MESH_COMPUTED_BEFORE" && d.position.file === body.position.file && d.position.offset >= body.position.offset && d.position.offset < end))
         diagnostics.push(error("MESH_COMPUTED_BEFORE",

@@ -38,7 +38,7 @@ import {
 } from "@meshfw/model";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
-import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf } from "./expression.ts";
+import { askCallsOf, asynchronyOf, demotionOf, privilegedCallsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
@@ -1272,7 +1272,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf });
   computeNeeds(document, diagnostics);
-  checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, askCallsOf, asynchronyOf });
+  checkLifecycleLimits(document, diagnostics, { privilegedCallsOf, askCallsOf, asynchronyOf, scopeReachOf });
   checkPublishSteps(document, diagnostics);
   // A file that did not parse may hold the action that answers a command: with one missing, "unanswered" is not known.
   checkCommands(document, diagnostics, parsedFiles.length === project.files.length);

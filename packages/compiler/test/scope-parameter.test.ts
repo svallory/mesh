@@ -135,6 +135,10 @@ ${attributes}  computed
     ["only destructured, never read", "boolean :grew({ before }) { return &n > 0 }", "({ before }) { return &n"],
     ["a rest parameter", "boolean :grew({ ...rest }) { return rest.before !== null }", "({ ...rest }) {"],
     ["a plain parameter", "boolean :grew(s) { return s.before !== null }", "(s) { return s.before"],
+    ["a rest parameter, read with a string key", 'boolean :grew({ ...rest }) { return rest["before"] !== null }', "({ ...rest }) {"],
+    ["a rest parameter, destructured in the body", "boolean :grew({ ...rest }) { const { before } = rest; return before !== null }", "({ ...rest }) {"],
+    ["a rest parameter, handed on whole", "boolean :grew({ ...rest }) { return JSON.stringify(rest) !== \"\" }", "({ ...rest }) {"],
+    ["a plain parameter, read with a computed key", "boolean :grew(s) { const k = \"before\"; return s[k] !== null }", "(s) { const k"],
   ])("%s: exactly one error, with the message and the fix", (_, line, at) => {
     const source = withComputed(line);
     const diagnostics = diagnosticsOf(source);
@@ -157,6 +161,9 @@ ${attributes}  computed
     // An attribute named `before` is a member of the record, read as any other.
     for (const line of ["boolean :late() { return &before > 0 }", "boolean :late({ self }) { return self.before > 0 }", "boolean :late value=() => &before > &n"])
       expect(diagnosticsOf(withComputed(line, "    integer :before\n")), line).toEqual([]);
+    // A rest or plain parameter reaches `before` only by reading it: the word elsewhere in the body is no read of it.
+    for (const line of ["boolean :x({ ...rest }) { return &before !== null }", 'boolean :x({ ...rest }) { const t = rest.self.title; return t !== "before" }', "boolean :x(s) { return s.self.before !== null }"])
+      expect(diagnosticsOf(withComputed(line, "    integer :before\n")).map((d) => d.code), line).not.toContain("MESH_COMPUTED_BEFORE");
     // A parameter of a list method named `before` hides the root: plain code with its warning, and no error.
     expect(brief(withComputed("boolean :any() { return [&n].some((before) => before > 0) }"), 6)).toEqual([["warning", "MESH_EXPR_PLAIN", "[&n].s"]]);
     // An object key and a string that spell it read nothing.

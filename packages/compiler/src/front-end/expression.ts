@@ -957,6 +957,60 @@ export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
   return own((fn as N).body) ? "await" : undefined;
 }
 
+/**
+ * The scope names a function reaches through a parameter that binds the scope whole: a rest element (`{ ...rest }`) or a
+ * plain parameter (`(s) => ...`). Each read of a member of it (`rest.before`, `rest["before"]`) names that member; any
+ * other use (`rest[k]`, `const { before } = rest`, `f(rest)`) can reach every name, `"any"`. Undefined when no parameter
+ * binds the scope whole. Shadowing is not followed: a nested binding of the same name counts as a use, the safe side.
+ */
+export type ScopeReach = ReadonlySet<string> | "any";
+const scopeReaches = new WeakMap<object, ScopeReach>();
+export const scopeReachOf = (expression: object): ScopeReach | undefined => scopeReaches.get(expression);
+export const rememberScopeReach = (expression: object, reach: ScopeReach): void => { scopeReaches.set(expression, reach); };
+export function scopeReachOfFunction(fn: SyntaxNode): ScopeReach | undefined {
+  const bindings = new Set<string>();
+  for (const param of ((fn as N).params ?? []) as N[]) {
+    if (param.type === "Identifier") { bindings.add(param.name!); continue; }
+    if (param.type !== "ObjectPattern") return "any";
+    for (const property of (param.properties ?? []) as N[]) {
+      if (property.type === "RestElement") {
+        const argument = property.argument as N | undefined;
+        if (argument?.type !== "Identifier") return "any";
+        bindings.add(argument.name!);
+      } else if (!(property.key as N | undefined)?.name) return "any";
+    }
+  }
+  if (!bindings.size) return undefined;
+  const reached = new Set<string>();
+  let any = false;
+  const walk = (value: unknown, parent: N | undefined, key: string | undefined): void => {
+    if (any || !value || typeof value !== "object") return;
+    if (Array.isArray(value)) { for (const v of value) walk(v, parent, key); return; }
+    const n = value as N;
+    if (typeof n.type !== "string") return;
+    if (n.type === "MemberExpression" || n.type === "OptionalMemberExpression") {
+      const object = unwrapped(n.object as N);
+      if (object?.type === "Identifier" && bindings.has(object.name!)) {
+        const property = n.property as N;
+        if (!n.computed && property.type === "Identifier") reached.add(property.name!);
+        else if (n.computed && property.type === "StringLiteral") reached.add(String(property.value));
+        else any = true;
+        if (n.computed) walk(property, n, "property");
+        return;
+      }
+    }
+    if (n.type === "Identifier" && bindings.has(n.name!)) {
+      const spelled = (parent?.type === "MemberExpression" || parent?.type === "OptionalMemberExpression") && key === "property" && !parent.computed
+        || /^(ObjectProperty|ObjectMethod|ClassMethod|ClassProperty)$/.test(parent?.type ?? "") && key === "key" && !parent!.computed;
+      if (!spelled) any = true;
+      return;
+    }
+    for (const [k, v] of Object.entries(n)) if (k !== "loc" && k !== "extra" && typeof v === "object") walk(v, n, k);
+  };
+  walk((fn as N).body, undefined, undefined);
+  return any ? "any" : reached;
+}
+
 /** The identifier a callee starts with: `InvoicePaid`, or `billing` in `billing.InvoicePaid`. */
 const rootIdentifier = (callee: N | undefined): N | undefined => {
   let at = unwrapped(callee);

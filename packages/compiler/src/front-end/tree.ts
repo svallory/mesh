@@ -1,7 +1,7 @@
 import type { SpannedIr } from "@mxlang/core";
 import type { AtomNode } from "./syntax/atoms-sugars.ts";
 import type { MemberNode } from "./syntax/member.ts";
-import { asynchronyOfFunction, rememberAskCalls, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, translate, type ConvertContext, type Demotion } from "./expression.ts";
+import { asynchronyOfFunction, rememberAskCalls, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, rememberScopeReach, scopeReachOfFunction, translate, type ConvertContext, type Demotion } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
@@ -318,6 +318,8 @@ export function expression(
   if (askCalls) rememberAskCalls(result, askCalls);
   const asynchrony = asynchronyOfFunction(n);
   if (asynchrony) rememberAsynchrony(result, asynchrony);
+  const reach = rest ? scopeReachOfFunction(n) : undefined;
+  if (reach) rememberScopeReach(result, reach);
   return result;
 }
 /** The members an assignment or update writes to or through (`&a`, `&a.b`,
