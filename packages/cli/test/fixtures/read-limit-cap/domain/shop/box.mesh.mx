@@ -1,0 +1,20 @@
+import { Item } from "./item.mesh.mx"
+import { seen } from "./probe"
+
+entity :Box
+  attributes
+    uuid :id primary-key
+    string :label
+  relationships
+    has-many :items entity=Item
+  actions auto=[:read]
+    create :create
+      input
+        &label
+    update :count
+      do
+        run async () { seen.push((await Item.read({}, {})).length) }
+
+  policies
+    policy :open
+      authorize-if=() => true

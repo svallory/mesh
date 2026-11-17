@@ -88,6 +88,71 @@ describe("castInput and failJoined", () => {
   });
 });
 
+// `max-limit=` on the entity's `actions` line: a caller read's `limit` is refused above the cap and is the cap when none is given.
+describe("castInput with a read cap", () => {
+  type Query = { limit?: number; offset?: number; filter?: { n?: number } };
+  // A read's input schema in small: `limit` a whole number, `filter.n` a number, anything else refused.
+  const query: StandardSchemaV1<unknown, Query> = {
+    "~standard": {
+      version: 1,
+      vendor: "test",
+      validate: (value) => {
+        const input = value as Query;
+        const issues: { message: string; path: PropertyKey[] }[] = [];
+        if (input.limit !== undefined && !(Number.isInteger(input.limit) && input.limit >= 0)) issues.push({ message: "not a whole number", path: ["limit"] });
+        if (input.filter?.n !== undefined && typeof input.filter.n !== "number") issues.push({ message: "not a number", path: ["filter", "n"] });
+        return issues.length ? { issues } : { value: input };
+      },
+    },
+  };
+  const source = { file: "src/domain/todo/todo.mesh.mx", line: 6, column: 33 };
+  const cap = { max: 50, source };
+  const topLevel = { transaction: async () => { throw new Error("must not open"); }, refuseIfFailed: () => false, close: async () => {} } as unknown as DataLayer;
+
+  test.each([
+    ["no limit reads the cap", {}, { limit: 50 }],
+    ["limit: undefined reads the cap", { limit: undefined }, { limit: 50 }],
+    ["a limit equal to the cap is kept", { limit: 50 }, { limit: 50 }],
+    ["a limit below the cap is kept", { limit: 7, offset: 3 }, { limit: 7, offset: 3 }],
+    ["limit: 0 is kept", { limit: 0 }, { limit: 0 }],
+    ["offset is not capped", { offset: 10_000 }, { limit: 50, offset: 10_000 }],
+  ])("%s", async (_case, input, expected) => {
+    expect(await castInput(topLevel, query, input, cap)).toEqual(expected);
+  });
+
+  test("a limit above the cap is one InvalidInputError issue at limit, too_big, pointing at the option", async () => {
+    const error = await castInput(topLevel, query, { limit: 51 }, cap).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(InvalidInputError);
+    expect((error as InvalidInputError).code).toBe("invalid_input");
+    expect((error as InvalidInputError).issues).toEqual([{ label: null, code: "too_big", path: ["limit"], message: "must be at most 50", source, details: null }]);
+  });
+
+  test("input that fails its own shape reports only the shape issues, even with a limit above the cap", async () => {
+    const error = await castInput(topLevel, query, { limit: 51, filter: { n: "x" } }, cap).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(InvalidInputError);
+    expect((error as InvalidInputError).issues.map((issue) => [issue.path, issue.code])).toEqual([[["filter", "n"], null]]);
+  });
+
+  test("with no cap, a missing limit stays missing and any limit passes", async () => {
+    expect(await castInput(topLevel, query, {})).toEqual({});
+    expect(await castInput(topLevel, query, { limit: 10_000 })).toEqual({ limit: 10_000 });
+  });
+
+  test("the caller's input object is not changed when the cap fills in limit", async () => {
+    const input = {};
+    await castInput(topLevel, query, input, cap);
+    expect(input).toEqual({});
+  });
+
+  test("inside a running transaction, a refused limit fails the transaction and rejects with the refusal itself", async () => {
+    const seen: unknown[] = [];
+    const layer = { transaction: (run: () => Promise<unknown>) => run().catch((cause) => { seen.push(cause); throw cause; }), refuseIfFailed: () => true, close: async () => {} } as unknown as DataLayer;
+    const error = await castInput(layer, query, { limit: 51 }, cap).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(InvalidInputError);
+    expect(seen).toEqual([error]);
+  });
+});
+
 describe("checkUnchanged", () => {
   const table = {} as TableHandle;
   const before = { id: 1, name: "Ada", at: new Date(5), meta: { tags: ["a"] }, bytes: new Uint8Array([1, 2]) };

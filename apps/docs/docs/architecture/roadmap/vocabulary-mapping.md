@@ -78,6 +78,7 @@ The `optional` rows are command field lines, tested in a command file with an an
 |---|---|---|---|
 | `actions` | `actions auto=[:read]` | `actions` | on main |
 | `actions.auto` | `actions auto=[:read]` | `actions.auto` | on main |
+| `actions.max-limit` | `actions auto=[:read] max-limit=100` | `actions.max-limit` | on main |
 | `actions.on:load` | `actions on:load=&custom` | `actions.on:load` | on main |
 | `aggregate` | `aggregate :Sales` | `aggregate` | on main |
 | `aggregate.name` | `aggregate :Sales` | `aggregate.name` | on main |

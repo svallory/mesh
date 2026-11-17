@@ -96,11 +96,13 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
     const covering = policiesCovering(entity, action);
     const folded = covering.some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, "read")));
     const policies = folded ? ", with the policies that read the record folded in" : "";
-    if (!action.filter && !action.sort && !folded) section(lines, "strategy", ["one query: the caller's filter, sort, limit and offset over the table"]);
+    // `max-limit=` bounds the caller's `limit` and is the `limit` of a read that gives none.
+    const limit = entity.maxLimit ? `limit (at most ${entity.maxLimit.max}, ${entity.maxLimit.max} when none is given)` : "limit";
+    if (!action.filter && !action.sort && !folded) section(lines, "strategy", [`one query: the caller's filter, sort, ${limit} and offset over the table`]);
     else {
       // The read's own filter and sort, and a policy that reads the record, run as SQL in the same query (M10); with
       // the model, the relationships the conditions cross are named, since each is a subquery per row.
-      const strategy = [`one query: ${action.filter ? "the read's filter and the caller's" : "the caller's filter"}, the caller's sort${action.sort ? " then the read's" : ""}, limit and offset over the table${policies}`];
+      const strategy = [`one query: ${action.filter ? "the read's filter and the caller's" : "the caller's filter"}, the caller's sort${action.sort ? " then the read's" : ""}, ${limit} and offset over the table${policies}`];
       if (action.filter) strategy.push(`filter ${squash(action.filter.source)}: runs as SQL, with the caller's filter and the policies`);
       for (const key of action.sort ?? []) strategy.push(`sort ${key.direction} &${key.member.name}: runs as SQL, after the caller's sort keys; rows that tie on every key come in primary-key order`);
       const crossed = new Set<string>();

@@ -389,6 +389,8 @@ A body that runs in memory reads a record in which only what it names is loaded.
 
 **`on:load=&visible`** chooses the read used when this entity is loaded through a relationship. That read's filter applies. Without it, Mesh uses the auto read. Naming a missing read is a build error, as is loading an entity that has neither choice.
 
+**`max-limit=100`** caps how many rows a caller's read returns. A read whose `limit` is above it fails with `InvalidInputError`, one issue at `limit` with the code `too_big`, the message "must be at most 100" and the position of `max-limit`; a read with no `limit` returns at most 100 rows. A `Mesh.privileged` read and a relationship load are not capped. The value is a whole number of at least 1, and an entity with no read cannot take it: both are build errors (`MESH_OPTION_VALUE`).
+
 ### input
 
 An `input` section lists member references and declares arguments. A create must receive every input member that is required and has no default. On an update, member inputs are optional: the caller sends what changes. A typed argument is required unless `nullable`. A create's required attribute must be supplied through input, have a default, be filled by Mesh or be set by a step. Otherwise generating the create fails with `MESH_EMIT_UNFILLABLE`; checking the file without generating code does not report it.

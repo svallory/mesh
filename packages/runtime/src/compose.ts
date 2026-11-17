@@ -1,5 +1,5 @@
 import type { DataLayer, DataOperations, Key, Row, TableHandle } from "./data-layer.ts";
-import { FrameworkError } from "./errors.ts";
+import { FrameworkError, InvalidInputError, type IssueSource } from "./errors.ts";
 import { parseInput } from "./input.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 
@@ -87,16 +87,37 @@ function ordinary(value: unknown, seen = new Set<object>()): unknown {
  * There a member input named like a member of `Object.prototype` that the caller left out reads as the inherited member
  * (the accepted cost), so generated code tells a given member by `$Object.hasOwn` (lead, ENT-18).
  */
-export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown): Promise<T> {
+export async function castInput<T>(layer: DataLayer, schema: StandardSchemaV1<unknown, T>, input: unknown, cap?: ReadCap): Promise<T> {
   const joined = layer.refuseIfFailed();
   // An `await`, not `.catch`: the error's async stack then keeps the generated function that called this, so its first
   // frame outside Mesh's packages is still the generated action (blog acceptance 3).
   try {
-    return ordinary(await parseInput(schema, withoutPrototypes(input))) as T;
+    const parsed = ordinary(await parseInput(schema, withoutPrototypes(input))) as T;
+    // The cap runs after the input's own cast, inside the `try`: a refused `limit` in a running transaction fails it as a failed cast does.
+    return cap ? capped(parsed, cap) : parsed;
   } catch (cause) {
     if (!joined) throw cause;
     return failJoined(layer, cause);
   }
+}
+
+/**
+ * `max-limit=` of the entity (its `actions` line): the largest `limit` a caller read takes, and the one it reads with when
+ * none is given. A caller read's generated pre-check passes it to `castInput`; a `Mesh.privileged` read does not.
+ */
+export interface ReadCap {
+  max: number;
+  /** Where `max-limit` is written: the issue of a refused `limit` points here. */
+  source: IssueSource;
+}
+
+/** A caller read's `limit` under the entity's cap: refused above it, the cap when none is given. */
+function capped<T>(parsed: T, cap: ReadCap): T {
+  const limit = (parsed as { limit?: number }).limit;
+  if (limit === undefined) return { ...parsed, limit: cap.max };
+  if (limit > cap.max)
+    throw new InvalidInputError([{ label: null, code: "too_big", path: ["limit"], message: `must be at most ${cap.max}`, source: cap.source, details: null }]);
+  return parsed;
 }
 
 /** What `castInput` gives for a schema: a read action that has cast its input for its policies hands it to the read's body, which does not cast it again. */

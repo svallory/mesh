@@ -254,6 +254,12 @@ export interface Policy {
   when?: Expression;
   position: SourcePosition;
 }
+/** `max-limit=N` on the `actions` line: the largest `limit` a caller read takes, and the rows it reads when none is given. */
+export interface LimitCap {
+  max: number;
+  /** Where the option's name `max-limit` is written: the issue of a refused `limit` points here (ADR-0039). */
+  position: SourcePosition;
+}
 export interface Entity {
   name: string;
   /**
@@ -270,6 +276,8 @@ export interface Entity {
   computed: Computed[];
   auto: ActionType[];
   onLoad?: MemberRef;
+  /** `max-limit=` of the `actions` line. Present only when it is written and valid. */
+  maxLimit?: LimitCap;
   actions: Action[];
   always: Always[];
   policies: Policy[];

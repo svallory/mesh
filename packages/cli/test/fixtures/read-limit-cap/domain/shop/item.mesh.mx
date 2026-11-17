@@ -1,0 +1,20 @@
+import { Mesh } from "meshfw"
+import { Box } from "./box.mesh.mx"
+
+entity :Item
+  attributes
+    uuid :id primary-key
+    string :name
+  relationships
+    belongs-to :box entity=Box
+  actions auto=[:read] max-limit=2
+    create :create
+      input
+        &name
+        &box
+
+  policies
+    policy :anyoneCreates types=[:create]
+      authorize-if=() => true
+    policy :peopleRead types=[:read]
+      authorize-if=({ context }) => !Mesh.isSystem(context)
