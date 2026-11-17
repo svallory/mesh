@@ -40,7 +40,7 @@ A call through a surface runs the entity's own action with the caller's context.
 
 ## What it sends out: `publishes`
 
-A surface lists the events its audience may follow in a `publishes` section, one event per line, written as an [`events` listing](./events.md) is: an imported event, or a member of a namespace import (`billing.InvoicePaid`), never an atom. An event declared inline in an entity's `events` section is imported from that entity's file by its name:
+A surface lists the events its audience may follow in a `publishes` section, one event per line, written as an [`events` listing](./events.md) is: an imported event, or a member of a namespace import (`billing.InvoicePaid`), never an atom. An event declared inline in an entity's `events` section is imported from that entity's file by its name. The example assumes the Todo entity of [Entities](./entities.md) also declares the event its `complete` action raises: an `events` section holding `event :TodoCompleted` with a `uuid :todoId` field, and `publish=() => new TodoCompleted({ todoId: &id })` in the action ([Declaring events where they belong](./events.md#declaring-events-where-they-belong)). The surface then lists it:
 
 ```mx "src/surfaces/public/public.mesh.mx"
 import { Todo, TodoCompleted } from "../../domain/todo/todo.mesh.mx"
@@ -53,7 +53,7 @@ surface :public
     TodoCompleted
 ```
 
-`publishes` raises nothing: an action's `publish` step does that, and an event no surface lists is still published and delivered to your handlers. A name that is no event the file imports is `MESH_UNKNOWN_EVENT`, with the nearest name; one event listed twice, under one name or two, is `MESH_DUPLICATE_MEMBER`. A surface holds at most one `publishes` section. The section names whole events: it does not narrow an event's fields.
+`publishes` raises nothing: an action's `publish` step does that, and an event no surface lists is still published and delivered to your handlers. A line that names no imported event is `MESH_UNKNOWN_EVENT`, which suggests the nearest imported name when there is one; an import of a name its file does not declare is reported at the import (`MESH_UNKNOWN_IMPORT`). One event listed twice, under one name or two, is `MESH_DUPLICATE_MEMBER`. A surface holds at most one `publishes` section. The section names whole events: it does not narrow an event's fields.
 
 The manifest's `publishes` is the list of their fully qualified names, in the order the section writes them (`[]` without a section). Pass it as `names` to `subscribe` from `#mesh` to follow what the surface sends out ([Live subscriptions](./events.md#live-subscriptions)):
 
