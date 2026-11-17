@@ -11,7 +11,7 @@ import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { globalAlias, globalsImport, withoutStrings, type GlobalsImport } from "./globals.ts";
 import { hasLoader, loaderName } from "./load.ts";
-import { computedColumns, effectiveActions, queryColumns, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName } from "./inputs.ts";
+import { computedColumns, effectiveActions, queryColumns, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, type PlannedInput } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
 
 /**
@@ -434,12 +434,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // The body goes to `bind<Entity>Reads`, which `privileged` calls; the method evaluates the read's policies, then calls the body.
       // A read that takes `load` is generic in the names it lists: the result is the record with exactly those loaded.
       const loads = takesLoad(input);
-      // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
-      const inputType = loads ? `$Omit<${input.name}, "load"> & ${recordName}LoadArg<L>` : input.name;
-      const generics = loads ? loadGenerics(entity, true) : "";
+      const { inputType, generics, returnType } = methodSignature(entity, action, input);
       // A caller's load runs the read policies of what it reaches, so a `belongs-to` it may not read is null; `privileged` runs none.
       const tx = txLoadTypes(entity);
-      const returnType = loads ? `(L extends unknown ? ${recordName}With<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
       const txReturnType = loads ? `(L extends unknown ? ${tx.with}<${recordName}LoadNames<L>>[] : never)` : `${recordName}[]`;
       if (loads) {
         extraTypes.add(`${recordName}With`);
@@ -592,12 +589,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     for (const step of steps)
       if (step.kind === "set")
         for (const { member } of step.assignments) setColumns.add(columnOf(entity, member.name, member.position).name);
-    // A load at the top of the body always runs, so its member is present on the result; one under a `when` may not run,
-    // so its member is typed as possibly absent.
-    const loadNames = [...new Set(steps.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : [])))];
-    const nestedLoads = (list: readonly Step[]): string[] => list.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : step.kind === "when" ? nestedLoads(step.steps) : []));
-    const maybeLoadNames = [...new Set(steps.flatMap((step) => (step.kind === "when" ? nestedLoads(step.steps) : [])))].filter((name) => !loadNames.includes(name));
-    const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
+    const { loadNames, maybeLoadNames, anyLoad } = writeLoads(steps);
     const stamped = entity.attributes.filter((a) => a.on === "update");
     // Does any function of the action read a relationship or computed field? Only then is something ever loaded onto the record.
     const anyNeeds = [...recordPolicies, ...validateFns, ...steps.flatMap(function expressionsOf(step): (Expression | undefined)[] {
@@ -858,7 +850,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     }
 
     // data layer, commit
-    let returnType = writes ? recordName : "void";
+    const { returnType } = methodSignature(entity, action, input);
     emit("// data layer");
     if (action.kind === "create") {
       emit(`const $stored = await tx.insert(${table}, $changes);`);
@@ -920,8 +912,6 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         if (loadNames.length || maybeLoadNames.length) {
           extraTypes.add(`${recordName}With`);
           if (maybeLoadNames.length) extraTypes.add(`${recordName}Loadable`);
-          const present = loadNames.length ? `${recordName}With<${loadNames.map((name) => JSON.stringify(name)).join(" | ")}>` : recordName;
-          returnType = maybeLoadNames.length ? `${present} & $Partial<$Pick<${recordName}Loadable, ${maybeLoadNames.map((name) => JSON.stringify(name)).join(" | ")}>>` : present;
         }
         // The caller gets the result, so what it loads runs the read policies of the entity it reaches.
         emit(`return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, [${result}], [...$loads], { ...$load, policies: true }))[0] as unknown as ${returnType};`);
@@ -1061,6 +1051,62 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
 }
 
 /** True when a `run [after=:write]` or a `publish` is among the steps, at any depth: both run after the write. */
+/**
+ * What a write's `load` steps name: at the top of the body a load always runs, so its member is present on the result;
+ * one under a `when` may not run, so its member is typed as possibly absent.
+ */
+function writeLoads(steps: readonly Step[]): { loadNames: string[]; maybeLoadNames: string[]; anyLoad: boolean } {
+  const loadNames = [...new Set(steps.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : [])))];
+  const nestedLoads = (list: readonly Step[]): string[] => list.flatMap((step) => (step.kind === "load" ? step.members.map((member) => member.name) : step.kind === "when" ? nestedLoads(step.steps) : []));
+  const maybeLoadNames = [...new Set(steps.flatMap((step) => (step.kind === "when" ? nestedLoads(step.steps) : [])))].filter((name) => !loadNames.includes(name));
+  const anyLoad = steps.some(function hasLoad(step): boolean { return step.kind === "load" || (step.kind === "when" && step.steps.some(hasLoad)); });
+  return { loadNames, maybeLoadNames, anyLoad };
+}
+
+/** The types of an entity value's method, as the actions file prints them: `<name><generics>(input: <inputType>, ...context): Promise<<returnType>>`. */
+export interface MethodSignature {
+  /** `PublishPostInput`, or `$Omit<ReadPostInput, "load"> & PostLoadArg<L>` for a read that takes `load`. */
+  readonly inputType: string;
+  /** `<const L extends readonly (keyof PostLoadable)[] = readonly []>` for a read that takes `load`, else the empty string. */
+  readonly generics: string;
+  /** `Post`, `void`, `PostWith<"comments" | "excerpt">`, or `(L extends unknown ? PostWith<PostLoadNames<L>>[] : never)`. */
+  readonly returnType: string;
+  /** The names the two types read from the entity's types file beside the record type, in the order first read (`ReadPostInput`, `PostLoadArg`). */
+  readonly typeNames: readonly string[];
+  /** The globals of `$globals.ts` the two types read (`$Omit`, `$Partial`, `$Pick`). */
+  readonly globals: readonly string[];
+}
+
+/**
+ * The input and result types of one action's method on the entity value (`Post.publish`), shared by the actions view and
+ * the surfaces view, which wraps them. `input` is the action's planned input (`entityInputs`, same index as the action in
+ * `effectiveActions`).
+ */
+export function methodSignature(entity: Entity, action: Action, input: PlannedInput): MethodSignature {
+  const recordName = typeName(entity.name, entity.position);
+  if (action.kind === "read") {
+    if (!takesLoad(input)) return { inputType: input.name, generics: "", returnType: `${recordName}[]`, typeNames: [input.name], globals: [] };
+    // The `load` member comes from the tuple `L` itself, so that TypeScript infers the names written.
+    return {
+      inputType: `$Omit<${input.name}, "load"> & ${recordName}LoadArg<L>`,
+      generics: loadGenerics(entity, true),
+      returnType: `(L extends unknown ? ${recordName}With<${recordName}LoadNames<L>>[] : never)`,
+      typeNames: [input.name, `${recordName}LoadArg`, `${recordName}Loadable`, `${recordName}With`, `${recordName}LoadNames`],
+      globals: ["$Omit"],
+    };
+  }
+  const base = { inputType: input.name, generics: "", typeNames: [input.name] };
+  if (action.kind === "destroy") return { ...base, returnType: "void", globals: [] };
+  const steps = stepsFor(action, [...alwaysFor(entity, action).flatMap((block) => block.do), ...action.do]);
+  const { loadNames, maybeLoadNames, anyLoad } = writeLoads(steps);
+  if (!anyLoad || !(loadNames.length || maybeLoadNames.length)) return { ...base, returnType: recordName, globals: [] };
+  const quoted = (names: readonly string[]) => names.map((name) => JSON.stringify(name)).join(" | ");
+  const present = loadNames.length ? `${recordName}With<${quoted(loadNames)}>` : recordName;
+  return maybeLoadNames.length
+    ? { ...base, returnType: `${present} & $Partial<$Pick<${recordName}Loadable, ${quoted(maybeLoadNames)}>>`, typeNames: [input.name, ...(loadNames.length ? [`${recordName}With`] : []), `${recordName}Loadable`], globals: ["$Partial", "$Pick"] }
+    : { ...base, returnType: present, typeNames: [input.name, `${recordName}With`], globals: [] };
+}
+
 export function hasAfterWrite(steps: readonly Step[]): boolean {
   return steps.some((step) => step.kind === "publish" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
 }
