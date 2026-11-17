@@ -202,7 +202,8 @@ groups together run exactly the steps `bun run verify` runs locally, and nothing
 Docker daemon, so nothing is skipped on the runner. A group job does not stop the others when it fails.
 
 `verify --group` refuses to run when the groups file and the workspace disagree (a package in no group or in
-two, a group naming a directory that is not a workspace package, other than one group holding the root steps),
+more than one, a group naming a directory that is not a workspace package, or not exactly one group with
+`"root": true`),
 so a pull request that adds a package must add it to one group in `scripts/verify-groups.json`; `bun run verify`
 without `--group` only warns.
 
