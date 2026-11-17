@@ -1,3 +1,4 @@
+import type { Condition, TableOf } from "./condition.ts";
 import type { DataOperations, Filter, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
@@ -40,8 +41,11 @@ function evaluating<T>(what: string, fn: () => T): T {
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
  *   reaches, and of the link entity of a `through`, with the caller's scope: a relationship to an entity they do not admit is `[]` (has-many) or `null`
  *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
- *   so a denied name is not queried at all. What a computed field's body reads, and anything read through `privileged`,
- *   runs no policy: a body is the entity's own rule, so it sees every related row.
+ *   so a denied name is not queried at all. A policy that reads the record admits row by row instead (M10): its condition
+ *   goes into the query of the related rows (`where`), so a has-many lists only the rows it admits, a belongs-to or has-one
+ *   it does not admit is `null`, and a rollup counts or takes the maximum over the admitted rows only. What a computed
+ *   field's body reads, and anything read through `privileged`, runs no policy: a body is the entity's own rule, so it
+ *   sees every related row.
  */
 export interface BelongsToPlan {
   kind: "belongs-to";
@@ -148,20 +152,25 @@ export async function loadRows(
     if (!Object.hasOwn(entityPlan.relations, name) && !Object.hasOwn(entityPlan.computed, name))
       throw new FrameworkError(unknownName(plan, entity, name));
   // Decided before anything loads: a name the caller is not admitted to is not queried, so a denied caller learns
-  // nothing from it, not even that a required belongs-to points at a row that is gone.
-  const denied = options.policies ? await deniedNames(plan, entity, names, options) : new Map<string, unknown>();
-  // Unless a computed body the caller named reads it for itself: it is loaded for the body, and taken off below.
-  const forBodies = denied.size ? readByBodies(entityPlan, names) : new Set<string>();
+  // nothing from it, not even that a required belongs-to points at a row that is gone. A name admitted row by row
+  // (`narrowed`) is loaded with its condition.
+  const { denied, narrowed } = options.policies ? await admissions(plan, entity, names, options) : { denied: new Map<string, unknown>(), narrowed: new Map<string, Narrowing>() };
+  // Unless a computed body the caller named reads it for itself: it is loaded for the body, and taken off (or narrowed) below.
+  const forBodies = denied.size || narrowed.size ? readByBodies(entityPlan, names) : new Set<string>();
   if (rows.length) for (const name of names) if (denied.has(name) && !forBodies.has(name)) assertServable(plan, entity, entityPlan, name);
-  const loads = names.filter((name) => !denied.has(name) || forBodies.has(name));
+  const loads = names.filter((name) => (!denied.has(name) && !narrowed.has(name)) || forBodies.has(name));
   // Work on copies: the caller's rows are never changed, and a field a path loads only to evaluate a body stays off them.
   const work: Work[] = rows.map((row) => ({ ...row }));
   // Rollups last: one over a has-many that the same call loaded is worked out from those rows (below), with no query of its own.
   const isRollup = (name: string) => Object.hasOwn(entityPlan.computed, name) && entityPlan.computed[name]!.kind === "rollup" && !Object.hasOwn(entityPlan.relations, name);
   for (const name of [...loads.filter((n) => !isRollup(n)), ...loads.filter(isRollup)]) await ensureField(plan, entity, tx, work, name, options, 0);
+  // What the caller gets of each name admitted row by row: never the bodies' copy, which no policy filtered.
+  const admitted = new Map<string, unknown[]>();
+  for (const [name, narrowing] of narrowed)
+    admitted.set(name, await admittedValues(plan, entity, entityPlan, name, narrowing, tx, work, forBodies.has(name)));
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
-    for (const name of names) loaded[name] = denied.has(name) ? emptied(denied.get(name)) : work[index]![name];
+    for (const name of names) loaded[name] = denied.has(name) ? emptied(denied.get(name)) : admitted.has(name) ? admitted.get(name)![index] : work[index]![name];
     return loaded;
   });
 }
@@ -204,38 +213,112 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
 /** A fresh empty value for each row, so that no two rows share one list. */
 const emptied = (value: unknown) => (Array.isArray(value) ? [] : value);
 
+/** The conditions a name admitted row by row carries: on the rows of the entity it reaches, and on the link rows of a `through`. */
+interface Narrowing {
+  readonly target?: Condition | undefined;
+  readonly link?: Condition | undefined;
+}
+
 /**
- * The names, of those a caller asked for, that reach an entity whose read policies do not admit the caller (for a
- * `through`, the link entity or the far entity), each with what it gives instead: `[]` for a has-many, `null` for a belongs-to or has-one, `0` for a count and `null` for a max. The read
- * policies run once per entity per call: they read only the caller (a read policy that reads the record is the build's M10
- * error, and the run time's).
+ * What each name a caller asked for is admitted to, by the read policies of the entity it reaches (for a `through`, the
+ * link entity and the far entity): `denied`, the names no row of which is admitted, each with what it gives instead
+ * (`[]` for a has-many, `null` for a belongs-to or has-one, `0` for a count and `null` for a max); `narrowed`, those
+ * admitted row by row, with the conditions. The read policies are decided (and their conditions bound) once per entity
+ * per call.
  */
-async function deniedNames(plan: LoadPlan, entity: string, names: readonly string[], options: LoadOptions): Promise<Map<string, unknown>> {
+async function admissions(plan: LoadPlan, entity: string, names: readonly string[], options: LoadOptions): Promise<{ denied: Map<string, unknown>; narrowed: Map<string, Narrowing> }> {
   const entityPlan = planOf(plan, entity);
-  const decided = new Map<string, boolean>();
+  const decided = new Map<string, boolean | Condition>();
+  const tableOf: TableOf = (fqn) => planOf(plan, fqn).table;
   const admits = async (target: string) => {
     if (!decided.has(target)) {
       const policies = planOf(plan, target).reads ?? [];
       const roots = { input: Object.freeze({}), actor: options.actor, context: options.context ?? {} };
-      decided.set(target, await authorizer(target, "read", policies, options.frame).admits(scope(roots, options.clock ? { clock: options.clock } : {})));
+      decided.set(target, await authorizer(target, "read", policies, options.frame).admitsRows(scope(roots, options.clock ? { clock: options.clock } : {}), tableOf));
     }
     return decided.get(target)!;
   };
+  const condition = (where: boolean | Condition) => (where === true ? undefined : (where as Condition));
   const denied = new Map<string, unknown>();
+  const narrowed = new Map<string, Narrowing>();
   for (const name of names) {
     const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
     if (relation) {
       const link = relation.kind === "has-many" ? relation.through?.target : undefined;
-      if ((link !== undefined && !(await admits(link))) || !(await admits(relation.target))) denied.set(name, relation.kind === "has-many" ? [] : null);
+      const linkWhere = link === undefined ? true : await admits(link);
+      const targetWhere = linkWhere === false ? false : await admits(relation.target);
+      if (linkWhere === false || targetWhere === false) denied.set(name, relation.kind === "has-many" ? [] : null);
+      else if (linkWhere !== true || targetWhere !== true) narrowed.set(name, { target: condition(targetWhere), link: condition(linkWhere) });
       continue;
     }
     const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
     if (computed?.kind !== "rollup") continue;
     const over = Object.hasOwn(entityPlan.relations, computed.of[0]!) ? entityPlan.relations[computed.of[0]!] : undefined;
-    if (over && !(await admits(over.target))) denied.set(name, computed.fn === "count" ? 0 : null);
+    if (!over) continue;
+    const where = await admits(over.target);
+    if (where === false) denied.set(name, computed.fn === "count" ? 0 : null);
+    else if (where !== true) narrowed.set(name, { target: where });
   }
-  return denied;
+  return { denied, narrowed };
 }
+
+/**
+ * The caller's value of a name admitted row by row, one per row. A rollup is counted (or its maximum taken) over the
+ * admitted rows by a query of its own. A relationship the bodies did not load for themselves is loaded with the
+ * conditions; one they did is narrowed: the related rows they loaded, less those the conditions do not admit, in order.
+ */
+async function admittedValues(
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, narrowing: Narrowing, tx: DataOperations, work: Work[], loadedForBodies: boolean,
+): Promise<unknown[]> {
+  // No row, nothing to load: as for any name, a load that could not be served is not reached.
+  if (work.length === 0) return [];
+  const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
+  if (!relation) {
+    const computed = entityPlan.computed[name] as Extract<ComputedPlan, { kind: "rollup" }>;
+    const values: unknown[] = [];
+    for (const row of work) values.push(await rollup(plan, entity, entityPlan, name, computed, tx, row, narrowing.target));
+    return values;
+  }
+  if (!loadedForBodies) {
+    const into: Work[] = work.map((row) => ({ ...row }));
+    await loadRelation(plan, entity, entityPlan, name, relation, tx, into, undefined, narrowing);
+    return into.map((row) => row[name]);
+  }
+  const target = planOf(plan, relation.target);
+  // The related rows the bodies loaded that the target's condition admits, by key.
+  let keep: ((owner: Work, related: Work) => boolean) = () => true;
+  if (narrowing.target) {
+    const keys = [...new Set(work.flatMap((row) => related(row[name])).map((r) => r[target.key]))];
+    const admittedKeys = new Set<unknown>();
+    for (const chunk of chunks(keys))
+      for (const row of await tx.select(target.table, { filter: { [target.key]: { in: chunk as never } }, where: narrowing.target })) admittedKeys.add(row[target.key]);
+    keep = (_owner, r) => admittedKeys.has(r[target.key]);
+  }
+  if (narrowing.link && relation.kind === "has-many" && relation.through && relation.column !== null && relation.through.exit !== null) {
+    // A far row is the caller's only through a link row the link entity's condition admits.
+    const link = planOf(plan, relation.through.target);
+    const exit = relation.through.exit;
+    const column = relation.column;
+    const owners = [...new Set(work.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
+    const pairs = new Map<unknown, Set<unknown>>();
+    for (const chunk of chunks(owners))
+      for (const row of await tx.select(link.table, { filter: { [column]: { in: chunk as never }, [exit]: { nil: false } }, where: narrowing.link })) {
+        const set = pairs.get(row[column]) ?? new Set<unknown>();
+        set.add(row[exit]);
+        pairs.set(row[column], set);
+      }
+    const byTarget = keep;
+    keep = (owner, r) => byTarget(owner, r) && (pairs.get(owner[entityPlan.key])?.has(r[target.key]) ?? false);
+  }
+  return work.map((row) => {
+    const value = row[name];
+    if (Array.isArray(value)) return (value as Work[]).filter((r) => keep(row, r));
+    return value === null || value === undefined ? null : keep(row, value as Work) ? value : null;
+  });
+}
+
+/** The related rows a loaded relationship holds: a list, one row, or none. */
+const related = (value: unknown): Work[] => (Array.isArray(value) ? (value as Work[]) : value === null || value === undefined ? [] : [value as Work]);
 
 function planOf(plan: LoadPlan, entity: string): EntityPlan {
   const found = Object.hasOwn(plan, entity) ? plan[entity] : undefined;
@@ -481,15 +564,24 @@ function chunks<T>(list: readonly T[]): T[][] {
   return out;
 }
 
+/**
+ * Load one relationship onto `rows`. With `narrowing` (a caller's load the read policies admit row by row), each query
+ * of related rows carries the condition as `where`: a has-many lists only the admitted rows, and a belongs-to or has-one
+ * whose row is not admitted is `null`. A belongs-to key, or a through's exit key, that the query left unanswered is
+ * looked up once more without the condition, so a row the policies exclude (`null`, or left out of the list) is told
+ * from a key that names no row (the error it always is).
+ */
 async function loadRelation(
-  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, relation: RelationPlan, tx: DataOperations, rows: Work[], pending?: object,
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, relation: RelationPlan, tx: DataOperations, rows: Work[], pending?: object, narrowing?: Narrowing,
 ): Promise<void> {
   const target = planOf(plan, relation.target);
+  const where = narrowing?.target;
   if (relation.kind === "belongs-to") {
     const keys = [...new Set(rows.map((row) => row[relation.column]).filter((key) => key !== null && key !== undefined))];
     const found = new Map<unknown, Work>();
     for (const chunk of chunks(keys))
-      for (const row of await tx.select(target.table, { filter: { [target.key]: { in: chunk as never } } })) found.set(row[target.key], row);
+      for (const row of await tx.select(target.table, { filter: { [target.key]: { in: chunk as never } }, ...(where ? { where } : {}) })) found.set(row[target.key], row);
+    const excluded = where ? await existing(tx, target, keys.filter((key) => !found.has(key))) : new Set<unknown>();
     for (const row of rows) {
       const key = row[relation.column];
       if (key === null || key === undefined) {
@@ -498,6 +590,10 @@ async function loadRelation(
         continue;
       }
       const related = found.get(key);
+      if (!related && excluded.has(key)) {
+        row[name] = null;
+        continue;
+      }
       if (!related) throw new FrameworkError(`${describe(entity, name, relation)} points at ${relation.target} ${JSON.stringify(key)}, which does not exist`);
       row[name] = related;
     }
@@ -507,12 +603,12 @@ async function loadRelation(
   // A row with no key yet (a create's pending record) has nothing pointing at it.
   const keys = [...new Set(rows.map((row) => row[entityPlan.key]).filter((key) => key !== null && key !== undefined))];
   if (relation.kind === "has-many" && relation.through) {
-    await loadThrough(entity, entityPlan, name, relation as HasPlan & { column: string; through: object }, planOf(plan, relation.through.target), target, tx, rows, keys);
+    await loadThrough(entity, entityPlan, name, relation as HasPlan & { column: string; through: object }, planOf(plan, relation.through.target), target, tx, rows, keys, narrowing);
     return;
   }
   const grouped = new Map<unknown, Work[]>();
   for (const chunk of chunks(keys))
-    for (const row of await tx.select(target.table, { filter: { [relation.column]: { in: chunk as never } } })) {
+    for (const row of await tx.select(target.table, { filter: { [relation.column]: { in: chunk as never } }, ...(where ? { where } : {}) })) {
       const group = grouped.get(row[relation.column]);
       if (group) group.push(row);
       else grouped.set(row[relation.column], [row]);
@@ -526,22 +622,33 @@ async function loadRelation(
   }
 }
 
+/** Of `keys`, those that name a row of `target`, looked up with no condition. */
+async function existing(tx: DataOperations, target: EntityPlan, keys: readonly unknown[]): Promise<Set<unknown>> {
+  const found = new Set<unknown>();
+  for (const chunk of chunks(keys))
+    for (const row of await tx.select(target.table, { filter: { [target.key]: { in: chunk as never } } })) found.add(row[target.key]);
+  return found;
+}
+
 /**
  * A has-many through a link entity: the link rows whose entry column holds one of the keys, with a key in their exit column,
  * sorted by it; then the far rows those exit keys name. One chunk holds every link row of an owner, so each owner's exit
  * keys arrive in the order the database gives the exit column, which is the far key's own; equal keys are neighbours, so
  * comparing with the last one kept leaves each far record once. A link row with no exit key contributes nothing; one whose
- * exit key names no far row is an error.
+ * exit key names no far row is an error. With `narrowing`, the link rows and the far rows are each selected with their
+ * entity's condition: a link row it excludes contributes nothing, and a far row it excludes is left out of the list.
  */
 async function loadThrough(
   entity: string, entityPlan: EntityPlan, name: string, relation: HasPlan & { column: string; through: { target: string; exit: string | null } },
-  link: EntityPlan, far: EntityPlan, tx: DataOperations, rows: Work[], keys: unknown[],
+  link: EntityPlan, far: EntityPlan, tx: DataOperations, rows: Work[], keys: unknown[], narrowing?: Narrowing,
 ): Promise<void> {
   const exit = relation.through.exit;
   if (exit === null) throw new FrameworkError(noExit(entity, name, relation));
   const exits = new Map<unknown, unknown[]>();
+  const linkWhere = narrowing?.link;
+  const farWhere = narrowing?.target;
   for (const chunk of chunks(keys))
-    for (const row of await tx.select(link.table, { filter: { [relation.column]: { in: chunk as never }, [exit]: { nil: false } }, sort: [exit] })) {
+    for (const row of await tx.select(link.table, { filter: { [relation.column]: { in: chunk as never }, [exit]: { nil: false } }, sort: [exit], ...(linkWhere ? { where: linkWhere } : {}) })) {
       const list = exits.get(row[relation.column]);
       if (!list) exits.set(row[relation.column], [row[exit]]);
       else if (list[list.length - 1] !== row[exit]) list.push(row[exit]);
@@ -549,12 +656,14 @@ async function loadThrough(
   const wanted = [...new Set([...exits.values()].flat())];
   const found = new Map<unknown, Work>();
   for (const chunk of chunks(wanted))
-    for (const row of await tx.select(far.table, { filter: { [far.key]: { in: chunk as never } } })) found.set(row[far.key], row);
+    for (const row of await tx.select(far.table, { filter: { [far.key]: { in: chunk as never } }, ...(farWhere ? { where: farWhere } : {}) })) found.set(row[far.key], row);
+  const excluded = farWhere ? await existing(tx, far, wanted.filter((key) => !found.has(key))) : new Set<unknown>();
   for (const row of rows)
-    row[name] = (exits.get(row[entityPlan.key]) ?? []).map((key) => {
+    row[name] = (exits.get(row[entityPlan.key]) ?? []).flatMap((key) => {
       const related = found.get(key);
+      if (!related && excluded.has(key)) return [];
       if (!related) throw new FrameworkError(`${describe(entity, name, relation)} goes through a row of ${relation.through.target} that points at ${relation.target} ${JSON.stringify(key)}, which does not exist`);
-      return related;
+      return [related];
     });
 }
 
@@ -579,12 +688,16 @@ function rollupShape(
   return { path, relation: relation as HasPlan & { column: string }, target, column: attribute ?? target.key };
 }
 
+/**
+ * One row's rollup. With `where` (a caller's load the read policies admit row by row) it is always queried with it: the
+ * rows loaded on `row` may be the copy the computed bodies loaded, which no policy filtered.
+ */
 async function rollup(
-  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, tx: DataOperations, row: Work,
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, tx: DataOperations, row: Work, where?: Condition,
 ): Promise<unknown> {
   const { path, relation, target, column } = rollupShape(plan, entity, entityPlan, name, computed);
   // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
-  if (Object.hasOwn(row, path)) {
+  if (!where && Object.hasOwn(row, path)) {
     const loaded = row[path];
     const related = (Array.isArray(loaded) ? loaded : loaded === null || loaded === undefined ? [] : [loaded]) as Row[];
     const values = related.map((r) => r[column]).filter((value) => value !== null && value !== undefined);
@@ -594,6 +707,7 @@ async function rollup(
   }
   if (row[entityPlan.key] === null || row[entityPlan.key] === undefined) return computed.fn === "count" ? 0 : null;
   const filter: Filter = { [relation.column]: { eq: row[entityPlan.key] as never } };
+  if (where) return computed.fn === "count" ? tx.count(target.table, column, filter, where) : tx.max(target.table, column, filter, where);
   return computed.fn === "count" ? tx.count(target.table, column, filter) : tx.max(target.table, column, filter);
 }
 

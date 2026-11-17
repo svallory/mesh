@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { authorizer, ForbiddenError, FrameworkError, Mesh, type DataLayer, type PolicySpec } from "@meshfw/runtime";
+import { Answer, answeringLayer } from "../src/answer.ts";
+import { and, not, or } from "../src/expr.ts";
+import { authorizer, ForbiddenError, FrameworkError, Mesh, type Condition, type ConditionLiteral, type DataLayer, type PolicySpec, type TableOf, type Where } from "@meshfw/runtime";
 
 /** A layer outside any transaction: `before` and `filter` then reject at once. */
 const layer = { refuseIfFailed: () => false } as unknown as DataLayer;
@@ -206,18 +208,232 @@ describe("a read's policies are a filter", () => {
       expect(await authorizer("Post", "read", [policy("members", [allow(false)], w)]).filter(layer, {})).toBe(false);
   });
 
-  test("a load's policies: admitted or not, never an error; none covering admits no one; one reading the record is the M10 error", async () => {
+  test("a load's policies: admitted or not, never an error; none covering admits no one", async () => {
     expect(await authorizer("Comment", "read", [policy("a", [allow(true)])]).admits({})).toBe(true);
     expect(await authorizer("Comment", "read", [policy("a", [allow(false)])]).admits({})).toBe(false);
     expect(await authorizer("Comment", "read", [policy("a", [allow(true)], when(false))]).admits({})).toBe(false);
     expect(await authorizer("Comment", "read", []).admits({})).toBe(false);
-    await expect(authorizer("Comment", "read", [policy("a", [allow(true, true)])]).admits({})).rejects.toThrow(/M10/);
   });
 
-  test("a read policy that reads the record is the M10 error", async () => {
-    const auth = authorizer("Post", "read", [policy("public", [allow(true, true)])]);
-    await expect(auth.filter(layer, {})).rejects.toThrow(FrameworkError);
-    await expect(auth.filter(layer, {})).rejects.toThrow(/M10/);
+  test("filter and admits decide the whole read: a check that reads the record is rows' and admitsRows', never theirs", async () => {
+    const auth = () => authorizer("Post", "read", [policy("public", [allow(true, true)])]);
+    await expect(auth().filter(layer, {})).rejects.toThrow(FrameworkError);
+    await expect(auth().filter(layer, {})).rejects.toThrow(/policy :public reads the record, so it is a condition on each row of the query and is folded into it by rows/);
+    await expect(auth().admits({})).rejects.toThrow(/folded into it by rows \(a load: admitsRows\)/);
+  });
+});
+
+// ---- M10: a read policy that reads the record is a condition on each row ---------------------------------------------
+
+/** A function's value on each row: a column `c<n>` the row holds, so a condition built from it is evaluated per row. */
+const column = (n: number) => ({ kind: "column", depth: 0, name: `c${n}`, class: "boolean" }) as const;
+const literal = (tree: ConditionLiteral["tree"], params: (scope: never) => readonly unknown[] = () => []): () => ConditionLiteral<never> =>
+  () => ({ what: "a test condition", entity: "Post", tree, params });
+const tableOf: TableOf = (fqn) => ({ fqn });
+
+/** A condition evaluated on a row as SQL would (Kleene), for the functions the fold builds. */
+function evaluate(node: Condition, row: Readonly<Record<string, unknown>>): unknown {
+  switch (node.kind) {
+    case "column": return row[node.name] ?? null;
+    case "value": return node.value;
+    case "call": {
+      const arg = (i: number) => evaluate(node.args[i]!, row);
+      switch (node.fn) {
+        case "isTrue": return arg(0) === true;
+        case "isFalse": return arg(0) === false;
+        case "not": return not(arg(0));
+        case "and": return node.args.reduce<unknown>((acc, a) => and(acc, () => evaluate(a, row)), true);
+        case "or": return node.args.reduce<unknown>((acc, a) => or(acc, () => evaluate(a, row)), false);
+        default: throw new Error(`no ${node.fn} here`);
+      }
+    }
+    default: throw new Error(`no ${node.kind} here`);
+  }
+}
+const admitsRow = (where: Where, row: Readonly<Record<string, unknown>>) => (typeof where === "boolean" ? where : evaluate(where, row) === true);
+
+/**
+ * One function of a generated case: its value (true, false, unknown) and how it runs. `memory` runs in memory;
+ * `constant` reads the record and binds to its value; `row` reads the record and stays a condition, true, false or unknown per row.
+ */
+type How = "memory" | "constant" | "row";
+interface Fn { value: boolean | null; how: How }
+interface Shape { when?: Fn; authorize: Fn[]; forbid: Fn[] }
+
+/** The same policies twice: as the read would run them (`rows`), and with every function run in memory (`admits`), plus the row. */
+function build(shapes: readonly Shape[]): { folded: PolicySpec[]; memory: PolicySpec[]; row: Record<string, unknown> } {
+  let n = 0;
+  const row: Record<string, unknown> = {};
+  const folded: PolicySpec[] = [];
+  const memory: PolicySpec[] = [];
+  const spec = (fn: Fn) => {
+    const at = n++;
+    const run = () => fn.value;
+    if (fn.how === "memory") return { folded: { record: false, run, check: `f${at}` }, memory: { record: false, run, check: `f${at}` } };
+    row[`c${at}`] = fn.value;
+    const tree = fn.how === "constant" ? { kind: "value" as const, value: fn.value, class: "boolean" as const } : column(at);
+    return { folded: { record: true, run: () => { throw new Error("folded, never run"); }, check: `f${at}`, sql: literal(tree) }, memory: { record: false, run, check: `f${at}` } };
+  };
+  shapes.forEach((shape, p) => {
+    const w = shape.when ? spec(shape.when) : undefined;
+    const checks = [...shape.authorize.map((fn) => ["authorize-if", spec(fn)] as const), ...shape.forbid.map((fn) => ["forbid-if", spec(fn)] as const)];
+    folded.push({ name: `p${p}`, when: w ? w.folded : null, checks: checks.map(([kind, s]) => ({ kind, ...s.folded })) });
+    memory.push({ name: `p${p}`, when: w ? w.memory : null, checks: checks.map(([kind, s]) => ({ kind, ...s.memory })) });
+  });
+  return { folded, memory, row };
+}
+
+/** A small seeded generator (mulberry32), so a failing case is the same on every run. */
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const VALUES = [true, false, null] as const;
+const HOWS: readonly How[] = ["memory", "constant", "row"];
+
+async function agrees(shapes: readonly Shape[]): Promise<string | undefined> {
+  const { folded, memory, row } = build(shapes);
+  const expected = await authorizer("Post", "read", memory).admits({});
+  const where = await authorizer("Post", "read", folded).rows(layer, {}, tableOf);
+  const loaded = await authorizer("Post", "read", folded).admitsRows({}, tableOf);
+  if (admitsRow(where, row) !== expected || admitsRow(loaded, row) !== expected) return JSON.stringify(shapes);
+  return undefined;
+}
+
+describe("rows and admitsRows give, on each row, the decision the checks give in memory", () => {
+  test("every two-policy case with an optional when, authorize-if and forbid-if, each true, false or unknown, run every way", async () => {
+    const one: (Fn | undefined)[] = [undefined, ...VALUES.flatMap((value) => HOWS.map((how) => ({ value, how })))];
+    const random = seeded(7);
+    const pick = () => one[1 + Math.floor(random() * (one.length - 1))]!;
+    const shapes: Shape[] = [];
+    // A policy: its when, one authorize-if, one forbid-if, each absent or present; at least one check (none is a build error).
+    for (const w of [false, true]) for (const a of [false, true]) for (const f of [false, true]) {
+      if (!a && !f) continue;
+      shapes.push({ ...(w ? { when: { value: null, how: "memory" } } : {}), authorize: a ? [{ value: null, how: "memory" }] : [], forbid: f ? [{ value: null, how: "memory" }] : [] });
+    }
+    const failures: string[] = [];
+    let cases = 0;
+    // Every value of every function, the way each runs drawn at random: 3,600 value combinations of two policies.
+    const valued = (shape: Shape, values: readonly (boolean | null)[]): Shape => {
+      let i = 0;
+      const fn = (): Fn => ({ value: values[i++]!, how: pick().how });
+      return { ...(shape.when ? { when: fn() } : {}), authorize: shape.authorize.map(fn), forbid: shape.forbid.map(fn) };
+    };
+    const combos = (k: number): (boolean | null)[][] => (k === 0 ? [[]] : combos(k - 1).flatMap((rest) => VALUES.map((v) => [v, ...rest])));
+    const all = shapes.flatMap((shape) => combos((shape.when ? 1 : 0) + shape.authorize.length + shape.forbid.length).map((values) => ({ shape, values })));
+    for (const first of all)
+      for (const second of all) {
+        cases++;
+        const failed = await agrees([valued(first.shape, first.values), valued(second.shape, second.values)]);
+        if (failed) failures.push(failed);
+      }
+    expect(cases).toBe(3600);
+    expect(failures.slice(0, 3)).toEqual([]);
+  });
+
+  test("a seeded sample of one to three policies with zero to two authorize-if and forbid-if each", async () => {
+    const random = seeded(2026);
+    const fn = (): Fn => ({ value: VALUES[Math.floor(random() * 3)]!, how: HOWS[Math.floor(random() * 3)]! });
+    const failures: string[] = [];
+    for (let i = 0; i < 20000; i++) {
+      const shapes: Shape[] = Array.from({ length: 1 + Math.floor(random() * 3) }, () => {
+        const authorize = Array.from({ length: Math.floor(random() * 3) }, fn);
+        const forbid = Array.from({ length: authorize.length ? Math.floor(random() * 3) : 1 + Math.floor(random() * 2) }, fn);
+        return { ...(random() < 0.5 ? { when: fn() } : {}), authorize, forbid };
+      });
+      const failed = await agrees(shapes);
+      if (failed) failures.push(failed);
+    }
+    expect(failures.slice(0, 3)).toEqual([]);
+  });
+
+  test("a forbid-if that folds to unknown forbids, and a when that folds to unknown fails its policy, beside a second policy", async () => {
+    const unknownForbid = await authorizer("Post", "read", [
+      policy("a", [allow(true), { ...forbid(null, true), sql: literal({ kind: "value", value: null, class: "boolean" }) }]),
+      policy("b", [allow(true)]),
+    ]).rows(layer, {}, tableOf);
+    expect(unknownForbid).toBe(false);
+    const unknownWhen = await authorizer("Post", "read", [
+      policy("a", [allow(true)], { ...when(null, true)!, sql: literal({ kind: "value", value: null, class: "boolean" }) }),
+      policy("b", [allow(true)]),
+    ]).rows(layer, {}, tableOf);
+    expect(unknownWhen).toBe(false);
+  });
+
+  test("the formula over conditions: one authorize-if is `c IS TRUE`; constants drop out", async () => {
+    const where = await authorizer("Post", "read", [policy("a", [allow(true), { ...allow(null, true), sql: literal(column(0)) }]), policy("b", [allow(true)])]).rows(layer, {}, tableOf);
+    expect(where).toBe(true);
+    const only = await authorizer("Post", "read", [policy("a", [{ ...allow(null, true), sql: literal(column(0)) }]), policy("b", [allow(true)])]).rows(layer, {}, tableOf);
+    expect(only).toEqual({ kind: "call", fn: "isTrue", args: [column(0)] });
+  });
+
+  test("no covering policy: rows is forbidden, admitsRows admits nothing", async () => {
+    await expect(authorizer("Post", "read", []).rows(layer, {}, tableOf)).rejects.toMatchObject({ reason: "not-covered" });
+    expect(await authorizer("Post", "read", []).admitsRows({}, tableOf)).toBe(false);
+  });
+
+  test("a caller the checks in memory already deny gets false, and nothing is bound", async () => {
+    let bound = 0;
+    const counted = { ...allow(null, true), sql: () => { bound++; return literal(column(0))(); } };
+    expect(await authorizer("Post", "read", [policy("a", [counted]), policy("b", [allow(false)])]).rows(layer, {}, tableOf)).toBe(false);
+    expect(await authorizer("Post", "read", [policy("a", [counted], when(false))]).rows(layer, {}, tableOf)).toBe(false);
+    expect(await authorizer("Post", "read", [policy("a", [counted]), policy("b", [allow(false)])]).admitsRows({}, tableOf)).toBe(false);
+    expect(bound).toBe(0);
+    // A policy whose when is false is skipped: its checks are not bound, and the other decides.
+    expect(await authorizer("Post", "read", [policy("a", [counted], when(false)), policy("b", [allow(true)])]).rows(layer, {}, tableOf)).toBe(true);
+    expect(bound).toBe(0);
+  });
+
+  test("the parameters are computed with the scope, marked with the frame, and hops resolve through tableOf", async () => {
+    const marks: string[] = [];
+    const frame = { marked: <T>(what: string, fn: () => T): T => (marks.push(what), fn()) };
+    const sql = () => ({
+      what: "policy :owner authorize-if of blog.Post", entity: "blog.Post",
+      tree: { kind: "call" as const, fn: "eq" as const, args: [
+        { kind: "one" as const, hop: { table: "blog.Blog", column: "id", outer: "blogId", key: "id" }, value: { kind: "column" as const, depth: 1, name: "ownerId", class: "string" as const } },
+        { kind: "param" as const, index: 0, class: "string" as const }] },
+      params: (s: { actor: { id: string } }) => [s.actor.id],
+    }) as unknown as ConditionLiteral<never>;
+    const where = await authorizer("blog.Post", "read", [policy("owner", [{ ...allow(null, true), sql }])], frame).rows(layer, { actor: { id: "u1" } }, (fqn) => ({ table: fqn }));
+    expect(where).toEqual({ kind: "call", fn: "isTrue", args: [{ kind: "call", fn: "eq", args: [
+      { kind: "one", hop: { table: { table: "blog.Blog" }, column: "id", outer: "blogId", key: "id" }, value: { kind: "column", depth: 1, name: "ownerId", class: "string" } },
+      { kind: "value", value: "u1", class: "string" }] }] });
+    expect(marks).toEqual(["policy :owner of blog.Post"]);
+  });
+
+  test("a parameter's helper that makes a privileged read throws the error naming the policy, and rows rejects with it", async () => {
+    const frame = { marked: <T>(what: string, fn: () => T): T => { void what; return fn(); } };
+    const sql = literal(column(0), () => Mesh.privileged({} as never) as never);
+    await expect(authorizer("blog.Post", "read", [policy("owner", [{ ...allow(null, true), sql }])], frame).rows(layer, {}, tableOf)).rejects.toThrow(FrameworkError);
+    // A value of the wrong class is refused the same way.
+    const wrong = literal({ kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "n", class: "integer" }, { kind: "param", index: 0, class: "integer" }] }, () => ["1"]);
+    await expect(authorizer("blog.Post", "read", [policy("owner", [{ ...allow(null, true), sql: wrong }])]).rows(layer, {}, tableOf))
+      .rejects.toThrow(/the database would convert it, so Mesh refuses it/);
+  });
+
+  test("answering for Mesh.checkPolicies: a check that reads the record does not deny the call and is not in the breakdown", async () => {
+    const base = { refuseIfFailed: () => false, transaction: (fn: () => Promise<unknown>) => fn() } as unknown as DataLayer;
+    const asking = answeringLayer(base);
+    const decision = async (policies: PolicySpec[]) => {
+      try { await authorizer("Todo", "pending", policies).rows(asking, {}, tableOf); }
+      catch (error) { if (error instanceof Answer) return error.decision; throw error; }
+      throw new Error("no answer");
+    };
+    const pending = { ...allow(null, true), check: "() => &list.ownerId === actor.id", sql: literal(column(0)) };
+    const allowed = await decision([policy("owner", [pending]), policy("signed", [allow(true)])]);
+    expect(allowed.allowed).toBe(true);
+    expect(allowed.breakdown.map((check) => check.check)).toEqual(["authorize-if true"]);
+    const denied = await decision([policy("owner", [pending]), policy("signed", [allow(false)])]);
+    expect(denied.allowed).toBe(false);
+    expect(denied.breakdown).toEqual([{ policy: "signed", kind: "authorize-if", check: "authorize-if false", result: false, decisive: true }]);
+    // A record check that folds to false decides as one that ran: it is listed, and it denies.
+    const folded = await decision([policy("owner", [{ ...allow(null, true), check: "() => false && &x", sql: literal({ kind: "value", value: false, class: "boolean" }) }])]);
+    expect(folded).toMatchObject({ allowed: false, breakdown: [{ policy: "owner", kind: "authorize-if", result: false, decisive: true }] });
   });
 });
 
