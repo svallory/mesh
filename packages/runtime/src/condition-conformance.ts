@@ -34,26 +34,31 @@ const val = (value: Scalar, cls: ValueClass): Node => ({ kind: "value", value, c
 const call = (fn: SqlFunction, ...args: Node[]): Node => ({ kind: "call", fn, args });
 const D = (ms: number) => new Date(ms);
 
-/** The rows of the condition fixture: four parents (one with a dangling parent key), their children and links. */
+/**
+ * The rows of the condition fixture: four parents (one with a dangling parent key), their children and links. Rows are
+ * inserted out of key order, so an adapter whose scan order is insertion order (SQLite's rowid) cannot pass the "lowest
+ * key" and "ties in key order" checks without ordering by the key.
+ */
 const PARENTS: Row[] = [
-  { id: "p1", s: "alpha", n: 1, f: 1.5, b: true, d: D(1000), parentId: null, label: "L1" },
+  { id: "p4", s: "delta", n: 4, f: 0.5, b: true, d: D(4000), parentId: "zz", label: "L4" },
   { id: "p2", s: "beta", n: 2, f: null, b: false, d: D(2000), parentId: "p1", label: "L2" },
   { id: "p3", s: null, n: null, f: 2.5, b: null, d: null, parentId: "p2", label: null },
-  { id: "p4", s: "delta", n: 4, f: 0.5, b: true, d: D(4000), parentId: "zz", label: "L4" },
+  { id: "p1", s: "alpha", n: 1, f: 1.5, b: true, d: D(1000), parentId: null, label: "L1" },
 ];
+// p1's lowest-key child has no qty and its second has one, so a `first` that drops its where reads the wrong child.
 const CHILDREN: Row[] = [
-  { id: "c1", parentId: "p1", qty: 3, pos: 0 },
-  { id: "c2", parentId: "p1", qty: null, pos: 1 },
-  { id: "c3", parentId: "p2", qty: 1, pos: 0 },
   { id: "c4", parentId: "p2", qty: 5, pos: 1 },
+  { id: "c3", parentId: "p2", qty: 1, pos: 0 },
   { id: "c5", parentId: "p3", qty: null, pos: 0 },
+  { id: "c2", parentId: "p1", qty: 3, pos: 1 },
+  { id: "c1", parentId: "p1", qty: null, pos: 0 },
 ];
-// p1 reaches c3 through two links and has a link with no exit; p2 reaches c1; p3 and p4 reach nothing.
+// p1 reaches c3 through two links and has a link with no exit; p2 reaches c2; p3 and p4 reach nothing.
 const LINKS: Row[] = [
-  { id: "k1", parentId: "p1", childId: "c3" },
-  { id: "k2", parentId: "p1", childId: "c3" },
+  { id: "k4", parentId: "p2", childId: "c2" },
   { id: "k3", parentId: "p1", childId: null },
-  { id: "k4", parentId: "p2", childId: "c1" },
+  { id: "k2", parentId: "p1", childId: "c3" },
+  { id: "k1", parentId: "p1", childId: "c3" },
 ];
 
 /**
@@ -185,6 +190,8 @@ export function dataLayerConditionConformance(makeLayer: () => Promise<Condition
         ["parent's s is null (no parent, a dangling key)", call("isNull", { kind: "one", hop: h.toParent, value: col("s", "string", 1) }), ["p1", "p4"]],
         ["parent's label = 'L1' (column db_label at depth 1)", call("eq", { kind: "one", hop: h.toParent, value: col("label", "string", 1) }, val("L1", "string")), ["p2"]],
         ["the grandparent's s = 'alpha' (two steps)", call("eq", { kind: "one", hop: h.toParent, value: { kind: "one", hop: h.toParent, value: col("s", "string", 2) } }, val("alpha", "string")), ["p3"]],
+        ["a has-many hop read as one takes the lowest-key child: p1's c1 has no qty", call("isNull", { kind: "one", hop: h.children, value: qty() }), ["p1", "p3", "p4"]],
+        ["a has-many hop read as one takes the lowest-key child: p2's c3 has qty 1", call("eq", { kind: "one", hop: h.children, value: qty() }, val(1, "integer")), ["p2"]],
         ["parent's n + 1 = my n (a depth-0 column inside the hop)", call("isTrue", { kind: "one", hop: h.toParent, value: call("eq", call("add", col("n", "integer", 1), val(1, "integer")), col("n", "integer")) }), ["p2"]],
       ]),
       hopCases("some and every: every is true over no row and false over an unknown one", (h) => [
@@ -198,6 +205,7 @@ export function dataLayerConditionConformance(makeLayer: () => Promise<Condition
         ["no child", call("eq", { kind: "count", hop: h.children }, val(0, "integer")), ["p4"]],
         ["one child with qty > 2", call("eq", { kind: "count", hop: h.children, where: call("gt", qty(), val(2, "integer")) }, val(1, "integer")), ["p1", "p2"]],
         ["the first child with a qty has qty 1", call("eq", { kind: "first", hop: h.children, where: call("isNotNull", qty()), value: qty() }, val(1, "integer")), ["p2"]],
+        ["the first child with a qty has qty 3, past a lower-key child without one", call("eq", { kind: "first", hop: h.children, where: call("isNotNull", qty()), value: qty() }, val(3, "integer")), ["p1"]],
         ["the first child with a qty has qty 5", call("eq", { kind: "first", hop: h.children, where: call("isNotNull", qty()), value: qty() }, val(5, "integer")), []],
         ["no child with a qty", call("isNull", { kind: "first", hop: h.children, where: call("isNotNull", qty()), value: qty() }), ["p3", "p4"]],
       ]),
@@ -311,7 +319,8 @@ export function expressionTablesThroughLayer(makeLayer: () => Promise<ConditionF
           for (const [k, row] of rows.entries()) {
             const id = `q${k}`;
             await tx.insert(parent, { id });
-            for (const [i, outcome] of row.outcomes.entries()) {
+            // In reverse key order, so `find` must order by the key rather than read the first row inserted.
+            for (const [i, outcome] of [...row.outcomes.entries()].reverse()) {
               await tx.insert(child, { id: `${id}-${String(i).padStart(3, "0")}`, parentId: id, qty: outcome === null ? null : outcome ? 1 : 0, pos: i });
             }
             const part: Node =
