@@ -6,7 +6,7 @@ import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } fr
 import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { resolve } from "node:path";
 import { sqliteDialect } from "./dialect.ts";
-import { deliveryOperations } from "./delivery.ts";
+import { deliveryOperations, multiProcessOperations } from "./delivery.ts";
 import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 
 /** How many `:memory:` layers this process made: each names its private database `:memory: #<n>`. */
@@ -225,6 +225,7 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
       deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
       ...deliveryOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
+      ...multiProcessOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
     }),
     async commit(database) {
       database.run(sql.raw("COMMIT"));

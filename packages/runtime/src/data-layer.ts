@@ -142,6 +142,20 @@ export interface DataOperations {
   writeSubscriptionProgress?: DeliveryOperations["writeSubscriptionProgress"];
   deleteSubscriptionProgress?: DeliveryOperations["deleteSubscriptionProgress"];
   firstOutboxRow?: DeliveryOperations["firstOutboxRow"];
+  /** Delivery from several processes; see `MultiProcessOperations`. Mandatory only when the bus declares `multi-process`. */
+  lockDeliveryState?: MultiProcessOperations["lockDeliveryState"];
+  writeKeep?: MultiProcessOperations["writeKeep"];
+  lockHandlerProgress?: MultiProcessOperations["lockHandlerProgress"];
+  readHandlerLeases?: MultiProcessOperations["readHandlerLeases"];
+  writeHandlerLease?: MultiProcessOperations["writeHandlerLease"];
+  moveHandler?: MultiProcessOperations["moveHandler"];
+  moveSubscription?: MultiProcessOperations["moveSubscription"];
+  readProcesses?: MultiProcessOperations["readProcesses"];
+  writeProcess?: MultiProcessOperations["writeProcess"];
+  renewProcess?: MultiProcessOperations["renewProcess"];
+  deleteProcess?: MultiProcessOperations["deleteProcess"];
+  readSubscriptionOwners?: MultiProcessOperations["readSubscriptionOwners"];
+  writeSubscriptionOwner?: MultiProcessOperations["writeSubscriptionOwner"];
 }
 
 /**
@@ -308,6 +322,73 @@ export interface DeliveryOperations {
    * `declared` (a row no declared event matches counts as listed by every handler), or null.
    */
   firstOutboxRow(after: number, before: number, listed: readonly string[], declared: readonly string[]): Promise<number | null>;
+}
+
+/** One row of `mesh_delivery_process`: a process that delivers in multi mode (the bus declares `multi-process`). */
+export interface DeliveryProcessRow {
+  readonly runId: string;
+  /** When the process last registered or renewed, by the database's clock. */
+  readonly renewedAt: Date;
+  /** For messages only. */
+  readonly host: string | null;
+  readonly pid: number | null;
+  readonly startedAt: Date | null;
+  /** The process's `events.keep`. */
+  readonly keep: "until-delivered" | "all";
+  /** The handlers this process registers, each with its sorted list: name to FQNs. */
+  readonly handlers: Readonly<Record<string, readonly string[]>>;
+  /** Every event its build declares, sorted FQNs. */
+  readonly declared: readonly string[];
+}
+
+/**
+ * A progress row with its handler lease: `runId` is the run id of the process that holds the handler, null when none
+ * does. In multi mode `generation` is the lease's, raised at each take, and `events` is the registered union: every event
+ * any build registered for the handler since the last adoption.
+ */
+export type HandlerLeaseRow = HandlerProgressRow & { readonly runId: string | null };
+
+/** A subscription row with its owner: the run id of the process it was last opened in, null for none. */
+export type SubscriptionOwnerRow = SubscriptionProgressRow & { readonly runId: string | null };
+
+/** `mesh_outbox_state` as `lockDeliveryState` reads it: `DeliveryState` and the recorded `keep`, null before any multi-mode start. */
+export type LockedDeliveryState = DeliveryState & { readonly keep: "until-delivered" | "all" | null };
+
+/**
+ * The delivery operations of multi mode (the bus declares `multi-process`), each in the running transaction, beside
+ * `DeliveryOperations`. Mandatory for a data adapter that delivers a project whose bus declares `multi-process`; core
+ * checks them at the start and calls none of them otherwise, so a single-mode project runs on a schema without the
+ * multi-process table and columns. A `lock*` operation takes the row's lock for the rest of the transaction (`FOR
+ * UPDATE`; a plain read on SQLite, whose one writer holds every lock already). Every transaction that locks
+ * `mesh_outbox_state` locks it before any progress row.
+ */
+export interface MultiProcessOperations {
+  /** `mesh_outbox_state` as `readDeliveryState` reads it, plus the recorded `keep`, under the row's lock. */
+  lockDeliveryState(): Promise<LockedDeliveryState>;
+  /** Record the `keep` in force on `mesh_outbox_state` (written by the first multi-mode start if the row is absent). */
+  writeKeep(keep: "until-delivered" | "all"): Promise<void>;
+  /** One handler's progress row under its lock, with its lease; undefined when it has none. */
+  lockHandlerProgress(name: string): Promise<HandlerLeaseRow | undefined>;
+  /** Every progress row with its lease, unlocked, in name order: for bounds and reports only, never written back. */
+  readHandlerLeases(): Promise<readonly HandlerLeaseRow[]>;
+  /** Insert or replace a progress row with its lease; only from a row `lockHandlerProgress` read in the same transaction, or a new row. */
+  writeHandlerLease(row: HandlerLeaseRow): Promise<void>;
+  /** In one statement: move the handler from `from` to `to` where it is still at `from` under the lease `runId` and `generation`; false when no row matched. */
+  moveHandler(name: string, from: number, to: number, runId: string, generation: number): Promise<boolean>;
+  /** In one statement: move the subscription from `from` to `to` where it is still at `from`; false when no row matched. */
+  moveSubscription(name: string, from: number, to: number): Promise<boolean>;
+  /** Every process row, in run id order. */
+  readProcesses(): Promise<readonly DeliveryProcessRow[]>;
+  /** Insert or replace this process's row; `renewedAt` is the database's clock, and a left-out `host` is the data layer's host. */
+  writeProcess(row: Omit<DeliveryProcessRow, "renewedAt" | "host"> & { readonly host?: string | null }): Promise<void>;
+  /** In one statement: renew the row of `runId` where it has not lapsed (the database's now minus `renewedAt` is below `lapseMs`); false when no row matched. */
+  renewProcess(runId: string, lapseMs: number): Promise<boolean>;
+  /** Delete the row of `runId`; false when there was none. */
+  deleteProcess(runId: string): Promise<boolean>;
+  /** Every subscription row with its owner, in name order. */
+  readSubscriptionOwners(): Promise<readonly SubscriptionOwnerRow[]>;
+  /** Insert or replace a subscription row with its owner; `seenAt`, when left out, is the database's clock. */
+  writeSubscriptionOwner(row: Omit<SubscriptionProgressRow, "seenAt"> & { readonly seenAt?: Date; readonly runId: string | null }): Promise<void>;
 }
 
 /** What `DataLayer.transaction` takes beside its callback. */
