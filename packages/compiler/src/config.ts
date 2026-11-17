@@ -2,7 +2,7 @@ import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
-import { BUS_CAPABILITIES, busProblem, CAPABILITIES, FrameworkError, KEEP_VALUES, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
+import { BUS_CAPABILITIES, busProblem, CAPABILITIES, FrameworkError, KEEP_VALUES, renamedShapeProblems, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
@@ -21,8 +21,13 @@ export interface ResolvedConfig {
   output: string;
   data: DataAdapter;
   extensions?: readonly ExtensionDescriptor[];
-  /** The `events` key as the project wrote it, checked: `bus`, `keep`, `load` and `requires` (M6). Absent when the config has none. */
+  /** The `events` key as the project wrote it, checked: `bus`, `keep`, `load`, `requires` and `renamed` (M6). Absent when the config has none. */
   events?: EventsConfig;
+  /**
+   * Where keys of `events` sit in `mesh.config.ts`, for the checks that need the model (`eventsDiagnostics`): present
+   * only for a key the config sets. Never part of `model.json`.
+   */
+  positions?: { readonly renamed?: Diagnostic["position"] };
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
@@ -246,17 +251,20 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       if (!(await stat(file)).isFile()) fail("domain", `Entity file "${name}" is not a file`);
     } catch (cause) { fail("domain", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
   }
+  const renamedAt = record(config.events) && Object.hasOwn(config.events, "renamed") ? at("renamed") : undefined;
   return { config: diagnostics.some((d) => d.severity === "error") ? null : {
     root, configFile, domainRoot, entityFiles: files, ignoredFiles, output, data: data as DataAdapter,
     ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
     ...(Object.hasOwn(config, "events") ? { events: config.events as EventsConfig } : {}),
+    ...(renamedAt ? { positions: { renamed: renamedAt } } : {}),
   }, diagnostics };
 }
 
 /**
  * The checks of the `events` key (spec, Events and commands, "Configuration and the events module"), each a
- * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values and whose `load` is a function. `bus` and `requires`
- * come with the event bus and are refused until then.
+ * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values, whose `load` is a function, whose `bus` is an event
+ * bus, whose `requires` lists capabilities, and whose `renamed` is an object of non-empty former FQNs to non-empty event
+ * names (`renamedShapeProblems`; `eventsDiagnostics` checks it against the declared events).
  */
 function checkEvents(events: unknown, at: (field: string) => Diagnostic["position"], diagnostics: Diagnostic[]): void {
   const fail = (field: string, message: string, fix: string) => diagnostics.push(error("MESH_EVENTS_CONFIG", message, at(field), fix));
@@ -274,6 +282,8 @@ function checkEvents(events: unknown, at: (field: string) => Diagnostic["positio
     } else if (key === "bus") {
       const problem = busProblem(value);
       if (problem) fail("bus", `\`events.bus\` is not a valid event bus: ${problem}`, "Set bus: localBus() (from @meshfw/bus-local), or another event-bus adapter's descriptor");
+    } else if (key === "renamed") {
+      for (const problem of renamedShapeProblems(value)) fail("renamed", problem.message, problem.fix);
     } else if (key === "requires") {
       const known: readonly string[] = [...BUS_CAPABILITIES, ...CAPABILITIES];
       if (!Array.isArray(value)) {
@@ -288,7 +298,7 @@ function checkEvents(events: unknown, at: (field: string) => Diagnostic["positio
         seen.add(name);
       }
     } else {
-      fail(key, `Unknown field "${key}" in configuration field \`events\`; its fields are bus, load, keep and requires`, "Remove the unknown field");
+      fail(key, `Unknown field "${key}" in configuration field \`events\`; its fields are bus, load, keep, requires and renamed`, "Remove the unknown field");
     }
   }
 }
@@ -321,7 +331,7 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   });
   if (result.document) result.document.data = { name: config.data.name };
   const capabilities = result.document
-    ? [...capabilityDiagnostics(result.document, config.data), ...eventsDiagnostics(result.document, config, positionAt("", projectPath(config.root, config.configFile), 0))]
+    ? [...capabilityDiagnostics(result.document, config.data), ...eventsDiagnostics(result.document, config, positionAt("", projectPath(config.root, config.configFile), 0), config.positions)]
     : [];
   return { document: diagnostics.length || capabilities.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics, ...capabilities] };
 }

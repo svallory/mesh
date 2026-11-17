@@ -383,6 +383,45 @@ describe("the bus at build time (MESH_EVENTS_CONFIG, MESH_CAPABILITY)", () => {
   });
 });
 
+describe("the rename map at build time (events.renamed, MESH_EVENTS_CONFIG)", () => {
+  const at = { file: "/project/mesh.config.ts", line: 1, column: 1, offset: 0 };
+  const key = { file: "mesh.config.ts", line: 4, column: 5, offset: 80 };
+  const data = { ...configOf("/project").data, capabilities: { adapter: "sqlite", capabilities: [] } } as never;
+  const bus = { manifest: { adapter: "fake", capabilities: ["ordered-delivery"] }, create: () => { throw new Error("never started"); } } as never;
+  // billing.InvoicePaid, sales.refunds.RefundIssued and audit.InvoicePaid: two events end in InvoicePaid.
+  const document = () => buildModel(files({ "sales/refunds/refund-issued.mesh.mx": REFUND, "audit/invoice-paid.mesh.mx": "event :InvoicePaid\n  uuid :invoiceId\n" })).document!;
+  const none = () => buildModel({ root: "/project", files: [{ file: "billing/invoice.mesh.mx", source: invoice("", "") }] }).document!;
+  const check = (renamed: unknown, model = document(), positions: { renamed?: typeof key } | null = { renamed: key }) =>
+    eventsDiagnostics(model, { data, events: { bus, renamed: renamed as never } }, at, positions ?? undefined).map(({ code, message, fix, position }) => ({ code, message, fix, position }));
+
+  test("legal: {}, full and shortened values, two former names to one event, and a project with no event and an empty map", () => {
+    expect(check({})).toEqual([]);
+    expect(check({ "old.RefundIssued": "sales.refunds.RefundIssued", "billing.v1.InvoicePaid": "billing.InvoicePaid", "x.InvoicePaid": "billing.InvoicePaid" })).toEqual([]);
+    expect(check({ "finance.Refund": "RefundIssued", "finance.Refunded": "refunds.RefundIssued" })).toEqual([]);
+    expect(check({}, none())).toEqual([]);
+  });
+
+  test("each problem is one MESH_EVENTS_CONFIG at the renamed key, with its fix", () => {
+    expect(check({ "billing.InvoicePaid": "sales.refunds.RefundIssued", "a.B": "RefundIssue", "c.D": "InvoicePaid" })).toEqual([
+      { code: "MESH_EVENTS_CONFIG", position: key, message: "`events.renamed` maps \"billing.InvoicePaid\", which is a declared event: each key is a former FQN that no event declares now", fix: "Remove the entry, or correct the key" },
+      { code: "MESH_EVENTS_CONFIG", position: key, message: "`events.renamed` maps \"a.B\" to \"RefundIssue\", which is no declared event; the project declares audit.InvoicePaid, billing.InvoicePaid, sales.refunds.RefundIssued", fix: "Correct the name" },
+      { code: "MESH_EVENTS_CONFIG", position: key, message: "`events.renamed` maps \"c.D\" to \"InvoicePaid\", which is ambiguous: audit.InvoicePaid or billing.InvoicePaid", fix: "Write more of the name" },
+    ]);
+  });
+
+  test("a chain is refused, naming the key the value is; a project with no event refuses a non-empty map; without a key position the file start is used", () => {
+    expect(check({ "a.RefundIssued": "b.RefundIssued", "b.RefundIssued": "sales.refunds.RefundIssued" })).toEqual([{
+      code: "MESH_EVENTS_CONFIG", position: key, fix: "Correct the name",
+      message: "`events.renamed` maps \"a.RefundIssued\" to \"b.RefundIssued\", which is no declared event; it is itself a key of events.renamed, and a former name maps straight to the event it is now; the project declares audit.InvoicePaid, billing.InvoicePaid, sales.refunds.RefundIssued",
+    }]);
+    expect(check({ "billing.InvoicePaid": "finance.InvoicePaid" }, none())).toEqual([{
+      code: "MESH_EVENTS_CONFIG", position: key, fix: "Remove events.renamed, or declare the event",
+      message: "`events.renamed` maps \"billing.InvoicePaid\", and the project declares no event: the map renames stored events to declared ones",
+    }]);
+    expect(check({ "a.B": "Nope" }, document(), null)[0]!.position).toEqual(at);
+  });
+});
+
 describe("what is generated", () => {
   const roots: string[] = [];
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });

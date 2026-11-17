@@ -512,6 +512,23 @@ A row handed to a subscription's callback but not yet acknowledged is not passed
 
 Only the deliverer deletes, by the `keep` its own configuration sets, from the next time it claims. A deploy whose configuration drops `keep: "all"` therefore deletes the delivered history at its first deletion pass. With a bus that declares `multi-process`, every delivering process deletes, and the `keep` in force is the one recorded in the database (see [The recorded `keep`](#the-recorded-keep)).
 
+### Moving or renaming an event
+
+An event's FQN comes from its folder and its name, and every outbox row stores it. When the declaration moves (`src/domain/billing/invoice-paid.mesh.mx` to `src/domain/finance/invoice-paid.mesh.mx`) or is renamed, the rows stored before name an event the project no longer declares, and every reader stops at the first of them with `MESH_EVENT_UNDECLARED`. Under `keep: "all"` those rows are never deleted, so without help a declaration could never move. Tell Mesh what the old name is now:
+
+```ts "mesh.config.ts (excerpt)"
+events: {
+  bus: localBus(),
+  load: () => import("./src/events.ts"),
+  keep: "all",
+  renamed: { "billing.InvoicePaid": "finance.InvoicePaid" },
+},
+```
+
+Each row stored as `billing.InvoicePaid` is then read as a `finance.InvoicePaid`: its record's `name` is the new FQN and its `payload` an instance of the new class, built from the stored fields. Handlers that list the event, subscriptions, `readEvents` and the deletion pass all see the new name; `readEvents({ names: ["finance.InvoicePaid"] })` takes the old rows too. A subscription or a handler whose row was written with the old name keeps its place: reopen the subscription with the new name and it resumes from its acknowledged position. The rows themselves are never rewritten. The old name is no longer an event of the project, so `names` refuses it, saying what it was renamed to.
+
+A key is the former FQN in full, and no event the project declares; a value names a declared event, in full or shortened to its last segments while they pick one. Two former names may map to one event, but a value is never itself a key: map each former name straight to the event it is now. A stored payload the new class refuses is a `FrameworkError` naming its position, since Mesh keeps no event versions.
+
 ### Orphan rows
 
 A handler that is removed, or renamed without `renamedFrom`, leaves a progress row that holds outbox rows for ever. So does a subscription whose client never comes back. The deliverer logs each the first time it finds it, then at most once an hour, naming it, its position and how many rows it holds; it also logs an open subscription that has been handed rows and has not acknowledged for more than an hour. Nothing is dropped automatically. Drop a row with:
@@ -618,7 +635,7 @@ Inside a transaction `readEvents` throws a `FrameworkError`: a transaction's own
 |:--|:--|:--|
 | `EventsDeletedError` | `MESH_EVENTS_DELETED` | `after` is behind the rows already deleted, so reading on would skip them. Names `after` and `oldestKept`. Reload current state and read from the newest position, or keep every row with `events.keep: "all"` |
 | `CursorAheadError` | `MESH_CURSOR_AHEAD` | `after` is above the highest position the outbox ever assigned: the cursor was kept outside a database that has since gone back, such as a restored backup. Names `after` and `highest` |
-| `EventUndeclaredError` | `MESH_EVENT_UNDECLARED` | A kept row names an event the project no longer declares, because its file moved or was renamed. Names `eventName` and `position`. Move the declaration back until its rows are delivered |
+| `EventUndeclaredError` | `MESH_EVENT_UNDECLARED` | A kept row names an event the project no longer declares, because its file moved or was renamed. Names `eventName` and `position`. Map the former FQN to the event it is now with `events.renamed` ([Moving or renaming an event](#moving-or-renaming-an-event)) |
 
 ## Failures and retries
 
@@ -628,7 +645,7 @@ Whether a retry makes sense is on the error. Every Mesh error carries `retryable
 
 | Class | `code` | `retryable` | Thrown when |
 |:--|:--|:--|:--|
-| `EventsConfigError` | `MESH_EVENTS_CONFIG` | `false` | The `events` configuration is not valid, or the events module exports handlers while no bus is set |
+| `EventsConfigError` | `MESH_EVENTS_CONFIG` | `false` | The `events` configuration is not valid (at bind, a bad `renamed`), or the events module exports handlers while no bus is set |
 | `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A handler lists something other than an event class of the project, asks for `onFailure: "skip"` without `dead-letters`, or has a `renamedFrom` that names a registered handler or that two handlers name |
 | `HandlerHistoryError` | `MESH_HANDLER_HISTORY` | `false` | A project handler (from `@meshfw/event-sourcing`) would build its read model from part of the history; see [Event sourcing](./event-sourcing.md#the-history-rule) |
 | `DelivererTakenError` | `MESH_DELIVERER_TAKEN` | `true` | Another process or binding holds the claim, or a `deliver()` overlapped a round. Names the `holder` and `lapsesAt`. Stop the other process, or connect this one with `{ deliver: false }` |
@@ -638,7 +655,7 @@ Whether a retry makes sense is on the error. Every Mesh error carries `retryable
 | `SubscriptionOverflowError` | `MESH_SUBSCRIPTION_OVERFLOW` | `true` | A subscription's queue passed the bus's `maxQueue` (10 000 events by default); reopen it |
 | `EventsDeletedError` | `MESH_EVENTS_DELETED` | `false` | A read or a first subscription from behind the deleted rows |
 | `CursorAheadError` | `MESH_CURSOR_AHEAD` | `false` | A read or a first subscription from above the highest position ever assigned |
-| `EventUndeclaredError` | `MESH_EVENT_UNDECLARED` | `false` | A kept row names an event the project no longer declares: every handler stops at it, and a subscription or a read that reaches it ends |
+| `EventUndeclaredError` | `MESH_EVENT_UNDECLARED` | `false` | A kept row names an event the project no longer declares, and `events.renamed` does not map it: every handler stops at it, and a subscription or a read that reaches it ends |
 
 The full list of Mesh's errors is under [Errors](./using-your-domain.md#errors).
 
