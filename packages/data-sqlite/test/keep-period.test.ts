@@ -184,7 +184,7 @@ describe("the deletion pass under keep: { days }", () => {
   });
 
   test("the longest legal period keeps every young row", async () => {
-    const { layer, binding } = await world({ days: 100_000_000 });
+    const { layer, binding } = await world({ days: 100_000 });
     try {
       await publish(layer, [Alpha, 0], [Alpha, 40 * DAY]);
       await binding.deliver();

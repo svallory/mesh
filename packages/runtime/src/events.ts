@@ -111,12 +111,13 @@ export interface KeepProblem {
 }
 
 /**
- * The longest keep period, in days. The deletion pass measures a period back from the database's clock
- * (`now - days`), and a Date holds 100,000,000 days either side of 1970: a longer period would start before the
- * earliest Date, an Invalid Date that SQLite compares as no row (every passed row deleted) and Postgres refuses to
- * format (every pass failed).
+ * The longest keep period, in days (about 273 years). The deletion pass measures a period back from the database's
+ * clock (`now - days`) and hands that `since` to the data layer, so every adapter must hold it. A JavaScript Date
+ * holds 100,000,000 days either side of 1970, but Postgres reads `since` as ISO text into a timestamptz, and the text
+ * of a date before year 1 (`-000164-07-21T...Z`) is refused, failing every pass. 100,000 days back from any clock
+ * after 1970 lands after 1696, which every adapter stores.
  */
-export const MAX_KEEP_DAYS = 100_000_000;
+export const MAX_KEEP_DAYS = 100_000;
 
 /**
  * The problem with an `events.keep` value, or null when it is one of `KEEP_VALUES` or `{ days }` with a whole number

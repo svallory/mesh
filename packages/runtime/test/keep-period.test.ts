@@ -19,8 +19,8 @@ class Paid {
 const MULTI = { manifest: { adapter: "local", capabilities: ["ordered-delivery", "multi-process"] }, create: () => ({}) };
 
 describe("keepProblem", () => {
-  test("the two strings, and a whole number of days from 1 to 100,000,000, are legal", () => {
-    for (const keep of ["until-delivered", "all", { days: 1 }, { days: 30 }, { days: 36_500 }, { days: 100_000_000 }]) expect(keepProblem(keep)).toBeNull();
+  test("the two strings, and a whole number of days from 1 to 100,000, are legal", () => {
+    for (const keep of ["until-delivered", "all", { days: 1 }, { days: 30 }, { days: 36_500 }, { days: 100_000 }]) expect(keepProblem(keep)).toBeNull();
   });
 
   test("a period on a bus that delivers from one process is legal, and the strings are legal on a multi-process bus", () => {
@@ -31,11 +31,11 @@ describe("keepProblem", () => {
 
   test.each([
     [0, "0"], [-1, "-1"], [0.5, "0.5"], [Number.NaN, "null"], [Number.POSITIVE_INFINITY, "null"], ["30", "\"30\""], [null, "null"], [2 ** 53, "9007199254740992"],
-    // past 100,000,000 days the period starts before the earliest Date, and the deletion pass could not compute it
-    [100_000_001, "100000001"], [1e9, "1000000000"],
+    // past 100,000 days the period starts before a date every adapter stores (Postgres refuses a year before 1)
+    [100_001, "100001"], [800_000, "800000"], [1e9, "1000000000"],
   ])("days %p is refused, naming the value", (days, shown) => {
     expect(keepProblem({ days })).toEqual({
-      message: `\`events.keep.days\` must be a whole number of days, from 1 to 100000000, and is ${shown}`,
+      message: `\`events.keep.days\` must be a whole number of days, from 1 to 100000, and is ${shown}`,
       fix: "Set days to a whole number, such as 30",
     });
   });
@@ -94,7 +94,7 @@ describe("bind's check of events.keep", () => {
     const error = (() => { try { bind(layer, { days: 0.5 }); } catch (thrown) { return thrown; } })();
     expect(error).toBeInstanceOf(EventsConfigError);
     expect((error as EventsConfigError).code).toBe("MESH_EVENTS_CONFIG");
-    expect((error as Error).message).toBe("`events.keep.days` must be a whole number of days, from 1 to 100000000, and is 0.5");
+    expect((error as Error).message).toBe("`events.keep.days` must be a whole number of days, from 1 to 100000, and is 0.5");
   });
 
   test("a string that is no keep value is MESH_EVENTS_CONFIG at bind", () => {
