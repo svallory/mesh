@@ -79,10 +79,10 @@ export interface EventsConfig {
   load?: () => Promise<EventsModule>;
   /**
    * How long the outbox keeps a row: `"until-delivered"` (the default) deletes a row once every reader is past it; `"all"`
-   * keeps every row, for an application that reads history or whose clients resume from cursors. Read by whatever starts
-   * delivery.
+   * keeps every row, for an application that reads history or whose clients resume from cursors; `{ days: n }` deletes a
+   * row once every reader is past it and it is at least `n` whole days old. Read by whatever starts delivery.
    */
-  keep?: "until-delivered" | "all";
+  keep?: Keep;
   /** Capabilities the project needs from the bus and the data adapter: checked by the build, ignored by `bind`. */
   requires?: readonly (BusCapability | Capability)[];
   /**
@@ -94,8 +94,61 @@ export interface EventsConfig {
   renamed?: Readonly<Record<string, string>>;
 }
 
-/** The two values of `events.keep`. */
-export const KEEP_VALUES: readonly NonNullable<EventsConfig["keep"]>[] = Object.freeze(["until-delivered", "all"]);
+/**
+ * One retention rule of `events.keep`: `"until-delivered"` deletes a row once every reader has passed it, `"all"` keeps
+ * every row, and `{ days }` deletes a passed row once it is `days` whole days old, its `occurredAt` measured against the
+ * database's clock.
+ */
+export type Keep = "until-delivered" | "all" | { readonly days: number };
+
+/** The two string values of `events.keep`. */
+export const KEEP_VALUES: readonly ("until-delivered" | "all")[] = Object.freeze(["until-delivered", "all"]);
+
+/** A problem with `events.keep`, as the build reports it and `bind` throws it (`MESH_EVENTS_CONFIG`). */
+export interface KeepProblem {
+  readonly message: string;
+  readonly fix: string;
+}
+
+/**
+ * The problem with an `events.keep` value, or null when it is one of `KEEP_VALUES` or `{ days }` with a whole number
+ * of days, 1 or more, on a bus that delivers from one process. Shared by the build's check of `mesh.config.ts` and
+ * `bind`'s check of its `events` option. A period is refused on a bus that declares `multi-process`: the keep recorded
+ * for several processes is one of the two strings, and a process without the period would delete the rows it keeps.
+ */
+export function keepProblem(keep: unknown, bus?: unknown): KeepProblem | null {
+  if ((KEEP_VALUES as readonly unknown[]).includes(keep)) return null;
+  if (typeof keep === "object" && keep !== null && !Array.isArray(keep) && Object.hasOwn(keep, "days")) {
+    const extra = Object.keys(keep).find((key) => key !== "days");
+    if (extra !== undefined)
+      return { message: `\`events.keep\` { days } takes no other field, and has ${JSON.stringify(extra)}`, fix: "Remove the field, as in keep: { days: 30 }" };
+    const days = (keep as { days: unknown }).days;
+    if (!(typeof days === "number" && Number.isSafeInteger(days) && days >= 1))
+      return { message: `\`events.keep.days\` must be a whole number of days, 1 or more, and is ${describeValue(days)}`, fix: "Set days to a whole number, such as 30" };
+    const manifest = (bus as { manifest?: { adapter?: unknown; capabilities?: unknown } } | null | undefined)?.manifest;
+    if (Array.isArray(manifest?.capabilities) && manifest.capabilities.includes("multi-process"))
+      return {
+        message: `\`events.keep\` is { days: ${days} }, and the bus ${String(manifest.adapter)} delivers from several processes (multi-process), whose recorded keep is "until-delivered" or "all": a process without the period would delete the rows this one keeps`,
+        fix: "Set keep: \"until-delivered\" or keep: \"all\", or deliver from one process",
+      };
+    return null;
+  }
+  return {
+    message: `\`events.keep\` must be "until-delivered", "all" or { days }, and is ${describeValue(keep)}`,
+    fix: "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept) or keep: { days: 30 } (a delivered row is kept 30 days)",
+  };
+}
+
+/** The whole days of a period rule, or null for `"until-delivered"`, `"all"` and an absent `keep`. */
+export function keepDays(keep: Keep | undefined): number | null {
+  return typeof keep === "object" && keep !== null ? keep.days : null;
+}
+
+function describeValue(value: unknown): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "function") return "a function";
+  try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+}
 
 /** The class of an event, as `mesh build` generates it. */
 export type EventClass = (new (fields: never) => object) & { readonly [DECLARATION]: Declaration };

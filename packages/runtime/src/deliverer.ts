@@ -2,7 +2,7 @@ import type { BusCore, EventBus, EventBusInstance, Handler, HandlerKind, KindHan
 import { checkedBus } from "./bus.ts";
 import type {
   DataLayer, DataOperations, DelivererClaim, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, Key, OutboxPage, OutboxRow,
-  SubscriptionFilter, SubscriptionProgressRow,
+  RetentionOperations, SubscriptionFilter, SubscriptionProgressRow,
 } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import {
@@ -11,7 +11,7 @@ import {
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
-  PerDatabase, causedIn, describe, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
+  PerDatabase, causedIn, describe, keepDays, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
 import { NO_RENAMES, storedNamesOf, storedToDeclared } from "./stored-names.ts";
@@ -146,6 +146,20 @@ export async function moveFailures(tx: DataOperations | DeliveryOperations, from
   const renameFailures = (tx as Partial<FailureOperations>).renameFailures;
   if (typeof renameFailures === "function") await renameFailures.call(tx, from, to);
 }
+
+/**
+ * The retention operations of a transaction (`RetentionOperations`); a `FrameworkError` naming the first one the data
+ * adapter lacks and `why` they are needed. Not part of `operations()`: an adapter without them delivers every project
+ * whose `events.keep` is `"until-delivered"` or `"all"`.
+ */
+export function retentionOperations(tx: DataOperations | DeliveryOperations, why: string): RetentionOperations {
+  if (typeof (tx as Partial<RetentionOperations>).firstOutboxRowSince !== "function")
+    throw new FrameworkError(`The data layer's transactions have no firstOutboxRowSince: ${why}, which needs a data adapter with the retention operations (RetentionOperations in @meshfw/runtime)`);
+  return tx as unknown as RetentionOperations;
+}
+
+/** One day, in milliseconds: the unit of a keep period (`{ days }`). */
+const DAY_MS = 86_400_000;
 
 /** A handler's error as a failure row stores it: its string `code` (null for none) and its message. */
 function failureError(error: unknown): FailureRow["error"] {
@@ -401,7 +415,13 @@ const held = (state: DeliveryState, position: number) => Math.max(0, state.highe
 export class Deliverer {
   readonly db: DatabaseState;
   readonly bus: EventBus;
+  /**
+   * The `keep` in force as the bus, the registration and the deletion gates see it: a period (`{ days }`) is
+   * `"until-delivered"`, since a passed row may be gone; `days` holds the period.
+   */
   readonly keep: "until-delivered" | "all";
+  /** The whole days of `events.keep` when it is a period, else null: the deletion pass keeps passed rows younger than that. */
+  readonly days: number | null;
   readonly instance: EventBusInstance;
   readonly core: BusCore;
   readonly strategy: ClaimStrategy;
@@ -423,7 +443,8 @@ export class Deliverer {
   constructor(readonly binding: Binding, readonly layer: DataLayer, readonly events: ReadonlyMap<string, EventClass>, readonly config: EventsConfig, readonly module: EventsModule) {
     this.db = databases.get(layer);
     this.bus = checkedBus(config.bus);
-    this.keep = config.keep ?? "until-delivered";
+    this.days = keepDays(config.keep);
+    this.keep = typeof config.keep === "string" ? config.keep : "until-delivered";
     this.declared = [...events.keys()].sort();
     this.renamed = bindingParts(binding).renamed;
     this.strategy = isMultiProcess(this.bus) ? new MultiClaim(this) : new SingleClaim(this);
@@ -486,6 +507,8 @@ export class Deliverer {
       // the first set-aside.
       const skipping = declared.find((entry) => entry.registered.onFailure === "skip");
       if (skipping) await this.layer.transaction(async (tx) => { failureOperations(tx, `the handler ${JSON.stringify(skipping.registered.name)} has onFailure "skip"`); });
+      // A keep period needs its retention operation: an adapter without it fails the start, not the first deletion pass.
+      if (this.days !== null) await this.layer.transaction(async (tx) => { retentionOperations(tx, this.#periodWhy()); });
       this.#readHead = await this.strategy.register(declared);
       this.#handlers = new Map(declared.map((entry) => [entry.registered.name, entry]));
       this.holding = true;
@@ -775,8 +798,15 @@ export class Deliverer {
         let capped = false;
         if (this.strategy.deletes(state)) {
           const bound = Math.min(this.#readHead, ...handlerRows.map((row) => row.position), ...subscriptionRows.map((row) => row.position));
-          const through = Math.min(bound, state.deletedThrough + timing.batch);
+          let through = Math.min(bound, state.deletedThrough + timing.batch);
           capped = through < bound;
+          if (this.days !== null && through > state.deletedThrough) {
+            // A period deletes a passed row only once it is old enough, by the database's clock: the prefix stops just
+            // below the first younger row, and the pass is done until that row ages.
+            const since = new Date(state.now.getTime() - this.days * DAY_MS);
+            const young = await retentionOperations(tx, this.#periodWhy()).firstOutboxRowSince(state.deletedThrough, through, since);
+            if (young !== null) { through = young - 1; capped = false; }
+          }
           if (through > state.deletedThrough) deleted = await tx.deleteOutboxThrough!(through);
         }
         return { state, handlers: handlerRows, subscriptions: subscriptionRows, deleted, capped, end, full: page !== null && page.rows.length === timing.batch };
@@ -787,6 +817,11 @@ export class Deliverer {
       if (cursor === null && !outcome.capped) break;
     }
     if (last) this.#reportOrphans(last.state, last.handlers, last.subscriptions);
+  }
+
+  /** Why a period needs the retention operations, for their `FrameworkError`. */
+  #periodWhy(): string {
+    return `events.keep is { days: ${this.days} }`;
   }
 
   /** Report each orphan the first time a pass finds it in this process, then at most once per `orphanReportMs`. */

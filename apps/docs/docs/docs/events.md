@@ -227,7 +227,7 @@ Each `publish` appends one row to the outbox, `mesh_outbox`, in the action's tra
 | `occurredAt` | The transaction's instant, `%.now` |
 | `payload` | The event's fields, as JSON |
 
-How long the outbox keeps a row is your setting, `events.keep` in `mesh.config.ts`: `"until-delivered"`, the default, deletes a row once every reader has passed it, and `"all"` keeps every row, for an application that reads its history. Only the deliverer deletes rows; see [How long rows are kept](#how-long-rows-are-kept).
+How long the outbox keeps a row is your setting, `events.keep` in `mesh.config.ts`: `"until-delivered"`, the default, deletes a row once every reader has passed it, `"all"` keeps every row, for an application that reads its history, and `{ days: 30 }` deletes a passed row once it is 30 days old. Only the deliverer deletes rows; see [How long rows are kept](#how-long-rows-are-kept).
 
 ## Delivering events
 
@@ -509,6 +509,8 @@ Under `keep: "until-delivered"`, the deliverer deletes the outbox rows that ever
 - and the deliverer's own read head.
 
 A row handed to a subscription's callback but not yet acknowledged is not passed, so a row is never deleted while a client may still be processing it. Rows a handler or a subscription does not list do not hold it back. Deleting always removes the oldest rows, so the rows kept stay contiguous and a cursor keeps its meaning. Under `keep: "all"` nothing is deleted.
+
+Under a period, `keep: { days: 30 }`, the deliverer deletes the same passed rows, but only those whose `occurredAt` is at least 30 days before the database's clock: a row stamped exactly 30 days ago goes, a younger one stays. Deleting stays a prefix, so it stops at the first passed row that is too young, and the rows above it wait for it to age, however old they are. `occurredAt` is the publishing binding's clock (the one `bind(layer, { clock })` sets) and the age is measured on the database's clock, so a skew between the two moves the moment by that much. A period never deletes a row some reader has not passed, so it only ever keeps rows longer than `"until-delivered"`, and the bus sees it as `"until-delivered"` (`BusOptions.keep`): a passed row may be gone. A data adapter needs the `firstOutboxRowSince` operation for it (`RetentionOperations`, which SQLite and Postgres have), checked when delivery starts. A bus that declares `multi-process` refuses a period with `MESH_EVENTS_CONFIG`, since the `keep` recorded for several processes is one of the two strings.
 
 Only the deliverer deletes, by the `keep` its own configuration sets, from the next time it claims. A deploy whose configuration drops `keep: "all"` therefore deletes the delivered history at its first deletion pass. With a bus that declares `multi-process`, every delivering process deletes, and the `keep` in force is the one recorded in the database (see [The recorded `keep`](#the-recorded-keep)).
 

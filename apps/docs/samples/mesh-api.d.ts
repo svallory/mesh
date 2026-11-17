@@ -28,14 +28,17 @@ declare module "@meshfw/runtime" {
     events?: EventsConfig;
   };
 
+  /** One retention rule of `events.keep`; a period's age is the row's `occurredAt` against the database's clock. */
+  export type Keep = "until-delivered" | "all" | { readonly days: number };
+
   /** The `events` key of `mesh.config.ts`, and the `events` option of `bind`. */
   export interface EventsConfig {
     /** The event bus (`localBus()`); a project that declares an event must set it, and there is no default. */
     bus?: EventBus;
     /** Loads the events module at run time; the build never imports it. */
     load?: () => Promise<EventsModule>;
-    /** How long the outbox keeps a row: until every reader has passed it (the default), or always. */
-    keep?: "until-delivered" | "all";
+    /** How long the outbox keeps a row: until every reader has passed it (the default), always, or until every reader has passed it and it is `days` whole days old. */
+    keep?: Keep;
     /** Capabilities the project needs from the bus and the data adapter: the build fails when one is missing. */
     requires?: readonly (BusCapability | Capability)[];
     /** Former event FQN to the declared event it now is: a row stored under the former name is read as that event. */

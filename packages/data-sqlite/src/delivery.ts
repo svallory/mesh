@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { hostname } from "node:os";
 import {
   DELIVERY_PROCESS_TABLE, FAILURES_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
-  type DelivererClaim, type DeliveryOperations, type FailureOperations, type FailureRow, type DeliveryProcessRow, type DeliveryState, type HandlerLeaseRow, type HandlerProgressRow,
+  type DelivererClaim, type DeliveryOperations, type FailureOperations, type FailureRow, type RetentionOperations, type DeliveryProcessRow, type DeliveryState, type HandlerLeaseRow, type HandlerProgressRow,
   type LockedDeliveryState, type MultiProcessOperations, type SubscriptionFilter, type SubscriptionOwnerRow, type SubscriptionProgressRow,
 } from "@meshfw/runtime";
 
@@ -63,7 +63,7 @@ function stateOf(row: StateRow): DeliveryState {
   return { deletedThrough: row.deleted_through, highest: row.highest, generation: row.generation, claim, now: new Date(row.now) };
 }
 
-export function deliveryOperations(client: () => Database, run: <T>(statement: () => T) => T): DeliveryOperations {
+export function deliveryOperations(client: () => Database, run: <T>(statement: () => T) => T): DeliveryOperations & RetentionOperations {
   const db = () => client();
   const exec = <T>(statement: () => T) => Promise.resolve().then(() => run(() => withTables(statement)));
   return {
@@ -114,6 +114,13 @@ export function deliveryOperations(client: () => Database, run: <T>(statement: (
          WHERE position > ? AND position < ? AND (name IN (SELECT value FROM json_each(?)) OR name NOT IN (SELECT value FROM json_each(?)))
          ORDER BY position LIMIT 1`,
       ).get(after, before, JSON.stringify(listed), JSON.stringify(declared)) as { position: number } | null;
+      return row?.position ?? null;
+    }),
+    // occurred_at is stored as epoch milliseconds, as appendEvent writes it.
+    firstOutboxRowSince: (after, through, since) => exec(() => {
+      const row = db().query(
+        `SELECT position FROM ${OUTBOX_TABLE} WHERE position > ? AND position <= ? AND occurred_at > ? ORDER BY position LIMIT 1`,
+      ).get(after, through, since.getTime()) as { position: number } | null;
       return row?.position ?? null;
     }),
   };

@@ -7,7 +7,7 @@ description: "Decision record 0098: `events.renamed` maps a moved event's stored
 
 ## Status
 
-Accepted in part (lead ruling D45, pending operator review). The rename map and dead letters are built; keep periods and per-event keep are decided here and built by the next two pull requests of the same unit, which complete this record. Amends [ADR-0079](./0079-commands-events-and-the-outbox.md): its amendment of 2026-10-12 and 2026-10-13 says "a per-event setting can be added later without breaking anything", and this record is where it is added.
+Accepted in part (lead ruling D45, pending operator review). The rename map, dead letters and keep periods are built; per-event keep is decided here and built by the next pull request of the same unit, which completes this record. Amends [ADR-0079](./0079-commands-events-and-the-outbox.md): its amendment of 2026-10-12 and 2026-10-13 says "a per-event setting can be added later without breaking anything", and this record is where it is added.
 
 ## Date
 
@@ -28,7 +28,7 @@ The events specification names four things M6 left for later: a way to move or r
 3. **The table in every event project (OD-4 (a)).** `mesh_outbox_failures` is a core table of every project that declares an event, whatever its bus, so switching to a bus without `dead-letters` never makes `mesh db push` drop rows a handler set aside. A failure row outlives its outbox row under every `keep`. The data layer reaches it through four optional operations (`writeFailure`, `readFailures`, `deleteFailure`, `renameFailures`), checked when delivery starts with a `"skip"` handler, so an adapter without them delivers every project that never skips.
 4. **Replay order (OD-2 (a)).** `retryFailed(name)`, exported by `#mesh` only when the bus declares `dead-letters`, runs the handler once on each of its set-aside events in position order, deleting each failure row in the transaction that handles it (for a `listen` handler, in a short fenced transaction after its body); it stops at the first that fails again, or that the handler no longer lists, or that no declared event matches, and resolves `{ handled, failed }` with that row and every later one kept. It runs only where delivery may run: refused on a `{ deliver: false }` binding, `MESH_DELIVERER_TAKEN` while another process holds the claim, `MESH_HANDLER_LOST` where another process holds the handler's lease, and a `FrameworkError` while a call for the same handler runs in this process. A `renamedFrom` take-over moves the handler's failure rows with its progress.
 5. **Reporting, no list or forget (OD-3 (a) and (c)).** Core writes one `console.warn` per set-aside naming the handler, the position, the event, the error and `retryFailed`. There is no call that lists or drops set-aside events: they are read with SQL and deleted by hand, and `forgetHandler` leaves them, so a handler registered again under the name can still replay them.
-6. **Keep periods (OD-7 (a)).** A period is `{ days: n }`, whole days of 1 or more. Not built yet.
+6. **Keep periods (OD-7 (a)).** A period is `{ days: n }`, whole days of 1 or more. The deletion pass deletes a row a period allows only once every reader has passed it and its `occurredAt` is at least `n` days before the database's clock (the clock the claim's lapse uses, read in the batch's transaction), so the result does not depend on which process delivers; a row stamped exactly that long ago is deleted. Deletion stays a prefix: it stops just below the first passed row that is too young, through one data-layer operation, `firstOutboxRowSince(after, through, since)`, optional (`RetentionOperations`) and checked when delivery starts with a period. The bus, the registration and the orphan reports see a period as `"until-delivered"`, since a passed row may be gone. A bus that declares `multi-process` refuses a period with `MESH_EVENTS_CONFIG`, at the build and at `bind`: the `keep` recorded for several processes is one of the two strings, and a process without the period would delete rows another keeps; recording a period there needs the recorded keep to hold it and to merge rules by "keep the longer".
 7. **Per-event keep (OD-5 (b)).** A per-event rule deletes rows inside the kept range, leaving holes that a hole record names, and a read that would cross a hole fails with `MESH_EVENTS_DELETED` rather than return a gap. Built last. Not built yet.
 8. **Trace context (OD-6 (a)).** Trace context in event metadata is a documented project recipe over the events module's `metadata` function; no Mesh package depends on `@opentelemetry/api` until tracing returns.
 
@@ -51,12 +51,13 @@ Every event project carries an empty `mesh_outbox_failures` and its `schema.ts` 
 - `BusCore` gains `setAside`; a bus that declares `dead-letters` calls it for a `"skip"` handler whose retries are used up and goes on. The bus conformance suite has a dead-letters group for such a bus.
 - `CORE_TABLES` gains `mesh_outbox_failures`; `@meshfw/runtime` exports `FailureOperations`, `FailureRow`, `retryFailed` and `RetryFailedResult`, and `@meshfw/runtime/testing` exports `retentionConformance` for the failure operations. SQLite and Postgres implement them.
 - `#mesh` exports `retryFailed` and the type `RetryFailedResult` when the bus declares `dead-letters`; a project on another bus keeps its generated `index.ts` and `binding.ts` byte for byte, while `schema.ts` gains `mesh_outbox_failures` in every event project.
+- `events.keep` takes `{ days }` (the type `Keep`); `@meshfw/runtime` exports `Keep`, `keepProblem` (the check the build and `bind` share) and `RetentionOperations`, and `retentionConformance` checks `firstOutboxRowSince` on SQLite and Postgres. No generated file changes.
 - [ADR-0079](./0079-commands-events-and-the-outbox.md) gains a pointer to this record for the per-event setting.
 
 ## Action items
 
 - [x] The rename map, `events.renamed`.
 - [x] `mesh_outbox_failures` and its four data-layer operations on SQLite and Postgres, `core.setAside`, `localBus`'s skip paths and manifest, `retryFailed`, and the `#mesh` exports.
-- [ ] Keep periods, `{ days }`, the next pull request.
+- [x] Keep periods, `{ days }`, with `firstOutboxRowSince` on SQLite and Postgres.
 - [ ] Per-event keep with holes and the hole record, the pull request after it.
 - [ ] The trace-context recipe in the user docs.
