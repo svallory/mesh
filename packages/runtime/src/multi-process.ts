@@ -4,9 +4,10 @@ import type {
   MultiProcessOperations, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow,
 } from "./data-layer.ts";
 import {
-  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, operations, registrationOf, timing,
+  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, operations, registrationOf, renamedFilter, timing,
   type ClaimStrategy, type DatabaseState, type DeclaredHandler, type Deliverer, type Forgotten,
 } from "./deliverer.ts";
+import { NO_RENAMES } from "./stored-names.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, FrameworkError, HandlerLostError,
 } from "./errors.ts";
@@ -123,6 +124,14 @@ export class MultiClaim implements ClaimStrategy {
     return new Set([...this.deliverer.declared, ...rows.flatMap((row) => row.declared)]);
   }
 
+  /**
+   * A stored union read through the rename map (`events.renamed`): an event a registration listed under a former FQN is
+   * the event it now is. A registration writes the union back with the new names.
+   */
+  #declaredList(events: readonly string[]): readonly string[] {
+    return this.deliverer.renamed.size === 0 ? events : union(events.map((name) => this.deliverer.declaredName(name)), []);
+  }
+
   #drop(name: string): void {
     if (this.#held.delete(name)) this.#handlers = undefined;
   }
@@ -161,7 +170,7 @@ export class MultiClaim implements ClaimStrategy {
       await ops.writeProcess({ runId: RUN_ID, pid: PID, startedAt: STARTED_AT, keep, handlers, declared: this.deliverer.declared });
       const renames = new Map<string, string>();
       const unions = new Map<string, readonly string[]>();
-      const registration = registrationOf(ops, state, keep === "all" ? "all" : state.keep ?? keep, knownDeclared(this.deliverer.declared, others));
+      const registration = registrationOf(ops, state, keep === "all" ? "all" : state.keep ?? keep, knownDeclared(this.deliverer.declared, others), this.deliverer.renamed);
       for (const entry of declared) {
         const name = entry.registered.name;
         const own = await ops.lockHandlerProgress(name);
@@ -175,11 +184,11 @@ export class MultiClaim implements ClaimStrategy {
         const progress = new Map<string, HandlerProgressRow>();
         if (own) progress.set(name, own);
         if (former !== undefined && formerRow) progress.set(former, formerRow);
-        const start = await handlerStart(entry, progress, registration);
+        const start = await handlerStart(entry, progress, registration, this.deliverer.renamed);
         logs.push(...start.logs);
         if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
         // The union only grows here; a row taken over by renamedFrom starts from this build's list, since no live build lists the old one.
-        const events = own ? union(own.events, start.row.events) : start.row.events;
+        const events = own ? union(this.#declaredList(own.events), start.row.events) : start.row.events;
         await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });
         unions.set(name, events);
       }
@@ -229,7 +238,7 @@ export class MultiClaim implements ClaimStrategy {
           const state = await ops.readDeliveryState();
           const row = await ops.lockHandlerProgress(name);
           if (!row) return undefined;
-          this.#unions.set(name, row.events);
+          this.#unions.set(name, this.#declaredList(row.events));
           const mark = this.#yielded.get(name);
           if (mark !== undefined) {
             if (mark === keyOf(row.events)) return undefined;
@@ -326,7 +335,7 @@ export class MultiClaim implements ClaimStrategy {
       }
       for (const [name, lease] of leases) {
         if (!this.#registered.has(name)) continue;
-        this.#unions.set(name, lease.events);
+        this.#unions.set(name, this.#declaredList(lease.events));
         const mark = this.#yielded.get(name);
         if (mark !== undefined && mark !== keyOf(lease.events)) this.#yielded.delete(name);
         // A yield whose clearing transaction failed: the row still names this process (rule L6).
@@ -359,10 +368,10 @@ export class MultiClaim implements ClaimStrategy {
       const progress = new Map<string, HandlerProgressRow>();
       if (own) progress.set(name, own);
       if (formerRow) progress.set(former, formerRow);
-      const registration = registrationOf(ops, state, this.deliverer.keep === "all" ? "all" : state.keep ?? this.deliverer.keep, knownDeclared(this.deliverer.declared, others));
+      const registration = registrationOf(ops, state, this.deliverer.keep === "all" ? "all" : state.keep ?? this.deliverer.keep, knownDeclared(this.deliverer.declared, others), this.deliverer.renamed);
       let start: Awaited<ReturnType<typeof handlerStart>>;
       try {
-        start = await handlerStart(entry, progress, registration);
+        start = await handlerStart(entry, progress, registration, this.deliverer.renamed);
       } catch (error) {
         // connect() resolved long ago, so a refusal here (the handler's kind refusing the adopt, an invalid start or stored
         // kind) has no start to reject: it rolls this transaction back and stops delivery, naming the move (ADR-0094).
@@ -370,7 +379,7 @@ export class MultiClaim implements ClaimStrategy {
         throw this.deliverer.lose(`the renamedFrom move of the handler ${JSON.stringify(name)} from ${JSON.stringify(former)}, made once no live process registered ${JSON.stringify(former)}, was refused: ${message}`);
       }
       if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
-      const events = own ? union(own.events, start.row.events) : start.row.events;
+      const events = own ? union(this.#declaredList(own.events), start.row.events) : start.row.events;
       await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });
       this.#unions.set(name, events);
       return start.logs;
@@ -416,7 +425,7 @@ export class MultiClaim implements ClaimStrategy {
       this.#drop(handler.name);
       throw takenError(handler.name, position, lease.generation, held);
     }
-    this.#unions.set(handler.name, lease.events);
+    this.#unions.set(handler.name, this.#declaredList(lease.events));
     return { lease, state };
   }
 
@@ -441,7 +450,11 @@ export class MultiClaim implements ClaimStrategy {
     const ops = multiOperations(delivery);
     const { lease, state } = await this.#lease(ops, handler, row.position);
     const listed = handler.events.includes(row.name);
-    const inUnion = lease.events.includes(row.name);
+    // The row's name is read through the rename map already; the stored union is read the same way, and the SQL below
+    // (over stored names) takes each name with the former FQNs the map reads as it.
+    const unionNow = this.#declaredList(lease.events);
+    const stored = (names: readonly string[]) => this.deliverer.storedNames(names);
+    const inUnion = unionNow.includes(row.name);
     if (!listed) {
       if (!inUnion && !this.deliverer.events.has(row.name) && !(await this.#knownIn(ops, state.now)).has(row.name))
         throw new EventUndeclaredError(row.name, row.position);
@@ -451,17 +464,17 @@ export class MultiClaim implements ClaimStrategy {
     }
     if (row.position <= lease.position) return null;
     const known = await this.#knownIn(ops, state.now);
-    const blocked = await ops.firstOutboxRow(lease.position, row.position, lease.events, [...known]);
+    const blocked = await ops.firstOutboxRow(lease.position, row.position, stored(unionNow), stored([...known]));
     if (blocked === null) return lease;
-    const either = [...new Set([...known, ...lease.events])];
+    const either = stored([...new Set([...known, ...unionNow])]);
     if ((await ops.firstOutboxRow(blocked - 1, blocked + 1, [], either)) !== null) throw new UndeclaredBelow(blocked);
-    if ((await ops.firstOutboxRow(blocked - 1, blocked + 1, handler.events, either)) !== null)
+    if ((await ops.firstOutboxRow(blocked - 1, blocked + 1, stored(handler.events), either)) !== null)
       throw new FrameworkError(`runHandler was asked to handle position ${row.position} for the handler ${JSON.stringify(handler.name)}, whose low-water position is ${lease.position}, while the row at ${blocked}, which it lists, is not handled: a bus hands each handler its rows in order and never skips one`);
     // A pending row the bus passed on a stale snapshot: yield there.
     let event = "an event";
-    for (const name of lease.events) {
+    for (const name of unionNow) {
       if (handler.events.includes(name)) continue;
-      if ((await ops.firstOutboxRow(blocked - 1, blocked + 1, [name], either)) !== null) { event = name; break; }
+      if ((await ops.firstOutboxRow(blocked - 1, blocked + 1, stored([name]), either)) !== null) { event = name; break; }
     }
     throw this.#yield(handler, lease, blocked, event);
   }
@@ -655,7 +668,9 @@ export function declarerOf(db: DatabaseState, event: string): string | undefined
  * against other opens and deletion batches; a row open under another live process row is refused; the row is written
  * with this process as its owner. Resolves with the position the subscription starts from.
  */
-export async function openOwned(ops: MultiOps, name: string, filter: SubscriptionFilter, after: number | undefined): Promise<number> {
+export async function openOwned(
+  ops: MultiOps, name: string, filter: SubscriptionFilter, after: number | undefined, renamed: ReadonlyMap<string, string> = NO_RENAMES,
+): Promise<number> {
   const state = await ops.lockDeliveryState();
   const row = (await ops.readSubscriptionOwners()).find((each) => each.name === name);
   if (row?.open && row.runId !== null && row.runId !== RUN_ID) {
@@ -665,7 +680,8 @@ export async function openOwned(ops: MultiOps, name: string, filter: Subscriptio
   }
   let start: number;
   if (row) {
-    if (canonicalJson(row.filter) !== canonicalJson(filter))
+    // A row written before a rename names the event by its former FQN: the same filter, rewritten below with the new name.
+    if (canonicalJson(renamedFilter(row.filter, renamed)) !== canonicalJson(filter))
       throw new FrameworkError(`The subscription ${JSON.stringify(name)} was opened with the filter ${canonicalJson(filter)}, and its row was reached with ${canonicalJson(row.filter)}: an acknowledged position means something only under its filter. Forget it (forgetSubscription(${JSON.stringify(name)})), then open it with the new filter`);
     start = row.position;
   } else {

@@ -5,6 +5,7 @@ import type { Capability } from "./capabilities.ts";
 import { CursorAheadError, EventUndeclaredError, EventsConfigError, EventsDeletedError, FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
 import type { ActionContext, EventMetadata } from "./index.ts";
+import { NO_RENAMES, storedToDeclared } from "./stored-names.ts";
 import { uuidv7 } from "./uuid.ts";
 
 /**
@@ -84,6 +85,13 @@ export interface EventsConfig {
   keep?: "until-delivered" | "all";
   /** Capabilities the project needs from the bus and the data adapter: checked by the build, ignored by `bind`. */
   requires?: readonly (BusCapability | Capability)[];
+  /**
+   * Former event FQN to the declared event it now is: a stored row whose name is a key is read as that event, so an event
+   * declaration can move while the outbox keeps its old rows. A key is written in full and is no declared event; a value
+   * names a declared event, and may be shortened to the fewest trailing segments that pick one. Stored rows are never
+   * rewritten.
+   */
+  renamed?: Readonly<Record<string, string>>;
 }
 
 /** The two values of `events.keep`. */
@@ -364,9 +372,10 @@ export function describe(value: unknown): string {
  * Core's read of the outbox, and the only way any reader reaches it: the committed rows above `after`, at most `limit`,
  * in order. A cursor behind the deleted-through position is `MESH_EVENTS_DELETED`, naming the oldest kept position, and
  * one above the highest position ever assigned is `MESH_CURSOR_AHEAD`; both are checked against the same statement that
- * read the rows, so no row is ever skipped silently.
+ * read the rows, so no row is ever skipped silently. With `renamed`, the binding's checked rename map, a row stored under
+ * a former FQN comes back under the name of the event it now is.
  */
-export async function rows(layer: DataLayer, after: number, limit: number): Promise<OutboxPage> {
+export async function rows(layer: DataLayer, after: number, limit: number, renamed: ReadonlyMap<string, string> = NO_RENAMES): Promise<OutboxPage> {
   if (typeof layer.readOutbox !== "function")
     throw new FrameworkError("The data layer has no readOutbox: a project that declares an event needs a data adapter with the outbox operations");
   if (!Number.isSafeInteger(after) || after < 0)
@@ -376,7 +385,28 @@ export async function rows(layer: DataLayer, after: number, limit: number): Prom
   const page = await layer.readOutbox(after, limit);
   if (after < page.deletedThrough) throw new EventsDeletedError(after, page.deletedThrough + 1);
   if (after > page.highest) throw new CursorAheadError(after, page.highest);
-  return page;
+  return renamedPage(page, renamed);
+}
+
+/**
+ * The page with each row whose stored name is a key of the rename map (`events.renamed`) read as the event it now is;
+ * the page itself when no row is renamed. The stored row is never rewritten.
+ */
+export function renamedPage(page: OutboxPage, renamed: ReadonlyMap<string, string>): OutboxPage {
+  if (renamed.size === 0 || !page.rows.some((row) => renamed.has(row.name))) return page;
+  return { ...page, rows: page.rows.map((row) => renamedRow(row, renamed)) };
+}
+
+/** `row` read through the rename map: the row itself when its stored name is no key of it. */
+export function renamedRow(row: OutboxRow, renamed: ReadonlyMap<string, string>): OutboxRow {
+  const name = storedToDeclared(renamed, row.name);
+  return name === row.name ? row : Object.freeze({ ...row, name });
+}
+
+/** The clause a refusal of a name adds when the name is a former FQN the rename map reads as another event. */
+export function renamedClause(renamed: ReadonlyMap<string, string>, name: string): string {
+  const now = renamed.get(name);
+  return now === undefined ? "" : `; it was renamed to ${now} (events.renamed)`;
 }
 
 /** What `readEvents` takes: the cursor, how many rows to read, and the filters. */
@@ -419,7 +449,9 @@ const DEFAULT_LIMIT = 100;
  * read a row again; a page that matched nothing moves the cursor all the same. A row whose stored name matches no
  * declared event is `MESH_EVENT_UNDECLARED`, never skipped.
  */
-export async function readEventsFrom(layer: DataLayer, classes: ReadonlyMap<string, EventClass>, query: ReadEventsQuery = {}): Promise<ReadEventsPage> {
+export async function readEventsFrom(
+  layer: DataLayer, classes: ReadonlyMap<string, EventClass>, query: ReadEventsQuery = {}, renamed: ReadonlyMap<string, string> = NO_RENAMES,
+): Promise<ReadEventsPage> {
   if (typeof query !== "object" || query === null)
     throw new FrameworkError(`readEvents takes an object, { after, limit, names, entity, key }, and was given ${describe(query)}`);
   const { after = 0, limit = DEFAULT_LIMIT, names, entity, key } = query;
@@ -427,11 +459,11 @@ export async function readEventsFrom(layer: DataLayer, classes: ReadonlyMap<stri
     if (!Array.isArray(names) || names.some((name) => typeof name !== "string"))
       throw new FrameworkError("readEvents: names must be an array of event FQNs, such as [Mesh.fqnOf(InvoicePaid)]");
     for (const name of names)
-      if (!classes.has(name)) throw new FrameworkError(`readEvents: names lists ${JSON.stringify(name)}, which is not a declared event; the project declares ${[...classes.keys()].join(", ") || "none"}`);
+      if (!classes.has(name)) throw new FrameworkError(`readEvents: names lists ${JSON.stringify(name)}, which is not a declared event${renamedClause(renamed, name)}; the project declares ${[...classes.keys()].join(", ") || "none"}`);
   }
   if (entity !== undefined && typeof entity !== "string") throw new FrameworkError("readEvents: entity must be an entity's FQN, such as \"billing.Invoice\"");
   if (key !== undefined && (typeof key !== "object" || key === null || Array.isArray(key))) throw new FrameworkError("readEvents: key must be a record's key, such as { id }");
-  const page = await rows(layer, after, limit);
+  const page = await rows(layer, after, limit, renamed);
   const wanted = names && new Set(names);
   const events: EventRecord[] = [];
   for (const row of page.rows) {

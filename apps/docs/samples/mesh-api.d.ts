@@ -36,6 +36,8 @@ declare module "@meshfw/runtime" {
     keep?: "until-delivered" | "all";
     /** Capabilities the project needs from the bus and the data adapter: the build fails when one is missing. */
     requires?: readonly (BusCapability | Capability)[];
+    /** Former event FQN to the declared event it now is: a row stored under the former name is read as that event. */
+    renamed?: Readonly<Record<string, string>>;
   }
 
   /** What the events module (`src/events.ts`) exports: the handlers, the metadata function and the handlers' context. */

@@ -4,10 +4,10 @@
 // output folder that loads without an error. The last is found by listing `require.cache` before and after the import,
 // which relies on Bun listing ES modules there; the first test pins that.
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { loadConfig } from "../src/index.ts";
+import { loadConfig, loadProject } from "../src/index.ts";
 import { keyed } from "./v4.ts";
 
 const data = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: "app.db" } } as const;
@@ -153,7 +153,7 @@ describe("the events key", () => {
 
   test("not an object", async () => {
     for (const value of ["null", "\"all\"", "[]", "() => ({})"]) {
-      expect(await codes(value), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "Configuration field `events` must be an object", fix: "Set events: { bus, load, keep, requires }; bus is needed once an event is declared" }]);
+      expect(await codes(value), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "Configuration field `events` must be an object", fix: "Set events: { bus, load, keep, requires, renamed }; bus is needed once an event is declared" }]);
     }
   });
 
@@ -193,13 +193,53 @@ describe("the events key", () => {
       expect(await codes(`{ bus: ${value} }`), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: `\`events.bus\` is not a valid event bus: ${problem}`, fix }]);
   });
 
+  test("renamed: an object of former FQNs to event names is kept, with the position of its key; {} is legal", async () => {
+    const root = await withEvents("{ keep: \"all\",\n  renamed: { \"billing.InvoicePaid\": \"InvoicePaid\" } }");
+    const loaded = await loadConfig(root);
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.config!.events!.renamed).toEqual({ "billing.InvoicePaid": "InvoicePaid" });
+    const position = loaded.config!.positions!.renamed!;
+    expect(position.file).toBe("mesh.config.ts");
+    expect((await readFile(resolve(root, "mesh.config.ts"), "utf8")).slice(position.offset)).toStartWith("renamed: {");
+    const empty = await loadConfig(await withEvents("{ renamed: {} }"));
+    expect([empty.diagnostics, empty.config!.events]).toEqual([[], { renamed: {} }]);
+    expect(Object.hasOwn((await loadConfig(await withEvents("{}"))).config!, "positions")).toBe(false);
+  });
+
+  test("a renamed that names no declared event is refused by the build at the renamed key, not at the file start", async () => {
+    const root = await project("", { "src/domain/billing/invoice-paid.mesh.mx": "event :InvoicePaid\n  uuid :invoiceId\n" },
+      `{\n  domain: "src/domain",\n  output: ".mesh",\n  data: ${JSON.stringify(data)},\n  events: {\n    bus: ${bus('["ordered-delivery"]')},\n    renamed: { "a.B": "Nope" },\n  },\n}`);
+    const loaded = await loadConfig(root);
+    expect(loaded.diagnostics).toEqual([]);
+    const built = await loadProject(loaded.config!);
+    const source = await readFile(resolve(root, "mesh.config.ts"), "utf8");
+    const line = source.split("\n").findIndex((text) => text.trimStart().startsWith("renamed:")) + 1;
+    expect(built.document).toBeNull();
+    // Columns count from 0 (positionAt): the key sits after four spaces.
+    expect(built.diagnostics.map(({ code, message, position }) => ({ code, message, file: position?.file, line: position?.line, column: position?.column }))).toEqual([{
+      code: "MESH_EVENTS_CONFIG", file: "mesh.config.ts", line, column: 4,
+      message: "`events.renamed` maps \"a.B\" to \"Nope\", which is no declared event; the project declares billing.InvoicePaid",
+    }]);
+    expect(source.slice(built.diagnostics[0]!.position!.offset)).toStartWith("renamed: {");
+  });
+
+  test("renamed of the wrong shape: not an object, a value that is no name, an empty key; every problem is reported", async () => {
+    const shape = { code: "MESH_EVENTS_CONFIG", message: "`events.renamed` must be an object from a former event FQN to the event it now is, such as { \"billing.InvoicePaid\": \"finance.InvoicePaid\" }", fix: "Set renamed: { \"<former FQN>\": \"<declared event>\" }" };
+    for (const value of ["\"billing.InvoicePaid\"", "[]", "null", "new Map()"]) expect(await codes(`{ renamed: ${value} }`), value).toEqual([shape]);
+    expect(await codes("{ renamed: { \"billing.InvoicePaid\": 3, \"billing.InvoiceVoided\": \"\", \"\": \"finance.InvoicePaid\", \"ok.Fine\": \"Fine\" } }")).toEqual([
+      { code: "MESH_EVENTS_CONFIG", message: "`events.renamed` maps \"billing.InvoicePaid\" to a number: each value names a declared event", fix: "Write the event's FQN as a string" },
+      { code: "MESH_EVENTS_CONFIG", message: "`events.renamed` maps \"billing.InvoiceVoided\" to an empty string: each value names a declared event", fix: "Write the event's FQN as a string" },
+      { code: "MESH_EVENTS_CONFIG", message: "`events.renamed` has an empty key: each key is a former event FQN, written in full", fix: "Write the former FQN as the key" },
+    ]);
+  });
+
   test("requires that is not a list of capability names, and any other field is unknown; every problem is reported", async () => {
     expect(await codes("{ requires: \"replay\" }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.requires` must be an array of capability names", fix: expect.stringContaining("Set requires:") }]);
     expect(await codes("{ requires: [\"replay\", \"prune\", \"replay\", 3], retain: 3, keep: \"no\" }")).toEqual([
       { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"prune\", which is no capability: the bus's are ordered-delivery, replay, subscribe, dead-letters, multi-process, and the data adapter's aggregates, integer-key-fill, joins, upserts, atomic-expressions, gapless-positions, conditions, raw-sql", fix: "Remove it, or correct the name" },
       { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"replay\" twice", fix: "Remove the second one" },
       { code: "MESH_EVENTS_CONFIG", message: expect.stringContaining("`events.requires` lists 3, which is no capability"), fix: "Remove it, or correct the name" },
-      { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are bus, load, keep and requires", fix: "Remove the unknown field" },
+      { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are bus, load, keep, requires and renamed", fix: "Remove the unknown field" },
       { code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\" or \"all\", and is \"no\"", fix: expect.any(String) },
     ]);
   });

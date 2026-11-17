@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
-import { BUS_CAPABILITIES, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
+import { BUS_CAPABILITIES, renamedProblems, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
 import { rollupOperation } from "./model/rollup-operation.ts";
 import { policyConditions, sqlPositions } from "./model/sql-required.ts";
@@ -64,11 +64,20 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
  * The checks of `events` that need the model or both manifests (spec, Events and commands, "Configuration and the
  * events module"): a project that declares an event sets `events.bus`, with no default (`MESH_EVENTS_CONFIG`), and each
  * capability `events.requires` lists is declared by the bus (a bus capability) or by the data adapter (a data
- * capability), else `MESH_CAPABILITY` naming the capability and the adapter. `checkEvents` in `config.ts` has already
- * refused a bus that is not one and a name that is no capability.
+ * capability), else `MESH_CAPABILITY` naming the capability and the adapter; and `events.renamed` maps former FQNs that no
+ * event declares to declared events (`renamedProblems`), each problem a `MESH_EVENTS_CONFIG` at the `renamed` key
+ * (`positions.renamed`, else `at`). `checkEvents` in `config.ts` has already refused a bus that is not one, a name that
+ * is no capability and a `renamed` of the wrong shape.
  */
-export function eventsDiagnostics(document: ModelDocument, config: { readonly data: DataAdapter; readonly events?: EventsConfig }, at: Diagnostic["position"]): Diagnostic[] {
+export function eventsDiagnostics(
+  document: ModelDocument, config: { readonly data: DataAdapter; readonly events?: EventsConfig }, at: Diagnostic["position"],
+  positions?: { readonly renamed?: Diagnostic["position"] },
+): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  const renamed = config.events?.renamed;
+  if (renamed !== undefined)
+    for (const problem of renamedProblems(renamed, (document.events ?? []).map((event) => event.fqn)))
+      diagnostics.push(error("MESH_EVENTS_CONFIG", problem.message, positions?.renamed ?? at, problem.fix));
   const bus = config.events?.bus;
   const declared = document.events ?? [];
   if (declared.length > 0 && bus === undefined) {

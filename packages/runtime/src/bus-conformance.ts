@@ -1,4 +1,4 @@
-import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind } from "./bus.ts";
+import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind, type KindHandler, type Registration } from "./bus.ts";
 import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
@@ -171,6 +171,11 @@ type Fields = { n: number };
 const FULL = Object.freeze({ Alpha, Beta, Never, Echo });
 /** The domain after `conformance.Beta` was moved away: its rows name no declared event. */
 const WITHOUT_BETA = Object.freeze({ Alpha, Never, Echo });
+/** `conformance.Beta` after its declaration moved to `conformance.moved` (events.renamed). */
+const MovedBeta = eventClass("conformance.moved.Beta");
+/** The domain after the move, and the rename map that reads the old rows as the moved event. */
+const MOVED_BETA = Object.freeze({ Alpha, MovedBeta, Never, Echo });
+const RENAMES = Object.freeze({ "conformance.Beta": "conformance.moved.Beta" });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 async function until(test: () => boolean | Promise<boolean>, what: string, ms = 5000): Promise<void> {
@@ -194,7 +199,7 @@ interface World {
   /** What each handler body was called with, by handler name, in order. */
   readonly seen: Map<string, EventRecord[]>;
   /** A binding with `module` as its events module, over the world's layer and frame. */
-  bind(module: EventsModule, options?: { domain?: object; bus?: EventBus }): Binding;
+  bind(module: EventsModule, options?: { domain?: object; bus?: EventBus; renamed?: Readonly<Record<string, string>> }): Binding;
   /** Publish one event per `[class, n]` in one outermost transaction of `binding`; resolves with their positions. */
   publish(binding: Binding, ...events: [typeof Alpha, number][]): Promise<number[]>;
   state(): Promise<{ state: DeliveryState; handlers: readonly HandlerProgressRow[]; subscriptions: readonly SubscriptionProgressRow[] }>;
@@ -226,7 +231,7 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const world: World = {
           layer, frame, keep, seen, bus,
           bind(module, options = {}) {
-            const config: EventsConfig = { bus: options.bus ?? bus, keep, load: async () => module };
+            const config: EventsConfig = { bus: options.bus ?? bus, keep, load: async () => module, ...(options.renamed ? { renamed: options.renamed } : {}) };
             return bindDomain(options.domain ?? FULL, layer, { events: config }, frame);
           },
           publish(binding, ...events) {
@@ -408,6 +413,122 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       assert(error.stopped.length === 2 && error.stopped.every((s) => s.position === renamed && s.cause instanceof EventUndeclaredError), "every handler stops at the undeclared row with MESH_EVENT_UNDECLARED");
       assert((await world.outbox()).some((row) => row.position === renamed), "the undeclared row was deleted");
       assert(!positions(world, "a").includes(3), "a handler went past the undeclared row");
+    });
+
+    // ---- the rename map (events.renamed) ----
+
+    add("the rename map: a handler gets rows stored under a former FQN as the event it now is, the deletion pass passes them, and its stored list naming the former FQN lists no new event", async (world) => {
+      const before = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [Beta]) } } });
+      await before.deliver();
+      await world.publish(before, [Alpha, 1], [Beta, 2], [Alpha, 3], [Beta, 4]);
+      const after = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES });
+      const infos: string[] = [];
+      const info = console.info;
+      console.info = (...args: unknown[]) => { infos.push(args.map(String).join(" ")); };
+      try { await after.deliver(); } finally { console.info = info; }
+      await world.publish(after, [MovedBeta, 5]);
+      await after.deliver();
+      const b = world.seen.get("b") ?? [];
+      assert(JSON.stringify(b.map((event) => event.position)) === "[2,4,5]", `b got ${JSON.stringify(b.map((event) => event.position))}`);
+      assert(b.every((event) => event.name === "conformance.moved.Beta" && event.payload instanceof MovedBeta), "a row stored under the former FQN reaches the handler as the moved event, an instance of its class");
+      assert(JSON.stringify(positions(world, "a")) === "[1,3]", `a got ${JSON.stringify(positions(world, "a"))}`);
+      assert(!infos.some((line) => line.includes("now lists")), `a stored list naming the former FQN was reported as newly listing the moved event: ${infos.join(" | ")}`);
+      const { state, handlers } = await world.state();
+      assert(handlers.find((row) => row.name === "b")!.events.includes("conformance.moved.Beta"), "the handler's row lists the event by its new name");
+      assert(state.deletedThrough === (world.keep === "all" ? 0 : 5), `deleted through ${state.deletedThrough}`);
+      if (world.keep === "all") assert((await world.outbox()).find((row) => row.position === 2)?.name === "conformance.Beta", "the stored row was rewritten");
+    });
+
+    add("the rename map: core.lists and runHandler agree on a row stored under a former FQN that a bus hands without reading it through core.rows", async (world) => {
+      let body = async (_core: BusCore) => {};
+      const rawBus: EventBus = Object.freeze({
+        manifest: Object.freeze({ adapter: "raw", capabilities: ["ordered-delivery", "subscribe"] as BusCapability[] }),
+        create: (core: BusCore) => ({ start: async () => {}, stop: async () => {}, deliver: () => body(core) }),
+      });
+      const before = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [Beta]) } } }, { bus: rawBus });
+      await before.deliver();
+      await world.publish(before, [Alpha, 1], [Beta, 2]);
+      const listed: Record<string, boolean[]> = { a: [], b: [] };
+      body = async (core) => {
+        for (const handler of core.handlers) {
+          // The rows as the data layer stores them: row 2 still names conformance.Beta.
+          for (const row of (await world.layer.readOutbox!(0, 10)).rows) {
+            const takes = core.lists(handler, row);
+            listed[handler.name]!.push(takes);
+            if (takes) await core.runHandler(handler, row);
+          }
+        }
+      };
+      const after = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES, bus: rawBus });
+      await after.deliver();
+      assert(JSON.stringify(listed.b) === "[false,true]", `core.lists answered ${JSON.stringify(listed.b)} for b`);
+      // a lists only Alpha: unmapped, row 2 would name no declared event, so core.lists would take it as undeclared (a
+      // stop) while runHandler, which reads it as the moved event, would refuse it as not listed.
+      assert(JSON.stringify(listed.a) === "[true,false]", `core.lists answered ${JSON.stringify(listed.a)} for a, which lists only Alpha`);
+      assert(JSON.stringify(positions(world, "a")) === "[1]", `a got ${JSON.stringify(positions(world, "a"))}`);
+      assert(JSON.stringify(positions(world, "b")) === "[2]" && world.seen.get("b")![0]!.name === "conformance.moved.Beta", "runHandler ran the row core.lists took, as the moved event");
+    });
+
+    // Delivery from several processes: a handler's stored union may name an event by its former FQN (an earlier
+    // registration wrote it). It is read as the event it now is, and a registration writes it back under the new name.
+    if (declares.has("multi-process")) add("the rename map: a stored union naming a former FQN is read as the moved event and written back under its new name", async (world) => {
+      const before = world.bind({ handlers: { process: { b: world.recorder("b", [Beta]) } } });
+      await before.deliver();
+      assert(JSON.stringify((await world.state()).handlers.find((row) => row.name === "b")!.events) === "[\"conformance.Beta\"]", "the first registration stores the former FQN");
+      await world.publish(before, [Beta, 1], [Alpha, 2]);
+      const after = world.bind({ handlers: { process: { b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES });
+      await after.deliver();
+      await world.publish(after, [MovedBeta, 3]);
+      await after.deliver();
+      assert(JSON.stringify(positions(world, "b")) === "[1,3]", `b got ${JSON.stringify(positions(world, "b"))}`);
+      const events = (await world.state()).handlers.find((row) => row.name === "b")!.events;
+      assert(JSON.stringify(events) === "[\"conformance.moved.Beta\"]", `the union was to be written back as the moved event alone, got ${JSON.stringify(events)}`);
+    });
+
+    add("the rename map: runHandler past an unhandled row stored under a former FQN of a listed event is refused, and the row stays", async (world) => {
+      let caught: unknown;
+      let target = 0;
+      // The world's manifest: in delivery from several processes the multi fence is the one checked.
+      const bus: EventBus = Object.freeze({
+        manifest: world.bus.manifest,
+        create: (core: BusCore) => ({
+          start: async () => {}, stop: async () => {},
+          deliver: async () => {
+            const handler = core.handlers.find((each) => each.name === "b");
+            if (handler === undefined || target === 0) return;
+            const row = (await core.rows(0, 10)).rows.find((each) => each.position === target)!;
+            caught = await rejection(() => core.runHandler(handler, row));
+          },
+        }),
+      });
+      const before = world.bind({ handlers: { process: { b: world.recorder("b", [Beta]) } } });
+      await before.deliver();
+      const [old] = await world.publish(before, [Beta, 1]);
+      const after = world.bind({ handlers: { process: { b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES, bus });
+      await after.deliver();
+      [target] = await world.publish(after, [MovedBeta, 2]) as [number];
+      await after.deliver();
+      assert(caught instanceof FrameworkError && caught.message.includes(`while the row at ${old}, which it lists, is not handled`),
+        `runHandler past the row stored as conformance.Beta was to be refused as skipping a listed row, got ${String(caught)}`);
+      assert(positions(world, "b").length === 0, "the handler ran");
+      assert((await world.outbox()).some((row) => row.position === old), "the unhandled row was deleted");
+    });
+
+    add("the rename map: a contributed kind's registration.firstRow reads a row stored under a former FQN as the event it now is", async (world) => {
+      const publisher = world.bind({});
+      const [, old] = await world.publish(publisher, [Alpha, 1], [Beta, 2]);
+      const found: (number | null)[] = [];
+      const kind: HandlerKind = Object.freeze({
+        name: "conformance", owner: "@meshfw/runtime/testing", check() {}, adopt: async () => {}, stored: () => "conformance",
+        start: async (handler: KindHandler, registration: Registration) => {
+          // Listed: the row stored as conformance.Beta is a conformance.moved.Beta. Not listed: it is declared, not a stop.
+          found.push(await registration.firstRow(0, registration.highest + 1, handler.events), await registration.firstRow(0, registration.highest + 1, []));
+          return registration.highest;
+        },
+      });
+      const binding = world.bind({ handlers: { conformance: { model: { ...world.recorder("model", [MovedBeta]), [HANDLER_KIND]: kind } } } }, { domain: MOVED_BETA, renamed: RENAMES });
+      await binding.deliver();
+      assert(JSON.stringify(found) === JSON.stringify([old, null]), `firstRow answered ${JSON.stringify(found)}, was to be [${old}, null]`);
     });
 
     // ---- the cursor model, through fake buses ----
@@ -826,6 +947,33 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         await forgetSubscription(binding, "s");
         assert((await world.state()).subscriptions.length === 0, "forgetSubscription left the row");
         await (await subscribe(binding, { name: "s", names: ["conformance.Beta"] }, () => {})).close();
+      });
+
+      add("subscribe, the rename map: a closed subscription whose stored filter names a former FQN is not moved past the rows it takes, and a reopen with the new name resumes from its acknowledged position", async (world) => {
+        const before = world.bind({});
+        const got = received();
+        let subscription = await subscribe(before, { name: "s", names: ["conformance.Beta"], after: 0 }, got.callback);
+        await world.publish(before, [Beta, 1]);
+        await before.deliver();
+        await until(() => got.list.length === 1, "the first row is handed over");
+        await subscription.ack(1);
+        await subscription.close();
+        await world.publish(before, [Alpha, 2], [Beta, 3], [Alpha, 4]);
+        const after = world.bind({}, { domain: MOVED_BETA, renamed: RENAMES });
+        await after.deliver();
+        let { state, subscriptions } = await world.state();
+        assert(subscriptions[0]!.position === 2, `the pass moved the closed subscription to ${subscriptions[0]!.position}, past a row its filter takes`);
+        assert(state.deletedThrough <= 2 && (await world.outbox()).some((row) => row.position === 3), `a row the closed subscription takes was deleted (deleted through ${state.deletedThrough})`);
+        const old = await rejection(() => subscribe(after, { name: "s", names: ["conformance.Beta"] }, () => {}));
+        assert(old instanceof FrameworkError && old.message.includes("it was renamed to conformance.moved.Beta (events.renamed)"), `a reopen with the former FQN: ${String(old)}`);
+        const again = received();
+        subscription = await subscribe(after, { name: "s", names: ["conformance.moved.Beta"] }, again.callback);
+        await after.deliver();
+        await until(() => again.list.length === 1, "the row stored under the former FQN is handed again");
+        assert(JSON.stringify(again.positions()) === "[3]" && again.list[0]!.name === "conformance.moved.Beta" && again.list[0]!.payload instanceof MovedBeta, `the reopen got ${JSON.stringify(again.positions())}`);
+        ({ state, subscriptions } = await world.state());
+        assert(JSON.stringify(subscriptions[0]!.filter.names) === '["conformance.moved.Beta"]', `the row's filter is ${JSON.stringify(subscriptions[0]!.filter)}`);
+        await subscription.close();
       });
 
       add("subscribe: ack above what was handed, ack on a closed handle, a second open under an open name and an open with no name are FrameworkErrors", async (world) => {

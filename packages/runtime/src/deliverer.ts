@@ -11,9 +11,10 @@ import {
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
-  PerDatabase, causedIn, describe, kindOf, loadEvents, onPublished, recordOf, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
+  PerDatabase, causedIn, describe, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
+import { NO_RENAMES, storedNamesOf, storedToDeclared } from "./stored-names.ts";
 import { MultiClaim, ackOwned, adoptOwned, declarerOf, forgetOwned, isMultiProcess, keepOwned, multiOperations, openOwned, type Adopted, type KeepChange } from "./multi-process.ts";
 
 /**
@@ -229,17 +230,21 @@ export interface HandlerStart {
 
 /**
  * What a claim strategy reads in its registration transaction, as a contributed kind sees it (`Registration`), from the
- * state it read: `firstRow` is the data adapter's `firstOutboxRow` over the events `declared` counts as declared.
+ * state it read: `firstRow` is the data adapter's `firstOutboxRow` over the events `declared` counts as declared, each
+ * with the former FQNs the rename map (`renamed`) reads as it.
  */
 export function registrationOf(
   ops: DeliveryOperations, state: Pick<DeliveryState, "deletedThrough" | "highest">, keep: "until-delivered" | "all", declared: readonly string[],
+  renamed: ReadonlyMap<string, string> = NO_RENAMES,
 ): Registration {
+  // `firstOutboxRow` is SQL over stored names: a former FQN the rename map reads as a listed or declared event counts as it.
+  const stored = storedNamesOf(renamed, declared);
   return Object.freeze({
     deletedThrough: state.deletedThrough,
     deletedAny: state.deletedThrough > 0,
     highest: state.highest,
     keep,
-    firstRow: (after: number, before: number, names: readonly string[]) => ops.firstOutboxRow(after, before, names, declared),
+    firstRow: (after: number, before: number, names: readonly string[]) => ops.firstOutboxRow(after, before, storedNamesOf(renamed, names), stored),
   });
 }
 
@@ -249,10 +254,12 @@ export function registrationOf(
  * handled from); a handler with no row takes over the row of its `renamedFrom`, when that has one; any other starts at
  * the highest position ever assigned (`registration.highest`). A handler of a contributed kind (ADR-0094) asks its kind
  * instead: `start` gives a new row's position, `adopt` may refuse a known row (which fails the whole registration), and
- * `stored` names the row's stored kind. Runs inside the registration transaction, so a refusal writes nothing.
+ * `stored` names the row's stored kind. Runs inside the registration transaction, so a refusal writes nothing. An event
+ * the stored list names by a former FQN (`renamed`) is the one it now is, so it is never reported as newly listed.
  */
 export async function handlerStart(
   declared: Pick<DeclaredHandler, "registered" | "renamedFrom" | "handler" | "kind">, progress: ReadonlyMap<string, HandlerProgressRow>, registration: Registration,
+  renamed: ReadonlyMap<string, string> = NO_RENAMES,
 ): Promise<HandlerStart> {
   const { registered, renamedFrom, kind } = declared;
   const logs: string[] = [];
@@ -265,7 +272,9 @@ export async function handlerStart(
       logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} takes over the progress of ${JSON.stringify(renamedFrom)} (renamedFrom), at position ${found.position}`);
     }
   }
-  const added = found ? registered.events.filter((name) => !found.events.includes(name)) : [];
+  // A stored list that names an event by a former FQN lists the event it now is (events.renamed): it is not added.
+  const before = found ? found.events.map((name) => storedToDeclared(renamed, name)) : [];
+  const added = found ? registered.events.filter((name) => !before.includes(name)) : [];
   const handler: KindHandler | undefined = kind && Object.freeze({ name: registered.name, events: registered.events, handler: declared.handler });
   let position = found ? found.position : registration.highest;
   if (kind && handler) {
@@ -371,6 +380,8 @@ export class Deliverer {
   #handlers = new Map<string, DeclaredHandler>();
   /** The FQNs of every event this build declares, sorted. */
   readonly declared: readonly string[];
+  /** The binding's checked rename map (`events.renamed`): a stored former FQN to the declared event it now is. */
+  readonly renamed: ReadonlyMap<string, string>;
   /** The read head: the highest position a read through `core.rows` returned, from the deleted-through position at each claim. */
   #readHead = 0;
   readonly #lostListeners = new Set<(error: Error) => void>();
@@ -380,13 +391,16 @@ export class Deliverer {
     this.bus = checkedBus(config.bus);
     this.keep = config.keep ?? "until-delivered";
     this.declared = [...events.keys()].sort();
+    this.renamed = bindingParts(binding).renamed;
     this.strategy = isMultiProcess(this.bus) ? new MultiClaim(this) : new SingleClaim(this);
     const self = this;
     this.core = Object.freeze({
       rows: (after: number, limit: number) => self.read(after, limit),
       get handlers() { return self.strategy.handlers(); },
       position: (handler: RegisteredHandler) => self.position(handler),
-      lists: (handler: RegisteredHandler, row: OutboxRow) => self.strategy.lists(handler, row),
+      // A bus may hand a row it did not read through rows(): lists, runHandler and retry read its name through the rename
+      // map too (idempotent), so the three agree on a row stored under a former FQN.
+      lists: (handler: RegisteredHandler, row: OutboxRow) => self.strategy.lists(handler, renamedRow(row, self.renamed)),
       runHandler: (handler: RegisteredHandler, row: OutboxRow) => self.runHandler(handler, row),
       retry: (handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]) => self.retry(handler, row, delays),
       isRetryable,
@@ -397,6 +411,16 @@ export class Deliverer {
       onClaimLost: (listener: (error: Error) => void) => { self.#lostListeners.add(listener); return () => { self.#lostListeners.delete(listener); }; },
     } satisfies BusCore);
     this.instance = this.bus.create(this.core, Object.freeze({ keep: this.keep }));
+  }
+
+  /** The stored names `names` stands for in the outbox: each, and every former FQN the rename map reads as one of them. */
+  storedNames(names: readonly string[]): string[] {
+    return storedNamesOf(this.renamed, names);
+  }
+
+  /** The declared event a stored name is read as (the rename map; the name itself when it is no former FQN). */
+  declaredName(name: string): string {
+    return storedToDeclared(this.renamed, name);
   }
 
   /** The generation subscription rows opened in this process are written under: the claim's. */
@@ -460,7 +484,7 @@ export class Deliverer {
 
   async read(after: number, limit: number): Promise<OutboxPage> {
     this.live();
-    const page = await rows(this.layer, after, limit);
+    const page = await rows(this.layer, after, limit, this.renamed);
     // A read from `after` means a cursor at `after` exists (a progress row or a subscription's): the bus passed it before.
     const last = page.rows.at(-1)?.position ?? after;
     if (last > this.#readHead) this.#readHead = last;
@@ -498,6 +522,7 @@ export class Deliverer {
    * transaction between a fenced check and a short fenced progress write. A body that throws records nothing.
    */
   async runHandler(handler: RegisteredHandler, row: OutboxRow): Promise<void> {
+    row = renamedRow(row, this.renamed);
     try {
       await this.#run(handler, row);
     } catch (error) {
@@ -543,6 +568,7 @@ export class Deliverer {
   async retry(handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]): Promise<StoppedHandler | null> {
     if (!Array.isArray(delays) || delays.some((delay) => typeof delay !== "number" || !(delay >= 0)))
       throw new FrameworkError("core.retry takes the bus's retry schedule, an array of delays in milliseconds, each 0 or more");
+    row = renamedRow(row, this.renamed);
     for (let attempt = 0; ; attempt++) {
       try {
         await this.runHandler(handler, row);
@@ -579,7 +605,9 @@ export class Deliverer {
         const movers = [...snapshot.handlers.filter((row) => this.strategy.holds(row)), ...snapshot.subscriptions].map((row) => row.position);
         cursor = movers.length === 0 ? null : Math.max(snapshot.state.deletedThrough, Math.min(...movers));
       }
-      const page = cursor === null || this.layer.readOutbox === undefined ? null : await this.layer.readOutbox(cursor, timing.batch);
+      const read = cursor === null || this.layer.readOutbox === undefined ? null : await this.layer.readOutbox(cursor, timing.batch);
+      // Rows stored under a former FQN are read as the event they now are (events.renamed), as every reader sees them.
+      const page = read === null ? null : renamedPage(read, this.renamed);
       const from = cursor;
       const outcome = await this.layer.transaction(async (tx) => {
         const ops = operations(tx);
@@ -600,12 +628,13 @@ export class Deliverer {
         };
         const handlerRows = await Promise.all(handlers.map(async (row) => {
           if (!this.strategy.holds(row)) return row;
-          const position = moved(row.position, (outbox) => !row.events.includes(outbox.name));
+          const listed = row.events.map((name) => this.declaredName(name));
+          const position = moved(row.position, (outbox) => !listed.includes(outbox.name));
           if (position === row.position) return row;
           return this.strategy.moveHandler(ops, row, position);
         }));
         const subscriptionRows = await Promise.all(subscriptions.map(async (row) => {
-          const position = moved(row.position, (outbox) => !matches(row.filter, outbox));
+          const position = moved(row.position, (outbox) => !matches(row.filter, outbox, this.renamed));
           if (position === row.position) return row;
           return this.strategy.moveSubscription(ops, row, position);
         }));
@@ -685,9 +714,9 @@ class SingleClaim implements ClaimStrategy {
       const generation = state.generation + 1;
       await ops.writeClaim({ runId: RUN_ID, generation, pid: PID, startedAt: STARTED_AT });
       const progress = new Map((await ops.readHandlerProgress()).map((row) => [row.name, row]));
-      const registration = registrationOf(ops, state, this.deliverer.keep, this.deliverer.declared);
+      const registration = registrationOf(ops, state, this.deliverer.keep, this.deliverer.declared, this.deliverer.renamed);
       for (const entry of declared) {
-        const start = await handlerStart(entry, progress, registration);
+        const start = await handlerStart(entry, progress, registration, this.deliverer.renamed);
         if (start.former !== undefined) {
           await ops.deleteHandlerProgress(start.former);
           progress.delete(start.former);
@@ -809,7 +838,8 @@ class SingleClaim implements ClaimStrategy {
     const progress = (await ops.readHandlerProgress()).find((each) => each.name === handler.name);
     if (!progress) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
     if (row.position <= progress.position) return null;
-    const skipped = await ops.firstOutboxRow(progress.position, row.position, handler.events, this.deliverer.declared);
+    // SQL over stored names: a row stored under a former FQN of a listed (or declared) event counts as that event.
+    const skipped = await ops.firstOutboxRow(progress.position, row.position, this.deliverer.storedNames(handler.events), this.deliverer.storedNames(this.deliverer.declared));
     if (skipped !== null)
       throw new FrameworkError(`runHandler was asked to handle position ${row.position} for the handler ${JSON.stringify(handler.name)}, whose low-water position is ${progress.position}, while the row at ${skipped}, which it lists, is not handled: a bus hands each handler its rows in order and never skips one`);
     return progress;
@@ -875,9 +905,12 @@ export function isRetryable(error: unknown): boolean {
   return (error as { retryable?: unknown } | null | undefined)?.retryable !== false;
 }
 
-/** True when the stored filter keeps the row. */
-function matches(filter: SubscriptionFilter, row: OutboxRow): boolean {
-  if (filter.names !== undefined && !filter.names.includes(row.name)) return false;
+/**
+ * True when the stored filter keeps the row (its name already read through the rename map). A stored filter may name an
+ * event by a former FQN (it was written before the rename): each of its names is read through `renamed` too.
+ */
+function matches(filter: SubscriptionFilter, row: OutboxRow, renamed: ReadonlyMap<string, string> = NO_RENAMES): boolean {
+  if (filter.names !== undefined && !filter.names.some((name) => storedToDeclared(renamed, name) === row.name)) return false;
   if (filter.entity !== undefined && row.entity !== filter.entity) return false;
   if (filter.key !== undefined && !sameKey(row.key, filter.key)) return false;
   return true;
@@ -987,13 +1020,13 @@ export interface Subscription {
   readonly done: Promise<unknown>;
 }
 
-function filterOf(query: SubscribeQuery, events: ReadonlyMap<string, EventClass>): SubscriptionFilter {
+function filterOf(query: SubscribeQuery, events: ReadonlyMap<string, EventClass>, renamed: ReadonlyMap<string, string>): SubscriptionFilter {
   const { names, entity, key } = query;
   if (names !== undefined) {
     if (!Array.isArray(names) || names.some((name) => typeof name !== "string"))
       throw new FrameworkError("subscribe: names must be an array of event FQNs, such as [Mesh.fqnOf(InvoicePaid)]");
     for (const name of names)
-      if (!events.has(name)) throw new FrameworkError(`subscribe: names lists ${JSON.stringify(name)}, which is not a declared event; the project declares ${[...events.keys()].join(", ") || "none"}`);
+      if (!events.has(name)) throw new FrameworkError(`subscribe: names lists ${JSON.stringify(name)}, which is not a declared event${renamedClause(renamed, name)}; the project declares ${[...events.keys()].join(", ") || "none"}`);
   }
   if (entity !== undefined && typeof entity !== "string") throw new FrameworkError("subscribe: entity must be an entity's FQN, such as \"billing.Invoice\"");
   if (key !== undefined && (typeof key !== "object" || key === null || Array.isArray(key))) throw new FrameworkError("subscribe: key must be a record's key, such as { id }");
@@ -1003,6 +1036,15 @@ function filterOf(query: SubscribeQuery, events: ReadonlyMap<string, EventClass>
 /** Two stored filters, compared as JSON with sorted keys. */
 function sameFilter(a: SubscriptionFilter, b: SubscriptionFilter): boolean {
   return canonical(a) === canonical(b);
+}
+
+/**
+ * A stored filter with its names read through the rename map, sorted and without repeats: a row written before a rename
+ * names an event by its former FQN, and takes the same rows as the filter that names it by the new one.
+ */
+export function renamedFilter(filter: SubscriptionFilter, renamed: ReadonlyMap<string, string>): SubscriptionFilter {
+  if (filter.names === undefined || renamed.size === 0 || !filter.names.some((name) => renamed.has(name))) return filter;
+  return { ...filter, names: sortedUnique(filter.names.map((name) => storedToDeclared(renamed, name))) };
 }
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -1137,7 +1179,7 @@ class OpenSubscription implements LiveSubscription {
 
 /** `subscribe` of `#mesh` (spec, "`subscribe`"): open (or reopen) the subscription `query.name` on `binding`'s database. */
 export async function subscribe(binding: Binding, query: SubscribeQuery, callback: (event: EventRecord) => unknown): Promise<Subscription> {
-  const { layer, events, config } = bindingParts(binding);
+  const { layer, events, config, renamed } = bindingParts(binding);
   const delivery = deliveryOf(binding);
   if (config?.bus === undefined || delivery.noDeliver)
     throw new FrameworkError("subscribe was called in a process that does not deliver (connected with { deliver: false }, or bound with no bus): nothing would feed it. Subscribe in the deliverer's process");
@@ -1151,7 +1193,7 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
   if (after !== undefined && (!Number.isSafeInteger(after) || after < 0)) throw new FrameworkError(`subscribe: after must be a position, a whole number, and is ${describe(after)}`);
   if (insideTransaction(binding)) throw new FrameworkError("subscribe was called inside a transaction: a subscription never runs inside one");
   requireDatabase(layer, "subscribe");
-  const filter = filterOf(query, events);
+  const filter = filterOf(query, events, renamed);
   const db = databases.get(layer);
   if (db.subscriptions.has(name))
     throw new FrameworkError(`A subscription named ${JSON.stringify(name)} is open in this process already: two readers acknowledging under one row would pass each other's rows`);
@@ -1161,7 +1203,7 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
   db.subscriptions.set(name, placeholder);
   try {
     const position = await layer.transaction(async (tx) => {
-      if (multiProcess) return openOwned(multiOperations(tx), name, filter, after);
+      if (multiProcess) return openOwned(multiOperations(tx), name, filter, after, renamed);
       const ops = operations(tx);
       const state = await ops.readDeliveryState();
       if (state.claim !== null && state.claim.runId !== RUN_ID && !lapsed(state.claim, state.now))
@@ -1169,7 +1211,8 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
       const row = (await ops.readSubscriptionProgress()).find((each) => each.name === name);
       let start: number;
       if (row) {
-        if (!sameFilter(row.filter, filter))
+        // A row written before a rename names the event by its former FQN: the same filter, rewritten below with the new name.
+        if (!sameFilter(renamedFilter(row.filter, renamed), filter))
           throw new FrameworkError(`The subscription ${JSON.stringify(name)} was opened with the filter ${canonical(filter)}, and its row was reached with ${canonical(row.filter)}: an acknowledged position means something only under its filter. Forget it (forgetSubscription(${JSON.stringify(name)})), then open it with the new filter`);
         start = row.position;
       } else {
