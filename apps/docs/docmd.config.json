@@ -478,6 +478,10 @@
             {
               "title": "0087. The raw-SQL escape hatch",
               "path": "/architecture/decisions/0087-raw-sql-escape-hatch/"
+            },
+            {
+              "title": "0088. Translated conditions cross the data layer as bound trees",
+              "path": "/architecture/decisions/0088-translated-conditions-cross-the-data-layer-as-bound-trees/"
             }
           ]
         },

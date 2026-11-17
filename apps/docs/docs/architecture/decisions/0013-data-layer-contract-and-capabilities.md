@@ -1,13 +1,15 @@
 ---
 title: "0013. Data-layer contract with declared capabilities"
-description: "Decision record 0013: Data-layer contract with declared capabilities. Status: Accepted."
+description: "Decision record 0013: Data-layer contract with declared capabilities. Status: Accepted, amended by ADR-0088."
 ---
 
 # 0013. Data-layer contract with declared capabilities
 
+> **Amended** by [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) on 2026-11-17: `Query` gains `where` and `order`, set only by generated code, and `max` and `count` a `where` argument; a new capability, `conditions`, says an adapter honours them, and `joins` covers the correlated subqueries a condition uses to cross a relationship. The body below is kept as history.
+
 ## Status
 
-Accepted
+Accepted, amended by [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md)
 
 ## Date
 
