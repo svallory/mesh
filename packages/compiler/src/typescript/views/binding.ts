@@ -7,7 +7,7 @@ import { DOMAIN_FOLDER } from "./inputs.ts";
  * hands the root barrel to `@meshfw/runtime`'s `bindDomain` (which walks it and binds every entity value it reaches)
  * with the project's async frame, the one `AsyncLocalStorage` that keeps a binding in scope (the only host
  * import in generated code), the default binding `connect()` opens and `disconnect()` closes, the top-level
- * `transaction`, and the `Binding` type. `#mesh` (`.mesh/index.ts`) re-exports them. Every string is final; the template prints, loops and
+ * `transaction`, `query` when the data adapter declares `raw-sql`, and the `Binding` type. `#mesh` (`.mesh/index.ts`) re-exports them. Every string is final; the template prints, loops and
  * branches on these fields and computes nothing. A project's own `binding.ts.jig` depends on this shape.
  */
 export interface BindingView {
@@ -32,10 +32,19 @@ export interface BindingView {
    * processes): the file then exports `adoptHandler`.
    */
   readonly multiProcess: boolean;
+  /**
+   * True when the data adapter's manifest declares `raw-sql` (ADR-0087): the file then exports `query`, one read-only SQL
+   * statement written by hand; false leaves the file as it was.
+   */
+  readonly rawSql: boolean;
 }
 
 /** A module specifier relative to the output folder, quoted: `"./domain/blog/post.actions"`. */
 export const quote = (path: string) => JSON.stringify(path.startsWith(".") ? path : `./${path}`);
+
+/** True when the configured data adapter's manifest declares `raw-sql`: `#mesh` then exports `query`. */
+export const declaresRawSql = (input: EmitInput): boolean =>
+  ((input.config.data.capabilities?.capabilities ?? []) as readonly string[]).includes("raw-sql");
 
 /** The binding view of the whole model. Pure and synchronous. */
 export function bindingView(input: EmitInput): BindingView {
@@ -50,5 +59,6 @@ export function bindingView(input: EmitInput): BindingView {
     replay: events && capabilities.includes("replay"),
     subscribe: events && capabilities.includes("subscribe"),
     multiProcess: events && capabilities.includes("multi-process"),
+    rawSql: declaresRawSql(input),
   };
 }

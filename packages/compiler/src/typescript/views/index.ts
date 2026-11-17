@@ -5,12 +5,13 @@ import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityLocal, entityPath, moduleSpecifier, propertyName, typeName } from "./inputs.ts";
 import { modulesOf } from "./module.ts";
 import { conceptsOf } from "./concepts.ts";
+import { declaresRawSql } from "./binding.ts";
 
 /**
  * What `index.ts.jig` renders: `.mesh/index.ts`, which a project imports as `#mesh` (ADR-0047, ADR-0058). It holds
  * only the framework's exports: `bind`, `connect`, `disconnect`, `transaction` and the `Binding` type from `./binding`,
  * the type `Privileged` from `@meshfw/runtime` (`Mesh.privileged` itself comes from `meshfw`), and the adapter's `tables` from `./schema`,
- * and, in a project that declares an event, the type `DomainEvent` and the table `eventClasses` (M6). An entity's value and
+ * `query` and its types when the data adapter declares `raw-sql`, and, in a project that declares an event, the type `DomainEvent` and the table `eventClasses` (M6). An entity's value and
  * types are its module's (`#mesh/domain/<module>`), never re-exported here. Every string is final; the
  * template prints and loops. A project's own `index.ts.jig` depends on this shape.
  */
@@ -21,6 +22,8 @@ export interface IndexView {
   readonly events: IndexEvents | null;
   /** The commands an action answers; `null` when none does, so the file is as it was. */
   readonly commands: IndexCommands | null;
+  /** True when the data adapter's manifest declares `raw-sql`: the file then re-exports `query` and its types; false leaves the file as it was. */
+  readonly rawSql: boolean;
 }
 
 /** What `#mesh` holds for the commands an action answers (`on=`): `dispatch`, and the types of its argument and result. */
@@ -100,14 +103,15 @@ export function indexView(input: EmitInput): IndexView {
   const modules = modulesOf(orderedEntities(input.document), declarations, conceptsOf(input.document)).map(({ module }) => moduleSpecifier(module));
   const events = declarations.filter((declaration) => declaration.kind === "event");
   const commands = commandsView(input, declarations, events.length > 0);
-  if (events.length === 0) return { modules, events: null, commands };
+  const rawSql = declaresRawSql(input);
+  if (events.length === 0) return { modules, events: null, commands, rawSql };
   const view = {
     imports: events.map((event) => ({ name: className(event), local: classLocal(event), fromLiteral: JSON.stringify(`./${declarationPath(event)}`) })),
     union: events.map(classLocal).join(" | "),
     table: events.map((event) => ({ fqnLiteral: JSON.stringify(event.fqn), local: classLocal(event) })),
   };
   const capabilities: readonly string[] = input.config.events?.bus?.manifest.capabilities ?? [];
-  return { modules, commands, events: {
+  return { modules, commands, rawSql, events: {
     ...view, globals: globalsImport("index", view, commands ? ["Object", "Promise"] : ["Object"])!,
     replay: capabilities.includes("replay"), subscribe: capabilities.includes("subscribe"), multiProcess: capabilities.includes("multi-process"),
     busCapabilities: capabilities.map((capability) => JSON.stringify(capability)),

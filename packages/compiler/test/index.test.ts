@@ -44,7 +44,7 @@ function documentOf(files: Record<string, string> = { "notes/note.mesh.mx": note
 describe("binding, module and index views", () => {
   test("the binding view names the config and the root barrel, which `bind` walks; it lists no entity or action", () => {
     expect(bindingView({ document: documentOf(), config: configOf("/project", ".mesh") }))
-      .toEqual({ configFromLiteral: '"../mesh.config"', domainFromLiteral: '"./domain/index"', events: false, replay: false, subscribe: false, multiProcess: false });
+      .toEqual({ configFromLiteral: '"../mesh.config"', domainFromLiteral: '"./domain/index"', events: false, replay: false, subscribe: false, multiProcess: false, rawSql: false });
   });
 
   test("the config import is relative to a nested output folder", () => {
@@ -67,7 +67,7 @@ describe("binding, module and index views", () => {
   });
 
   test("the index view names every module's specifier and nothing of an entity", () => {
-    expect(indexView({ document: documentOf(), config: configOf("/project", ".mesh") })).toEqual({ modules: ["#mesh/domain", "#mesh/domain/notes"], events: null, commands: null });
+    expect(indexView({ document: documentOf(), config: configOf("/project", ".mesh") })).toEqual({ modules: ["#mesh/domain", "#mesh/domain/notes"], events: null, commands: null, rawSql: false });
   });
 
   test("an action whose handle in `actions` spells a table handle (`noteTable`) builds: #mesh re-exports no table handle, only `tables`", async () => {
@@ -118,6 +118,61 @@ async function generated(config = memoryConfig) {
   await writeFile(resolve(root, "mesh.config.ts"), config);
   return { root, files };
 }
+
+/** `configOf` with the data adapter's manifest listing `capabilities`. */
+const declaring = (root: string, capabilities: readonly string[]) => {
+  const config = configOf(root, ".mesh");
+  return { ...config, data: { ...config.data, capabilities: { adapter: "sqlite", capabilities } } } as typeof config;
+};
+
+describe("query, exported when the data adapter declares raw-sql", () => {
+  test("the binding and index views set rawSql from the data adapter's manifest, events or not", () => {
+    for (const [capabilities, rawSql] of [[["raw-sql"], true], [["aggregates", "raw-sql"], true], [["aggregates"], false], [[], false]] as const) {
+      const config = declaring("/project", capabilities);
+      expect(bindingView({ document: documentOf(), config }).rawSql).toBe(rawSql);
+      expect(indexView({ document: documentOf(), config }).rawSql).toBe(rawSql);
+    }
+  });
+
+  test("without it neither file names query; with it binding.ts exports it and index.ts re-exports it with its types", async () => {
+    const without = await generateFiles({ document: documentOf(), config: configOf("/project", ".mesh") });
+    const text = (files: typeof without, path: string) => files.find((file) => file.path === path)!.contents;
+    expect(text(without, ".mesh/binding.ts")).not.toMatch(/query|RawQuery/);
+    expect(text(without, ".mesh/index.ts")).not.toMatch(/query|Raw/);
+    const withIt = await generateFiles({ document: documentOf(), config: declaring("/project", ["raw-sql"]) });
+    expect(text(withIt, ".mesh/binding.ts")).toContain("export const query: $RawQuery = $makeQuery($frame, () => $defaultBinding);");
+    expect(text(withIt, ".mesh/binding.ts")).toContain("`bind`, the default binding, `transaction` and `query`");
+    expect(text(withIt, ".mesh/index.ts")).toContain('export { query } from "./binding";\nexport type { RawQuery, RawRow, RawValue } from "@meshfw/runtime";');
+    // nothing else changes: the two trees differ in these two files only
+    const changed = withIt.filter((file) => file.contents !== without.find((other) => other.path === file.path)?.contents).map((file) => file.path);
+    expect(changed).toEqual([".mesh/binding.ts", ".mesh/index.ts"]);
+  });
+
+  test("the generated query type-checks strictly and, on a layer without a query operation, rejects naming raw-sql", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-index-raw-"));
+    roots.push(root);
+    const config = declaring(root, ["raw-sql"]);
+    const files = await generateFiles({ document: documentOf(), config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, ".mesh/schema.ts"), "export const tables = { notes: {}, tag: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), descriptorConfig);
+    await writeFile(resolve(root, "use.ts"), [
+      'import { query, type RawRow, type RawValue } from "./.mesh/index";',
+      "export async function use(value: RawValue): Promise<readonly RawRow[]> {",
+      "  return query`select ${value} as v`;",
+      "}",
+      "",
+    ].join("\n"));
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), ".mesh/schema.ts", "mesh.config.ts", "use.ts"]))
+      .toEqual({ code: 0, output: "" });
+    await writeFile(resolve(root, "mesh.config.ts"), memoryConfig);
+    const mesh = await import(resolve(root, ".mesh/index.ts"));
+    expect(() => mesh.query`select 1`).toThrow(new FrameworkError("query was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    await mesh.connect();
+    await expect(mesh.query`select 1`).rejects.toThrow(new FrameworkError("query needs the raw-sql capability, and the data layer's transaction has no query operation: use a data adapter that declares raw-sql"));
+    await mesh.disconnect();
+  }, 30_000);
+});
 
 describe("the generated index", () => {
   test("typechecks with strict unused-name and exact-optional flags", async () => {
