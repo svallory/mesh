@@ -5,7 +5,7 @@ description: "The data-layer contract, declared capabilities, the conformance su
 
 # Data layer: contract and capabilities
 
-Status: contract v1 is implemented in the run-time library (M3, with filters, sort, paging, re-entrant transactions, key fill and the capability manifest; contract v0 came in M2, [PR #20](https://github.com/svallory/mesh/pull/20)). The SQLite adapter, its schema generator and `mesh db push` are merged (M2, task `m2-data`, PR #53), reimplemented from the held [PR #22](https://github.com/svallory/mesh/pull/22) under the documented names. The build reads the capability manifest from M3; Postgres and migrations arrive in M9 ([roadmap](../roadmap/roadmap.md)).
+Status: contract v1 is implemented in the run-time library (M3, with filters, sort, paging, re-entrant transactions, key fill and the capability manifest; contract v0 came in M2, [PR #20](https://github.com/svallory/mesh/pull/20)). The SQLite adapter, its schema generator and `mesh db push` are merged (M2, task `m2-data`, PR #53), reimplemented from the held [PR #22](https://github.com/svallory/mesh/pull/22) under the documented names. The build reads the capability manifest from M3. The Postgres adapter is built without events (M9, [data-postgres](#data-postgres)); its outbox and migrations arrive later in M9 ([roadmap](../roadmap/roadmap.md)).
 
 ::: callout info "What the code does today"
 `@meshfw/runtime` and its testing entry `@meshfw/runtime/testing` ([ADR-0060](../decisions/0060-meshfw-package-scope.md)) hold the data-layer contract v1, the `DataAdapter` descriptor type, `defineConfig` and the conformance suite. `@meshfw/data-drizzle` holds the operations shared by SQL adapters. `@meshfw/data-sqlite` has two entries: the main one, `sqlite({ file })` and `createSchema(db, tables)`, and `@meshfw/data-sqlite/build`, the schema generator and `mesh db push`. Generated action functions call the contract through `bind(layer)`, and `connect()` binds the layer `mesh.config.ts` configures ([PR #54](https://github.com/svallory/mesh/pull/54)); `close()` releases the connection and a later transaction reopens it, so `disconnect()` then `connect()` reuses that one layer.
@@ -90,7 +90,7 @@ Contract v0 provides the small suite above; M3 expands it into the full suite ev
 
 ## The capability rule across parallel milestones
 
-M9 (Postgres) can start once M5 is merged and run alongside M6 to M8 ([roadmap](../roadmap/roadmap.md), section 4). A milestone that adds an optional capability (M5 atomic expressions, M7 joins and aggregates) implements it in every data adapter merged when it is merged. M9 implements on Postgres every capability in the suite on the day M9 merges. Whichever merges second owes the missing combination. v1 is done when SQLite and Postgres both pass the whole suite (same place).
+M9 (Postgres) can start once M5 is merged and run alongside M6 to M8 ([roadmap](../roadmap/roadmap.md), section 4). A milestone that adds an optional capability (M5 atomic expressions, M7 joins and aggregates) implements it in every data adapter merged when it is merged. M9 implements on Postgres every capability in the suite on the day M9 merges. Whichever merges second owes the missing combination. M9 is done when Postgres passes the whole suite, after 1.0 ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
 
 ## Raw queries
 
@@ -112,9 +112,9 @@ Accepted by the lead for Option E of [ADR-0087](../decisions/0087-raw-sql-escape
 |---|---|
 | `data-drizzle` | Shared code: turns a Mesh query (plain data) into Drizzle's builder, and compiles expression trees at query time ([roadmap](../roadmap/roadmap.md), M3 and M4). Joins are compiled here, not through Drizzle's relations API (M7). |
 | `data-sqlite` | SQLite, file or in-memory, over Bun's SQLite driver (M2, M3). |
-| `data-postgres` | Postgres on Drizzle, added in M9. |
+| `data-postgres` | Postgres over Bun's built-in client (`Bun.SQL`) and Drizzle's `bun-sql` driver (M9; [below](#data-postgres)). |
 
-What a dialect adds beyond its driver is not detailed in the roadmap: not decided.
+What a dialect adds beyond its driver: its `SqlDialect` (how a condition's parameters, `length`, division, nulls and string order are written) and its transactions; for Postgres see [data-postgres](#data-postgres).
 
 Each adapter has two halves: a build-time half that emits Drizzle table definitions as a guarded generated file, and a run-time half that implements the contract with Drizzle ([roadmap](../roadmap/roadmap.md), M2). Guarded means `mesh build --check` regenerates the file and fails on any difference ([generated code and the guard](./generated-code-and-guard.md)).
 
@@ -149,6 +149,35 @@ Every file database (not `:memory:`) is put in WAL mode when the adapter opens i
 **Isolation rule.** Drizzle is imported only under `packages/data-*` and in the emitted schema file. Generated action functions never import Drizzle, the model or `model.json`; `verify` checks it ([roadmap](../roadmap/roadmap.md), M2, test 4).
 
 **Pins.** Drizzle v1 is a release candidate, its relations API is being replaced and drizzle-kit is mid-rewrite ([research synthesis](../research/synthesis.md), section 12, risk 1). M2 pins the stable pair `drizzle-orm@0.45.3` and `drizzle-kit@0.31.11` ([ADR-0048](../decisions/0048-schema-inside-the-process-for-tests.md)), and the pin stays ([ADR-0062](../decisions/0062-direct-dependencies-zod-drizzle-opentelemetry.md)); `drizzle-orm` is a direct dependency of the user's project; an upgrade is its own pull request and must pass the suite, and Mesh avoids the relations API ([roadmap](../roadmap/roadmap.md), section 9, risk 3).
+
+## data-postgres
+
+`postgres({ url })` returns one frozen value that is both the `DataAdapter` (`name: "postgres"`, `build: "@meshfw/data-postgres/build"`, `options: { url }`) and its run-time `DataLayer`, as `sqlite()` does. `url` may be undefined, so a project builds without `DATABASE_URL`; the first transaction, `createSchema` or `mesh db push` without it throws a `FrameworkError` that names the option. `database` is `postgres://<host>:<port>/<database>`, without credentials or query. The decisions below are [ADR-0089](../decisions/0089-postgres-adapter.md)'s.
+
+**Transactions.** One runs at a time per layer, through the same queue as data-sqlite's (`serialTransactions` in `@meshfw/data-drizzle`), each on a connection reserved from the layer's pool, at `SERIALIZABLE`, waiting at most 5 s for any one lock (`SET LOCAL lock_timeout`, or the caller's `waitMs`). Concurrency comes from several processes or several layer objects. A statement that fails aborts a Postgres transaction, so the adapter records it, and the outer call rejects even if the callback caught the failure: with that failure when it is a `DatabaseBusyError`, else with a `FrameworkError` whose cause is the failure; a call resolves only when `COMMIT` reported `COMMIT`. A rollback that fails closes its connection, and the layer stays usable (the server rolls back a transaction whose session ends).
+
+**Transient errors** are `DatabaseBusyError` (`MESH_DATABASE_BUSY`, `retryable: true`) with the server's `sqlstate` and a `reason`: `serialization` (`40001`, for example two processes filling one integer key), `deadlock` (`40P01`), `lock-timeout` (`55P03`) and `connection` (a lost connection, or a server that did not answer: "Could not connect to the database ..."). A connection lost during `COMMIT` is `retryable: false`, since the commit may have happened. Mesh never re-runs a callback; the caller, an event handler's bus among them, decides. A login or database name the server refuses, or an unreadable URL, is a `FrameworkError` that names the database without the password.
+
+**Columns** keep SQLite's value ranges, so a value SQLite stores, Postgres stores (except a string holding NUL and a date before 4713 BC):
+
+| Attribute type | Postgres column |
+|:--|:--|
+| `uuid`, `string`, `enum` | `text` (an enum with its values in Drizzle's type) |
+| `integer` | `bigint` |
+| `float`, `decimal` | `double precision` |
+| `boolean` | `boolean` |
+| `date`, `datetime`, `timestamp` | `timestamp(3) with time zone` |
+| `json` | `jsonb` (written as its JSON text cast to `jsonb`, read back from its text; `jsonb` reorders object keys and refuses `\u0000`) |
+
+A core table's `neverReuse` key (the outbox's `position`) is a `bigint` identity column. The schema generator refuses, as `MESH_SCHEMA_IDENTIFIER`, a table or column name over 63 bytes (Postgres would cut it silently), a unique column whose derived constraint name `<table>_<column>_unique` is over 63 bytes, and a name holding a double quote or a control character; tables and columns that differ only in letter case are distinct.
+
+**Order.** The dialect pins SQLite's order: `NULLS FIRST` ascending, `NULLS LAST` descending, and `COLLATE "C"` on text in every sort key and on the left side of every range comparison, in a caller's `sort` and `filter` as in a translated `order` and `where`. An index on a text column is not used for such a sort unless it is built with that collation.
+
+**Schema preparation.** `createSchema(layer, tables)` (tests and development) and `mesh db push [--force]` push through drizzle-kit 0.31.11's `pushSchema` into the `public` schema, refusing statements that would lose data (unless `--force`) and refusing a database whose `public` schema holds a table, view or sequence that is not the project's.
+
+**Not yet**: the outbox and core's delivery state (a project that declares an event cannot publish on Postgres until they land), the reader rule, the claim's row lock and `LISTEN`/`NOTIFY` wake-ups, `mesh migrate`, and `gapless-positions`, which the adapter never declares.
+
+**Tests** need a Postgres server whose user may create databases, named by `MESH_TEST_POSTGRES_URL`; without it the server tests are skipped (and fail in CI). Each test file gets a database of its own, and each check a schema of its own cloned from it.
 
 ## Migrations
 

@@ -103,7 +103,7 @@ Mesh does not read anything about your database from an entity file; the project
 data: sqlite({ file: "todo.db" }),
 ```
 
-**Postgres** reads a URL. There is no default: if the variable is unset, `connect()` throws rather than guessing.
+**Postgres** reads a URL. There is no default: if the variable is unset, the first call that needs the database throws rather than guessing (`mesh build` does not need it).
 
 ```ts "mesh.config.ts"
 import { defineConfig } from "@meshfw/runtime";
