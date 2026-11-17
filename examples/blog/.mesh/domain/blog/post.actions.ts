@@ -27,6 +27,7 @@ import {
   scope as $scope,
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
+  wantsChanges as $wantsChanges,
   whereFor as $whereFor,
   writeCount as $writeCount,
   type ActionContext as $ActionContext,
@@ -86,7 +87,7 @@ import {
   $Set,
 } from "../../$globals";
 
-/** The table of each entity the conditions of this file's reads reach, by FQN. */
+/** The table of each entity the conditions of this file's reads and guarded deletes reach, by FQN. */
 const $tableOf: $TableOf = (fqn) => (({}) as { readonly [fqn: string]: $TableHandle })[fqn]!;
 /** How each column a caller may filter and sort by is stored, for the order and the conditions a read hands the data layer. */
 const $sortClasses: { readonly [name: string]: $ValueClass } = {
@@ -438,17 +439,16 @@ export function bindPost(
               check: "({ actor }) => &author.id === actor.id",
               record: true,
               run: $expressions["policy.owner.authorize-if.0"],
+              sql: () => $conditions["policy.owner.authorize-if.0"],
             },
           ],
         },
       ]);
-      await $policies.before(
-        layer,
-        $scope(
-          { input: $readOnlyRecord(parsed, "blog.Post#archive"), actor: $actor, context: $context },
-          { clock: $clock },
-        ),
+      const $preScope = $scope(
+        { input: $readOnlyRecord(parsed, "blog.Post#archive"), actor: $actor, context: $context },
+        { clock: $clock },
       );
+      await $policies.before(layer, $preScope);
       return $runAction(
         layer,
         options.seams,
@@ -458,37 +458,52 @@ export function bindPost(
         (tx) =>
           frame.within(tx, $clock, "blog.Post#archive", async () => {
             // transaction: opens here; what follows commits together or not at all
-            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            // plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, or the data layer has no guarded delete
             const $key = { id: parsed.id };
-            const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
-              | $Record
-              | undefined;
-            if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
-            const $record: $Record = { ...$before };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
-            const $self = $readOnlyRecord(
-              $guarded($loadPlan, "blog.Post", $record, "action function"),
-              "blog.Post#archive",
-            );
-            const $s = $scope(
-              {
-                self: $self,
-                input: $readOnlyRecord(parsed, "blog.Post#archive"),
-                actor: $actor,
-                context: $context,
-                before: $readOnlyRecord(
-                  $guarded($loadPlan, "blog.Post", $before, "before"),
-                  "blog.Post#archive",
-                ) as unknown as Post,
-              },
-              { clock: $clock },
-            ) as unknown as $StoredScope<ArchivePostInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
-            await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
-            await $policies.inside($checkScope($s));
-            // data layer
-            if (!(await tx.deleteByKey(tables.posts, $key)))
-              throw new $NotFoundError("blog.Post", $key);
+            let $seen: $Record | undefined;
+            if ($wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded) {
+              // read the row under the write lock, run the policies on it in memory, then delete it
+              const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
+                | $Record
+                | undefined;
+              if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
+              const $record: $Record = { ...$before };
+              const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
+              const $self = $readOnlyRecord(
+                $guarded($loadPlan, "blog.Post", $record, "action function"),
+                "blog.Post#archive",
+              );
+              const $s = $scope(
+                {
+                  self: $self,
+                  input: $readOnlyRecord(parsed, "blog.Post#archive"),
+                  actor: $actor,
+                  context: $context,
+                  before: $readOnlyRecord(
+                    $guarded($loadPlan, "blog.Post", $before, "before"),
+                    "blog.Post#archive",
+                  ) as unknown as Post,
+                },
+                { clock: $clock },
+              ) as unknown as $StoredScope<ArchivePostInput>;
+              // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
+              await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
+              await $policies.inside($checkScope($s));
+              // data layer
+              if (!(await tx.deleteByKey(tables.posts, $key)))
+                throw new $NotFoundError("blog.Post", $key);
+              $seen = $before;
+            } else {
+              // one delete: it fails as forbidden inside the database when the checks that read the record deny, and deletes nothing
+              const $guard = $policies.guard($preScope, $tableOf);
+              const $deleted =
+                $guard === undefined
+                  ? await tx.deleteByKey(tables.posts, $key)
+                  : await $policies.statement(() =>
+                      tx.deleteByKeyGuarded!(tables.posts, $key, $guard),
+                    );
+              if (!$deleted) throw new $NotFoundError("blog.Post", $key);
+            }
             $noteWrite(tx);
             // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
             await frame.plain(() =>
@@ -496,7 +511,7 @@ export function bindPost(
                 tx,
                 options.seams,
                 { entity: "blog.Post", action: "archive" },
-                $before,
+                $seen ?? null,
                 null,
                 parsed,
                 context,
@@ -627,17 +642,16 @@ export function bindPost(
               check: "({ actor }) => &author.id === actor.id",
               record: true,
               run: $expressions["policy.owner.authorize-if.0"],
+              sql: () => $conditions["policy.owner.authorize-if.0"],
             },
           ],
         },
       ]);
-      await $policies.before(
-        layer,
-        $scope(
-          { input: $readOnlyRecord(parsed, "blog.Post#destroy"), actor: $actor, context: $context },
-          { clock: $clock },
-        ),
+      const $preScope = $scope(
+        { input: $readOnlyRecord(parsed, "blog.Post#destroy"), actor: $actor, context: $context },
+        { clock: $clock },
       );
+      await $policies.before(layer, $preScope);
       return $runAction(
         layer,
         options.seams,
@@ -647,37 +661,52 @@ export function bindPost(
         (tx) =>
           frame.within(tx, $clock, "blog.Post#destroy", async () => {
             // transaction: opens here; what follows commits together or not at all
-            // plan: read the row under the write lock, check, apply the input, change it, write it (every update is a read then a write)
+            // plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, or the data layer has no guarded delete
             const $key = { id: parsed.id };
-            const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
-              | $Record
-              | undefined;
-            if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
-            const $record: $Record = { ...$before };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
-            const $self = $readOnlyRecord(
-              $guarded($loadPlan, "blog.Post", $record, "action function"),
-              "blog.Post#destroy",
-            );
-            const $s = $scope(
-              {
-                self: $self,
-                input: $readOnlyRecord(parsed, "blog.Post#destroy"),
-                actor: $actor,
-                context: $context,
-                before: $readOnlyRecord(
-                  $guarded($loadPlan, "blog.Post", $before, "before"),
-                  "blog.Post#destroy",
-                ) as unknown as Post,
-              },
-              { clock: $clock },
-            ) as unknown as $StoredScope<DestroyPostInput>;
-            // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
-            await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
-            await $policies.inside($checkScope($s));
-            // data layer
-            if (!(await tx.deleteByKey(tables.posts, $key)))
-              throw new $NotFoundError("blog.Post", $key);
+            let $seen: $Record | undefined;
+            if ($wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded) {
+              // read the row under the write lock, run the policies on it in memory, then delete it
+              const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
+                | $Record
+                | undefined;
+              if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
+              const $record: $Record = { ...$before };
+              const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
+              const $self = $readOnlyRecord(
+                $guarded($loadPlan, "blog.Post", $record, "action function"),
+                "blog.Post#destroy",
+              );
+              const $s = $scope(
+                {
+                  self: $self,
+                  input: $readOnlyRecord(parsed, "blog.Post#destroy"),
+                  actor: $actor,
+                  context: $context,
+                  before: $readOnlyRecord(
+                    $guarded($loadPlan, "blog.Post", $before, "before"),
+                    "blog.Post#destroy",
+                  ) as unknown as Post,
+                },
+                { clock: $clock },
+              ) as unknown as $StoredScope<DestroyPostInput>;
+              // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
+              await $loadInto($loadPlan, "blog.Post", tx, $record, ["author"], $load);
+              await $policies.inside($checkScope($s));
+              // data layer
+              if (!(await tx.deleteByKey(tables.posts, $key)))
+                throw new $NotFoundError("blog.Post", $key);
+              $seen = $before;
+            } else {
+              // one delete: it fails as forbidden inside the database when the checks that read the record deny, and deletes nothing
+              const $guard = $policies.guard($preScope, $tableOf);
+              const $deleted =
+                $guard === undefined
+                  ? await tx.deleteByKey(tables.posts, $key)
+                  : await $policies.statement(() =>
+                      tx.deleteByKeyGuarded!(tables.posts, $key, $guard),
+                    );
+              if (!$deleted) throw new $NotFoundError("blog.Post", $key);
+            }
             $noteWrite(tx);
             // seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values
             await frame.plain(() =>
@@ -685,7 +714,7 @@ export function bindPost(
                 tx,
                 options.seams,
                 { entity: "blog.Post", action: "destroy" },
-                $before,
+                $seen ?? null,
                 null,
                 parsed,
                 context,

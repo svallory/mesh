@@ -1,13 +1,15 @@
 ---
 title: "0046. What a denied write reports on an atomic action"
-description: "Decision record 0046: What a denied write reports on an atomic action. Status: Accepted (option B, not built)."
+description: "Decision record 0046: What a denied write reports on an atomic action. Status: Accepted (option B, built for one-statement destroys)."
 ---
 
 # 0046. What a denied write reports on an atomic action
 
 ## Status
 
-Accepted. The operator chose option B on 2026-10-17. Not built.
+Accepted. Option B, built for one-statement destroys. The operator chose option B on 2026-10-17.
+
+> **Amendment, 2026-11-17 (built for destroys):** a `destroy` whose only reason to read the row is policy checks that read the record, all of which translate to SQL, runs as one `DELETE` when the data adapter declares the `policy-guards` capability. The checks go into the statement's `WHERE` as a guard that, on the keyed row only, makes the statement fail with a marker when they deny: on SQLite `json_extract('{}', <marker>)`, which fails with "bad JSON path" (SQLite has no `RAISE()` outside a trigger, and `bun:sqlite` cannot register a function); on Postgres a cast of the marker to `int`, which fails with SQLSTATE 22P02. Nothing is installed in the user's database. The marker is `mesh:forbidden:<nonce>:<one letter per check>:<key>`; the nonce is drawn per statement after the input is fixed, and only the driver's own error is read, so no input value can forge a denial. Because the marker carries every check's result, the `ForbiddenError` and its breakdown are the ones the read-first path gives, which answers this record's con that "which check failed still needs a second query". The destroy still reads the row under the lock first, and runs its policies in memory, while an `afterWrite` or `afterCommit` seam is registered (the seam gets `before`), under `Mesh.checkPolicies` or `Mesh.can`, and on a data layer without the guarded delete. A check that calls an imported function or `Mesh.privileged`, plain code, a record-reading `when=`, a `check` or a step keep the destroy reading first. One-statement updates wait for atomic updates, which reuse the same guard. `mesh explain` says which strategy a destroy takes and where each check runs.
 
 > **Amendment, 2026-10-17:** the operator chose option B: when a write action runs as one statement, its policy check compiles into the statement as an expression that raises, so a denied caller is told forbidden, as on an action that loads the row first. Each data adapter supplies the raising expression. Not built: one-statement writes come with atomic updates (M10); until then every write loads the row under a lock and checks its policies in memory, so a denied caller is already told forbidden. The text below is the record as it stood before the ruling.
 

@@ -1,12 +1,13 @@
 import { dirname, posix, relative } from "node:path";
 import { isCheckGroup, isExpression, type Action, type Entity, type Expression, type ExprNode, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
-import type { LowerResult } from "../../model/sql-condition.ts";
+import { lowerCondition, type LowerResult } from "../../model/sql-condition.ts";
 import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { emittedNothing, printExpression, printTree, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
 import { stableJsonStringify } from "../stable-json.ts";
+import { dataCapabilities, destroyStrategy } from "../strategy.ts";
 import { policyConditions, rollupFilters, sqlPositions } from "../../model/sql-required.ts";
 import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
@@ -254,12 +255,13 @@ export function expressionIds(entity: Entity): Map<Expression, string> {
 /**
  * The policies as `authorizer` from `@meshfw/runtime` takes them, an array literal: each with its `when` and its checks,
  * every function with its source, where it runs (`record`: inside the transaction) and `ref(expression)`, how the generated
- * file reads it from the expressions file. On a read, a function that reads the record also gets `sql`, the thunk
- * `sql(expression)` prints, that reads its condition literal (`$conditions`), which the authorizer folds into the query.
+ * file reads it from the expressions file. A function that reads the record also gets `sql` when `sql(expression)` prints
+ * a thunk for it: on a read, the condition literal (`$conditions`) the authorizer folds into the query; on a destroy that
+ * runs as one statement, the literal the authorizer binds into the delete's guard (ADR-0046, option B).
  */
 export function policySpecs(policies: readonly Policy[], ref: (expression: Expression) => string, on: "write" | "read", sql?: (expression: Expression) => string | undefined): string {
   const fn = (expression: Expression) => {
-    const literal = on === "read" && readsRecord(expression, on) ? sql?.(expression) : undefined;
+    const literal = readsRecord(expression, on) ? sql?.(expression) : undefined;
     return `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression, on)}, run: ${ref(expression)}${literal ? `, sql: ${literal}` : ""}`;
   };
   const specs = policies.map((policy) => {
@@ -277,7 +279,7 @@ export function hasExpressions(entity: Entity): boolean {
   return collect(entity).length > 0 || entity.computed.some((computed) => computed.rollup?.filter);
 }
 
-export function expressionsView({ document }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
+export function expressionsView({ document, config }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
   const recordName = typeName(entity.name, entity.position);
   // Every module-level name the file takes from generated code is a `$` local: Mesh's own imports have
   // one `$`, and the entity's own types and scopes, like the entity values it imports, are `entityLocal`s. The only
@@ -509,6 +511,12 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       code: `{ what: ${JSON.stringify(subject)}, entity: ${JSON.stringify(rows)}, tree: ${stableJsonStringify(lowered.lowered.tree)}, params: (${emittedHere.scope ? "$s" : "_$s"}: ${scope}) => [${params.join(", ")}] }`,
     };
   };
+  const readPolicies = policyConditions(document, entity);
+  const capabilities = dataCapabilities(config);
+  const guardedChecks = [...new Map(effectiveActions(entity).filter((action) => action.kind === "destroy")
+    .flatMap((action) => destroyStrategy(document, entity, action, capabilities).guarded)
+    .filter((check) => !readPolicies.some((place) => place.id === check.id))
+    .map((check) => [check.id, check] as const)).values()];
   const conditions = [
     ...sqlPositions(document, entity).flatMap((place): ExpressionEntry[] => {
       if (place.kind === "sort" && !entity.computed.some((c) => c.name === place.key!.member.name)) return [];
@@ -517,9 +525,17 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
         `read :${place.action.name} ${place.kind === "filter" ? "filter" : `sort key ${place.index}`}`, `${scopeName}<${inputOf([place.action])}>`)];
     }),
     // A read policy that reads the record: its scope is the one its in-memory form has in `$expressions`.
-    ...policyConditions(document, entity).map((place) => {
+    ...readPolicies.map((place) => {
       const f = found.find((candidate) => candidate.id === place.id)!;
       return literalEntry(place.lower, place.subject, place.expression.position, place.id, place.what, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`);
+    }),
+    // A record-reading check of a destroy that runs as one statement (ADR-0046, option B), lowered in write mode: the
+    // literal the authorizer binds into the delete's guard. A check that also covers a read shares that read's literal,
+    // since a write-mode lowering that succeeds gives the same tree.
+    ...guardedChecks.map((check) => {
+      const f = found.find((candidate) => candidate.id === check.id)!;
+      return literalEntry(() => lowerCondition(document, entity, check.expression, { mode: "write" }), `${check.what} of ${entity.fqn}`, check.expression.position, check.id,
+        check.what, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`);
     }),
     // A rollup's filter: its parameters are `%.now` and `%.today` only, so its scope is the clock's.
     ...rollupFilters(document, entity).map((place) => literalEntry(place.lower, place.subject, place.filter.position, `rollup.${place.computed.name}.filter`,

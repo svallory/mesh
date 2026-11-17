@@ -209,6 +209,14 @@ describe("Mesh.checkPolicies and Mesh.can from application code", () => {
         expect(await todo.Todo.read({}, { actor: bob })).toEqual([]);
         expect(await todo.Todo.read({}, { actor: alice })).toHaveLength(1);
         expect(await application.typed(list.id, milk.id)).toEqual([true, false, true, true]);
+        // `List.destroy` runs as one guarded delete on SQLite (ADR-0046, option B): the question answers through the read
+        // path, and Bob's call, which the delete statement refuses, carries the same breakdown; the list is kept.
+        const destroyAnswer: Decision = await Mesh.checkPolicies(todo.List.destroy, { id: list.id }, { actor: bob });
+        const destroyDenied = await outcome(todo.List.destroy({ id: list.id }, { actor: bob }));
+        expect(destroyAnswer.allowed).toBe(false);
+        expect(destroyDenied).toEqual({ ok: false, error: expect.any(ForbiddenError) });
+        expect((destroyDenied as { error: ForbiddenError }).error.breakdown).toEqual(destroyAnswer.breakdown);
+        expect(await todo.List.read({}, { actor: alice })).toHaveLength(1);
 
         // `pending` has its own filter and sort, which run as SQL with the policy folded in: the question answers that the
         // read is allowed, and the call returns the todos that are not done on the caller's own lists.

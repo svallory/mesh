@@ -108,4 +108,33 @@ export const $conditions = {
     },
     params: (_$s: $blog$Post$Scope<$blog$Post$PublishedPostInput>) => [],
   },
+  // policy :owner authorize-if (src/domain/blog/post.mesh.mx:50:20)
+  "policy.owner.authorize-if.0": {
+    what: "policy :owner authorize-if of blog.Post",
+    entity: "blog.Post",
+    tree: {
+      args: [
+        {
+          class: "string",
+          depth: 0,
+          kind: "column",
+          name: "authorId",
+        },
+        {
+          class: "string",
+          index: 0,
+          kind: "param",
+        },
+      ],
+      fn: "eq",
+      kind: "call",
+    },
+    params: (
+      $s: $blog$Post$CheckScope<
+        $SharedInput<
+          $blog$Post$PublishPostInput | $blog$Post$ArchivePostInput | $blog$Post$DestroyPostInput
+        >
+      >,
+    ) => [$s.actor?.id],
+  },
 } as const;

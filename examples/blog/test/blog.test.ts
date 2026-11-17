@@ -60,8 +60,10 @@ function counting(layer: DataLayer, counter: { locked: number }): DataLayer {
 }
 
 // What a destroy with no policy that reads the record does (no read without a seam) is in
-// packages/data-sqlite/test/domain/lifecycle.ts. Here `:owner` reads the post's author, so every destroy reads the row.
-describe("a destroy the :owner policy covers reads the row once under the lock, and a seam that wants the change reads it no second time (M6 ruling 4)", () => {
+// packages/data-sqlite/test/domain/lifecycle.ts. Here `:owner` reads the post's author (`&author.id`, its key column), so
+// on SQLite, which declares policy-guards, the destroy is one delete that checks the policy itself (ADR-0046, option B),
+// and it reads the row under the lock only when a seam wants `before`.
+describe("a destroy the :owner policy covers is one guarded delete, and reads the row once under the lock when a seam wants the change (M6 ruling 4, ADR-0046 B)", () => {
   const destroyOne = async (seams: Seams | undefined) => {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, tables);
@@ -82,9 +84,9 @@ describe("a destroy the :owner policy covers reads the row once under the lock, 
     } finally { await db.close(); }
   };
 
-  test("no seam, or one that wants no change: one locked read per destroy, which the policy needs", async () => {
-    expect(await destroyOne(undefined)).toMatchObject({ first: 1, locked: 2 });
-    expect(await destroyOne({ beforeTransaction() {} })).toMatchObject({ first: 1, locked: 2 });
+  test("no seam, or one that wants no change: no read, the delete statement checks the policy", async () => {
+    expect(await destroyOne(undefined)).toMatchObject({ first: 0, locked: 0 });
+    expect(await destroyOne({ beforeTransaction() {} })).toMatchObject({ first: 0, locked: 0 });
   });
 
   test("afterWrite or afterCommit registered: the same one read, and before is the deleted row", async () => {
@@ -227,9 +229,11 @@ describe("policies (M8a): every action is covered, and a caller the policies do 
         expect(breakdown).toEqual([{ policy: "owner", kind: "authorize-if", check: "({ actor }) => &author.id === actor.id", result: false, decisive: true }]);
         expect(JSON.parse(JSON.stringify(breakdown))).toEqual(breakdown);
         await expect(Post.archive({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
-        await expect(Post.destroy({ id: post.id }, context)).rejects.toMatchObject({ code: "forbidden", policies: ["owner"] });
+        // The destroy is one guarded delete on SQLite: the database checks the policy, and the error is the one the
+        // read-first path gives, breakdown included (ADR-0046, option B).
+        await expect(Post.destroy({ id: post.id }, context)).rejects.toMatchObject({ code: "forbidden", entity: "blog.Post", action: "destroy", policies: ["owner"], reason: "failed", breakdown });
         expect(await Post.read({}, context)).toEqual([post]);
-        // A post that does not exist is not found, whoever asks: the row is read before the policy that reads it.
+        // A post that does not exist is not found, whoever asks, before any policy that reads it.
         await expect(Post.publish({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
         await expect(Post.destroy({ id: crypto.randomUUID() }, context)).rejects.toBeInstanceOf(NotFoundError);
       });

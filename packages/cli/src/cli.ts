@@ -100,7 +100,7 @@ export async function runCli(args: string[], root = process.cwd(), io = {
           if (resolved.kind !== "found") diagnostics.push(diagnostic("mesh.config.ts", resolved.message));
           else {
             const entity = resolved.entity;
-            const plan = explainAction(entity, command.action!, built.document);
+            const plan = explainAction(entity, command.action!, built.document, config.data.capabilities?.capabilities ?? []);
             if (plan) json = `${plan.join("\n")}\n`;
             else diagnostics.push(diagnostic("mesh.config.ts", `Unknown action "${command.action}" of ${entity.fqn}; known actions: ${effectiveNames(entity).join(", ")}`));
           }
