@@ -14,7 +14,7 @@ import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 let memoryLayers = 0;
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
-export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions"]);
+export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins"]);
 
 // A type alias, not an interface, so it satisfies `DataAdapter.options` (an index signature).
 export type SQLiteOptions = { readonly file: string };
