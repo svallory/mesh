@@ -2,8 +2,9 @@ import { expect, test } from "bun:test";
 import { bigint, doublePrecision, pgTable, text } from "drizzle-orm/pg-core";
 import { describeServer, testDatabase } from "./support.ts";
 
-// Postgres gives `sum` of a bigint and `avg` of anything as `numeric`, and an int8 anchor as text: the shared rollup
-// decodes both, so every adapter answers with numbers.
+// Postgres gives `sum` and `avg` of a bigint (a Mesh integer) as `numeric`, `count` as bigint, and an int8 anchor, all
+// as text; over double precision (a Mesh decimal) `sum` and `avg` stay double precision. The shared rollup decodes the
+// text, so every adapter answers with numbers.
 const lines = pgTable("rollup_lines", {
   id: text("id").primaryKey().notNull(),
   invoiceId: text("invoiceId"),
