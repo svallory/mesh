@@ -12,7 +12,7 @@ export interface SqlDialect {
   param(value: Scalar, kind: ValueClass): SQL;
   /** Drizzle's `alias(table, name)` of the dialect's core (`sqlite-core`, `pg-core`): each depth's table. */
   alias(table: Table, name: string): Table;
-  /** `length` of a string in code points. SQLite `length(x)`; Postgres `char_length(x)`. */
+  /** `length` of a string in code points. SQLite `length(x)`; Postgres `char_length((x)::text)`, so a number reads as its text, as SQLite's length does. */
   length(operand: SQL): SQL;
   /** Exact division (`div`), null for a zero divisor. SQLite `(CAST(a AS REAL) / NULLIF(b, 0))`. */
   divide(a: SQL, b: SQL): SQL;

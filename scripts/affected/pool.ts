@@ -36,6 +36,10 @@ export const PACKAGE_WEIGHTS: Readonly<Record<string, number>> = {
   "packages/data-drizzle": 0.04,
   "packages/model": 0.02,
   "packages/create-meshfw": 0.01,
+  // Not measured: without MESH_TEST_POSTGRES_URL its server tests skip and it takes about a second; with a server
+  // (CI's data group) the whole file set took 127 to 163 s on a shared Mac. Set between the two, so a local run with
+  // a server starts it early.
+  "packages/data-postgres": 8,
 };
 // Measured on forge on 2026-11-17 (each run under a 4 GiB cgroup scope, cgroup memory.peak): a model or a compiler
 // edit at four jobs peaked at 2.14 GiB at most (two jobs: 1.31 GiB), under the 3 GiB this budget allows inside

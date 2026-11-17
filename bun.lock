@@ -119,6 +119,31 @@
         "@meshfw/runtime": "workspace:*",
       },
     },
+    "packages/data-postgres": {
+      "name": "@meshfw/data-postgres",
+      "version": "0.0.0",
+      "dependencies": {
+        "@meshfw/data-drizzle": "workspace:*",
+        "drizzle-orm": "0.45.3",
+      },
+      "devDependencies": {
+        "@meshfw/compiler": "workspace:*",
+        "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
+        "drizzle-kit": "0.31.11",
+      },
+      "peerDependencies": {
+        "@meshfw/compiler": "workspace:*",
+        "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
+        "drizzle-kit": "0.31.11",
+      },
+      "optionalPeers": [
+        "@meshfw/compiler",
+        "@meshfw/model",
+        "drizzle-kit",
+      ],
+    },
     "packages/data-sqlite": {
       "name": "@meshfw/data-sqlite",
       "version": "0.0.0",
@@ -343,6 +368,8 @@
     "@meshfw/compiler": ["@meshfw/compiler@workspace:packages/compiler"],
 
     "@meshfw/data-drizzle": ["@meshfw/data-drizzle@workspace:packages/data-drizzle"],
+
+    "@meshfw/data-postgres": ["@meshfw/data-postgres@workspace:packages/data-postgres"],
 
     "@meshfw/data-sqlite": ["@meshfw/data-sqlite@workspace:packages/data-sqlite"],
 

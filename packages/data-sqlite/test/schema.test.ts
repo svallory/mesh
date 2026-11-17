@@ -158,6 +158,11 @@ describe("MESH_SCHEMA_* build errors", () => {
     });
   });
 
+  test("a table name longer than Postgres's 63 bytes still builds on SQLite: the length rule is Postgres's", () => {
+    const name = "t".repeat(64);
+    expect(schemaView(input({ "post.mesh.mx": `entity :Post table="${name}"\n  attributes\n    uuid :id primary-key\n` })).tables[0]!.nameLiteral).toBe(JSON.stringify(name));
+  });
+
   test("negative: distinct tables and distinct columns build", () => {
     const view = schemaView(input({
       "sales/order.mesh.mx": 'entity :Order table="sales_orders"\n  attributes\n    uuid :id primary-key\n    string :title\n    string :subtitle\n',

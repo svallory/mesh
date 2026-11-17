@@ -1,0 +1,47 @@
+{
+  "name": "@meshfw/data-postgres",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src",
+    "templates"
+  ],
+  "description": "Mesh Postgres data adapter on Bun.SQL and Drizzle",
+  "exports": {
+    ".": "./src/index.ts",
+    "./build": "./src/build.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@meshfw/data-drizzle": "workspace:*",
+    "drizzle-orm": "0.45.3"
+  },
+  "peerDependencies": {
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "drizzle-kit": "0.31.11"
+  },
+  "peerDependenciesMeta": {
+    "@meshfw/compiler": {
+      "optional": true
+    },
+    "@meshfw/model": {
+      "optional": true
+    },
+    "drizzle-kit": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "drizzle-kit": "0.31.11"
+  }
+}
