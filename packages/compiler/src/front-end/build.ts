@@ -2,6 +2,7 @@ import { lowerSource } from "@mxlang/core";
 import { basename, dirname, relative, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import {
+  absolutePath,
   foreignAbsolute,
   inside,
   normalizePath,
@@ -44,7 +45,7 @@ import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
-import { error, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
+import { error, offsetAt, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
 import { literalFits } from "./literal-types.ts";
 import {
@@ -1254,13 +1255,61 @@ export type MxDiagnostic = ReturnType<typeof parseEntitySource>["diagnostics"][n
  * (`ctx.fail(message, { code: "MESH_X" })`) as they were given. Only a diagnostic that arrives with no code is a syntax
  * error to Mesh; MX gives every error a code, so that is a fallback and not a path any entity source is known to reach.
  */
-export function meshDiagnostic(d: MxDiagnostic, file: string): Diagnostic {
-  return {
-    severity: d.severity,
-    code: d.code ?? "MESH_SYNTAX",
-    message: d.message,
-    position: { file, line: d.line, column: d.column, offset: d.offset },
-    fix: staticFileFix(d) ?? relationshipValueFix(d),
+/**
+ * A diagnostic MX positions in another file (`IrDiagnostic.file`, a tag template's, a sidecar's, a concept's) is reported
+ * in that file when it is one of the project's entity files, with its offset counted in that file's text (MX gives
+ * `offset: -1` there). Any other file is named at the end of the message, and the diagnostic sits at 1:0 of the file
+ * being lowered: its position cannot be given in a file the build has not read (`otherFileResolver`).
+ */
+export function meshDiagnostic(
+  d: MxDiagnostic,
+  file: string,
+  otherFile: (path: string) => OtherFile = (path) => ({ kind: "unread", name: path }),
+): Diagnostic {
+  const base = { severity: d.severity, code: d.code ?? "MESH_SYNTAX", fix: staticFileFix(d) ?? relationshipValueFix(d) };
+  if (d.file === undefined)
+    return { ...base, message: d.message, position: { file, line: d.line, column: d.column, offset: d.offset } };
+  const other = otherFile(d.file);
+  if (other.kind === "project")
+    return {
+      ...base,
+      message: d.message,
+      position: { file: other.file, line: d.line, column: d.column, offset: offsetAt(other.source, d.line, d.column) },
+    };
+  return { ...base, message: `${d.message} (in \`${other.name}\`)`, position: { file, line: 1, column: 0, offset: 0 } };
+}
+
+/** Where an MX diagnostic's `file` lands: a project entity file (its project-relative path and text), or a name for the message. */
+export type OtherFile =
+  | { readonly kind: "project"; readonly file: string; readonly source: string }
+  | { readonly kind: "unread"; readonly name: string };
+
+/**
+ * Looks up a path MX gives in `IrDiagnostic.file` among the project's entity files (`sources`, keyed by absolute path
+ * under `rootPath` as given). MX gives absolute paths with the directories realpathed, so a path under the root's
+ * realpath is rebased onto the root as given (on macOS `/tmp` is `/private/tmp`). A path inside the root that is not a
+ * project file is named project-relative; a path outside the root, a relative one (no known producer: MX would resolve
+ * it against a cwd the build cannot know) and a foreign absolute one are named as given.
+ */
+export function otherFileResolver(
+  rootPath: string,
+  sources: ReadonlyMap<string, { readonly file: string; readonly source: string }>,
+): (path: string) => OtherFile {
+  let realRoot = rootPath;
+  try {
+    realRoot = realpathSync(rootPath);
+  } catch {
+    // A virtual project: the root is not a directory on disk.
+  }
+  return (path) => {
+    const given = normalizePath(path);
+    if (!absolutePath(given) || foreignAbsolute(given)) return { kind: "unread", name: given };
+    const absolute = inside(rootPath, given) ? resolve(given)
+      : inside(realRoot, given) ? resolve(rootPath, relative(realRoot, given))
+      : null;
+    if (absolute === null) return { kind: "unread", name: given };
+    const hit = sources.get(absolute);
+    return hit ? { kind: "project", ...hit } : { kind: "unread", name: normalizePath(relative(rootPath, absolute)) };
   };
 }
 
@@ -1328,17 +1377,24 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const ignoredByPath = new Map(
     (project.ignored ?? []).map((i) => [resolve(rootPath, i.file), i] as const),
   );
-  const virtualFiles = new Set(
-    project.files.map((f) => resolveEntityFile(rootPath, f.file)?.absolute),
-  );
+  // Each file is resolved once, and every file's text is known before the first is lowered: a diagnostic MX positions in
+  // another project file (a concept's tag file) is reported there, whichever file is lowered first.
+  const resolved = project.files.map((input) => resolveEntityFile(rootPath, input.file));
+  const sources = new Map<string, { file: string; source: string }>();
+  project.files.forEach((input, i) => {
+    const path = resolved[i];
+    if (path) sources.set(path.absolute, { file: path.file, source: input.source });
+  });
+  const virtualFiles = new Set(sources.keys());
+  const otherFile = otherFileResolver(rootPath, sources);
   // Every file is parsed before any is built: a reference through a namespace import (`billing.Invoice`) is
   // checked against what the imported file declares.
   const parsedFiles: { input: (typeof project.files)[number]; path: NonNullable<ReturnType<typeof resolveEntityFile>>; ir: NonNullable<ReturnType<typeof parseEntitySource>["ir"]> }[] = [];
   const declaredByPath = new Map<string, DeclaredFile>();
   const events: EventDeclaration[] = [];
   const commands: CommandDeclaration[] = [];
-  for (const input of project.files) {
-    const path = resolveEntityFile(rootPath, input.file);
+  for (const [i, input] of project.files.entries()) {
+    const path = resolved[i];
     if (!path) {
       diagnostics.push(
         error(
@@ -1351,7 +1407,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     }
     const parsed = parseEntitySource(input.source, path.absolute);
     diagnostics.push(
-      ...parsed.diagnostics.map((d) => meshDiagnostic(d, path.file)),
+      ...parsed.diagnostics.map((d) => meshDiagnostic(d, path.file, otherFile)),
     );
     if (!parsed.ir) continue;
     parsedFiles.push({ input, path, ir: parsed.ir });
