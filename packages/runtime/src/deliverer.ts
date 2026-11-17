@@ -37,6 +37,8 @@ const DEFAULT_TIMING = Object.freeze({
   /** The default `maxQueue` of a subscription. */
   maxQueue: 10_000,
 });
+/** How long a renewal that met a transient error other than a lock wait waits before its next try (after one at once). */
+const RENEW_RETRY_MS = 500;
 export type DeliveryTiming = { -readonly [K in keyof typeof DEFAULT_TIMING]: number };
 const timing: DeliveryTiming = { ...DEFAULT_TIMING };
 
@@ -323,22 +325,43 @@ class Deliverer {
     this.#renewal = setTimeout(() => { void this.#renew(); }, timing.renewMs);
   }
 
-  /** Renew the claim in one statement matching the run id and the generation; a blocked renewal waits until the lapse. */
+  /**
+   * Renew the claim in one statement matching the run id and the generation; a blocked renewal waits until the lapse.
+   * A `DatabaseBusyError` that is not a lock wait (`reason` other than `"locked"` or `"lock-timeout"`: a serialization
+   * failure, a deadlock, a lost connection) is retried, at once and then every 500 ms, until the renewal succeeds or
+   * the lapse passes; only then is the claim lost, naming the last reason.
+   */
   async #renew(): Promise<void> {
     if (!this.holding || this.lost) return;
     const generation = this.generation;
-    try {
-      const waitMs = Math.max(1, this.renewedAt + timing.lapseMs - Date.now());
-      const renewed = await this.layer.transaction((tx) => operations(tx).renewClaim(RUN_ID, generation), { waitMs });
-      if (!this.holding || this.generation !== generation) return;
-      if (!renewed) { this.lose("a renewal of the claim updated no row, so another process has taken it over"); return; }
-      this.renewedAt = Date.now();
-      this.#scheduleRenewal();
-    } catch (error) {
-      if (!this.holding || this.generation !== generation) return;
-      this.lose(error instanceof DatabaseBusyError
-        ? "a renewal of the claim stayed blocked by another connection's lock until the claim lapsed"
-        : `a renewal of the claim failed: ${error instanceof Error ? error.message : String(error)}`);
+    const deadline = this.renewedAt + timing.lapseMs;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const waitMs = Math.max(1, deadline - Date.now());
+        const renewed = await this.layer.transaction((tx) => operations(tx).renewClaim(RUN_ID, generation), { waitMs });
+        if (!this.holding || this.generation !== generation) return;
+        if (!renewed) { this.lose("a renewal of the claim updated no row, so another process has taken it over"); return; }
+        this.renewedAt = Date.now();
+        this.#scheduleRenewal();
+        return;
+      } catch (error) {
+        if (!this.holding || this.generation !== generation) return;
+        if (!(error instanceof DatabaseBusyError)) {
+          this.lose(`a renewal of the claim failed: ${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+        if (error.reason === "locked" || error.reason === "lock-timeout") {
+          this.lose("a renewal of the claim stayed blocked by another connection's lock until the claim lapsed");
+          return;
+        }
+        const left = deadline - Date.now();
+        if (left <= 0) {
+          this.lose(`a renewal of the claim kept failing (${error.reason}) until the claim lapsed`);
+          return;
+        }
+        if (attempt > 0) await new Promise<void>((resolve) => { this.#renewal = setTimeout(resolve, Math.min(RENEW_RETRY_MS, left)); });
+        if (!this.holding || this.lost || this.generation !== generation) return;
+      }
     }
   }
 
@@ -524,7 +547,7 @@ class Deliverer {
         const state = await this.#checkGeneration(ops);
         const handlers = await ops.readHandlerProgress();
         const subscriptions = await ops.readSubscriptionProgress();
-        const end = page === null || from === null ? null : page.rows.length === timing.batch ? page.rows.at(-1)!.position : Math.max(page.highest, page.rows.at(-1)?.position ?? from);
+        const end = page === null || from === null ? null : page.rows.length === timing.batch ? page.rows.at(-1)!.position : Math.max(page.settled, page.rows.at(-1)?.position ?? from);
         /** The position a reader at `position` moves to over the page's rows it passes (`passes`), stopping at an undeclared row. */
         const moved = (position: number, passes: (row: OutboxRow) => boolean): number => {
           if (page === null || end === null || from === null || position < from) return position;

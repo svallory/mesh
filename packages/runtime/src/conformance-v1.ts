@@ -145,6 +145,24 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       await expectIds(read, { filter: { rank: { nil: false } }, sort: ["-rank"] }, ["a4", "a5", "a1", "a6", "a2"], "-rank");
       await expectIds(read, { sort: [] }, ["a1", "a2", "a3", "a4", "a5", "a6"], "an empty sort");
     })],
+    ["nulls sort first ascending and last descending, and text sorts and compares bytewise, as on SQLite", withFixture(async (fixture) => {
+      // Upper case, an underscore, lower case and a non-ASCII letter: byte order differs from every locale's collation.
+      const rows = [
+        { id: "b1", parentId: null, createdAt: day(1), title: "apple", rank: 2 },
+        { id: "b2", parentId: null, createdAt: day(1), title: "Banana", rank: null },
+        { id: "b3", parentId: null, createdAt: day(1), title: "_x", rank: 1 },
+        { id: "b4", parentId: null, createdAt: day(1), title: "\u00e9", rank: null },
+      ];
+      await fixture.layer.transaction(async (tx) => { for (const row of rows) await tx.insert(fixture.taskTable, row); });
+      const read = (query?: Query) => fixture.layer.transaction(async (tx) => (await tx.select(fixture.taskTable, query)).map((row) => String(row.id)));
+      await expectIds(read, { sort: ["rank"] }, ["b2", "b4", "b3", "b1"], "rank ascending puts nulls first, ties in key order");
+      await expectIds(read, { sort: ["-rank"] }, ["b1", "b3", "b2", "b4"], "rank descending puts nulls last, ties in key order");
+      await expectIds(read, { sort: ["title"] }, ["b2", "b3", "b1", "b4"], "title ascending in byte order");
+      await expectIds(read, { sort: ["-title"] }, ["b4", "b1", "b3", "b2"], "title descending in byte order");
+      await expectIds(read, { filter: { title: { lt: "b" } } }, ["b1", "b2", "b3"], "lt compares bytewise");
+      await expectIds(read, { filter: { title: { gte: "_" } } }, ["b1", "b3", "b4"], "gte compares bytewise");
+      await expectIds(read, { filter: { title: { eq: "banana" } } }, [], "eq is exact, letter case included");
+    })],
     ["limit and offset page the result, and an offset past the end is empty", withTasks(async (read) => {
       const query = { sort: ["createdAt", "id"] };
       await expectIds(read, { ...query, limit: 2 }, ["a1", "a5"], "first page");

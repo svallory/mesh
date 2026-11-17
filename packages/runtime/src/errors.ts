@@ -156,29 +156,75 @@ export class NotFoundError extends MeshError {
   }
 }
 
+/** Why a database call was given up; each is transient (spec, Actions, "Run-time errors and `retryable`"). */
+export type DatabaseBusyReason = "locked" | "lock-timeout" | "serialization" | "deadlock" | "connection";
+
+/** What `DatabaseBusyError` takes beside the database and the wait. */
+export interface DatabaseBusyOptions extends MeshErrorOptions {
+  /** Default `"locked"`, which is every case data-sqlite raises. */
+  reason?: DatabaseBusyReason;
+  /** The SQLSTATE the server gave, when it gave one. */
+  sqlstate?: string;
+  /**
+   * For `reason: "connection"` only: `"commit"` when the connection was lost during COMMIT, so whether the transaction
+   * committed is unknown (`retryable` then defaults to `false`); `"connect"` when no connection could be opened because
+   * the server did not answer (the message names the cause).
+   */
+  during?: "commit" | "connect";
+}
+
+function busyMessage(file: string, waitedMs: number, options: DatabaseBusyOptions | undefined): string {
+  const state = options?.sqlstate === undefined ? "" : ` (SQLSTATE ${options.sqlstate})`;
+  switch (options?.reason ?? "locked") {
+    case "locked":
+      return waitedMs > 0
+        ? `The database file ${JSON.stringify(file)} stayed locked by another connection for ${waitedMs} ms, so the call gave up`
+        : `The database file ${JSON.stringify(file)} is locked by another connection, and this statement is not retried`;
+    case "lock-timeout":
+      return `The database ${file} kept a row or table locked by another transaction for ${waitedMs} ms, so the call gave up${state}`;
+    case "serialization":
+      return `The database ${file} could not serialize this transaction with a concurrent one, so it was rolled back; the same call may succeed if repeated${state}`;
+    case "deadlock":
+      return `The database ${file} found this transaction in a deadlock with another one and rolled it back; the same call may succeed if repeated${state}`;
+    case "connection": {
+      if (options?.during === "commit")
+        return `The connection to the database ${file} was lost during COMMIT, so whether the transaction committed is unknown; check before repeating the call`;
+      if (options?.during === "connect") {
+        const cause = options.cause instanceof Error ? options.cause.message : String(options.cause);
+        return `Could not connect to the database ${file}: ${cause}; the same call may succeed once the server answers`;
+      }
+      return `The connection to the database ${file} was lost, so the transaction was rolled back`;
+    }
+  }
+}
+
 /**
- * A database call stayed blocked by another connection and was given up (`MESH_DATABASE_BUSY`): a transaction that
- * waited out its retries, or a statement that met a lock and is not retried. data-sqlite is the adapter that raises it.
+ * A database call was given up for a reason that may be gone on the next try (`MESH_DATABASE_BUSY`): a transaction that
+ * waited out its retries for another connection's lock, a statement that met a lock and is not retried (both
+ * `reason: "locked"`, the cases data-sqlite raises), or, on a server dialect, a lock wait that timed out, a
+ * serialization failure, a deadlock or a lost connection, each with its `reason` and the server's `sqlstate`.
  * The code is `MESH_*`, unlike the lowercase category codes of the other classes, as the specification names it.
  */
 export class DatabaseBusyError extends MeshError {
   /** A lock that was held may be free on the next try. */
   static override readonly retryableByDefault: boolean = true;
   readonly code = "MESH_DATABASE_BUSY";
-  /** The database file that was locked. */
+  /** The database the layer names (`layer.database`): a SQLite file's path, or a server URL without credentials. */
   readonly file: string;
   /** How long the call waited, in milliseconds; 0 for a statement that is not retried. */
   readonly waitedMs: number;
+  /** Why the call was given up; `"locked"` unless the adapter says otherwise. */
+  readonly reason: DatabaseBusyReason;
+  /** The server's SQLSTATE, or null (SQLite, or a connection that broke without one). */
+  readonly sqlstate: string | null;
 
-  constructor(file: string, waitedMs: number, options?: MeshErrorOptions) {
-    super(
-      waitedMs > 0
-        ? `The database file ${JSON.stringify(file)} stayed locked by another connection for ${waitedMs} ms, so the call gave up`
-        : `The database file ${JSON.stringify(file)} is locked by another connection, and this statement is not retried`,
-      options,
-    );
+  constructor(file: string, waitedMs: number, options?: DatabaseBusyOptions) {
+    const lostAtCommit = options?.reason === "connection" && options.during === "commit";
+    super(busyMessage(file, waitedMs, options), lostAtCommit && options.retryable === undefined ? { ...options, retryable: false } : options);
     this.file = file;
     this.waitedMs = waitedMs;
+    this.reason = options?.reason ?? "locked";
+    this.sqlstate = options?.sqlstate ?? null;
   }
 }
 

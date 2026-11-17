@@ -57,7 +57,10 @@ export type Sort = readonly string[];
 
 /**
  * A read. Rows that tie on every `sort` field come back in primary-key order, so a page
- * is the same page every time. `offset` without `limit` skips rows and returns the rest. A
+ * is the same page every time. Nulls sort first ascending and last descending, and text
+ * sorts and compares (`eq`, `lt`, `lte`, `gt`, `gte`) bytewise, letter case included, as
+ * SQLite does; a server dialect pins this order (`COLLATE "C"`, `NULLS FIRST`/`NULLS LAST`).
+ * `offset` without `limit` skips rows and returns the rest. A
  * field that is `undefined` is the same as one that is left out, so a caller can pass an
  * optional input through; a filter's operators do not have this leniency.
  * `limit` and `offset` are non-negative integers; an offset past the end returns no rows.
@@ -75,8 +78,9 @@ export interface Query {
  * Keys: an insert whose row has no value for a single-column primary key gets one. A text
  * key becomes a UUIDv7 (time-ordered, and increasing within one process even inside one
  * millisecond); an integer key becomes the highest stored value plus one, computed in the
- * write transaction, so a rolled-back insert leaves no gap. Inserts into one table run one at a time,
- * so parallel inserts get distinct consecutive keys. Deleting the highest row frees its key for the
+ * write transaction, so a rolled-back insert leaves no gap. Inserts into one table run one at a time
+ * within one layer, so parallel inserts get distinct consecutive keys; across processes on a server dialect, one of two
+ * parallel fills fails with a retryable `MESH_DATABASE_BUSY`. Deleting the highest row frees its key for the
  * next insert, so a key is not a monotonic cursor. A value the caller supplies is
  * stored as given. The adapter must declare `integer-key-fill` to take an integer key.
  */
@@ -156,12 +160,22 @@ export type OutboxAppend = Omit<OutboxRow, "position">;
 
 /** One read of the outbox: its rows and both positions, taken from one state of the database. */
 export interface OutboxPage {
-  /** Committed rows with `position > after`, in order, at most `limit`. */
+  /** Committed rows with `position > after` and `position <= settled`, in order, at most `limit`. */
   readonly rows: readonly OutboxRow[];
   /** The highest deleted position, from `mesh_outbox_state`; 0 before the first delete. */
   readonly deletedThrough: number;
-  /** The highest position ever assigned; 0 before the first append. */
+  /**
+   * The highest position ever assigned; 0 before the first append. On a server dialect whose positions come from a
+   * sequence (Postgres) it counts rolled-back and still-running assignments too.
+   */
   readonly highest: number;
+  /**
+   * Every position at or below it is final: its row is committed, or will never commit. `deletedThrough <= settled <=
+   * highest`; every row returned is at or below it; with no transaction open on the database it equals `highest`.
+   * SQLite: always `highest` (one writer). A reader that passes a short page may move its cursor to `settled`, never to
+   * `highest`. Required: every layer object, a fake included, sets it; core never falls back to `highest`.
+   */
+  readonly settled: number;
 }
 
 /**
@@ -175,7 +189,8 @@ export interface OutboxOperations {
   appendEvent(row: OutboxAppend): Promise<number>;
   /**
    * The committed rows after `after`, in an order that never skips (once position p was returned, no row that commits
-   * later is below p), with both positions, in one statement, outside any transaction. Inside a transaction it is
+   * later is below p), and only rows at or below the page's `settled` position, with the rows and both positions in one
+   * statement, outside any transaction. Inside a transaction it is
    * refused with a `FrameworkError`: a transaction's own events come from `published()`.
    */
   readOutbox(after: number, limit: number): Promise<OutboxPage>;
@@ -283,7 +298,7 @@ export interface DeliveryOperations {
 export interface TransactionOptions {
   /**
    * How long to wait for another connection's write lock, in all, in milliseconds, in place of the adapter's default.
-   * Core's claim renewal passes the 15 s lapse; nothing else sets it.
+   * Core's claim renewal passes the 15 s lapse; nothing else sets it. On Postgres it bounds each lock wait.
    */
   readonly waitMs?: number;
 }
@@ -320,7 +335,9 @@ export interface DataLayer {
    * settled, and the transaction hangs. Joining
    * follows async context, so a detached promise started inside the callback joins it too;
    * one whose turn comes after the outer call settled rejects with a FrameworkError. A call
-   * made after the outer transaction settled starts a new one.
+   * made after the outer transaction settled starts a new one. On a server dialect, a failed statement may abort the
+   * transaction: the adapter then rejects the outer call even if the callback caught the failure, and never resolves a
+   * transaction that did not commit.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>, options?: TransactionOptions): Promise<T>;
   /**
@@ -335,6 +352,12 @@ export interface DataLayer {
   refuseIfFailed(): boolean;
   /** The outbox read; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
   readOutbox?: OutboxOperations["readOutbox"];
+  /**
+   * Optional. Calls `listener` after a transaction that appended to the outbox commits, in this process or in any other
+   * on the same database, and never for a rollback. Best effort: a call can be late, repeated or, while the adapter
+   * reconnects, missed, so a bus that relies on it keeps a poll. Returns the unsubscribe. data-sqlite leaves it out.
+   */
+  onAppended?(listener: () => void): () => void;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

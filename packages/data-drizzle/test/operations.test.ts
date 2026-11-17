@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { FrameworkError } from "@meshfw/runtime";
+import { DatabaseBusyError, FrameworkError, NotFoundError } from "@meshfw/runtime";
 import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, keyCondition, type DrizzleCommands } from "../src/index.ts";
 
@@ -54,6 +54,25 @@ test("driver error becomes FrameworkError with the same cause", async () => {
   const operations = drizzleOperations(commands, () => {});
   try { await operations.insert(table, row); throw new Error("did not fail"); }
   catch (error) { expect(error).toBeInstanceOf(FrameworkError); expect((error as Error).cause).toBe(cause); }
+});
+
+test("a Mesh error a command throws reaches the caller unchanged, a DatabaseBusyError above all, from every operation", async () => {
+  const busy = new DatabaseBusyError("postgres://db:5432/app", 0, { reason: "serialization", sqlstate: "40001" });
+  const other = new NotFoundError("a.B", { id: 1 });
+  for (const thrown of [busy, other]) {
+    const { commands } = fixture();
+    const fail = () => { throw thrown; };
+    commands.insert = fail; commands.select = fail; commands.update = fail; commands.delete = fail; commands.aggregate = fail;
+    const operations = drizzleOperations(commands, () => {});
+    for (const call of [() => operations.insert(table, row), () => operations.select(table), () => operations.selectByKey(table, { id: 1 }),
+      () => operations.updateByKey(table, { id: 1 }, { title: "x" }), () => operations.deleteByKey(table, { id: 1 }), () => operations.max(table, "id")]) {
+      await expect(call()).rejects.toBe(thrown);
+    }
+  }
+  // A rejected promise is let through the same way as a synchronous throw.
+  const { commands } = fixture();
+  commands.select = () => Promise.reject(busy) as never;
+  await expect(drizzleOperations(commands, () => {}).select(table)).rejects.toBe(busy);
 });
 
 test("revoked operations reject every method before touching a driver", async () => {

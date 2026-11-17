@@ -133,18 +133,26 @@ export class PerDatabase<T> {
 /** The listeners `BusCore.onPublished` registered, per database. */
 const publishListeners = new PerDatabase<Set<() => void>>(() => new Set());
 
-/** Call `listener` after each outermost commit in this process that published on `layer`'s database. Returns the unsubscribe. */
+/**
+ * Call `listener` after each outermost commit in this process that published on `layer`'s database, and, when the layer
+ * reports them (`DataLayer.onAppended`), after such commits in other processes. Returns the unsubscribe, which removes both.
+ */
 export function onPublished(layer: DataLayer, listener: () => void): () => void {
   const listeners = publishListeners.get(layer);
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  // The adapter calls this from its own notification callback: a throw is reported here and never reaches the adapter.
+  const appended = layer.onAppended?.(() => { wake(listener); });
+  return () => { listeners.delete(listener); appended?.(); };
+}
+
+/** Calls one `onPublished` listener; a listener that throws is reported, never thrown to the caller. */
+function wake(listener: () => void): void {
+  try { listener(); } catch (error) { console.error("A bus's onPublished listener threw:", error); }
 }
 
 /** Called by `outermost` after a commit that published: wakes every listener of the database. A listener that throws is reported, never the commit's failure. */
 export function notifyPublished(layer: DataLayer): void {
-  for (const listener of [...publishListeners.get(layer)]) {
-    try { listener(); } catch (error) { console.error("A bus's onPublished listener threw:", error); }
-  }
+  for (const listener of [...publishListeners.get(layer)]) wake(listener);
 }
 
 /** The loaded events module, by the configuration object that loads it: loaded once per configuration. */
@@ -329,7 +337,11 @@ export interface ReadEventsQuery {
 /** What `readEvents` resolves with: the events, the next cursor, and the outbox's high-water position. */
 export interface ReadEventsPage<E extends object = object> {
   readonly events: readonly EventRecord<E>[];
-  /** The position of the last row read, filtered rows included; `after` when the page read none. */
+  /**
+   * The position of the last row read, filtered rows included; on a page shorter than its limit, the page's settled
+   * position when that is higher (every position up to it is final), so it can name a position with no row; `after`
+   * when neither moves it.
+   */
   readonly cursor: number;
   /**
    * The highest position ever assigned, as `readOutbox` reports it in the same snapshot as the rows; 0 before the first
@@ -371,7 +383,9 @@ export async function readEventsFrom(layer: DataLayer, classes: ReadonlyMap<stri
     if (key !== undefined && !sameKey(row.key, key)) continue;
     events.push(recordOf(row, eventClass));
   }
-  return Object.freeze({ events: Object.freeze(events), cursor: page.rows.at(-1)?.position ?? after, highest: page.highest });
+  const last = page.rows.at(-1)?.position ?? after;
+  const cursor = page.rows.length < limit ? Math.max(last, page.settled) : last;
+  return Object.freeze({ events: Object.freeze(events), cursor, highest: page.highest });
 }
 
 /** True when two keys hold the same fields with the same values. */

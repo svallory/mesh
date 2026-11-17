@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
-import { FrameworkError, type TableHandle } from "@meshfw/runtime";
+import { FrameworkError, type DataLayer, type OutboxPage, type TableHandle } from "@meshfw/runtime";
 import { outboxConformance, outboxRow } from "@meshfw/runtime/testing";
 import build from "../src/build.ts";
 import { capabilities, createSchema, sqlite } from "../src/index.ts";
@@ -98,18 +98,54 @@ for (const kind of ["memory", "file"] as const) {
       await createSchema(layer, tables);
       return layer;
     };
-    const checks = outboxConformance(make, capabilities);
-    test("the manifest declares gapless-positions, so its checks run beside the 8 every adapter passes", () => {
+    // A second connection exists only over a file: a private memory database has no sibling.
+    const sibling = kind === "file" ? { sibling: async (layer: { database?: string }) => sqlite({ file: layer.database! }) } : {};
+    const checks = outboxConformance(make, capabilities, sibling);
+    test(`the manifest declares gapless-positions, so its checks run beside the 10 every adapter passes${kind === "file" ? " and the one a second connection runs" : ""}`, () => {
       expect(Object.keys(checks).filter((name) => name.startsWith("gapless-positions"))).toHaveLength(2);
-      expect(Object.keys(checks)).toHaveLength(10);
+      expect(Object.keys(checks)).toHaveLength(kind === "file" ? 13 : 12);
+      expect(Object.keys(checks).some((name) => name.includes("two more connections"))).toBe(kind === "file");
       // never reusing a position is the spec's rule for every adapter, not part of gapless-positions
       const without = Object.keys(outboxConformance(make, { ...capabilities, capabilities: capabilities.capabilities.filter((c) => c !== "gapless-positions") }));
-      expect(without).toHaveLength(8);
+      expect(without).toHaveLength(10);
       expect(without).toContain("a delete that empties the outbox never lets a position be reused");
     });
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
 }
+
+describe("outbox conformance refuses a layer whose pages break the invariants", () => {
+  // data-sqlite keeps the page invariants, so these wrap it with a readOutbox that breaks one each and show the suite
+  // fails: a check turned around would otherwise pass until a server adapter breaks the rule.
+  const check = "with no transaction open, settled is highest, after appends, a rollback and a delete";
+  const broken = (bend: (page: OutboxPage) => OutboxPage) => async (): Promise<DataLayer> => {
+    const layer: DataLayer = sqlite({ file: ":memory:" });
+    await createSchema(layer, tables);
+    return {
+      database: layer.database,
+      transaction: (body, given) => layer.transaction(body, given),
+      refuseIfFailed: () => layer.refuseIfFailed(),
+      close: () => layer.close(),
+      readOutbox: async (after, limit) => bend(await layer.readOutbox!(after, limit)),
+    };
+  };
+  const run = (bend: (page: OutboxPage) => OutboxPage) => outboxConformance(broken(bend), capabilities)[check]!();
+
+  test("a page whose settled is above highest", async () => {
+    await expect(run((page) => ({ ...page, settled: page.highest + 1 }))).rejects.toThrow(/^Outbox conformance: .*deletedThrough <= settled <= highest must hold/);
+  });
+  test("a page with a row above settled", async () => {
+    await expect(run((page) => page.rows.length === 0 ? page : { ...page, settled: page.rows.at(-1)!.position - 1 }))
+      .rejects.toThrow(/^Outbox conformance: .*row 2 is out of order, at or below after, or above settled/);
+  });
+  test("a page whose settled is below deletedThrough", async () => {
+    await expect(run((page) => page.deletedThrough === 0 ? page : { ...page, settled: page.deletedThrough - 1, rows: [] }))
+      .rejects.toThrow(/^Outbox conformance: .*deletedThrough 1, settled 0, .*deletedThrough <= settled <= highest must hold/);
+  });
+  test("the same check passes on data-sqlite itself", async () => {
+    await run((page) => page);
+  });
+});
 
 describe("data-sqlite's outbox", () => {
   let scratch: string;

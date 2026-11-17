@@ -50,7 +50,8 @@ export function appendEvent(client: Database, row: OutboxAppend): number {
 /**
  * The rows after `after` and both positions in one statement. Outside `BEGIN` a statement is its own transaction on
  * SQLite, so the rows, the deleted-through position and the highest position describe one state of the database: a
- * delete can never commit between them. `sqlite_sequence` keeps the highest position `AUTOINCREMENT` ever gave.
+ * delete can never commit between them. `sqlite_sequence` keeps the highest position `AUTOINCREMENT` ever gave. One
+ * writer at a time means every position ever given is final once a read outside it sees it, so `settled` is `highest`.
  */
 export function readOutbox(client: Database, after: number, limit: number): OutboxPage {
   checkPosition(after, "readOutbox's after", 0);
@@ -80,7 +81,7 @@ export function readOutbox(client: Database, after: number, limit: number): Outb
       payload: JSON.parse(stored.payload),
     }));
   }
-  return Object.freeze({ rows: Object.freeze(rows), deletedThrough: first.s_deleted_through, highest: first.s_highest });
+  return Object.freeze({ rows: Object.freeze(rows), deletedThrough: first.s_deleted_through, highest: first.s_highest, settled: first.s_highest });
 }
 
 /**

@@ -116,6 +116,8 @@ declare module "@meshfw/runtime" {
     readonly rows: readonly OutboxRow[];
     readonly deletedThrough: number;
     readonly highest: number;
+    /** Every position at or below it is final (committed, or never to commit); a reader past a short page moves no further. SQLite: `highest`. */
+    readonly settled: number;
   }
 
   /** What a subscription filters on, stored with its row. */
@@ -156,6 +158,7 @@ declare module "@meshfw/runtime" {
     subscriptions(): readonly LiveSubscription[];
     /** Core's deletion pass, by `keep`; a bus calls it after each round. */
     deletionPass(): Promise<void>;
+    /** After each commit that published in this process, and in other processes when the data layer reports them; best effort, so a bus keeps its poll. */
     onPublished(listener: () => void): () => void;
     onClaimLost(listener: (error: Error) => void): () => void;
   }
@@ -466,16 +469,24 @@ declare module "@meshfw/runtime" {
     override code: "framework";
   }
 
+  /** Why a database call was given up. */
+  export type DatabaseBusyReason = "locked" | "lock-timeout" | "serialization" | "deadlock" | "connection";
+
   /**
-   * A database call that stayed blocked by another connection and was given up: a transaction still blocked after 5 s of
-   * retries, or a statement that met a lock and is not retried. Its code is `MESH_DATABASE_BUSY`.
+   * A database call given up for a reason that may be gone on the next try: on SQLite a transaction still blocked after
+   * 5 s of retries, or a statement that met a lock and is not retried (`reason: "locked"`); on a server dialect also a
+   * lock wait that timed out, a serialization failure, a deadlock or a lost connection. Its code is `MESH_DATABASE_BUSY`.
    */
   export class DatabaseBusyError extends MeshError {
     override code: "MESH_DATABASE_BUSY";
-    /** The database file that was locked. */
+    /** The database the layer names: a SQLite file's path, or a server URL without credentials. */
     readonly file: string;
     /** How long the call waited, in milliseconds; 0 for a statement that is not retried. */
     readonly waitedMs: number;
+    /** Why the call was given up; `"locked"` for every case data-sqlite raises. */
+    readonly reason: DatabaseBusyReason;
+    /** The server's SQLSTATE, or null (SQLite). */
+    readonly sqlstate: string | null;
   }
 
   /** A `readEvents` cursor behind the deleted rows: reading on would skip them. Its code is `MESH_EVENTS_DELETED`. */
