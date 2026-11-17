@@ -102,7 +102,7 @@ interface Scope {
   readonly action?: Action | undefined;
   /** Inside an inlined computed body: the read in the function that inlined it, where every problem is reported. */
   readonly outer?: { readonly position: SourcePosition; readonly path: string; readonly field: string } | undefined;
-  /** The computed fields being inlined, outermost first (`billing.Invoice#total`). */
+  /** The computed fields being inlined (`billing.Invoice#total`) and the rollups whose filter is being lowered (`billing.Invoice.c`), outermost first. */
   readonly inlining: readonly string[];
   /** The depth of the row whose belongs-to key columns may be read by name (`line.productId`): a rollup filter's parameter. */
   readonly keyed?: number;
@@ -383,9 +383,12 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
     const filter = of.filter;
     if (!filter) return rolled;
     const reported = (): never => refuse({ kind: "reported", position, field: field.name });
-    if (!filter.tree || options.reported?.(filter)) return reported();
+    // A filter that reads this rollup again, directly or through another entity, breaks R18 and is reported at the filter
+    // (MESH_ROLLUP_FILTER); lowering stops here rather than unfold it forever.
+    const key = `${entity.fqn}.${field.name}`;
+    if (!filter.tree || options.reported?.(filter) || scope.inlining.includes(key) || scope.inlining.length >= MAX_INLINE) return reported();
     try {
-      const where = lower(filter.tree, { rows: new Map([[filter.param, { depth: 0, entity: current }]]), from: entity, action: undefined, outer: undefined, inlining: scope.inlining, keyed: 0 }, "boolean");
+      const where = lower(filter.tree, { rows: new Map([[filter.param, { depth: 0, entity: current }]]), from: entity, action: undefined, outer: undefined, inlining: [...scope.inlining, key], keyed: 0 }, "boolean");
       return { ...rolled, where };
     } catch (cause) {
       if (cause instanceof Refused) return reported();

@@ -99,6 +99,22 @@ describe("a rollup where SQL is required (m10-rollups, R22)", () => {
     const built = fixture.build(invoice(["() => &badLines > 0"], "", "    count :badLines of=&lines filter=(l) => l.qty > &total\n"));
     expect(errors(built.diagnostics).map((d) => [d.code, d.position.offset])).toEqual([["MESH_ROLLUP_FILTER", built.source.indexOf("&total\n")]]);
   });
+
+  // The filter reads back into the rollup it belongs to (R18 forbids it): lowering stops at the rollup it is already in,
+  // so the read, the sort key and the policy each get no error of their own, only the filter's MESH_ROLLUP_FILTER.
+  test("a rollup whose filter reads that rollup again, at a filter, a sort key and a policy, gives only the filter's error", () => {
+    const source = invoice(["() => &c > 0"], "    read :sorted\n      sort\n        desc &c\n", "    count :c of=&lines filter=(l) => l.invoice.c > 0\n")
+      .replace("    policy :open\n      authorize-if=() => true\n", "    policy :open types=[:read]\n      authorize-if=() => &c > 0\n    policy :writes types=[:create, :update, :destroy]\n      authorize-if=() => true\n");
+    const built = fixture.build(source);
+    expect(errors(built.diagnostics).map((d) => d.code)).toEqual(["MESH_ROLLUP_FILTER"]);
+  });
+
+  test("a rollup whose filter reaches it through another entity gives only the filter's error", () => {
+    const customer = FILES["billing/customer.mesh.mx"]!.replace("    string :label()", "    count :big of=&invoices filter=(i) => i.customer.big > 2\n    string :label()");
+    expect(customer).toContain("count :big");
+    const built = fixture.build(invoice(["() => &customer.big > 0"]), { "billing/customer.mesh.mx": customer });
+    expect(errors(built.diagnostics).map((d) => [d.code, d.position.file])).toEqual([["MESH_ROLLUP_FILTER", "billing/customer.mesh.mx"]]);
+  });
 });
 
 describe("a json member read inside an inlined computed body (MESH_FILTER_TYPE, MESH_SORT_TYPE)", () => {
