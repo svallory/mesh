@@ -804,8 +804,13 @@ function policyGuardChecks(withTasks: WithTasks, declared: (name: string) => boo
       assert(await attempt(layer, integerTable, { seq: 7 }, { checks: [eqc(col("label"), val("seven"))], policies: [pol([0])] }) === true, "the integer-keyed row is deleted when admitted");
     }),
     guardedCheck("a guard that points at a check it does not have is a FrameworkError and deletes nothing", async (read, { layer, taskTable }) => {
-      for (const guard of [{ checks: [true], policies: [pol([1])] }, { checks: [true], policies: [pol(null, [-1])] }, { checks: "x", policies: [] }, { checks: [], policies: [{ forbid: "x", authorize: null }] }])
-        assert(await attempt(layer, taskTable, { id: "a1" }, guard as never) instanceof FrameworkError, `the guard ${describe(guard)} must be refused`);
+      // The adapter refuses the guard itself, before any statement reaches the database: a FrameworkError with no
+      // cause. A guard that crashed SQL building or the driver would arrive wrapped, with the crash as its cause.
+      for (const guard of [{ checks: [true], policies: [pol([1])] }, { checks: [true], policies: [pol(null, [-1])] }, { checks: "x", policies: [] }, { checks: [], policies: [{ forbid: "x", authorize: null }] }]) {
+        const outcome = await attempt(layer, taskTable, { id: "a1" }, guard as never);
+        assert(outcome instanceof FrameworkError, `the guard ${describe(guard)} must be refused with FrameworkError, got ${describe(outcome)}`);
+        assert(outcome.cause === undefined, `the guard ${describe(guard)} must be refused by the adapter, not by a failed statement (${outcome.message})`);
+      }
       await expectSame(read, ALL, "nothing is deleted");
     }),
   ];
