@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   GROUPS_FILE,
@@ -216,11 +218,55 @@ describe("the workflow", () => {
 });
 
 describe("verify.ts", () => {
+  // Every spawn is killed after 10 s: if argument handling broke, the real verify.ts would start a full run whose
+  // own `bun test scripts/` step spawns verify.ts again. A kill fails the test instead.
+  async function run(at: string, args: string[]) {
+    const proc = Bun.spawn(["bun", join(at, "scripts/verify.ts"), ...args], {
+      cwd: at,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 10_000,
+      killSignal: "SIGKILL",
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    expect(proc.signalCode).toBeNull();
+    return { code, stdout, stderr };
+  }
+
   async function verify(args: string[]) {
-    const proc = Bun.spawn(["bun", join(root, "scripts/verify.ts"), ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
-    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    const { code, stderr } = await run(root, args);
     return { code, stderr };
   }
+
+  /** A throwaway repository: verify.ts and plan.ts copied in, packages/a and packages/b, and `groupsFile` (raw
+   *  text) as its groups file. verify.ts finds its root from its own path, so the copy checks the fixture. */
+  async function fixture(groupsFile: string): Promise<string> {
+    const at = await mkdtemp(join(tmpdir(), "verify-fixture-"));
+    await Bun.write(join(at, "package.json"), JSON.stringify({ name: "fixture", workspaces: ["packages/*"] }));
+    for (const name of ["a", "b"]) {
+      await Bun.write(join(at, `packages/${name}/package.json`), JSON.stringify({ name, scripts: { test: "true" } }));
+    }
+    await Bun.write(join(at, "scripts/verify.ts"), Bun.file(join(root, "scripts/verify.ts")));
+    await Bun.write(join(at, "scripts/verify/plan.ts"), Bun.file(join(root, "scripts/verify/plan.ts")));
+    await Bun.write(join(at, GROUPS_FILE), groupsFile);
+    return at;
+  }
+
+  test("--group refuses to run any step when a package is in no group", async () => {
+    const at = await fixture(JSON.stringify({ groups: { all: { root: true, packages: ["packages/a"] } } }));
+    try {
+      const { code, stdout, stderr } = await run(at, ["--group", "all"]);
+      expect(code).toBe(1);
+      expect(stderr).toBe("verify: packages/b is in no group in scripts/verify-groups.json; add it to one\n");
+      expect(stdout).not.toContain("===");
+    } finally {
+      await rm(at, { recursive: true, force: true });
+    }
+  });
 
   test("an unknown group exits 2 and lists the groups", async () => {
     expect(await verify(["--group", "ghost"])).toEqual({
