@@ -137,9 +137,11 @@ describe("the statement query hands the adapter", () => {
   });
 
   test("a template's strings with a value count that does not match is refused", async () => {
-    const { query } = project();
+    const { query, statements } = project();
     const strings = (((s: TemplateStringsArray) => s) as (s: TemplateStringsArray) => TemplateStringsArray)`select 1`;
-    expect(await failure(() => query(strings, 1 as never))).toBeInstanceOf(FrameworkError);
+    expect(await failure(() => query(strings, 1 as never)))
+      .toEqual(new FrameworkError("query is a template tag: write query`select … ${value}`, never query(text); it was given an array that is not a template's strings"));
+    expect(statements).toHaveLength(0);
   });
 
   test.each([
@@ -174,10 +176,10 @@ describe("the statement query hands the adapter", () => {
 });
 
 describe("the binding and the transaction query runs on", () => {
-  test("with no binding in scope and none connected it throws as not connected", () => {
+  test("with no binding in scope and none connected it rejects as not connected", async () => {
     const { query, disconnect } = project();
     disconnect();
-    expect(() => query`select 1`).toThrow(new FrameworkError("query was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+    await expect(query`select 1`).rejects.toThrow(new FrameworkError("query was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
   });
 
   test("outside any transaction it opens one of its own on the connected binding's layer", async () => {

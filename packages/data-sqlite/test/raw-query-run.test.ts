@@ -194,8 +194,8 @@ describe("the generated #mesh exports query", () => {
     });
   });
 
-  test("outside any transaction, after connect(), it runs in a transaction of its own; before connect() it throws", async () => {
-    expect(() => mesh.query`select 1`).toThrow(new FrameworkError("query was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
+  test("outside any transaction, after connect(), it runs in a transaction of its own; before connect() it rejects", async () => {
+    await expect(mesh.query`select 1`).rejects.toThrow(new FrameworkError("query was called while not connected: call connect() first, or call it inside run() of bind(db) with a data layer of your own"));
     await mesh.connect({ deliver: false });
     try {
       expect(await mesh.query`select ${2} + 3 as n, ${true} as b, ${new Date(5)} as d`).toEqual([{ n: 5, b: 1, d: 5 }]);

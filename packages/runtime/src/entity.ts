@@ -724,7 +724,7 @@ async function validatedRows(schema: StandardSchemaV1, rows: readonly RawRow[]):
  * before it, and a rejection fails that transaction even when the caller catches it; outside one it opens a transaction
  * of its own, which runs no seam. Inside a `Mesh.checkPolicies` question it runs on the question's probe layer, as a
  * read, and what it rejects with fails nothing outside the question. While a computed field or a read policy is
- * evaluated it throws, as `Mesh.privileged` does. Every check of the call (the tag, the escapes, each value) runs inside
+ * evaluated it throws, as `Mesh.privileged` does; with no binding it rejects as not connected. Every check of the call (the tag, the escapes, each value) runs inside
  * the joined call, so a misuse a helper catches still fails the running transaction.
  */
 export function makeQuery(frame: AsyncFrame, connected: () => Binding | undefined): RawQuery {
@@ -737,7 +737,8 @@ export function makeQuery(frame: AsyncFrame, connected: () => Binding | undefine
       throw new FrameworkError(`query was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and run no raw query. Run it from a step, a check or a write policy, through a helper`);
     const binding = store === undefined ? connected() : undefined;
     const state = store?.state ?? (binding === undefined ? undefined : stateOf(binding));
-    if (!state) throw notConnected("query");
+    // Rejected, not thrown: only the mark check (E1) throws, so `.catch` and `Promise.allSettled` see not connected (E4).
+    if (!state) return Promise.reject(notConnected("query"));
     const question = questionOf(store);
     const layer = question ? probeFor(question, state).layer : state.layer;
     const own = store?.state === state ? store?.tx : undefined;
