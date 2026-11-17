@@ -338,3 +338,47 @@ describe("the generated read of a policy that reads the record", () => {
     expect(view.reads.find((m) => m.name === "read")!.contextParam).not.toContain("rows");
   });
 });
+
+describe("a caller's filter and sort by a translated computed field (O6 (a))", () => {
+  const view = (source: string, name = "Invoice", more: Record<string, string> = {}) => {
+    const built = fixture.build(source, more);
+    expect(errors(built.diagnostics)).toEqual([]);
+    const input = { document: built.document!, config: configOf("/project", "generated") };
+    const entity = built.entity(name);
+    return {
+      conditions: expressionsView(input, entity, `generated/domain/billing/${name.toLowerCase()}.expressions.ts`).conditions.map((entry) => entry.key),
+      moduleLines: actionsView(input, entity).moduleLines,
+    };
+  };
+
+  test("an entity with a read gets each translated field's literal and the $callerComputed table", () => {
+    const { conditions, moduleLines } = view(invoice([]));
+    expect(conditions).toEqual(['"computed.isLate"', '"computed.late"']);
+    const table = moduleLines.find((line) => line.startsWith("const $callerComputed"));
+    expect(table).toContain('isLate: { class: "boolean", literal: () => $conditions["computed.isLate"] }');
+    expect(table).toContain('shout: "plain"');
+    expect(table).toContain('nLines: "rollup"');
+  });
+
+  test("an entity with no read gets neither: the expressions view and the actions view agree", () => {
+    // Nothing reaches Note, so it needs no read; its computed field translates as Invoice's isLate does.
+    const note = `entity :Note
+  attributes
+    uuid :id primary-key
+    date :dueOn nullable
+  computed
+    boolean :isLate() { return &dueOn < %.today }
+  actions auto=[:create]
+  policies
+    policy :open
+      authorize-if=() => true
+`;
+    const { conditions, moduleLines } = view(invoice([]), "Note", { "billing/note.mesh.mx": note });
+    expect(conditions.filter((key) => key.startsWith('"computed.'))).toEqual([]);
+    expect(moduleLines.some((line) => line.includes("$callerComputed"))).toBe(false);
+    // The same field on an entity with a read is emitted, so the guard is what leaves it out here.
+    const read = view(invoice([]), "Note", { "billing/note.mesh.mx": note.replace("auto=[:create]", "auto=[:create, :read]") });
+    expect(read.conditions).toEqual(['"computed.isLate"']);
+    expect(read.moduleLines.some((line) => line.startsWith("const $callerComputed"))).toBe(true);
+  });
+});
