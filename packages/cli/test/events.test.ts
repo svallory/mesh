@@ -295,7 +295,7 @@ test("the binary wrapper builds the project in a real process", async () => {
 describe("the outbox", () => {
   type Layer = {
     transaction<T>(fn: (tx: { insert(table: unknown, row: unknown): Promise<unknown>; deleteOutboxThrough(position: number): Promise<number> }) => Promise<T>): Promise<T>;
-    readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number; settled: number }>;
+    readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number; settled: number; holes?: Readonly<Record<string, number>> }>;
     refuseIfFailed(): boolean;
     close(): Promise<void>;
   };
