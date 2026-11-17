@@ -375,7 +375,7 @@ describe("what is generated", () => {
   });
 
   test("the generated tree type-checks: the root and the parts publish the event the aggregate file declares", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-aggregate-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-aggregate-"));
     roots.push(root);
     const config = configOf(root);
     const result = build({ "work/note.mesh.mx": entity("Note", { imports: 'import * as t from "./task-aggregate.mesh.mx"\n', steps: "        publish=() => new t.TaskReopened({ taskId: &id })\n", sections: "  events\n    t.TaskReopened\n" }) });
