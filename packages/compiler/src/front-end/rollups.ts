@@ -127,7 +127,9 @@ export function resolveRollups(
         }
         // Reached only for a number or a date member, never a concept.
         computed.type = fn === "avg" ? "decimal" : keyTypeOf(attribute);
-        computed.nullable = nullable || attribute.nullable;
+        // A filter can leave out every record the path reaches, the one a route of required belongs-to reaches included,
+        // and the value is then null (a count is 0): a filtered rollup is nullable whatever its route.
+        computed.nullable = nullable || attribute.nullable || computed.rollup.filter !== undefined;
       }
     }
     // What the path means is checked; whether the loader can serve it is known now too, so say so at the build (ADR-0018):

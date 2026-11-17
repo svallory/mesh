@@ -7,6 +7,7 @@ import { buildModel } from "../src/front-end/build.ts";
 import { capabilityDiagnostics } from "../src/capabilities.ts";
 import { loadView } from "../src/typescript/views/load.ts";
 import { expressionsView, hasExpressions } from "../src/typescript/views/expressions.ts";
+import { typesView } from "../src/typescript/views/types.ts";
 import { configOf } from "./generated.ts";
 
 /**
@@ -116,6 +117,32 @@ describe("the model", () => {
     expect(filter.tree).toMatchObject({ kind: "call", fn: "eq" });
     expect("rest" in filter || "takesScope" in filter).toBe(false);
     expect(rollupOf(document, "all")).toEqual({ fn: "count", of: "lines" });
+  });
+
+  // A route of required belongs-to reaches exactly one record (R4), but the filter can leave it out: then the value is
+  // null, as the loader gives it, so a filtered rollup other than a count is nullable whatever its route.
+  const lineWith = (computed: string) => buildModel({
+    root: "/project",
+    files: [
+      { file: "billing/invoice.mesh.mx", source: invoice("count :n of=&lines") },
+      { file: "billing/line.mesh.mx", source: line.replace("    boolean :big() { return &units > 10 }\n", `    boolean :big() { return &units > 10 }\n    ${computed}\n`) },
+      { file: "billing/product.mesh.mx", source: product },
+    ],
+  });
+  const lineField = (document: ModelDocument | null | undefined, name: string) =>
+    document!.entities.find((entity) => entity.name === "Line")!.computed.find((c) => c.name === name)!;
+  test("a filter makes a rollup other than a count nullable, even over required belongs-to only; a count stays not null", () => {
+    const { document, diagnostics } = lineWith("max :bigLimit of=&invoice.limit filter=(i) => i.limit > 5\n    max :limitOf of=&invoice.limit\n    count :bigInvoice of=&invoice filter=(i) => i.limit > 5");
+    expect(diagnostics).toEqual([]);
+    expect([lineField(document, "bigLimit").type, lineField(document, "bigLimit").nullable]).toEqual(["integer", true]);
+    expect([lineField(document, "limitOf").type, lineField(document, "limitOf").nullable]).toEqual(["integer", false]);
+    expect([lineField(document, "bigInvoice").type, lineField(document, "bigInvoice").nullable]).toEqual(["integer", false]);
+    // So the privileged and loaded types say null too, not only the caller's.
+    const view = typesView({ document: document!, config: configOf("/project", "generated") }, document!.entities.find((entity) => entity.name === "Line")!);
+    const typed = (members: readonly { name: string; type: string }[]) => Object.fromEntries(members.filter((m) => ["bigLimit", "limitOf", "bigInvoice"].includes(m.name)).map((m) => [m.name, m.type]));
+    expect(typed(view.loadable!.tx!.members)).toEqual({ bigLimit: "number | null", limitOf: "number", bigInvoice: "number" });
+    expect(typed(view.loadable!.loadedMembers)).toEqual({ bigLimit: "number | null", limitOf: "number", bigInvoice: "number" });
+    expect(typed(view.loadable!.members)).toEqual({ bigLimit: "number | null", limitOf: "number | null", bigInvoice: "number" });
   });
 });
 
