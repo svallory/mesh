@@ -585,6 +585,45 @@ A nested call publishes with its own context, so a key such as `commandId` reach
 
 The module exports three things, each optional: `handlers` (see [Handlers](#handlers)), `metadata`, and `context(event)`, the context handlers run with.
 
+### Trace context
+
+Mesh does not trace yet and imports no OpenTelemetry package, but your application can carry its own trace from the call that publishes an event to the handlers that run it. Two properties of Mesh make that work. The `metadata` function runs in the async context of the call that published, so the span active around that call is the active span inside `metadata`. A handler's `run` body runs your code, so a context it makes active reaches the actions it calls and the `metadata` of the events they publish.
+
+The recipe writes the active trace context into each event's metadata with your OpenTelemetry setup's propagator, and wraps a handler's `run` to make that context active again around the body:
+
+```ts "src/events.ts (excerpt)"
+import { context as otel, propagation, ROOT_CONTEXT } from "@opentelemetry/api";
+import type { Handler } from "@meshfw/runtime";
+import { Mesh } from "meshfw";
+import type { MetadataFunction } from "#mesh";
+import { InvoicePaid } from "#mesh/domain/billing";
+
+declare module "@meshfw/runtime" {
+  interface EventMetadata {
+    trace?: Record<string, string>;
+  }
+}
+
+export const metadata: MetadataFunction = () => {
+  const trace: Record<string, string> = {};
+  // The publishing call's active span, as the propagator writes it (W3C: traceparent and tracestate).
+  propagation.inject(otel.active(), trace);
+  return { trace };
+};
+
+/** Runs a handler's body in the trace that published its event. */
+const traced = <E extends object>(handler: Handler<E>): Handler<E> => ({
+  ...handler,
+  run: (event, tools) => otel.with(propagation.extract(ROOT_CONTEXT, event.metadata.trace ?? {}), () => handler.run(event, tools)),
+});
+
+export const handlers = {
+  listen: { receipt: traced(Mesh.handler({ events: [InvoicePaid], run: async (event) => { /* ... */ } })) },
+};
+```
+
+The project registers OpenTelemetry's SDK as it would without Mesh: a context manager built on `AsyncLocalStorage` (from `@opentelemetry/context-async-hooks`, which runs on Bun) and a propagator, such as the W3C trace-context one. A span the body starts is then a child of the span that published the event, also when the handler runs in another process or hours later, since the context travels in the stored row. Mesh reserves no metadata key: `trace` is a name your application chose.
+
 ## A transaction's own events
 
 `published()`, from `#mesh`, returns the events the running transaction has published so far, in order, with their positions: to return them from an endpoint, to store them beside an idempotency record, or to assert them in a test. Each is an `EventRecord`: the fields of the table above, with `payload` the event's instance. A nested call's events take their place in written order. Outside a transaction it throws a `FrameworkError`.
