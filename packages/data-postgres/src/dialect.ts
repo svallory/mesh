@@ -20,8 +20,8 @@ const CASTS: Readonly<Record<ValueClass, string>> = Object.freeze({
  * pinned to SQLite's: nulls as the smallest value (`NULLS FIRST` ascending, `NULLS LAST` descending) and strings by
  * code point (`COLLATE "C"`), whatever the database's collation. A policy guard raises by casting its marker to
  * `int` (ADR-0046, option B): the cast fails the statement with SQLSTATE 22P02 (`invalid input syntax for type
- * integer: "<marker>"`), so nothing is installed in the user's database. `raised` accepts only Bun's `PostgresError`
- * with that SQLSTATE, never a wrapper such as Drizzle's `DrizzleQueryError`, whose message echoes the bound
+ * integer: "<marker>"`), so nothing is installed in the user's database. `raised` accepts an error whose `errno` is that
+ * SQLSTATE (Bun's `PostgresError`), never a wrapper such as Drizzle's `DrizzleQueryError`, whose message echoes the bound
  * parameters; `guardDenialOf` walks to the wrapped error itself. The message text is not matched, since the server may
  * write it in another language; the marker and its nonce are what identify the guard.
  */
