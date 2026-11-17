@@ -128,15 +128,19 @@ export interface ReadBody {
   readonly generics: string;
   /**
    * What follows `input` in the parameter list: `, context?: unknown, clock?: () => $Date, policies?: boolean` when the body
-   * loads and so reads the caller's context, then `cast` on a read that runs; `, _context?: unknown` or the empty string on
-   * one that fails naming M10.
+   * loads, and `, context?: unknown, clock?: () => $Date, _policies?: boolean` when it declares a filter or sort without
+   * loading (its scope reads the caller's context and clock); `, _context?: unknown, _clock?: () => $Date, _policies?: boolean`
+   * otherwise; then `cast` (`usesParsed`).
    */
   readonly contextParam: string;
   /** The validator constant, e.g. `readPostInputSchema`. */
   readonly validator: string;
   /** The resolved type, e.g. `Post[]`, or `PostWith<N>[]` when the read takes `load`. */
   readonly returnType: string;
-  /** As on `ActionMethod`: when not `null`, the body validates its input and then throws a `FrameworkError` with this message. */
+  /**
+   * Always `null` since a read's own filter and sort run as SQL (M10). Kept, with its template branch, so a project
+   * template exported before then (`mesh export generators`) still renders; it goes when the view contract is next broken.
+   */
   readonly unsupported: string | null;
   /**
    * True when the statements read the validated input, bound to `parsed`: then the body also takes `cast`, the input its
@@ -173,7 +177,11 @@ export interface ActionMethod {
   readonly contextName: string;
   /** One comment line naming what this version does not run for the action, or `null` when everything runs. */
   readonly notRun: string | null;
-  /** When not `null`, the method validates its input and then throws a `FrameworkError` with this message, a quoted string literal (a read with `filter` or `sort`); `statements` is then empty. */
+  /**
+   * When not `null`, the method validates its input and then throws a `FrameworkError` with this message, a quoted string
+   * literal; `statements` is then empty. Always `null` since a read's own filter and sort run as SQL (M10); kept, as on
+   * `ReadBody`, for project templates exported before then.
+   */
   readonly unsupported: string | null;
   /** True when the statements read the validated input, which is then bound to `parsed`; a read validates and discards it. */
   readonly usesParsed: boolean;
