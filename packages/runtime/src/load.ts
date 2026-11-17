@@ -1,4 +1,4 @@
-import { whereFor, type Condition, type TableOf } from "./condition.ts";
+import { whereFor, type Condition, type Hop, type TableOf } from "./condition.ts";
 import { ROLLUP_ANCHORS, type DataOperations, type Filter, type RollupQuery, type Row, type Scalar, type TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
@@ -37,12 +37,14 @@ function evaluating<T>(what: string, fn: () => T): T {
  * - A computed field with a body first loads what its body reads (its `needs`), then runs the body in
  *   memory once per row, with the scope the expression functions take.
  * - A `count` or `max` rollup over one has-many or has-one calls the data layer's `count` and `max` once per row. Every
- *   other rollup (`sum`, `avg`, `min`, and any rollup over a belongs-to) is one `rollup` call for the whole list of rows,
- *   per `ROLLUP_ANCHORS` anchors: the target's rows grouped by the column the relationship follows. A rollup over more
- *   than one relationship waits for M10's joins.
+ *   other rollup (`sum`, `avg`, `min`, any rollup over a belongs-to, over several relationships or through a link
+ *   entity) is one `rollup` call for the whole list of rows, per `ROLLUP_ANCHORS` anchors: over one relationship, the
+ *   target's rows grouped by the column the relationship follows; over a longer path, the route's hops, joined by the
+ *   data layer, with each row the path reaches counted once per owner row.
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
  *   reaches, and of the link entity of a `through`, with the caller's scope: a relationship to an entity they do not admit is `[]` (has-many) or `null`
- *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
+ *   (belongs-to, has-one), and a rollup whose path reaches one (any entity of the path, a link entity included) counts no
+ *   row (`0`, or `null` for the others). The policies are decided first,
  *   so a denied name is not queried at all. A policy that reads the record admits row by row instead (M10): its condition
  *   goes into the query of the related rows (`where`), so a has-many lists only the rows it admits, a belongs-to or has-one
  *   it does not admit is `null`, and a rollup counts or takes the maximum over the admitted rows only. What a computed
@@ -216,7 +218,7 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
     return;
   }
   const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
-  if (computed?.kind === "rollup") rollupRoute(plan, entity, entityPlan, name, computed);
+  if (computed?.kind === "rollup") rollupRoute(plan, entity, name, computed);
 }
 
 /** A fresh empty value for each row, so that no two rows share one list. */
@@ -266,13 +268,22 @@ async function admissions(plan: LoadPlan, entity: string, names: readonly string
     if (computed?.kind !== "rollup") continue;
     const over = Object.hasOwn(entityPlan.relations, computed.of[0]!) ? entityPlan.relations[computed.of[0]!] : undefined;
     if (!over) continue;
-    const where = await admits(over.target);
-    if (where === false) denied.set(name, computed.fn === "count" ? 0 : null);
-    else if (where !== true) {
+    // Every entity the path reaches must admit the caller, the link entity of a `through` included (ruling D33, OD2).
+    const reached = routeEntities(plan, entity, computed.of);
+    const joined = reached.length > 1;
+    let narrowedBy: { target: string; where: Condition } | undefined;
+    let refused = false;
+    for (const target of reached) {
+      const where = await admits(target);
+      if (where === false) { refused = true; break; }
+      if (where !== true) narrowedBy ??= { target, where };
+    }
+    if (refused) denied.set(name, computed.fn === "count" ? 0 : null);
+    else if (narrowedBy) {
       // The batched `rollup` takes no row condition yet; the build refuses such a rollup first (MESH_NOT_IMPLEMENTED).
-      if (!perRow(computed, over))
-        throw new FrameworkError(`${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity} reaches ${over.target}, whose read policy reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`);
-      narrowed.set(name, { target: where });
+      if (!perRow(computed, { relation: over, joined }))
+        throw new FrameworkError(`${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity} reaches ${narrowedBy.target}, whose read policy reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`);
+      narrowed.set(name, { target: narrowedBy.where });
     }
   }
   return { denied, narrowed };
@@ -364,9 +375,9 @@ async function ensureField(
   const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
   if (!computed) throw new FrameworkError(unknownName(plan, entity, name));
   if (computed.kind === "rollup") {
-    const route = rollupRoute(plan, entity, entityPlan, name, computed);
-    if (perRow(computed, route.relation)) for (const row of todo) row[name] = await rollupOneRow(plan, entity, entityPlan, name, computed, tx, row);
-    else await rollupRows(entity, entityPlan, name, computed, route, tx, todo, (options as Options).pending);
+    const route = rollupRoute(plan, entity, name, computed);
+    if (perRow(computed, route)) for (const row of todo) row[name] = await rollupOneRow(plan, entity, entityPlan, name, computed, tx, row);
+    else await rollupRows(plan, entity, entityPlan, name, computed, route, tx, todo, (options as Options).pending);
     return;
   }
   for (const path of computed.needs) await ensurePath(plan, entity, tx, todo, path.split("."), options, depth + 1);
@@ -685,59 +696,121 @@ async function loadThrough(
     });
 }
 
-/** Does the rollup keep its per-row `count`/`max` call (one has-many or has-one, ruling D33 OD3), or go through `rollup`? */
-const perRow = (computed: Extract<ComputedPlan, { kind: "rollup" }>, relation: RelationPlan) =>
-  (computed.fn === "count" || computed.fn === "max") && relation.kind !== "belongs-to";
+/**
+ * Does the rollup keep its per-row `count`/`max` call (one has-many or has-one with no link entity, ruling D33 OD3), or go
+ * through `rollup`?
+ */
+const perRow = (computed: Extract<ComputedPlan, { kind: "rollup" }>, route: Pick<RollupRoute, "relation" | "joined">) =>
+  (computed.fn === "count" || computed.fn === "max") && !route.joined && route.relation.kind !== "belongs-to";
+
+/** One relationship of a rollup's path: `name` of `from` (an FQN), and what it is. */
+interface RollupStep {
+  from: string;
+  name: string;
+  relation: RelationPlan;
+}
 
 /**
- * What a rollup aggregates: the rows of `target` that its one relationship reaches, and `column`, the value (the
- * target's key for a count). Or the error that says why it cannot be loaded, the same for every row and every caller.
+ * What a rollup aggregates: the rows of `target` that its path reaches, and `column`, the value (the target's key for a
+ * count). `relation` (named `path`) is the first relationship. A one-table route is a single relationship with no link
+ * entity; every other route is `joined`. `required`: every relationship is a belongs-to that is not nullable, so the route
+ * reaches exactly one row per owner row. Or the error that says why it cannot be loaded, the same for every row and caller.
  */
 interface RollupRoute {
   path: string;
   relation: RelationPlan;
+  steps: readonly RollupStep[];
+  joined: boolean;
+  required: boolean;
+  targetName: string;
   target: EntityPlan;
   column: string;
 }
 function rollupRoute(
-  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
+  plan: LoadPlan, entity: string, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
 ): RollupRoute {
   const label = `${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity}`;
-  const [path, attribute, ...more] = computed.of as [string, string?, ...string[]];
-  const relation = Object.hasOwn(entityPlan.relations, path) ? entityPlan.relations[path] : undefined;
-  if (!relation) throw new FrameworkError(`${label} cannot be loaded: ${entity} has no relationship ${path}`);
-  if (more.length > 0 || (attribute !== undefined && Object.hasOwn(planOf(plan, relation.target).relations, attribute)))
-    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now`);
+  const steps: RollupStep[] = [];
+  let current = entity;
+  let attribute: string | undefined;
+  for (let index = 0; index < computed.of.length; index++) {
+    const segment = computed.of[index]!;
+    const relations = planOf(plan, current).relations;
+    const relation = Object.hasOwn(relations, segment) ? relations[segment] : undefined;
+    if (!relation) {
+      if (index === 0) throw new FrameworkError(`${label} cannot be loaded: ${entity} has no relationship ${segment}`);
+      if (index !== computed.of.length - 1) throw new FrameworkError(`${label} cannot be loaded: ${current} has no relationship ${segment}`);
+      attribute = segment;
+      break;
+    }
+    if (relation.kind !== "belongs-to" && relation.column === null)
+      throw new FrameworkError(`${label} cannot be loaded: ${keyHolder(relation)} has no belongs-to back to ${current}`);
+    if (relation.kind !== "belongs-to" && relation.through?.exit === null) throw new FrameworkError(`${label} cannot be loaded: ${keyHolder(relation)}, the link entity, has not exactly one belongs-to to ${relation.target} to leave by`);
+    steps.push({ from: current, name: segment, relation });
+    current = relation.target;
+  }
+  const target = planOf(plan, current);
+  const first = steps[0]!;
+  return {
+    path: first.name, relation: first.relation, steps,
+    joined: steps.length > 1 || (first.relation.kind === "has-many" && first.relation.through !== undefined),
+    required: steps.every((step) => step.relation.kind === "belongs-to" && !step.relation.nullable),
+    targetName: current, target, column: attribute ?? target.key,
+  };
+}
+
+/** The entities a rollup's path reaches, in order (each relationship's target, after the link entity of a `through`), as far as the plan has them. */
+function routeEntities(plan: LoadPlan, entity: string, of: readonly string[]): string[] {
+  const reached: string[] = [];
+  let current = entity;
+  for (const segment of of) {
+    const relations = Object.hasOwn(plan, current) ? plan[current]!.relations : {};
+    const relation = Object.hasOwn(relations, segment) ? relations[segment] : undefined;
+    if (!relation) break;
+    if (relation.kind === "has-many" && relation.through) reached.push(relation.through.target);
+    reached.push(relation.target);
+    current = relation.target;
+  }
+  return reached;
+}
+
+/** A step of a route as the data layer's `Hop`: from the row of `step.from` to the rows of its target. */
+function hopOf(plan: LoadPlan, step: RollupStep): Hop {
+  const from = planOf(plan, step.from);
+  const target = planOf(plan, step.relation.target);
+  const { relation } = step;
+  if (relation.kind === "belongs-to") return { table: target.table, column: target.key, outer: relation.column, key: target.key };
+  const column = relation.column!;
   if (relation.kind === "has-many" && relation.through)
-    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now`);
-  if (relation.kind !== "belongs-to" && relation.column === null)
-    throw new FrameworkError(`${label} cannot be loaded: ${relation.target} has no belongs-to back to ${entity}`);
-  const target = planOf(plan, relation.target);
-  return { path, relation, target, column: attribute ?? target.key };
+    return { table: target.table, column: target.key, outer: from.key, key: target.key, through: { table: planOf(plan, relation.through.target).table, entry: column, exit: relation.through.exit! } };
+  return { table: target.table, column, outer: from.key, key: target.key };
 }
 
 /** What a rollup gives when it reaches no row: `0` for a count, `null` for the others. */
 const nothing = (computed: Extract<ComputedPlan, { kind: "rollup" }>) => (computed.fn === "count" ? 0 : null);
 
 /**
- * A rollup served by the data layer's `rollup` for every row at once. Each row's anchor is the value its relationship
- * starts from (its key for a has-many or has-one, its key column for a belongs-to); the anchors are distinct, so rows
- * that share a target ask once. A row with no anchor reaches nothing (a create's new instance, a nullable belongs-to
- * with a null key), except a stored row with a null key on a required belongs-to, which is an error as its load is. An
- * anchor the result leaves out reached no row: `0` or `null`, except over a required belongs-to, whose key then points
- * at a row that does not exist, an error as its load is. `count`, `min` and `max` over a relationship the row already
+ * A rollup served by the data layer's `rollup` for every row at once. Each row's anchor is the value its first
+ * relationship starts from (its key for a has-many or has-one, its key column for a belongs-to); the anchors are
+ * distinct, so rows that share a target ask once. A one-table route asks the target's table grouped by the column the
+ * relationship follows. A joined route asks with `hops`: from the first belongs-to's target (anchored on its key), or from
+ * the entity's own table (anchored on its key) when the path starts at a has-many or has-one. A row with no anchor reaches
+ * nothing (a create's new instance, a nullable belongs-to with a null key), except a stored row with a null key on a
+ * required belongs-to, which is an error as its load is. An anchor the result leaves out reached no row: `0` or `null`,
+ * except over a route of required belongs-to only, where a key on the path then points at a row that does not exist, an
+ * error as its load is. `count`, `min` and `max` over the one relationship of a one-table route that the row already
  * holds are worked out from it; `sum` and `avg` always ask the database, so the value never depends on what was loaded
  * (JavaScript's sum of floats is not SQL's; ruling D33 OD4).
  */
 async function rollupRows(
-  entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, route: RollupRoute, tx: DataOperations, rows: Work[], pending?: object,
+  plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, route: RollupRoute, tx: DataOperations, rows: Work[], pending?: object,
 ): Promise<void> {
   const { path, relation, target, column } = route;
   const owned = relation.kind === "belongs-to";
   const anchorOf = (row: Work) => row[owned ? relation.column : entityPlan.key];
   const asked: Work[] = [];
   for (const row of rows) {
-    if (computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
+    if (!route.joined && computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
       row[name] = fromLoaded(computed, related(row[path]), column);
       continue;
     }
@@ -751,14 +824,20 @@ async function rollupRows(
   }
   const anchors = [...new Set(asked.map(anchorOf))] as RollupQuery["anchors"][number][];
   const found = new Map<unknown, unknown>();
-  const query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column };
+  let query: Omit<RollupQuery, "anchors">;
+  if (!route.joined) query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column };
+  else {
+    const start = owned ? planOf(plan, relation.target) : entityPlan;
+    const hops = (owned ? route.steps.slice(1) : route.steps).map((step) => ({ hop: hopOf(plan, step) }));
+    query = { fn: computed.fn, table: start.table, anchor: start.key, value: column, hops, key: target.key };
+  }
   for (let at = 0; at < anchors.length; at += ROLLUP_ANCHORS)
     for (const result of await tx.rollup({ ...query, anchors: anchors.slice(at, at + ROLLUP_ANCHORS) })) found.set(result.anchor, result.value);
   for (const row of asked) {
     const anchor = anchorOf(row);
     if (found.has(anchor)) row[name] = found.get(anchor);
-    else if (owned && !relation.nullable)
-      throw new FrameworkError(`\`${computed.fn} :${name} of=&${computed.of.join(".")}\` on ${entity} ${JSON.stringify(row[entityPlan.key])} reaches no ${relation.target} row: a key on its path points at a row that does not exist`);
+    else if (route.required)
+      throw new FrameworkError(`\`${computed.fn} :${name} of=&${computed.of.join(".")}\` on ${entity} ${JSON.stringify(row[entityPlan.key])} reaches no ${route.targetName} row: a key on its path points at a row that does not exist`);
     else row[name] = nothing(computed);
   }
 }
@@ -780,7 +859,7 @@ function fromLoaded(computed: Extract<ComputedPlan, { kind: "rollup" }>, rows: R
 async function rollupOneRow(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, tx: DataOperations, row: Work, where?: Condition,
 ): Promise<unknown> {
-  const { path, relation, target, column } = rollupRoute(plan, entity, entityPlan, name, computed);
+  const { path, relation, target, column } = rollupRoute(plan, entity, name, computed);
   // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
   if (!where && Object.hasOwn(row, path)) return fromLoaded(computed, related(row[path]), column);
   if (row[entityPlan.key] === null || row[entityPlan.key] === undefined) return nothing(computed);

@@ -1,15 +1,17 @@
 ---
 title: "0013. Data-layer contract with declared capabilities"
-description: "Decision record 0013: Data-layer contract with declared capabilities. Status: Accepted, amended by ADR-0088."
+description: "Decision record 0013: Data-layer contract with declared capabilities. Status: Accepted, amended by ADR-0088 and ADR-0096."
 ---
 
 # 0013. Data-layer contract with declared capabilities
 
 > **Amended** by [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) on 2026-11-17: `Query` gains `where` and `order`, set only by generated code, and `max` and `count` a `where` argument; a new capability, `conditions`, says an adapter honours them, and `joins` covers the correlated subqueries a condition uses to cross a relationship. The body below is kept as history.
 
+> **Amended** by [ADR-0096](./0096-rollups-run-as-one-grouped-query-per-route.md) on 2026-11-17: the contract gains `rollup`, one grouped statement for many owner rows, which needs `aggregates`, and `joins` also covers a rollup whose route crosses several relationships or a link entity (`hops`). SQLite and Postgres declare both; atomic expressions are still in no adapter.
+
 ## Status
 
-Accepted, amended by [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md)
+Accepted, amended by [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) and [ADR-0096](./0096-rollups-run-as-one-grouped-query-per-route.md)
 
 ## Date
 

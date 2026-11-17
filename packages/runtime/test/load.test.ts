@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK, FrameworkError, guarded, loadInto, loadRows, rejectComputedQuery, unloadFrom, scope, type Condition, type ConditionLiteral, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
+import { CHUNK, FrameworkError, guarded, loadInto, loadRows, rejectComputedQuery, unloadFrom, scope, type Condition, type ConditionLiteral, type DataOperations, type Hop, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
 import { and, eq, not, or } from "../src/expr.ts";
 
 /**
@@ -52,11 +52,19 @@ function memory(tables: Record<string, Row[]>) {
       const values = rowsOf(table).filter((row) => matches(row, filter) && holds(row, where)).map((row) => row[attribute]).filter((v): v is number => v != null);
       return values.length ? Math.max(...values) : null;
     },
-    rollup: async ({ fn, table, anchor, anchors, value }: { fn: string; table: unknown; anchor: string; anchors: unknown[]; value: string }) => {
-      calls.push(`rollup ${fn} ${(table as { name: string }).name}.${value} by ${anchor} [${anchors.join(",")}]`);
+    rollup: async ({ fn, table, anchor, anchors, value, hops, key: last }: { fn: string; table: unknown; anchor: string; anchors: unknown[]; value: string; hops?: { hop: Hop<unknown> }[]; key?: string }) => {
+      const route = hops ? ` via ${hops.map(({ hop }) => `${hop.through ? `${(hop.through.table as { name: string }).name}>` : ""}${(hop.table as { name: string }).name}`).join(".")}` : "";
+      calls.push(`rollup ${fn} ${(table as { name: string }).name}.${value} by ${anchor}${route} [${anchors.join(",")}]`);
       if (anchors.length > 500) throw new Error("this test double takes at most 500 anchors, as the contract says");
+      // A joined route: each hop from the rows the one before reached; the last rows once each, by their key.
+      const follow = (from: Row[], { hop }: { hop: Hop<unknown> }) => from.flatMap((row) => {
+        if (!hop.through) return rowsOf(hop.table).filter((far) => far[hop.column] != null && far[hop.column] === row[hop.outer]);
+        const exits = rowsOf(hop.through.table).filter((link) => link[hop.through!.entry] === row[hop.outer] && link[hop.through!.exit] != null).map((link) => link[hop.through!.exit]);
+        return rowsOf(hop.table).filter((far) => exits.includes(far[hop.column]));
+      });
       return anchors.flatMap((key) => {
-        const reached = rowsOf(table).filter((row) => row[anchor] === key);
+        const start = rowsOf(table).filter((row) => row[anchor] === key);
+        const reached = hops ? [...new Map(hops.reduce(follow, start).map((row) => [row[last!], row])).values()] : start;
         if (reached.length === 0) return [];
         const values = reached.map((row) => row[value]).filter((v): v is number => v != null);
         const total = values.reduce((a, b) => a + b, 0);
@@ -93,12 +101,24 @@ const plan = (handle: (name: string) => never, extra: Partial<LoadPlan> = {}): L
       parentRank: { kind: "rollup", fn: "min", of: ["parent", "rank"] },
       badgeSum: { kind: "rollup", fn: "sum", of: ["badge", "points"] },
       deep: { kind: "rollup", fn: "count", of: ["children", "children"] },
+      family: { kind: "rollup", fn: "count", of: ["children", "parent"] },
+      siblingRank: { kind: "rollup", fn: "sum", of: ["parent", "children", "rank"] },
+      bossRank: { kind: "rollup", fn: "max", of: ["owner", "boss", "rank"] },
+      ownerSize: { kind: "rollup", fn: "sum", of: ["owner", "nodes", "size"] },
       ownerCount: { kind: "rollup", fn: "count", of: ["owner"] },
       badRelation: { kind: "rollup", fn: "count", of: ["nowhere"] },
       looseCount: { kind: "rollup", fn: "count", of: ["loose"] },
     },
   },
-  Owner: { table: handle("owners"), key: "id", relations: {}, computed: {} },
+  Owner: {
+    table: handle("owners"), key: "id",
+    relations: {
+      boss: { kind: "belongs-to", target: "Boss", column: "bossId", nullable: false },
+      nodes: { kind: "has-many", target: "Node", column: "ownerId" },
+    },
+    computed: {},
+  },
+  Boss: { table: handle("bosses"), key: "id", relations: {}, computed: {} },
   Badge: { table: handle("badges"), key: "id", relations: {}, computed: {} },
   ...extra,
 });
@@ -218,10 +238,9 @@ describe("loadRows", () => {
       expect(calls.filter((c) => c.startsWith("count nodes.id")).length).toBe(4);
     });
 
-    test("a path through two relationships is an error that says when; a relationship that cannot be loaded says why", async () => {
+    test("a relationship that cannot be loaded says why", async () => {
       const { tx, handle } = memory({});
       const row = [{ id: 1, ownerId: 1 }];
-      await expect(loadRows(plan(handle), "Node", tx, row, ["deep"])).rejects.toThrow("count :deep of=&children.children on Node cannot be loaded yet: a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now");
       await expect(loadRows(plan(handle), "Node", tx, row, ["badRelation"])).rejects.toThrow("Node has no relationship nowhere");
       await expect(loadRows(plan(handle), "Node", tx, row, ["looseCount"])).rejects.toThrow("Badge has no belongs-to back to Node");
     });
@@ -287,6 +306,82 @@ describe("loadRows", () => {
       await loadInto(plan(handle), "Node", tx, record, ["ownerRank", "sizeSum"], { newInstance: true });
       expect([record.ownerRank, record.sizeSum]).toEqual([null, null]);
       expect(calls).toEqual([]);
+    });
+
+    // A path through several relationships is one `rollup` call with hops per 500 anchors; each row the path reaches
+    // counts once per owner row (ruling D33, OD1).
+    describe("over a joined route", () => {
+      const joined = () => memory({
+        nodes: [
+          { id: 1, parentId: null, ownerId: 10, rank: 3, size: 1 }, { id: 2, parentId: 1, ownerId: 10, rank: 8, size: 2 },
+          { id: 3, parentId: 1, ownerId: 11, rank: 5, size: null }, { id: 4, parentId: 2, ownerId: 12, rank: null, size: 4 },
+        ],
+        owners: [{ id: 10, bossId: 20 }, { id: 11, bossId: 21 }, { id: 12, bossId: 99 }, { id: 13, bossId: 20 }],
+        bosses: [{ id: 20, rank: 9 }, { id: 21, rank: null }],
+      });
+      const stored = async (tx: DataOperations, handle: (name: string) => never) => (await tx.select(handle("nodes"))) as Row[];
+      test("two has-many hops from the entity's own table, and converging paths counted once", async () => {
+        const { tx, calls, handle } = joined();
+        const rows = await stored(tx, handle);
+        calls.length = 0;
+        const loaded = await loadRows(plan(handle), "Node", tx, rows, ["deep", "family"]);
+        expect(loaded.map((r) => [r.id, r.deep, r.family])).toEqual([[1, 1, 1], [2, 0, 1], [3, 0, 0], [4, 0, 0]]);
+        expect(calls).toEqual(["rollup count nodes.id by id via nodes.nodes [1,2,3,4]", "rollup count nodes.id by id via nodes.nodes [1,2,3,4]"]);
+      });
+      test("a path that starts at a belongs-to is anchored on its key, from the target's table; a null nullable key asks nothing", async () => {
+        const { tx, calls, handle } = joined();
+        const rows = await stored(tx, handle);
+        calls.length = 0;
+        const loaded = await loadRows(plan(handle), "Node", tx, rows, ["siblingRank", "ownerSize"]);
+        // Node 1 has no parent; 2 and 3 share parent 1 (ranks 8 and 5); 4's parent 2 has one child, with no rank.
+        expect(loaded.map((r) => [r.id, r.siblingRank, r.ownerSize])).toEqual([[1, null, 3], [2, 13, 3], [3, 13, null], [4, null, 4]]);
+        expect(calls).toEqual(["rollup sum nodes.rank by id via nodes [1,2]", "rollup sum owners.size by id via nodes [10,11,12]"]);
+      });
+      test("a relationship already loaded on the row is not used: a joined route always asks", async () => {
+        const { tx, calls, handle } = joined();
+        const rows = await stored(tx, handle);
+        calls.length = 0;
+        const loaded = await loadRows(plan(handle), "Node", tx, rows, ["children", "deep"]);
+        expect(loaded.map((r) => r.deep)).toEqual([1, 0, 0, 0]);
+        expect(calls.filter((call) => call.startsWith("rollup"))).toEqual(["rollup count nodes.id by id via nodes.nodes [1,2,3,4]"]);
+      });
+      test("over required belongs-to only, a key that points at nothing on the path is an error, as its load is; a null value is null", async () => {
+        const { tx, calls, handle } = joined();
+        const rows = await stored(tx, handle);
+        calls.length = 0;
+        const loaded = await loadRows(plan(handle), "Node", tx, rows.slice(0, 3), ["bossRank"]);
+        expect(loaded.map((r) => r.bossRank)).toEqual([9, 9, null]);
+        expect(calls).toEqual(["rollup max owners.rank by id via bosses [10,11]"]);
+        const missing = "reaches no Boss row: a key on its path points at a row that does not exist";
+        // Owner 12's boss 99 is missing; owner 14 is missing itself.
+        await expect(loadRows(plan(handle), "Node", tx, rows, ["bossRank"])).rejects.toThrow(`\`max :bossRank of=&owner.boss.rank\` on Node 4 ${missing}`);
+        await expect(loadRows(plan(handle), "Node", tx, [{ id: 5, parentId: null, ownerId: 14 }], ["bossRank"])).rejects.toThrow(`on Node 5 ${missing}`);
+        await expect(loadRows(plan(handle), "Node", tx, [{ id: 5, parentId: null, ownerId: null }], ["bossRank"])).rejects.toThrow("belongs-to :owner of Node has no key in ownerId, and it is not nullable");
+        // Through a has-many on the way, a dangling key reaches nothing (ruling D33, OD5).
+        expect((await loadRows(plan(handle), "Node", tx, [{ id: 5, parentId: null, ownerId: 14 }], ["ownerSize"]))[0]!.ownerSize).toBeNull();
+      });
+      test("a create's new instance with no key yet asks nothing; one whose belongs-to key is filled is asked from the target", async () => {
+        const { tx, calls, handle } = joined();
+        const record: Row = { id: null, parentId: null, ownerId: null };
+        await loadInto(plan(handle), "Node", tx, record, ["bossRank", "deep", "siblingRank"], { newInstance: true });
+        expect([record.bossRank, record.deep, record.siblingRank]).toEqual([null, 0, null]);
+        expect(calls).toEqual([]);
+        const filled: Row = { id: null, parentId: null, ownerId: 10 };
+        await loadInto(plan(handle), "Node", tx, filled, ["bossRank"], { newInstance: true });
+        expect(filled.bossRank).toBe(9);
+      });
+      test("a caller must be admitted by every entity the path reaches; one denied makes no query", async () => {
+        const allow = (yes: boolean): PolicySpec => ({ name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => x", record: false, run: (() => yes) as never }] });
+        for (const [owner, node, boss] of [[true, true, true], [false, true, true], [true, false, true], [true, true, false]] as const) {
+          const { tx, calls, handle } = joined();
+          const base = plan(handle);
+          const policed = { ...base, Owner: { ...base.Owner!, reads: [allow(owner)] }, Node: { ...base.Node!, reads: [allow(node)] }, Boss: { ...base.Boss!, reads: [allow(boss)] } } as LoadPlan;
+          const rows = [{ id: 1, parentId: null, ownerId: 10 }];
+          const loaded = await loadRows(policed, "Node", tx, rows, ["ownerSize", "bossRank"], { policies: true });
+          expect([owner, node, boss, loaded[0]!.ownerSize, loaded[0]!.bossRank]).toEqual([owner, node, boss, owner && node ? 3 : null, owner && boss ? 9 : null]);
+          expect(calls.length).toBe((owner && node ? 1 : 0) + (owner && boss ? 1 : 0));
+        }
+      });
     });
   });
 });
@@ -825,13 +920,57 @@ describe("a has-many through a link entity", () => {
       await expect(loadRows(entryless, "Student", tx, [{ id: "s1" }], ["courses"]))
         .rejects.toThrow("has-many :courses of Student cannot be loaded: Enrollment has no belongs-to back to Student. Declare one in Enrollment, and name it with inverse=:name if there are several");
     });
-    test("a rollup over it waits for M10, for every caller", async () => {
+    test("a rollup over it with no exit says why, for every caller", async () => {
       const { tx, calls, handle } = data();
-      const message = "count :courseRollup of=&courses on Student cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now";
-      await expect(loadRows(school(handle), "Student", tx, [{ id: "s1" }], ["courseRollup"])).rejects.toThrow(message);
-      const base = school(handle);
+      const message = "count :courseRollup of=&courses on Student cannot be loaded: Enrollment, the link entity, has not exactly one belongs-to to Course to leave by";
+      await expect(loadRows(school(handle, null), "Student", tx, [{ id: "s1" }], ["courseRollup"])).rejects.toThrow(message);
+      const base = school(handle, null);
       const denied = { ...base, Course: { ...base.Course!, reads: [] } } as LoadPlan;
       await expect(loadRows(denied, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true })).rejects.toThrow(message);
+      expect(calls).toEqual([]);
+    });
+  });
+
+  describe("a rollup over it", () => {
+    test("counts each far record once, skips a link with no exit, and is one rollup call with a through hop", async () => {
+      const { tx, calls, handle } = data();
+      const loaded = await loadRows(school(handle), "Student", tx, [{ id: "s1" }, { id: "s2" }, { id: "s3" }], ["courseRollup"]);
+      expect(loaded.map((row) => row.courseRollup)).toEqual([3, 1, 0]);
+      expect(calls).toEqual(["rollup count students.id by id via enrollments>courses [s1,s2,s3]"]);
+    });
+    test("a caller the link entity or the far entity denies gets 0, with no query", async () => {
+      const allow = (yes: boolean): PolicySpec => ({ name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => x", record: false, run: (() => yes) as never }] });
+      for (const [link, far] of [[true, true], [true, false], [false, true]] as const) {
+        const { tx, calls, handle } = data();
+        const base = school(handle);
+        const policed = { ...base, Enrollment: { ...base.Enrollment!, reads: [allow(link)] }, Course: { ...base.Course!, reads: [allow(far)] } } as LoadPlan;
+        const loaded = await loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true });
+        expect([link, far, loaded[0]!.courseRollup, calls.length]).toEqual([link, far, link && far ? 3 : 0, link && far ? 1 : 0]);
+      }
+    });
+    test("a link whose read policy reads the record is refused before any query: the batched rollup takes no row condition yet", async () => {
+      const { tx, calls, handle } = data();
+      const base = school(handle);
+      const literal: ConditionLiteral<unknown> = { what: "policy :mine authorize-if", entity: "Enrollment", tree: { kind: "value", value: true, class: "boolean" }, params: () => [] };
+      const record: PolicySpec = { name: "mine", when: null, checks: [{ kind: "authorize-if", check: "() => &id", record: true,
+        run: (() => { throw new Error("folded, never run"); }) as never, sql: () => ({ ...literal, tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "value", value: "e1", class: "string" }] } }) as never }] };
+      const open: PolicySpec = { name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
+      const policed = { ...base, Enrollment: { ...base.Enrollment!, reads: [record] }, Course: { ...base.Course!, reads: [open] } } as LoadPlan;
+      await expect(loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true }))
+        .rejects.toThrow("count :courseRollup of=&courses on Student reaches Enrollment, whose read policy reads the record");
+      expect(calls).toEqual([]);
+    });
+    test("a far entity whose read policy reads the record is refused too, behind an open link, before any query", async () => {
+      const { tx, calls, handle } = data();
+      const base = school(handle);
+      const literal: ConditionLiteral<unknown> = { what: "policy :credited authorize-if", entity: "Course",
+        tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "value", value: "c11", class: "string" }] }, params: () => [] };
+      const record: PolicySpec = { name: "credited", when: null, checks: [{ kind: "authorize-if", check: "() => &id", record: true,
+        run: (() => { throw new Error("folded, never run"); }) as never, sql: () => literal as never }] };
+      const open: PolicySpec = { name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
+      const policed = { ...base, Enrollment: { ...base.Enrollment!, reads: [open] }, Course: { ...base.Course!, reads: [record] } } as LoadPlan;
+      await expect(loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true }))
+        .rejects.toThrow("count :courseRollup of=&courses on Student reaches Course, whose read policy reads the record");
       expect(calls).toEqual([]);
     });
   });

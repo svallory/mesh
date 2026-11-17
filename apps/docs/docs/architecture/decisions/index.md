@@ -68,6 +68,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0095](./0095-surface-files-are-read-from-their-own-folder.md) builds the surface file of 0077 in parts, starting with the file kind: a `surfaces` folder in `mesh.config.ts`, one folder per surface, what a surface file may import, what `fields=` may name, which duplicates are refused, and the model node.
 
+[Record 0096](./0096-rollups-run-as-one-grouped-query-per-route.md) decides how a rollup reaches the database: one `rollup` operation that computes it for 500 owner rows in one grouped statement, a path through several relationships or a link entity printed with the hops of translated conditions (0088) and needing `joins`, and each record the path reaches counted once per owner row. It amends 0013 and 0070.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -79,7 +81,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
 | [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056, 0072, 0088 | operator; roadmap author |
 | [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Accepted (lead ruling, pending operator review), amended 2026-10-13: one instant per transaction (ACT-29) | lead |
-| [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted, amended by 0088 | operator |
+| [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted, amended by 0088, 0096 | operator |
 | [0014](./0014-sql-adapters-on-drizzle.md) | SQL adapters are built on Drizzle and drizzle-kit | Accepted | operator's position, lead's choice of tool |
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
 | [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; a step never runs twice | Accepted, amended by 0053, 0054, 0072 | operator, lead, roadmap author |
@@ -129,7 +131,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0067](./0067-members-imports-input-static-files.md) | Members are `&name`, entities are imports, one `input` section, static files | Accepted, amended 2026-10-12 by 0086; amended 2026-10-14: namespace imports (SYN-21) | operator; marked choices by the lead |
 | [0068](./0068-actions-compose-through-actions-and-tx.md) | Steps and checks receive bound `actions` and `tx`; a `run` step may run `after=:write` | Accepted, amended 2026-10-12 by 0086 (points 1 and 3); amended 2026-10-11: `before` leaves `validate`; an effect across aggregates is a service (0078); note 2026-11-14: re-argued for projects (lead, at the operator's request; the decision is unchanged) | operator |
 | [0069](./0069-json-attribute-type.md) | `json` is an attribute type | Accepted | operator |
-| [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `inverse=` | Accepted, amended 2026-11-14: a `has-many` through a link entity (`through=`) comes before 1.0; amended 2026-11-16: `through=` is built | operator |
+| [0070](./0070-has-many-via.md) | A `has-many` names the inverse it follows with `inverse=` | Accepted, amended 2026-11-14: a `has-many` through a link entity (`through=`) comes before 1.0; amended 2026-11-16: `through=` is built; amended 2026-11-17: a rollup over a `through=` relationship builds (0095) | operator |
 | [0071](./0071-system-key-on-the-action-context.md) | `system` is a reserved key of the `ActionContext`; policies decide what it admits | Accepted, amended 2026-10-12 by 0086 | operator |
 | [0072](./0072-mesh-1-0-is-the-port-gate.md) | Mesh 1.0 is the Hyper port gate: the spec's v0 on SQLite, the 126-case suite; what leaves the 1.0 line | Accepted, amended 2026-10-11: M6 builds domain events and the outbox; HA keeps `@meshfw/jsonrpc` (0077, 0079); amended 2026-11-14: the gate stays in Mesh's repository when the application is copied out (lead, awaiting the operator's review) | operator; lead |
 | [0073](./0073-plugins-follow-the-specs-single-hook.md) | Plugins follow the spec: one `task.claim` hook, before the transaction | Accepted; note 2026-11-14: it governs the Hyper application, not Mesh's extension model (lead, at the operator's request; the decision is unchanged) | operator |
@@ -155,6 +157,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0093](./0093-line-rule-message-and-code.md) | `message=` and `code=` on a line rule's line replace its standard message and code, for every rule of the line | Accepted (lead ruling D38, pending operator review) | lead, delegated |
 | [0094](./0094-run-time-points-for-event-extensions.md) | Run-time points for event extensions: contributed handler kinds, published before the extension host | Proposed (lead ruling D46, pending operator review) | lead, delegated |
 | [0095](./0095-surface-files-are-read-from-their-own-folder.md) | Surface files are read from their own folder; `fields=` names attributes, belongs-to and computed fields | Proposed (lead ruling D41, pending operator review) | lead, delegated |
+| [0096](./0096-rollups-run-as-one-grouped-query-per-route.md) | Rollups run as one grouped query per route: the `rollup` operation, joined routes over the hops of conditions, each record once | Accepted (lead ruling D33, pending operator review) | lead, delegated |
 
 ## Superseded records
 

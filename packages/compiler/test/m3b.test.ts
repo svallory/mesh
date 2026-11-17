@@ -301,11 +301,15 @@ describe("the data adapter's capabilities", () => {
   });
 
   describe("rollups call the data layer's aggregates", () => {
-    async function rollupProject(adapter: string, computed: string) {
+    /** With `linked`, List also lists Todo through a link entity, Link (one more relationship line). */
+    async function rollupProject(adapter: string, computed: string, linked = false) {
       const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-cap-"));
       roots.push(root);
       await mkdir(resolve(root, "src/domain"), { recursive: true });
-      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n    belongs-to :pinned entity=Todo nullable\n  computed\n    ${computed}\n  actions auto=[:read]\n`);
+      const through = linked ? "    has-many :linked entity=Todo through=Link\n" : "";
+      const imports = linked ? 'import { Link } from "./link.mesh.mx"\n' : "";
+      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\n${imports}entity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n    belongs-to :pinned entity=Todo nullable\n${through}  computed\n    ${computed}\n  actions auto=[:read]\n`);
+      if (linked) await writeFile(resolve(root, "src/domain/link.mesh.mx"), `import { List } from "./list.mesh.mx"\nimport { Todo } from "./todo.mesh.mx"\nentity :Link\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :list entity=List\n    belongs-to :todo entity=Todo\n  actions auto=[:read]\n`);
       await writeFile(resolve(root, "src/domain/todo.mesh.mx"), `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n    integer :rank\n  relationships\n    belongs-to :list entity=List\n  actions auto=[:read]\n`);
       await writeFile(resolve(root, "mesh.config.ts"), `export default { domain: "src/domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: "./none", ${adapter} options: {} } };\n`);
       return root;
@@ -326,6 +330,32 @@ describe("the data adapter's capabilities", () => {
         position: expect.objectContaining({ line: 9 }),
         fix: "Use a data adapter that declares aggregates, or remove the rollup",
       })]);
+    });
+    // Over several relationships, or through a link entity, a rollup runs as a join; over one it reads one table.
+    test.each([
+      ["count :back of=&todos.list", "crosses 2 relationships"],
+      ["count :pinnedList of=&pinned.list", "crosses 2 relationships"],
+      ["sum :ranks of=&pinned.list.todos.rank", "crosses 3 relationships"],
+      ["count :viaLinks of=&linked", "goes through a link entity"],
+    ])("%s needs joins, at the rollup", async (computed, crosses) => {
+      const loaded = await loadConfig(await rollupProject(manifest("aggregates"), computed, true));
+      const built = await loadProject(loaded.config!);
+      expect(built.document).toBeNull();
+      const name = computed.split(" ")[1]!.slice(1);
+      expect(built.diagnostics).toEqual([{
+        code: "MESH_CAPABILITY", severity: "error",
+        message: `Entity List has the ${computed.split(" ")[0]} rollup :${name}, whose path &${computed.split("of=&")[1]} ${crosses}, which needs a join, and the data adapter "fake" does not declare the joins capability`,
+        position: expect.objectContaining({ line: 11 }),
+        fix: "Use a data adapter that declares joins, or compute the value in a computed field's body from the loaded relationships",
+      }]);
+      const joined = await loadProject((await loadConfig(await rollupProject(manifest("aggregates", "joins"), computed, true))).config!);
+      expect(joined.diagnostics).toEqual([]);
+    });
+    test("a rollup over one relationship needs no joins, a belongs-to included", async () => {
+      for (const computed of ["sum :rankSum of=&todos.rank", "max :pinnedRank of=&pinned.rank", "count :todoCount of=&todos"]) {
+        const built = await loadProject((await loadConfig(await rollupProject(manifest("aggregates"), computed, true))).config!);
+        expect(built.diagnostics).toEqual([]);
+      }
     });
     test("with aggregates it builds; a model with no rollup needs nothing", async () => {
       const ok = await loadProject((await loadConfig(await rollupProject(manifest("aggregates"), 'count :todoCount of=&todos'))).config!);

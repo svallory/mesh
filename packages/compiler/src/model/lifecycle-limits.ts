@@ -3,7 +3,7 @@ import type { Diagnostic, Entity, Expression, ModelDocument, Relationship, Sourc
 import { actionExpressions, checksOf, VALIDATE_KINDS } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, readsRecord, recordReason } from "./policies.ts";
-import { rollupOperation, rollupTarget } from "./rollup-operation.ts";
+import { rollupOperation, rollupRoute } from "./rollup-operation.ts";
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
@@ -61,15 +61,13 @@ export function checkLifecycleLimits(
       const unloadable = (entity: Entity | undefined) => !!entity?.policies.length && !loadPolicies(entity).length;
       if (link && unloadable(link))
         diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
-          `${relation.kind} :${relation.name} of ${from.fqn} goes through ${link.fqn}, and no policy of ${link.fqn} covers the read a load runs, so every caller's load of it is [] (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
+          `${relation.kind} :${relation.name} of ${from.fqn} goes through ${link.fqn}, and no policy of ${link.fqn} covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
           relation.position,
           `If callers may load it, give ${link.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
       if (!target || !unloadable(target)) continue;
       const empty = relation.kind === "has-many" ? "[]" : "null";
-      // No rollup runs over a has-many through a link entity, so its warning says nothing of rollups.
-      const rollups = relation.through ? "" : ", a count over it 0 and any other rollup null";
       diagnostics.push({ ...error("MESH_LOAD_NO_POLICY",
-        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}${rollups} (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
+        `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}, a count over it 0 and any other rollup null (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
         relation.position,
         `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
     }
@@ -78,8 +76,12 @@ export function checkLifecycleLimits(
     // reads the record, a caller's load would count rows the policy hides. The per-row `count` and `max` take it.
     for (const field of entity.computed) {
       if (rollupOperation(entity, field) !== "rollup") continue;
-      const target = rollupTarget(document, entity, field);
-      const policy = target && loadPolicies(target).find((candidate) => policyExpressions(candidate).some(({ expression }) => readsRecord(expression, "read")));
+      // Any entity the path reaches, a link entity included.
+      const found = (rollupRoute(document, entity, field)?.entities ?? []).map((target) => ({
+        target, policy: loadPolicies(target).find((candidate) => policyExpressions(candidate).some(({ expression }) => readsRecord(expression, "read"))),
+      })).find(({ policy }) => policy);
+      const target = found?.target;
+      const policy = found?.policy;
       if (target && policy)
         diagnostics.push(error("MESH_NOT_IMPLEMENTED",
           `${field.rollup!.fn} :${field.name} reaches ${target.fqn}, whose read policy :${policy.name} reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`,

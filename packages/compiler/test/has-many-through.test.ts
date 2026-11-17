@@ -414,17 +414,43 @@ describe("MESH_HAS_ONE_SHARED_KEY", () => {
 
 describe("rollups and bodies", () => {
   const computed = (lines: string) => student("has-many :courses entity=Course through=Enrollment", "").replace("  actions", `  computed\n    ${lines}\n  actions`);
-  test("a rollup over a through relationship waits for M10", () => {
-    for (const [line, fn, name] of [["count :courseCount of=&courses", "count", "courseCount"], ["max :most of=&courses.credits", "max", "most"], ["sum :total of=&courses.credits", "sum", "total"]] as const) {
+  test("a rollup over a through relationship builds: each far record counts once", () => {
+    for (const [line, type, nullable] of [["count :courseCount of=&courses", "integer", false], ["max :most of=&courses.credits", "integer", true], ["sum :total of=&courses.credits", "integer", true], ["avg :mean of=&courses.credits", "decimal", true]] as const) {
       const result = school({ student: computed(line) });
-      expect(result.diagnostics.map(brief)).toEqual([{
-        code: "MESH_NOT_IMPLEMENTED",
-        severity: "error",
-        message: `${fn} :${name} goes through a link entity (has-many :courses through=Enrollment), which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`,
-        at: "app/student.mesh.mx:9:4",
-        fix: null,
-      }]);
+      expect(result.diagnostics).toEqual([]);
+      expect(entityOf(result, "Student").computed[0]).toMatchObject({ type, nullable });
     }
+  });
+
+  test("a rollup over a through with no entry chosen adds the use error at the rollup", () => {
+    const result = work(task("has-many :blockers entity=Task through=Dependency", "  computed\n    count :blockerCount of=&blockers\n"));
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_INVERSE_REQUIRED", "MESH_INVERSE_REQUIRED"]);
+    expect(result.diagnostics[1]!.message).toBe("count :blockerCount reads has-many :blockers, which cannot be loaded: app.Dependency has 2 belongs-to back to app.Task (:dependent, :prerequisite) and has-many :blockers does not say which it follows");
+  });
+
+  test("a rollup over a link whose read policy reads the record is refused until rollups take a row condition", () => {
+    const result = school({
+      student: computed("count :courseCount of=&courses"),
+      enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :own types=[:read]\n      authorize-if=({ actor }) => &student.id === actor.id\n"),
+    });
+    expect(result.diagnostics.map(brief)).toEqual([expect.objectContaining({
+      code: "MESH_NOT_IMPLEMENTED",
+      message: "count :courseCount reaches app.Enrollment, whose read policy :own reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now",
+      at: "app/student.mesh.mx:9:4",
+    })]);
+  });
+
+  test("a rollup over a through whose far entity alone has a read policy that reads the record is refused, naming it", () => {
+    const result = school({
+      student: computed("count :courseCount of=&courses"),
+      enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :open types=[:read]\n      authorize-if=({ actor }) => actor.id !== null\n"),
+      course: course("  policies\n    policy :credited types=[:read]\n      authorize-if=() => &credits > 0\n"),
+    });
+    expect(result.diagnostics.map(brief)).toEqual([expect.objectContaining({
+      code: "MESH_NOT_IMPLEMENTED",
+      message: "count :courseCount reaches app.Course, whose read policy :credited reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now",
+      at: "app/student.mesh.mx:9:4",
+    })]);
   });
 
   test("a body reads the list of far records, and needs the relationship alone", () => {
@@ -447,17 +473,17 @@ describe("policies and on:load", () => {
     expect(result.diagnostics.map(brief)).toEqual([{
       code: "MESH_LOAD_NO_POLICY",
       severity: "warning",
-      message: "has-many :courses of app.Student goes through app.Enrollment, and no policy of app.Enrollment covers the read a load runs, so every caller's load of it is [] (through `Mesh.privileged` and in a computed field's body it is loaded)",
+      message: "has-many :courses of app.Student goes through app.Enrollment, and no policy of app.Enrollment covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `Mesh.privileged` and in a computed field's body it is loaded)",
       at: "app/student.mesh.mx:7:4",
       fix: "If callers may load it, give app.Enrollment a policy that covers its read: `types=[:read]`, `actions=[&read]` or no scope",
     }]);
   });
 
-  test("a far entity whose policies cover no read warns with no word of rollups", () => {
+  test("a far entity whose policies cover no read warns, naming what a rollup over it gives", () => {
     const result = school({ course: course(writers, "  actions auto=[:read, :create]\n") });
     // Enrollment's own belongs-to :course draws its own (plain) warning at its line.
     expect(result.diagnostics.filter((d) => d.position.file === "app/student.mesh.mx").map((d) => [d.code, d.message])).toEqual([["MESH_LOAD_NO_POLICY",
-      "has-many :courses of app.Student reaches app.Course, and no policy of app.Course covers the read a load runs, so every caller's load of it is [] (through `Mesh.privileged` and in a computed field's body it is loaded)"]]);
+      "has-many :courses of app.Student reaches app.Course, and no policy of app.Course covers the read a load runs, so every caller's load of it is [], a count over it 0 and any other rollup null (through `Mesh.privileged` and in a computed field's body it is loaded)"]]);
   });
 
   test("a link or far entity with no policy at all draws no warning (deny by default)", () => {
@@ -517,6 +543,14 @@ describe("policies and on:load", () => {
     const policyLine = (name: string) => explainAction(entityOf(result, name), "read")!.find((line) => line.includes("what the caller loads"));
     expect(policyLine("Student")).toContain("runs the read policies of the entity it reaches, and of the link entity of a `through=`: ");
     expect(policyLine("Enrollment")).toContain("runs the read policies of the entity it reaches: ");
+    // An entity with a rollup says that every entity of the rollup's path must admit the caller.
+    const rolled = school({
+      student: student("has-many :courses entity=Course through=Enrollment", "").replace("  actions", "  computed\n    count :courseCount of=&courses\n  actions") + anyone,
+      enrollment: enrollment(undefined, `  actions auto=[:read]\n${anyone}`),
+    });
+    expect(rolled.diagnostics).toEqual([]);
+    expect(explainAction(entityOf(rolled, "Student"), "read")!.find((line) => line.includes("what the caller loads")))
+      .toContain("runs the read policies of the entity it reaches, and of the link entity of a `through=`, and a rollup those of every entity its path reaches: ");
   });
 });
 

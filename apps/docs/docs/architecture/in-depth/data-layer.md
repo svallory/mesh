@@ -47,7 +47,10 @@ export interface RollupQuery {
   readonly anchor: string; // the column the rows are grouped by
   readonly anchors: readonly Exclude<Scalar, null | boolean>[]; // at most 500 (ROLLUP_ANCHORS)
   readonly value: string; // the column aggregated (the key for a count)
+  readonly hops?: readonly RollupHop[]; // a joined route: one condition Hop per relationship
+  readonly key?: string; // with hops: the primary key of the last hop's table
 }
+export interface RollupHop { readonly hop: Hop }
 export interface RollupRow {
   readonly anchor: Exclude<Scalar, null | boolean>;
   readonly value: Exclude<Scalar, boolean> | null;
@@ -63,6 +66,8 @@ export interface DataLayer {
 Rows use attribute names and generated TypeScript values: `Date` for datetime, `boolean`, and `string` for UUID. The adapter converts these to and from storage. `Key` maps primary-key attribute names to values. `TableHandle` is opaque to handlers: the emitted schema exports it and only the adapter interprets it. No query-library type crosses the contract, and SQL text crosses it only in the `query` operation of the `raw-sql` capability (below, [raw queries](#raw-queries)); a filter is plain data.
 
 `rollup` works out a rollup for many owner rows in one statement: over the rows of `table` whose `anchor` column holds one of `anchors`, grouped by that column (`select anchor, sum(value) from table where anchor in (...) group by anchor`). An anchor that reaches no row is left out of the result; one that reaches rows whose values are all null is present, with `null` (`0` for a `count`, which counts non-null values). `count`, `sum` and `avg` are numbers on every adapter (Mesh stores an `integer` as a Postgres `bigint`, and Postgres gives `sum` and `avg` of a `bigint` as `numeric` and `count` as `bigint`, which the driver returns as text; the shared Drizzle code turns them into numbers with `Number`. Over a `decimal`, a `double precision` column, `sum` and `avg` are already numbers); `min` and `max` decode as the column decodes. More than 500 anchors is a `FrameworkError`, so the loader asks in chunks. It requires `aggregates`, as `max` and `count` do. The loader calls it for every rollup but a `count` or `max` over one has-many or has-one, which keep their per-row `count` and `max` calls; it asks for the distinct anchors of the rows it loads, 500 at a time.
+
+A path through several relationships, or through a link entity, is a joined route: the query carries `hops`, one translated condition's `Hop` per relationship, each from the row the one before reached, and `key`, the primary key of the last hop's table. The shared Drizzle code aliases the start table `h0` and each hop's table `h1`, `h2`, ..., joins them with the condition printer's hop link (a link entity's rows through `in (select exit ... and exit is not null)`), and groups a distinct derived table: `select anchor, sum(v) from (select distinct h0.id as anchor, h2.id as k, h2.price as v from ... where h0.id in (...)) group by anchor`. So each row of the last table counts once per anchor however many paths reach it, and a hop that matches nothing adds nothing. A query with `hops` requires `joins` as well as `aggregates`; when the path starts at a `belongs-to`, the loader starts the route at that target's table, anchored on its key; otherwise at the owner's own table ([ADR-0096](../decisions/0096-rollups-run-as-one-grouped-query-per-route.md)).
 
 Insert and update return the stored row. A missing select or update returns `undefined`; delete returns `false` when absent and `true` when removed. A transaction commits when its callback resolves, returning that result; it rolls back every write and rethrows the same error when the callback rejects. The caller closes the layer when finished.
 
