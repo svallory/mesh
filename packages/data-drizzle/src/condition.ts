@@ -67,9 +67,10 @@ export function classOfNode(node: Condition): ValueClass | undefined {
  * the hop starts from): `far.column = outer.outer`, or, through a link entity,
  * `far.column in (select exit from link as <linkAlias> where entry = outer.outer and exit is not null)`, so a far row
  * counts once however many link rows lead to it and a link row with no exit leads nowhere (D14). A condition's hop
- * subqueries and a rollup's joined route both print their hops with it.
+ * subqueries and a rollup's joined route both print their hops with it; `linkWhere`, a rollup's only, narrows the link
+ * rows a through hop follows.
  */
-export function hopLink(hop: Hop, outer: Table, far: Table, linkAlias: string, options: Pick<ConditionSqlOptions, "dialect" | "resolve">): SQL {
+export function hopLink(hop: Hop, outer: Table, far: Table, linkAlias: string, options: Pick<ConditionSqlOptions, "dialect" | "resolve">, linkWhere?: Condition): SQL {
   const from = sql`${columnOf(outer, hop.outer)}`;
   const column = sql`${columnOf(far, hop.column)}`;
   if (!hop.through) return sql`${column} = ${from}`;
@@ -77,7 +78,9 @@ export function hopLink(hop: Hop, outer: Table, far: Table, linkAlias: string, o
   const linkOriginal = options.resolve(hop.through.table);
   const link = options.dialect.alias(linkOriginal, linkAlias);
   const exit = sql`${columnOf(link, hop.through.exit)}`;
-  return sql`${column} in (select ${exit} from ${linkOriginal} as ${sql.identifier(linkAlias)} where ${columnOf(link, hop.through.entry)} = ${from} and ${exit} is not null)`;
+  // A rollup's route may narrow the link rows it follows (`RollupHop.linkWhere`), printed against the link's alias.
+  const admitted = linkWhere === undefined ? sql`` : sql` and (${conditionSql(link, linkWhere, options)})`;
+  return sql`${column} in (select ${exit} from ${linkOriginal} as ${sql.identifier(linkAlias)} where ${columnOf(link, hop.through.entry)} = ${from} and ${exit} is not null${admitted})`;
 }
 
 /** A printer over one root: a stack of each depth's table, depth 0 the root. */

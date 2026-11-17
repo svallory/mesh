@@ -1,6 +1,6 @@
 import type { CapabilityManifest } from "./capabilities.ts";
 import type { Condition, Hop, OrderKey, SqlFunction, ValueClass } from "./condition.ts";
-import type { DataLayer, DataOperations, Filter, Query, Row, Scalar, TableHandle } from "./data-layer.ts";
+import type { DataLayer, DataOperations, Filter, Query, RollupFn, RollupHop, RollupQuery, Row, Scalar, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { EXPRESSION_TABLES, QUANTIFIER_TABLES } from "./expression-tables.ts";
 
@@ -34,6 +34,20 @@ const val = (value: Scalar, cls: ValueClass): Node => ({ kind: "value", value, c
 const call = (fn: SqlFunction, ...args: Node[]): Node => ({ kind: "call", fn, args });
 const D = (ms: number) => new Date(ms);
 
+/** A rollup's result as `{ anchor: value }`, each anchor once. */
+const rollupsOf = (layer: DataLayer) => async (query: RollupQuery): Promise<Record<string, unknown>> => {
+  const out: Record<string, unknown> = {};
+  for (const row of await layer.transaction((tx) => tx.rollup(query))) {
+    assert(!Object.hasOwn(out, String(row.anchor)), `a rollup must give each anchor once, and gave ${String(row.anchor)} twice`);
+    out[String(row.anchor)] = row.value;
+  }
+  return out;
+};
+const same = (actual: Record<string, unknown>, expected: Record<string, unknown>, message: string) => {
+  const show = (value: Record<string, unknown>) => JSON.stringify(Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1))));
+  assert(show(actual) === show(expected), `${message}: expected ${show(expected)} but got ${show(actual)}`);
+};
+
 /**
  * The rows of the condition fixture: four parents (one with a dangling parent key), their children and links. Rows are
  * inserted out of key order, so an adapter whose scan order is insertion order (SQLite's rowid) cannot pass the "lowest
@@ -64,9 +78,10 @@ const LINKS: Row[] = [
 /**
  * The checks every adapter that declares `conditions` passes: the condition reaches the database, unknown leaves a
  * row out, each value class compares with its column, `order` sorts nulls as the smallest value with ties in key
- * order, and `max`/`count` honour `where`. With `joins` declared too, the hops: `one` (null for no row and for a
- * dangling key), `some`, `every` (true over no row, false over unknown), `count`, `first` (the lowest key), a through
- * hop counting a far row once and skipping a null exit, two steps, and a depth-0 column inside a hop.
+ * order, `max`/`count` honour `where`, and, with `aggregates`, `rollup` honours `where`. With `joins` declared too, the
+ * hops: `one` (null for no row and for a dangling key), `some`, `every` (true over no row, false over unknown), `count`,
+ * `first` (the lowest key), a through hop counting a far row once and skipping a null exit, two steps, a depth-0 column
+ * inside a hop, and a rollup's route honouring the `where` of its start and of each hop and the `linkWhere` of a link.
  */
 export function dataLayerConditionConformance(makeLayer: () => Promise<ConditionFixture>, manifest: CapabilityManifest): Record<string, () => Promise<void>> {
   const declared = (name: string) => (manifest.capabilities as readonly string[]).includes(name);
@@ -171,6 +186,22 @@ export function dataLayerConditionConformance(makeLayer: () => Promise<Condition
       assert(await run((tx) => tx.count(parent, "id", undefined, val(null, "boolean"))) === 0, "count under an unknown where is 0");
     })],
   ];
+  if (declared("aggregates"))
+    checks.push(["rollup honours where on a one-table route", withRows(async (_read, { layer, parent, child }) => {
+      const byAnchor = rollupsOf(layer);
+      const over = (fn: RollupFn, value: string, where: Node | undefined): RollupQuery => ({ fn, table: child, anchor: "parentId", anchors: ["p1", "p2", "p3"], value, where });
+      same(await byAnchor(over("sum", "qty", call("gt", col("qty", "integer"), val(1, "integer")))), { p1: 3, p2: 5 }, "sum of qty where qty > 1: c5's unknown leaves p3 out");
+      same(await byAnchor(over("count", "id", call("eq", col("pos", "integer"), val(0, "integer")))), { p1: 1, p2: 1, p3: 1 }, "count where pos = 0");
+      same(await byAnchor(over("max", "qty", undefined)), { p1: 3, p2: 5, p3: null }, "no where: every row");
+      same(await byAnchor(over("count", "id", val(false, "boolean"))), {}, "a false where reaches no row");
+      same(await byAnchor(over("count", "id", val(null, "boolean"))), {}, "an unknown where reaches no row");
+      // The parents grouped by their own parent: p2 is p1's, p3 is p2's (its label is null).
+      same(await byAnchor({ fn: "sum", table: parent, anchor: "parentId", anchors: ["p1", "p2"], value: "n", where: call("eq", col("label", "string"), val("L2", "string")) }), { p1: 2 }, "a where on a renamed column (db_label)");
+      let error: unknown;
+      try { await layer.transaction((tx) => tx.rollup(over("count", "id", call("isNull", col("nope", "string"))))); }
+      catch (cause) { error = cause; }
+      assert(error instanceof FrameworkError, "a where on an unknown column must reject with FrameworkError");
+    })]);
 
   if (declared("joins")) {
     // The fixture's tables are known only once it is made, so the hops are made per fixture.
@@ -227,6 +258,25 @@ export function dataLayerConditionConformance(makeLayer: () => Promise<Condition
         assert(await fixture.layer.transaction((tx) => tx.count(fixture.parent, "id", undefined, where)) === 2, "count of parents with a child of qty > 2");
       })],
     );
+    if (declared("aggregates"))
+      checks.push(["rollup with hops honours the where of its start, of each hop and of a link", withRows(async (_read, fixture) => {
+        const h = hops(fixture);
+        const byAnchor = rollupsOf(fixture.layer);
+        const route = (fn: RollupFn, value: string, steps: RollupHop[], anchors: string[], where?: Node): RollupQuery =>
+          ({ fn, table: fixture.parent, anchor: "id", anchors, value, hops: steps, key: "id", where });
+        const qtyOver = (n: number) => call("gt", col("qty", "integer"), val(n, "integer"));
+        same(await byAnchor(route("sum", "qty", [{ hop: h.children, where: qtyOver(2) }], ["p1", "p2"])), { p1: 3, p2: 5 }, "a hop's where keeps the children with qty > 2");
+        same(await byAnchor(route("sum", "qty", [{ hop: h.children }], ["p1", "p2", "p4"], call("isTrue", col("b", "boolean")))), { p1: 3 }, "the start's where leaves p2 out, and p4 reaches no child");
+        // A where that crosses a relationship itself: its subquery's aliases do not collide with the route's.
+        same(await byAnchor(route("sum", "pos", [{ hop: h.children }], ["p1", "p2", "p3"], { kind: "some", hop: h.children, where: call("gt", qty(), val(2, "integer")) })), { p1: 1, p2: 1 }, "a start's where with a hop of its own");
+        // Children, then their parent: the later hop's where admits p2 (n 2) and not p1 (n 1).
+        same(await byAnchor(route("count", "id", [{ hop: h.children }, { hop: h.toParent, where: call("gt", col("n", "integer"), val(1, "integer")) }], ["p1", "p2"])), { p2: 1 }, "the where of a later hop");
+        // p1 reaches c3 through k1 and k2, p2 reaches c2 through k4.
+        same(await byAnchor(route("count", "id", [{ hop: h.linked, linkWhere: call("ne", col("id", "string"), val("k1", "string")) }], ["p1", "p2"])), { p1: 1, p2: 1 }, "a far row another admitted link leads to still counts, once");
+        same(await byAnchor(route("count", "id", [{ hop: h.linked, linkWhere: call("eq", col("id", "string"), val("k4", "string")) }], ["p1", "p2"])), { p2: 1 }, "a link row the linkWhere leaves out leads nowhere");
+        same(await byAnchor(route("sum", "qty", [{ hop: h.linked, where: call("eq", col("qty", "integer"), val(1, "integer")) }], ["p1", "p2"])), { p1: 1 }, "a through hop's where is on the far rows");
+        same(await byAnchor(route("count", "id", [{ hop: h.linked, where: val(true, "boolean"), linkWhere: val(false, "boolean") }], ["p1", "p2"])), {}, "a false linkWhere reaches nothing");
+      })]);
   }
   return Object.fromEntries(checks);
 }

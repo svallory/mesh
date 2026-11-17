@@ -28,6 +28,9 @@ entity :Team table="teams"
     integer :docTotal() { return &docs.length }
     count :docCount of=&docs
     max :topScore of=&docs.score
+    sum :scoreSum of=&docs.score
+    min :lowScore of=&docs.score
+    count :tagCount of=&docs.tags
   actions auto=[:read]
   policies
     policy :anyone types=[:read]
@@ -48,6 +51,9 @@ entity :Doc table="docs"
   relationships
     belongs-to :team entity=Team
     has-many :tags entity=Tag through=Tagging
+  computed
+    count :tagTotal of=&tags
+    max :teamTop of=&team.docs.score
   actions auto=[:read]
     read :ranked
       sort
@@ -276,6 +282,27 @@ describe("a caller's load keeps only the related rows the policies admit", () =>
       // A far key that names no row is still the error.
       await db.transaction((tx) => tx.insert(app.tables.taggings, { id: id(46), active: true, docId: id(11), tagId: id(98) }));
       await expect(mesh.readDoc({ load: ["tags"] }, alice)).rejects.toThrow(/which does not exist/);
+    } finally { await db.close(); }
+  });
+
+  test("a batched rollup aggregates only the rows each entity of its path admits, a link entity's included", async () => {
+    const { db, binding, mesh } = await seeded();
+    try {
+      const load = ["scoreSum", "lowScore", "tagCount"] as const;
+      const values = (rows: Record<string, unknown>[], names: readonly string[]) => rows.map((row) => names.map((name) => row[name]));
+      // One table (docs), and a joined route: the docs, their live links, the shown tags. alice may read plan and notes;
+      // plan's live links reach a (shown) and b (hidden); notes reaches c, and a only through a link that is not live.
+      expect(values(await mesh.readTeam({ sort: ["name"], load }, alice), load)).toEqual([[5, 5, 1], [3, 3, 1]]);
+      expect(values(await mesh.readTeam({ sort: ["name"], load }, bob), load)).toEqual([[null, null, 0], [3, 3, 1]]);
+      // A through relationship; a route that starts at a belongs-to (the doc's team, whose read admits every caller).
+      const docLoad = ["tagTotal", "teamTop"] as const;
+      expect(values(await mesh.readDoc({ sort: ["title"], load: docLoad }, alice), docLoad)).toEqual([[1, 3], [1, 5]]);
+      expect(values(await mesh.readDoc({ sort: ["title"], load: docLoad }, bob), docLoad)).toEqual([[1, 3]]);
+      // Through Mesh.privileged no policy runs: every doc, link and tag counts.
+      const all = await binding.run(() => privilegedOf(domain.Team).read({ sort: ["name"], load }, nobody));
+      expect(values(all, load)).toEqual([[12, 5, 2], [2, -1, 2]]);
+      const plan = (await binding.run(() => privilegedOf(domain.Doc).read({ filter: { title: { eq: "plan" } }, load: docLoad }, nobody)))[0];
+      expect([plan.tagTotal, plan.teamTop]).toEqual([2, 7]);
     } finally { await db.close(); }
   });
 

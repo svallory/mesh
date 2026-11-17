@@ -396,9 +396,9 @@ test("the entity a rollup reads needs a read like any relationship's target: the
   ]);
 });
 
-// Until M10's SQL rollups fold read policies into the batched rollup, a rollup it serves (anything but a count or max
-// over one has-many or has-one) must not reach an entity whose read policy reads the record: it would count rows the
-// caller may not read. The per-row count and max take the policy's condition already, so they build.
+// A read policy that reads the record is folded into a caller's load of every rollup that reaches its entity: the per-row
+// count and max take its condition, and the batched rollup takes it on the entity's table of the route. So every function
+// over every route builds under one.
 describe("a rollup over an entity whose read policy reads the record", () => {
   const policed = (policy: string) => target.replace("  actions auto=[:read]\n", `  actions auto=[:read]\n  policies\n    ${policy}\n`);
   const builtWith = (fn: string, path: string, relationship: string, policy: string) => buildModel({ root: "/project", files: [
@@ -407,28 +407,17 @@ describe("a rollup over an entity whose read policy reads the record", () => {
   ] });
   const recordReading = "policy :open types=[:read]\n      authorize-if=() => &done === false";
   test.each([
-    ["sum", "lines.units", "has-many :lines entity=Line"],
-    ["avg", "lines.units", "has-many :lines entity=Line"],
-    ["min", "lines.dueOn", "has-one :lines entity=Line"],
-    ["max", "lines.units", "belongs-to :lines entity=Line"],
-    ["count", "lines", "belongs-to :lines entity=Line"],
-    // A joined route takes no row condition either, a count or max over has-many hops included.
-    ["count", "lines.parent", "has-many :lines entity=Line"],
-    ["max", "lines.parent.units", "has-many :lines entity=Line"],
-    ["sum", "lines.parent.units", "belongs-to :lines entity=Line"],
-  ] as const)("%s of %s over %s is MESH_NOT_IMPLEMENTED at the rollup", (fn, path, relationship) => {
-    const result = builtWith(fn, path, relationship, recordReading);
-    expect(result.diagnostics).toEqual([{
-      severity: "error",
-      code: "MESH_NOT_IMPLEMENTED",
-      message: `${fn} :value reaches billing.Line, whose read policy :open reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`,
-      position: expect.objectContaining({ file: "billing/invoice.mesh.mx", line: 9 }),
-      fix: "compute the value in a computed field's body from the loaded relationship, or make the read policy read only actor and context",
-    }]);
-  });
-  test.each([
     ["count", "lines", "has-many :lines entity=Line", recordReading],
     ["max", "lines.units", "has-one :lines entity=Line", recordReading],
+    ["sum", "lines.units", "has-many :lines entity=Line", recordReading],
+    ["avg", "lines.units", "has-many :lines entity=Line", recordReading],
+    ["min", "lines.dueOn", "has-one :lines entity=Line", recordReading],
+    ["max", "lines.units", "belongs-to :lines entity=Line", recordReading],
+    ["count", "lines", "belongs-to :lines entity=Line", recordReading],
+    // A joined route, whose every table is the policed entity's.
+    ["count", "lines.parent", "has-many :lines entity=Line", recordReading],
+    ["max", "lines.parent.units", "has-many :lines entity=Line", recordReading],
+    ["sum", "lines.parent.units", "belongs-to :lines entity=Line", recordReading],
     ["sum", "lines.units", "has-many :lines entity=Line", "policy :staff types=[:read]\n      authorize-if=({ actor }) => actor.staff === true"],
     // A policy that does not cover the read a load runs is not run by the load.
     ["sum", "lines.units", "has-many :lines entity=Line", "policy :edit types=[:update]\n      authorize-if=() => &done === false"],

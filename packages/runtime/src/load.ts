@@ -47,7 +47,8 @@ function evaluating<T>(what: string, fn: () => T): T {
  *   row (`0`, or `null` for the others). The policies are decided first,
  *   so a denied name is not queried at all. A policy that reads the record admits row by row instead (M10): its condition
  *   goes into the query of the related rows (`where`), so a has-many lists only the rows it admits, a belongs-to or has-one
- *   it does not admit is `null`, and a rollup counts or takes the maximum over the admitted rows only. What a computed
+ *   it does not admit is `null`, and a rollup aggregates only the rows each entity of its path admits (each table of the
+ *   route queried with its entity's condition, a link entity's included). What a computed
  *   field's body reads, and anything read through `privileged`, runs no policy: a body is the entity's own rule, so it
  *   sees every related row.
  */
@@ -224,10 +225,15 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
 /** A fresh empty value for each row, so that no two rows share one list. */
 const emptied = (value: unknown) => (Array.isArray(value) ? [] : value);
 
-/** The conditions a name admitted row by row carries: on the rows of the entity it reaches, and on the link rows of a `through`. */
+/**
+ * The conditions a name admitted row by row carries: on the rows of the entity it reaches, and on the link rows of a
+ * `through`. A rollup served by the batched `rollup` carries `route` instead: the condition of each entity its path
+ * reaches that admits the caller row by row, by FQN (an entity that admits every row is left out).
+ */
 interface Narrowing {
   readonly target?: Condition | undefined;
   readonly link?: Condition | undefined;
+  readonly route?: ReadonlyMap<string, Condition> | undefined;
 }
 
 /**
@@ -271,20 +277,17 @@ async function admissions(plan: LoadPlan, entity: string, names: readonly string
     // Every entity the path reaches must admit the caller, the link entity of a `through` included (ruling D33, OD2).
     const reached = routeEntities(plan, entity, computed.of);
     const joined = reached.length > 1;
-    let narrowedBy: { target: string; where: Condition } | undefined;
+    const route = new Map<string, Condition>();
     let refused = false;
     for (const target of reached) {
       const where = await admits(target);
       if (where === false) { refused = true; break; }
-      if (where !== true) narrowedBy ??= { target, where };
+      if (where !== true) route.set(target, where);
     }
     if (refused) denied.set(name, computed.fn === "count" ? 0 : null);
-    else if (narrowedBy) {
-      // The batched `rollup` takes no row condition yet; the build refuses such a rollup first (MESH_NOT_IMPLEMENTED).
-      if (!perRow(computed, { relation: over, joined }))
-        throw new FrameworkError(`${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity} reaches ${narrowedBy.target}, whose read policy reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`);
-      narrowed.set(name, { target: narrowedBy.where });
-    }
+    // A per-row count or max reaches one entity, whose condition goes to `count`/`max`; the batched `rollup` takes each
+    // entity's condition on its table of the route.
+    else if (route.size) narrowed.set(name, perRow(computed, { relation: over, joined }) ? { target: route.get(reached[0]!) } : { route });
   }
   return { denied, narrowed };
 }
@@ -302,6 +305,12 @@ async function admittedValues(
   const relation = Object.hasOwn(entityPlan.relations, name) ? entityPlan.relations[name] : undefined;
   if (!relation) {
     const computed = entityPlan.computed[name] as Extract<ComputedPlan, { kind: "rollup" }>;
+    if (narrowing.route) {
+      // On copies, with the conditions: the rows may hold the related rows a computed body loaded, which no policy filtered.
+      const into: Work[] = work.map((row) => ({ ...row }));
+      await rollupRows(plan, entity, entityPlan, name, computed, rollupRoute(plan, entity, name, computed), tx, into, undefined, narrowing.route);
+      return into.map((row) => row[name]);
+    }
     const values: unknown[] = [];
     for (const row of work) values.push(await rollupOneRow(plan, entity, entityPlan, name, computed, tx, row, narrowing.target));
     return values;
@@ -801,16 +810,24 @@ const nothing = (computed: Extract<ComputedPlan, { kind: "rollup" }>) => (comput
  * error as its load is. `count`, `min` and `max` over the one relationship of a one-table route that the row already
  * holds are worked out from it; `sum` and `avg` always ask the database, so the value never depends on what was loaded
  * (JavaScript's sum of floats is not SQL's; ruling D33 OD4).
+ *
+ * With `admitted` (a caller's load that read policies admit row by row), each table of the route is asked with the
+ * condition of its entity: the start's as `where`, each hop's as its `where`, a link entity's as `linkWhere`; nothing is
+ * worked out from loaded rows, which may be the copy a computed body loaded with no policy. On a route of required
+ * belongs-to, the anchors the answer leaves out are asked once more without the conditions, so a row the policies
+ * exclude (`null`, or `0` for a count) is told from a key that names no row (the error).
  */
 async function rollupRows(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, route: RollupRoute, tx: DataOperations, rows: Work[], pending?: object,
+  admitted?: ReadonlyMap<string, Condition>,
 ): Promise<void> {
   const { path, relation, target, column } = route;
+  const conditionOf = (fqn: string) => admitted?.get(fqn);
   const owned = relation.kind === "belongs-to";
   const anchorOf = (row: Work) => row[owned ? relation.column : entityPlan.key];
   const asked: Work[] = [];
   for (const row of rows) {
-    if (!route.joined && computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
+    if (!admitted && !route.joined && computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
       row[name] = fromLoaded(computed, related(row[path]), column);
       continue;
     }
@@ -825,21 +842,47 @@ async function rollupRows(
   const anchors = [...new Set(asked.map(anchorOf))] as RollupQuery["anchors"][number][];
   const found = new Map<unknown, unknown>();
   let query: Omit<RollupQuery, "anchors">;
-  if (!route.joined) query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column };
+  const where = (fqn: string | undefined) => {
+    const condition = fqn === undefined ? undefined : conditionOf(fqn);
+    return condition ? { where: condition } : {};
+  };
+  if (!route.joined) query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column, ...where(route.targetName) };
   else {
+    // A route that starts at a belongs-to starts at its target, whose rows the target's condition narrows; one that
+    // starts at the entity's own table has no condition there (the caller already holds those rows).
     const start = owned ? planOf(plan, relation.target) : entityPlan;
-    const hops = (owned ? route.steps.slice(1) : route.steps).map((step) => ({ hop: hopOf(plan, step) }));
-    query = { fn: computed.fn, table: start.table, anchor: start.key, value: column, hops, key: target.key };
+    const hops = (owned ? route.steps.slice(1) : route.steps).map((step) => {
+      const through = step.relation.kind === "has-many" ? step.relation.through : undefined;
+      const linkWhere = through ? conditionOf(through.target) : undefined;
+      return { hop: hopOf(plan, step), ...where(step.relation.target), ...(linkWhere ? { linkWhere } : {}) };
+    });
+    query = { fn: computed.fn, table: start.table, anchor: start.key, value: column, hops, key: target.key, ...where(owned ? relation.target : undefined) };
   }
-  for (let at = 0; at < anchors.length; at += ROLLUP_ANCHORS)
-    for (const result of await tx.rollup({ ...query, anchors: anchors.slice(at, at + ROLLUP_ANCHORS) })) found.set(result.anchor, result.value);
+  const ask = async (asking: Omit<RollupQuery, "anchors">, list: readonly RollupQuery["anchors"][number][], into: Map<unknown, unknown>) => {
+    for (let at = 0; at < list.length; at += ROLLUP_ANCHORS)
+      for (const result of await tx.rollup({ ...asking, anchors: list.slice(at, at + ROLLUP_ANCHORS) })) into.set(result.anchor, result.value);
+  };
+  await ask(query, anchors, found);
+  // Excluded by a condition, not dangling: an anchor the same route reaches when no condition applies.
+  const excluded = new Map<unknown, unknown>();
+  if (admitted && route.required) {
+    const missing = anchors.filter((anchor) => !found.has(anchor));
+    if (missing.length) await ask(unconditioned(query), missing, excluded);
+  }
   for (const row of asked) {
     const anchor = anchorOf(row);
     if (found.has(anchor)) row[name] = found.get(anchor);
+    else if (excluded.has(anchor)) row[name] = nothing(computed);
     else if (route.required)
       throw new FrameworkError(`\`${computed.fn} :${name} of=&${computed.of.join(".")}\` on ${entity} ${JSON.stringify(row[entityPlan.key])} reaches no ${route.targetName} row: a key on its path points at a row that does not exist`);
     else row[name] = nothing(computed);
   }
+}
+
+/** A rollup query with every row condition taken off: the start's `where`, and each hop's `where` and `linkWhere`. */
+function unconditioned(query: Omit<RollupQuery, "anchors">): Omit<RollupQuery, "anchors"> {
+  const { where: _where, hops, ...rest } = query;
+  return hops ? { ...rest, hops: hops.map(({ hop }) => ({ hop })) } : rest;
 }
 
 /** A `count`, `min` or `max` over rows already loaded: the answer the data layer gives (nulls skipped; none is null, a count 0). */
