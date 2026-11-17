@@ -36,8 +36,6 @@ describe("MESH_EXPR_NOT_SQL", () => {
     const built = build(['() => &lines.some((l) => l.invoice.customer.label === "x")', "() => &customer.invoices.some((i) => i.nLines > 1)"]);
     expect(errors(built.diagnostics).map((d) => [d.code, d.message, d.fix])).toEqual([
       ["MESH_EXPR_NOT_SQL", "the filter of read :r0 of billing.Invoice must run as SQL, and l.invoice.customer.label is a computed field Mesh runs in memory (arithmetic on values that are not numbers)", FIX_COMPUTED],
-      ["MESH_NOT_IMPLEMENTED", "the filter of read :r1 of billing.Invoice reads i.nLines, a count rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)",
-        "write the condition over the relationship itself, which translates: `i.lines.length > 2`, `i.lines.some((x) => x.n > 2)`"],
     ]);
   });
 
@@ -67,8 +65,8 @@ describe("MESH_EXPR_NOT_SQL", () => {
   });
 
   test("one function with two problems reports both; one that holds an error gets no second", () => {
-    const both = build(['() => &customer.label === "a" && &nLines > 1']);
-    expect(errors(both.diagnostics).map((d) => d.code)).toEqual(["MESH_EXPR_NOT_SQL", "MESH_NOT_IMPLEMENTED"]);
+    const both = build(['() => &customer.label === "a" && &customer.meta !== null']);
+    expect(errors(both.diagnostics).map((d) => d.code)).toEqual(["MESH_EXPR_NOT_SQL", "MESH_FILTER_TYPE"]);
     const unknown = build(['() => &nope === "a" && &customer.label === "a"']);
     expect(errors(unknown.diagnostics).map((d) => d.code)).toEqual(["MESH_UNKNOWN_MEMBER"]);
     // An error inside a computed body the filter or a sort key inlines is the one reported, not a second at the read.
@@ -78,16 +76,28 @@ describe("MESH_EXPR_NOT_SQL", () => {
   });
 });
 
-describe("a rollup where SQL is required waits for SQL rollups (MESH_NOT_IMPLEMENTED)", () => {
-  const fix = "write the condition over the relationship itself, which translates: `&lines.length > 2`, `&lines.some((x) => x.n > 2)`";
-  test("in a filter and as a sort key", () => {
-    const built = build(["() => &nLines > 2"], "    read :sorted\n      sort\n        asc &nLines\n");
-    expect(errors(built.diagnostics).map(brief)).toEqual([
-      { code: "MESH_NOT_IMPLEMENTED", message: "the filter of read :r0 of billing.Invoice reads &nLines, a count rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)",
-        at: `billing/invoice.mesh.mx:${built.source.indexOf("&nLines > 2")}`, fix },
-      { code: "MESH_NOT_IMPLEMENTED", message: "the sort of read :sorted of billing.Invoice reads &nLines, a count rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)",
-        at: `billing/invoice.mesh.mx:${built.source.lastIndexOf("&nLines")}`, fix },
+describe("a rollup where SQL is required (m10-rollups, R22)", () => {
+  const adapter = (capabilities: string[]) => ({ kind: "data-adapter" as const, name: "test", build: "x", options: {}, capabilities: { adapter: "test", capabilities } }) as never;
+  const rollups = "    sum :qtyTotal of=&lines.qty\n    count :bigLines of=&lines filter=(l) => l.qty > 2\n";
+  test("builds in a filter, as a sort key and in a read policy, and needs joins at each read, even over one relationship", () => {
+    const source = invoice(["() => &nLines > 2 && &bigLines > 0"], "    read :sorted\n      sort\n        desc &qtyTotal\n", rollups)
+      .replace("    policy :open\n      authorize-if=() => true\n", "    policy :open types=[:read]\n      authorize-if=() => &nLines < 100\n    policy :writes types=[:create, :update, :destroy]\n      authorize-if=() => true\n");
+    const built = fixture.build(source);
+    expect(errors(built.diagnostics)).toEqual([]);
+    expect(capabilityDiagnostics(built.document!, adapter(["aggregates", "conditions", "joins"]))).toEqual([]);
+    const at = (needle: string, from = 0) => source.indexOf(needle, from);
+    const joins = "which runs as a subquery, and the data adapter \"test\" does not declare the joins capability | Use a data adapter that declares joins";
+    expect(capabilityDiagnostics(built.document!, adapter(["aggregates", "conditions"])).map((d) => `${d.position.offset} ${d.message} | ${d.fix}`)).toEqual([
+      `${at("&nLines > 2")} the filter of read :r0 of billing.Invoice reads &nLines through a relationship, ${joins}`,
+      `${at("&bigLines > 0")} the filter of read :r0 of billing.Invoice reads &bigLines through a relationship, ${joins}`,
+      `${at("&qtyTotal\n")} the sort of read :sorted of billing.Invoice reads &qtyTotal through a relationship, ${joins}`,
+      `${at("&nLines < 100")} policy :open authorize-if of billing.Invoice reads &nLines through a relationship, ${joins}`,
     ]);
+  });
+
+  test("a rollup whose filter holds an error gets no second error at the read", () => {
+    const built = fixture.build(invoice(["() => &badLines > 0"], "", "    count :badLines of=&lines filter=(l) => l.qty > &total\n"));
+    expect(errors(built.diagnostics).map((d) => [d.code, d.position.offset])).toEqual([["MESH_ROLLUP_FILTER", built.source.indexOf("&total\n")]]);
   });
 });
 
@@ -201,8 +211,6 @@ describe("a read policy that reads the record is lowered as a filter is (M10)", 
     expect(errors(built.diagnostics).map(brief)).toEqual([
       { code: "MESH_EXPR_NOT_SQL", message: `${head}, and &shout reads computed :label of billing.Customer, which Mesh runs in memory (arithmetic on values that are not numbers)`,
         at: `billing/invoice.mesh.mx:${built.source.indexOf("&shout ===")}`, fix: FIX_COMPUTED },
-      { code: "MESH_NOT_IMPLEMENTED", message: "policy :mine authorize-if of billing.Invoice reads &nLines, a count rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)",
-        at: `billing/invoice.mesh.mx:${built.source.indexOf("&nLines >")}`, fix: "write the condition over the relationship itself, which translates: `&lines.length > 2`, `&lines.some((x) => x.n > 2)`" },
       { code: "MESH_FILTER_TYPE", message: "&customer.meta is :json, which a read policy cannot use: it is a filter on the query, and the database does not look inside it",
         at: `billing/invoice.mesh.mx:${built.source.indexOf("&customer.meta")}`, fix: null },
     ]);

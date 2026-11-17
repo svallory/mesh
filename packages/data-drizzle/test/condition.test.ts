@@ -84,6 +84,38 @@ describe("conditionSql", () => {
     expect(() => q(col("id"), invoices, { ...options, aliasPrefix: "a b" })).toThrow(FrameworkError);
   });
 
+  test("a rollup is a correlated aggregate over its last table: one hop is its link, more an IN over the route", () => {
+    type Rollup = Extract<Condition, { kind: "rollup" }>;
+    const rollup = (fn: Rollup["fn"], hops: Hop[], value: string, where?: Condition, depth = 0): Rollup =>
+      ({ kind: "rollup", fn, depth, hops, value, class: "integer", ...(where ? { where } : {}) });
+    expect(q(rollup("count", [toChildren], "id")).sql).toBe('(select count("t1"."id") from "invoices" as "t1" where "t1"."parentId" = "invoices"."id")');
+    for (const fn of ["sum", "avg", "min", "max"] as const)
+      expect(q(rollup(fn, [toChildren], "total")).sql).toBe(`(select ${fn}("t1"."total") from "invoices" as "t1" where "t1"."parentId" = "invoices"."id")`);
+    // Over a belongs-to, and through a link entity (each far row once, null exits skipped, as the hop printer has it).
+    expect(q(rollup("max", [toCustomer], "name")).sql).toBe('(select max("t1"."db_name") from "customers" as "t1" where "t1"."id" = "invoices"."customerId")');
+    expect(q(rollup("count", [toTags], "id")).sql).toBe(
+      '(select count("t1"."id") from "tags" as "t1" where "t1"."id" in (select "l1"."tagId" from "invoice_tags" as "l1" where "l1"."invoiceId" = "invoices"."id" and "l1"."tagId" is not null))');
+    // Two hops: the last table's key among the keys the route reaches from the row, so a row two paths reach counts once.
+    expect(q(rollup("sum", [toChildren, toCustomer], "ownerId")).sql).toBe(
+      '(select sum("t1"."ownerId") from "customers" as "t1" where "t1"."id" in (select "t1r2"."id" from "invoices" as "t1r1" inner join "customers" as "t1r2" on "t1r2"."id" = "t1r1"."customerId" where "t1r1"."parentId" = "invoices"."id"))');
+    // The filter is a condition of its own over the last table, true only.
+    expect(q(rollup("count", [toChildren], "id", call("gt", col("total", 0, "integer"), val(2, "integer"))))).toMatchObject({
+      sql: '(select count("t1"."id") from "invoices" as "t1" where "t1"."parentId" = "invoices"."id" and (("t1"."total" > ?)) is true)', params: [2] });
+    // Of a row a hop reaches, and of the outer row inside a quantifier: each starts at its own row, at the next free depth.
+    expect(q({ kind: "one", hop: toParent, value: rollup("count", [toChildren], "id", undefined, 1) }).sql).toBe(
+      '(select (select count("t2"."id") from "invoices" as "t2" where "t2"."parentId" = "t1"."id") from "invoices" as "t1" where "t1"."id" = "invoices"."parentId" order by "t1"."id" limit 1)');
+    expect(q({ kind: "some", hop: toChildren, where: call("lt", col("total", 1, "integer"), rollup("count", [toChildren], "id")) }).sql).toBe(
+      '(exists (select 1 from "invoices" as "t1" where "t1"."parentId" = "invoices"."id" and (("t1"."total" < (select count("t2"."id") from "invoices" as "t2" where "t2"."parentId" = "invoices"."id"))) is true))');
+    // In an order, a text min or max collates as a text key does.
+    expect(render.sqlToQuery(sql.join(orderSql(invoices, [{ by: { ...rollup("min", [toCustomer], "name"), class: "string" }, desc: false }], { ...options, dialect: orderingDialect }))).sql)
+      .toBe('(select min("t1"."db_name" collate "C") from "customers" as "t1" where "t1"."id" = "invoices"."customerId") collate "C" asc nulls first');
+    // Malformed: a depth not open, no hops, an unknown function or column.
+    expect(() => q(rollup("count", [toChildren], "id", undefined, 1))).toThrow("starts at depth 1, where only depths 0 to 0 are open");
+    expect(() => q(rollup("count", [], "id"))).toThrow("needs a non-empty list of hops");
+    expect(() => q({ ...rollup("count", [toChildren], "id"), fn: "median" } as never)).toThrow('unknown function "median"');
+    expect(() => q(rollup("sum", [toChildren], "nope"))).toThrow(FrameworkError);
+  });
+
   test("a malformed condition is refused, never printed", () => {
     expect(() => q({ kind: "fragment" } as never)).toThrow(FrameworkError);
     expect(() => q(call("like" as never, col("note"), val("x")))).toThrow(FrameworkError);

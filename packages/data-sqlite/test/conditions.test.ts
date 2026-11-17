@@ -146,6 +146,15 @@ describe("the suites catch adapters that break the contract", () => {
       count: (table, attribute, filter, where) => tx.count(table, attribute, filter, where?.kind === "some" ? undefined : where),
       max: (table, attribute, filter, where) => tx.max(table, attribute, filter, where?.kind === "some" ? undefined : where),
     })), "max and count honour a where that crosses a relationship"));
+  // A rollup node in a where or an order key, rewritten as a layer that gets it wrong would run it.
+  for (const [what, change] of [
+    ["drops its filter", (node: Condition): Condition => node.kind === "rollup" ? { ...node, where: undefined } : node],
+    ["starts at the row the query returns", (node: Condition): Condition => node.kind === "rollup" ? { ...node, depth: 0 } : node],
+    ["takes max for every function", (node: Condition): Condition => node.kind === "rollup" ? { ...node, fn: "max" } : node],
+    ["follows only the first hop", (node: Condition): Condition => node.kind === "rollup" && node.hops.length > 1 ? { ...node, hops: node.hops.slice(0, 1) } : node],
+  ] as const)
+    test(`a layer whose rollup node ${what}`, () =>
+      fails(rewriting(change), "a rollup reads each row its route reaches once, from the row it starts at, narrowed by its filter"));
   test("a layer whose rollup drops where", () =>
     fails(broken((tx) => ({ rollup: (query) => tx.rollup({ ...query, where: undefined }) })), "rollup honours where on a one-table route"));
   for (const [what, drop] of [
@@ -203,6 +212,7 @@ describe("the suites catch adapters that break the contract", () => {
       "a through hop counts a far row once and skips a link with no exit",
       "an order key may cross a relationship",
       "max and count honour a where that crosses a relationship",
+      "a rollup reads each row its route reaches once, from the row it starts at, narrowed by its filter",
       "rollup honours where on a one-table route",
       "rollup with hops honours the where of its start, of each hop and of a link",
     ]);

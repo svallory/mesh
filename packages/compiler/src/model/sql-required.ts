@@ -194,9 +194,6 @@ function notSql(problem: Exclude<NotSql, { kind: "reported" }>, subject: string,
     case "self-reaching":
       return error("MESH_EXPR_NOT_SQL", `${head}, and computed :${problem.field} reaches itself again through a relationship, which a query cannot unfold`,
         problem.position, "store the value in an attribute, or write the condition over a fixed number of steps");
-    case "rollup":
-      return error("MESH_NOT_IMPLEMENTED", `${subject} reads ${problem.field}, a ${problem.fn} rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)`,
-        problem.position, `write the condition over the relationship itself, which translates: \`${problem.relation}.length > 2\`, \`${problem.relation}.some((x) => x.n > 2)\``);
     case "json":
       // A concept member is one JSON value as well (ADR-0092), named as the concept.
       if (problem.concept !== undefined)

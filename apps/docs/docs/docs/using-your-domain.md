@@ -281,7 +281,7 @@ What you load runs the read policies of the entity it reaches, with your context
 Three things meet in `load`, and they are not one thing:
 
 - A **relationship** runs in the query, as a join or a second query.
-- A **rollup** (`count`, `sum`) always runs in SQL, so it can also be filtered on and sorted by.
+- A **rollup** (`count`, `sum`) always runs in SQL, so a read's own `filter` and `sort` and a read policy can use it (`filter=() => &todoCount > 0`); a caller's `filter` and `sort` cannot yet.
 - A **computed field with a body** runs in SQL when its expression can be translated, and in memory when it cannot. `label` concatenates a string, so it is computed after the rows load, one extra pass. `mesh explain` says which one a field is.
 
 ## Errors
