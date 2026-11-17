@@ -227,6 +227,29 @@ describe("the deletion pass under a per-event keep", () => {
   });
 });
 
+describe("a period after a per-event keep", () => {
+  test("a period prunes the entries at or below its new deleted-through position and keeps one above a young row", async () => {
+    const layer = sqlite({ file: ":memory:" });
+    await createSchema(layer, tables);
+    try {
+      const before = await world(PER_EVENT, { layer });
+      // 1 an old Kept row, 2 and 3 Gone, 4 a young Kept row, 5 Aged: the Kept rows stay, the others are holes
+      await publish(layer, [Kept, 40 * DAY], Gone, Gone, Kept, Aged);
+      await before.binding.deliver();
+      expect(await kept(layer)).toEqual([1, 4]);
+      expect((await state(layer)).deletedThrough).toBe(0);
+      expect((await state(layer)).holes).toEqual({ "core.Gone": 3, "core.Aged": 5 });
+      // keep { days: 30 }: the old row 1 goes, the young row 4 stops the prefix at 3, so core.Gone's entry (3) is
+      // dropped and core.Aged's (5, above the young row) stays
+      const period = await world({ days: 30 }, { layer });
+      await period.binding.deliver();
+      expect(await kept(layer)).toEqual([4]);
+      expect((await state(layer)).deletedThrough).toBe(3);
+      expect((await state(layer)).holes).toEqual({ "core.Aged": 5 });
+    } finally { await layer.close(); }
+  });
+});
+
 describe("reads below a hole (rule KE3)", () => {
   test("readEvents from below a hole fails naming the event; names that leave it out, and a cursor at the hole, read", async () => {
     const { layer, binding, read } = await world(PER_EVENT);
