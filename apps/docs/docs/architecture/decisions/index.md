@@ -141,7 +141,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |
 | [0082](./0082-named-checks-and-mixins.md) | Named checks in a `checks` section; `mixin` files with `use`; step files dropped | Accepted | operator; lead reading for DOM-33 |
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
-| [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is decided | Accepted; the open item is decided | operator |
+| [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is decided | Accepted, amended 2026-11-17: the architecture file built (lead ruling D40) | operator; lead for the 2026-11-17 amendment |
 | [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders | Accepted, amended 2026-11-17: MX's side shipped, Mesh's built with a deviation (0092) | operator with MX |
 | [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted, amended 2026-10-13: `Mesh` without `now` and `today` (PRJ-22, SYN-29) | operator |
 | [0087](./0087-raw-sql-escape-hatch.md) | The raw-SQL escape hatch: a read-only `query` function exported by `#mesh` before 1.0 (Option E), with Ash's `fragment` left to M10 | Accepted by the lead for Option E, pending the operator (2026-11-17); questions 1, 7 and 14 open | operator; lead for Option E |
