@@ -136,6 +136,11 @@ describe("the relationship fix line", () => {
   ])("`%s` keeps MX's message and position and gets the fix", (line, kind) => {
     expect(report(relationship(line))).toEqual([["MESH_UNKNOWN_OPTION", unknownValue(kind), fixFor(kind), 9, 4 + kind.length]]);
   });
+  test("`belongs-to :list=:List` keeps MX's suffixed message and position and gets the fix", () => {
+    expect(report(relationship("belongs-to :list=:List"))).toEqual([
+      ["MESH_UNKNOWN_OPTION", "`belongs-to`: unknown option `value` (set by `:list=…`)", fixFor("belongs-to"), 9, 21],
+    ]);
+  });
   test("a file with another error keeps both diagnostics; only the relationship gets the fix", () => {
     const source = "entity :Todo\n  attributes\n    string=:text :title\n  relationships\n    belongs-to=:List :list\n";
     expect(report(source)).toEqual([
@@ -169,8 +174,18 @@ describe("the relationship fix line", () => {
       ["MESH_UNKNOWN_OPTION", unknownValue("entity"), null, 5, 6],
     ]);
   });
-  test("`belongs-to=List :list` stays MX's parse error with no fix", () => {
-    const found = report(relationship("belongs-to=List :list"));
-    expect(found.map((d) => [d[0], d[2]])).toEqual([["MESH_EXPECTED_SINGLE_EXPRESSION", null]]);
+  test.each([
+    ["policy=:allow :p", "policy", keyed + "  policies\n    policy=:allow :p\n"],
+    ["create=:create :c", "create", keyed + "  actions\n    create=:create :c\n"],
+  ])("`%s` keeps MX's unknown option `value` with no fix", (_, kind, source) => {
+    expect(report(source)).toEqual([["MESH_UNKNOWN_OPTION", unknownValue(kind), null, 9, 10]]);
+  });
+  test.each([
+    ["belongs-to=List :list", "MESH_EXPECTED_SINGLE_EXPRESSION"],
+    ["has-many=:billing.Item :items", "MESH_EXPECTED_SINGLE_EXPRESSION"],
+    ["belongs-to=::Foo", "MESH_SYNTAX"],
+  ])("`%s` stays MX's parse error with no fix", (line, code) => {
+    const found = report(relationship(line));
+    expect(found.map((d) => [d[0], d[2]])).toEqual([[code, null]]);
   });
 });
