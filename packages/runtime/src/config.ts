@@ -14,6 +14,11 @@ export interface MeshConfig {
   domain: string | string[];
   /** Output folder relative to mesh.config.ts, conventionally .mesh. */
   output: string;
+  /**
+   * The folder holding the project's surface files (`surface :name`, one per audience), relative to the project root,
+   * conventionally `src/surfaces`. Absent: the project has no surfaces, and a `surface` file anywhere is an error.
+   */
+  surfaces?: string;
   /** Globs, relative to the project root, of entity files Mesh must skip. */
   ignore?: string | string[];
   data: DataAdapter;

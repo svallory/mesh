@@ -7,6 +7,7 @@ import type {
   TagCall,
 } from "@mxlang/core";
 import { ACTION_TYPES, ATTRIBUTE_TYPES as REGISTRY } from "@meshfw/model";
+import { itemNotAtom } from "./syntax/atoms-sugars.ts";
 export { ACTION_TYPES } from "@meshfw/model";
 export const ATTRIBUTE_TYPES = REGISTRY.map((t) => t.name);
 export const ROLLUPS = ["count", "sum", "avg", "min", "max"] as const;
@@ -227,6 +228,42 @@ function entityReference(options: readonly string[]): NonNullable<CustomTag["ana
   };
 }
 
+/**
+ * `fields=[:title, :state]` or `fields=:all` on an `expose` line (`notes/spec/other-file-kinds.md`, "Surface files"). MX's
+ * contract takes one type per option, so the slot is left open, as `check`'s `message` is, and this hook refuses what is
+ * neither: the shape of the list (not a list, empty, repeated) is `MESH_ATOM_LIST` at the option, and an item that is no
+ * atom is `MESH_OPTION_VALUE` at the item, in the words `checkAtomSlots` uses for `auto=[read]` (`itemNotAtom`).
+ */
+function exposedFields(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
+  for (const call of calls) {
+    const a = get(call, "fields");
+    if (!a) continue;
+    if (a.kind === "static" && a.node?.type === "mesh:Atom") {
+      if (a.value !== "all")
+        ctx.fail(`fields takes a list of atoms (\`fields=[:${String(a.value)}]\`) or \`:all\` for every field`, { at: a.loc, code: "MESH_ATOM_LIST" });
+      continue;
+    }
+    const n = node(a);
+    if (n?.type !== "ArrayExpression") {
+      ctx.fail("fields must be a list of atoms (`fields=[:title, :state]`) or `:all`", { at: a.loc, code: "MESH_ATOM_LIST" });
+      continue;
+    }
+    const atoms = atomsOf(a);
+    const elements = n.elements ?? [];
+    const bad = elements.findIndex((e) => !(e && atoms.has(e)));
+    if (bad >= 0) {
+      const item = elements[bad] as (Node & { start?: number | null; end?: number | null }) | null | undefined;
+      // An empty item (`[:a, , :b]`) has no place of its own: the option is where it is.
+      const at = typeof item?.start === "number" && typeof item.end === "number" ? { sourceStart: item.start, sourceEnd: item.end } : a.loc;
+      ctx.fail(itemNotAtom("fields", bad, item ?? null), { at, code: "MESH_OPTION_VALUE" });
+      continue;
+    }
+    const names = elements.map((e) => String(e!.value));
+    if (!names.length || new Set(names).size !== names.length)
+      ctx.fail("fields must be non-empty with no repeated values", { at: a.loc, code: "MESH_ATOM_LIST" });
+  }
+}
+
 const contracts: ContractMap = {
   entity: closed({
     parents: ["#root"],
@@ -330,6 +367,35 @@ const contracts: ContractMap = {
   disable: closed({
     parents: ["architecture"],
     attributes: { name: ruleName() },
+  }),
+  // A surface file (`notes/spec/other-file-kinds.md`, "Surface files"; ADR-0077): one audience's entry point, read from the
+  // configured surfaces folder. The root takes only its name; its lines are `expose` lines, each listing the actions of its
+  // entity the audience may call. No line takes a function: a surface declares no behaviour.
+  surface: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: { expose: { repeatable: true } },
+  }),
+  // `expose :tasks entity=Task label="Tasks" fields=[:title, :state]`: an entity the audience may reach, under the exposed
+  // name. `entity=` is a reference written bare, as a relationship's; `fields=` lists what leaves, or `:all`.
+  expose: closed({
+    parents: ["surface"],
+    attributes: {
+      ...named(),
+      entity: { type: "expression", required: true },
+      label: text(),
+      fields: {},
+    },
+    children: children("action"),
+    analyze(calls, ctx) {
+      entityReference(["entity"])(calls, ctx);
+      exposedFields(calls, ctx);
+    },
+  }),
+  // `action :complete`: one of the exposed entity's actions the audience may call, by name.
+  action: closed({
+    parents: ["expose"],
+    attributes: named(),
   }),
   relationships: closed({
     parents: ["entity"],

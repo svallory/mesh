@@ -379,6 +379,39 @@ export interface Aggregate {
   commands?: DeclarationRef[];
   position: SourcePosition;
 }
+/** One `action :name` line of an expose line: an action of the exposed entity the audience may call. */
+export interface ExposedAction {
+  /** The action's name, as written (`complete`). */
+  name: string;
+  position: SourcePosition;
+}
+/** One `expose` line of a surface: an entity the audience may reach, under the exposed name. */
+export interface Exposure {
+  /** The exposed name, as written (`tasks`): the name the audience sees. */
+  name: string;
+  /** The exposed entity's FQN (`work.Task`), resolved from `entity=`. */
+  entity: string;
+  /** `entity=` as written (`Task`, `work.Task`), for messages. */
+  identifier: string;
+  /** `label=` as written; absent when the line has none (a reader shows `name`). */
+  label?: string;
+  /**
+   * `fields=`: the member names listed, in written order, or `"all"`. `[]` when the line has no `fields=` (no property
+   * leaves). Names are members as the entity file names them (`author` for a belongs-to, never `authorId`).
+   */
+  fields: string[] | "all";
+  actions: ExposedAction[];
+  position: SourcePosition;
+}
+/** A surface (`surface :admin`, a surface file): what one audience may call and see, under which names. */
+export interface Surface {
+  /** The surface's name, as written (`admin`). A surface has no module: its identity is its name. */
+  name: string;
+  /** Project-relative path of the surface file. */
+  file: string;
+  expose: Exposure[];
+  position: SourcePosition;
+}
 export interface ModelDocument {
   entities: Entity[];
   /** Present only when the project declares an event, so a project with none keeps its `model.json` as it was. */
@@ -389,6 +422,8 @@ export interface ModelDocument {
   aggregates?: Aggregate[];
   /** Present only when the project declares a concept, so a project with none keeps its `model.json` as it was. */
   concepts?: ConceptDeclaration[];
+  /** Present only when the project declares a surface, so a project with none keeps its `model.json` as it was. */
+  surfaces?: Surface[];
   /** Selected adapter identity only; options may contain secrets and never serialize. */
   data?: { name: string };
 }

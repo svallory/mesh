@@ -16,6 +16,10 @@ export interface ResolvedConfig {
   configFile: string;
   domainRoot: string;
   entityFiles: string[];
+  /** The surfaces root, absolute; absent when the config has no `surfaces`. */
+  surfacesRoot?: string;
+  /** The Mesh files under it, absolute, sorted; `ignore` applies to them as to entity files. Absent with `surfacesRoot`. */
+  surfaceFiles?: string[];
   /** Discovered entity files that `ignore` excluded, with the pattern that matched. */
   ignoredFiles?: { file: string; pattern: string }[];
   output: string;
@@ -119,10 +123,15 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     return { config: null, diagnostics };
   }
   const config = value;
-  const keys = new Set(["domain", "output", "data", "extensions", "ignore", "seams", "events"]);
+  const keys = new Set(["domain", "surfaces", "output", "data", "extensions", "ignore", "seams", "events"]);
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
   const domain = config.domain;
   if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
+  const hasSurfaces = Object.hasOwn(config, "surfaces");
+  if (hasSurfaces) {
+    if (!nonEmpty(config.surfaces)) fail("surfaces", "Configuration field `surfaces` must be a non-empty relative folder");
+    else if (!confinedGlob(normalizePath(config.surfaces)) || /[*?{\[]/.test(config.surfaces)) fail("surfaces", "Configuration field `surfaces` must be a relative folder inside the project");
+  }
   if (!nonEmpty(config.output)) fail("output", "Configuration field `output` must be a non-empty relative directory path");
   const ignoreInput = config.ignore;
   const ignore: string[] = ignoreInput === undefined ? [] : Array.isArray(ignoreInput) ? ignoreInput as string[] : [ignoreInput as string];
@@ -220,18 +229,43 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     }
   }
   files = [...new Set(files)].sort();
+  // The surfaces folder: a folder only, inside the project, scanned as a `domain` folder is. It may hold no file yet.
+  let surfacesRoot: string | undefined;
+  let surfaceFiles: string[] = [];
+  if (hasSurfaces && !diagnostics.length) {
+    const candidate = resolve(root, normalizePath(config.surfaces as string));
+    try {
+      let folder = false;
+      try { folder = (await stat(candidate)).isDirectory(); }
+      catch (cause) { if (errorCode(cause) !== "ENOENT" && errorCode(cause) !== "ENOTDIR") throw cause; }
+      if (!folder) fail("surfaces", `Configuration field \`surfaces\` names no folder: ${projectPath(root, candidate)}`);
+      else if (!inside(canonicalRoot, await realpath(candidate))) fail("surfaces", "Configuration field `surfaces` resolves outside the project");
+      else {
+        surfacesRoot = candidate;
+        for await (const file of new Bun.Glob(meshGlob).scan({ cwd: candidate, onlyFiles: true, followSymlinks: true, dot: true })) if (hasMeshExtension(file)) surfaceFiles.push(resolve(candidate, normalizePath(file)));
+        surfaceFiles = [...new Set(surfaceFiles)].sort();
+        // By file, not by root: a file `domain` reads that lies under the surfaces folder is read by both.
+        const shared = files.find((file) => inside(candidate, file));
+        if (shared !== undefined)
+          fail("surfaces", `Configuration field \`surfaces\` overlaps \`domain\`: ${projectPath(root, shared)} is read by both`, "Move the surfaces folder out of what `domain` reads, or narrow `domain`");
+      }
+    } catch (cause) { fail("surfaces", `Cannot read the surfaces folder (${errorCode(cause) ?? "UNKNOWN"})`); }
+  }
   const ignoredFiles: { file: string; pattern: string }[] = [];
   if (ignore.length && !diagnostics.length) {
     const patterns = ignore.map((glob) => { const pattern = normalizePath(glob).replace(/^\.\//, ""); return { glob, matcher: new Bun.Glob(pattern) }; });
     const used = new Set<string>();
     const before = files.length;
-    files = files.filter((file) => {
+    const kept = (file: string) => {
       const name = projectPath(root, file);
       const hits = patterns.filter((p) => p.matcher.match(name));
       for (const hit of hits) used.add(hit.glob);
       if (hits[0]) ignoredFiles.push({ file, pattern: hits[0].glob });
       return hits.length === 0;
-    });
+    };
+    // A pattern is used when it matches an entity file or a surface file; a matched surface file is left out as an entity file is.
+    files = files.filter(kept);
+    surfaceFiles = surfaceFiles.filter(kept);
     for (const p of patterns) if (!used.has(p.glob))
       diagnostics.push({ ...error("MESH_IGNORE_UNUSED", `\`ignore\` pattern ${JSON.stringify(p.glob)} matches no entity file; check it for a typo (patterns match files, such as "src/legacy/**")`, at("ignore"), "Fix or remove the pattern in mesh.config.ts"), severity: "warning" });
     if (before > 0 && files.length === 0) fail("ignore", "Configuration field `ignore` excludes every entity file");
@@ -243,17 +277,19 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     domainRoot = dirname(rooting[0]!);
     for (const file of rooting) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
   }
-  for (const file of files) {
-    const name = projectPath(root, file);
-    try {
-      const canonicalFile = await realpath(file);
-      if (!inside(canonicalRoot, canonicalFile)) { fail("domain", `Entity file "${name}" resolves outside the project`); continue; }
-      if (!(await stat(file)).isFile()) fail("domain", `Entity file "${name}" is not a file`);
-    } catch (cause) { fail("domain", `Cannot read entity file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
-  }
+  for (const [field, noun, list] of [["domain", "Entity", files], ["surfaces", "Surface", surfaceFiles]] as const)
+    for (const file of list) {
+      const name = projectPath(root, file);
+      try {
+        const canonicalFile = await realpath(file);
+        if (!inside(canonicalRoot, canonicalFile)) { fail(field, `${noun} file "${name}" resolves outside the project`); continue; }
+        if (!(await stat(file)).isFile()) fail(field, `${noun} file "${name}" is not a file`);
+      } catch (cause) { fail(field, `Cannot read ${noun.toLowerCase()} file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
+    }
   const renamedAt = record(config.events) && Object.hasOwn(config.events, "renamed") ? at("renamed") : undefined;
   return { config: diagnostics.some((d) => d.severity === "error") ? null : {
     root, configFile, domainRoot, entityFiles: files, ignoredFiles, output, data: data as DataAdapter,
+    ...(surfacesRoot !== undefined ? { surfacesRoot, surfaceFiles } : {}),
     ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
     ...(Object.hasOwn(config, "events") ? { events: config.events as EventsConfig } : {}),
     ...(renamedAt ? { positions: { renamed: renamedAt } } : {}),
@@ -311,22 +347,29 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   catch (cause) {
     return { document: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", "mesh.config.ts", 0), "Use an existing project directory")] };
   }
-  for (const file of config.entityFiles) {
-    const path = resolveEntityFile(config.root, file);
-    if (!path) {
-      diagnostics.push(error("MESH_ENTITY_PATH", "Entity file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use an entity file path inside the project"));
-      continue;
-    }
-    try {
-      if (!inside(canonicalRoot, await realpath(path.absolute))) {
-        diagnostics.push(error("MESH_ENTITY_PATH", `Entity file "${path.file}" resolves outside the project`, positionAt("", path.file, 0), "Use an entity file path inside the project"));
+  // A surface file is read exactly as an entity file is.
+  const read = async (list: readonly string[], into: { file: string; source: string }[]) => {
+    for (const file of list) {
+      const path = resolveEntityFile(config.root, file);
+      if (!path) {
+        diagnostics.push(error("MESH_ENTITY_PATH", "Entity file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use an entity file path inside the project"));
         continue;
       }
-      files.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
-    } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the domain list")); }
-  }
+      try {
+        if (!inside(canonicalRoot, await realpath(path.absolute))) {
+          diagnostics.push(error("MESH_ENTITY_PATH", `Entity file "${path.file}" resolves outside the project`, positionAt("", path.file, 0), "Use an entity file path inside the project"));
+          continue;
+        }
+        into.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
+      } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the domain list")); }
+    }
+  };
+  await read(config.entityFiles, files);
+  const surfaceFiles: { file: string; source: string }[] = [];
+  if (config.surfacesRoot !== undefined) await read(config.surfaceFiles ?? [], surfaceFiles);
   const result = buildModel({
     root: config.root, domainRoot: config.domainRoot, files,
+    ...(config.surfacesRoot !== undefined ? { surfaces: { root: config.surfacesRoot, files: surfaceFiles } } : {}),
     ignored: (config.ignoredFiles ?? []).map(({ file, pattern }) => ({ file: projectPath(config.root, file), pattern })),
   });
   if (result.document) result.document.data = { name: config.data.name };
