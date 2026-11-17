@@ -46,6 +46,8 @@ export function resolveRollups(
     const before = diagnostics.length;
     let current = entity;
     let nullable = false;
+    // Each relationship of the path, with the entity it is declared on.
+    const hops: { owner: Entity; relation: Entity["relationships"][number] }[] = [];
     for (let index = 0; index < segments.length; index++) {
       const ref = segments[index]!;
       const relation = current.relationships.find((r) => r.name === ref.name);
@@ -71,6 +73,7 @@ export function resolveRollups(
       }
       if (relation) {
         nullable ||= relation.kind !== "belongs-to" || relation.nullable;
+        hops.push({ owner: current, relation });
         if (last) {
           if (computed.rollup.fn !== "count")
             fail(
@@ -127,24 +130,14 @@ export function resolveRollups(
         computed.nullable = nullable || attribute.nullable;
       }
     }
-    // What the path means is checked; whether the loader can serve it is known now too, so say so at the build (ADR-0018).
+    // What the path means is checked; whether the loader can serve it is known now too, so say so at the build (ADR-0018):
+    // each has-many or has-one on the path must say which belongs-to back it follows.
     if (diagnostics.length !== before) continue;
     const { fn } = computed.rollup;
-    const first = entity.relationships.find((r) => r.name === segments[0]!.name);
-    if (!first) continue;
-    // A count ends at a relationship; every other rollup at an attribute after the last one.
-    const relationships = fn === "count" ? segments.length : segments.length - 1;
-    if (relationships > 1) {
-      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through more than one relationship, which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`, computed.position);
-      continue;
-    }
-    if (first.through) {
-      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through a link entity (has-many :${first.name} through=${first.through.entity.identifier}), which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`, computed.position);
-      continue;
-    }
-    if (first.kind !== "belongs-to" && first.inverse === undefined) {
-      const problem = inverseProblem(document, entity, first);
-      if (problem) diagnostics.push({ severity: "error", code: problem.code, message: `${fn} :${computed.name} reads ${first.kind} :${first.name}, which cannot be loaded: ${problem.because}`, position: computed.position, fix: problem.fix });
+    for (const [index, { owner, relation }] of hops.entries()) {
+      if (relation.kind === "belongs-to" || relation.inverse !== undefined) continue;
+      const problem = inverseProblem(document, owner, relation);
+      if (problem) diagnostics.push({ severity: "error", code: problem.code, message: `${fn} :${computed.name} reads ${relation.kind} :${relation.name}${index === 0 ? "" : ` of ${owner.fqn}`}, which cannot be loaded: ${problem.because}`, position: computed.position, fix: problem.fix });
     }
   }
 }

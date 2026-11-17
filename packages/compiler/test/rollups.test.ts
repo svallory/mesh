@@ -111,24 +111,51 @@ test("a rollup over one belongs-to is nullable when the attribute is", () => {
   expect(optional.document!.entities[0]!.computed[0]).toMatchObject({ type: "integer", nullable: true });
 });
 
-// A path through more than one relationship needs a join, which is M10.
+// A path through more than one relationship builds (it runs as a join, which needs the adapter's joins capability):
+// its type and nullability come from the path, nullable as soon as one hop is a has-many, a has-one or a nullable
+// belongs-to.
 test.each([
-  ["max", "lines.parent.dueOn"],
-  ["count", "lines.parent"],
-  ["sum", "lines.invoice.amount"],
-] as const)("%s of %s needs a join: a build error that names M10", (fn, path) => {
-  const { result } = build(fn, path);
-  expect(result.document).toBeNull();
-  expect(result.diagnostics).toEqual([expect.objectContaining({
-    code: "MESH_NOT_IMPLEMENTED",
-    message: `${fn} :value goes through more than one relationship, which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`,
-    fix: null,
-  })]);
+  ["max", "lines.parent.dueOn", "has-many :lines entity=Line", "date", true],
+  ["count", "lines.parent", "has-many :lines entity=Line", "integer", false],
+  ["sum", "lines.invoice.amount", "has-many :lines entity=Line", "decimal", true],
+  ["count", "lines.parent", "belongs-to :lines entity=Line", "integer", false],
+  ["max", "lines.parent.units", "belongs-to :lines entity=Line", "integer", false],
+  ["min", "lines.invoice.amount", "belongs-to :lines entity=Line", "decimal", true],
+  ["avg", "lines.parent.parent.units", "belongs-to :lines entity=Line", "decimal", false],
+] as const)("%s of %s over %s builds as %s, nullable %p", (fn, path, relationship, type, nullable) => {
+  const { result } = build(fn, path, relationship);
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities[0]!.computed[0]).toMatchObject({ type, nullable, rollup: { fn, of: path } });
 });
 
-test("a path that starts at a belongs-to and goes on needs a join too", () => {
-  const { result } = build("count", "lines.parent", "belongs-to :lines entity=Line");
-  expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_NOT_IMPLEMENTED", message: expect.stringContaining("goes through more than one relationship") })]);
+// Every has-many or has-one on the path must say which belongs-to back it follows, the later ones too.
+describe("a later has-many on the path whose target has several belongs-to back", () => {
+  const line = target.replace("    belongs-to :invoice entity=Invoice nullable\n", "    belongs-to :invoice entity=Invoice nullable\n    has-many :children entity=Line\n");
+  const builtWith = (lineSource: string, path = "lines.children.units", relationship = "belongs-to :lines entity=Line") => buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source: build("sum", path, relationship).source },
+    { file: "billing/line.mesh.mx", source: lineSource },
+  ] });
+  test("is MESH_INVERSE_REQUIRED at the rollup, naming the entity it is declared on", () => {
+    const twoBack = line.replace("    belongs-to :parent entity=Line\n", "    belongs-to :parent entity=Line\n    belongs-to :mentor entity=Line nullable\n");
+    const result = builtWith(twoBack);
+    const atRollup = result.diagnostics.filter((d) => d.position.file === "billing/invoice.mesh.mx");
+    expect(atRollup).toEqual([{
+      severity: "error",
+      code: "MESH_INVERSE_REQUIRED",
+      message: "sum :value reads has-many :children of billing.Line, which cannot be loaded: billing.Line has 2 belongs-to back to billing.Line (:parent, :mentor) and has-many :children does not say which it follows",
+      position: expect.objectContaining({ line: 9 }),
+      fix: "Choose one: `inverse=:parent`",
+    }]);
+    // The declaration's own error stays where it is.
+    expect(result.diagnostics.filter((d) => d.position.file === "billing/line.mesh.mx").map((d) => d.code)).toEqual(["MESH_INVERSE_REQUIRED"]);
+    // Chosen, it builds.
+    expect(builtWith(twoBack.replace("has-many :children entity=Line", "has-many :children entity=Line inverse=:parent")).diagnostics).toEqual([]);
+  });
+  test("one belongs-to back builds; none is the declaration's MESH_NO_INVERSE alone", () => {
+    expect(builtWith(line).diagnostics).toEqual([]);
+    const none = builtWith(line.replace("has-many :children entity=Line", "has-many :children entity=Invoice"), "lines.children.amount", "has-many :lines entity=Line");
+    expect(none.diagnostics.map((d) => [d.code, d.position.file])).toEqual([["MESH_NO_INVERSE", "billing/line.mesh.mx"]]);
+  });
 });
 
 test("a rollup over a relationship that nothing points back at is the one MESH_NO_INVERSE, at the has-many line", () => {
@@ -364,6 +391,10 @@ describe("a rollup over an entity whose read policy reads the record", () => {
     ["min", "lines.dueOn", "has-one :lines entity=Line"],
     ["max", "lines.units", "belongs-to :lines entity=Line"],
     ["count", "lines", "belongs-to :lines entity=Line"],
+    // A joined route takes no row condition either, a count or max over has-many hops included.
+    ["count", "lines.parent", "has-many :lines entity=Line"],
+    ["max", "lines.parent.units", "has-many :lines entity=Line"],
+    ["sum", "lines.parent.units", "belongs-to :lines entity=Line"],
   ] as const)("%s of %s over %s is MESH_NOT_IMPLEMENTED at the rollup", (fn, path, relationship) => {
     const result = builtWith(fn, path, relationship, recordReading);
     expect(result.diagnostics).toEqual([{
@@ -407,7 +438,7 @@ entity :Invoice
     return { result, entity: result.document!.entities.find((e) => e.name === "Invoice")! };
   };
   const nullOnNew = (entity: Entity) => newInstanceComputed(entity, new Set(newInstanceMembers(newInstanceGaps(entity), true)));
-  test.each(["max :value of=&lines.units", "sum :value of=&lines.amount", "min :value of=&lines.dueOn"])("%s is null on the new instance", (computed) => {
+  test.each(["max :value of=&lines.units", "sum :value of=&lines.amount", "min :value of=&lines.dueOn", "max :value of=&lines.parent.units"])("%s is null on the new instance", (computed) => {
     expect(nullOnNew(entityOf(invoice(computed)).entity)).toEqual(["value"]);
   });
   test("a count over it (0 or 1) and a rollup over a has-many are not tainted, nor one over a nullable belongs-to", () => {

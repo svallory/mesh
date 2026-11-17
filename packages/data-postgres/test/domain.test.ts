@@ -1,5 +1,5 @@
 // data-sqlite's end-to-end domain suites (packages/data-sqlite/test/domain/) on Postgres: relationships, rollups (the
-// per-row count and max, and the batched sum, avg, min and belongs-to rollups),
+// per-row count and max, and the batched sum, avg, min and belongs-to rollups, and rollups over joined routes),
 // has-many through, the action lifecycle, policies, validate-when and integer keys. They reach what the conformance
 // suites do not (compiled reads, loads and actions over generated tables) through the commands where this adapter differs
 // from SQLite's (`returning`, row locks, `bigint` and `count` mapping, and offset without limit through a compiled read).
@@ -12,6 +12,7 @@ import { lifecycleSuite } from "../../data-sqlite/test/domain/lifecycle.ts";
 import { loadSuite } from "../../data-sqlite/test/domain/load.ts";
 import { policiesSuite } from "../../data-sqlite/test/domain/policies.ts";
 import { readsLoadSuite } from "../../data-sqlite/test/domain/reads-load.ts";
+import { joinedRollupsSuite } from "../../data-sqlite/test/domain/joined-rollups.ts";
 import { rollupsSuite } from "../../data-sqlite/test/domain/rollups.ts";
 import { throughSuite } from "../../data-sqlite/test/domain/through.ts";
 import { validateWhenSuite } from "../../data-sqlite/test/domain/validate-when.ts";
@@ -36,6 +37,7 @@ describeServer("the domain suites on Postgres", () => {
   describe("load", () => loadSuite(postgres));
   describe("reads with load", () => readsLoadSuite(postgres));
   describe("rollups", () => rollupsSuite(postgres));
+  describe("rollups over joined routes", () => joinedRollupsSuite(postgres));
   describe("has-many through", () => throughSuite(postgres));
   describe("lifecycle", () => lifecycleSuite(postgres));
   describe("policies", () => policiesSuite(postgres));
