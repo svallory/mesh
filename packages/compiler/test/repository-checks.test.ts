@@ -509,6 +509,15 @@ test("Docs MX samples: fragments are skipped, other languages ignored, longer fe
   });
 });
 
+test("Docs MX samples: a concept file is a complete fence, parsed as authored", () => {
+  temporary((dir) => {
+    writeFileSync(join(dir, "concept.md"), '```mx "concepts/Money.mesh.mx"\nconcept :Money\n  integer :amount min=0\n```\n');
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 0, errors: [] });
+    writeFileSync(join(dir, "concept.md"), '```mx "concepts/Money.mesh.mx"\nconcept :Money\n  belongs-to :x entity=X\n```\n');
+    expect(checkDocsSamples(dir).errors.join("\n")).toContain("`belongs-to` must be inside `relationships`");
+  });
+});
+
 test.each(['resource="Todo"', 'resource :Todo'])("Docs MX samples: obsolete root %s fails v4 rather than being skipped", (source) => {
   temporary((dir) => {
     writeFileSync(join(dir, "old.md"), `\`\`\`mx\n${source}\n\`\`\`\n`);

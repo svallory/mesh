@@ -4,7 +4,7 @@ import { conceptPath, conceptView, conceptsOf, type ConceptView } from "../views
 import { outputPrefix } from "./order.ts";
 
 /**
- * `<module>/<name>.concept.ts` per concept (ADR-0089): its TypeScript type and its Zod schema. The module's barrel exports
+ * `<module>/<name>.concept.ts` per concept (ADR-0092): its TypeScript type and its Zod schema. The module's barrel exports
  * both. A project with no concept gets none of it, so its tree is what it was.
  */
 export const conceptsGenerator: Generator<ConceptView> = {

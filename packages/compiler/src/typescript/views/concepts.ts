@@ -33,7 +33,7 @@ export interface ConceptField {
 }
 
 /**
- * What `concept.ts.jig` renders for one concept (ADR-0089): `<output>/domain/<module>/<name>.concept.ts`, which exports the
+ * What `concept.ts.jig` renders for one concept (ADR-0092): `<output>/domain/<module>/<name>.concept.ts`, which exports the
  * concept's type (`Money`, every member `readonly`, since a concept value has no identity and is replaced whole) and its
  * Zod schema (`moneySchema`, a strict object that `satisfies z.ZodType<Money>`). Every string is final; the template
  * prints, loops and branches on these fields and computes nothing. A project's own `concept.ts.jig` depends on this shape.

@@ -468,7 +468,7 @@
               "path": "/architecture/decisions/0084-architecture-rules-are-core/"
             },
             {
-              "title": "0085. MX discovers a dialect's tags (target design)",
+              "title": "0085. MX discovers a dialect's tags",
               "path": "/architecture/decisions/0085-tag-discovery-for-dialect-tags/"
             },
             {
@@ -494,6 +494,10 @@
             {
               "title": "0091. Delivery from several processes: a lease per handler",
               "path": "/architecture/decisions/0091-delivery-from-several-processes/"
+            },
+            {
+              "title": "0092. Concepts are found by MX's scan and stored as one JSON value",
+              "path": "/architecture/decisions/0092-concepts-are-found-by-mx-and-stored-as-one-json-value/"
             }
           ]
         },

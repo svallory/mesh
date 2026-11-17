@@ -108,7 +108,7 @@ export const MESH_DIALECT: Dialect = deepFreeze({
   contracts: MESH_CONTRACTS,
   // A file in a `concepts` folder (the manifest's `tagDirs`) is the contract of a concept use: `concept-file.ts`. MX runs the
   // hook of the module the manifest names (`meshfw`'s `dist/dialect.js`), so a change here takes effect after its build.
-  // `Dialect.tagFile` is `@unstable` in MX (alpha.36).
+  // `Dialect.tagFile` is `@unstable` in MX (since alpha.18).
   tagFile: conceptTagFile,
   // How strict Mesh files are: the one place these are stated (a caller's option would override them).
   structural: "reject",

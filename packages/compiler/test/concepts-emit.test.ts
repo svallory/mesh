@@ -1,4 +1,4 @@
-// The concept generator and the barrels (concepts design, section 5 Emit and section 7; ruling D36, ADR-0089): one
+// The concept generator and the barrels (concepts design, section 5 Emit and section 7; ruling D36, ADR-0092): one
 // `<name>.concept.ts` per concept, its type and Zod schema, exported by the module's barrel. A project without a concept
 // gets none of it (the examples' guards and the existing goldens hold that).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

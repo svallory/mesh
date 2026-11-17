@@ -44,7 +44,7 @@ export interface ModuleDeclaration {
   readonly fromLiteral: string;
 }
 
-/** The export of one concept of the module: its type and its schema (ADR-0089). */
+/** The export of one concept of the module: its type and its schema (ADR-0092). */
 export interface ModuleConcept {
   /** The concept's type, e.g. `Money`. */
   readonly name: string;

@@ -1741,7 +1741,7 @@ function conceptUses(
  *
  * The concepts in scope come from MX's scan (`scanCached`): the tag files of the `concepts` folders up the file's folders,
  * nearest first, which the manifest's `tagDirs` names. `lowerSource` does not scan by itself, so the compiler passes the
- * scan's map as `customTags` (a deviation from ADR-0085's chosen option, recorded in ADR-0089; this is the one place to
+ * scan's map as `customTags` (a deviation from ADR-0085's chosen option, recorded in ADR-0092; this is the one place to
  * remove it once MX scans for a dialect's `tagDirs`). A file not on disk scans to an empty map. `extraTags`, merged over
  * the scan, serves a caller that lowers text under a path with no `concepts` folder (the docs fence checks).
  */

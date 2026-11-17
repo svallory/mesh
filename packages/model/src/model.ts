@@ -303,7 +303,7 @@ export interface EventDeclaration {
 /** A command declaration: the fields of a request to run a write action (`command :PayInvoice`, a file of its own). */
 export type CommandDeclaration = EventDeclaration;
 /**
- * A concept (ADR-0080, ADR-0089): a value with no identity, declared in `concepts/<Name>.mesh.mx` (`concept :Money` and
+ * A concept (ADR-0080, ADR-0092): a value with no identity, declared in `concepts/<Name>.mesh.mx` (`concept :Money` and
  * its field lines). Plain data; the generated type and Zod schema come from it.
  */
 export interface ConceptDeclaration {
