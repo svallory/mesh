@@ -54,17 +54,17 @@ describe("schemaView", () => {
       ["User", "users", '"users"'],
     ]);
     expect(view.tables[0]!.columns).toEqual([
-      { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true, autoIncrement: false, unique: false },
-      { key: "title", builder: "text", nameLiteral: '"title"', options: null, notNull: true, primaryKey: false, autoIncrement: false, unique: false },
+      { key: "id", builder: "text", nameLiteral: '"id"', options: null, notNull: true, primaryKey: true, autoIncrement: false, unique: false, typeArgument: null },
+      { key: "title", builder: "text", nameLiteral: '"title"', options: null, notNull: true, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
       // @if(column.notNull) false branch: a nullable attribute.
-      { key: "body", builder: "text", nameLiteral: '"body"', options: null, notNull: false, primaryKey: false, autoIncrement: false, unique: false },
+      { key: "body", builder: "text", nameLiteral: '"body"', options: null, notNull: false, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
       // @if(column.options) true branch.
-      { key: "featured", builder: "integer", nameLiteral: '"featured"', options: '{ mode: "boolean" }', notNull: true, primaryKey: false, autoIncrement: false, unique: false },
-      { key: "state", builder: "text", nameLiteral: '"state"', options: '{ enum: ["draft","published"] }', notNull: true, primaryKey: false, autoIncrement: false, unique: false },
-      { key: "publishedAt", builder: "integer", nameLiteral: '"publishedAt"', options: '{ mode: "timestamp_ms" }', notNull: false, primaryKey: false, autoIncrement: false, unique: false },
+      { key: "featured", builder: "integer", nameLiteral: '"featured"', options: '{ mode: "boolean" }', notNull: true, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
+      { key: "state", builder: "text", nameLiteral: '"state"', options: '{ enum: ["draft","published"] }', notNull: true, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
+      { key: "publishedAt", builder: "integer", nameLiteral: '"publishedAt"', options: '{ mode: "timestamp_ms" }', notNull: false, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
       // Relationship key columns follow the attributes; computed members have no column.
-      { key: "authorId", builder: "text", nameLiteral: '"authorId"', options: null, notNull: true, primaryKey: false, autoIncrement: false, unique: false },
-      { key: "editorId", builder: "text", nameLiteral: '"editorId"', options: null, notNull: false, primaryKey: false, autoIncrement: false, unique: false },
+      { key: "authorId", builder: "text", nameLiteral: '"authorId"', options: null, notNull: true, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
+      { key: "editorId", builder: "text", nameLiteral: '"editorId"', options: null, notNull: false, primaryKey: false, autoIncrement: false, unique: false, typeArgument: null },
     ]);
   });
 
@@ -99,6 +99,52 @@ describe("schemaView", () => {
   test("no defaults reach the schema", () => {
     const view = schemaView(input({ "blog/post.mesh.mx": post, "blog/user.mesh.mx": user }));
     expect(JSON.stringify(view)).not.toContain("default");
+  });
+});
+
+/**
+ * A model with concept members, written out (the build needs concept files on disk, which `domain/concepts.ts` covers
+ * end to end): `Invoice` holds `Money :total`, `Money :refund nullable` and `billing.Status :status`.
+ */
+const conceptDocument = (): ModelDocument => {
+  const position = { file: "src/domain/billing/invoice.mesh.mx", line: 1, column: 0, offset: 0 };
+  const member = (name: string, concept: string, nullable = false) => ({ name, type: "concept" as const, concept, nullable, primaryKey: false, unique: false, position });
+  return {
+    entities: [{
+      name: "Invoice", fqn: "billing.Invoice", table: "invoices", file: position.file, module: "billing", imports: [],
+      attributes: [{ name: "id", type: "uuid", nullable: false, primaryKey: true, unique: false, position }, member("total", "Money"), member("refund", "Money", true), member("status", "billing.Status")],
+      relationships: [], computed: [], actions: [], auto: ["read"], always: [], policies: [], position,
+    }],
+    concepts: [
+      { name: "Status", fqn: "billing.Status", file: "src/domain/billing/concepts/Status.mesh.mx", module: "billing", fields: [{ name: "state", type: "string", nullable: false, position }], position },
+      { name: "Money", fqn: "Money", file: "src/domain/concepts/Money.mesh.mx", module: "", fields: [{ name: "amount", type: "integer", nullable: false, position }], position },
+    ],
+  };
+};
+
+describe("a concept member's column (ADR-0092)", () => {
+  test("is one JSON column typed with the concept's type, imported type-only by the compiler's naming rule", () => {
+    const view = schemaView({ document: conceptDocument(), config });
+    expect(view.tables[0]!.columns.slice(1).map(({ key, ...rest }) => [key, rest])).toEqual([
+      ["total", { builder: "text", nameLiteral: '"total"', options: '{ mode: "json" }', notNull: true, primaryKey: false, autoIncrement: false, unique: false, typeArgument: "$Money$concept" }],
+      ["refund", { builder: "text", nameLiteral: '"refund"', options: '{ mode: "json" }', notNull: false, primaryKey: false, autoIncrement: false, unique: false, typeArgument: "$Money$concept" }],
+      ["status", { builder: "text", nameLiteral: '"status"', options: '{ mode: "json" }', notNull: true, primaryKey: false, autoIncrement: false, unique: false, typeArgument: "$billing$Status$concept" }],
+    ]);
+    expect(view.typeImports).toEqual([
+      { names: "Status as $billing$Status$concept", fromLiteral: '"./domain/billing/status.concept"' },
+      { names: "Money as $Money$concept", fromLiteral: '"./domain/money.concept"' },
+    ]);
+  });
+
+  test("schema.ts prints `.$type<...>()` and the type-only imports; a project with no concept prints neither", async () => {
+    const rendered = (await generateFiles({ document: conceptDocument(), config }, build)).find((generated) => generated.path.endsWith("schema.ts"))!.contents;
+    expect(rendered).toContain('import type { Money as $Money$concept } from "./domain/money.concept";');
+    expect(rendered).toContain('import type { Status as $billing$Status$concept } from "./domain/billing/status.concept";');
+    const flat = rendered.replace(/\s+/g, "");
+    for (const line of ['total: text("total", { mode: "json" }).$type<$Money$concept>().notNull(),', 'refund: text("refund", { mode: "json" }).$type<$Money$concept>(),', 'status: text("status", { mode: "json" }).$type<$billing$Status$concept>().notNull(),']) expect(flat).toContain(line.replace(/\s+/g, ""));
+    const plain = (await generateFiles(input({ "blog/post.mesh.mx": post, "blog/user.mesh.mx": user }), build)).find((generated) => generated.path.endsWith("schema.ts"))!.contents;
+    expect(plain).not.toContain("$type");
+    expect(plain).not.toContain("import type");
   });
 });
 

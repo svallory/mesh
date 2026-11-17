@@ -49,6 +49,7 @@ export type FieldShape = Pick<
   Attribute,
   | "name"
   | "type"
+  | "concept"
   | "nullable"
   | "default"
   | "values"
@@ -88,8 +89,9 @@ export interface QueryColumn {
  */
 export function queryColumns(entity: Entity): QueryColumn[] {
   const columns: QueryColumn[] = entity.attributes
-    .filter((attribute) => attributeTypeInfo(attribute.type).queryable)
-    .map(({ name, type, nullable, values }) => ({ name, type, nullable, ...(values ? { values } : {}) }));
+    // A concept member is one JSON value, which a query does not look inside (ADR-0092).
+    .flatMap(({ name, type, nullable, values }): QueryColumn[] =>
+      type !== "concept" && attributeTypeInfo(type).queryable ? [{ name, type, nullable, ...(values ? { values } : {}) }] : []);
   for (const relation of entity.relationships)
     if (relation.keyColumn) columns.push({ name: relation.keyColumn, type: relation.keyType ?? "string", nullable: relation.nullable });
   columns.push(...computedColumns(entity));
@@ -174,8 +176,24 @@ export function tsTypeOf(type: AttributeType): string {
   const tsType = attributeTypeInfo(type).tsType;
   return tsType === "Date" ? globalAlias("Date") : tsType;
 }
-/** The TypeScript type of an attribute's values, without `null`: an enum's union, or its type's own. */
-export function baseType(field: Pick<FieldShape, "type" | "values">): string {
+/**
+ * What a generated file calls a concept it imports, by FQN: `$`, the module's folder namespace names, the concept's name
+ * and the role, joined by `$` (`$billing$Money$concept` for the type, `$billing$Money$schema` for the Zod schema;
+ * `$Money$concept` at the domain root), the rule `entityLocal` follows, so no import of a concept hides a global or
+ * another name.
+ */
+export function conceptLocal(fqn: string, role: "concept" | "schema"): string {
+  const segments = fqn.split(".");
+  const name = segments.pop()!;
+  return `$${[...segments.map(namespaceName), name, role].join("$")}`;
+}
+/** The FQNs of the concepts some of `fields` hold, sorted, each once: what a generated file imports. */
+export function conceptsUsed(fields: readonly Pick<FieldShape, "type" | "concept">[]): string[] {
+  return [...new Set(fields.flatMap((field) => (field.type === "concept" && field.concept !== undefined ? [field.concept] : [])))].sort();
+}
+/** The TypeScript type of an attribute's values, without `null`: an enum's union, a concept's imported type, or its type's own. */
+export function baseType(field: Pick<FieldShape, "type" | "values" | "concept">): string {
+  if (field.type === "concept") return conceptLocal(field.concept!, "concept");
   return field.type === "enum"
     ? (field.values ?? []).map((a) => JSON.stringify(a.value)).join(" | ") ||
         "never"

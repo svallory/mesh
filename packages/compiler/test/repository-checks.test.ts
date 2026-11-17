@@ -528,6 +528,20 @@ test("Docs MX samples: the architecture file is a complete fence, parsed as auth
   });
 });
 
+test("Docs MX samples: a fence uses a concept another fence of the Docs declares, and not one no fence declares", () => {
+  temporary((dir) => {
+    const money = '```mx "concepts/Money.mesh.mx"\nconcept :Money\n  integer :amount min=0\n```\n';
+    const invoice = (head: string) => `\`\`\`mx "billing/invoice.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n    ${head} :total\n  actions auto=[:read]\n    create :open\n      input\n        &total\n\`\`\`\n`;
+    writeFileSync(join(dir, "concept.md"), money);
+    writeFileSync(join(dir, "entity.md"), invoice("Money"));
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 2, errors: [] });
+    expect(checkDocsSyntaxV4(dir)).toMatchObject({ checked: 2, errors: [] });
+    writeFileSync(join(dir, "entity.md"), invoice("Mony"));
+    expect(checkDocsSamples(dir).errors.join("\n")).toContain("`Mony` is not a known tag");
+    expect(checkDocsSyntaxV4(dir).errors.join("\n")).toContain("`Mony` is not a known tag");
+  });
+});
+
 test.each(['resource="Todo"', 'resource :Todo'])("Docs MX samples: obsolete root %s fails v4 rather than being skipped", (source) => {
   temporary((dir) => {
     writeFileSync(join(dir, "old.md"), `\`\`\`mx\n${source}\n\`\`\`\n`);

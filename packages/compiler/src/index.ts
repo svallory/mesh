@@ -16,3 +16,4 @@ export type { GlobalsImport, GlobalsView, GlobalAlias } from "./typescript/views
 export { RESERVED_COMMAND_WORDS, loadAdapterBuild, type AdapterBuild, type AdapterBuildResult, type AdapterCommand, type AdapterCommandContext } from "./typescript/adapter.ts";
 export { explainAction } from "./typescript/explain.ts";
 export { resolveName, type NameResolution } from "./model/resolve-name.ts";
+export { conceptTypeImport } from "./typescript/concept-ref.ts";

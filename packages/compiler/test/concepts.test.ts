@@ -1,9 +1,10 @@
 // Concept files in a build (notes/architecture/concepts-design.md, sections 2, 5 and 6; ruling D36), on projects on disk:
 // MX finds concept files by scanning `concepts` folders, so the projects depend on `meshfw` and the hook MX runs is the
-// built `dist/dialect.js`. A concept file builds into `document.concepts`; a concept use (`Money :total`) is
-// `MESH_NOT_IMPLEMENTED` until concept-typed members are built, and its message names the concept the use resolved to,
-// which is how these tests see which concept the nearest `concepts` folder gave.
+// built `dist/dialect.js`. A concept file builds into `document.concepts`; a concept use (`Money :total`) builds a member
+// or field of `type: "concept"` whose `concept` is the FQN of the concept the nearest `concepts` folder gave. The rules
+// on concept members (sort, filter, rollups, `set` literals, expressions, commands) are in concept-members.test.ts.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { Field } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { buildDialect, conceptProject } from "./helpers.ts";
 
@@ -23,8 +24,6 @@ const codes = (result: ReturnType<typeof buildModel>) => result.diagnostics.map(
 
 const MONEY = "concept :Money\n  string :currency match=/^[A-Z]{3}$/\n  integer :amount min=0\n";
 const ENTITY = (name: string, lines = "") => `entity :${name}\n  attributes\n    uuid :id primary-key\n${lines}`;
-const NOT_BUILT = (fqn: string, head = "Money") =>
-  `MESH_NOT_IMPLEMENTED \`${head}\` is the concept ${fqn}, and a concept-typed member is not built yet: a concept file builds and generates its type and schema, but no attribute or field can hold a concept so far`;
 
 describe("a concept file builds", () => {
   test("into document.concepts, by file, with its module, FQN and fields; nothing else changes", () => {
@@ -59,7 +58,7 @@ describe("a concept file builds", () => {
   });
 });
 
-describe("a concept use resolves to the nearest concept, and is not built yet", () => {
+describe("a concept use resolves to the nearest concept, and builds a concept member", () => {
   const files = {
     [`${D}concepts/Money.mesh.mx`]: MONEY,
     [`${D}concepts/Price.mesh.mx`]: "concept :Price\n  Money :net\n",
@@ -73,22 +72,38 @@ describe("a concept use resolves to the nearest concept, and is not built yet", 
   };
   const result = build(files);
 
-  test("the nearer folder wins with no message (R11, R12); the domain root's elsewhere", () => {
-    expect(said(result).filter((line) => line.startsWith("billing/invoice") || line.startsWith("shop/order"))).toEqual([
-      `billing/invoice.mesh.mx:4:4 ${NOT_BUILT("billing.Money")}`,
-      `billing/invoice.mesh.mx:5:4 ${NOT_BUILT("billing.Money")}`,
-      `shop/order.mesh.mx:4:4 ${NOT_BUILT("Money")}`,
-    ]);
+  const member = (fqn: string, name: string) => {
+    const entity = result.document!.entities.find((candidate) => candidate.fqn === fqn)!;
+    const { position: _, ...rest } = entity.attributes.find((attribute) => attribute.name === name)!;
+    return rest;
+  };
+  const fields = (list: readonly { fqn: string; fields: readonly Field[] }[] | undefined, fqn: string): Omit<Field, "position">[] =>
+    list!.find((candidate) => candidate.fqn === fqn)!.fields.map(({ position: _, ...rest }) => rest);
+
+  test("the build is clean but for the unanswered command", () => {
+    expect(said(result).filter((line) => !line.includes("MESH_COMMAND_UNANSWERED"))).toEqual([]);
   });
 
-  test("a use in an event, a command (with `optional`) and a concept is reported the same way", () => {
-    expect(said(result).filter((line) => !line.startsWith("billing/invoice") && !line.startsWith("shop/order") && !line.includes("MESH_COMMAND_UNANSWERED"))).toEqual([
-      `billing/price-set.mesh.mx:3:2 ${NOT_BUILT("Price", "Price")}`,
-      // A concept used inside another resolves from the concept file's own folder (R13), and one whose file sorts later resolves.
-      `concepts/A.mesh.mx:2:2 ${NOT_BUILT("Z", "Z")}`,
-      `concepts/Price.mesh.mx:2:2 ${NOT_BUILT("Money")}`,
-      `shop/pay.mesh.mx:3:2 ${NOT_BUILT("Money")}`,
+  test("the nearer folder wins with no message (R11, R12); the domain root's elsewhere", () => {
+    expect(member("billing.Invoice", "total")).toEqual({ name: "total", type: "concept", concept: "billing.Money", nullable: false, primaryKey: false, unique: false });
+    expect(member("billing.Invoice", "refund")).toEqual({ name: "refund", type: "concept", concept: "billing.Money", nullable: true, primaryKey: false, unique: false });
+    expect(member("shop.Order", "total")).toEqual({ name: "total", type: "concept", concept: "Money", nullable: false, primaryKey: false, unique: false });
+    // In written order among the other attributes.
+    expect(result.document!.entities.find((e) => e.fqn === "billing.Invoice")!.attributes.map((a) => a.name)).toEqual(["id", "total", "refund"]);
+  });
+
+  test("a use in an event, a command (with `optional`) and a concept builds a field of the concept", () => {
+    expect(fields(result.document!.events, "billing.PriceSet")).toEqual([
+      { name: "id", type: "uuid", nullable: false },
+      { name: "price", type: "concept", concept: "Price", nullable: false },
     ]);
+    expect(fields(result.document!.commands, "shop.Pay")).toEqual([
+      { name: "id", type: "uuid", nullable: false },
+      { name: "amount", type: "concept", concept: "Money", nullable: false, optional: true },
+    ]);
+    // A concept used inside another resolves from the concept file's own folder (R13), and one whose file sorts later resolves.
+    expect(fields(result.document!.concepts, "Price")).toEqual([{ name: "net", type: "concept", concept: "Money", nullable: false }]);
+    expect(fields(result.document!.concepts, "A")).toEqual([{ name: "z", type: "concept", concept: "Z", nullable: false }]);
   });
 
   test.each([
@@ -137,9 +152,10 @@ describe("a concept file's own problems", () => {
     const two = build({ [`${D}concepts/Ping.mesh.mx`]: "concept :Ping\n  Pong :p\n", [`${D}concepts/Pong.mesh.mx`]: "concept :Pong\n  Ping :p\n" });
     expect(codes(two).some((line) => line.endsWith("MESH_TAG_FILE_CYCLE"))).toBe(true);
     expect(two.document).toBeNull();
-    // A legal neighbour: one concept holding another twice is no cycle (here not built yet, but no cycle).
+    // A legal neighbour: one concept holding another twice is no cycle.
     const twice = build({ [`${D}concepts/Money.mesh.mx`]: MONEY, [`${D}concepts/Price.mesh.mx`]: "concept :Price\n  Money :net\n  Money :gross\n" });
-    expect(codes(twice)).toEqual(["concepts/Price.mesh.mx:2 MESH_NOT_IMPLEMENTED", "concepts/Price.mesh.mx:3 MESH_NOT_IMPLEMENTED"]);
+    expect(codes(twice)).toEqual([]);
+    expect(twice.document!.concepts!.find((c) => c.name === "Price")!.fields.map((f) => [f.name, f.concept])).toEqual([["net", "Money"], ["gross", "Money"]]);
   });
 
   test("a concept file named like a Mesh tag is MESH_RESERVED_TAG once a build, and the tag keeps its meaning (R14)", () => {

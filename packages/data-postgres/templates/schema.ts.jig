@@ -7,6 +7,9 @@ import {
   {{ builder }},
   @end
 } from "drizzle-orm/pg-core";
+@each(imported in typeImports)
+import type { {{ imported.names }} } from {{ imported.fromLiteral }};
+@end
 
 export const tables = {
   @each(table in tables)
@@ -16,6 +19,9 @@ export const tables = {
     {{ column.key }}: {{ column.builder }}({{ column.nameLiteral }}, {{ column.options }})
   @else~
     {{ column.key }}: {{ column.builder }}({{ column.nameLiteral }})
+  @end~
+  @if(column.typeArgument)~
+      .$type<{{ column.typeArgument }}>()
   @end~
   @if(column.notNull)~
       .notNull()

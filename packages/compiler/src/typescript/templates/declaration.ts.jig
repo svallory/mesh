@@ -9,6 +9,9 @@ import { jsonValue as $jsonValue } from "@meshfw/runtime";
 @if(deepReadonly)
 import type { DeepReadonly as $DeepReadonly } from "@meshfw/runtime";
 @end
+@each(concept in concepts)
+import { {{ concept.schema }}, type {{ concept.type }} } from {{ concept.fromLiteral }};
+@end
 @if(globals)
 {{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
 @end

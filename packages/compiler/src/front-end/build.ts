@@ -29,7 +29,9 @@ import {
   type Computed,
   type ConceptDeclaration,
   type Diagnostic,
+  type Atom,
   type Entity,
+  type Literal,
   type EventDeclaration,
   type Expression,
   type Field,
@@ -42,6 +44,7 @@ import {
   type Rollup,
   type SourcePosition,
   type Step,
+  isExpression,
 } from "@meshfw/model";
 import { RELATIONSHIP_KINDS, SYNTAX_MESSAGES } from "./contracts.ts";
 import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-file.ts";
@@ -54,7 +57,7 @@ import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf
 import { checkExpressions } from "../model/index.ts";
 import { error, offsetAt, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope, type WrittenReference } from "./references.ts";
-import { literalFits } from "./literal-types.ts";
+import { holdsAtom, literalFits } from "./literal-types.ts";
 import { nearestName } from "./nearest-name.ts";
 import {
   resolveRollups,
@@ -78,6 +81,7 @@ import {
   containsAtom,
   declaredName,
   expression,
+  isAtomLiteral,
   isMemberLine,
   nodeOf,
   readAt,
@@ -433,7 +437,16 @@ function attributeReaders(
         );
     }
   };
-  return { at, pos, fail, opt, shape, checkShape, checkRuleText };
+  /**
+   * A concept use (`Money :total`) that `conceptUses` resolved: the member's name, `type: "concept"`, the concept's FQN and
+   * `nullable`, the one option of a use besides a command field's `optional`. `undefined` for any other line, and for a use
+   * `conceptUses` refused (its error is reported there).
+   */
+  const conceptUse = (tag: Tag): { name: string; type: "concept"; concept: string; nullable: boolean; position: SourcePosition } | undefined => {
+    const concept = CONCEPT_OF_USE.get(tag);
+    return concept === undefined ? undefined : { name: declaredName(tag), type: "concept", concept, nullable: opt(tag, "nullable") === true, position: pos(tag) };
+  };
+  return { at, pos, fail, opt, shape, conceptUse, checkShape, checkRuleText };
 }
 
 /**
@@ -903,7 +916,7 @@ function buildEntity(
   const readersFor = (src: LineSource): SectionReaders => {
     const sourceIndex = sources.indexOf(src);
     const readers = attributeReaders(src.source, file, diagnostics, src.at);
-    const { at, pos, fail, opt, shape, checkShape, checkRuleText } = readers;
+    const { at, pos, fail, opt, shape, conceptUse, checkShape, checkRuleText } = readers;
     const { entity: references, event: eventReferences, command: commandReferences } = src.scope.references;
     const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish"): Expression =>
       expression(
@@ -1057,6 +1070,7 @@ function buildEntity(
                 fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
                 return [];
               }
+              let shapedLikeFunction = false;
               const value = readAt(line, at, () => {
                 const n = nodeOf(member.value);
                 if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
@@ -1066,8 +1080,16 @@ function buildEntity(
                 const field = entity.attributes.find((attribute) => attribute.name === member.ref.name);
                 if (field?.type === "json" && containsAtom(member.value))
                   fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is json, and an atom is not JSON: write a string`, member.ref.position);
-                if (field && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
+                // A concept literal is checked once every concept is built (`checkConceptLiterals`): its concept may be in a later file.
+                if (field && field.type !== "concept" && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
                   fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
+                // `isExpression` tells a set line's function from its literal by shape; a literal of that shape (a concept or
+                // json value with `source`, `params` and `position` keys) would be read as a function, so it is refused and
+                // the assignment is dropped from the model.
+                if (isExpression(literal)) {
+                  shapedLikeFunction = true;
+                  fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is a literal with the keys of a function (\`source\`, \`params\`, \`position\`): write it as a function`, member.ref.position);
+                }
                 // A belongs-to stores its target's key: a literal is that key (or null on a nullable one). Its type is checked at the call, by the key column.
                 const relation = field ? undefined : entity.relationships.find((r) => r.name === member.ref.name);
                 if (relation && (literal === null ? !relation.nullable : typeof literal !== "string" && typeof literal !== "number"))
@@ -1075,6 +1097,7 @@ function buildEntity(
                 return literal;
               });
               if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
+              if (shapedLikeFunction) return [];
               return [{ member: member.ref, value: value.value }];
             }),
             position,
@@ -1135,8 +1158,12 @@ function buildEntity(
     });
     const attributes = (section: Tag) => {
       for (const tag of tags(section.children)) {
-        // A concept use (`Money :total`) is reported by `conceptUses` and builds no member yet.
-        if (tag.definedIn !== undefined) continue;
+        // A concept use (`Money :total`): one JSON value, never a key, with no option to check (ADR-0092).
+        if (tag.definedIn !== undefined) {
+          const use = conceptUse(tag);
+          if (use) entity.attributes.push({ ...use, primaryKey: false, unique: false });
+          continue;
+        }
         const on = attr(tag, "on");
         const field: Attribute = {
           ...shape(tag),
@@ -1456,7 +1483,11 @@ function buildEntity(
       diagnostics.push(unknownMember(entity, ref, candidates));
     else if (scope === "sort" || scope === "filter") {
       const used = [...entity.attributes, ...entity.computed].find((m) => m.name === ref.name);
-      if (used && !attributeTypeInfo(used.type).queryable)
+      // A concept member is one JSON value (ADR-0092), which a query does not look inside.
+      if (used?.type === "concept")
+        fail(scope === "sort" ? "MESH_SORT_TYPE" : "MESH_FILTER_TYPE",
+          `&${ref.name} is the concept ${(used as Attribute).concept}, which a ${scope} cannot use: it is stored as one JSON value`, ref.position);
+      else if (used && !attributeTypeInfo(used.type).queryable)
         fail(scope === "sort" ? "MESH_SORT_TYPE" : "MESH_FILTER_TYPE",
           `&${ref.name} is :${used.type}, which a ${scope} cannot use: the database does not look inside it`, ref.position);
     }
@@ -1628,7 +1659,7 @@ function buildDeclarationBody(
   diagnostics: Diagnostic[],
   module: string,
 ): EventDeclaration | CommandDeclaration {
-  const { at, pos, fail, opt, shape, checkShape, checkRuleText } = attributeReaders(source, file, diagnostics);
+  const { at, pos, fail, opt, shape, conceptUse, checkShape, checkRuleText } = attributeReaders(source, file, diagnostics);
   const name = declaredName(root);
   // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
   // `invoice_paid` is the class `InvoicePaid` (`notes/spec/names.md`); a name that makes no identifier (`_1`) is an error.
@@ -1637,25 +1668,33 @@ function buildDeclarationBody(
   const fields: Field[] = [];
   const names = new Set<string>();
   for (const tag of tags(root.children)) {
-    // A concept use (`Money :total`) is reported by `conceptUses` and builds no field yet.
-    if (tag.definedIn !== undefined) continue;
-    for (const key of FIELD_OPTIONS_REFUSED) {
-      const refused = attr(tag, key);
-      if (refused)
-        fail("MESH_UNKNOWN_OPTION", `\`${key}\` is not an option of a field of ${root.name === "event" ? "an event" : "a command"}: a field has no row behind it, so it takes the options that constrain a value (\`nullable\`, \`values\`, \`min\`, \`max\`, \`match\`) and none that concern storage or creation`, at(attrOffset(refused)), `remove \`${key}\``);
+    // A concept use (`Money :total`) takes no option but `nullable` and a command's `optional`, so nothing is checked.
+    const use = tag.definedIn !== undefined ? conceptUse(tag) : undefined;
+    if (tag.definedIn !== undefined && !use) continue;
+    const optional = root.name === "command" && opt(tag, "optional") === true;
+    let field: Field;
+    if (use) {
+      field = { ...use, ...(optional && !use.nullable ? { optional: true as const } : {}) };
+    } else {
+      for (const key of FIELD_OPTIONS_REFUSED) {
+        const refused = attr(tag, key);
+        if (refused)
+          fail("MESH_UNKNOWN_OPTION", `\`${key}\` is not an option of a field of ${root.name === "event" ? "an event" : "a command"}: a field has no row behind it, so it takes the options that constrain a value (\`nullable\`, \`values\`, \`min\`, \`max\`, \`match\`) and none that concern storage or creation`, at(attrOffset(refused)), `remove \`${key}\``);
+      }
+      const shaped = shape(tag);
+      // `default` is refused above; what it holds is not checked against the type as well.
+      checkShape({ ...shaped, default: undefined });
+      checkRuleText(tag, shaped);
+      // `default`, which `shape` reads, is no part of a field.
+      const { name: fieldName, type, nullable, values, min, max, match, ruleMessage, ruleCode, position } = shaped;
+      field = { name: fieldName, type, nullable, ...(optional && !nullable ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), ...(ruleMessage !== undefined ? { ruleMessage } : {}), ...(ruleCode !== undefined ? { ruleCode } : {}), position };
     }
-    const field = shape(tag);
-    // `default` is refused above; what it holds is not checked against the type as well.
-    checkShape({ ...field, default: undefined });
-    checkRuleText(tag, field);
     if (names.has(field.name)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${field.name}`, tag);
     // The generated class has a property per field: `__proto__` would set the prototype, and a class cannot have a field named `constructor`.
     if (field.name === PROTOTYPE_SETTING_NAME || field.name === "constructor")
       fail("MESH_ATTRIBUTE_NAME", `:${field.name} cannot be a field name: ${field.name === "constructor" ? "the generated class has its constructor under that name" : "__proto__ sets an object's prototype instead of adding a property"}. Choose another name.`, tag);
     names.add(field.name);
-    // `default`, which `shape` reads, is no part of a field.
-    const { name: fieldName, type, nullable, values, min, max, match, ruleMessage, ruleCode, position } = field;
-    fields.push({ name: fieldName, type, nullable, ...(root.name === "command" && !nullable && opt(tag, "optional") === true ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), ...(ruleMessage !== undefined ? { ruleMessage } : {}), ...(ruleCode !== undefined ? { ruleCode } : {}), position });
+    fields.push(field);
   }
   return {
     name,
@@ -1694,7 +1733,7 @@ function buildConcept(
   diagnostics: Diagnostic[],
   folder: string,
 ): ConceptDeclaration {
-  const { at, pos, fail, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const { at, pos, fail, shape, conceptUse, checkShape } = attributeReaders(source, file, diagnostics);
   for (const problem of conceptFileProblems(body, tagNameOfFile(absolute), absolute))
     fail(problem.code, problem.message, at(problem.offset));
   if (!inConceptsFolder(absolute)) {
@@ -1721,8 +1760,12 @@ function buildConcept(
   const name = atomOf(attr(root, "name"))?.name ?? tagNameOfFile(absolute);
   const fields: Field[] = [];
   for (const tag of tags(root.children)) {
-    // A concept use inside a concept (`Money :net`) is reported by `conceptUses` and builds no field yet.
-    if (tag.definedIn !== undefined) continue;
+    // A concept use inside a concept (`Money :net`), resolved from the concept file's own folder (R13).
+    if (tag.definedIn !== undefined) {
+      const use = conceptUse(tag);
+      if (use) fields.push(use);
+      continue;
+    }
     for (const key of FIELD_OPTIONS_REFUSED) {
       const refused = attr(tag, key);
       if (refused)
@@ -1744,6 +1787,68 @@ function buildConcept(
   };
 }
 
+/**
+ * `set &total=<literal>` on a concept member, in a `do` and in an `always` block (ruling D36): the literal is an object
+ * with exactly the concept's fields, each fitting its field, or `null` on a nullable member, else `MESH_SET_VALUE`. Run once
+ * every concept is built, since the entity's file may come before the concept's. A function value is not checked here.
+ */
+function checkConceptLiterals(entities: readonly Entity[], concepts: readonly ConceptDeclaration[], diagnostics: Diagnostic[]): void {
+  if (!concepts.length) return;
+  const byFqn = new Map<string, ConceptDeclaration>();
+  for (const concept of concepts) if (!byFqn.has(concept.fqn)) byFqn.set(concept.fqn, concept);
+  const resolveConcept = (fqn: string) => byFqn.get(fqn);
+  for (const entity of entities) {
+    const visit = (steps: readonly Step[]) => {
+      for (const step of steps) {
+        if (step.kind === "when") visit(step.steps);
+        if (step.kind !== "set") continue;
+        for (const { member, value } of step.assignments) {
+          const field = entity.attributes.find((attribute) => attribute.name === member.name);
+          if (field?.type !== "concept" || isExpression(value)) continue;
+          const json = jsonAtomPath(value, field, resolveConcept);
+          if (json !== undefined) {
+            diagnostics.push(error("MESH_SET_VALUE", `\`&${member.name}=\` is json at \`${json}\`, and an atom is not JSON: write a string`, member.position));
+            continue;
+          }
+          if (literalFits(value, field, resolveConcept, isAtomLiteral)) continue;
+          const concept = resolveConcept(field.concept!);
+          diagnostics.push(error("MESH_SET_VALUE",
+            `\`&${member.name}=\` needs an object literal with exactly the fields of ${field.concept}${concept ? ` (${concept.fields.map((each) => each.name).join(", ")})` : ""}${field.nullable ? ", null" : ""}, or a function`,
+            member.position));
+        }
+      }
+    };
+    for (const action of entity.actions) visit(action.do);
+    for (const block of entity.always) visit(block.do);
+  }
+}
+
+/**
+ * The dotted path of the first `json` field of a concept literal (nested concepts included) that holds an atom the author
+ * wrote, as `set &meta=:x` on a `json` member is refused; `undefined` when there is none, or the literal is not an object.
+ */
+function jsonAtomPath(value: Literal | Atom, field: Pick<Attribute, "type" | "concept">, resolve: (fqn: string) => ConceptDeclaration | undefined, prefix = ""): string | undefined {
+  const concept = field.concept === undefined ? undefined : resolve(field.concept);
+  if (!concept || typeof value !== "object" || value === null || Array.isArray(value) || isAtomLiteral(value)) return undefined;
+  for (const each of concept.fields) {
+    if (!Object.hasOwn(value, each.name)) continue;
+    const inner = (value as Record<string, Literal | Atom>)[each.name]!;
+    const path = `${prefix}${each.name}`;
+    if (each.type === "json" && holdsAtom(inner, isAtomLiteral)) return path;
+    if (each.type === "concept") {
+      const found = jsonAtomPath(inner, each, resolve, `${path}.`);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The FQN of the concept each concept use resolved to, keyed by the use's IR node (set by `conceptUses`, read by
+ * `conceptUse`). A use that is refused (tag parameters, a concept file the build does not read) has no entry and builds no
+ * member. Keyed weakly by node, so a build's entries go with its IR.
+ */
+const CONCEPT_OF_USE = new WeakMap<Tag, string>();
 /** The concept a use's head names, by the absolute path MX's scan gave it (`DelegatedTag.definedIn`). */
 interface ConceptEntry {
   readonly name: string;
@@ -1755,8 +1860,8 @@ interface ConceptEntry {
  * contract a tag file gives carries no `analyze` hook and `afterLower` sees no tag parameters, so the one universal check
  * of `contracts.ts` that MX does not make itself on such a call, tag parameters (`Money|x| :total`), is made here, in its
  * words (R22); MX refuses a tag variable, a bound option and a name that is no atom from the use's contract. A use of a concept file the build does not read (outside the domain
- * root, or excluded by \`ignore\`) is `MESH_CONCEPT_PLACE`. Any other use is `MESH_NOT_IMPLEMENTED`: concept files build
- * and generate, and a concept-typed member comes next.
+ * root, or excluded by \`ignore\`) is `MESH_CONCEPT_PLACE`. Any other use resolves to its concept's FQN, which
+ * `CONCEPT_OF_USE` keeps for the builders (`conceptUse`): the member or field it declares holds that concept.
  */
 function conceptUses(
   body: IrBody,
@@ -1777,8 +1882,7 @@ function conceptUses(
         const entry = conceptAt(tag.definedIn);
         if (!entry)
           diagnostics.push(error("MESH_CONCEPT_PLACE", `${tag.name} is declared in ${outside(tag.definedIn)}, which the build does not read (outside the domain root ${domainLabel}, or excluded by \`ignore\`): move it into a \`concepts\` folder under the domain root`, head));
-        else
-          diagnostics.push(error("MESH_NOT_IMPLEMENTED", `\`${tag.name}\` is the concept ${entry.fqn}, and a concept-typed member is not built yet: a concept file builds and generates its type and schema, but no attribute or field can hold a concept so far`, head));
+        else CONCEPT_OF_USE.set(tag, entry.fqn);
       }
     }
     for (const child of tags(tag.children ?? [])) visit(child);
@@ -2198,6 +2302,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     }
   }
   if (concepts.length) document.concepts = concepts;
+  checkConceptLiterals(document.entities, concepts, diagnostics);
   if (commands.length) document.commands = commands;
   if (aggregates.length) document.aggregates = aggregates;
   // The declaration a reference resolved to, now that every event and command is built: `from` is the import's path from the

@@ -6,6 +6,9 @@ import { z } from "zod";
 @if(json)
 import { jsonValue as $jsonValue } from "@meshfw/runtime";
 @end
+@each(concept in concepts)
+import { {{ concept.schema }} } from {{ concept.fromLiteral }};
+@end
 
 import type {
   @each(schema in schemas)

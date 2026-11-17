@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, ModelDocument, Relationship, SourcePosition, Through } from "@meshfw/model";
 import { entitiesByFile, keyHolderOf } from "../model/key-holder.ts";
+import { keyTypeOf } from "@meshfw/model";
 import { nearestName } from "./nearest-name.ts";
 
 const lowerCamel = (name: string) => name.charAt(0).toLowerCase() + name.slice(1);
@@ -157,7 +158,7 @@ export function resolveRelationships(
       if (!target) continue;
       if (relation.kind === "belongs-to") {
         const key = target.attributes.find((attribute) => attribute.primaryKey);
-        if (key) relation.keyType = key.type;
+        if (key) relation.keyType = keyTypeOf(key);
         continue;
       }
       // A `through=` that did not resolve has its own error (`MESH_UNKNOWN_ENTITY`), and so does an `entity=` (above).

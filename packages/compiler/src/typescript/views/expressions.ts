@@ -1,5 +1,5 @@
 import { dirname, posix, relative } from "node:path";
-import { isCheckGroup, type Action, type Entity, type Expression, type ExprNode, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, isExpression, type Action, type Entity, type Expression, type ExprNode, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
 import type { LowerResult } from "../../model/sql-condition.ts";
 import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
@@ -193,8 +193,8 @@ function collect(entity: Entity): Found[] {
       const here = path === "" ? String(index) : `${path}.${index}`;
       if (step.kind === "set") {
         for (const { member, value } of step.assignments)
-          if (typeof value === "object" && value !== null && "source" in value)
-            add(`${prefix}.step.${here}.set.${member.name}`, `set &${member.name}`, value as Expression, false);
+          if (isExpression(value))
+            add(`${prefix}.step.${here}.set.${member.name}`, `set &${member.name}`, value, false);
       } else if (step.kind === "when") {
         add(`${prefix}.step.${here}.when`, "step when", step.condition, true);
         steps(prefix, step.steps, here);

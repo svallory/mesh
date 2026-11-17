@@ -1,4 +1,4 @@
-import type { Action, AttributeType, Entity, Expression, ExprNode, ModelDocument, Relationship, SortKey, SourcePosition } from "@meshfw/model";
+import type { Action, AttributeType, Entity, ValueType, Expression, ExprNode, ModelDocument, Relationship, SortKey, SourcePosition } from "@meshfw/model";
 import type { Hop, LiteralNode, ValueClass } from "@meshfw/runtime";
 import { entitiesByFile, keyHolderOf } from "./key-holder.ts";
 import { dirname, resolve } from "node:path";
@@ -27,7 +27,8 @@ export type NotSql =
   | { kind: "foreign-list"; position: SourcePosition; op: "some" | "every" | "find" | "filter" }
   /** A computed field that reaches itself again when inlined. */
   | { kind: "self-reaching"; position: SourcePosition; field: string }
-  | { kind: "json"; position: SourcePosition; member: string }
+  /** `concept`: the member is a concept member (its FQN), stored as one JSON value as a `json` one is (ADR-0092). */
+  | { kind: "json"; position: SourcePosition; member: string; concept?: string }
   /** Only with `mode: "write"`: a call that, in a write policy, counts as reading the record. */
   | { kind: "write-call"; position: SourcePosition; callee: string }
   /** It inlines a computed body that already holds an error (`LowerOptions.reported`): that error is the one to fix. */
@@ -60,12 +61,13 @@ export type LowerResult = { ok: true; lowered: Lowered } | { ok: false; problems
 /** How deep computed fields are inlined into one another: the loader's `MAX_DEPTH`. */
 const MAX_INLINE = 32;
 
-const CLASS: Readonly<Record<AttributeType, ValueClass | "json">> = {
+/** A concept member is one JSON value (ADR-0092): never compared, as a `json` one. */
+const CLASS: Readonly<Record<ValueType, ValueClass | "json">> = {
   uuid: "string", string: "string", enum: "string", integer: "integer", float: "float", decimal: "float",
-  boolean: "boolean", date: "date", datetime: "date", timestamp: "date", json: "json",
+  boolean: "boolean", date: "date", datetime: "date", timestamp: "date", json: "json", concept: "json",
 };
 /** How a stored value of `type` is compared in SQL; `json` is never compared. */
-export function valueClassOf(type: AttributeType): ValueClass | undefined {
+export function valueClassOf(type: ValueType): ValueClass | undefined {
   const cls = CLASS[type];
   return cls === "json" ? undefined : cls;
 }
@@ -286,7 +288,7 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
     const attribute = entity.attributes.find((a) => a.name === name);
     if (attribute) {
       const cls = CLASS[attribute.type];
-      if (cls === "json") return refuse({ kind: "json", position: node.position, member: path });
+      if (cls === "json") return refuse({ kind: "json", position: node.position, member: path, ...(attribute.concept !== undefined ? { concept: attribute.concept } : {}) });
       if (!last || end.mode === "list") return plain(`a member of &${name}, which is not a record`);
       return { kind: "column", depth, name, class: cls };
     }

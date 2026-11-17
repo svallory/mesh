@@ -20,6 +20,11 @@ export const ATTRIBUTE_TYPES = Object.freeze([
 ] as const);
 export type AttributeType = (typeof ATTRIBUTE_TYPES)[number]["name"];
 export type AttributeTypeName = AttributeType;
+/**
+ * What a member or a field holds: an attribute type, or a concept (ADR-0092), whose FQN the member's `concept` names. Not an
+ * attribute type: `concept` is the root tag of a concept file, and a concept use's head is the concept's own name.
+ */
+export type ValueType = AttributeType | "concept";
 const NAMES: ReadonlySet<string> = new Set(ATTRIBUTE_TYPES.map((t) => t.name));
 export function isAttributeTypeName(value: unknown): value is AttributeType {
   return typeof value === "string" && NAMES.has(value);
@@ -31,4 +36,12 @@ export function attributeTypeInfo(name: AttributeType): AttributeTypeInfo {
       `"${String(name)}" is not a registered attribute type; registered: ${[...NAMES].join(", ")}`,
     );
   return info;
+}
+/**
+ * The attribute type of a member that cannot be a concept: a primary key (a concept use takes no `primary-key`), or the
+ * number or date member of a rollup. Throws on a concept, which would be a bug in the build.
+ */
+export function keyTypeOf(attribute: { readonly name: string; readonly type: ValueType }): AttributeType {
+  if (attribute.type === "concept") throw new Error(`:${attribute.name} is a concept member, which has no attribute type here`);
+  return attribute.type;
 }

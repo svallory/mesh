@@ -15,7 +15,7 @@ import type {
   TypeClass,
   ValidateItem,
 } from "@meshfw/model";
-import { isCheckGroup } from "@meshfw/model";
+import { isCheckGroup, isExpression } from "@meshfw/model";
 import { checksOf } from "./action-expressions.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 import { alwaysCovers, policyCovers } from "./policies.ts";
@@ -83,6 +83,8 @@ class Demote extends Error {
 const CLASS: Record<string, TypeClass> = {
   uuid: "string", string: "string", integer: "number", float: "number", decimal: "number",
   boolean: "boolean", enum: "enum", date: "date", datetime: "date", timestamp: "date", json: "json",
+  // A concept member is one opaque value, as a json one is (ADR-0092): reading inside it, or comparing it, is plain code.
+  concept: "concept",
 };
 /** Functions whose null rule differs from JavaScript's: `??` and `?.` do not (COALESCE and a left join mean the same). */
 const DIFFERING = new Set(["eq", "ne", "lt", "lte", "gt", "gte", "and", "or", "not", "add", "sub", "mul", "div", "idiv", "neg", "length"]);
@@ -296,6 +298,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
             `\`before.${n.name}\` is a ${owner.entity.relationships.some((r) => r.name === n.name) ? "relationship" : "computed field"}, and \`before\` holds only the stored columns`, n.position,
             `read \`&${n.name}\` for the proposed record's (Mesh loads it), or compare the stored key (for a relationship, \`before.${n.name}Id\`)`);
         }
+        if (owner.c === "concept") return fail("a member of a concept value");
         let result: Ty;
         try { result = memberTy(scope, owner, n.name); }
         catch (e) { if (e instanceof Demote) return fail(e.detail); throw e; }
@@ -363,7 +366,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
             const [x, y] = a as [Ty, Ty];
             if (atomAgainstNonEnum()) return { c: "boolean", nullable };
             if (!same(x, y)) return fail("a comparison of values of different types");
-            if (["json", "record", "list", "input"].includes(x.c) || ["json", "record", "list", "input"].includes(y.c)) return fail(`a comparison of ${x.c} values`);
+            if (["json", "concept", "record", "list", "input"].includes(x.c) || ["json", "concept", "record", "list", "input"].includes(y.c)) return fail(`a comparison of ${x.c} values`);
             for (const [lit, other] of [[x, y], [y, x]] as const)
               if (lit.atom !== undefined && other.c === "enum") {
                 if (other.values && !other.values.includes(lit.atom))
@@ -518,7 +521,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     for (const step of list) {
       if (step.kind === "set") {
         for (const { member, value } of step.assignments) {
-          if (typeof value === "object" && value !== null && "source" in value) {
+          if (isExpression(value)) {
             const t = visit(value as Expression, scope, false);
             const attr = entity.attributes.find((a) => a.name === member.name);
             const relation = attr ? undefined : entity.relationships.find((r) => r.name === member.name && r.kind === "belongs-to");

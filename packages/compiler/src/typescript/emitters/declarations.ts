@@ -18,7 +18,7 @@ export const declarationsGenerator: Generator<DeclarationView> = {
       const path = `${outputPrefix(input.config)}/${declarationPath(declaration)}.ts`;
       if (paths.has(path.toLowerCase())) throw emitError("MESH_EMIT_PATH", `Generated path collision: ${path}`, declaration.position);
       paths.add(path.toLowerCase());
-      return { path, view: declarationView(declaration) };
+      return { path, view: declarationView(declaration, input.document) };
     });
   },
 };
