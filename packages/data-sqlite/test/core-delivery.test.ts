@@ -186,6 +186,37 @@ describe("core's claim renewal", () => {
     });
   }
 
+  test("a retry that meets a lock wait after a transient error loses the claim at once, with the lock wording", async () => {
+    let calls = 0;
+    const world = await started({ renew: async (real) => { calls++; if (calls === 1) throw busy("serialization"); if (calls === 2) throw busy("locked"); return real(); } }, { renewMs: 30, lapseMs: 2_000 });
+    try {
+      await Bun.sleep(150);
+      expect(world.lost).toHaveLength(1);
+      expect(world.lost[0]!.message).toContain("a renewal of the claim stayed blocked by another connection's lock until the claim lapsed");
+      expect(calls).toBe(2);
+    } finally { await world.stop(); }
+  });
+
+  test("stopping delivery while a renewal waits to retry cancels the retry and reports no loss", async () => {
+    let calls = 0;
+    let firstFailure: (() => void) | undefined;
+    const failed = new Promise<void>((resolve) => { firstFailure = resolve; });
+    const world = await started({ renew: async () => { calls++; firstFailure?.(); throw busy("connection"); } }, { renewMs: 30, lapseMs: 2_000 });
+    let stopped = false;
+    try {
+      await failed;
+      // The failed renewal and its immediate retry; the next try waits 500 ms.
+      await Bun.sleep(100);
+      expect(calls).toBe(2);
+      await world.stop();
+      stopped = true;
+      const seen = calls;
+      await Bun.sleep(700);
+      expect(calls).toBe(seen);
+      expect(world.lost).toEqual([]);
+    } finally { if (!stopped) await world.stop(); }
+  });
+
   test("a renewal whose transient error keeps coming loses the claim once the lapse passes, naming the last reason", async () => {
     let calls = 0;
     const began = Date.now();
