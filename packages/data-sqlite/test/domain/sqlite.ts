@@ -10,6 +10,7 @@ export const sqliteDomain: DomainAdapter = {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build",
     capabilities: { adapter: "sqlite", capabilities: [...capabilities] }, options: { file: ":memory:" },
   }),
+  integerColumn: (name) => `integer("${name}")`,
   async layer(tables) {
     const db = sqlite({ file: ":memory:" });
     await createSchema(db, tables);

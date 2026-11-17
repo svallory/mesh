@@ -14,6 +14,8 @@ export interface DomainAdapter {
   readonly build: AdapterBuild;
   /** The descriptor of `mesh.config.ts`'s `data`, declaring `capabilities` (each suite names the ones its domain needs). */
   data(capabilities: readonly Capability[]): ResolvedConfig["data"];
+  /** How the emitted schema declares an integer column `name`, before any `.notNull()`. */
+  integerColumn(name: string): string;
   /** A new, empty layer with `tables` (the generated `tables` of `.mesh/schema.ts`) prepared; the test closes it. */
   layer(tables: Readonly<Record<string, TableHandle>>): Promise<DataLayer>;
 }

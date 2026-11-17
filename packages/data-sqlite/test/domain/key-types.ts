@@ -55,8 +55,8 @@ export function keyTypesSuite(adapter: DomainAdapter): void {
     expect(types).toMatch(/order: \$Order\$Record\["id"\];/);
     expect(await Bun.file(join(dir, ".mesh/domain/line.validators.ts")).text()).toContain("order: z.int(),");
     const schema = await Bun.file(join(dir, ".mesh/schema.ts")).text();
-    expect(schema).toMatch(/orderId: integer\("orderId"\)\.notNull\(\)/);
-    expect(schema).toMatch(/replacesId: integer\("replacesId"\),/);
+    expect(schema).toContain(`orderId: ${adapter.integerColumn("orderId")}.notNull()`);
+    expect(schema).toContain(`replacesId: ${adapter.integerColumn("replacesId")},`);
     await writeFile(join(dir, "check.ts"), `import type { Line } from "./.mesh/domain/line.types";
 import type { LineFilter } from "./.mesh/domain/line.types";
 import { tables } from "./.mesh/schema";
