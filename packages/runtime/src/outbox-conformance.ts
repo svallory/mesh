@@ -65,7 +65,12 @@ async function rejects(run: () => Promise<unknown>, test: (error: unknown) => bo
 /**
  * The outbox checks (spec, Events and commands, "The outbox"): the three operations every adapter of a project that
  * declares an event has, never reusing a position among them, and, when `manifest` declares `gapless-positions`, the checks of that capability. Named,
- * runner-independent asynchronous checks, like `dataLayerConformanceV1`; each owns and closes its layer.
+ * runner-independent asynchronous checks, like `dataLayerConformanceV1`; each owns and closes its layer. Every page any
+ * check reads is held to the `OutboxPage` invariants: `deletedThrough <= settled <= highest`, at most `limit` rows, in
+ * increasing order, above `after` and none above `settled`. With `options.sibling` (a second layer over the same
+ * database) a further check reads while another connection's transaction is open and asserts that the read never
+ * skips a row that commits later: no row a later read returns sits below the earlier read's highest returned position
+ * without the earlier read having returned it.
  */
 export function outboxConformance(makeLayer: () => Promise<OutboxFixture>, manifest: CapabilityManifest, options: OutboxConformanceOptions = {}): Record<string, () => Promise<void>> {
   type Readable = DataLayer & Required<Pick<DataLayer, "readOutbox">>;

@@ -57,7 +57,10 @@ export type Sort = readonly string[];
 
 /**
  * A read. Rows that tie on every `sort` field come back in primary-key order, so a page
- * is the same page every time. `offset` without `limit` skips rows and returns the rest. A
+ * is the same page every time. Nulls sort first ascending and last descending, and text
+ * sorts and compares (`eq`, `lt`, `lte`, `gt`, `gte`) bytewise, letter case included, as
+ * SQLite does; a server dialect pins this order (`COLLATE "C"`, `NULLS FIRST`/`NULLS LAST`).
+ * `offset` without `limit` skips rows and returns the rest. A
  * field that is `undefined` is the same as one that is left out, so a caller can pass an
  * optional input through; a filter's operators do not have this leniency.
  * `limit` and `offset` are non-negative integers; an offset past the end returns no rows.
