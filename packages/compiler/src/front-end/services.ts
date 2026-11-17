@@ -85,6 +85,13 @@ export function buildService(
     }
     // An event or a command (OD-11, OD-12): a service owns none yet, so its file names none. A namespace import of an
     // entity file stays legal even when that file declares events inline: the alias names the file's entity.
+    // A service file's import (OD-12) is reported once by the import loop; its alias binds nothing, so a `uses` line or
+    // a body that names it draws no second error.
+    if (declaredFile(entry.from)?.kind === "service") {
+      importNames.delete(local);
+      duplicates.add(local);
+      continue;
+    }
     const kinds = boundKinds(entry, index);
     const refused = entry.namespace
       ? (["event", "command"] as const).find((kind) => declaredFile(entry.from)?.kind === kind)
@@ -214,8 +221,18 @@ export function buildService(
     const run = fn(attr(runTag, "value"), true, reached);
     // The build half of OD-4: every entity the body names, directly or as a namespace member, is one a `uses` line lists.
     const unlisted: string[] = [];
+    const seenMembers = [...reached.values()];
     for (const entityName of run.plain?.entities ?? []) {
-      if (namespaces.has(entityName)) continue;
+      if (namespaces.has(entityName)) {
+        // An alias read bare (`const { Note } = ns`, or passed on whole) names every entity its file declares; one read
+        // only as `ns.Member` was recorded member by member through `reference` above.
+        if (seenMembers.some((written) => written.startsWith(`${entityName}.`))) continue;
+        for (const declared of memberKind.names(importNames.get(entityName)?.from ?? "") ?? []) {
+          const resolved = resolveReference({ qualifier: { name: entityName, offset: 0 }, name: declared, offset: 0 }, references, memberKind);
+          if (resolved.ok && !listed.has(targetKey(file, resolved))) unlisted.push(`${entityName}.${declared}`);
+        }
+        continue;
+      }
       const resolved = resolveReference({ name: entityName, offset: 0 }, references, entityKind);
       if (resolved.ok && !listed.has(targetKey(file, resolved))) unlisted.push(entityName);
     }

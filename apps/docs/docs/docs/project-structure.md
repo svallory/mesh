@@ -103,7 +103,7 @@ Presets apply first, in the order the file writes them, then the file's own `sev
 | Rule | Default | What it reports |
 |---|---|---|
 | `:action-calls-other-aggregate` | `warning` | an entity action that calls a write action of an entity of another [aggregate](#aggregates) (`MESH_ACTION_CALLS_OTHER_AGGREGATE`); not checked yet |
-| `:service-touches-one-entity` | `warning` | a service operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`); raised at `warning` whatever this file sets, until the rules are checked here |
+| `:service-touches-one-entity` | `warning` | a service operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`); raised when a service is built, at the level this file sets |
 
 Mesh's own invariants, such as an import that reaches outside the domain root, are ordinary build errors: no line of the file names, re-grades or disables one.
 

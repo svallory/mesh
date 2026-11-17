@@ -4,6 +4,9 @@
 // one-entity warning (R3); the `MESH_NOT_IMPLEMENTED` stopgap in `generateFiles`; and a project without services, whose
 // document is unchanged (R13).
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import type { Diagnostic, Service } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { generateFiles, stableJsonStringify, type ResolvedConfig } from "../src/index.ts";
@@ -184,6 +187,15 @@ describe("the one-entity warning (R3)", () => {
     const twoTasks = build(work("  operation :close\n    uses entity=Task actions=[:complete]\n    uses entity=ex.Task actions=[:complete]\n    run() {\n      return 1\n    }\n", `import { Task } from "./task.mesh.mx"\nimport * as ex from "../execution/task.mesh.mx"\n`), { ...DOMAIN, ...other });
     expect(diags(twoTasks)).toEqual([]);
   });
+  test("the architecture file's setting of :service-touches-one-entity: `disable` raises nothing, `severity level=:error` makes it an error", () => {
+    const ARCH = "src/domain/architecture.mesh.mx";
+    const off = build({ ...work(ONE + OPEN), [ARCH]: "architecture :project\n  disable :service-touches-one-entity\n" });
+    expect(diags(off)).toEqual([]);
+    const graded = build({ ...work(ONE + OPEN), [ARCH]: "architecture :project\n  severity :service-touches-one-entity level=:error\n" });
+    expect(diags(graded).map((d) => [d[1], d[3], d[4]])).toEqual([[7, "error", "MESH_SERVICE_ONE_ENTITY"]]);
+    const other = build({ ...work(ONE + OPEN), [ARCH]: "architecture :project\n  disable :action-calls-other-aggregate\n" });
+    expect(diags(other).map((d) => [d[1], d[3], d[4]])).toEqual([[7, "warning", "MESH_SERVICE_ONE_ENTITY"]]);
+  });
   test("not when a uses line resolved to nothing (its own error is enough)", () => {
     const result = build(work("  operation :close\n    uses entity=Task actions=[:complete]\n    uses entity=Nope actions=[:read]\n    run() {\n      return 1\n    }\n"));
     expect(diags(result).map((d) => d[4])).toEqual(["MESH_UNKNOWN_ENTITY"]);
@@ -228,6 +240,12 @@ describe("the uses-vs-body check (MESH_SERVICE_USES)", () => {
     const body = "  operation :go\n    uses entity=Task actions=[:read]\n    uses entity=Claim actions=[:read]\n    run({ context }) {\n      return t.Task.read({}, context)\n    }\n";
     expect(diags(build(work(body, `${HEAD}import * as t from "./task.mesh.mx"\n`)))).toEqual([]);
   });
+  test("a namespace alias the body reads bare (destructured or passed on) counts as naming the entity its file declares", () => {
+    const destructured = "  operation :go\n    uses entity=Task actions=[:read]\n    uses entity=Claim actions=[:read]\n    run({ context }) {\n      const { Notification } = w\n      return Notification.send({}, context)\n    }\n";
+    expect(diags(build(work(destructured)))).toEqual([USES("w.Notification", "10")]);
+    const listed = destructured.replace("entity=Claim actions=[:read]", "entity=w.Notification actions=[:send]");
+    expect(diags(build(work(listed)))).toEqual([]);
+  });
   test("not for a helper the body calls, whatever the helper reaches (the run-time check covers it)", () => {
     const helper = { "src/domain/work/work.helpers.ts": "export const audit = (x: unknown) => x;\n" };
     const result = build(work(op("return audit(input)"), `${HEAD}import { audit } from "./work.helpers"\n`), { ...DOMAIN, ...helper });
@@ -246,6 +264,11 @@ describe("functions of a service have no record", () => {
   });
   test("in a policy, and a policy's legal neighbours (`actor`, `input`, `context`, `Mesh.privileged`, an atom compared with an input) stay legal", () => {
     expect(diags(build(work(`${op("return 1")}  policies\n    policy :p authorize-if=({ self }) => self != null\n`)))).toEqual([free("self", 14, 27)]);
+    const beforeAndMember = build(work(`${op("return 1")}  policies\n    policy :p authorize-if=({ before }) => &x != null\n`));
+    expect(diags(beforeAndMember).map((d) => [d[1], d[4], d[5]])).toEqual([
+      [14, "MESH_EXPR_FREE_VARIABLE", free("before", 0, 0)[5]],
+      [14, "MESH_EXPR_FREE_VARIABLE", free("&x", 0, 0)[5]],
+    ]);
     const legal = build(work(`${op("return 1")}  policies\n    policy :p authorize-if=async ({ actor, input, context }) => actor != null && input.kind === :big && (await Mesh.privileged(Task).read({}, context)).length > 0\n`));
     expect(diags(legal)).toEqual([]);
     expect(serviceOf(legal).policies[0]!.authorizeIf[0]!.plain).toMatchObject({ why: "service", privileged: true });
@@ -306,6 +329,49 @@ describe("files and imports (R6, R7, R16, OD-12)", () => {
     const fromEntity = build({ ...other, "src/domain/work/notification.mesh.mx": `import { Other } from "./other.mesh.mx"\n${NOTIFICATION}` });
     expect(diags(fromEntity).map((d) => [d[0], d[1], d[4], d[5]])).toEqual([["src/domain/work/notification.mesh.mx", 1, "MESH_UNKNOWN_IMPORT",
       "./other.mesh.mx declares a service: an entity file cannot import a service; call the service from application code"]]);
+  });
+  test("an aggregate file and a surface file import no service, each in its own words, at the import line", () => {
+    const aggregate = build({ ...work(op("return 1")), "src/domain/work/tasks.mesh.mx": 'import { Task } from "./task.mesh.mx"\nimport { Work } from "./work.mesh.mx"\naggregate :Tasks\n  root entity=Task\n' });
+    expect(diags(aggregate).map((d) => [d[0], d[1], d[4], d[5]])).toEqual([["src/domain/work/tasks.mesh.mx", 2, "MESH_UNKNOWN_IMPORT",
+      "./work.mesh.mx declares a service: an aggregate file cannot import a service; call the service from application code"]]);
+    const ADMIN = "src/surfaces/admin/admin.mesh.mx";
+    const surface = buildModel({
+      ...project({ ...DOMAIN, ...work(op("return 1")) }),
+      surfaces: { root: "src/surfaces", files: [{ file: ADMIN, source: 'import { Task } from "../../domain/work/task.mesh.mx"\nimport { Work } from "../../domain/work/work.mesh.mx"\nsurface :admin\n  expose :tasks entity=Task label="Tasks" fields=[:id]\n    action :read\n' }] },
+    });
+    expect(diags(surface).map((d) => [d[0], d[1], d[4], d[5]])).toEqual([[ADMIN, 2, "MESH_UNKNOWN_IMPORT",
+      "../../domain/work/work.mesh.mx declares the service Work, and a surface's lines name entities"]]);
+  });
+  test("a namespace import of a service file from a service file is one error, at the import", () => {
+    const other = { "src/domain/work/other.mesh.mx": `import { Task } from "./task.mesh.mx"\nimport { Claim } from "./claim.mesh.mx"\nservice :Other\n${op("return 1")}` };
+    const result = build({ ...work(op("return 1", "    uses entity=o.Other actions=[:go]\n"), `${HEAD}import * as o from "./other.mesh.mx"\n`), ...other });
+    expect(diags(result).map((d) => [d[0], d[1], d[4]])).toEqual([[WORK_FILE, 6, "MESH_UNKNOWN_IMPORT"]]);
+  });
+  test("an entity the file imports twice, named by a uses line, is MESH_DUPLICATE_IMPORT alone", () => {
+    const result = build(work(op("return 1"), `${HEAD}import { Task } from "./task.mesh.mx"\n`));
+    expect(diags(result).map((d) => [d[1], d[4]])).toEqual([[6, "MESH_DUPLICATE_IMPORT"]]);
+  });
+  test("on disk: an import of an ignored file is MESH_IGNORED_IMPORT; a .mesh.mx file outside the domain MESH_UNKNOWN_ENTITY", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mesh-services-"));
+    try {
+      const files = { ...DOMAIN, ...work(op("return 1"), `${HEAD}import { Gone } from "./_wip/gone.mesh.mx"\nimport { Far } from "../../far/far.mesh.mx"\n`) };
+      const onDisk = { ...files, "src/domain/work/_wip/gone.mesh.mx": entity("Gone"), "src/far/far.mesh.mx": entity("Far") };
+      for (const [file, source] of Object.entries(onDisk)) {
+        await mkdir(dirname(join(dir, file)), { recursive: true });
+        await writeFile(join(dir, file), source);
+      }
+      const result = buildModel({
+        root: dir, domainRoot: "src/domain",
+        files: Object.entries(files).map(([file, source]) => ({ file, source })),
+        ignored: [{ file: "src/domain/work/_wip/gone.mesh.mx", pattern: "**/_wip/**" }],
+      });
+      expect(diags(result).map((d) => [d[1], d[4], d[5]])).toEqual([
+        [6, "MESH_IGNORED_IMPORT", `${WORK_FILE} imports ./_wip/gone.mesh.mx, which \`ignore\` in mesh.config.ts excludes (pattern "**/_wip/**"); import a file that is not ignored, or remove the pattern`],
+        [7, "MESH_UNKNOWN_ENTITY", "../../far/far.mesh.mx exists but is not under the configured entity directories"],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
   test("a service file's unresolvable import, and a binding its file does not declare", () => {
     const missing = build(work(op("return 1"), `${HEAD}import { Gone } from "./gone.mesh.mx"\n`));

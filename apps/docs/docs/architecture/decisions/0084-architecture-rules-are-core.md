@@ -59,7 +59,7 @@ Core keeps the rules next to the model they read and keeps the warnings consiste
 
 - Rules are switched off or re-graded here, not in the entity. Which rules are built-in invariants and which can be disabled is ruled for the one-entity service warning (DOM-16, switchable) and, by the lead, for the cross-aggregate warning (lead ruling D40 chose option (a) of OD7 in the design `notes/architecture/architecture-file-design.md`: switchable; see the 2026-11-17 amendment).
 - The architecture file, its presets and its settings are built (2026-11-17 amendment); DOM-10 had put them after 1.0.
-- The one-entity service warning, `MESH_SERVICE_ONE_ENTITY`, is raised by the build since services were read ([ADR-0097](./0097-the-service-construct.md)); it is raised directly at its default level until the rules have checks, so `disable :service-touches-one-entity` does not silence it yet.
+- The one-entity service warning, `MESH_SERVICE_ONE_ENTITY`, is raised by the build since services were read ([ADR-0097](./0097-the-service-construct.md)); the service check raises it at the level the architecture file sets, so `disable :service-touches-one-entity` silences it and `severity` re-grades it.
 
 ## Action items
 

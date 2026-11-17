@@ -78,6 +78,7 @@ import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import { checkServices } from "../model/services.ts";
+import { DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
 import { buildService } from "./services.ts";
 import {
   atomForwards,
@@ -2567,9 +2568,10 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   if (surfaces.length) document.surfaces = surfaces;
   // The architecture file is the file named so directly in the domain root (R2): any other `architecture` root is refused
-  // and not read, and a project with none runs every rule at its default level. The settings are not read further yet:
-  // no rule has a check.
+  // and not read, and a project with none runs every rule at its default level. Only `:service-touches-one-entity` has a
+  // check yet (`checkServices`); the others are read and kept.
   let architectureFile: string | undefined;
+  let architectureSettings: ArchitectureSettings = DEFAULT_SETTINGS;
   for (const candidate of architectureFiles) {
     const position = positionAt(candidate.source, candidate.file, candidate.root.nameSpan.sourceStart);
     if (dirname(candidate.absolute) !== domainRoot || !isArchitectureFileName(candidate.absolute)) {
@@ -2579,7 +2581,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       diagnostics.push(error("MESH_ARCHITECTURE_FILE", `A project has one architecture file, and ${architectureFile} is it`, position, "remove this file"));
     else {
       architectureFile = candidate.file;
-      readArchitectureFile(candidate, diagnostics);
+      architectureSettings = readArchitectureFile(candidate, diagnostics);
     }
   }
   // An event and a command are identified by their FQN as an entity is: two files of one module declaring one name are one error.
@@ -2756,7 +2758,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   resolveRelationships(document, inversePositions, throughPositions, diagnostics);
   resolveSurfaces(document, rootPath, pendingSurfaces, diagnostics, nearestName);
-  checkServices(document, diagnostics, nearestName);
+  checkServices(document, diagnostics, nearestName, architectureSettings.get("service-touches-one-entity") ?? "warning");
   resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });

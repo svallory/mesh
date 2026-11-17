@@ -4,8 +4,9 @@
  * diagnostic code and a default level; a project with no architecture file runs every rule at its default level (R9).
  * Built-in invariants are not here: they are ordinary build errors that no file can name, re-grade or disable (R13).
  *
- * This holds the catalogue and the settings only: no rule has a check yet (the cross-aggregate check, and the service
- * check once services exist, add one to their entry).
+ * This holds the catalogue and the settings. No entry has a check yet: `MESH_SERVICE_ONE_ENTITY` is raised by
+ * `checkServices` (`model/services.ts`) at the setting this file resolves, and moves into this catalogue's check with
+ * architecture PR 2, as the cross-aggregate check adds one to its entry.
  */
 export type RuleLevel = "error" | "warning";
 export type RuleSetting = RuleLevel | "off";
@@ -20,7 +21,7 @@ export interface ArchitectureRule {
 
 /**
  * The catalogue, in a fixed order (ruling D40, OD1 (a)). `service-touches-one-entity` is the services unit's warning,
- * under that unit's code (ruling D42); it is known, so a file may set it, and checks nothing until services exist.
+ * under that unit's code (ruling D42). `checkServices` raises it and honours its setting; architecture PR 2 moves the check here.
  */
 export const ARCHITECTURE_RULES: readonly ArchitectureRule[] = Object.freeze([
   { name: "action-calls-other-aggregate", code: "MESH_ACTION_CALLS_OTHER_AGGREGATE", defaultLevel: "warning" },

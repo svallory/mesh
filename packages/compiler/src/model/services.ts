@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Service } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { checkPolicyHasChecks } from "./lifecycle-limits.ts";
+import type { RuleSetting } from "./architecture-rules.ts";
 
 const atoms = (names: readonly string[]) => names.map((name) => `:${name}`).join(", ");
 
@@ -14,13 +15,15 @@ const atoms = (names: readonly string[]) => names.map((name) => `:${name}`).join
  *
  * An operation whose `uses` lines name exactly one entity is the warning `MESH_SERVICE_ONE_ENTITY` (R3, OD-10): an
  * operation that touches one entity belongs on that entity, as an action. It is the code and default level of the
- * architecture rule `:service-touches-one-entity` (`model/architecture-rules.ts`), raised here directly until the rules
- * have checks, so the architecture file does not switch it off yet.
+ * architecture rule `:service-touches-one-entity` (`model/architecture-rules.ts`), raised here directly until architecture
+ * PR 2 moves it into the catalogue's check. `oneEntity` is that rule's setting from the architecture file: `off` (its
+ * `disable` line) raises nothing, and a `severity` line sets the level.
  */
 export function checkServices(
   document: { entities: readonly Entity[]; services?: readonly Service[] },
   diagnostics: Diagnostic[],
   nearestName: (name: string, candidates: Iterable<string>) => string | undefined,
+  oneEntity: RuleSetting = "warning",
 ): void {
   const byFile = new Map(document.entities.map((entity) => [resolve("/", entity.file), entity] as const));
   for (const service of document.services ?? []) {
@@ -44,10 +47,10 @@ export function checkServices(
             diagnostics.push(error("MESH_UNKNOWN_ACTION", `:${action.name} is not an action of ${entity.fqn}: a \`uses\` line names actions of the entity it uses${actions.length ? ` (${atoms(actions)})` : ", and it has none"}.${near === undefined ? "" : ` Did you mean :${near}?`}`, action.position));
           }
       }
-      if (resolvedAll && reached.size === 1) {
+      if (oneEntity !== "off" && resolvedAll && reached.size === 1) {
         const [only] = reached.values();
         diagnostics.push({
-          severity: "warning",
+          severity: oneEntity,
           code: "MESH_SERVICE_ONE_ENTITY",
           message: `operation :${operation.name} of ${service.fqn} uses only ${only!.fqn}: an operation that touches one entity belongs on that entity, as an action`,
           position: operation.position,
