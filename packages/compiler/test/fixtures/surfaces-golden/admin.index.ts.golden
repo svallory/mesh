@@ -11,16 +11,18 @@ import {
   defineSurface as $defineSurface,
   project as $project,
 } from "@meshfw/runtime";
-import type { $Omit, $Promise } from "../../$globals";
+import type { $Omit, $Partial, $Pick, $Promise } from "../../$globals";
 import { Task as $work$Task$value } from "../../domain/work/task.actions";
 import type {
   CompleteTaskInput as $work$Task$CompleteTaskInput,
   DestroyTaskInput as $work$Task$DestroyTaskInput,
   ReadTaskInput as $work$Task$ReadTaskInput,
+  Task as $work$Task$Record,
   TaskLoadArg as $work$Task$TaskLoadArg,
   TaskLoadNames as $work$Task$TaskLoadNames,
   TaskLoadable as $work$Task$TaskLoadable,
   TaskWith as $work$Task$TaskWith,
+  TouchTaskInput as $work$Task$TouchTaskInput,
 } from "../../domain/work/task.types";
 import { Task as $other$Task$value } from "../../domain/other/task.actions";
 import type {
@@ -76,6 +78,20 @@ export const surface = $defineSurface({
             ...context: $ContextArgument
           ): $Promise<$Projected<$work$Task$TaskWith<"summary" | "steps">, $0$Fields>> {
             return $project(await $work$Task$value.complete(input, ...context), $0$fields);
+          },
+        },
+        touch: {
+          kind: "update",
+          async run(
+            input: $work$Task$TouchTaskInput,
+            ...context: $ContextArgument
+          ): $Promise<
+            $Projected<
+              $work$Task$Record & $Partial<$Pick<$work$Task$TaskLoadable, "summary">>,
+              $0$Fields
+            >
+          > {
+            return $project(await $work$Task$value.touch(input, ...context), $0$fields);
           },
         },
         destroy: {

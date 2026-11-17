@@ -6,11 +6,16 @@ import type { ContextArgument } from "./index.ts";
 /** An action's type. The model package's `ActionType`, declared here because the runtime depends on no package. */
 export type SurfaceActionKind = "create" | "read" | "update" | "destroy";
 
-/** The properties of `T` named in `F`, through arrays; `void`, `undefined` and `null` stay as they are. What leaves through a surface. */
+/**
+ * The properties of `T` named in `F`, through arrays, each keeping its `?` (a computed field a write may not have loaded
+ * stays optional, since `project` leaves it out); `void`, `undefined` and `null`, alone or as members of a union, stay
+ * as they are. What leaves through a surface.
+ */
 export type Projected<T, F extends string> =
-  [T] extends [void | undefined | null] ? T
+  [T] extends [void] ? T
+  : T extends null | undefined ? T
   : T extends readonly (infer E)[] ? Projected<E, F>[]
-  : { readonly [K in Extract<keyof T, F>]: T[K] };
+  : Readonly<Pick<T, Extract<keyof T, F>>>;
 
 const own = (record: object, name: string) => Object.prototype.hasOwnProperty.call(record, name);
 

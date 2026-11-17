@@ -649,11 +649,12 @@ declare module "@meshfw/runtime" {
   }
 
   // Surfaces: what a surface's generated manifest (`#mesh/surfaces/<name>`) is made of, and what it calls.
-  /** The properties of `T` named in `F`, through arrays: what leaves through a surface. */
+  /** The properties of `T` named in `F`, through arrays, each keeping its `?`; `void`, `undefined` and `null` stay as they are: what leaves through a surface. */
   export type Projected<T, F extends string> =
-    [T] extends [void | undefined | null] ? T
+    [T] extends [void] ? T
+    : T extends null | undefined ? T
     : T extends readonly (infer E)[] ? Projected<E, F>[]
-    : { readonly [K in Extract<keyof T, F>]: T[K] };
+    : Readonly<Pick<T, Extract<keyof T, F>>>;
   /** A read's input with its `filter` and `sort` narrowed to the properties `F` an expose line lets leave. */
   export type SurfaceReadInput<I extends { filter?: unknown; sort?: unknown }, F extends string> = Omit<I, "filter" | "sort"> & {
     filter?: unknown;

@@ -159,9 +159,21 @@ projected.id = "c";
 const projectedMany: Projected<Post[], Listed> = [projected];
 const projectedNothing: Projected<void, Listed> = undefined;
 const typed: Projected<Post, "id"> = project({ id: "a", title: "b", body: null } as Post, ["id"]);
+// A computed field a write may not have loaded stays optional: `project` leaves it out rather than setting `undefined`.
+type Maybe = { id: string; excerpt?: string };
+const maybeAbsent: Projected<Maybe, "id" | "excerpt"> = { id: "x" };
+const maybePresent: Projected<Maybe, "id" | "excerpt"> = { id: "x", excerpt: "y" };
+// @ts-expect-error a required property stays required
+const maybeNoId: Projected<Maybe, "id" | "excerpt"> = { excerpt: "y" };
+// `null` and `undefined` as members of a union pass through, as `project` passes them at run time.
+const projectedNull: Projected<Post | null, "id"> = null;
+const projectedNullRecord: Projected<Post | null, "id"> = { id: "a" };
+const projectedUndefined: Projected<Post | undefined, "id"> = undefined;
+// @ts-expect-error the record member of the union is still projected
+void (projectedNullRecord as Projected<Post | null, "id"> & object).title;
 
 const action: SurfaceAction<{ id: string }, Projected<Post, Listed>> = { kind: "update", run: async () => projected };
 // @ts-expect-error an action's kind is one of the four action types
 const badKind: SurfaceAction = { kind: "rename", run: async () => undefined };
 const manifest: Surface = { name: "s", expose: { posts: { entity: "blog.Post", label: "Posts", fields: ["id"], actions: { publish: action } } }, publishes: [] };
-void [filter, filterBody, filterNested, sort, sortBody, sortBodyDesc, inputBody, widened, projectedMany, projectedNothing, typed, badKind, manifest];
+void [filter, filterBody, filterNested, sort, sortBody, sortBodyDesc, inputBody, widened, projectedMany, projectedNothing, typed, maybeAbsent, maybePresent, maybeNoId, projectedNull, projectedUndefined, badKind, manifest];

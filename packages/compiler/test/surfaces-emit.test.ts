@@ -13,12 +13,17 @@ import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript
 import { exposedProperties } from "../src/typescript/views/surfaces.ts";
 import { methodSignature } from "../src/typescript/views/actions.ts";
 import { effectiveActions, entityInputs } from "../src/typescript/views/inputs.ts";
+import { freeGlobals } from "./free-globals.ts";
 import { closeTypeServer } from "./type-server.ts";
 import { checkTypes, configOf } from "./generated.ts";
 
 type Files = Record<string, string>;
+const TSCONFIG = { noEmit: true, strict: true, module: "esnext", moduleResolution: "bundler", target: "es2022", skipLibCheck: true, allowImportingTsExtensions: true, types: [] };
 const open = "  policies\n    policy :anyone\n      authorize-if=() => true\n";
-/** Task: every kind of member `fields=` may name or must refuse, a write that loads, a destroy and the auto read. */
+/**
+ * Task: every kind of member `fields=` may name or must refuse, a write that loads, a write whose load sits under a
+ * `when` (its member may be absent: `$Partial`/`$Pick`), a destroy and the auto read.
+ */
 const TASK = `import { User } from "../people/user.mesh.mx"
 import { Step } from "./step.mesh.mx"
 
@@ -40,6 +45,10 @@ entity :Task table="tasks"
         set
           &state=:done
         load=[&summary, &steps]
+    update :touch
+      do
+        when=() => true
+          load=[&summary]
 ${open}`;
 const STEP = `import { Task } from "./task.mesh.mx"
 entity :Step table="steps"
@@ -77,6 +86,7 @@ surface :admin
   expose :tasks entity=Task label="Tasks" fields=[:summary, :title, :owner, :id]
     action :read
     action :complete
+    action :touch
     action :destroy
   expose :others entity=other.Task fields=:all
     action :read
@@ -156,6 +166,10 @@ describe("the generated manifest type-checks", () => {
       "  const kept: string = done.summary;",
       "  // @ts-expect-error a loaded relationship does not leave",
       "  void done.steps;",
+      "  const touched = await surface.expose.tasks.actions.touch.run({ id: \"x\" });",
+      "  const maybe: string | undefined = touched.summary;",
+      "  // A member loaded under a `when` stays optional: a projection without it is the action's result.",
+      "  const bare: Awaited<ReturnType<typeof surface.expose.tasks.actions.touch.run>> = { id: \"x\", title: \"t\", ownerId: null };",
       "  const nothing: void = await surface.expose.tasks.actions.destroy.run({ id: \"x\" });",
       "  // @ts-expect-error `create` is not listed for tasks",
       "  void surface.expose.tasks.actions.create;",
@@ -165,12 +179,18 @@ describe("the generated manifest type-checks", () => {
       "  void surface.expose.steps.actions.read;",
       "  // @ts-expect-error the manifest is read-only",
       "  surface.expose.tasks.label = \"x\";",
-      "  return [generic, title, summary, kept, nothing, label];",
+      "  return [generic, title, summary, kept, maybe, bare, nothing, label];",
       "}",
       "",
     ].join("\n"));
     const checked = await checkTypes(root, [...files.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "use.ts")]);
     expect(checked).toEqual({ code: 0, output: "" });
+    // Design section 8: the manifest, like every generated file, reads no global by its own name (`$Omit`, `$Promise`,
+    // `$Partial`, `$Pick` come from `$globals.ts`).
+    await writeFile(resolve(root, "tsconfig.json"), JSON.stringify({ compilerOptions: TSCONFIG, include: ["generated/**/*.ts"] }));
+    const generatedFiles = files.filter((file) => file.path.endsWith(".ts")).map((file) => resolve(root, file.path));
+    expect(generatedFiles).toContain(resolve(root, "generated/surfaces/admin/index.ts"));
+    expect(await freeGlobals(resolve(root, "tsconfig.json"), generatedFiles)).toEqual([]);
   }, 30_000);
 });
 
