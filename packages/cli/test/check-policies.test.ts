@@ -1,7 +1,7 @@
 // End to end: `Mesh.checkPolicies` and `Mesh.can`, imported from meshfw by application code, asked about the
 // tutorial's todo domain. The fixture (`fixtures/check-policies/domain/todo`) is the tutorial's `List` and `Todo` with
-// the policies this version builds: a read policy that reads the record is the SQL evaluator's (M10), so `List` and `Todo`
-// are read by any signed-in caller; a todo is created by its list's owner (a create policy reads `input.list`, not `&list`,
+// the tutorial's policies: a list and its todos are read by the list's owner only (a read policy that reads the record,
+// folded into the query); a todo is created by its list's owner (a create policy reads `input.list`, not `&list`,
 // which is empty before the input is applied); and `Todo.complete`, `rename` and `destroy` are the list owner's. The project is built
 // by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags with an application
 // module that runs the two documented examples (using-your-domain.md, "Asking instead of calling", and testing.md), and
@@ -203,15 +203,18 @@ describe("Mesh.checkPolicies and Mesh.can from application code", () => {
         // The question changed nothing: the todo is still not done.
         expect((await todo.Todo.read({}, { actor: alice })).map((row: { done: boolean }) => row.done)).toEqual([false]);
 
-        // A read: whether it is allowed at all.
+        // A read: whether it is allowed at all. The owner policy reads the record, so it is part of the query: Bob may
+        // read, and gets none of Alice's todos.
         expect(await Mesh.can(todo.Todo.read, {}, { actor: bob })).toBe(true);
-        expect(await todo.Todo.read({}, { actor: bob })).toHaveLength(1);
+        expect(await todo.Todo.read({}, { actor: bob })).toEqual([]);
+        expect(await todo.Todo.read({}, { actor: alice })).toHaveLength(1);
         expect(await application.typed(list.id, milk.id)).toEqual([true, false, true, true]);
 
-        // `pending` has its own filter and sort, which run as SQL: the question answers from its policies, and the call
-        // returns the todos that are not done.
+        // `pending` has its own filter and sort, which run as SQL with the policy folded in: the question answers that the
+        // read is allowed, and the call returns the todos that are not done on the caller's own lists.
         expect(await Mesh.can(todo.Todo.pending, {}, { actor: bob })).toBe(true);
-        expect((await todo.Todo.pending({}, { actor: bob })).map((row: { id: string }) => row.id)).toEqual([milk.id]);
+        expect(await todo.Todo.pending({}, { actor: bob })).toEqual([]);
+        expect((await todo.Todo.pending({}, { actor: alice })).map((row: { id: string }) => row.id)).toEqual([milk.id]);
       });
     } finally {
       await db.close();
@@ -220,7 +223,7 @@ describe("Mesh.checkPolicies and Mesh.can from application code", () => {
 });
 
 // The todo's create policy: a create has no stored list yet, so `Todo`'s `policy :ownerCreates` reads `input.list`
-// and looks the list up. The owner policy keeps the writes on a todo that exists; read stays `signedIn` until M10.
+// and looks the list up. The owner policy keeps the reads and the writes on a todo that exists.
 describe("the todo's create policy reads the list from the input", () => {
   const MISSING = "00000000-0000-4000-8000-0000000000ff";
 

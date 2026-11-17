@@ -5,7 +5,11 @@
 import type { LoadPlan as $LoadPlan } from "@meshfw/runtime";
 import { tables } from {{ schemaFromLiteral }};
 @each(source in expressionImports)
+@if(source.conditions)~
+import { $expressions as {{ source.local }}, $conditions as {{ source.conditions }} } from {{ source.fromLiteral }};
+@else~
 import { $expressions as {{ source.local }} } from {{ source.fromLiteral }};
+@end
 @end
 
 /**

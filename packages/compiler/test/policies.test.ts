@@ -1,5 +1,5 @@
-// M8a at build time: what a policy may read, what `actions=` may name, which checks run where, the M10
-// refusal of a read or load policy that reads the record, a policy with no check, `&x` on a create (S2 of the
+// M8a at build time: what a policy may read, what `actions=` may name, which checks run where, a read or load policy
+// that reads the record (folded into the query since M10), a policy with no check, `&x` on a create (S2 of the
 // review), `Mesh.isSystem(context)`, and what `mesh explain` says. The run-time side is
 // `packages/data-sqlite/test/policies.test.ts`.
 import { describe, expect, test } from "bun:test";
@@ -115,13 +115,18 @@ describe("what a policy may name and read", () => {
   });
 });
 
-describe("a read policy that reads the record is refused until M10", () => {
-  test("covering a read with a record-reading check is MESH_NOT_IMPLEMENTED, once per policy, naming each read", () => {
-    const built = build(post("  policies\n    policy :mine types=[:read, :update]\n      authorize-if=({ actor }) => &authorId === actor.id\n"));
-    expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read of blog.Post: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
-    // The same through a `when`.
-    expect(codes(build(post("  policies\n    policy :w types=[:read] when=() => &title !== null\n      authorize-if=() => true\n")).diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+describe("a read policy that reads the record is folded into the query (M10)", () => {
+  test("covering a read with a record-reading check builds, in a `when` too, and its legal neighbours stay legal", () => {
+    expect(build(post("  policies\n    policy :mine types=[:read, :update]\n      authorize-if=({ actor }) => &authorId === actor.id\n")).diagnostics).toEqual([]);
+    expect(build(post("  policies\n    policy :w types=[:read] when=() => &title !== null\n      authorize-if=() => true\n")).diagnostics).toEqual([]);
+    // Beside an actor-only check, and with a forbid-if.
+    expect(build(post("  policies\n    policy :mine types=[:read]\n      authorize-if=({ actor }) => actor.id === null\n      authorize-if=({ actor }) => &authorId === actor.id\n      forbid-if=() => &title === \"hidden\"\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n")).diagnostics).toEqual([]);
+  });
+
+  test("a record-reading read policy that has no SQL form is MESH_EXPR_NOT_SQL at the construct, naming what it covers", () => {
+    const built = build(post("  policies\n    policy :mine types=[:read]\n      authorize-if=({ actor }) => { const a = actor.id; return &authorId === a }\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n"));
+    expect(codes(built.diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL"]);
+    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if must run as SQL, since the policy covers read :read of blog.Post, and Mesh does not translate it (a block body of 2 statements)");
   });
 
   test("a read policy that calls `Mesh.privileged` is MESH_READ_POLICY_PRIVILEGED at each call: a filter reads no other entity", () => {
@@ -161,7 +166,7 @@ describe("a read policy that reads the record is refused until M10", () => {
     }
   });
 
-  test("a policy a caller's load runs that reads the record is refused too, and names the loads it covers", () => {
+  test("a policy a caller's load runs that reads the record builds, and one with no SQL form names the loads it covers", () => {
     // Reached by a Post, a Comment has the auto read a load runs (`MESH_ON_LOAD`); reached by nothing, it needs none.
     const comment = (policies: string, actions = "actions auto=[:read]") => ({ file: "blog/comment.mesh.mx", source: `entity :Comment
   attributes
@@ -181,11 +186,12 @@ entity :Post
     policy :all
       authorize-if=() => true
 ` }] });
-    const built = blog("  policies\n    policy :mine\n      authorize-if=({ actor }) => &authorId === actor.id\n");
-    expect(codes(built.diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-    expect(built.diagnostics[0]!.message).toBe("policy :mine authorize-if reads the record, and the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
+    expect(blog("  policies\n    policy :mine\n      authorize-if=({ actor }) => &authorId === actor.id\n").diagnostics).toEqual([]);
+    const built = blog("  policies\n    policy :mine\n      authorize-if=({ actor }) => { return &authorId === actor.id }\n");
+    expect(codes(built.diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL"]);
+    expect(built.diagnostics[0]!.message).toMatch(/^policy :mine authorize-if must run as SQL, since the policy covers read :read, the loads of it \(a relationship or a rollup that reaches it\) of blog\.Comment, and Mesh does not translate it/);
     // Scoped to reads by type, it covers the loads too.
-    expect(codes(blog("  policies\n    policy :mine types=[:read]\n      authorize-if=() => &authorId !== null\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
+    expect(codes(blog("  policies\n    policy :mine types=[:read]\n      authorize-if=() => { return &authorId !== null }\n").diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL"]);
     // Scoped to the writes, it builds, with the warning that no caller then loads a Comment (R2-N2); so does an entity no
     // relationship reaches, with no warning.
     expect(codes(blog("  policies\n    policy :mine types=[:create]\n      authorize-if=({ input, actor }) => input.authorId === actor.id\n").diagnostics)).toEqual(["warning:MESH_LOAD_NO_POLICY"]);
@@ -335,12 +341,12 @@ describe("a read policy's condition that does not translate is an error (MESH_EX
         "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers",
         `error:MESH_EXPR_NOT_SQL:${warning("policy :p authorize-if", "read :read", "arithmetic on values that are not numbers")}`,
       ]);
-      // Plain code that reads the record is the M10 refusal, once per policy, and no second error beside it: on the first
-      // condition, and on a second one that the refusal does not name.
-      expect(codes(read("({ self }) => { return self.title === null }").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-      expect(codes(read("() => &title === null", "      forbid-if=({ self }) => { return self.title === null }\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-      // A plain condition that does not read the record is still refused beside the refusal of another one.
-      expect(codes(read(method, "      forbid-if=() => &title === null\n").diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL", "error:MESH_NOT_IMPLEMENTED"]);
+      // Plain code that reads the record has no SQL form: one error at each such condition, and a translated one beside
+      // it is folded with no error.
+      expect(codes(read("({ self }) => { return self.title === null }").diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL"]);
+      expect(codes(read("() => &title === null", "      forbid-if=({ self }) => { return self.title === null }\n").diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL"]);
+      // A plain condition that does not read the record is refused beside a record-reading one that translates.
+      expect(codes(read(method, "      forbid-if=() => &title === null\n").diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL"]);
     });
     // `Mesh.privileged`, an entity's action and a question to another policy are each their own error, with no warning.
     const scoped = (condition: string) => MESH + post(`  policies\n    policy :q types=[:read]\n      authorize-if=${condition}\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);

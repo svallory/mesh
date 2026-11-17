@@ -2,6 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Diagnostic } from "@meshfw/model";
 import { capabilityDiagnostics } from "../src/capabilities.ts";
 import { explainAction } from "../src/typescript/explain.ts";
+import { actionsView } from "../src/typescript/views/actions.ts";
+import { expressionsView } from "../src/typescript/views/expressions.ts";
+import { loadView } from "../src/typescript/views/load.ts";
+import { configOf } from "./generated.ts";
 import { FILES, invoice, project } from "./sql-fixture.ts";
 
 // Where SQL is required (a read's filter, a sort key, a read policy), what has no SQL form is a build error at the
@@ -183,5 +187,113 @@ describe("mesh explain of a read with its own filter and sort", () => {
     expect(explainAction(entity, "r0", built.document!)).toContain("  policies     :open");
     // A read with neither keeps its one line.
     expect(explainAction(entity, "read", built.document!)![1]).toBe("  strategy     one query: the caller's filter, sort, limit and offset over the table");
+  });
+});
+
+describe("a read policy that reads the record is lowered as a filter is (M10)", () => {
+  /** The invoice file with its open policy replaced by `policy :mine types=[:read]` holding `lines`, and the writes open. */
+  const withPolicy = (lines: string) => invoice([]).replace("    policy :open\n      authorize-if=() => true\n",
+    `    policy :mine types=[:read]\n${lines}    policy :writes types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);
+  const head = "policy :mine authorize-if must run as SQL, since the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of billing.Invoice";
+
+  test("each problem lowering finds is reported at the construct, with the policy's subject", () => {
+    const built = fixture.build(withPolicy('      authorize-if=() => &shout === "x" || &nLines > 2 || &customer.meta !== null\n'));
+    expect(errors(built.diagnostics).map(brief)).toEqual([
+      { code: "MESH_EXPR_NOT_SQL", message: `${head}, and &shout reads computed :label of billing.Customer, which Mesh runs in memory (arithmetic on values that are not numbers)`,
+        at: `billing/invoice.mesh.mx:${built.source.indexOf("&shout ===")}`, fix: FIX_COMPUTED },
+      { code: "MESH_NOT_IMPLEMENTED", message: "policy :mine authorize-if of billing.Invoice reads &nLines, a count rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)",
+        at: `billing/invoice.mesh.mx:${built.source.indexOf("&nLines >")}`, fix: "write the condition over the relationship itself, which translates: `&lines.length > 2`, `&lines.some((x) => x.n > 2)`" },
+      { code: "MESH_FILTER_TYPE", message: "&customer.meta is :json, which a read policy cannot use: it is a filter on the query, and the database does not look inside it",
+        at: `billing/invoice.mesh.mx:${built.source.indexOf("&customer.meta")}`, fix: null },
+    ]);
+  });
+
+  test("its legal neighbours build: across relationships, in a when, beside actor-only checks, a quantifier over the actor's list", () => {
+    for (const lines of [
+      "      authorize-if=({ actor }) => &customer.ownerId === actor.id\n",
+      "      authorize-if=() => &lines.some((l) => l.qty > 2) && &customer.bigCustomer\n      forbid-if=() => &isLate\n",
+      "      authorize-if=({ actor }) => actor.roles.some((r) => r === \"admin\") || &paid\n",
+      "      authorize-if=({ actor }) => actor.id !== null\n      forbid-if=() => &late\n",
+    ]) expect(errors(fixture.build(withPolicy(lines)).diagnostics), lines).toEqual([]);
+    const when = invoice([]).replace("    policy :open\n      authorize-if=() => true\n",
+      "    policy :mine types=[:read] when=() => &status === :sent\n      authorize-if=({ actor }) => actor.id !== null\n    policy :writes types=[:create, :update, :destroy]\n      authorize-if=() => true\n");
+    expect(errors(fixture.build(when).diagnostics)).toEqual([]);
+  });
+
+  test("it needs conditions, and joins at each relationship it crosses", () => {
+    const adapter = (capabilities: string[]) => ({ kind: "data-adapter" as const, name: "test", build: "x", options: {}, capabilities: { adapter: "test", capabilities } }) as never;
+    const built = fixture.build(withPolicy("      authorize-if=({ actor }) => &customer.ownerId === actor.id\n"));
+    expect(errors(built.diagnostics)).toEqual([]);
+    const at = built.source.indexOf("({ actor }) => &customer.ownerId");
+    expect(capabilityDiagnostics(built.document!, adapter(["aggregates", "conditions", "joins"]))).toEqual([]);
+    expect(capabilityDiagnostics(built.document!, adapter(["aggregates", "conditions"])).map((d) => `${d.position.offset} ${d.message}`)).toEqual([
+      `${built.source.indexOf("&customer.ownerId")} policy :mine authorize-if of billing.Invoice reads &customer.ownerId through a relationship, which runs as a subquery, and the data adapter "test" does not declare the joins capability`,
+    ]);
+    expect(capabilityDiagnostics(built.document!, adapter(["aggregates"])).map((d) => `${d.position.offset} ${d.message}`)).toEqual([
+      `${at} policy :mine authorize-if of billing.Invoice runs as SQL, and the data adapter "test" does not declare the conditions capability, so it would ignore the condition`,
+    ]);
+  });
+
+  test("mesh explain says the policy is folded into the query and names what it crosses", () => {
+    const built = fixture.build(withPolicy("      authorize-if=({ actor }) => &customer.ownerId === actor.id\n"));
+    const lines = explainAction(built.entity("Invoice"), "read", built.document!)!;
+    expect(lines.slice(1, 3)).toEqual([
+      "  strategy     one query: the caller's filter, the caller's sort, limit and offset over the table, with the policies that read the record folded in",
+      "               a subquery per row through &customer.ownerId",
+    ]);
+    expect(lines).toContain("                 authorize-if ({ actor }) => &customer.ownerId === actor.id: folded into the query: a row is returned only when it holds");
+  });
+});
+
+describe("the generated read of a policy that reads the record", () => {
+  const withPolicy = (lines: string) => invoice(["({ input }) => &customer.id === input.customerId"]).replace("    policy :open\n      authorize-if=() => true\n",
+    `    policy :mine types=[:read]\n${lines}    policy :writes types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);
+  const emitted = (lines: string) => {
+    const built = fixture.build(withPolicy(lines));
+    expect(errors(built.diagnostics)).toEqual([]);
+    const input = { document: built.document!, config: configOf("/project", "generated") };
+    return { built, input, view: actionsView(input, built.entity("Invoice")) };
+  };
+
+  test("the read action folds the policies with rows, and every read body it covers takes and applies them", () => {
+    const { view } = emitted("      authorize-if=({ actor }) => &customer.ownerId === actor.id\n");
+    const read = view.methods.find((m) => m.name === "read")!;
+    expect(read.preCheck.at(-2)).toContain('checks: [{ kind: "authorize-if", check: "({ actor }) => &customer.ownerId === actor.id", record: true, run: $expressions["policy.mine.authorize-if.0"], sql: () => $conditions["policy.mine.authorize-if.0"] }]');
+    expect(read.preCheck.at(-2)).toMatch(/^const \$rows = await \$authorizer\("billing\.Invoice", "read", .*\.rows\(layer, \$scope\(.*\), \$tableOf\);$/);
+    expect(read.preCheck.at(-1)).toBe("if ($rows === false) return [] as unknown as (L extends unknown ? InvoiceWith<InvoiceLoadNames<L>>[] : never);");
+    expect(read.readsCall).toContain("$reads.read(input, context, $clock, true, $parsed, $rows)");
+    // The auto read has no filter of its own: its body applies the policies' condition alone.
+    const body = view.reads.find((m) => m.name === "read")!;
+    expect(body.contextParam.endsWith(", rows?: $Where")).toBe(true);
+    expect(body.statements).toContain("const $where = $allOf([rows ?? true]);");
+    expect(body.statements.find((line) => line.includes("tx.select"))).toContain("where: $whereFor(layer, $where)");
+    // A declared filter is combined with them.
+    expect(view.reads.find((m) => m.name === "r0")!.statements).toContain('const $where = $allOf([$bindCondition($tableOf, $conditions["read.r0.filter"], $s as never), rows ?? true]);');
+    // The table map lists what the policy's hop reaches.
+    expect(view.moduleLines.find((line) => line.startsWith("const $tableOf"))).toContain('"billing.Customer": tables.customer }');
+    expect(view.runtimeTypes).toContain("Where as $Where");
+  });
+
+  test("the expressions file holds the policy's literal, typed by the scope its in-memory form has", () => {
+    const { built, input } = emitted("      authorize-if=({ actor }) => &customer.ownerId === actor.id\n");
+    const conditions = expressionsView(input, built.entity("Invoice"), "generated/domain/billing/invoice.expressions.ts").conditions;
+    expect(conditions.map((entry) => entry.key)).toEqual(['"read.r0.filter"', '"policy.mine.authorize-if.0"']);
+    expect(conditions[1]!.code).toContain('what: "policy :mine authorize-if of billing.Invoice"');
+    expect(conditions[1]!.code.replace(/\s+/g, "")).toContain('"hop":{"column":"id","key":"id","outer":"customerId","table":"billing.Customer"}');
+    expect(conditions[1]!.code).toMatch(/params: \(\$s: \$billing\$Invoice\$\w*Scope<unknown>\) => \[\$s\.actor/);
+  });
+
+  test("the load plan reads each literal lazily and imports $conditions only where a load needs it", () => {
+    const { input } = emitted("      authorize-if=({ actor }) => &customer.ownerId === actor.id\n");
+    const view = loadView(input, "generated/load.ts");
+    expect(view.expressionImports.find((source) => source.local === "$billing$Invoice$expressions")!.conditions).toBe("$billing$Invoice$conditions");
+    expect(view.expressionImports.filter((source) => source.conditions !== null)).toHaveLength(1);
+    expect(view.entities.find((entity) => entity.nameLiteral === '"billing.Invoice"')!.reads).toContain('sql: () => $billing$Invoice$conditions["policy.mine.authorize-if.0"]');
+  });
+
+  test("an actor-only read policy keeps today's pre-check and body", () => {
+    const { view } = emitted("      authorize-if=({ actor }) => actor.id !== null\n");
+    expect(view.methods.find((m) => m.name === "read")!.preCheck.at(-1)).toContain(".filter(layer, ");
+    expect(view.reads.find((m) => m.name === "read")!.contextParam).not.toContain("rows");
   });
 });

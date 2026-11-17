@@ -112,11 +112,12 @@ test(
       domainRoot: "src/domain",
       files: [{ file: postFile, source }, ...dependencies],
     });
-    // The read policy `:staffOrOwnerReads` reads the record (`&customer.userId`): a filter the SQL evaluator folds,
-    // refused until M10 (lead ruling 2 of M8a).
+    // The read policy `:staffOrOwnerReads` reads the record (`&customer.userId`), so it is folded into the query and
+    // must run as SQL (M10); the fixture's Customer has no `userId`, so the function is plain and has no SQL form.
     const refused = buildWith(postSource);
-    expect(refused.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN", "MESH_NOT_IMPLEMENTED"]);
-    expect(refused.diagnostics[1]!.message).toContain("policy :staffOrOwnerReads");
+    expect(refused.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN", "MESH_EXPR_NOT_SQL"]);
+    expect(refused.diagnostics[1]!.message).toContain("policy :staffOrOwnerReads authorize-if must run as SQL");
+    expect(refused.diagnostics[1]!.message).toContain("&userId is not a member of billing.Customer");
     // Scoped to the updates (and renamed so that every offset stays put), the same policy builds; the rest of the model
     // is the hand-built one.
     const scoped = "policy :ownerStaffEdits types=[:update]";

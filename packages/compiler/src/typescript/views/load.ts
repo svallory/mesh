@@ -1,11 +1,12 @@
 import { dirname, posix } from "node:path";
-import type { Entity } from "@meshfw/model";
+import type { Entity, Expression } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { orderedEntities } from "../emitters/order.ts";
 import { entityLocal, entityPath, propertyName, typeName } from "./inputs.ts";
 import { tableAccess } from "./actions.ts";
 import { loadPolicies } from "../../model/policies.ts";
+import { policyConditions } from "../../model/sql-required.ts";
 import { entitiesByFile, keyHolderOf } from "../../model/key-holder.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { relationTarget } from "./types.ts";
@@ -23,9 +24,10 @@ export interface LoadView {
   readonly schemaFromLiteral: string;
   /**
    * Imports of each entity's expressions file, for the entities with a computed field that has a body or a read policy
-   * a load runs: the file's `$expressions` under `entityLocal(entity, "expressions")`, e.g. `$work$Task$expressions`.
+   * a load runs: the file's `$expressions` under `entityLocal(entity, "expressions")`, e.g. `$work$Task$expressions`, and
+   * its `$conditions` under `conditions` (`$work$Task$conditions`) when a read policy a load runs reads the record, else null.
    */
-  readonly expressionImports: readonly { readonly local: string; readonly fromLiteral: string }[];
+  readonly expressionImports: readonly { readonly local: string; readonly fromLiteral: string; readonly conditions: string | null }[];
   /** Every entity, in the fixed entity order: the plan has one entry per entity, because a relationship may point at any of them. */
   readonly entities: readonly LoadEntity[];
 }
@@ -64,7 +66,7 @@ export const hasLoader = (entity: Entity) => entity.relationships.length + entit
 export function loadView(input: EmitInput, generatedPath: string): LoadView {
   const { document } = input;
   const ordered = orderedEntities(document);
-  const expressionImports: { local: string; fromLiteral: string }[] = [];
+  const expressionImports: { local: string; fromLiteral: string; conditions: string | null }[] = [];
   const locals = new Map<string, string>();
   const byFile = entitiesByFile(document);
   const entities = ordered.map((entity): LoadEntity => {
@@ -97,7 +99,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
         // `work.Task` gives `$work$Task$expressions`, a root `List` gives `$List$expressions` (`entityLocal`).
         local = entityLocal(entity, "expressions");
         locals.set(entity.file, local);
-        expressionImports.push({ local, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.expressions`) });
+        expressionImports.push({ local, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.expressions`), conditions: null });
       }
       return local;
     };
@@ -112,7 +114,17 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     });
     const policies = loadPolicies(entity);
     const ids = policies.length ? expressionIds(entity) : undefined;
-    const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!), "read") : null;
+    // A check that reads the record carries its condition literal, read when a load runs, never when this file loads
+    // (the import cycle above): the policy is folded into the query of the rows the load reaches.
+    const folded = policies.length ? new Set(policyConditions(document, entity).map((place) => place.expression)) : new Set();
+    const sql = (expression: Expression) => {
+      if (!folded.has(expression)) return undefined;
+      expressionsOf();
+      const source = expressionImports.find((candidate) => candidate.local === locals.get(entity.file))!;
+      source.conditions = entityLocal(entity, "conditions");
+      return `() => ${source.conditions}[${JSON.stringify(ids!.get(expression)!)}]`;
+    };
+    const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!), "read", sql) : null;
     return {
       nameLiteral: JSON.stringify(entity.fqn),
       table: tableAccess(entity),
