@@ -25,7 +25,8 @@ export interface LoadView {
   /**
    * Imports of each entity's expressions file, for the entities with a computed field that has a body or a read policy
    * a load runs: the file's `$expressions` under `entityLocal(entity, "expressions")`, e.g. `$work$Task$expressions`, and
-   * its `$conditions` under `conditions` (`$work$Task$conditions`) when a read policy a load runs reads the record, else null.
+   * its `$conditions` under `conditions` (`$work$Task$conditions`) when a read policy a load runs reads the record or a
+   * rollup has a filter, else null.
    */
   readonly expressionImports: readonly { readonly local: string; readonly fromLiteral: string; readonly conditions: string | null }[];
   /** Every entity, in the fixed entity order: the plan has one entry per entity, because a relationship may point at any of them. */
@@ -106,9 +107,19 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     // Read from the expressions file when called, never when this file loads: an expressions file imports the actions
     // files of the entities its functions call, which import this file, so the two can be in one import cycle.
     const lazily = (id: string) => `($s: never) => ${expressionsOf()}[${JSON.stringify(id)}]($s)`;
+    /** This entity's `$conditions` local, imported beside its `$expressions`: read through a thunk, for the same cycle. */
+    const conditionsOf = () => {
+      expressionsOf();
+      const source = expressionImports.find((candidate) => candidate.local === locals.get(entity.file))!;
+      source.conditions = entityLocal(entity, "conditions");
+      return source.conditions;
+    };
     const computed = entity.computed.map((field) => {
-      if (field.rollup)
-        return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))} }` };
+      if (field.rollup) {
+        // A filter is the condition literal the build lowered, `rollup.<name>.filter`, printed only when written.
+        const filter = field.rollup.filter ? `, filter: () => ${conditionsOf()}[${JSON.stringify(`rollup.${field.name}.filter`)}]` : "";
+        return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))}${filter} }` };
+      }
       const needs = JSON.stringify(field.needs ?? []);
       return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${lazily(`computed.${field.name}`)} }` };
     });
@@ -119,10 +130,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     const folded = policies.length ? new Set(policyConditions(document, entity).map((place) => place.expression)) : new Set();
     const sql = (expression: Expression) => {
       if (!folded.has(expression)) return undefined;
-      expressionsOf();
-      const source = expressionImports.find((candidate) => candidate.local === locals.get(entity.file))!;
-      source.conditions = entityLocal(entity, "conditions");
-      return `() => ${source.conditions}[${JSON.stringify(ids!.get(expression)!)}]`;
+      return `() => ${conditionsOf()}[${JSON.stringify(ids!.get(expression)!)}]`;
     };
     const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!), "read", sql) : null;
     return {

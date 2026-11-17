@@ -4,14 +4,14 @@ import { BUS_CAPABILITIES, renamedProblems, type DataAdapter, type EventsConfig 
 import { error } from "./model/index.ts";
 import { sectionHandlers } from "./model/handlers.ts";
 import { rollupOperation, rollupRoute } from "./model/rollup-operation.ts";
-import { policyConditions, sqlPositions } from "./model/sql-required.ts";
+import { policyConditions, rollupFilters, sqlPositions } from "./model/sql-required.ts";
 
 /**
  * What the model needs from the configured data adapter, checked against its static
  * capability manifest (ADR-0013): an error for each entity that needs a capability the
  * adapter does not declare, never a run-time surprise. Today those are the `integer-key-fill`
  * an integer primary key needs, the `aggregates` every rollup calls (`count`, `max` or `rollup`; M7, M10), `joins` for a rollup whose path crosses several relationships or a link entity, and for a read's declared filter
- * or sort and a read policy that reads the record, which run as SQL (M10), `conditions`, plus `joins` where the condition
+ * or sort, a read policy that reads the record and a rollup's filter, which run as SQL (M10), `conditions`, plus `joins` where the condition
  * crosses a relationship (a correlated subquery: `aggregates` covers the data layer's `max`/`count`, not SQL inside a condition).
  */
 export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdapter): Diagnostic[] {
@@ -43,6 +43,8 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
     const places = [
       ...sqlPositions(document, entity),
       ...policyConditions(document, entity).map((place) => ({ ...place, kind: "policy" as const, position: place.expression.position })),
+      // A rollup's filter is a condition on the rows it aggregates, in the rollup's query.
+      ...rollupFilters(document, entity).map((place) => ({ ...place, kind: "filter" as const, position: place.filter.position })),
     ];
     for (const place of places) {
       const lowered = place.lower();

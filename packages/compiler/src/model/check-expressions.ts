@@ -19,6 +19,7 @@ import { isCheckGroup, isExpression } from "@meshfw/model";
 import { checksOf } from "./action-expressions.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 import { alwaysCovers, policyCovers } from "./policies.ts";
+import { rollupRoute } from "./rollup-operation.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -644,6 +645,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       if (!computed.body) continue;
       const t = visit(computed.body, { ...base, computed: `computed :${computed.name} of ${entity.fqn}` }, false);
       computed.nullable = t ? t.nullable : false;
+    }
+    // A rollup's filter is typed with its parameter as the record the path reaches last, as a quantifier's parameter is:
+    // an atom meets that record's enum as anywhere else. What else it may read is `checkSqlRequired`'s (R18).
+    for (const computed of entity.computed as Computed[]) {
+      const filter = computed.rollup?.filter;
+      const last = filter ? rollupRoute(document, entity, computed)?.entities.at(-1) : undefined;
+      if (filter && last) visit(filter, { ...base, locals: new Map([[filter.param, { c: "record", nullable: false, entity: last }]]) }, true);
     }
     for (const action of entity.actions) {
       const scope: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };

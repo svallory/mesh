@@ -666,13 +666,41 @@ for (const kind of ACTION_TYPES)
       ...(kind === "read" ? { filter: {}, sort: {} } : body),
     },
   });
+/**
+ * A rollup's `filter=` takes exactly one parameter, a plain identifier: the record the path reaches (`(line) => ...`,
+ * ruling D33, OD6). Two parameters or more is `MESH_EXPRESSION`, the catalogue's form for a function with a second
+ * parameter; no parameter, a pattern (`({ self })`), a rest element or a default value is `MESH_ROLLUP_FILTER`, at the
+ * parameter list. That the value is a function as written is the universal check's (`MESH_EXPRESSION`).
+ */
+function rollupFilterParameter(call: TagCall, ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
+  const a = get(call, "filter");
+  const fn = node(a) as (Node & { params?: (Node & { start?: number; end?: number })[]; start?: number; body?: { start?: number } }) | undefined;
+  if (!a || !fn || (fn.type !== "ArrowFunctionExpression" && fn.type !== "FunctionExpression")) return;
+  const params = fn.params ?? [];
+  const spanOf = (from: { start?: number } | undefined, to: { start?: number; end?: number } | undefined) =>
+    typeof from?.start === "number" && typeof (to?.end ?? to?.start) === "number" ? { sourceStart: from.start, sourceEnd: (to!.end ?? to!.start)! } : a.loc;
+  if (params.length > 1) {
+    ctx.fail(`filter takes one parameter, the record the path reaches, and this function has ${params.length}`, { at: spanOf(params[1], params.at(-1)), code: "MESH_EXPRESSION" });
+    return;
+  }
+  const param = params[0];
+  if (param?.type !== "Identifier")
+    ctx.fail(`filter takes one parameter, the record the path reaches: write filter=(<name>) => ...`, { at: param ? spanOf(param, param) : spanOf(fn, fn.body), code: "MESH_ROLLUP_FILTER" });
+  // A scope root's name would stand for the record and for the root at once (`&x` is a member of `self`).
+  else if (SCOPE_ROOTS.has(param.name!))
+    ctx.fail(`filter's parameter is the record the path reaches, and \`${param.name}\` is a scope name: call it after the record, filter=(line) => ...`, { at: spanOf(param, param), code: "MESH_ROLLUP_FILTER" });
+}
+/** The scope roots of a function in an entity file (`SCOPE_NAMES` in `expression.ts`, which this file does not import). */
+const SCOPE_ROOTS: ReadonlySet<string> = new Set(["self", "input", "actor", "context", "before"]);
 for (const kind of ROLLUPS)
   contracts[kind] = closed({
     parents: ["computed"],
     // `of=&lines.amount`: a member reference, a path of marked members through relationships. The string form is refused with its fix.
-    attributes: { ...named(), of: { required: true } },
+    // `filter=(line) => ...`: the condition each record the path reaches last must meet to be aggregated (ruling D33, OD6).
+    attributes: { ...named(), of: { required: true }, filter: fn() },
     analyze(calls, ctx) {
       for (const call of calls) {
+        rollupFilterParameter(call, ctx);
         const a = get(call, "of");
         if (!a) continue;
         const literal = node(a);

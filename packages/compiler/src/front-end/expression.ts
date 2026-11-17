@@ -69,6 +69,12 @@ export interface ConvertContext {
    */
   commandReference?: (written: WrittenReference) => Resolution;
   report: (diagnostic: Diagnostic) => void;
+  /**
+   * A rollup's `filter=(line) => ...` (ruling D33, OD6): the function's one identifier parameter is the record the path
+   * reaches, bound as a `var` node as a quantifier's parameter is, and a scope root it reads (`input`, `actor`, `context`,
+   * `before`) is a `var` node too, so the build can say the filter reads only the record (`MESH_ROLLUP_FILTER`).
+   */
+  rowParameter?: boolean;
   /** A `run` step is plain by form. */
   runStep?: boolean;
   /** A `publish` step is plain by form, and its value is checked: what it returns must be an event of the file (`MESH_PUBLISH`). */
@@ -824,6 +830,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
       }
       if (env.locals.has(name)) { env.reads.record = true; return { kind: "var", name, position }; }
       if (name === "self") { env.reads.record = true; return { kind: "var", name: "self", position }; }
+      if (ctx.rowParameter && SCOPE_NAMES.has(name)) return { kind: "var", name, position };
       if (name === "undefined") throw new Plain("unsupported-construct", "`undefined` (Mesh has no undefined; use null)", n);
       if (ctx.entities?.has(name) && !SCOPE_NAMES.has(name)) throw new Plain("calls-entity", `the entity \`${name}\``, n);
       if (!ctx.imported.has(name) && !GLOBALS.has(name) && !SCOPE_NAMES.has(name)) {
@@ -1326,8 +1333,13 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     // not something Mesh could translate, so it is no reason to warn either.
     if (names.helpers.size && awaits(f.body as N)) throw new Plain("awaits-helper", "awaits an imported function", f);
     const params = (f.params ?? []) as N[];
-    if (params.length > 1) throw PARAMETER_ERROR(f);
-    if (params[0]) {
+    const locals = new Set<string>();
+    if (ctx.rowParameter) {
+      // The contract refused every other form (`rollupFilterParameter` in `contracts.ts`).
+      if (params.length !== 1 || params[0]!.type !== "Identifier") throw PARAMETER_ERROR(f);
+      locals.add(params[0]!.name!);
+    } else if (params.length > 1) throw PARAMETER_ERROR(f);
+    else if (params[0]) {
       if (params[0].type !== "ObjectPattern") throw PARAMETER_ERROR(params[0]);
       for (const p of params[0].properties ?? []) {
         const key = (p as N).key as N | undefined;
@@ -1345,7 +1357,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
         throw new Plain("block-body", `a block body of ${statements.length} statement${statements.length === 1 ? "" : "s"}`, f);
       body = statements[0]!.argument as N;
     }
-    const tree = convert(body, { roots, locals: new Set(), reads: { record: false } }, ctx);
+    const tree = convert(body, { roots, locals, reads: { record: false } }, ctx);
     // A method (`() { return ... }`) printed as plain code needs `function` before it, whatever arrows its body holds.
     return { tree, demotion: { edits, roots: free, ...clocked, ...(names.helpers.size ? { helpers: [...names.helpers].sort() } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) } };
   } catch (e) {
