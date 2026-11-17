@@ -1,13 +1,13 @@
 ---
-title: "0094. Run-time points for event extensions: contributed handler kinds"
-description: "Decision record 0094: core publishes a run-time point through which an extension makes handlers of a kind of its own (first, `project` of @meshfw/event-sourcing), before the extension host exists: the kind decides where a new handler starts and what its progress row records, and its call chain may neither publish nor dispatch. Status: Proposed (lead ruling D46, pending operator review)."
+title: "0094. Run-time points for event extensions: contributed handler kinds and the upcast point"
+description: "Decision record 0094: core publishes a run-time point through which an extension makes handlers of a kind of its own (first, `project` of @meshfw/event-sourcing), before the extension host exists: the kind decides where a new handler starts and what its progress row records, and its call chain may neither publish nor dispatch; and an upcast point, the events module's `upcast`, applied to every stored row read back. Status: Proposed (lead ruling D46, pending operator review)."
 ---
 
-# 0094. Run-time points for event extensions: contributed handler kinds
+# 0094. Run-time points for event extensions: contributed handler kinds and the upcast point
 
 ## Status
 
-Proposed (lead ruling D46, pending operator review). Amends [ADR-0020](./0020-extension-contributions-through-declared-points.md) as [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) did: core publishes a run-time point to extensions before the extension host's manifest exists. Adds one consequence to [ADR-0079](./0079-commands-events-and-the-outbox.md). The partial-history rule of `project` (decision 6) came with `@meshfw/event-sourcing`; the next pull request of the same unit adds the upcasting point to this record.
+Proposed (lead ruling D46, pending operator review). Amends [ADR-0020](./0020-extension-contributions-through-declared-points.md) as [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) did: core publishes a run-time point to extensions before the extension host's manifest exists. Adds one consequence to [ADR-0079](./0079-commands-events-and-the-outbox.md). The partial-history rule of `project` (decision 6) came with `@meshfw/event-sourcing`; the upcast point (decision 7) came with the next pull request of the same unit.
 
 ## Date
 
@@ -19,7 +19,7 @@ lead, delegated: ruling D46 of 2026-11-17 takes every recommendation of the revi
 
 ## Context
 
-[ADR-0081](./0081-event-sourcing-and-cqrs-are-extensions.md) puts event sourcing and CQRS in extensions, and the spec gives the third handler kind, `project`, to `@meshfw/event-sourcing`, not to core: a `project` handler builds a read model by replaying every event it lists from the beginning of history, its writes commit with its progress, and its body may neither publish nor dispatch, since a read model is rebuilt by running its handler again over history and a rebuild must never re-raise events or re-issue commands. Core's own kinds, `process` and `listen`, start from now, and the events module's loader refused any other key of `handlers`.
+[ADR-0081](./0081-event-sourcing-and-cqrs-are-extensions.md) puts event sourcing and CQRS in extensions, and the spec gives the third handler kind, `project`, to `@meshfw/event-sourcing`, not to core: a `project` handler builds a read model by replaying every event it lists from the beginning of history, its writes commit with its progress, and its body may neither publish nor dispatch, since a read model is rebuilt by running its handler again over history and a rebuild must never re-raise events or re-issue commands. Core's own kinds, `process` and `listen`, start from now, and the events module's loader refused any other key of `handlers`. Core keeps no event versions: a stored row whose payload an event's class no longer accepts stopped every reader with a `FrameworkError`, and the spec gives upcasting to the extension, leaving core the table from FQN to class.
 
 The extension host (milestone M11, after 1.0) is where an extension would declare such a kind, and it does not exist. ADR-0075 set the precedent of building run-time points before the host, with the host's names, so that the host later wraps them instead of replacing them; that ruling was made for the application's seams, so following it for an extension is a decision of its own (Q0).
 
@@ -32,6 +32,7 @@ The extension host (milestone M11, after 1.0) is where an extension would declar
 5. **A contributed kind runs as `process` does, with a quiet call chain.** Its body runs in the handler transaction and its progress is written in it. Until the handler call settles, a publish by any action of its call chain (the body, every action it calls at any depth, and every action a seam starts for one of them, the handler transaction's own `afterCommit` included) and a `dispatch` anywhere in it are `FrameworkError`s with `retryable: false`, so the handler stops at its first attempt. A call started after the chain settled (a timer that fires later) begins a new chain and is not refused. Seams still run for a quiet chain; only a publish or a dispatch from them is refused.
 
 6. **`project`'s history rule counts any deletion (Q3 (a)).** `@meshfw/event-sourcing` decides, through `start` and `adopt`, that a `project` handler whose `from` is `"beginning"` starts at position 0, or takes on an added event, only while `Registration.deletedAny` is false; otherwise the start fails with `MESH_HANDLER_HISTORY`, whose remedies never include `keep: "all"`, which cannot bring back a deleted row. An added event is also refused when a kept row of it lies at or below the handler's position. Through `stored`, the progress row records whether the handled history is complete (`project`) or not (`project:now`: started from now, taken over from another kind, or grown under `from: "now"`), and a `from: "beginning"` handler refuses any row that is not `project`. The spec's deleted-names record in `mesh_outbox_state`, which would let an event no deletion touched start from history, is not built: it needs a core column and a write in core's deletion pass for an extension's check, and adding it later only relaxes a refusal.
+7. **Upcasting is one core point, the events module's `upcast` (Q5 (a)).** The events module may export `upcast(stored)`, which returns the fields the stored row's event accepts today. Core calls it for every stored row it turns into an event record (handlers of every kind, live subscriptions, `readEvents`, the dead-letter replay of `retryFailed`), after the rename map has given the row its declared name and before dates are revived and the class is built; `published()` is not upcast. No version is stored: steps tell a shape by its fields. `@meshfw/event-sourcing` composes the export from per-event steps (`upcasters(upcaster(Event, ...steps))`), but the point is the application's, as `metadata` and `context` are, so a hand-written function works too. `readEvents` now loads the events module, so a process that only reads history imports it, and a failing `load` fails that read: the alternative, upcasting only when something else had loaded the module, would give one row two shapes.
 
 ## Options considered
 
@@ -41,6 +42,8 @@ The extension host (milestone M11, after 1.0) is where an extension would declar
 4. `project` as a third core kind (Q2 (c)): contradicts the spec and ADR-0081.
 5. A refused start registers the other handlers and reports the one (Q6 (b)): needs a "not registered" state and a report channel, and leaves a read model silently stale in production.
 6. The deleted-names record (Q3 (b)): a `deleted_names` column on `mesh_outbox_state` written by every deletion batch, so a database that has deleted rows of some events can still start a read model of the others from history. Its cost is a core column and a core write path for an extension's check; databases that deleted rows before it existed could not know what they deleted.
+7. A stored schema version per row (Q5 (b)), an outbox column or a key written into `metadata`, with `upcast from=N` steps: a core column, or an extension writing into the project's own `metadata`, and the declared version needs `version=` on the `event` tag, which needs the host. Versions can be added later as a step that reads one.
+8. No core point (Q5 (c)), the extension wrapping each event class: generated classes are not the extension's to wrap, and `readEvents` and subscriptions build records from core's FQN table.
 
 ## Trade-off analysis
 
@@ -56,5 +59,5 @@ The point costs one published core contract that the host must wrap rather than 
 
 - [x] The contributed-kind point in core: `HANDLER_KIND`, `HandlerKind`, `KindHandler`, `Registration`, start, adopt and stored at registration, the quiet call chain.
 - [x] `@meshfw/event-sourcing` with `project`, `from` and the partial-history check (`MESH_HANDLER_HISTORY`).
-- [ ] The events module's `upcast` point, the pull request after it.
+- [x] The events module's `upcast` point, with `upcaster()` and `upcasters()` in `@meshfw/event-sourcing`.
 - [ ] When the extension host is built: require `extensions: [...]` for a package that contributes a kind.
