@@ -1,14 +1,22 @@
 // Delivery from several processes on data-sqlite, the data layer's side: the multi-process delivery operations
 // (`multiProcessConformance` from `@meshfw/runtime/testing`) on a memory and a file database built for a bus that
-// declares multi-process, and their refusal on a schema built without it.
+// declares multi-process, and their refusal on a schema built without it; and what a multi-mode start does when other
+// processes' transactions get in its way.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TableHandle } from "@meshfw/runtime";
-import { multiProcessConformance } from "@meshfw/runtime/testing";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { DECLARATION, DatabaseBusyError, bindDomain, type DataLayer, type DataOperations, type Declaration, type MultiProcessOperations, type TableHandle } from "@meshfw/runtime";
+import { multiProcessConformance, setDeliveryTiming, testBus } from "@meshfw/runtime/testing";
+import { MULTI_CAPABILITIES } from "./multi-capabilities.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 import { buildSchemas } from "./multi-schema.ts";
+
+class Paid {
+  readonly #brand = true;
+  static readonly [DECLARATION]: Declaration = { kind: "event", fqn: "start.Paid", is: (value: unknown): value is object => typeof value === "object" && value !== null && #brand in value };
+}
 
 let single: Record<string, TableHandle>;
 let multi: Record<string, TableHandle>;
@@ -36,3 +44,48 @@ for (const kind of ["memory", "file"] as const) {
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
 }
+
+describe("a multi-mode start against other processes' transactions", () => {
+  const dirs: string[] = [];
+  afterAll(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); setDeliveryTiming(null); });
+  /** A file layer over the multi schema whose transactions go through `around` first. */
+  const wrapped = async (around: (call: number) => Promise<void>) => {
+    const dir = mkdtempSync(join(tmpdir(), "mesh-multi-start-"));
+    dirs.push(dir);
+    const layer = sqlite({ file: join(dir, "app.db") });
+    await createSchema(layer, multi);
+    let calls = 0;
+    const view: DataLayer = { ...layer, transaction: async (run, options) => { await around(++calls); return (layer as DataLayer).transaction(run, options); } };
+    return { layer, view };
+  };
+  const renewedAt = async (layer: DataLayer) =>
+    (await layer.transaction((tx) => (tx as DataOperations & MultiProcessOperations).readProcesses()))[0]?.renewedAt.getTime();
+  const start = (view: DataLayer) => bindDomain({ Paid }, view, {
+    events: { bus: testBus({ capabilities: MULTI_CAPABILITIES }), load: async () => ({ handlers: { process: { a: { events: [Paid], run: async () => {} } }, listen: { b: { events: [Paid], run: async () => {} } } } }) },
+  }, new AsyncLocalStorage()).startDelivery();
+
+  test("a registration that fails with a serialization failure or a deadlock is made again; a lock wait is not", async () => {
+    setDeliveryTiming({ renewMs: 1000, lapseMs: 5000 });
+    const busy = (reason: "serialization" | "deadlock" | "lock-timeout") => new DatabaseBusyError("app.db", 0, { reason, sqlstate: "40001" });
+    const { layer, view } = await wrapped(async (call) => { if (call === 1) throw busy("serialization"); if (call === 2) throw busy("deadlock"); });
+    const delivery = await start(view);
+    try { expect(await renewedAt(layer)).toBeNumber(); } finally { await delivery.stop(); await layer.close(); }
+    const timedOut = await wrapped(async (call) => { if (call === 1) throw busy("lock-timeout"); });
+    const error = await start(timedOut.view).then(() => undefined, (thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(DatabaseBusyError);
+    expect((error as DatabaseBusyError).reason).toBe("lock-timeout");
+    await timedOut.layer.close();
+  });
+
+  test("the renewals start once the lease takes are done, also when the takes take longer than the renewal interval", async () => {
+    setDeliveryTiming({ renewMs: 20, lapseMs: 5000 });
+    // every transaction takes 40 ms more, as on a server across a network: the takes outlast the first renewal interval
+    const { layer, view } = await wrapped(() => new Promise((resolve) => { setTimeout(resolve, 40); }));
+    const delivery = await start(view);
+    try {
+      const first = await renewedAt(layer);
+      await new Promise((resolve) => { setTimeout(resolve, 400); });
+      expect(await renewedAt(layer)).toBeGreaterThan(first!);
+    } finally { await delivery.stop(); await layer.close(); }
+  });
+});

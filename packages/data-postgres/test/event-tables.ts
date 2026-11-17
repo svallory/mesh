@@ -29,6 +29,9 @@ const paid = `event :InvoicePaid
 /** The capabilities of the test bus that delivers from several processes, shared by the tests and the worker script. */
 export const MULTI_CAPABILITIES = ["ordered-delivery", "replay", "subscribe", "multi-process"] as const;
 
+/** The lock wait of the multi-process group's layers, in both processes: well within its 300 ms lapse. */
+export const WAIT_MS = 100;
+
 export async function eventTables(options: { readonly multiProcess?: boolean } = {}): Promise<{ tables: Record<string, TableHandle>; schema: string; remove(): Promise<void> }> {
   const dir = await mkdtemp(join(import.meta.dir, ".scratch-events-"));
   const config: ResolvedConfig = {

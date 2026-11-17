@@ -82,6 +82,26 @@ class UndeclaredBelow extends Error {
 }
 
 /**
+ * Runs `attempt` (one transaction) again while it fails with a serialization failure or a deadlock
+ * (`DatabaseBusyError`, reason `serialization` or `deadlock`: on Postgres at `SERIALIZABLE`, whenever another process's
+ * transaction touched the same rows), after 0, 10, 20, 40 ... ms up to `RENEW_RETRY_MS`, for at most `withinMs`; then,
+ * and for any other failure, rejects as the attempt did. A registration has to win against the other processes'
+ * handler transactions and ticks, which run all the time; a lock wait (`locked`, `lock-timeout`) is not retried.
+ */
+async function serializable<T>(withinMs: number, attempt: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + withinMs;
+  for (let tries = 0; ; tries++) {
+    try { return await attempt(); }
+    catch (error) {
+      const transient = error instanceof DatabaseBusyError && (error.reason === "serialization" || error.reason === "deadlock");
+      if (!transient || Date.now() >= deadline) throw error;
+      const pause = tries === 0 ? 0 : Math.min(RENEW_RETRY_MS, 10 * 2 ** (tries - 1), Math.max(0, deadline - Date.now()));
+      await new Promise<void>((resolve) => { setTimeout(resolve, pause); });
+    }
+  }
+}
+
+/**
  * Multi mode's claim strategy: process row, nil claim, handler leases (spec rules M3 to K5 of the design). One instance
  * per `Deliverer`; a `deliver()` round registers again and releases at its end.
  */
@@ -152,9 +172,10 @@ export class MultiClaim implements ClaimStrategy {
     this.#handlers = undefined;
     this.#registered = new Map(declared.map((entry) => [entry.registered.name, entry.registered]));
     this.#declared = new Map(declared.map((entry) => [entry.registered.name, entry]));
-    const logs: string[] = [];
+    let logs: string[] = [];
     const handlers = Object.fromEntries(declared.map((entry) => [entry.registered.name, entry.registered.events]));
-    const result = await layer.transaction(async (tx) => {
+    const result = await serializable(timing.lapseMs, () => layer.transaction(async (tx) => {
+      logs = [];
       const ops = multiOperations(tx);
       const state = await ops.lockDeliveryState();
       const claim = state.claim;
@@ -196,13 +217,15 @@ export class MultiClaim implements ClaimStrategy {
         unions.set(name, events);
       }
       return { deletedThrough: state.deletedThrough, others, renames, unions };
-    });
+    }));
     for (const line of logs) console.info(line);
     for (const [name, former] of result.renames) this.#renames.set(name, former);
     for (const [name, events] of result.unions) this.#unions.set(name, events);
     this.#known = this.#knownOf(result.others);
-    this.#schedule();
     await this.#takeLeases();
+    // Scheduled once the takes are done: a tick that fired while they ran (one transaction each, slower than the renewal
+    // interval on a server) would find the instance not yet holding and end the renewals for good.
+    this.#schedule();
     return result.deletedThrough;
   }
 

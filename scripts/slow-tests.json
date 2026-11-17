@@ -5,6 +5,7 @@
     "examples/hyper/test/daemon.test.ts",
     "packages/cli/test/example-guard.test.ts",
     "packages/data-sqlite/test/bus-conformance.test.ts",
-    "packages/bus-local/test/conformance.test.ts"
+    "packages/bus-local/test/conformance.test.ts",
+    "packages/data-postgres/test/bus-conformance.test.ts"
   ]
 }
