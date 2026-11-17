@@ -484,7 +484,7 @@
               "path": "/architecture/decisions/0088-translated-conditions-cross-the-data-layer-as-bound-trees/"
             },
             {
-              "title": "0089. Postgres adapter",
+              "title": "0089. Postgres adapter: serializable transactions, transient errors and SQLite's order",
               "path": "/architecture/decisions/0089-postgres-adapter/"
             }
           ]
