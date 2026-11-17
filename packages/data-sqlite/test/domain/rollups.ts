@@ -65,23 +65,37 @@ entity :Invoice table="invoices"
     count :customerCount of=&customer
     min :referrerRating of=&referrer.rating
     count :lineCount of=&lines
+  checks
+    check :underHundred that=() => &total === null || &total <= 100 code="hundred" message="over a hundred"
+    check :noTotalYet that=() => &total === null code="has_total" message="a new invoice has a total"
   actions auto=[:read]
+    always types=[:create, :update]
+      validate
+        check :ceiling that=() => &total === null || &total <= 3000 code="ceiling" message="over the ceiling"
     create :open
       input
         &title
         &customer
       validate
         check :rated that=() => &customerRating === null || &customerRating > 0 code="rated" message="the customer is unrated"
+        check &noTotalYet
     update :rename
       input
         &title
       validate
         check :underLimit that=() => &total === null || &total <= 1000 code="limit" message="over the limit"
+    update :relabel
+      input
+        &title
+      validate
+        check &underHundred
   policies
     policy :anyone types=[:read, :create]
       authorize-if=() => true
     policy :small actions=[&rename]
       authorize-if=() => &total === null || &total < 2000
+    policy :relabelers actions=[&relabel]
+      authorize-if=() => true
 `;
 
 type Row = Record<string, any>;
@@ -254,5 +268,67 @@ export function rollupsSuite(adapter: DomainAdapter): void {
       expect((await calls.run(() => Mesh.checkPolicies(domain.Invoice.rename, { id: id(11), title: "x" }, member as never))).allowed).toBe(false);
       await expect(calls.renameInvoice({ id: id(11), title: "x" }, member)).rejects.toBeInstanceOf(ForbiddenError);
     } finally { await db.close(); }
+  });
+
+  test("an always block and a named check read a batched sum on update, and see null on create", async () => {
+    const db = await seeded();
+    try {
+      const calls = callsOf(app.bind(db), domain);
+      // The create's named check `&noTotalYet` passes only if the new instance's sum is null (not 0, not undefined),
+      // and the always block's `&total <= 3000` would fail on undefined.
+      expect((await calls.openInvoice({ title: "fresh", customer: id(1) }, member)).title).toBe("fresh");
+      // i1 totals 31: the named check (at most 100) and the always block (at most 3000) pass.
+      expect((await calls.relabelInvoice({ id: id(11), title: "i1b" }, member)).title).toBe("i1b");
+      await calls.addLine({ amount: 1000, units: 1, dueOn: day(2), invoice: id(11) }, member);
+      // 1031: the named check fails, the always block passes.
+      const named = await calls.relabelInvoice({ id: id(11), title: "x" }, member).catch((error: unknown) => error);
+      expect(named).toBeInstanceOf(InvalidInputError);
+      expect((named as InvalidInputError).issues.map((issue) => issue.code)).toEqual(["hundred"]);
+      await calls.addLine({ amount: 2500, units: 1, dueOn: day(2), invoice: id(11) }, member);
+      // 3531: the always block fails too, on every update.
+      const always = await calls.relabelInvoice({ id: id(11), title: "x" }, member).catch((error: unknown) => error);
+      expect(always).toBeInstanceOf(InvalidInputError);
+      expect((always as InvalidInputError).issues.map((issue) => issue.code).sort()).toEqual(["ceiling", "hundred"]);
+    } finally { await db.close(); }
+  });
+
+  // 1,001 inserts one by one take a few seconds on Postgres.
+  test("1,001 invoices ask for a sum in three chunks of at most 500 anchors", async () => {
+    const db = await adapter.layer(app.tables);
+    try {
+      await db.transaction(async (tx) => {
+        const t = app.tables;
+        await tx.insert(t.customers, { id: id(1), rating: 4 });
+        for (let n = 0; n < 1001; n++) await tx.insert(t.invoices, { id: id(100000 + n), title: `n${n}`, customerId: id(1), referrerId: null });
+        await tx.insert(t.lines, { id: id(21), amount: 5, units: 1, dueOn: day(5), invoiceId: id(100000) });
+        await tx.insert(t.lines, { id: id(22), amount: 6, units: 1, dueOn: day(5), invoiceId: id(101000) });
+        const { tx: counting, rollups } = counted(tx);
+        const loaded = await app.loadInvoiceFields(counting, await tx.select(t.invoices, {}), ["total"]);
+        expect(rollups.map((q) => q.anchors.length)).toEqual([500, 500, 1]);
+        const totals = new Map(loaded.map((r: Row) => [r.id, r.total]));
+        expect(totals.get(id(100000))).toBe(5);
+        expect(totals.get(id(101000))).toBe(6);
+        expect(loaded.filter((r: Row) => r.total !== null)).toHaveLength(2);
+      });
+    } finally { await db.close(); }
+    }, 60_000);
+
+  test("a stored invoice with no customer key is an error, as loading its required customer is", async () => {
+    const db = await seeded();
+    try {
+      await db.transaction(async (tx) => {
+        const [stored] = await invoicesOf(tx);
+        // The column is NOT NULL in the database, so the row comes from a load that bypassed it.
+        const keyless = { ...stored, customerId: null };
+        await expect(app.loadInvoiceFields(tx, [keyless], ["customerRating"])).rejects.toThrow(FrameworkError);
+        await expect(app.loadInvoiceFields(tx, [keyless], ["customerRating"])).rejects.toThrow("has no key in customerId, and it is not nullable");
+      });
+    } finally { await db.close(); }
+  });
+
+  test("the generated new-instance scope types a rollup over the customer as possibly null", async () => {
+    const source = await Bun.file(join(dir, ".mesh/domain/invoice.expressions.ts")).text();
+    const scope = source.slice(source.indexOf("export type $Invoice$NewScope"));
+    expect(scope.slice(0, scope.indexOf("};"))).toMatch(/\[K in [^\]]*"customerRating"[^\]]*\]: \$Invoice\$Loaded\[K\] \| null;/);
   });
 }
