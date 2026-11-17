@@ -422,6 +422,52 @@ describe("the rename map at build time (events.renamed, MESH_EVENTS_CONFIG)", ()
   });
 });
 
+describe("a per-event keep at build time (events.keep { default, events }, MESH_EVENTS_CONFIG)", () => {
+  const at = { file: "/project/mesh.config.ts", line: 1, column: 1, offset: 0 };
+  const key = { file: "mesh.config.ts", line: 5, column: 5, offset: 90 };
+  const data = { ...configOf("/project").data, capabilities: { adapter: "sqlite", capabilities: [] } } as never;
+  const bus = { manifest: { adapter: "fake", capabilities: ["ordered-delivery"] }, create: () => { throw new Error("never started"); } } as never;
+  // billing.InvoicePaid, sales.refunds.RefundIssued and audit.InvoicePaid: two events end in InvoicePaid.
+  const document = () => buildModel(files({ "sales/refunds/refund-issued.mesh.mx": REFUND, "audit/invoice-paid.mesh.mx": "event :InvoicePaid\n  uuid :invoiceId\n" })).document!;
+  const none = () => buildModel({ root: "/project", files: [{ file: "billing/invoice.mesh.mx", source: invoice("", "") }] }).document!;
+  const check = (events: Record<string, unknown>, renamed?: Record<string, string>, model = document(), positions: { keep?: typeof key } | null = { keep: key }) =>
+    eventsDiagnostics(model, { data, events: { bus, keep: { default: "until-delivered", events } as never, ...(renamed ? { renamed } : {}) } }, at, positions ?? undefined)
+      .map(({ code, message, fix, position }) => ({ code, message, fix, position }));
+
+  test("legal: full and shortened names, an empty events, a former FQN of events.renamed, and a single rule with no event declared", () => {
+    expect(check({ "billing.InvoicePaid": "all", RefundIssued: { days: 7 }, "audit.InvoicePaid": "until-delivered" })).toEqual([]);
+    expect(check({ "refunds.RefundIssued": "all" })).toEqual([]);
+    expect(check({})).toEqual([]);
+    expect(check({}, undefined, none())).toEqual([]);
+    expect(check({ "old.Refund": "all" }, { "old.Refund": "sales.refunds.RefundIssued" })).toEqual([]);
+    expect(eventsDiagnostics(none(), { data, events: { keep: { days: 3 } } }, at)).toEqual([]);
+  });
+
+  test("each problem is one MESH_EVENTS_CONFIG at the keep key: unknown, ambiguous, and one event named twice", () => {
+    expect(check({ "audit.InvoicePayed": "all", InvoicePaid: "all", RefundIssued: "all", "sales.refunds.RefundIssued": { days: 1 } })).toEqual([
+      { code: "MESH_EVENTS_CONFIG", position: key, fix: "Correct the name", message: "`events.keep.events` names \"audit.InvoicePayed\", which is no declared event; the project declares audit.InvoicePaid, billing.InvoicePaid, sales.refunds.RefundIssued" },
+      { code: "MESH_EVENTS_CONFIG", position: key, fix: "Write more of the name", message: "`events.keep.events` names \"InvoicePaid\", which is ambiguous: audit.InvoicePaid or billing.InvoicePaid" },
+      { code: "MESH_EVENTS_CONFIG", position: key, fix: "Remove the second one", message: "`events.keep.events` names sales.refunds.RefundIssued twice (as \"RefundIssued\" and \"sales.refunds.RefundIssued\")" },
+    ]);
+    // a former FQN and the event's current name are the same event
+    expect(check({ "old.Refund": "all", RefundIssued: "until-delivered" }, { "old.Refund": "sales.refunds.RefundIssued" })).toEqual([
+      { code: "MESH_EVENTS_CONFIG", position: key, fix: "Remove the second one", message: "`events.keep.events` names sales.refunds.RefundIssued twice (as \"old.Refund\" and \"RefundIssued\")" },
+    ]);
+  });
+
+  test("a project with no event refuses a named rule; a bad rename map is reported alone; without a key position the file start is used", () => {
+    expect(check({ "audit.Viewed": "all" }, undefined, none())).toEqual([{
+      code: "MESH_EVENTS_CONFIG", position: key, fix: "Remove the entry, or declare the event",
+      message: "`events.keep.events` names \"audit.Viewed\", and the project declares no event: each key names a declared event",
+    }]);
+    // the keep names are checked once the map is valid: a key of a bad map would otherwise be reported twice
+    expect(check({ "old.Refund": "all" }, { "old.Refund": "Nope" }).map((d) => d.message)).toEqual([
+      "`events.renamed` maps \"old.Refund\" to \"Nope\", which is no declared event; the project declares audit.InvoicePaid, billing.InvoicePaid, sales.refunds.RefundIssued",
+    ]);
+    expect(check({ "a.Nope": "all" }, undefined, document(), null)[0]!.position).toEqual(at);
+  });
+});
+
 describe("what is generated", () => {
   const roots: string[] = [];
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });

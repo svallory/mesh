@@ -158,8 +158,8 @@ describe("the events key", () => {
   });
 
   test("a keep that is not one of its values", async () => {
-    const fix = "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept) or keep: { days: 30 } (a delivered row is kept 30 days)";
-    const message = (shown: string) => `\`events.keep\` must be "until-delivered", "all" or { days }, and is ${shown}`;
+    const fix = "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept), keep: { days: 30 } (a delivered row is kept 30 days) or keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } } (a rule per event)";
+    const message = (shown: string) => `\`events.keep\` must be "until-delivered", "all", { days } or { default, events }, and is ${shown}`;
     expect(await codes("{ keep: \"forever\" }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("\"forever\""), fix }]);
     expect(await codes("{ keep: undefined }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("undefined"), fix }]);
     expect(await codes("{ keep: 30 }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("30"), fix }]);
@@ -188,6 +188,38 @@ describe("the events key", () => {
     expect(brief(await loadConfig(root))).toEqual([{
       code: "MESH_EVENTS_CONFIG", line, column: 4,
       message: "`events.keep` is { days: 7 }, and the bus fake delivers from several processes (multi-process), whose recorded keep is \"until-delivered\" or \"all\": a process without the period would delete the rows this one keeps",
+      fix: "Set keep: \"until-delivered\" or keep: \"all\", or deliver from one process",
+    }]);
+  });
+
+  test("a per-event keep is kept on the resolved config; its default and each rule are checked as a single rule, and it takes no other field", async () => {
+    const loaded = await loadConfig(await withEvents("{ keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\", Paid: { days: 30 } } } }"));
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.config!.events!.keep).toEqual({ default: "until-delivered", events: { "audit.Viewed": "all", Paid: { days: 30 } } });
+    // legal neighbours: an empty events, a period default, an "all" default
+    for (const keep of ["{ default: \"all\", events: {} }", "{ default: { days: 7 }, events: { X: \"until-delivered\" } }", "{ default: \"all\", events: { X: \"all\" } }"])
+      expect(await codes(`{ keep: ${keep} }`), keep).toEqual([]);
+    const problem = (message: string, fix: string) => [{ code: "MESH_EVENTS_CONFIG", message, fix }];
+    expect(await codes("{ keep: { default: \"all\", events: {}, other: 1 } }")).toEqual(problem("`events.keep` { default, events } takes no other field, and has \"other\"", "Remove the field, as in keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } }"));
+    expect(await codes("{ keep: { events: {} } }")).toEqual(problem("`events.keep` { default, events } needs both fields, and has no default", "Set both, as in keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } }"));
+    expect(await codes("{ keep: { default: \"all\" } }")).toEqual(problem("`events.keep` { default, events } needs both fields, and has no events", "Set both, as in keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } }"));
+    expect(await codes("{ keep: { default: \"forever\", events: {} } }")).toEqual(problem("`events.keep.default` must be \"until-delivered\", \"all\" or { days }, and is \"forever\"", "Set default to \"until-delivered\", \"all\" or { days: 30 }"));
+    // the per-event form does not nest
+    expect(await codes("{ keep: { default: { default: \"all\", events: {} }, events: {} } }")).toEqual(problem("`events.keep.default` must be \"until-delivered\", \"all\" or { days }, and is {\"default\":\"all\",\"events\":{}}", "Set default to \"until-delivered\", \"all\" or { days: 30 }"));
+    expect(await codes("{ keep: { default: { days: 0 }, events: {} } }")).toEqual(problem("`events.keep.default.days` must be a whole number of days, from 1 to 100000, and is 0", "Set days to a whole number, such as 30"));
+    for (const [value, shown] of [["[]", "[]"], ["\"all\"", "\"all\""], ["null", "null"]] as [string, string][])
+      expect(await codes(`{ keep: { default: "all", events: ${value} } }`), value).toEqual(problem(`\`events.keep.events\` must be an object from an event's FQN to its rule, such as { "audit.Viewed": "all" }, and is ${shown}`, "Set events: { \"<event FQN>\": \"all\" }"));
+    expect(await codes("{ keep: { default: \"all\", events: { \"audit.Viewed\": \"never\" } } }")).toEqual(problem("`events.keep.events[\"audit.Viewed\"]` must be \"until-delivered\", \"all\" or { days }, and is \"never\"", "Set the event's rule to \"until-delivered\", \"all\" or { days: 30 }"));
+    expect(await codes("{ keep: { default: \"all\", events: { \"audit.Viewed\": { days: 1.5 } } } }")).toEqual(problem("`events.keep.events[\"audit.Viewed\"].days` must be a whole number of days, from 1 to 100000, and is 1.5", "Set days to a whole number, such as 30"));
+    expect(await codes("{ keep: { default: \"all\", events: { \"\": \"all\" } } }")).toEqual(problem("`events.keep.events` has an empty key: each key names a declared event", "Write the event's FQN as the key"));
+  });
+
+  test("a per-event keep on a bus that delivers from several processes is refused at the keep key", async () => {
+    const multi = bus('["ordered-delivery", "multi-process"]');
+    expect(await codes(`{ bus: ${bus('["ordered-delivery"]')}, keep: { default: "all", events: {} } }`)).toEqual([]);
+    expect(await codes(`{ bus: ${multi}, keep: { default: "all", events: {} } }`)).toEqual([{
+      code: "MESH_EVENTS_CONFIG",
+      message: "`events.keep` sets a rule per event ({ default, events }), and the bus fake delivers from several processes (multi-process), whose recorded keep is \"until-delivered\" or \"all\": a process without the rule would delete the rows this one keeps",
       fix: "Set keep: \"until-delivered\" or keep: \"all\", or deliver from one process",
     }]);
   });
@@ -251,6 +283,25 @@ describe("the events key", () => {
     expect(source.slice(built.diagnostics[0]!.position!.offset)).toStartWith("renamed: {");
   });
 
+  test("a per-event keep that names no declared event is refused by the build at the keep key; one that names it builds", async () => {
+    const make = (events: string) => project("", { "src/domain/billing/invoice-paid.mesh.mx": "event :InvoicePaid\n  uuid :invoiceId\n" },
+      `{\n  domain: "src/domain",\n  output: ".mesh",\n  data: ${JSON.stringify(data)},\n  events: {\n    bus: ${bus('["ordered-delivery"]')},\n    keep: { default: "until-delivered", events: ${events} },\n  },\n}`);
+    const good = await loadConfig(await make("{ InvoicePaid: \"all\" }"));
+    expect(good.diagnostics).toEqual([]);
+    expect((await loadProject(good.config!)).diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const root = await make("{ \"billing.InvoicePayed\": \"all\" }");
+    const loaded = await loadConfig(root);
+    expect(loaded.diagnostics).toEqual([]);
+    const built = await loadProject(loaded.config!);
+    const source = await readFile(resolve(root, "mesh.config.ts"), "utf8");
+    const line = source.split("\n").findIndex((text) => text.trimStart().startsWith("keep:")) + 1;
+    expect(built.document).toBeNull();
+    expect(built.diagnostics.map(({ code, message, position }) => ({ code, message, file: position?.file, line: position?.line, column: position?.column }))).toEqual([{
+      code: "MESH_EVENTS_CONFIG", file: "mesh.config.ts", line, column: 4,
+      message: "`events.keep.events` names \"billing.InvoicePayed\", which is no declared event; the project declares billing.InvoicePaid",
+    }]);
+  });
+
   test("renamed of the wrong shape: not an object, a value that is no name, an empty key; every problem is reported", async () => {
     const shape = { code: "MESH_EVENTS_CONFIG", message: "`events.renamed` must be an object from a former event FQN to the event it now is, such as { \"billing.InvoicePaid\": \"finance.InvoicePaid\" }", fix: "Set renamed: { \"<former FQN>\": \"<declared event>\" }" };
     for (const value of ["\"billing.InvoicePaid\"", "[]", "null", "new Map()"]) expect(await codes(`{ renamed: ${value} }`), value).toEqual([shape]);
@@ -268,7 +319,7 @@ describe("the events key", () => {
       { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"replay\" twice", fix: "Remove the second one" },
       { code: "MESH_EVENTS_CONFIG", message: expect.stringContaining("`events.requires` lists 3, which is no capability"), fix: "Remove it, or correct the name" },
       { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are bus, load, keep, requires and renamed", fix: "Remove the unknown field" },
-      { code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\", \"all\" or { days }, and is \"no\"", fix: expect.any(String) },
+      { code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\", \"all\", { days } or { default, events }, and is \"no\"", fix: expect.any(String) },
     ]);
   });
 });

@@ -52,10 +52,10 @@ export { checkRead, defineSurface, project, type NarrowedFilter, type NarrowedSo
 export { Mesh, type ActionFunction, type Decision, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
 export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, makeQuery, published, readEvents, releaseBinding, settled } from "./entity.ts";
-export { KEEP_VALUES, keepProblem, loadEvents, MAX_KEEP_DAYS, publishEvent, rows } from "./events.ts";
+export { KEEP_VALUES, keepEventsProblems, keepProblem, loadEvents, MAX_KEEP_DAYS, publishEvent, rows } from "./events.ts";
 export { renamedMap, renamedProblems, renamedShapeProblems, resolveEventName, storedToDeclared } from "./stored-names.ts";
 export type { EventNameResolution, RenamedProblem } from "./stored-names.ts";
-export type { EventClass, EventRecord, EventsConfig, EventsModule, Keep, KeepProblem, MetadataArguments, MetadataFunction, PublishTarget, ReadEventsPage, ReadEventsQuery } from "./events.ts";
+export type { EventClass, EventRecord, EventsConfig, EventsModule, Keep, KeepProblem, KeepRules, MetadataArguments, PerEventKeep, MetadataFunction, PublishTarget, ReadEventsPage, ReadEventsQuery } from "./events.ts";
 export { BUS_CAPABILITIES, HANDLER_KIND, busProblem, checkedBus, handler } from "./bus.ts";
 export type { BusCapability, BusCore, BusManifest, BusOptions, EventBus, EventBusCapabilities, EventBusInstance, Handler, HandlerKind, HandlerTools, KindHandler, ListedEvent, LiveSubscription, OnFailure, Registration, RegisteredHandler } from "./bus.ts";
 export { adoptByName, adoptHandler, declaredHandlers, deliverRound, forgetByName, forgetHandler, forgetSubscription, isRetryable, keepByValue, listSubscriptions, markNoDeliver, resumeHandler, retryFailed, startDelivery, subscribe } from "./deliverer.ts";

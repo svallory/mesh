@@ -4,9 +4,10 @@ import type {
   MultiProcessOperations, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow,
 } from "./data-layer.ts";
 import {
-  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, moveFailures, operations, registrationOf, renamedFilter, timing,
+  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, filterTakes, handlerStart, holderOf, lapsed, moveFailures, operations, registrationOf, renamedFilter, timing,
   type ClaimStrategy, type DatabaseState, type DeclaredHandler, type Deliverer, type Forgotten,
 } from "./deliverer.ts";
+import { holeError } from "./events.ts";
 import { NO_RENAMES } from "./stored-names.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, FrameworkError, HandlerLostError,
@@ -723,6 +724,9 @@ export async function openOwned(
     if (start < state.deletedThrough) throw new EventsDeletedError(start, state.deletedThrough + 1);
     if (start > state.highest) throw new CursorAheadError(start, state.highest);
   }
+  // A hole left by a per-event keep (from before the bus delivered from several processes) is checked as single mode does.
+  const hole = holeError(state.holes, start, renamed, filterTakes(filter));
+  if (hole) throw hole;
   await ops.writeSubscriptionOwner({ name, position: start, filter, open: true, generation: 0, runId: RUN_ID });
   return start;
 }
