@@ -220,12 +220,6 @@ function read(object: string, name: string): string {
   return printed === name ? `${object}.${name}` : `${object}[${printed}]`;
 }
 
-/**
- * Whether the caller gave a member input: `$Object.hasOwn(parsed, "title") && parsed.title !== undefined`. The input is an
- * ordinary object, so a member named like a member of `Object.prototype` (`toString`) that the caller left out
- * reads as the inherited method; only an own member is the caller's. An own `undefined` is a member left out, as the
- * input type says (`title?: string | undefined`), and the validator keeps it.
- */
 /** The fourth argument of a caller read's `$castInput` for the entity's `max-limit=` (`ReadCap` in `@meshfw/runtime`), or nothing. */
 function readCap(entity: Entity): string {
   const cap = entity.maxLimit;
@@ -234,6 +228,12 @@ function readCap(entity: Entity): string {
   return `, { max: ${cap.max}, source: { file: ${JSON.stringify(file)}, line: ${line}, column: ${column + 1} } }`;
 }
 
+/**
+ * Whether the caller gave a member input: `$Object.hasOwn(parsed, "title") && parsed.title !== undefined`. The input is an
+ * ordinary object, so a member named like a member of `Object.prototype` (`toString`) that the caller left out
+ * reads as the inherited method; only an own member is the caller's. An own `undefined` is a member left out, as the
+ * input type says (`title?: string | undefined`), and the validator keeps it.
+ */
 function given(name: string): string {
   return `$Object.hasOwn(parsed, ${JSON.stringify(name)}) && ${read("parsed", name)} !== undefined`;
 }

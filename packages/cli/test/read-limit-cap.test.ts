@@ -99,6 +99,7 @@ describe("a capped read on SQLite", () => {
         await refusal(() => Item.read({ limit: 3 }, { system: true }));
         // A privileged read is not capped.
         expect(await ProjectMesh.privileged(Item).read({})).toHaveLength(3);
+        expect(await ProjectMesh.privileged(Item).read({ limit: 10_000 })).toHaveLength(3);
         // A has-many load reads the related rows directly, not through Item's read action: not capped.
         const [loaded] = await Box.read({ load: ["items"] }, {}) as unknown as { items: Row[] }[];
         expect(loaded!.items).toHaveLength(3);

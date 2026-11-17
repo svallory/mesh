@@ -13,7 +13,7 @@ Accepted. Amended by [ADR-0067](./0067-members-imports-input-static-files.md): o
 
 Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): `on:load` comes after Mesh 1.0; a relationship load uses the entity's auto read.
 
-Amended 2026-11-17 (lead, ruling D38, awaiting the operator's review): the `actions` line takes `max-limit=N`, a cap on the caller's `limit`. See the amendment below.
+Amended 2026-11-17 (lead, ruling D38, awaiting the operator's review): the `actions` line takes `max-limit=N`, a cap on the caller's `limit`. See the [amendment below](#amendment-2026-11-17-max-limit-caps-a-callers-read).
 
 ## Date
 
@@ -82,7 +82,7 @@ The operator's principle is one way to write each thing and few rules. Option A 
 
 ## Amendment — 2026-11-17: `max-limit=` caps a caller's read
 
-**Status: Accepted by the lead (ruling D38, 2026-11-17), awaiting the operator's review.** Source: the reviewed design `notes/architecture/small-language-design.md`, rules L1 to L6 and open decisions OD12 to OD17, each ruled as the design recommends.
+**Status: Accepted by the lead (ruling D38 in the lead's ruling log `notes/decisions.md`, which is outside this site; 2026-11-17), awaiting the operator's review.** Source: the reviewed design `notes/architecture/small-language-design.md` (also outside this site), rules L1 to L6 and open decisions OD12 to OD17, each ruled as the design recommends.
 
 A read takes its paging in the caller's input (`limit`, `offset`); a read with no `limit` returned every row, which the [rulings of 2026-10-04](./rulings-2026-10-04.md) ("Where does paging go?") answered with "a cap declared on the entity is planned, not v1". This amendment builds that cap:
 
