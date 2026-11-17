@@ -5,7 +5,7 @@ import { handlerStart } from "../src/deliverer.ts";
 /**
  * The spec's Registration table ("Events and commands", "Registration") as one function: what each declared handler's
  * progress row starts as, whatever claim strategy writes it; and, for a handler of a kind an extension contributes
- * (ADR-0093), what its kind's `start`, `adopt` and `stored` decide.
+ * (ADR-0094), what its kind's `start`, `adopt` and `stored` decide.
  */
 
 const HANDLER: Handler = Object.freeze({ events: [], run() {} });

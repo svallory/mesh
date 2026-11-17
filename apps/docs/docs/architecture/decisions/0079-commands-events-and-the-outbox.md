@@ -86,6 +86,7 @@ An outbox written in the action's transaction means an event exists if and only 
 - [ADR-0053](./0053-validate-then-do.md) is amended with [ADR-0082](./0082-named-checks-and-mixins.md): no `after-commit` step.
 - [ADR-0075](./0075-seams-use-the-extension-hosts-names.md): its note that Hyper's typed events are an application table is replaced by the outbox. The `afterCommit` seam stays as built; it is not the route for effects after commit (DOM-25).
 - The roadmap's M6 becomes "domain events and the outbox", and HA drops its event table. The roadmap size for M6 is unchanged here; it is probably too small.
+- [ADR-0094](./0094-run-time-points-for-event-extensions.md) (2026-11-17): the body of a handler of a kind an extension contributes runs in the handler transaction, as a `process` body does, and is quiet: until the handler call settles, nothing its call chain starts, seams included, may publish or dispatch.
 - `apply` names state folding in the study's event-sourcing sketch, [ADR-0081](./0081-event-sourcing-and-cqrs-are-extensions.md) leaves that to the extension, which may use another word.
 
 ## Action items

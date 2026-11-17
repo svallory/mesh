@@ -207,7 +207,7 @@ interface CallRoot {
   /** The id of the event whose handler began the chain: what every event the chain publishes carries as `causedBy`. */
   readonly causedBy?: string;
   /**
-   * Set when the chain's root is a handler of a kind an extension contributes (ADR-0093): until the chain settles, a
+   * Set when the chain's root is a handler of a kind an extension contributes (ADR-0094): until the chain settles, a
    * publish (`within` marks the transaction) and a `dispatch` anywhere in it are `FrameworkError`s.
    */
   readonly quiet?: HandlerKind;
@@ -492,7 +492,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
       const cause = store.calls?.root.causedBy;
       if (cause !== undefined) causedIn(tx, cause);
       // An action of a quiet chain, joined to the handler transaction or in one of its own (a seam started it): its
-      // publishes are refused (ADR-0093).
+      // publishes are refused (ADR-0094).
       const quiet = store.calls?.root.quiet;
       if (quiet !== undefined && !store.calls!.settled) quietIn(tx, store.calls!.root.label, quiet);
       return frame.run(kept({ state, scope: store.scope, tx, clock, label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
@@ -647,7 +647,7 @@ export function bindingParts(binding: Binding): BindingParts {
  * Run `fn`, a handler's body, on `binding` for the event `causedBy`: in a transaction of the binding (a `process`
  * handler) or with the binding in scope and no transaction (a `listen` handler). Every action it calls is nested in one
  * chain whose root is the handler (`label`), and every event those actions publish carries `causedBy`. With `quiet`,
- * the handler's contributed kind, the chain is quiet until the call settles (ADR-0093): no action of it may publish, and
+ * the handler's contributed kind, the chain is quiet until the call settles (ADR-0094): no action of it may publish, and
  * nothing in it may `dispatch`, seams included, since the chain follows them.
  */
 export async function handlerScope<T>(binding: Binding, label: string, causedBy: string, transactional: boolean, fn: () => Promise<T>, quiet?: HandlerKind): Promise<T> {

@@ -52,7 +52,7 @@ type LiveSubscriptionParity = Assert<Equal<Docs.LiveSubscription, Actual.LiveSub
 type BusCapabilityParity = Assert<Equal<Docs.BusCapability, Actual.BusCapability>>;
 type CapabilityParity = Assert<Equal<Docs.Capability, Actual.Capability>>;
 type HandlerParity = Assert<Same<Docs.Handler, Actual.Handler>>;
-// The contributed-kind point (ADR-0093), compared whole. The sample's \`Handler\` leaves out the optional \`[HANDLER_KIND]\`
+// The contributed-kind point (ADR-0094), compared whole. The sample's \`Handler\` leaves out the optional \`[HANDLER_KIND]\`
 // member (a unique symbol of each module cannot match), so the two that embed a \`Handler\` are compared by assignability.
 type HandlerKindParity = Assert<Same<Docs.HandlerKind, Actual.HandlerKind>>;
 type RegistrationParity = Assert<Equal<Docs.Registration, Actual.Registration>>;

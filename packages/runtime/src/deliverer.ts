@@ -155,7 +155,7 @@ function sortedUnique(names: readonly string[]): string[] {
  * `dead-letters`; names are unique across every kind; a `renamedFrom` must not name a handler the module still
  * registers, nor be named by two handlers. Shapes are checked too: `run` a function, `events` a non-empty list of the
  * domain's event classes. A handler of a kind an extension contributes is checked by its kind (`check`) after its shape
- * and before core's option checks, so the kind's own message wins (ADR-0093).
+ * and before core's option checks, so the kind's own message wins (ADR-0094).
  */
 export function declaredHandlers(module: EventsModule, bus: EventBus, events: ReadonlyMap<string, EventClass>): DeclaredHandler[] {
   const capabilities = new Set<string>(bus.manifest.capabilities);
@@ -247,7 +247,7 @@ export function registrationOf(
  * The spec's Registration table for one handler, shared by every claim strategy so a change to it lands once: a known
  * handler keeps its position and takes the list it registers now (an added event is logged with the position it is
  * handled from); a handler with no row takes over the row of its `renamedFrom`, when that has one; any other starts at
- * the highest position ever assigned (`registration.highest`). A handler of a contributed kind (ADR-0093) asks its kind
+ * the highest position ever assigned (`registration.highest`). A handler of a contributed kind (ADR-0094) asks its kind
  * instead: `start` gives a new row's position, `adopt` may refuse a known row (which fails the whole registration), and
  * `stored` names the row's stored kind. Runs inside the registration transaction, so a refusal writes nothing.
  */
@@ -514,7 +514,7 @@ export class Deliverer {
     const record = eventClass ? recordOf(row, eventClass) : undefined;
     const label = `the ${handler.kind} handler ${handler.name}`;
     const run = (context: ActionContext) => (entry.handler as Handler).run(record!, { context });
-    // A contributed kind (ADR-0093) runs as a `process` handler does: its body in the handler transaction.
+    // A contributed kind (ADR-0094) runs as a `process` handler does: its body in the handler transaction.
     if (handler.kind === "process" || entry.kind !== undefined) {
       await handlerScope(this.binding, label, row.id, true, async () => {
         const progress = await this.layer.transaction(async (tx) => {

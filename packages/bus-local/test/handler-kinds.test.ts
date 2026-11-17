@@ -1,4 +1,4 @@
-// Contributed handler kinds (ADR-0093) in a project built by the real `mesh` command on data-sqlite (fixture:
+// Contributed handler kinds (ADR-0094) in a project built by the real `mesh` command on data-sqlite (fixture:
 // `fixtures/kinds`, the Invoice of `fixtures/project` plus `settle`, which pays through a nested call, `refund`
 // answering the command `RefundInvoice`, and the read model `PaidInvoice`). The kind under test is `model` from the
 // fixture's `kind.ts`, which stands in for `project` of @meshfw/event-sourcing: the tests set what its `check`, `start`,

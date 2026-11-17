@@ -1,4 +1,4 @@
-// A handler kind contributed the way an extension contributes one (ADR-0093), standing in for `project` from
+// A handler kind contributed the way an extension contributes one (ADR-0094), standing in for `project` from
 // @meshfw/event-sourcing: `model(...)` makes a handler of the kind `model`, and `control` decides what its `check`,
 // `start`, `adopt` and `stored` do, while `calls` records what core asked it.
 import { HANDLER_KIND, Mesh, type EventRecord, type Handler, type HandlerKind, type HandlerTools, type ListedEvent } from "@meshfw/runtime";

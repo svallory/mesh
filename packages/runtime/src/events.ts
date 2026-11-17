@@ -60,7 +60,7 @@ export interface EventsModule {
   handlers?: {
     process?: Record<string, Handler>;
     listen?: Record<string, Handler>;
-    /** A contributed kind's handlers, under the kind's name (ADR-0093): each carries the kind (`[HANDLER_KIND]`). */
+    /** A contributed kind's handlers, under the kind's name (ADR-0094): each carries the kind (`[HANDLER_KIND]`). */
     readonly [kind: string]: Record<string, Handler> | undefined;
   };
   metadata?: MetadataFunction<never>;
@@ -98,7 +98,7 @@ const publishedOf = new WeakMap<DataOperations, EventRecord[]>();
 const causes = new WeakMap<DataOperations, string>();
 
 /**
- * The quiet call chain a transaction runs in, by its data operations: the handler of a contributed kind (ADR-0093) at
+ * The quiet call chain a transaction runs in, by its data operations: the handler of a contributed kind (ADR-0094) at
  * the chain's root, whose chain may not publish until the handler call settles.
  */
 const quiets = new WeakMap<DataOperations, { readonly label: string; readonly kind: HandlerKind }>();
@@ -237,7 +237,7 @@ export function kindOf(name: string, handler: unknown): HandlerKind | undefined 
 }
 
 /**
- * The keys of the events module's `handlers` (ADR-0093): `process` and `listen`, and the name of each kind an extension
+ * The keys of the events module's `handlers` (ADR-0094): `process` and `listen`, and the name of each kind an extension
  * contributes, under which every handler carries that kind. A handler under a key that is not its kind's, an empty group
  * under a key no kind names, and a handler with no kind under such a key are `FrameworkError`s.
  */

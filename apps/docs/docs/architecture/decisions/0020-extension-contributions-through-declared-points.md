@@ -1,17 +1,19 @@
 ---
 title: "0020. Extensions contribute to each other only through declared points"
-description: "Decision record 0020: Extensions contribute to each other only through declared points. Status: Accepted, amended by ADR-0072, ADR-0075."
+description: "Decision record 0020: Extensions contribute to each other only through declared points. Status: Accepted, amended by ADR-0072, ADR-0075, ADR-0094."
 ---
 
 # 0020. Extensions contribute to each other only through declared points
 
 > **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) on 2026-10-10: The extension host comes after Mesh 1.0; the lifecycle seams that an extension would use are built first, for the application. The body below is kept as history.
 
+> **Amended** by [ADR-0094](./0094-run-time-points-for-event-extensions.md) on 2026-11-17: core also publishes run-time points to extensions before the host's manifest exists, the first being contributed handler kinds; an extension that uses one works without being listed in `mesh.config.ts` `extensions` until the host requires the listing.
+
 ## Status
 
 Accepted
 
-Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) (2026-10-10): The extension host comes after Mesh 1.0; the lifecycle seams that an extension would use are built first, for the application.
+Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) and [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) (2026-10-10): The extension host comes after Mesh 1.0; the lifecycle seams that an extension would use are built first, for the application. Amended by [ADR-0094](./0094-run-time-points-for-event-extensions.md) (2026-11-17): run-time points for extensions, before the manifest.
 
 ## Date
 

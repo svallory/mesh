@@ -242,7 +242,7 @@ describe("loadEvents", () => {
   });
 });
 
-describe("loadEvents and the kinds of handlers (ADR-0093)", () => {
+describe("loadEvents and the kinds of handlers (ADR-0094)", () => {
   const kind = (name: string, owner = "@meshfw/test-kind"): HandlerKind => ({ name, owner, check() {}, start: async (_h, at) => at.highest, adopt: async () => {}, stored: () => name });
   const MODEL = kind("model");
   const plain = () => Mesh.handler({ events: [InvoicePaid], run: () => undefined });

@@ -178,13 +178,13 @@ export interface Handler<E extends object = object> {
 }
 
 /**
- * The key under which a handler made by an extension carries its kind (ADR-0093). Owned by the runtime, as `DECLARATION`
+ * The key under which a handler made by an extension carries its kind (ADR-0094). Owned by the runtime, as `DECLARATION`
  * is: a project with two copies of `@meshfw/runtime` would not recognise the other copy's kinds.
  */
 export const HANDLER_KIND: unique symbol = Symbol("mesh.handlerKind");
 
 /**
- * A handler kind an extension contributes (ADR-0093), beside core's `process` and `listen`. Its handlers are listed under
+ * A handler kind an extension contributes (ADR-0094), beside core's `process` and `listen`. Its handlers are listed under
  * `handlers.<name>` in the events module and run as `process` handlers do (the body in the handler transaction, the
  * progress written in it), with a quiet call chain: a publish or a dispatch anywhere in it, until the handler call
  * settles, is a `FrameworkError`. The kind decides where a new handler starts, may refuse a start, and names what the
