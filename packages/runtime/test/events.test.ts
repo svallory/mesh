@@ -7,7 +7,7 @@ import {
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { notifyPublished, onPublished } from "../src/events.ts";
-import type { DataLayer, DataOperations, Declaration, EventsConfig, OutboxRow } from "@meshfw/runtime";
+import type { DataLayer, DataOperations, Declaration, EventsConfig, EventsModule, OutboxRow } from "@meshfw/runtime";
 
 /** An event class shaped as `mesh build` generates one: a private brand, the declaration under DECLARATION, frozen instances. */
 class InvoicePaid {
@@ -523,6 +523,142 @@ describe("the rename map (events.renamed) at bind and in readEvents", () => {
       expect((thrown as Error).message).toContain(message);
     }
     expect(bindWith({ "billing.InvoicePaid": "finance.InvoicePayed" }, { notAClass: 1 })).not.toThrow();
+  });
+});
+
+describe("the upcast point (EventsModule.upcast, ADR-0094)", () => {
+  /** InvoicePaid as first published: `{ invoice, paid }`, its date as text under another name. */
+  const v1 = { invoice: "a", paid: "2026-09-01T00:00:00.000Z" };
+  const today = (payload: Readonly<Record<string, unknown>>) =>
+    "invoiceId" in payload ? payload : { invoiceId: payload.invoice, paidAt: payload.paid };
+  /** Row 1 stored in the old shape, row 2 a voided, row 3 in today's shape; `module` is what events.load resolves with. */
+  const setup = async (module: EventsModule | (() => Promise<EventsModule>), options: { domain?: object; renamed?: Record<string, string> } = {}) => {
+    const memory = memoryLayer();
+    const publish = (event: object) => memory.layer.transaction((tx) => publishEvent(tx, undefined, target, event, {}, clock));
+    await publish(paid("x"));
+    memory.state.rows[0] = { ...memory.state.rows[0]!, payload: v1 };
+    await publish(new InvoiceVoided({ invoiceId: "b" }));
+    await publish(paid("c"));
+    const frame = new AsyncLocalStorage<unknown>();
+    const load = typeof module === "function" ? module : async () => module;
+    const events: EventsConfig = { load, ...(options.renamed ? { renamed: options.renamed } : {}) };
+    const binding = bindDomain(options.domain ?? { InvoicePaid, InvoiceVoided }, memory.layer, { events }, frame);
+    const read = (query = {}) => binding.run(() => readEvents(frame, undefined, query));
+    return { ...memory, frame, binding, read };
+  };
+
+  test("loadEvents refuses an upcast that is not a function, and keeps one that is", async () => {
+    for (const [upcast, what] of [[{ a: 1 }, "a plain object"], ["today", "a string"], [null, "null"]] as const) {
+      const error = await rejection(() => loadEvents({ load: async () => ({ upcast }) as never }));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect(error.message).toBe(`The events module exports upcast as ${what}: it must be a function (stored) => payload, which turns a stored row's payload into its event's current fields`);
+    }
+    const upcast = (row: OutboxRow) => row.payload;
+    expect((await loadEvents({ load: async () => ({ upcast }) })).upcast).toBe(upcast);
+  });
+
+  test("readEvents hands every row to upcast before its dates are revived and its class is constructed; the stored rows are untouched", async () => {
+    const seen: [number, string][] = [];
+    const { read, state } = await setup({ upcast: (row: OutboxRow) => { seen.push([row.position, row.name]); return row.name === "billing.InvoicePaid" ? today(row.payload as Record<string, unknown>) : row.payload; } });
+    const page = await read();
+    expect(seen).toEqual([[1, "billing.InvoicePaid"], [2, "billing.InvoiceVoided"], [3, "billing.InvoicePaid"]]);
+    const first = page.events[0]!.payload as InvoicePaid;
+    expect(first).toBeInstanceOf(InvoicePaid);
+    expect([first.invoiceId, first.paidAt]).toEqual(["a", new Date("2026-09-01T00:00:00.000Z")]);
+    // A payload already in today's shape passes through, its date revived as before.
+    expect((page.events[2]!.payload as InvoicePaid).paidAt).toEqual(new Date("2026-10-01T00:00:00.000Z"));
+    expect(page.events[1]!.payload).toBeInstanceOf(InvoiceVoided);
+    expect(state.rows[0]!.payload).toEqual(v1);
+  });
+
+  test("published() is not upcast: a transaction's own events are already instances", async () => {
+    let calls = 0;
+    const { frame, binding, layer } = await setup({ upcast: (row: OutboxRow) => { calls++; return row.payload; } });
+    const own = await binding.transaction(async () => {
+      await layer.transaction((tx) => publishEvent(tx, undefined, target, paid("d"), {}, clock));
+      return published(frame);
+    });
+    expect(own.map((record) => (record.payload as InvoicePaid).invoiceId)).toEqual(["d"]);
+    expect(calls).toBe(0);
+  });
+
+  test("an upcast that throws is a FrameworkError naming the event and the position, the throw as its cause", async () => {
+    const thrown = new Error("no invoice field");
+    const { read } = await setup({ upcast: () => { throw thrown; } });
+    const error = await rejection(() => read());
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toBe("The events module's upcast threw on the billing.InvoicePaid at position 1: no invoice field");
+    expect(error.cause).toBe(thrown);
+    expect((error as FrameworkError).retryable).toBe(false);
+  });
+
+  test("an upcast that returns no object, or a promise, is a FrameworkError naming what it returned", async () => {
+    for (const [value, what] of [[7, "a number"], [null, "null"], [undefined, "undefined"], [["a"], "an array"], ["{}", "a string"]] as const) {
+      const { read } = await setup({ upcast: () => value });
+      expect((await rejection(() => read())).message).toBe(`The events module's upcast returned ${what} for the billing.InvoicePaid at position 1: it must return the event's fields, an object`);
+    }
+    const { read } = await setup({ upcast: async (row: OutboxRow) => row.payload });
+    expect((await rejection(() => read())).message).toBe("The events module's upcast returned a promise for the billing.InvoicePaid at position 1: it must return the event's fields, an object, without awaiting");
+  });
+
+  test("an async upcast that rejects is refused as a promise and leaves no unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const listen = (reason: unknown) => { unhandled.push(reason); };
+    process.on("unhandledRejection", listen);
+    try {
+      const { read } = await setup({ upcast: async () => { throw new Error("boom"); } });
+      expect((await rejection(() => read())).message).toBe("The events module's upcast returned a promise for the billing.InvoicePaid at position 1: it must return the event's fields, an object, without awaiting");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } finally {
+      process.off("unhandledRejection", listen);
+    }
+    expect(unhandled).toEqual([]);
+  });
+
+  test("a payload its class refuses points to upcast: to export one when there is none, to its step when there is", async () => {
+    const without = await rejection(async () => (await setup({})).read());
+    expect(without).toBeInstanceOf(FrameworkError);
+    expect(without.message).toStartWith("The outbox row at position 1 holds a billing.InvoicePaid that its class no longer accepts (its fields changed since it was published): paidAt must be a date. ");
+    expect(without.message).toEndWith("Export upcast from the events module to turn old payloads into today's fields (upcasters() of @meshfw/event-sourcing)");
+    const unchanged = await rejection(async () => (await setup({ upcast: (row: OutboxRow) => row.payload })).read());
+    expect(unchanged.message).toEndWith("The events module's upcast left it in a shape the class refuses: give billing.InvoicePaid a step that turns this payload into today's fields");
+  });
+
+  test("a row whose stored name matches no declared event stays MESH_EVENT_UNDECLARED, and upcast never sees it", async () => {
+    const seen: string[] = [];
+    const { read, state } = await setup({ upcast: (row: OutboxRow) => { seen.push(row.name); return today(row.payload as Record<string, unknown>); } });
+    state.rows[1] = { ...state.rows[1]!, name: "billing.InvoiceCancelled" };
+    const error = await rejection(() => read());
+    expect(error).toBeInstanceOf(EventUndeclaredError);
+    expect([(error as EventUndeclaredError).eventName, (error as EventUndeclaredError).position]).toEqual(["billing.InvoiceCancelled", 2]);
+    expect(seen).toEqual(["billing.InvoicePaid"]);
+  });
+
+  test("the rename map runs first: upcast sees a row stored under a former FQN under the event's current one", async () => {
+    const seen: string[] = [];
+    const upcast = (row: OutboxRow) => { seen.push(row.name); return row.name === "finance.InvoicePaid" ? today(row.payload as Record<string, unknown>) : row.payload; };
+    const { read } = await setup({ upcast }, { domain: { FinancePaid, InvoiceVoided }, renamed: { "billing.InvoicePaid": "finance.InvoicePaid" } });
+    const page = await read();
+    expect(seen).toEqual(["finance.InvoicePaid", "billing.InvoiceVoided", "finance.InvoicePaid"]);
+    expect(page.events[0]!.payload).toBeInstanceOf(FinancePaid);
+    expect((page.events[0]!.payload as FinancePaid).invoiceId).toBe("a");
+  });
+
+  test("readEvents loads the events module: one without upcast reads as before, and a load that rejects fails the read", async () => {
+    const memory = memoryLayer();
+    await memory.layer.transaction((tx) => publishEvent(tx, undefined, target, paid("a"), {}, clock));
+    const frame = new AsyncLocalStorage<unknown>();
+    const plain = bindDomain({ InvoicePaid }, memory.layer, {}, frame);
+    const expected = await plain.run(() => readEvents(frame, undefined));
+    let loaded = 0;
+    const withModule = bindDomain({ InvoicePaid }, memory.layer, { events: { load: async () => { loaded++; return { metadata: () => ({}) }; } } }, frame);
+    expect(await withModule.run(() => readEvents(frame, undefined))).toEqual(expected);
+    await withModule.run(() => readEvents(frame, undefined));
+    expect(loaded).toBe(1);
+    const failing = bindDomain({ InvoicePaid }, memory.layer, { events: { load: async () => { throw new Error("no such file"); } } }, frame);
+    const error = await rejection(() => failing.run(() => readEvents(frame, undefined)));
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toBe("events.load() rejected: no such file");
   });
 });
 

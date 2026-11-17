@@ -512,7 +512,7 @@
               "path": "/architecture/decisions/0093-line-rule-message-and-code/"
             },
             {
-              "title": "0094. Run-time points for event extensions: contributed handler kinds",
+              "title": "0094. Run-time points for event extensions: contributed handler kinds and the upcast point",
               "path": "/architecture/decisions/0094-run-time-points-for-event-extensions/"
             },
             {

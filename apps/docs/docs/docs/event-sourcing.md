@@ -1,6 +1,6 @@
 ---
 title: "Event sourcing"
-description: "The event-sourcing extension, @meshfw/event-sourcing: project handlers, which build a read model from every event they list, from the beginning of history; the from option; the rule that refuses a read model built from part of the history; and how to rebuild one."
+description: "The event-sourcing extension, @meshfw/event-sourcing: project handlers, which build a read model from every event they list, from the beginning of history; the from option; the rule that refuses a read model built from part of the history; how to rebuild one; and upcasting, which reads old event payloads in today's shape."
 ---
 
 # Event sourcing
@@ -9,7 +9,7 @@ description: "The event-sourcing extension, @meshfw/event-sourcing: project hand
 Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
-`@meshfw/event-sourcing` is an extension: a package you add when you need it, which core runs through a point it publishes for extensions ([ADR-0094](../architecture/decisions/0094-run-time-points-for-event-extensions.md)). This first version gives one thing, the **project handler**: a handler that builds a **read model**, rows kept only to be read, from every event it lists, starting from the beginning of the history the outbox keeps. Core's own handlers, `process` and `listen` ([Handlers](./events.md#handlers)), start from now and never see an event published before they were first registered; a project handler is the one that does.
+`@meshfw/event-sourcing` is an extension: a package you add when you need it, which core runs through a point it publishes for extensions ([ADR-0094](../architecture/decisions/0094-run-time-points-for-event-extensions.md)). This first version gives two things. The first is the **project handler**: a handler that builds a **read model**, rows kept only to be read, from every event it lists, starting from the beginning of the history the outbox keeps. Core's own handlers, `process` and `listen` ([Handlers](./events.md#handlers)), start from now and never see an event published before they were first registered; a project handler is the one that does. The second is **upcasting**: reading an event stored before its fields changed in the shape its class has today ([Upcasting](#upcasting)).
 
 An event store, `apply` (folding events into an event-sourced aggregate) and declared read models are not built. The outbox is not made the source of truth: `keep: "all"` keeps its rows, it does not make them the record of what happened.
 
@@ -104,6 +104,34 @@ On a database that has never deleted a row:
 
 On a database that has deleted rows, the history to rebuild from is gone: rebuild by backfilling the read model from current rows under `from: "now"`.
 
+## Upcasting
+
+Every outbox row keeps the payload its event had when it was published, and Mesh never rewrites a stored row. When an event's fields change (`InvoicePaid` was first published as `{ invoice }` and now has `{ invoiceId }`), the old rows no longer fit the class: a handler, a subscription or `readEvents` that reaches one stops with a `FrameworkError` saying the class no longer accepts it. Under `keep: "all"`, or with a project handler that replays history, that row is read again and again, so the fix is to read it differently, not to change it.
+
+The events module's `upcast` turns a stored payload into today's fields. `upcasters(...)` builds it from one `upcaster(Event, ...steps)` per event whose fields changed:
+
+```ts "src/events.ts (excerpt)"
+import { upcaster, upcasters } from "@meshfw/event-sourcing";
+import { InvoicePaid } from "#mesh/domain/billing";
+
+// InvoicePaid was first published as { invoice }, then as { invoiceRef }; today it is { invoiceId }.
+export const upcast = upcasters(
+  upcaster(
+    InvoicePaid,
+    ({ invoice, ...rest }) => (invoice === undefined ? rest : { ...rest, invoiceRef: invoice }),
+    ({ invoiceRef, ...rest }) => (invoiceRef === undefined ? rest : { ...rest, invoiceId: invoiceRef }),
+  ),
+);
+```
+
+Each step takes the payload so far (the stored one, for the first step) and the stored row, and returns the next shape: the whole payload, with only the fields that changed replaced. A step that returned only the renamed field would drop `amount`, `method` and `paidAt`, and the class would refuse the row. A step that does not apply returns the payload unchanged. The steps of an event run in order over every stored row of it, so a row of any age arrives in today's shape and a row already in today's shape passes through every step unchanged. Rows of events with no upcaster are not touched. Mesh stores no version number: a step tells a shape by its fields.
+
+`upcast` runs on every stored row read back: handlers of every kind, subscriptions, `readEvents` and `retryFailed`. It runs before a date field is turned back into a `Date` and before the event's class is built, so a step that adds a date field returns it as ISO text, as the outbox stores dates. `published()` is not upcast: its records are the transaction's own events, already in today's shape. Because `readEvents` and `subscribe` read `upcast`, each loads the events module on its first call, also in a process that never publishes, and a `load` that rejects fails the call.
+
+Upcasting changes a payload, never a name. A row stored under a name the project no longer declares is still `MESH_EVENT_UNDECLARED`; map the old name with `events.renamed` ([Moving or renaming an event](./events.md#moving-or-renaming-an-event)). The rename map runs first, so an upcaster is written for the event's current class and receives old rows under its new name.
+
+`upcast` may also be written by hand: any function `(stored) => payload` exported as `upcast`, where `stored` is the outbox row (`name`, `position`, `payload` and the rest of the envelope). It must return an object, and must not be `async`.
+
 ## Errors
 
 | Class | `code` | `retryable` | Thrown when |
@@ -111,5 +139,6 @@ On a database that has deleted rows, the history to rebuild from is gone: rebuil
 | `HandlerHistoryError` | `MESH_HANDLER_HISTORY` | `false` | A project handler that starts from the beginning of history would build its read model from part of it; see [The history rule](#the-history-rule) |
 | `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A project handler has a `from` other than `"beginning"` or `"now"`, asks for `onFailure: "skip"`, or starts from the beginning on a bus without `replay` |
 | `FrameworkError` | `framework` | `false` | A project handler's body, or an action it or a seam started while it ran, published or dispatched |
+| `FrameworkError` | `framework` | `false` | The events module's `upcast` threw, returned no object or returned a promise, or an `upcaster` step returned no object (naming the event, the step and the row's position); `upcasters` lists one event twice or is given something `upcaster` did not make; `upcaster` is given no event class or a step that is no function; the events module exports an `upcast` that is no function |
 
 `HandlerHistoryError` is exported by `@meshfw/event-sourcing`, the others by `@meshfw/runtime`. The other errors of delivery are under [Events](./events.md#failures-and-retries).

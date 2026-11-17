@@ -3,10 +3,12 @@
 // history unless `from: "now"`. Core runs the kind through its contributed-kind point (`HANDLER_KIND`); this package
 // decides where a project handler starts, refuses a start that would build a read model from part of the history
 // (`MESH_HANDLER_HISTORY`), and records in the progress row's stored kind whether the history it handled is complete.
-import { HANDLER_KIND, HandlerOptionError, MeshError } from "@meshfw/runtime";
+// It also gives `upcaster(...)` and `upcasters(...)`, which compose per-event upcasting steps into the events module's
+// `upcast`, core's one upcasting point.
+import { DECLARATION, FrameworkError, HANDLER_KIND, HandlerOptionError, MeshError } from "@meshfw/runtime";
 import type {
   BusManifest, EventBusCapabilities, EventRecord, Handler, HandlerKind, HandlerProgressRow, HandlerTools, KindHandler,
-  ListedEvent, MeshErrorOptions, Registration,
+  ListedEvent, MeshErrorOptions, OutboxRow, Registration,
 } from "@meshfw/runtime";
 
 /**
@@ -143,4 +145,79 @@ export function project<const C extends readonly ListedEvent[]>(options: {
 } & FromOption): ProjectHandler<InstanceType<C[number]>> {
   const from = fromValue(options);
   return Object.freeze({ ...options, from, [HANDLER_KIND]: PROJECT }) as unknown as ProjectHandler<InstanceType<C[number]>>;
+}
+
+/**
+ * One upcasting step: the next shape (or today's) from the payload it is given, the stored one for the first step. It
+ * returns `payload` itself when nothing applies, so a step written for one old shape leaves every other shape alone.
+ */
+export type UpcastStep = (payload: Readonly<Record<string, unknown>>, stored: OutboxRow) => Record<string, unknown>;
+
+/** The steps of one event, applied in order to every stored row of that event. Made by `upcaster()` only. */
+export interface Upcaster {
+  /** The event's FQN, `billing.InvoicePaid`. */
+  readonly event: string;
+  readonly steps: readonly UpcastStep[];
+}
+
+/** The upcasters `upcaster()` made, so `upcasters()` refuses a look-alike. */
+const made = new WeakSet<Upcaster>();
+
+/** A value, for a message. */
+function what(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  if (typeof value === "object" && typeof (value as { then?: unknown }).then === "function") return "a promise";
+  if (typeof value === "object") return "a plain object";
+  return typeof value === "undefined" ? "undefined" : `a ${typeof value}`;
+}
+
+/**
+ * The upcasting steps of one event (`upcaster(InvoicePaid, v1ToV2, v2ToV3)`), for `upcasters()`. The event is its
+ * generated class, so a step list follows the event's current FQN, the name a row has once the rename map
+ * (`events.renamed`) has read it.
+ */
+export function upcaster(event: ListedEvent, ...steps: UpcastStep[]): Upcaster {
+  const declaration = typeof event === "function" ? (event as unknown as { [DECLARATION]?: { kind?: unknown; fqn?: unknown } })[DECLARATION] : undefined;
+  if (declaration?.kind !== "event" || typeof declaration.fqn !== "string")
+    throw new FrameworkError(`upcaster takes an event's class, as mesh build generates it (upcaster(InvoicePaid, ...steps)), and was given ${what(event)}`);
+  const fqn = declaration.fqn;
+  steps.forEach((step, index) => {
+    if (typeof step !== "function")
+      throw new FrameworkError(`upcaster(${fqn}): step ${index + 1} is ${what(step)}: each step is a function (payload, stored) => payload`);
+  });
+  const result: Upcaster = Object.freeze({ event: fqn, steps: Object.freeze([...steps]) });
+  made.add(result);
+  return result;
+}
+
+/**
+ * The events module's `upcast` (`export const upcast = upcasters(...)`): one upcaster per event, whose steps run in order
+ * over each stored row of that event; a row of any other event passes through unchanged. A step that returns no object
+ * is a `FrameworkError` naming the event, the step and the row's position.
+ */
+export function upcasters(...list: Upcaster[]): (stored: OutboxRow) => unknown {
+  const byEvent = new Map<string, readonly UpcastStep[]>();
+  list.forEach((item, index) => {
+    if (!made.has(item))
+      throw new FrameworkError(`upcasters takes what upcaster(event, ...steps) returns, and was given ${what(item)} as its upcaster ${index + 1}`);
+    if (byEvent.has(item.event))
+      throw new FrameworkError(`upcasters lists ${item.event} twice: give each event one upcaster, its steps in order`);
+    byEvent.set(item.event, item.steps);
+  });
+  return Object.freeze((stored: OutboxRow): unknown => {
+    const steps = byEvent.get(stored.name);
+    if (steps === undefined) return stored.payload;
+    let payload = stored.payload as Readonly<Record<string, unknown>>;
+    steps.forEach((step, index) => {
+      const next: unknown = step(payload, stored);
+      if (typeof next !== "object" || next === null || Array.isArray(next) || typeof (next as { then?: unknown }).then === "function") {
+        // A promise is refused, never awaited: mark it handled so an async step that rejects leaves no unhandled rejection.
+        if (typeof next === "object" && next !== null && typeof (next as { then?: unknown }).then === "function") Promise.resolve(next).then(undefined, () => {});
+        throw new FrameworkError(`upcaster(${stored.name}): step ${index + 1} returned ${what(next)} for the row at position ${stored.position}: each step returns the payload, an object`);
+      }
+      payload = next as Record<string, unknown>;
+    });
+    return payload;
+  });
 }

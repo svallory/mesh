@@ -29,6 +29,10 @@ type ReasonParity = Assert<Equal<Docs.HistoryReason, Actual.HistoryReason>>;
 type ErrorParity = Assert<Equal<Docs.HandlerHistoryError, Actual.HandlerHistoryError>>;
 type KindParity = Assert<Equal<typeof Docs.PROJECT, typeof Actual.PROJECT>>;
 type ProjectParity = Assert<Equal<typeof Docs.project, typeof Actual.project>>;
+type StepParity = Assert<Equal<Docs.UpcastStep, Actual.UpcastStep>>;
+type UpcasterParity = Assert<Equal<Docs.Upcaster, Actual.Upcaster>>;
+type UpcasterFunctionParity = Assert<Equal<typeof Docs.upcaster, typeof Actual.upcaster>>;
+type UpcastersParity = Assert<Equal<typeof Docs.upcasters, typeof Actual.upcasters>>;
 `;
 const replay = `import "@meshfw/runtime";
 declare module "@meshfw/runtime" { interface EventBusCapabilities { replay: true } }

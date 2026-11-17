@@ -13,7 +13,7 @@ import { DECLARATION, type Declaration } from "./declarations.ts";
 import { dispatching } from "./dispatch.ts";
 import type { HandlerKind } from "./bus.ts";
 import { NO_RENAMES, renamedMap } from "./stored-names.ts";
-import { causedIn, keepProblem, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { causedIn, keepProblem, loadEvents, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
 import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
 /**
@@ -794,7 +794,8 @@ export async function readEvents(frame: AsyncFrame, connected: Binding | undefin
     throw new FrameworkError("readEvents was called inside a transaction: it reads committed rows only, and a transaction's own events come from published() (from #mesh)");
   const state = store?.state ?? (connected === undefined ? undefined : stateOf(connected));
   if (!state) throw notConnected("readEvents");
-  return counted(state, () => readEventsFrom(state.layer, state.events, query, state.renamed));
+  // The events module is loaded (and kept) for its upcast, so a row reads the same whatever ran before this read.
+  return counted(state, async () => readEventsFrom(state.layer, state.events, query, state.renamed, (await loadEvents(state.options.events)).upcast));
 }
 
 /** What `#mesh` exports as `query` (ADR-0087): a template tag running one read-only SQL statement written by hand. */
