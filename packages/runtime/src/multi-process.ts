@@ -365,7 +365,7 @@ export class MultiClaim implements ClaimStrategy {
         start = await handlerStart(entry, progress, registration);
       } catch (error) {
         // connect() resolved long ago, so a refusal here (the handler's kind refusing the adopt, an invalid start or stored
-        // kind) has no start to reject: it rolls this transaction back and stops delivery, naming the move (ADR-0093).
+        // kind) has no start to reject: it rolls this transaction back and stops delivery, naming the move (ADR-0094).
         const message = error instanceof Error ? error.message : String(error);
         throw this.deliverer.lose(`the renamedFrom move of the handler ${JSON.stringify(name)} from ${JSON.stringify(former)}, made once no live process registered ${JSON.stringify(former)}, was refused: ${message}`);
       }

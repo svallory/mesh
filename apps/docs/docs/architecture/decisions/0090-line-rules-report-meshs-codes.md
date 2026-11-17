@@ -59,4 +59,4 @@ Option 4 keeps what passes exactly Zod's own check, keeps every bound and patter
 ## Action items
 
 - [x] Standard codes, messages and positions for line rules (`feat/line-rule-codes`).
-- [x] `message=` and `code=` on a line that carries a rule, replacing the standard ones (`feat/line-rule-text`, [ADR-0094](./0093-line-rule-message-and-code.md)).
+- [x] `message=` and `code=` on a line that carries a rule, replacing the standard ones (`feat/line-rule-text`, [ADR-0093](./0093-line-rule-message-and-code.md)).

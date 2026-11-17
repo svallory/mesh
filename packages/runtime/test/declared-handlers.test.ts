@@ -4,7 +4,7 @@ import { declaredHandlers } from "../src/deliverer.ts";
 import type { EventClass, EventsModule } from "../src/events.ts";
 
 /**
- * `declaredHandlers` called directly (ADR-0093): the kind checks it repeats for a caller that does not go through
+ * `declaredHandlers` called directly (ADR-0094): the kind checks it repeats for a caller that does not go through
  * `loadEvents`, and what a contributed kind's `check` is handed.
  */
 
