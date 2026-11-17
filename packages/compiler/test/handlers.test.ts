@@ -236,6 +236,17 @@ describe("the body's scope", () => {
     // A nested function's own `input` is its parameter, not the root.
     expect(scope("({ event }) => [1].map((input) => input + 1)")).toEqual([]);
   });
+  test("an object literal it returns is no expression's parts: its values read `event` with no free-variable error", () => {
+    const result = build({ "billing/invoice.mesh.mx": body("({ event }) => ({ a: event.id === 1, b: event.payload })") });
+    expect(result.diagnostics).toEqual([]);
+    const plain = entityOf(result, "Invoice").handlers![0]!.run.plain!;
+    expect(plain.why).toBe("handler");
+    expect(plain).not.toHaveProperty("parts");
+  });
+  test("it may return a helper or an entity as a value: a body is no captured value (`MESH_EXPR_CAPTURED_VALUE`)", () => {
+    expect(scope("({ event }) => sendReceipt")).toEqual([]);
+    expect(scope("({ event }) => Invoice")).toEqual([]);
+  });
   test("a root shadows an import of the same name inside the body, which stays the import outside it", () => {
     const source = body("() => event.id").replace('import { sendReceipt } from "./mailer"', 'import { sendReceipt as event } from "./mailer"')
       .replace("authorize-if=({ context }) => Mesh.isSystem(context)", "authorize-if=async ({ context }) => { await event({ idempotencyKey: \"k\", invoiceId: \"i\" }); return Mesh.isSystem(context) }");
