@@ -10,6 +10,7 @@ import { localBus } from "@meshfw/bus-local";
 import { DECLARATION, bindDomain, type Declaration, type EventRecord, type EventsModule } from "@meshfw/runtime";
 import { outboxRow } from "@meshfw/runtime/testing";
 import { postgres, postgresWith, type PostgresLayer } from "../src/layer.ts";
+import { appendEvent, type Appender } from "../src/outbox.ts";
 import { AppendedListeners, type WakeupTimers } from "../src/wakeup.ts";
 import { eventTables } from "./event-tables.ts";
 import { describeServer, testDatabase } from "./support.ts";
@@ -172,6 +173,27 @@ describe("AppendedListeners, the listener set behind onAppended", () => {
   });
 });
 
+describe("appendEvent's NOTIFY", () => {
+  // Postgres folds identical notifications of one transaction, so a server test cannot tell one pg_notify from three:
+  // this one counts the statements.
+  test("a transaction's first append sends one pg_notify on the layer's channel and the later appends send none", async () => {
+    const statements: { text: string; params?: readonly unknown[] }[] = [];
+    let position = 0;
+    const appender: Appender = {
+      query: async (text, params) => { statements.push({ text, params }); return text.includes("INSERT") ? [{ position: String(++position) }] : []; },
+      key: [1, 2],
+      channel: "mesh_outbox_c1",
+      sequence: async () => "seq",
+      prepared: false,
+    };
+    for (const n of [1, 2, 3]) await appendEvent(appender, outboxRow(n));
+    const notifies = statements.filter((statement) => statement.text.includes("pg_notify"));
+    expect(notifies).toEqual([{ text: "SELECT pg_notify($1, '')", params: ["mesh_outbox_c1"] }]);
+    expect(statements.findIndex((statement) => statement.text.includes("pg_notify"))).toBeLessThan(statements.findIndex((statement) => statement.text.includes("INSERT")));
+    expect(statements.filter((statement) => statement.text.includes("INSERT"))).toHaveLength(3);
+  });
+});
+
 describe("onAppended without a server", () => {
   test("on a layer whose url is missing it throws nothing and returns the unsubscribe; the failure is reported once", async () => {
     const errors: unknown[][] = [];
@@ -191,14 +213,14 @@ describe("onAppended without a server", () => {
 
   test("a test schema is at most 51 bytes, so its NOTIFY channel mesh_outbox_<schema> fits Postgres's 63-byte names", () => {
     expect(() => postgresWith({ url: undefined }, { schema: "s".repeat(51) })).not.toThrow();
-    expect(() => postgresWith({ url: undefined }, { schema: "s".repeat(52) })).toThrow("A test schema must be a lowercase identifier");
+    expect(() => postgresWith({ url: undefined }, { schema: "s".repeat(52) })).toThrow("A test schema must be a lowercase identifier of at most 51 bytes (its NOTIFY channel mesh_outbox_<schema> must fit Postgres's 63), not \"" + "s".repeat(52) + "\"");
   });
 });
 
 describeServer("wake-ups through LISTEN/NOTIFY", () => {
   const database = testDatabase(tables);
 
-  test("onAppended fires within 1 s for a commit made on another layer object; once for a transaction with three appends", async () => {
+  test("onAppended fires within 1 s for a commit made on another layer object, and once for a transaction with three appends", async () => {
     const listening = await database.freshLayer();
     const writer = database.sibling(listening);
     let calls = 0;
@@ -296,20 +318,79 @@ describeServer("wake-ups through LISTEN/NOTIFY", () => {
     }
   }, 60_000);
 
-  test("after the listen connection is terminated, a commit is still delivered by the poll", async () => {
+  /** Terminates the layer's LISTEN backend; returns how many it ended. */
+  const terminateListen = async (layer: PostgresLayer): Promise<number> => {
+    const [row] = await database.admin.unsafe(`SELECT count(*)::int AS n FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND query ILIKE 'LISTEN%${schemaOf(layer)}%') AS killed`);
+    return row.n;
+  };
+  const listenBackends = async (layer: PostgresLayer): Promise<number> => {
+    const [row] = await database.admin.unsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND query ILIKE 'LISTEN%${schemaOf(layer)}%' AND pid <> pg_backend_pid()`);
+    return row.n;
+  };
+
+  // The layer leaves a dropped listen connection to Bun.SQL, which reconnects and acknowledges the LISTEN again; the
+  // layer wakes every listener on that second acknowledgement. Pinned on a real server, so a Bun upgrade that breaks
+  // either half fails here (the poll is 60 s, so it cannot deliver in time).
+  test("after the listen connection is terminated, Bun reconnects: the reconnect wakes the listener once and later commits wake it again", async () => {
+    const listening = await database.freshLayer();
+    const writer = database.sibling(listening);
+    let calls = 0;
+    const off = listening.onAppended(() => { calls++; });
+    try {
+      await Bun.sleep(200);
+      expect(await terminateListen(listening)).toBe(1);
+      await until(() => calls === 1, "the reconnect wakes the listener", 5000);
+      expect(await listenBackends(listening)).toBe(1);
+      await Bun.sleep(200);
+      expect(calls).toBe(1);
+      await writer.transaction(async (tx) => { await tx.appendEvent!(outboxRow(1)); });
+      expect(await until(() => calls === 2, "the commit wakes the listener", 2000)).toBeLessThan(2000);
+    } finally {
+      off();
+    }
+  }, 60_000);
+
+  test("with localBus({ pollInterval: 60_000 }), a commit after the listen connection was terminated is handled within 2 s", async () => {
     const layer = await database.freshLayer();
     const writer = database.sibling(layer);
     const seen: number[] = [];
     const module: EventsModule = { handlers: { process: { h: { events: [Paid], run(event: EventRecord<object>) { seen.push((event.payload as { n: number }).n); } } } } };
-    const binding = bindDomain({ Paid }, layer, { events: { bus: localBus({ pollInterval: 500 }), load: async () => module } }, new AsyncLocalStorage());
+    const binding = bindDomain({ Paid }, layer, { events: { bus: localBus({ pollInterval: 60_000 }), load: async () => module } }, new AsyncLocalStorage());
     const delivery = await binding.startDelivery();
     try {
       await Bun.sleep(300);
-      const [row] = await database.admin.unsafe(`SELECT count(*)::int AS n FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND query ILIKE 'LISTEN%${schemaOf(layer)}%') AS killed`);
-      expect(row.n).toBe(1);
+      expect(await terminateListen(layer)).toBe(1);
+      const waited = performance.now();
+      while (await listenBackends(layer) === 0) {
+        if (performance.now() - waited > 5000) throw new Error("Bun.SQL did not listen again within 5 s");
+        await Bun.sleep(50);
+      }
+      await Bun.sleep(100); // the new LISTEN is acknowledged
       await writer.transaction(async (tx) => { await tx.appendEvent!(paidRow(3)); });
-      await until(() => seen.length === 1, "the handler runs", 3000);
+      expect(await until(() => seen.length === 1, "the handler runs", 2000)).toBeLessThan(2000);
       expect(seen).toEqual([3]);
+    } finally {
+      await delivery.stop();
+    }
+  }, 60_000);
+
+  // The fallback: a wake-up that never arrives (here every wake-up is dropped, as if the LISTEN never came back) is
+  // caught by the bus's poll.
+  test("when no wake-up arrives after the listen connection is terminated, the poll (500 ms) still delivers the commit", async () => {
+    const layer = await database.freshLayer();
+    const writer = database.sibling(layer);
+    // The layer itself still listens (so there is a LISTEN to terminate); the bus is handed a copy whose wake-ups never reach it.
+    const deaf: PostgresLayer = { ...layer, onAppended: (_listener: () => void) => layer.onAppended(() => undefined) };
+    const seen: number[] = [];
+    const module: EventsModule = { handlers: { process: { h: { events: [Paid], run(event: EventRecord<object>) { seen.push((event.payload as { n: number }).n); } } } } };
+    const binding = bindDomain({ Paid }, deaf, { events: { bus: localBus({ pollInterval: 500 }), load: async () => module } }, new AsyncLocalStorage());
+    const delivery = await binding.startDelivery();
+    try {
+      await Bun.sleep(300);
+      expect(await terminateListen(layer)).toBe(1);
+      await writer.transaction(async (tx) => { await tx.appendEvent!(paidRow(4)); });
+      expect(await until(() => seen.length === 1, "the poll delivers it", 2000)).toBeGreaterThan(0);
+      expect(seen).toEqual([4]);
     } finally {
       await delivery.stop();
     }
