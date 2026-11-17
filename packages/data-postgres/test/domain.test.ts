@@ -1,7 +1,8 @@
 // data-sqlite's end-to-end domain suites (packages/data-sqlite/test/domain/) on Postgres: relationships, rollups,
-// has-many through, the action lifecycle, policies, validate-when and integer keys, which the conformance suites never
-// reach and where this adapter's commands differ from SQLite's (`returning`, offset without limit, row locks, `bigint`
-// and `count` mapping). Each layer runs in a schema of its own, cloned from the suite's generated tables.
+// has-many through, the action lifecycle, policies, validate-when and integer keys. They reach what the conformance
+// suites do not (compiled reads, loads and actions over generated tables) through the commands where this adapter differs
+// from SQLite's (`returning`, row locks, `bigint` and `count` mapping, and offset without limit through a compiled read).
+// Each layer runs in a schema of its own, cloned from the suite's generated tables.
 import { describe } from "bun:test";
 import type { DomainAdapter } from "../../data-sqlite/test/domain/harness.ts";
 import { keyTypesSuite } from "../../data-sqlite/test/domain/key-types.ts";

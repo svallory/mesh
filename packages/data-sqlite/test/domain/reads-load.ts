@@ -357,6 +357,9 @@ export function readsLoadSuite(adapter: DomainAdapter): void {
         const page = await mesh.readProject({ filter: { rank: { gte: 10 } }, sort: ["-rank"], limit: 2, offset: 1, load: ["taskCount", "tasks", "label"] }, { actor: alice });
         // ranks 60, 50, 40, 30 after the filter, newest first: the offset skips p6 and the limit keeps p5 and p4.
         expect(page.map((p: any) => [p.name, p.label, p.taskCount, p.tasks.length])).toEqual([["p5", "P5", 1, 1], ["p4", "P4", 0, 0]]);
+        // An offset with no limit skips the first rows and keeps all the rest.
+        const rest = await mesh.readProject({ filter: { rank: { gte: 10 } }, sort: ["-rank"], offset: 2, load: ["taskCount"] }, { actor: alice });
+        expect(rest.map((p: any) => [p.name, p.taskCount])).toEqual([["p4", 0], ["p3", 0]]);
         const none = await mesh.readProject({ filter: { rank: { gt: 1000 } }, load: ["tasks", "taskCount"] }, { actor: alice });
         expect(none).toEqual([]);
       } finally { await db.close(); }
