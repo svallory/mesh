@@ -9,13 +9,13 @@ description: "Declaring domain events, raising them with publish, the outbox tha
 Mesh is not released yet. These pages describe what Mesh will be.
 :::
 
-A **domain event** records a fact your domain decided: an invoice was paid, a task was completed. You declare it in a file of its own, an action raises it with a `publish` step, and Mesh writes it to the **outbox**, a table in your database, in the same transaction as the action's rows. An event is therefore stored if and only if the action commits: there is no window in which the row changed and the event was lost, or the event exists and the row did not change.
+A **domain event** records a fact your domain decided: an invoice was paid, a task was completed. You declare it in a file of its own or in the `events` section of the entity that owns it, an action raises it with a `publish` step, and Mesh writes it to the **outbox**, a table in your database, in the same transaction as the action's rows. An event is therefore stored if and only if the action commits: there is no window in which the row changed and the event was lost, or the event exists and the row did not change.
 
 After the commit an **event bus** delivers each event: to your **handlers**, functions in your application that run a command or make an effect outside the database, and to **live subscriptions**, a stream a client reads and acknowledges. One process per database delivers, and Mesh deletes a row once every reader has passed it, unless you keep every row. This page covers each part in that order: declaring an event, `publish`, the outbox, the bus, handlers, running the deliverer, subscriptions, how long rows are kept, the events module, `published()` and `readEvents`.
 
 ## Declaring an event
 
-An event is a file of its own under your domain folder, next to the entities that raise it. Its root line is `event :Name`, and each line under it is a field, written as an attribute line is:
+An event is a file of its own under your domain folder, next to the entities that raise it (or a declaration inside its owner's `events` section, [below](#declaring-events-where-they-belong)). Its root line is `event :Name`, and each line under it is a field, written as an attribute line is:
 
 ```mx "src/domain/billing/invoice-paid.mesh.mx"
 event :InvoicePaid
@@ -60,6 +60,36 @@ A listing line is the reference alone: an option or a line under it is an error,
 
 Owning an event decides who may raise it: once some entity lists an event, only the actions of the entities that list it may `publish` it ([Raising an event](#raising-an-event)). An event no entity lists may be published by any action. Owning a command restricts nothing: any entity's action may answer it with `on=`. Mesh generates the same code with or without these sections; they are recorded in `model.json`.
 
+An event or a command may also be declared in the section itself, with its field lines under it, instead of in a file of its own. One section may hold such declarations and listings side by side:
+
+```mx "src/domain/billing/invoice.mesh.mx"
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+  actions auto=[:read]
+    update on=VoidInvoice
+      input
+        string :reason nullable
+      do
+        publish=({ input }) => new InvoiceVoided({ invoiceId: &id, reason: input.reason })
+  policies
+    policy :anyone types=[:read, :update]
+      authorize-if=() => true
+  events
+    event :InvoiceVoided
+      uuid :invoiceId
+      string :reason nullable
+    InvoicePaid
+  commands
+    command :VoidInvoice
+      uuid :id
+      string :reason optional
+```
+
+A declaration written here means what it means in a file of its own: the same fields and options, the same class (`InvoiceVoided`), the same FQN (`billing.InvoiceVoided`) and the same generated file, and the entity owns it. Its file names it without an import, as `new InvoiceVoided(...)` and `on=VoidInvoice` do above. Another file imports it from the owner's file by its class name, `import { InvoiceVoided } from "./invoice.mesh.mx"`, or reads it as a member of a namespace import of that file (`billing.InvoiceVoided`); a namespace alias of the file then names its entity and its declarations alike (`billing.Invoice`, `billing.InvoiceVoided`). A name means one declaration in a file: an inline declaration named like the file's entity or like another inline declaration is `MESH_DUPLICATE_ENTITY`, and an import that binds the name of one of the file's own declarations is `MESH_DUPLICATE_IMPORT`. Each name an import takes is used where a reference of its kind is taken, so the entity `Invoice` imported from this file is no event in a `publish`, and the event `InvoiceVoided` is no entity in `entity=`.
+
 ## Raising an event
 
 An action raises an event with a `publish` step in its `do`. The step's function returns the event, a `new` of an event class the file imports:
@@ -89,7 +119,7 @@ The function must return an instance of a declared event. Anything else fails th
 
 ## Answering a command
 
-An event says what happened; a command asks for something to happen. A command is the fields of a request, declared in a file of its own as an event is:
+An event says what happened; a command asks for something to happen. A command is the fields of a request, declared in a file of its own as an event is (or inside its owner's `commands` section):
 
 ```mx "src/domain/billing/pay-invoice.mesh.mx"
 command :PayInvoice

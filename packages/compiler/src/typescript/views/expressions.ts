@@ -344,25 +344,37 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // A namespace import of an entity file names that file's entities under its alias, `billing` for
   // `billing.Invoice`: a function binds the alias to an object of their values, and the file declares a namespace of
   // their record types.
+  // A named import stands for the declaration its imported name names, never for the file: a file may declare an entity
+  // and the events and commands its owner sections declare inline.
   const targets = new Map<string, Entity>();
   const namespaceTargets = new Map<string, Entity[]>();
   for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh).flatMap((entry) => entry.identifiers)])) {
     const imported = entity.imports.find((entry) => !entry.helper && !entry.mesh && entry.identifiers.includes(local));
     const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
-    const target = document.entities.find((candidate) => candidate.file === file);
+    const name = imported ? imported.imported?.[imported.identifiers.indexOf(local)] ?? local : entity.name;
+    const target = document.entities.find((candidate) => candidate.file === file && (imported?.namespace || candidate.name === name));
     if (target && imported?.namespace) namespaceTargets.set(local, [target]);
-    else if (target) targets.set(local, target); // else the front end reported the import
+    else if (target) targets.set(local, target); // else the front end reported the import, or it names an event or command
   }
   // The events and commands the functions can name, by the name the file's imports bind (a named import's local, or a
-  // namespace import's alias): each is a class, imported from its own generated file under a local derived from its FQN.
+  // namespace import's alias) and the class name of each one the file declares inline: each is a class, imported from its
+  // own generated file under a local derived from its FQN.
   const declared = declarationsOf(document);
   const eventTargets = new Map<string, Declaration>();
-  const eventNamespaces = new Map<string, Declaration>();
+  const eventNamespaces = new Map<string, Declaration[]>();
+  for (const target of declared) if (target.file === entity.file) eventTargets.set(className(target), target);
   for (const entry of entity.imports) {
     if (entry.helper || entry.mesh) continue;
     const file = posix.normalize(posix.join(dirname(entity.file), entry.from));
-    const target = declared.find((candidate) => candidate.file === file);
-    if (target) for (const local of entry.identifiers) (entry.namespace ? eventNamespaces : eventTargets).set(local, target);
+    const inFile = declared.filter((candidate) => candidate.file === file);
+    if (entry.namespace) {
+      if (inFile.length) for (const local of entry.identifiers) eventNamespaces.set(local, inFile);
+      continue;
+    }
+    entry.identifiers.forEach((local, index) => {
+      const target = inFile.find((candidate) => className(candidate) === (entry.imported?.[index] ?? local));
+      if (target) eventTargets.set(local, target);
+    });
   }
   /** The entities a name the functions read stands for: the one it names, or each one of a namespace import's file. */
   const entitiesOf = (name: string): readonly Entity[] => namespaceTargets.get(name) ?? (targets.has(name) ? [targets.get(name)!] : []);
@@ -370,14 +382,14 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     // A class: bound to itself, typed as the class (`typeof`), and as a type it is its instance type, the class name.
     const event = eventTargets.get(name);
     if (event) return { value: classLocal(event), type: `typeof ${classLocal(event)}`, record: classLocal(event) };
-    const namespace = eventNamespaces.get(name);
-    if (namespace) return { value: `{ ${className(namespace)}: ${classLocal(namespace)} }`, type: `{ readonly ${className(namespace)}: typeof ${classLocal(namespace)} }`, record: "" };
-    const members = namespaceTargets.get(name);
-    if (members) {
+    // A namespace alias: one object of its file's entity values and classes (a file may declare both).
+    const classes = eventNamespaces.get(name) ?? [];
+    const members = namespaceTargets.get(name) ?? [];
+    if (classes.length || members.length) {
       const named = (local: (target: Entity) => string) => members.map((target) => `${typeName(target.name, target.position)}: ${local(target)}`);
       return {
-        value: `{ ${named((target) => entityLocal(target, "value")).join(", ")} }`,
-        type: `{ ${named((target) => entityLocal(target, "ReadOnly")).map((member) => `readonly ${member}`).join("; ")} }`,
+        value: `{ ${[...named((target) => entityLocal(target, "value")), ...classes.map((target) => `${className(target)}: ${classLocal(target)}`)].join(", ")} }`,
+        type: `{ ${[...named((target) => entityLocal(target, "ReadOnly")), ...classes.map((target) => `${className(target)}: typeof ${classLocal(target)}`)].map((member) => `readonly ${member}`).join("; ")} }`,
         record: "",
       };
     }
@@ -477,8 +489,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     classFrom.set(from, found);
   };
   for (const name of [...new Set([...valued, ...recordTypes, ...namespaceTypes])].sort()) {
-    const target = eventTargets.get(name) ?? eventNamespaces.get(name);
-    if (target) classOf(target, valued.has(name));
+    const event = eventTargets.get(name);
+    for (const target of event ? [event] : eventNamespaces.get(name) ?? []) classOf(target, valued.has(name));
   }
   const byModule = new Map<string, string[]>();
   for (const name of [...used, ...typed].filter((n) => helperFrom.has(n)).sort()) {
@@ -544,10 +556,10 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     ],
     entityNamespaces: [...namespaceTypes].sort().map((name) => ({
       name,
-      members: eventNamespaces.has(name)
-        ? `export type ${className(eventNamespaces.get(name)!)} = ${classLocal(eventNamespaces.get(name)!)};`
-        : namespaceTargets.get(name)!
-          .map((target) => `export type ${typeName(target.name, target.position)} = ${entityLocal(target, "Record")};`).join(" "),
+      members: [
+        ...(namespaceTargets.get(name) ?? []).map((target) => `export type ${typeName(target.name, target.position)} = ${entityLocal(target, "Record")};`),
+        ...(eventNamespaces.get(name) ?? []).map((target) => `export type ${className(target)} = ${classLocal(target)};`),
+      ].join(" "),
     })),
     shadowsStructuredClone,
     scopeName,

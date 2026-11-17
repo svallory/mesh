@@ -404,6 +404,7 @@ function buildEntity(
   folder: string,
   declaredFile: (from: string) => DeclaredFile | undefined,
   declaredNames: Map<CommandRef | DeclarationRef, string>,
+  inline: { events: EventDeclaration[]; commands: CommandDeclaration[] },
 ): Entity {
   const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
   const sections = tags(root.children);
@@ -464,8 +465,30 @@ function buildEntity(
   const importNames = new Map<string, Import>();
   const duplicates = new Set<string>();
   const bindings: { entry: Import; index: number; name: string }[] = [];
+  // The file's own declarations, which it names without an import: its entity, and each event and command declared inline
+  // in its owner sections (`notes/spec/events-and-commands.md`, "Names"), read from what the file declares so that a
+  // function written above the section sees them.
+  const self = `./${basename(file)}`;
+  const inlineDeclared = (declaredFile(self)?.declares ?? []).filter((declaration) => declaration.kind !== "entity");
+  const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
+  const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
+  const ownKind = new Map<string, DeclarationKind>([...inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse(), [entity.name, "entity"]]);
   for (const entry of entity.imports)
     for (const [index, name] of entry.identifiers.entries()) {
+      // A name the file's own declaration takes, bound again by an import, is an error at the import's binding, which binds
+      // nothing: the name stays the declaration's (`notes/spec/imports-and-scope.md`). `Mesh` under the entity's name is
+      // reported below, as it always was. An import of the file itself under the declared name binds that very declaration.
+      const own = ownKind.get(name);
+      const itself = !entry.namespace && resolve("/", dirname(file), entry.from) === resolve("/", file) && (entry.imported?.[index] ?? name) === name;
+      if (own && !itself && !(entry.mesh && own === "entity")) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+        fail(
+          "MESH_DUPLICATE_IMPORT",
+          `Duplicate import identifier ${name}: the file declares the ${own} ${name} too`,
+          localOffset === undefined ? entry.position : at(localOffset),
+        );
+        continue;
+      }
       if (importNames.has(name)) {
         const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
         fail(
@@ -510,23 +533,42 @@ function buildEntity(
     }
   }
   // What a reference to another file's declaration resolves against: `entity=List`, `entity=billing.Invoice`.
-  const references: ReferenceScope = { imports: importNames, duplicates, own: { name: entity.name, from: `./${basename(file)}` } };
+  const references: ReferenceScope = { imports: importNames, duplicates, own: [{ name: entity.name, from: self }] };
   const entityKind = referenceKind("entity", declaredFile);
-  // An event is never the file's own declaration (the file declares an entity), so only an import names one.
-  const eventReferences: ReferenceScope = { imports: importNames, duplicates };
+  // An event is the file's own when an owner section of the file declares it inline; any other is named by an import.
+  const eventReferences: ReferenceScope = { imports: importNames, duplicates, own: ownEvents };
   const eventKind = referenceKind("event", declaredFile);
-  // `on=PayInvoice` or `on=billing.PayInvoice`: a command is never the file's own declaration either.
+  // `on=PayInvoice` or `on=billing.PayInvoice`: an import's command, or one the file's `commands` section declares.
+  const commandReferences: ReferenceScope = { imports: importNames, duplicates, own: ownCommands };
   const commandKind = referenceKind("command", declaredFile);
   // A listing line of the `events` section names an event as a `publish` does, and an unknown one is no failed publish.
   const listedEventKind = referenceKind("event", declaredFile, "MESH_UNKNOWN_EVENT");
-  // The kind of file each import binds: an entity's, an event's or a command's (an import no file of the project answers is an entity's, and reported).
-  const importedKind = (entry: Import): DeclarationKind | undefined => (entry.helper || entry.mesh ? undefined : declaredFile(entry.from)?.kind ?? "entity");
-  const boundTo = (kind: DeclarationKind) => bindings.filter(({ entry }) => importedKind(entry) === kind).map(({ name }) => name);
+  // The kinds of declaration each binding stands for. A named import stands for the declaration its imported name names
+  // (one kind); a namespace alias for every kind its file declares, so the alias of a file that declares an entity and
+  // inline events is in both sets. An import no file of the project answers is an entity's (it is reported), and a named
+  // import of a name its file does not declare keeps the file's kind (the import check reports it).
+  const boundKinds = (entry: Import, index: number): readonly DeclarationKind[] => {
+    if (entry.helper || entry.mesh) return [];
+    const target = declaredFile(entry.from);
+    if (!target) return ["entity"];
+    if (entry.namespace) return [...new Set(target.declares.map(({ kind }) => kind))];
+    const imported = entry.imported?.[index] ?? entry.identifiers[index]!;
+    return [target.declares.find(({ name }) => name === imported)?.kind ?? target.kind];
+  };
+  const boundTo = (kind: DeclarationKind) => bindings.filter(({ entry, index }) => boundKinds(entry, index).includes(kind)).map(({ name }) => name);
   // The entities a function in this file can name: its own and each one it imports, by the name the file gives it.
   const entities = new Set([entity.name, ...boundTo("entity")]);
-  // The events and commands it can name: each one it imports (an event file's name is never an entity's), by the name the file gives it.
-  const events = new Set(boundTo("event"));
-  const commands = new Set(boundTo("command"));
+  // The events and commands it can name: each one it imports and each one its owner sections declare, by its name here.
+  const events = new Set([...boundTo("event"), ...ownEvents.map(({ name }) => name)]);
+  const commands = new Set([...boundTo("command"), ...ownCommands.map(({ name }) => name)]);
+  // `billing.Nope` through the alias of a file that declares an entity and events or commands: a member of any kind it declares.
+  const memberKind: ReferenceKind = {
+    noun: "entity, event or command",
+    declares: (from) => hasMeshExtension(from) && declaredFile(from) !== undefined,
+    names: (from) => declaredFile(from)?.declares.map(({ name }) => name),
+    kindOf: (from, name) => declaredFile(from)?.declares.find((declaration) => declaration.name === name)?.kind,
+    code: "MESH_UNKNOWN_ENTITY",
+  };
   // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
   // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
   const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
@@ -548,10 +590,11 @@ function buildEntity(
         ),
       {
         helpers: helperImports,
-        imported: new Set(importNames.keys()),
+        imported: new Set([...importNames.keys(), ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
         entities,
         namespaces,
         reference: (written) => resolveReference(written, references, entityKind),
+        memberReference: (written) => resolveReference(written, references, memberKind),
         events,
         commands,
         eventReference: (written) => resolveReference(written, eventReferences, eventKind),
@@ -908,7 +951,7 @@ function buildEntity(
       // in lower case, whatever name this file binds (`notes/spec/events-and-commands.md`, "Answering a command").
       const onAttr = attr(tag, "on");
       const written = onAttr ? writtenReference(nodeOf(onAttr)) : undefined;
-      const answered = written ? resolveReference(written, eventReferences, commandKind) : undefined;
+      const answered = written ? resolveReference(written, commandReferences, commandKind) : undefined;
       if (answered && !answered.ok && "code" in answered) fail(answered.code, answered.message, at(answered.offset), answered.fix);
       // The command's class name, whatever name this file binds; none for a file the project lacks (the import is reported).
       const commandClass = answered?.ok && declaredFile(answered.from) ? answered.declared : undefined;
@@ -1001,14 +1044,40 @@ function buildEntity(
       position: pos(tag),
     } satisfies Policy);
   }
-  // The owner sections (`notes/spec/events-and-commands.md`, "Where a declaration lives"): each line lists an event or a
-  // command an import of the file names, `InvoicePaid` or `notices.InvoiceOverdue`, resolved as `entity=` is.
+  // The owner sections (`notes/spec/events-and-commands.md`, "Where a declaration lives"): each line declares an event or a
+  // command inline (`event :InvoiceVoided` with its fields), or lists one an import of the file names, `InvoicePaid` or
+  // `notices.InvoiceOverdue`, resolved as `entity=` is. An inline declaration means what the same declaration in a file of
+  // its own means (the same fields, class and FQN); the file names it without an import.
+  // Each inline class name, to what first took it: a second declaration of one name in the file gives it two meanings.
+  const classNames = new Map<string, string>([[entity.name, "entity"]]);
   for (const name of ["events", "commands"] as const) {
     const noun = name === "events" ? "event" : "command";
     const kind = name === "events" ? listedEventKind : commandKind;
+    const scope = name === "events" ? eventReferences : commandReferences;
     const listed: DeclarationRef[] = [];
     const seen = new Set<string>();
     for (const line of tags(section(name)?.children ?? [])) {
+      if (line.name === noun) {
+        const declaration = buildDeclarationBody(line, source, file, diagnostics, module);
+        const className = classNameOf(declaration.name);
+        const taken = classNames.get(className);
+        if (taken !== undefined) {
+          fail("MESH_DUPLICATE_ENTITY", `Duplicate name ${className} in ${file}: the ${taken} ${className} and the ${noun} ${className} would be one class name ${declaration.fqn}`, line, "rename one");
+          continue;
+        }
+        classNames.set(className, noun);
+        const key = `${resolve("/", file)}#${className}`;
+        if (seen.has(key)) {
+          fail("MESH_DUPLICATE_MEMBER", `${className} is listed twice in the ${name} section of ${entity.fqn}`, line, "remove one");
+          continue;
+        }
+        seen.add(key);
+        (noun === "event" ? inline.events : inline.commands).push(declaration);
+        const ref: DeclarationRef = { identifier: className, from: self, fqn: "", position: pos(line) };
+        declaredNames.set(ref, className);
+        listed.push(ref);
+        continue;
+      }
       // MX lowers a parameter on a wildcard line, and a wildcard entry takes no `analyze` hook: the contracts' wrapper is not reached.
       if (line.params.length || line.var) {
         fail("MESH_SYNTAX", `\`${line.name}\`: tag parameters and variable bindings are not entity declarations`, line);
@@ -1019,12 +1088,13 @@ function buildEntity(
         fail(kind.code, `${line.name} is not an imported ${noun}: a listing is an imported identifier (\`${noun === "event" ? "InvoicePaid" : "PayInvoice"}\`) or a member of a namespace import (\`${noun === "event" ? "notices.InvoiceOverdue" : "billing.PayInvoice"}\`)`, line);
         continue;
       }
-      const resolved = resolveReference(written, eventReferences, kind);
+      const resolved = resolveReference(written, scope, kind);
       if (!resolved.ok) {
         if ("code" in resolved) fail(resolved.code, resolved.message, at(resolved.offset), resolved.fix);
         continue;
       }
-      // One declaration listed twice, under one name or two (an alias, a namespace member): the second line says nothing.
+      // One declaration listed twice, under one name or two (an alias, a namespace member), or listed where the section
+      // declares it: the later line says nothing.
       const key = `${resolve("/", dirname(file), resolved.from)}#${resolved.declared}`;
       if (seen.has(key)) {
         fail("MESH_DUPLICATE_MEMBER", `${referenceText(written)} is listed twice in the ${name} section of ${entity.fqn}`, line, "remove one");
@@ -1185,13 +1255,8 @@ function buildDeclaration(
   diagnostics: Diagnostic[],
   folder: string,
 ): EventDeclaration | CommandDeclaration {
-  const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
-  const name = declaredName(root);
+  const { at, fail } = attributeReaders(source, file, diagnostics);
   const { module, bareUnderscore } = moduleOfFolder(folder);
-  // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
-  // `invoice_paid` is the class `InvoicePaid` (`notes/spec/names.md`); a name that makes no identifier (`_1`) is an error.
-  if (!isClassName(classNameOf(name)))
-    fail("MESH_NAME", `${root.name === "event" ? "Event" : "Command"} :${name} makes no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter, such as :${root.name === "event" ? "InvoicePaid" : "PayInvoice"}`, root);
   if (bareUnderscore)
     fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
   for (const segment of module ? module.split("/") : []) {
@@ -1200,6 +1265,27 @@ function buildDeclaration(
   }
   for (const entry of irImports)
     fail("MESH_UNKNOWN_IMPORT", `${root.name === "event" ? "An event" : "A command"} file takes no import: its fields are attribute lines, whose kinds are attribute types`, at(entry.span.sourceStart), "remove the import");
+  return buildDeclarationBody(root, source, file, diagnostics, module);
+}
+
+/**
+ * An event's or a command's name and field lines, wherever the line is: the root of a file of its own (`buildDeclaration`,
+ * which checks the file's folder and imports first), or an inline declaration of an owner's section, whose file the owner
+ * already checked and whose imports are the owner file's.
+ */
+function buildDeclarationBody(
+  root: Tag,
+  source: string,
+  file: string,
+  diagnostics: Diagnostic[],
+  module: string,
+): EventDeclaration | CommandDeclaration {
+  const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const name = declaredName(root);
+  // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
+  // `invoice_paid` is the class `InvoicePaid` (`notes/spec/names.md`); a name that makes no identifier (`_1`) is an error.
+  if (!isClassName(classNameOf(name)))
+    fail("MESH_NAME", `${root.name === "event" ? "Event" : "Command"} :${name} makes no class name: Mesh drops each \`_\` and capitalises the letter after it, so the name needs a letter, such as :${root.name === "event" ? "InvoicePaid" : "PayInvoice"}`, root);
   const fields: Field[] = [];
   const names = new Set<string>();
   for (const tag of tags(root.children)) {
@@ -1416,10 +1502,22 @@ export function buildModel(project: ProjectDescription): BuildResult {
     if (!parsed.ir) continue;
     parsedFiles.push({ input, path, ir: parsed.ir });
     // The root line decides what the file declares (`notes/spec/file-kinds.md`): its kind, and the names of the roots of that kind,
-    // each as Mesh converts it (`entity :todo` declares `Todo`): the name an import of the file takes.
+    // each as Mesh converts it (`entity :todo` declares `Todo`): the name an import of the file takes. Then each event and
+    // command an entity's owner sections declare inline, in written order, by class name: an import takes those too.
     const roots = tags(parsed.ir.body);
     const kind = DECLARING_ROOTS.has(roots[0]?.name ?? "") ? roots[0]!.name as DeclarationKind : "entity";
-    declaredByPath.set(resolve(rootPath, path.file), { kind, declares: roots.filter((root) => root.name === kind).flatMap((root) => atomOf(attr(root, "name"))?.name ?? []).map((name) => ({ kind, name: classNameOf(name) })) });
+    const named = (tag: Tag) => atomOf(attr(tag, "name"))?.name ?? [];
+    const ofKind = roots.filter((root) => root.name === kind);
+    declaredByPath.set(resolve(rootPath, path.file), {
+      kind,
+      declares: [
+        ...ofKind.flatMap(named).map((name) => ({ kind, name: classNameOf(name) })),
+        ...(kind === "entity" ? ofKind : []).flatMap((root) =>
+          tags(root.children).filter((section) => section.name === "events" || section.name === "commands").flatMap((section) =>
+            tags(section.children).filter((line) => line.name === (section.name === "events" ? "event" : "command"))
+              .flatMap((line) => [named(line)].flat().map((name) => ({ kind: line.name as DeclarationKind, name: classNameOf(name) }))))),
+      ],
+    });
   }
   for (const { input, path, ir } of parsedFiles) {
     const file = path.file;
@@ -1454,6 +1552,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             normalizePath(relative(domainRoot, dirname(path.absolute))),
             declared,
             declaredNames,
+            { events, commands },
           ),
         );
       } catch (cause) {
@@ -1495,8 +1594,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
     for (const [refs, list] of [[entity.events, events], [entity.commands, commands]] as const)
       for (const ref of refs ?? []) ref.fqn = declarationAt(entity, ref, list)?.fqn ?? "";
   }
-  // What each file of the project declares, for an import to check its name against.
-  const declarations: { name: string; file: string }[] = [...document.entities, ...[...events, ...commands].map(({ name, file }) => ({ name: classNameOf(name), file }))];
+  // The files whose root was built: a file that failed to build says nothing about what an import of it may name.
+  const builtFiles = new Set([...document.entities, ...events, ...commands].map(({ file }) => resolve(rootPath, file)));
   const identities = new Map<string, string>();
   for (const entity of document.entities) {
     if (identities.has(entity.fqn))
@@ -1511,13 +1610,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
     for (const imported of entity.imports) {
       if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
-      const targetEntity = declarations.find((candidate) => resolve(rootPath, candidate.file) === target);
-      if (hasMeshExtension(imported.from) && targetEntity) {
+      // What the imported file declares, for a named import to check its name against: an entity, event or command file's
+      // root, and each event and command an entity file's owner sections declare inline.
+      const declares = builtFiles.has(target) ? declaredByPath.get(target)?.declares : undefined;
+      if (hasMeshExtension(imported.from) && declares?.length) {
         // A namespace import names the file, not what it declares: its references are checked where they are written.
         for (const binding of imported.namespace ? [] : importDetails.get(imported)?.bindings ?? []) {
-          if (binding.imported !== targetEntity.name) {
+          if (!declares.some(({ name }) => name === binding.imported)) {
             const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
-            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares \`${targetEntity.name}\``, positionAt(source, entity.file, binding.offset)));
+            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares ${[...new Set(declares.map(({ name }) => `\`${name}\``))].join(", ")}`, positionAt(source, entity.file, binding.offset)));
           }
         }
       }

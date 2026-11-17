@@ -29,7 +29,7 @@ export interface ConvertContext {
   members?: MemberForwards;
   /** Imported names that are helper functions (not entities) and the module each comes from. */
   helpers: ReadonlyMap<string, string>;
-  /** Every name the file imports, helpers and entities. */
+  /** Every name the file binds besides its own entity: its imports (helpers, entities, events, commands) and its inline declarations. */
   imported: ReadonlySet<string>;
   /**
    * The entities the file names: its own and the ones it imports, by the name the file gives them, and the alias
@@ -43,16 +43,22 @@ export interface ConvertContext {
   namespaces?: ReadonlySet<string>;
   /** Resolves `billing.Invoice`, a member of an entity file's namespace import, as `entity=` does (`resolveReference`). */
   reference?: (written: WrittenReference) => Resolution;
+  /**
+   * Resolves `billing.X` as a member of any kind the namespace import's file declares (an entity, an event or a command),
+   * for an alias that is in `entities` and in `events` or `commands`: a file that declares an entity and inline declarations.
+   */
+  memberReference?: (written: WrittenReference) => Resolution;
   /** The names two imports bind: `MESH_DUPLICATE_IMPORT` reports them, so a use of one reports nothing more. */
   duplicates?: ReadonlySet<string>;
   /** The names the file imports `Mesh` under, from "meshfw": `Mesh`, or its alias. */
   mesh?: ReadonlySet<string>;
   /**
-   * The names the file's imports bind to an event file: a named import's local, or a namespace import's alias (a function
-   * names `InvoicePaid`, or `billing.InvoicePaid` through the alias `billing`). Never in `entities`.
+   * The names the file binds to an event: a named import's local, a namespace import's alias of a file that declares one (a
+   * function names `InvoicePaid`, or `billing.InvoicePaid` through the alias `billing`), and the class name of each event
+   * the file declares inline. An alias of a file that declares an entity too is also in `entities`.
    */
   events?: ReadonlySet<string>;
-  /** The same for command files. A function may name a command (`new PayInvoice({ ... })`); only an event may be published. */
+  /** The same for commands. A function may name a command (`new PayInvoice({ ... })`); only an event may be published. */
   commands?: ReadonlySet<string>;
   /** Resolves `billing.InvoicePaid` or `InvoicePaid` as an event, as `entity=` resolves an entity (`resolveReference`; `MESH_PUBLISH` is its code). */
   eventReference?: (written: WrittenReference) => Resolution;
@@ -516,7 +522,9 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           : parent?.computed && member?.type === "StringLiteral" ? String(member.value) : undefined;
         if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object"
           && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && memberName !== undefined) {
-          const resolved = ctx.reference({ qualifier: { name: n.name!, offset: start(n) }, name: memberName, offset: start(member!) });
+          // An alias whose file also declares events or commands: `billing.InvoiceVoided` is a member as `billing.Invoice` is.
+          const merged = ctx.events?.has(n.name!) || ctx.commands?.has(n.name!);
+          const resolved = (merged && ctx.memberReference ? ctx.memberReference : ctx.reference)({ qualifier: { name: n.name!, offset: start(n) }, name: memberName, offset: start(member!) });
           if (!resolved.ok && "code" in resolved)
             ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
         }
