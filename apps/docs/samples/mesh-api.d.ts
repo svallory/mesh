@@ -1084,7 +1084,7 @@ declare module "#mesh/domain/billing" {
 }
 
 // The manifest of the Surfaces page's example, `src/surfaces/public/public.mesh.mx`: `surface :public` exposing the
-// Todo module's `Todo` as `todos` with `fields=[:id, :title, :done]` and the actions `read` and `complete`.
+// Todo module's `Todo` as `todos` with `fields=[:id, :title, :done]` and the actions `read` and `complete`, and its `publishes` section.
 declare module "#mesh/surfaces/public" {
   import type { Projected, Surface, SurfaceAction } from "@meshfw/runtime";
   import type { Todo } from "#mesh/domain/todo";
