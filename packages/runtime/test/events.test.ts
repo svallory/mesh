@@ -6,6 +6,7 @@ import {
   subscribe, Mesh,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
+import { notifyPublished, onPublished } from "../src/events.ts";
 import type { DataLayer, DataOperations, Declaration, EventsConfig, OutboxRow } from "@meshfw/runtime";
 
 /** An event class shaped as `mesh build` generates one: a private brand, the declaration under DECLARATION, frozen instances. */
@@ -45,9 +46,13 @@ class PayInvoice {
   };
 }
 
-/** An in-memory layer with the outbox operations: one transaction at a time, joined by nested calls, rolled back on a throw. */
-function memoryLayer(options: { outbox?: boolean } = {}) {
-  const state = { rows: [] as OutboxRow[], deletedThrough: 0, highest: 0 };
+/**
+ * An in-memory layer with the outbox operations: one transaction at a time, joined by nested calls, rolled back on a throw.
+ * `state.settled` (undefined: `highest`) withholds the rows above it, as a server dialect does while an append is open;
+ * `appended` gives the layer `onAppended`, whose listeners the test calls through `state.listeners`.
+ */
+function memoryLayer(options: { outbox?: boolean; appended?: boolean } = {}) {
+  const state = { rows: [] as OutboxRow[], deletedThrough: 0, highest: 0, settled: undefined as number | undefined, listeners: new Set<() => void>() };
   let open = false;
   const refuse = async (): Promise<never> => { throw new Error("not used by these tests"); };
   const ops: DataOperations = {
@@ -74,9 +79,11 @@ function memoryLayer(options: { outbox?: boolean } = {}) {
     ...(options.outbox === false ? {} : {
       readOutbox: async (after: number, limit: number) => {
         if (open) throw new FrameworkError("The outbox cannot be read inside a transaction: a transaction's own events come from published() (from #mesh)");
-        return { rows: state.rows.filter((row) => row.position > after).slice(0, limit), deletedThrough: state.deletedThrough, highest: state.highest };
+        const settled = state.settled ?? state.highest;
+        return { rows: state.rows.filter((row) => row.position > after && row.position <= settled).slice(0, limit), deletedThrough: state.deletedThrough, highest: state.highest, settled };
       },
     }),
+    ...(options.appended ? { onAppended: (listener: () => void) => { state.listeners.add(listener); return () => { state.listeners.delete(listener); }; } } : {}),
   };
   return { layer, state, ops };
 }
@@ -286,6 +293,28 @@ describe("published() and readEvents through a binding", () => {
     expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3, highest: 3 });
   });
 
+  test("readEvents' cursor on a short page is the settled position when no row reaches it, and the last row on a full page", async () => {
+    const { frame, binding, publish, state } = setup();
+    const read = (query = {}) => binding.run(() => readEvents(frame, undefined, query));
+    await publish(paid("a"));
+    await publish(paid("b"));
+    await publish(paid("c"));
+    // A rolled-back append at the tail: position 4 was taken and will never commit, so 4 is settled with no row.
+    state.highest = 4;
+    expect(await read()).toMatchObject({ cursor: 4, highest: 4 });
+    expect((await read()).events.map((record) => record.position)).toEqual([1, 2, 3]);
+    expect(await read({ after: 4 })).toEqual({ events: [], cursor: 4, highest: 4 });
+    // A full page ends at its last row, never at settled.
+    expect(await read({ limit: 2 })).toMatchObject({ cursor: 2, highest: 4 });
+    expect(await read({ limit: 3 })).toMatchObject({ cursor: 3, highest: 4 });
+    // An append still open at 2 withholds 2 and 3: the cursor stops at settled, below highest.
+    state.settled = 1;
+    expect(await read()).toMatchObject({ cursor: 1, highest: 4 });
+    expect((await read()).events.map((record) => record.position)).toEqual([1]);
+    // A cursor already above settled stays where it is.
+    expect(await read({ after: 3 })).toEqual({ events: [], cursor: 3, highest: 4 });
+  });
+
   test("readEvents rebuilds each event as an instance of its class, its dates revived, and moves the cursor over filtered rows", async () => {
     const { frame, binding, publish } = setup();
     await binding.transaction(async () => {
@@ -354,6 +383,37 @@ describe("published() and readEvents through a binding", () => {
       "The project declares the event billing.InvoicePaid, and the data layer has no outbox (no readOutbox): a project that declares an event needs a data adapter with the outbox operations appendEvent, readOutbox and deleteOutboxThrough",
     );
     expect(() => bindDomain({ notAClass: 1 }, noOutbox as DataLayer, {}, new AsyncLocalStorage())).not.toThrow();
+  });
+});
+
+describe("onPublished", () => {
+  test("on a layer with onAppended, a listener is registered there too, and the unsubscribe removes both", async () => {
+    const { layer, state } = memoryLayer({ appended: true });
+    const named = Object.assign(layer, { database: "memory #appended" });
+    let calls = 0;
+    const stop = onPublished(named, () => { calls++; });
+    expect(state.listeners.size).toBe(1);
+    for (const listener of state.listeners) listener();
+    expect(calls).toBe(1);
+    // A commit that published in this process still wakes the listener through core.
+    notifyPublished(named);
+    expect(calls).toBe(2);
+    stop();
+    expect(state.listeners.size).toBe(0);
+    notifyPublished(named);
+    expect(calls).toBe(2);
+  });
+
+  test("on a layer without onAppended, only commits in this process wake the listener", async () => {
+    const { layer } = memoryLayer();
+    const named = Object.assign(layer, { database: "memory #plain" });
+    let calls = 0;
+    const stop = onPublished(named, () => { calls++; });
+    notifyPublished(named);
+    expect(calls).toBe(1);
+    stop();
+    notifyPublished(named);
+    expect(calls).toBe(1);
   });
 });
 

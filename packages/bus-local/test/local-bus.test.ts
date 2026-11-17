@@ -451,7 +451,7 @@ describe("started delivery", () => {
     const core = fakeCore({
       handlers,
       position: async (handler: { name: string }) => { reads.push(handler.name); return handler.name === "a" ? 0 : 5; },
-      rows: async (after: number) => { if (after === 0) throw deleted; return { rows: [], deletedThrough: 5, highest: 5 }; },
+      rows: async (after: number) => { if (after === 0) throw deleted; return { rows: [], deletedThrough: 5, highest: 5, settled: 5 }; },
       deletionPass: async () => { passes++; },
       onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
     });

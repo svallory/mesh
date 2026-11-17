@@ -285,7 +285,7 @@ test("the binary wrapper builds the project in a real process", async () => {
 describe("the outbox", () => {
   type Layer = {
     transaction<T>(fn: (tx: { insert(table: unknown, row: unknown): Promise<unknown>; deleteOutboxThrough(position: number): Promise<number> }) => Promise<T>): Promise<T>;
-    readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number }>;
+    readOutbox(after: number, limit: number): Promise<{ rows: { position: number; name: string; entity: string; action: string; key: unknown; causedBy: string | null; metadata: unknown; payload: unknown; occurredAt: Date; id: string }[]; deletedThrough: number; highest: number; settled: number }>;
     refuseIfFailed(): boolean;
     close(): Promise<void>;
   };
@@ -325,7 +325,7 @@ describe("the outbox", () => {
     expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
     const { layer } = await open();
     try {
-      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 0, highest: 0 });
+      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 0, highest: 0, settled: 0 });
     } finally { await layer.close(); }
   });
 
@@ -589,7 +589,7 @@ describe("the outbox", () => {
       expect(seen).toEqual(["1 billing.InvoicePaid", "2 sales.refunds.RefundIssued"]);
       expect(records.map((record) => record.causedBy)).toEqual([null, records[0]!.id]);
       // every handler is past both rows under keep "until-delivered", so the deletion pass removed them
-      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 2, highest: 2 });
+      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 2, highest: 2, settled: 2 });
       const progress = await layer.transaction(async (tx) => (tx as unknown as { readHandlerProgress(): Promise<unknown> }).readHandlerProgress());
       expect(progress).toEqual([
         { name: "log", kind: "listen", position: 2, events: ["billing.InvoicePaid", "sales.refunds.RefundIssued"], generation: 3 },
@@ -609,7 +609,7 @@ describe("the outbox", () => {
       await deliver();
       await deliver();
       expect(seen.slice(3)).toEqual(["4 sales.refunds.RefundIssued"]);
-      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 4, highest: 4 });
+      expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 4, highest: 4, settled: 4 });
     } finally { await layer.close(); }
   });
 

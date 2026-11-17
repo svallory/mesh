@@ -115,7 +115,7 @@ describe("acceptance 9 with localBus", () => {
       // the refund's event, published by the process handler after the listen handler's turn, comes in the next round
       await binding.deliver();
       expect(events.seen).toEqual(["1 billing.InvoicePaid", "2 billing.RefundIssued"]);
-      expect(await layer.readOutbox!(0, 10)).toEqual({ rows: [], deletedThrough: 2, highest: 2 });
+      expect(await layer.readOutbox!(0, 10)).toEqual({ rows: [], deletedThrough: 2, highest: 2, settled: 2 });
       events.control.failPay = true;
       await binding.run(pay);
       const started = Date.now();
@@ -128,7 +128,7 @@ describe("acceptance 9 with localBus", () => {
       await binding.deliver();
       await binding.deliver();
       expect(events.seen.slice(2)).toEqual(["3 billing.InvoicePaid", "4 billing.RefundIssued"]);
-      expect(await layer.readOutbox!(0, 10)).toEqual({ rows: [], deletedThrough: 4, highest: 4 });
+      expect(await layer.readOutbox!(0, 10)).toEqual({ rows: [], deletedThrough: 4, highest: 4, settled: 4 });
     } finally { await layer.close(); }
   });
 

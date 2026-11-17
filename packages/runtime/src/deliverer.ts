@@ -524,7 +524,7 @@ class Deliverer {
         const state = await this.#checkGeneration(ops);
         const handlers = await ops.readHandlerProgress();
         const subscriptions = await ops.readSubscriptionProgress();
-        const end = page === null || from === null ? null : page.rows.length === timing.batch ? page.rows.at(-1)!.position : Math.max(page.highest, page.rows.at(-1)?.position ?? from);
+        const end = page === null || from === null ? null : page.rows.length === timing.batch ? page.rows.at(-1)!.position : Math.max(page.settled, page.rows.at(-1)?.position ?? from);
         /** The position a reader at `position` moves to over the page's rows it passes (`passes`), stopping at an undeclared row. */
         const moved = (position: number, passes: (row: OutboxRow) => boolean): number => {
           if (page === null || end === null || from === null || position < from) return position;

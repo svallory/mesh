@@ -130,7 +130,11 @@ export interface BusCore {
   subscriptions(): readonly LiveSubscription[];
   /** Core's deletion pass, by `keep`, in batches; takes no position. A bus calls it after each round. */
   deletionPass(): Promise<void>;
-  /** Call `listener` after each outermost commit in this process that published on this database. Returns the unsubscribe. */
+  /**
+   * Call `listener` after each outermost commit in this process that published on this database, and, when the data
+   * layer reports them (`DataLayer.onAppended`), after such commits in other processes; best effort, so a bus keeps its
+   * poll. Returns the unsubscribe.
+   */
   onPublished(listener: () => void): () => void;
   /** Call `listener` once the claim is lost; the instance must make no further call into core. Returns the unsubscribe. */
   onClaimLost(listener: (error: Error) => void): () => void;

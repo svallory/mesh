@@ -116,6 +116,8 @@ declare module "@meshfw/runtime" {
     readonly rows: readonly OutboxRow[];
     readonly deletedThrough: number;
     readonly highest: number;
+    /** Every position at or below it is final (committed, or never to commit); a reader past a short page moves no further. SQLite: `highest`. */
+    readonly settled: number;
   }
 
   /** What a subscription filters on, stored with its row. */
@@ -156,6 +158,7 @@ declare module "@meshfw/runtime" {
     subscriptions(): readonly LiveSubscription[];
     /** Core's deletion pass, by `keep`; a bus calls it after each round. */
     deletionPass(): Promise<void>;
+    /** After each commit that published in this process, and in other processes when the data layer reports them; best effort, so a bus keeps its poll. */
     onPublished(listener: () => void): () => void;
     onClaimLost(listener: (error: Error) => void): () => void;
   }
