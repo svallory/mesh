@@ -617,17 +617,72 @@ test("scratch dirs: the prefix guard reads every mkdtemp call in the test direct
       'await generate(".reads-load-plain-", {});',
     ].join("\n"));
     put("packages/x/test/orphan.ts", "export const make = (name: string) => mkdtemp(join(import.meta.dir, name));");
+    // Member calls, aliased imports and other source extensions are read too.
+    put("packages/x/test/member.test.ts", [
+      'import { mkdtemp as makeTemp } from "node:fs/promises";',
+      'const a = await fs.mkdtemp(join(import.meta.dir, "../mesh-a-"));',
+      'const b = fsp.mkdtempSync(join(root, ".bad-ns-"));',
+      'const c = await makeTemp(join(import.meta.dir, ".bad-alias-"));',
+      'const d = await fs.mkdtemp(join(tmpdir(), "x-"));',
+      'const e = await fs.mkdtemp(join(import.meta.dir, ".scratch-ns-"));',
+    ].join("\n"));
+    put("packages/x/test/b.test.js", 'mkdtempSync(join(root, ".bad-js-"));');
+    put("packages/x/test/c.test.tsx", 'mkdtempSync(join(root, ".bad-tsx-"));');
+    // Only the first argument names the dir, and a .scratch- segment anywhere in it is enough.
+    put("apps/x/test/args.test.ts", [
+      'const a = await mkdtemp(join(import.meta.dir, "../.scratch-ok-"), { encoding: "utf8" });',
+      'const b = await mkdtemp(join(import.meta.dir, ".scratch-x/", "mesh-d-"));',
+      'const c = await mkdtemp(join(import.meta.dir, "bad-opts-"), { encoding: ".scratch-" });',
+    ].join("\n"));
+    // A parameter is resolved through the function that encloses the call, not the last one that declares the name.
+    put("apps/x/test/enclosing.test.ts", [
+      "function first(prefix: string) { return prefix; }",
+      "const make = (prefix: string) => mkdtemp(join(import.meta.dir, prefix));",
+      'first(".scratch-ok-");',
+      'make(".bad-");',
+      "async function outer(prefix: string) { return prefix; }",
+      "async function inner(name: string) {",
+      "  return await mkdtemp(join(import.meta.dir, name));",
+      "}",
+      'outer(".scratch-fine-");',
+      'inner(".scratch-fine-");',
+    ].join("\n"));
+    put("apps/x/test/unenclosed.test.ts", [
+      "function first(prefix: string) { return prefix; }",
+      "const dir = mkdtemp(join(import.meta.dir, prefix));",
+      'first(".scratch-ok-");',
+    ].join("\n"));
+    // A const base counts as outside the checkout only when every declaration of that name in the file is.
+    put("examples/x/test/shadow.test.ts", [
+      'const root = join(tmpdir(), "x");',
+      "function g() {",
+      "  const root = import.meta.dir;",
+      '  return mkdtemp(join(root, "mesh-c-"));',
+      "}",
+      'function one() { const base = join(homedir(), "x"); return base; }',
+      'function two() { const base = join(repo, "y"); return mkdtempSync(join(base, "bad-base-")); }',
+    ].join("\n"));
     // Outside the test directories, and inside a scratch copy, nothing is read.
     put("packages/x/src/tool.ts", 'mkdtemp(join(import.meta.dir, ".work-"));');
     put("examples/x/test/.scratch-guard-abc/test/copy.test.ts", 'mkdtemp(join(import.meta.dir, ".work-"));');
     expect(checkScratchPrefixes(dir)).toEqual([
+      `apps/x/test/args.test.ts:3: ${SCRATCH_TAIL}`,
+      `apps/x/test/enclosing.test.ts:4: ${SCRATCH_TAIL}`,
       `apps/x/test/helper.ts:6: ${SCRATCH_TAIL}`,
+      `apps/x/test/unenclosed.test.ts:2: ${SCRATCH_TAIL}`,
+      `examples/x/test/shadow.test.ts:4: ${SCRATCH_TAIL}`,
+      `examples/x/test/shadow.test.ts:7: ${SCRATCH_TAIL}`,
+      `packages/x/test/b.test.js:1: ${SCRATCH_TAIL}`,
       `packages/x/test/bad.test.ts:1: ${SCRATCH_TAIL}`,
       `packages/x/test/bad.test.ts:2: ${SCRATCH_TAIL}`,
       `packages/x/test/bad.test.ts:3: ${SCRATCH_TAIL}`,
       `packages/x/test/bad.test.ts:6: ${SCRATCH_TAIL}`,
       `packages/x/test/bad.test.ts:7: ${SCRATCH_TAIL}`,
       `packages/x/test/bad.test.ts:8: ${SCRATCH_TAIL}`,
+      `packages/x/test/c.test.tsx:1: ${SCRATCH_TAIL}`,
+      `packages/x/test/member.test.ts:2: ${SCRATCH_TAIL}`,
+      `packages/x/test/member.test.ts:3: ${SCRATCH_TAIL}`,
+      `packages/x/test/member.test.ts:4: ${SCRATCH_TAIL}`,
       `packages/x/test/orphan.ts:1: ${SCRATCH_TAIL}`,
     ]);
   });

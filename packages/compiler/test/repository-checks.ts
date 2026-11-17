@@ -528,30 +528,101 @@ const SCRATCH_REASON = "Test temp dirs inside the checkout must be named .scratc
 const OUTSIDE_CHECKOUT = /\b(?:tmpdir|homedir)\(\)/;
 const STRING_LITERAL = /"[^"\n]*"|'[^'\n]*'|`[^`]*`/g;
 
-/** The text between the parenthesis at `open` and the one that closes it, skipping string and template literals. */
-function argumentsAt(source: string, open: number): string {
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
+const IDENTIFIER = "[A-Za-z_$][\\w$]*";
+const escapeName = (name: string) => name.replace(/\$/g, "\\$");
+
+/** The index of the bracket that closes the one at `open`, skipping string and template literals; -1 when unclosed. */
+function closeOf(source: string, open: number): number {
   let depth = 0;
   for (let at = open; at < source.length; at++) {
     const char = source[at]!;
     if (char === '"' || char === "'" || char === "`") {
       const end = source.indexOf(char, at + 1);
-      if (end === -1) break;
+      if (end === -1) return -1;
       at = end;
-    } else if (char === "(") depth++;
-    else if (char === ")" && --depth === 0) return source.slice(open + 1, at);
+    } else if (char === "(" || char === "{" || char === "[") depth++;
+    else if ((char === ")" || char === "}" || char === "]") && --depth === 0) return at;
   }
-  return source.slice(open + 1);
+  return -1;
 }
 
-/** True when the last path segment of `literal` (quotes included) starts with `.scratch-`. */
-const scratchLiteral = (literal: string) => literal.slice(1, -1).split("/").at(-1)!.startsWith(SCRATCH_PREFIX);
+/** The text between the parenthesis at `open` and the one that closes it. */
+function argumentsAt(source: string, open: number): string {
+  const close = closeOf(source, open);
+  return source.slice(open + 1, close === -1 ? undefined : close);
+}
+
+/** The first argument of an argument list: the text up to its first comma outside brackets and literals. */
+function firstArgument(args: string): string {
+  let depth = 0;
+  for (let at = 0; at < args.length; at++) {
+    const char = args[at]!;
+    if (char === '"' || char === "'" || char === "`") {
+      const end = args.indexOf(char, at + 1);
+      if (end === -1) break;
+      at = end;
+    } else if (char === "(" || char === "{" || char === "[") depth++;
+    else if (char === ")" || char === "}" || char === "]") depth--;
+    else if (char === "," && depth === 0) return args.slice(0, at);
+  }
+  return args;
+}
+
+/** True when a path segment of `literal` (quotes included) starts with `.scratch-`, as `isScratchPath` reads a path. */
+const scratchLiteral = (literal: string) => literal.slice(1, -1).split("/").some((segment) => segment.startsWith(SCRATCH_PREFIX));
 
 /**
- * The repository rule for test temp dirs (scan-skip.ts): every `mkdtemp(` or `mkdtempSync(` call in a `.ts` file
- * under `packages/*\/test`, `examples/*\/test` or `apps/*\/test` either builds its directory from `tmpdir()` or
- * `homedir()` (directly, or through a `const` of the same file whose value does) or names it with a last path segment
- * that starts with `.scratch-`. A prefix passed in as a parameter of the enclosing function is checked at each call
- * of that function in the file, where the literal is written. Text only, like the other rules here: no resolver.
+ * The innermost named function of `source` whose parameter list declares `parameter` and whose body spans `index`:
+ * a `function NAME(...) {...}` declaration, or a `const|let|var NAME = (...) =>` arrow (a block body, or an expression
+ * body that ends at the first `;` or line break outside brackets).
+ */
+function enclosingFunction(source: string, index: number, parameter: string): string | undefined {
+  const declarations = new RegExp(`\\bfunction\\s*\\*?\\s*(${IDENTIFIER})\\s*\\(|\\b(?:const|let|var)\\s+(${IDENTIFIER})\\s*(?::[^=]*)?=\\s*(?:async\\s*)?\\(`, "g");
+  let found: { name: string; start: number } | undefined;
+  for (const match of source.matchAll(declarations)) {
+    if (match.index > index) break;
+    const open = match.index + match[0].length - 1;
+    const close = closeOf(source, open);
+    if (close === -1 || close > index) continue;
+    const declares = source.slice(open + 1, close).split(",").some((param) => param.trim().replace(/^\.\.\./, "").split(/[\s:?=]/)[0] === parameter);
+    if (!declares) continue;
+    const rest = source.slice(close + 1);
+    let bodyEnd: number;
+    if (match[1] !== undefined) {
+      const brace = source.indexOf("{", close + 1);
+      bodyEnd = brace === -1 ? -1 : closeOf(source, brace);
+    } else {
+      const arrow = /^\s*(?::[^=]*?)?=>\s*/.exec(rest);
+      if (!arrow) continue;
+      const bodyStart = close + 1 + arrow[0].length;
+      if (source[bodyStart] === "{") bodyEnd = closeOf(source, bodyStart);
+      else {
+        bodyEnd = source.length;
+        let depth = 0;
+        for (let at = bodyStart; at < source.length; at++) {
+          const char = source[at]!;
+          if (char === '"' || char === "'" || char === "`") { const end = source.indexOf(char, at + 1); if (end === -1) break; at = end; }
+          else if (char === "(" || char === "{" || char === "[") depth++;
+          else if (char === ")" || char === "}" || char === "]") { if (--depth < 0) { bodyEnd = at; break; } }
+          else if ((char === ";" || char === "\n") && depth === 0) { bodyEnd = at; break; }
+        }
+      }
+    }
+    if (bodyEnd !== -1 && bodyEnd > index && (found === undefined || match.index >= found.start)) found = { name: (match[1] ?? match[2])!, start: match.index };
+  }
+  return found?.name;
+}
+
+/**
+ * The repository rule for test temp dirs (scan-skip.ts): every `mkdtemp(` or `mkdtempSync(` call (bare, as a member
+ * such as `fs.mkdtemp(`, or through an `import { mkdtemp as NAME }` alias) in a `.js`, `.ts`, `.jsx`, `.tsx`, `.mjs`,
+ * `.mts`, `.cjs` or `.cts` file under `packages/*\/test`, `examples/*\/test` or `apps/*\/test` either builds its
+ * directory from `tmpdir()` or `homedir()` (in its first argument, or through a `const` base whose every declaration
+ * in the file does) or names it with a path segment that starts with `.scratch-`. A name passed in as a parameter of
+ * the enclosing function is checked at each call of that function in the file, where the literal is written; a name
+ * no enclosing function declares is reported at the mkdtemp call. Text only, like the other rules here: no resolver,
+ * so a name held in another variable, a re-export or a dynamic import is not followed.
  */
 export function checkScratchPrefixes(root: string): string[] {
   const dirs = ["packages", "examples", "apps"].filter((group) => existsSync(join(root, group))).flatMap((group) =>
@@ -560,29 +631,31 @@ export function checkScratchPrefixes(root: string): string[] {
   // The "drizzle" walk: the mx walk leaves out packages/compiler, whose tests make most of these dirs.
   // The rule's own files spell the call they look for (the pattern below, the planted sources of its tests), as the
   // Drizzle rule's own files are on its allow-list; `temporary()` in the test file is pinned by a test of its own.
-  const files = dirs.flatMap((dir) => walk(root, dir, false, "drizzle")).filter((file) => extname(file) === ".ts" &&
+  const files = dirs.flatMap((dir) => walk(root, dir, false, "drizzle")).filter((file) => SOURCE_FILE.test(file) &&
     !/^packages\/compiler\/test\/repository-checks(?:\.test)?\.ts$/.test(relative(root, file).split(sep).join("/"))).sort();
   return files.flatMap((file) => {
     const source = readFileSync(file, "utf8");
     const path = relative(root, file).split(sep).join("/");
     const lineOf = (index: number) => source.slice(0, index).split(/\r\n|\r|\n/).length;
     const errors: number[] = [];
-    for (const call of source.matchAll(/(?<![\w$.])mkdtemp(?:Sync)?\(/g)) {
+    const aliases = [...source.matchAll(new RegExp(`\\bmkdtemp(?:Sync)?\\s+as\\s+(${IDENTIFIER})`, "g"))].map((match) => escapeName(match[1]!));
+    const callee = new RegExp(`(?<![\\w$])(?:mkdtemp(?:Sync)?${aliases.map((alias) => `|${alias}`).join("")})\\(`, "g");
+    for (const call of source.matchAll(callee)) {
       const open = call.index + call[0].length - 1;
-      const args = argumentsAt(source, open);
-      if (OUTSIDE_CHECKOUT.test(args)) continue;
-      const base = /^\s*(?:join|resolve)\(\s*([A-Za-z_$][\w$]*)\s*,/.exec(args)?.[1];
-      if (base && new RegExp(`\\bconst\\s+${base.replace(/\$/g, "\\$")}\\s*=([^;\\n]*)`).exec(source)?.[1]?.match(OUTSIDE_CHECKOUT)) continue;
-      const literals = args.match(STRING_LITERAL) ?? [];
+      const target = firstArgument(argumentsAt(source, open));
+      if (OUTSIDE_CHECKOUT.test(target)) continue;
+      const base = /^\s*(?:join|resolve)\(\s*([A-Za-z_$][\w$]*)\s*,/.exec(target)?.[1];
+      const bases = base === undefined ? [] : [...source.matchAll(new RegExp(`\\b(?:const|let|var)\\s+${escapeName(base)}\\s*=([^;\\n]*)`, "g"))];
+      if (bases.length > 0 && bases.every((declaration) => OUTSIDE_CHECKOUT.test(declaration[1]!))) continue;
+      const literals = target.match(STRING_LITERAL) ?? [];
       if (literals.length > 0) {
-        if (!scratchLiteral(literals.at(-1)!)) errors.push(lineOf(call.index));
+        if (!literals.some(scratchLiteral)) errors.push(lineOf(call.index));
         continue;
       }
       // No literal: the name is a parameter of the enclosing function, checked where that function is called.
-      const parameter = /([A-Za-z_$][\w$]*)\s*\)*\s*$/.exec(args)?.[1];
-      const enclosing = parameter === undefined ? undefined : [...source.slice(0, call.index).matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g)]
-        .filter((match) => match[2]!.split(",").some((param) => param.trim().split(/[\s:?=]/)[0] === parameter)).at(-1)?.[1];
-      const calls = enclosing === undefined ? [] : [...source.matchAll(new RegExp(`(?<![\\w$.])${enclosing}\\(\\s*("[^"\\n]*"|'[^'\\n]*'|\`[^\`]*\`)`, "g"))];
+      const parameter = /([A-Za-z_$][\w$]*)\s*\)*\s*$/.exec(target)?.[1];
+      const enclosing = parameter === undefined ? undefined : enclosingFunction(source, call.index, parameter);
+      const calls = enclosing === undefined ? [] : [...source.matchAll(new RegExp(`(?<![\\w$.])${escapeName(enclosing)}\\(\\s*("[^"\\n]*"|'[^'\\n]*'|\`[^\`]*\`)`, "g"))];
       if (calls.length === 0) errors.push(lineOf(call.index));
       for (const site of calls) if (!scratchLiteral(site[1]!)) errors.push(lineOf(site.index));
     }
