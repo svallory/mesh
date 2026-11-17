@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime } from "./repository-checks.ts";
+import { checkDocsSamples, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime, checkScratchPrefixes } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -525,5 +525,110 @@ test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
     const checked = checkDocsSamples(dir);
     expect(checked.parsed).toBe(1);
     expect(checked.errors.join("\n")).toContain("module");
+  });
+});
+
+// Test temp dirs inside the checkout are named `.scratch-*`, and every repository walker skips them (scan-skip.ts):
+// while tests run side by side, a scan that lists a file a test then deletes throws ENOENT, and a planted or
+// generated file reads as a violation. The fixtures below sit outside `packages/compiler`, so the mx rule's package
+// exemption cannot make a case vacuous; each is paired with the same file outside a scratch dir, which still fails.
+test("scratch dirs: the mx rule skips a .scratch-* dir and still reports the same file outside one", () => {
+  workspace((dir, put) => {
+    put("apps/x/.scratch-race/y.ts", 'import "@mxlang/core";');
+    put("examples/x/test/.scratch-copy-abc123/src/y.ts", 'import "@mxlang/core";');
+    put("packages/cli/.scratch-build-abc123/dialect.js", '// @mxlang');
+    expect(checkMxImports(dir)).toEqual([]);
+    put("apps/x/race/y.ts", 'import "@mxlang/core";');
+    expect(checkMxImports(dir)).toEqual([
+      "apps/x/race/y.ts:1: Mention of @mxlang is forbidden here (ADR-0043), including comments and strings; move the code into packages/compiler or remove the mention",
+    ]);
+  });
+});
+
+test("scratch dirs: the Drizzle rule skips a .scratch-* dir, at the root too, and still reports the same file outside one", () => {
+  workspace((dir, put) => {
+    put("examples/x/.scratch-race/y.ts", 'import "drizzle-orm";');
+    put(".scratch-check-abc123/packages/model/src/bad.ts", 'import "drizzle-orm";');
+    put("packages/compiler/.scratch-mesh-emit-abc123/generated/x.ts", "// drizzle-kit");
+    expect(checkDrizzleImports(dir)).toEqual([]);
+    put("examples/x/race/y.ts", 'import "drizzle-orm";');
+    expect(checkDrizzleImports(dir)).toEqual([
+      "examples/x/race/y.ts:1: Drizzle is allowed only in data adapters and the emitted schema (ADR-0014); remove drizzle-orm from this file",
+    ]);
+  });
+});
+
+test("scratch dirs: the generated-imports rule skips a .mesh/ tree inside a .scratch-* copy", () => {
+  workspace((dir, put) => {
+    put("examples/blog/.mesh/index.ts", "// Do not edit\nexport {};");
+    put("examples/blog/test/.scratch-guard-abc123/.mesh/index.ts", '// Do not edit\nimport "@meshfw/model";');
+    expect(checkGeneratedImports(dir)).toEqual([]);
+    put("examples/blog/test/guard-abc123/.mesh/index.ts", '// Do not edit\nimport "@meshfw/model";');
+    expect(checkGeneratedImports(dir)).toHaveLength(1);
+  });
+});
+
+test("scratch dirs: only a segment that starts with .scratch- is skipped, and only below the scan's own root", () => {
+  // `temporary()` itself lives at `<checkout>/.scratch-check-XXXXXX`: every planted case in this file reports from
+  // inside it, so the skip is decided on the path relative to the root the scan was given, never on the absolute path.
+  workspace((dir, put) => {
+    expect(dir.split(sep).at(-1)).toStartWith(".scratch-check-");
+    for (const path of ["apps/x/src/scratchpad/y.ts", "apps/x/scratch-race/y.ts", "apps/x/.scratchy/y.ts", "apps/x/my.scratch-race/y.ts", "apps/x/.scratch/y.ts"])
+      put(path, 'import "@mxlang/core";');
+    expect(checkMxImports(dir).map((error) => error.split(":")[0])).toEqual([
+      "apps/x/.scratch/y.ts", "apps/x/.scratchy/y.ts", "apps/x/my.scratch-race/y.ts", "apps/x/scratch-race/y.ts", "apps/x/src/scratchpad/y.ts",
+    ]);
+  });
+});
+
+test("scratch dirs: every temp dir a test makes inside the checkout is named .scratch-*", () => {
+  expect(checkScratchPrefixes(root)).toEqual([]);
+});
+
+const SCRATCH_TAIL = "Test temp dirs inside the checkout must be named .scratch-*, which repository scans skip; start the mkdtemp prefix with .scratch- or create the dir under tmpdir()";
+
+test("scratch dirs: the prefix guard reads every mkdtemp call in the test directories", () => {
+  workspace((dir, put) => {
+    put("packages/x/test/bad.test.ts", [
+      'const a = await mkdtemp(join(import.meta.dir, ".emitted-"));',
+      'const b = await mkdtemp(resolve(import.meta.dir, "../mesh-filter-plain-"));',
+      "const c = mkdtempSync(",
+      '  join(root, ".m1-check-"),',
+      ");",
+      'const d = mkdtempSync(join(app, "scratch-samples-"));',
+      'const e = mkdtempSync(join(app, ".scratchy-"));',
+      'const f = mkdtempSync(join(repo, "work-"));',
+    ].join("\n"));
+    put("examples/x/test/good.test.ts", [
+      'import { mkdtemp, mkdtempSync } from "node:fs/promises";',
+      'const a = await mkdtemp(join(import.meta.dir, ".scratch-emitted-"));',
+      'const b = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-filter-plain-"));',
+      "const c = await mkdtemp(resolve(import.meta.dir, `../.scratch-mesh-${prefix}-`));",
+      'const d = await mkdtemp(join(tmpdir(), "mesh-cli-"));',
+      'const base = join(homedir(), "tmp", "mx-alpha-16");',
+      'const e = mkdtempSync(join(base, "registration-"));',
+    ].join("\n"));
+    put("apps/x/test/helper.ts", [
+      "async function generate(prefix: string, sources: object): Promise<string> {",
+      "  const dir = await mkdtemp(join(import.meta.dir, prefix));",
+      "  return dir;",
+      "}",
+      'await generate(".scratch-reads-load-", {});',
+      'await generate(".reads-load-plain-", {});',
+    ].join("\n"));
+    put("packages/x/test/orphan.ts", "export const make = (name: string) => mkdtemp(join(import.meta.dir, name));");
+    // Outside the test directories, and inside a scratch copy, nothing is read.
+    put("packages/x/src/tool.ts", 'mkdtemp(join(import.meta.dir, ".work-"));');
+    put("examples/x/test/.scratch-guard-abc/test/copy.test.ts", 'mkdtemp(join(import.meta.dir, ".work-"));');
+    expect(checkScratchPrefixes(dir)).toEqual([
+      `apps/x/test/helper.ts:6: ${SCRATCH_TAIL}`,
+      `packages/x/test/bad.test.ts:1: ${SCRATCH_TAIL}`,
+      `packages/x/test/bad.test.ts:2: ${SCRATCH_TAIL}`,
+      `packages/x/test/bad.test.ts:3: ${SCRATCH_TAIL}`,
+      `packages/x/test/bad.test.ts:6: ${SCRATCH_TAIL}`,
+      `packages/x/test/bad.test.ts:7: ${SCRATCH_TAIL}`,
+      `packages/x/test/bad.test.ts:8: ${SCRATCH_TAIL}`,
+      `packages/x/test/orphan.ts:1: ${SCRATCH_TAIL}`,
+    ]);
   });
 });

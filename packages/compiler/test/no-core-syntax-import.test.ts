@@ -2,8 +2,9 @@
 // drops its `syntax/*` modules. No file in `packages/` or `examples/` may import them, by any spelling of the
 // specifier. A plain scan, like `architecture.test.ts`: no dependency, no resolver.
 import { expect, test } from "bun:test";
-import { readFileSync, readdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
+import { isScratchPath } from "./scan-skip.ts";
 
 const root = resolve(import.meta.dir, "../../..");
 /** The forbidden package path, built by concatenation so that this file does not spell it either. */
@@ -13,10 +14,20 @@ const FORBIDDEN_DIST = ["@mxlang", "core", "dist", "syntax"].join("/");
 const SOURCE = /\.(?:[cm]?[jt]sx?|mx)$/;
 const SKIP = new Set(["node_modules", "dist", ".git"]);
 
-function files(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-    SKIP.has(entry.name) ? [] : entry.isDirectory() ? files(join(dir, entry.name)) : SOURCE.test(entry.name) ? [join(dir, entry.name)] : [],
-  );
+/** The source files under `dir`, skipping a test's `.scratch-*` temp dir by its path relative to `scanRoot`. */
+function files(scanRoot: string, dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (SKIP.has(entry.name) || isScratchPath(relative(scanRoot, path).split(sep).join("/"))) return [];
+    return entry.isDirectory() ? files(scanRoot, path) : SOURCE.test(entry.name) ? [path] : [];
+  });
+}
+
+/** The files in `packages/` and `examples/` under `scanRoot` that import core's syntax modules, relative to it. */
+function offenders(scanRoot: string): string[] {
+  return [...files(scanRoot, join(scanRoot, "packages")), ...files(scanRoot, join(scanRoot, "examples"))]
+    .filter((file) => specifiers(readFileSync(file, "utf8")).some(forbidden))
+    .map((file) => relative(scanRoot, file).split(sep).join("/"));
 }
 
 /** Every module specifier a source imports, re-exports, requires or dynamically imports. */
@@ -53,10 +64,24 @@ test("the scan sees every spelling (planted sources)", () => {
 });
 
 test("no file in packages/ or examples/ imports core's syntax modules", () => {
-  const scanned = [...files(join(root, "packages")), ...files(join(root, "examples"))];
+  const scanned = [...files(root, join(root, "packages")), ...files(root, join(root, "examples"))];
   expect(scanned.length).toBeGreaterThan(50);
-  const offenders = scanned
-    .filter((file) => specifiers(readFileSync(file, "utf8")).some(forbidden))
-    .map((file) => relative(root, file));
-  expect(offenders).toEqual([]);
+  expect(offenders(root)).toEqual([]);
+});
+
+test("the scan skips a test's .scratch-* temp dir, by its path below the scan's root, and nothing else", () => {
+  // Under the checkout, named as a test temp dir: the skip must not apply to the root the scan was given.
+  const fixture = mkdtempSync(join(root, ".scratch-syntax-scan-"));
+  try {
+    const put = (path: string) => {
+      mkdirSync(join(fixture, path, ".."), { recursive: true });
+      writeFileSync(join(fixture, path), `import a from "${FORBIDDEN}/mesh";\n`);
+    };
+    put("packages/x/.scratch-race/y.ts");
+    put("examples/x/test/.scratch-guard-abc123/src/y.ts");
+    expect(offenders(fixture)).toEqual([]);
+    put("packages/x/race/y.ts");
+    put("packages/x/src/scratchpad/y.ts");
+    expect(offenders(fixture).sort()).toEqual(["packages/x/race/y.ts", "packages/x/src/scratchpad/y.ts"]);
+  } finally { rmSync(fixture, { recursive: true, force: true }); }
 });

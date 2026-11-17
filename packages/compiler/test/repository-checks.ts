@@ -3,6 +3,7 @@ import { isBuiltin } from "node:module";
 import { extname, join, relative, sep } from "node:path";
 import type { IrDiagnostic } from "@mxlang/core";
 import { parseEntitySource } from "../src/front-end/build.ts";
+import { SCRATCH_PREFIX, isScratchPath } from "./scan-skip.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
 export const MX_IMPORT_PACKAGES = ["packages/compiler"] as const;
@@ -46,6 +47,8 @@ function walk(root: string, dir: string, allFiles = false, rule: "mx" | "drizzle
     const file = join(dir, entry.name);
     // Only host separators delimit segments; a POSIX backslash is a filename character.
     const path = relative(root, file).split(sep).join("/");
+    // A test's temp dir comes and goes while scans run (scan-skip.ts); the path is relative to this scan's root.
+    if (isScratchPath(path)) return [];
     if (!allFiles && (path.split("/").includes("node_modules") || within(path, "apps/docs/site") || within(path, "apps/docs/docs") ||
       (rule === "mx" && MX_IMPORT_PACKAGES.some((pkg) => within(path, pkg))))) return [];
     // Never follow symlinks into dependencies or outside the checkout.
@@ -519,4 +522,70 @@ export function checkHookFailCodes(srcDir: string): string[] {
     }
   }
   return found;
+}
+
+const SCRATCH_REASON = "Test temp dirs inside the checkout must be named .scratch-*, which repository scans skip; start the mkdtemp prefix with .scratch- or create the dir under tmpdir()";
+const OUTSIDE_CHECKOUT = /\b(?:tmpdir|homedir)\(\)/;
+const STRING_LITERAL = /"[^"\n]*"|'[^'\n]*'|`[^`]*`/g;
+
+/** The text between the parenthesis at `open` and the one that closes it, skipping string and template literals. */
+function argumentsAt(source: string, open: number): string {
+  let depth = 0;
+  for (let at = open; at < source.length; at++) {
+    const char = source[at]!;
+    if (char === '"' || char === "'" || char === "`") {
+      const end = source.indexOf(char, at + 1);
+      if (end === -1) break;
+      at = end;
+    } else if (char === "(") depth++;
+    else if (char === ")" && --depth === 0) return source.slice(open + 1, at);
+  }
+  return source.slice(open + 1);
+}
+
+/** True when the last path segment of `literal` (quotes included) starts with `.scratch-`. */
+const scratchLiteral = (literal: string) => literal.slice(1, -1).split("/").at(-1)!.startsWith(SCRATCH_PREFIX);
+
+/**
+ * The repository rule for test temp dirs (scan-skip.ts): every `mkdtemp(` or `mkdtempSync(` call in a `.ts` file
+ * under `packages/*\/test`, `examples/*\/test` or `apps/*\/test` either builds its directory from `tmpdir()` or
+ * `homedir()` (directly, or through a `const` of the same file whose value does) or names it with a last path segment
+ * that starts with `.scratch-`. A prefix passed in as a parameter of the enclosing function is checked at each call
+ * of that function in the file, where the literal is written. Text only, like the other rules here: no resolver.
+ */
+export function checkScratchPrefixes(root: string): string[] {
+  const dirs = ["packages", "examples", "apps"].filter((group) => existsSync(join(root, group))).flatMap((group) =>
+    readdirSync(join(root, group), { withFileTypes: true }).filter((entry) => entry.isDirectory())
+      .map((entry) => join(root, group, entry.name, "test")).filter((dir) => existsSync(dir)));
+  // The "drizzle" walk: the mx walk leaves out packages/compiler, whose tests make most of these dirs.
+  // The rule's own files spell the call they look for (the pattern below, the planted sources of its tests), as the
+  // Drizzle rule's own files are on its allow-list; `temporary()` in the test file is pinned by a test of its own.
+  const files = dirs.flatMap((dir) => walk(root, dir, false, "drizzle")).filter((file) => extname(file) === ".ts" &&
+    !/^packages\/compiler\/test\/repository-checks(?:\.test)?\.ts$/.test(relative(root, file).split(sep).join("/"))).sort();
+  return files.flatMap((file) => {
+    const source = readFileSync(file, "utf8");
+    const path = relative(root, file).split(sep).join("/");
+    const lineOf = (index: number) => source.slice(0, index).split(/\r\n|\r|\n/).length;
+    const errors: number[] = [];
+    for (const call of source.matchAll(/(?<![\w$.])mkdtemp(?:Sync)?\(/g)) {
+      const open = call.index + call[0].length - 1;
+      const args = argumentsAt(source, open);
+      if (OUTSIDE_CHECKOUT.test(args)) continue;
+      const base = /^\s*(?:join|resolve)\(\s*([A-Za-z_$][\w$]*)\s*,/.exec(args)?.[1];
+      if (base && new RegExp(`\\bconst\\s+${base.replace(/\$/g, "\\$")}\\s*=([^;\\n]*)`).exec(source)?.[1]?.match(OUTSIDE_CHECKOUT)) continue;
+      const literals = args.match(STRING_LITERAL) ?? [];
+      if (literals.length > 0) {
+        if (!scratchLiteral(literals.at(-1)!)) errors.push(lineOf(call.index));
+        continue;
+      }
+      // No literal: the name is a parameter of the enclosing function, checked where that function is called.
+      const parameter = /([A-Za-z_$][\w$]*)\s*\)*\s*$/.exec(args)?.[1];
+      const enclosing = parameter === undefined ? undefined : [...source.slice(0, call.index).matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g)]
+        .filter((match) => match[2]!.split(",").some((param) => param.trim().split(/[\s:?=]/)[0] === parameter)).at(-1)?.[1];
+      const calls = enclosing === undefined ? [] : [...source.matchAll(new RegExp(`(?<![\\w$.])${enclosing}\\(\\s*("[^"\\n]*"|'[^'\\n]*'|\`[^\`]*\`)`, "g"))];
+      if (calls.length === 0) errors.push(lineOf(call.index));
+      for (const site of calls) if (!scratchLiteral(site[1]!)) errors.push(lineOf(site.index));
+    }
+    return [...new Set(errors)].sort((a, b) => a - b).map((line) => `${path}:${line}: ${SCRATCH_REASON}`);
+  });
 }

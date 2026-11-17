@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import type { ResolvedConfig } from "../src/config.ts";
@@ -8,6 +8,7 @@ import { EMITTERS, GENERATORS, renderGenerator, type EmitInput, type Generator }
 import { EmitError } from "../src/typescript/emit-error.ts";
 import { typesGenerator } from "../src/typescript/emitters/types.ts";
 import { MESH_TEMPLATES_DIR, loadTemplates, type Templates } from "../src/typescript/templates.ts";
+import { isScratchPath } from "./scan-skip.ts";
 import { project } from "./v4.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -118,23 +119,49 @@ describe("templates only render", () => {
   });
 });
 
+/**
+ * The files under `dir` that mention `@jig-lang`, skipping `node_modules` and a test's `.scratch-*` temp dir (the CLI's
+ * dialect build writes into `packages/cli/.scratch-build-*` while this scan may run), by its path relative to `dir`.
+ */
+async function jigMentions(dir: string): Promise<string[]> {
+  const offenders: string[] = [];
+  const walk = async (at: string): Promise<void> => {
+    for (const entry of await readdir(at, { withFileTypes: true })) {
+      const path = join(at, entry.name);
+      if (entry.name === "node_modules" || isScratchPath(relative(dir, path).split(sep).join("/"))) continue;
+      if (entry.isDirectory()) await walk(path);
+      else if (entry.isFile() && (await readFile(path, "utf8")).includes("@jig-lang")) offenders.push(path);
+    }
+  };
+  await walk(dir);
+  return offenders;
+}
+
 describe("acceptance 6: Jig stays in the compiler", () => {
   test("runtime, model, the CLI and the generated example never mention @jig-lang", async () => {
     const offenders: string[] = [];
-    const walk = async (dir: string): Promise<void> => {
-      for (const entry of await readdir(dir, { withFileTypes: true })) {
-        if (entry.name === "node_modules") continue;
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) await walk(path);
-        else if (entry.isFile() && (await readFile(path, "utf8")).includes("@jig-lang")) offenders.push(path);
-      }
-    };
     for (const dir of ["packages/runtime", "packages/model", "packages/cli", "examples/blog/.mesh"]) {
       // A missing root would pass vacuously: each must be a directory that is walked.
       expect((await stat(join(repo, dir))).isDirectory()).toBe(true);
-      await walk(join(repo, dir));
+      offenders.push(...await jigMentions(join(repo, dir)));
     }
     expect(offenders).toEqual([]);
+  });
+
+  test("the scan skips a .scratch-* dir below the root it walks, and nothing else", async () => {
+    const fixture = await mkdtemp(join(repo, ".scratch-jig-scan-"));
+    try {
+      const put = async (path: string) => {
+        await mkdir(join(fixture, path, ".."), { recursive: true });
+        await writeFile(join(fixture, path), 'import "@jig-lang/jig";\n');
+      };
+      await put(".scratch-build-abc123/dialect.js");
+      await put("src/.scratch-race/y.ts");
+      expect(await jigMentions(fixture)).toEqual([]);
+      await put("dist/dialect.js");
+      await put("src/scratchpad/y.ts");
+      expect((await jigMentions(fixture)).map((file) => relative(fixture, file).split(sep).join("/")).sort()).toEqual(["dist/dialect.js", "src/scratchpad/y.ts"]);
+    } finally { await rm(fixture, { recursive: true, force: true }); }
   });
 
   test("the compiler imports Jig in src/typescript/render.ts only", async () => {
