@@ -17,8 +17,10 @@ import { FrameworkError } from "./errors.ts";
  * - `gapless-positions`: the outbox's positions have no gap after a rollback or a failed insert, and deleting a
  *   prefix of rows leaves none above the deleted-through position (spec, Events and commands, "The outbox"). Only a
  *   client that audits a stream for holes needs it; the never-skip order of the read is mandatory for every adapter.
+ * - `raw-sql`: the `query` operation: one read-only statement written by hand, run in the running transaction
+ *   (`DataOperations.query`, ADR-0087). `#mesh` exports `query` only for an adapter that declares it.
  */
-export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions"] as const;
+export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions", "raw-sql"] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
 

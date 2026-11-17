@@ -196,7 +196,7 @@ describe("the events key", () => {
   test("requires that is not a list of capability names, and any other field is unknown; every problem is reported", async () => {
     expect(await codes("{ requires: \"replay\" }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.requires` must be an array of capability names", fix: expect.stringContaining("Set requires:") }]);
     expect(await codes("{ requires: [\"replay\", \"prune\", \"replay\", 3], retain: 3, keep: \"no\" }")).toEqual([
-      { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"prune\", which is no capability: the bus's are ordered-delivery, replay, subscribe, dead-letters, multi-process, and the data adapter's aggregates, integer-key-fill, joins, upserts, atomic-expressions, gapless-positions, conditions", fix: "Remove it, or correct the name" },
+      { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"prune\", which is no capability: the bus's are ordered-delivery, replay, subscribe, dead-letters, multi-process, and the data adapter's aggregates, integer-key-fill, joins, upserts, atomic-expressions, gapless-positions, conditions, raw-sql", fix: "Remove it, or correct the name" },
       { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"replay\" twice", fix: "Remove the second one" },
       { code: "MESH_EVENTS_CONFIG", message: expect.stringContaining("`events.requires` lists 3, which is no capability"), fix: "Remove it, or correct the name" },
       { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are bus, load, keep and requires", fix: "Remove the unknown field" },

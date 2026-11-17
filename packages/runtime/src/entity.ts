@@ -1,8 +1,9 @@
 import { Answer, answeringLayer, capabilitiesOf, type Decision } from "./answer.ts";
-import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
+import type { DataLayer, DataOperations, RawRow, RawStatement, RawValue, Row } from "./data-layer.ts";
 import { failJoined } from "./compose.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, type Clock } from "./expr.ts";
+import type { StandardSchemaV1 } from "./standard-schema.ts";
 import type { BindOptions } from "./lifecycle.ts";
 import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
@@ -629,6 +630,138 @@ export async function readEvents(frame: AsyncFrame, connected: Binding | undefin
   return counted(state, () => readEventsFrom(state.layer, state.events, query));
 }
 
+/** What `#mesh` exports as `query` (ADR-0087): a template tag running one read-only SQL statement written by hand. */
+export interface RawQuery {
+  (strings: TemplateStringsArray, ...values: readonly RawValue[]): Promise<readonly RawRow[]>;
+  /** The same tag, validating and typing each row with a Standard Schema (a Zod object, for example). */
+  as<S extends StandardSchemaV1>(schema: S): (strings: TemplateStringsArray, ...values: readonly RawValue[]) => Promise<readonly StandardSchemaV1.InferOutput<S>[]>;
+}
+
+const MIN_INT64 = -(2n ** 63n);
+const MAX_INT64 = 2n ** 63n - 1n;
+
+/** What a raw query's value is when it cannot be bound, for a message that never shows the value; `undefined` when it can. */
+function rawValueKind(value: unknown): string | undefined {
+  switch (typeof value) {
+    case "string": case "boolean": return undefined;
+    case "number": return Number.isFinite(value) ? undefined : Number.isNaN(value) ? "NaN" : value > 0 ? "Infinity" : "-Infinity";
+    case "bigint": return value >= MIN_INT64 && value <= MAX_INT64 ? undefined : "a bigint beyond 64 bits";
+    case "undefined": return "undefined";
+    case "function": return "a function";
+    case "symbol": return "a symbol";
+  }
+  if (value === null) return undefined;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "an invalid Date" : undefined;
+  if (Array.isArray(value)) return "an array";
+  if (value instanceof Uint8Array) return "a Uint8Array";
+  return "an object";
+}
+
+/** What `query` was given in place of a template's strings, for E2. */
+function notStrings(strings: unknown): string {
+  if (strings === null) return "null";
+  if (Array.isArray(strings)) return "an array that is not a template's strings";
+  return typeof strings === "object" ? "an object" : typeof strings === "string" ? "a string" : typeof strings;
+}
+
+/** True for a Standard Schema: an object (or function) whose `~standard` holds a `validate` function. */
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) return false;
+  const props = (value as { "~standard"?: unknown })["~standard"];
+  return typeof props === "object" && props !== null && typeof (props as { validate?: unknown }).validate === "function";
+}
+
+/**
+ * The statement of one tag call: the cooked text pieces and the values, frozen, or a `FrameworkError` (E2, E3) for a
+ * call that is not a tag call, a piece holding an escape JavaScript cannot read, or a value that cannot be bound. The
+ * message names the position and the kind of a refused value, never the value.
+ */
+function rawStatement(strings: unknown, values: readonly unknown[]): RawStatement {
+  const tagged = Array.isArray(strings) && Object.isFrozen(strings) && Array.isArray((strings as { raw?: unknown }).raw)
+    && (strings as unknown as { raw: unknown[] }).raw.length === strings.length && strings.length === values.length + 1;
+  if (!tagged) throw new FrameworkError(`query is a template tag: write query\`select … \${value}\`, never query(text); it was given ${notStrings(strings)}`);
+  const text = strings as readonly unknown[];
+  if (text.some((piece) => piece === undefined))
+    throw new FrameworkError("query: the SQL text holds an escape JavaScript cannot read (such as \\x): write a backslash as \\\\");
+  values.forEach((value, index) => {
+    const kind = rawValueKind(value);
+    if (kind !== undefined)
+      throw new FrameworkError(`query: the value of \${…} number ${index + 1} is ${kind}, which cannot be bound: pass a string, a finite number, a bigint within 64 bits, a boolean, a valid Date or null`);
+  });
+  return Object.freeze({ text: Object.freeze([...text] as string[]), values: Object.freeze([...values] as RawValue[]) });
+}
+
+/** A row or a validated output, frozen one level deep; a typed array (a blob's value) is left as it is, since it cannot be frozen. */
+function frozenRow<T>(row: T): T {
+  return typeof row === "object" && row !== null && !ArrayBuffer.isView(row) ? Object.freeze(row) : row;
+}
+
+/** `rows` validated one by one with `schema`, awaiting each result, or a `FrameworkError` (E8) naming the first row that fails. */
+async function validatedRows(schema: StandardSchemaV1, rows: readonly RawRow[]): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for (const [index, row] of rows.entries()) {
+    const result = await schema["~standard"].validate(row);
+    if (typeof result !== "object" || result === null || !("value" in result || "issues" in result))
+      throw new FrameworkError("Malformed Standard Schema result: expected an object containing value or issues");
+    if (result.issues !== undefined) {
+      const issues = Array.isArray(result.issues) ? result.issues : [];
+      const described = issues.map((issue: StandardSchemaV1.Issue) => {
+        const path = (issue.path ?? []).map((segment) => String(typeof segment === "object" && segment !== null ? segment.key : segment)).join(".");
+        return path === "" ? issue.message : `${path}: ${issue.message}`;
+      });
+      throw new FrameworkError(`query.as(schema): row ${index} does not match the schema: ${described.join("; ")}`);
+    }
+    out.push(result.value);
+  }
+  return out;
+}
+
+/**
+ * `query` of `#mesh` (ADR-0087), for the project whose async frame is `frame`; `connected` reads the binding `connect()`
+ * opened at call time. One call runs one read-only statement through the transaction operation `query` of the data
+ * layer (capability `raw-sql`): on the binding in scope, else the connected one, else it throws as not connected.
+ * Inside a running transaction of that binding it joins it, so it sees its uncommitted rows, runs after the calls joined
+ * before it, and a rejection fails that transaction even when the caller catches it; outside one it opens a transaction
+ * of its own, which runs no seam. Inside a `Mesh.checkPolicies` question it runs on the question's probe layer, as a
+ * read, and what it rejects with fails nothing outside the question. While a computed field or a read policy is
+ * evaluated it throws, as `Mesh.privileged` does. Every check of the call (the tag, the escapes, each value) runs inside
+ * the joined call, so a misuse a helper catches still fails the running transaction.
+ */
+export function makeQuery(frame: AsyncFrame, connected: () => Binding | undefined): RawQuery {
+  const run = (schema: StandardSchemaV1 | undefined, strings: unknown, values: readonly unknown[]): Promise<readonly unknown[]> => {
+    // Refused by throwing, not by rejecting, as `Mesh.privileged` is: a computed field whose helper returns the promise
+    // of a refused call would otherwise report "returned a promise" and lose the reason.
+    const store = inScope(frame);
+    const mark = store?.mark ?? evaluatingNow();
+    if (mark !== undefined)
+      throw new FrameworkError(`query was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and run no raw query. Run it from a step, a check or a write policy, through a helper`);
+    const binding = store === undefined ? connected() : undefined;
+    const state = store?.state ?? (binding === undefined ? undefined : stateOf(binding));
+    if (!state) throw notConnected("query");
+    const question = questionOf(store);
+    const layer = question ? probeFor(question, state).layer : state.layer;
+    const own = store?.state === state ? store?.tx : undefined;
+    return counted(state, () => layer.transaction(async (tx) => {
+      if (own !== undefined && tx !== own) throw new FrameworkError(ENDED);
+      const statement = rawStatement(strings, values);
+      if (typeof tx.query !== "function")
+        throw new FrameworkError("query needs the raw-sql capability, and the data layer's transaction has no query operation: use a data adapter that declares raw-sql");
+      const rows = await tx.query(statement);
+      const out = schema === undefined ? rows : await validatedRows(schema, rows);
+      return Object.freeze(out.map(frozenRow));
+    }));
+  };
+  const query = ((strings: TemplateStringsArray, ...values: readonly RawValue[]) => run(undefined, strings, values)) as RawQuery;
+  Object.defineProperty(query, "as", {
+    value: <S extends StandardSchemaV1>(schema: S) => {
+      if (!isStandardSchema(schema))
+        throw new FrameworkError(`query.as() takes a Standard Schema, such as a Zod object, and was given ${schema === null ? "null" : Array.isArray(schema) ? "an array" : typeof schema === "object" ? "an object that is not one" : typeof schema}`);
+      return Object.freeze((strings: TemplateStringsArray, ...values: readonly RawValue[]) => run(schema, strings, values));
+    },
+  });
+  return Object.freeze(query);
+}
+
 /** What the deliverer needs of a binding: its layer, its event classes by FQN, its events configuration and its async frame. */
 export interface BindingParts {
   readonly layer: DataLayer;
@@ -951,6 +1084,8 @@ function readOnlyOperations(tx: DataOperations, question: Question): DataOperati
     select: (table, query) => tx.select(table, query),
     max: (table, attribute, filter, where) => tx.max(table, attribute, filter, where),
     count: (table, attribute, filter, where) => tx.count(table, attribute, filter, where),
+    // A raw query is read-only by contract (`raw-sql`): forwarded as a read, and absent when the adapter has none.
+    ...(tx.query === undefined ? {} : { query: (statement: RawStatement) => tx.query!(statement) }),
   } satisfies DataOperations);
 }
 
