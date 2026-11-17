@@ -69,6 +69,15 @@ describe("serialTransactions", () => {
     await queue.transaction(async () => undefined, { waitMs: 20 });
     expect(deadlines[0]!.at - deadlines[0]!.started).toBe(5000);
     expect(deadlines[1]!.at - deadlines[1]!.started).toBe(20);
+
+    // A call queued behind a held transaction starts its clock only when that one has settled, not when it was made.
+    let firstSettled = 0;
+    const first = queue.transaction(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); })
+      .then(() => { firstSettled = performance.now(); });
+    const second = queue.transaction(async () => undefined);
+    await Promise.all([first, second]);
+    expect(deadlines[3]!.started).toBeGreaterThanOrEqual(deadlines[2]!.started + 25);
+    expect(deadlines[3]!.started).toBeGreaterThanOrEqual(firstSettled - 1);
   });
 
   test("begin and commit failures map through report with their stage; a commit failure rolls back", async () => {
@@ -91,8 +100,12 @@ describe("serialTransactions", () => {
 
   test("a failed rollback rejects with the driver's error instead of the callback's", async () => {
     const fatal = new FrameworkError("rollback failed");
-    const { queue } = fixture({ rollback: async () => { throw fatal; } });
+    const { queue, log } = fixture({ rollback: async () => { throw fatal; } });
     await expect(queue.transaction(async () => { throw new Error("boom"); })).rejects.toBe(fatal);
+    // The connection is released even though rollback rejected, and the queue moves on.
+    expect(log.at(-1)).toBe("release 1");
+    expect(queue.counts()).toEqual({ running: 0, queued: 0 });
+    expect(await queue.transaction(async () => "next")).toBe("next");
   });
 
   test("the health gate refuses a call at once, and refuses a queued call when its turn comes", async () => {
@@ -122,6 +135,44 @@ describe("serialTransactions", () => {
     await expect(queue.exclusive(async () => { throw new Error("job"); })).rejects.toThrow("job");
     expect(stages).toEqual(["job"]);
     expect(log).toEqual(["acquire", "release 1", "acquire", "release 2"]);
+  });
+
+  test("an exclusive job waits in the same queue as transactions, and is refused inside one", async () => {
+    const { queue, log } = fixture();
+    let open!: () => void;
+    const held = queue.transaction(async () => {
+      expect(() => queue.exclusive(async () => undefined)).toThrow("nested transactions are not supported");
+      log.push("tx");
+      await new Promise<void>((resolve) => { open = resolve; });
+    });
+    const job = queue.exclusive(async () => { log.push("job"); });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(queue.counts()).toEqual({ running: 1, queued: 1 });
+    expect(log).not.toContain("job");
+    open();
+    await Promise.all([held, job]);
+    expect(log).toEqual(["acquire", "begin", "tx", "commit", "release 1", "acquire", "job", "release 2"]);
+  });
+
+  test("a call made while COMMIT is pending starts a transaction of its own instead of joining", async () => {
+    let commitEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { commitEntered = resolve; });
+    let finishCommit!: () => void;
+    let commits = 0;
+    const { queue, log } = fixture({
+      commit: async () => {
+        log.push("commit");
+        if (++commits === 1) { commitEntered(); await new Promise<void>((resolve) => { finishCommit = resolve; }); }
+      },
+    });
+    let late!: Promise<string>;
+    // The continuation is registered inside the callback, so it runs in the outer transaction's async context.
+    const outer = queue.transaction(async () => {
+      void entered.then(() => { late = queue.transaction(async () => { log.push("late"); return "own"; }); finishCommit(); });
+    });
+    await outer;
+    expect(await late).toBe("own");
+    expect(log).toEqual(["acquire", "begin", "commit", "release 1", "acquire", "begin", "late", "commit", "release 2"]);
   });
 
   test("a transaction or job started inside an exclusive job is refused as nested; insideTransaction says so", async () => {
@@ -198,6 +249,16 @@ describe("serialTransactions", () => {
       const { queue, failedHooks } = fixture();
       const busy = new DatabaseBusyError("postgres://db", 0, { reason: "serialization", sqlstate: "40001" });
       await expect(queue.transaction(async () => { failedHooks[0]!(busy); })).rejects.toBe(busy);
+    });
+
+    test("a recorded statement failure wins over a failed joined call", async () => {
+      const { queue, failedHooks } = fixture();
+      const busy = new DatabaseBusyError("postgres://db", 0, { reason: "serialization", sqlstate: "40001" });
+      const outcome = queue.transaction(async () => {
+        await queue.transaction(async () => { throw new Error("inner"); }).catch(() => undefined);
+        failedHooks[0]!(busy);
+      });
+      await expect(outcome).rejects.toBe(busy);
     });
 
     test("a transaction no statement of which failed commits as before", async () => {
