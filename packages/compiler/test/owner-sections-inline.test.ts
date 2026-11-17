@@ -157,8 +157,20 @@ describe("an inline declaration", () => {
     ]);
   });
 
-  test("an own inline command listed under events is no event", () => {
-    expect(errors(build({}, invoice({ events: "    VoidInvoice\n" }))).map((d) => [d[4], d[5]])).toEqual([["MESH_UNKNOWN_EVENT", "VoidInvoice is not an imported event."]]);
+  test("an own declaration named where another kind is taken is reported as what it is (R8a)", () => {
+    expect(errors(build({}, invoice({ events: "    VoidInvoice\n" }))).map((d) => [d[4], d[5]])).toEqual([
+      ["MESH_UNKNOWN_EVENT", "VoidInvoice is not an imported event: the file declares VoidInvoice as a command."],
+    ]);
+    const result = build({}, invoice({
+      attributes: "  relationships\n    belongs-to :v entity=InvoiceVoided\n",
+      steps: "    update :again on=InvoiceVoided\n",
+      events: "    Invoice\n",
+    }));
+    expect(errors(result).map((d) => [d[4], d[5]])).toEqual([
+      ["MESH_UNKNOWN_ENTITY", "InvoiceVoided is not an imported entity: the file declares InvoiceVoided as an event."],
+      ["MESH_UNKNOWN_COMMAND", "InvoiceVoided is not an imported command: the file declares InvoiceVoided as an event."],
+      ["MESH_UNKNOWN_EVENT", "Invoice is not an imported event: the file declares Invoice as an entity."],
+    ]);
   });
 });
 

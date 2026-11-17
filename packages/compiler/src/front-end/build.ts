@@ -533,13 +533,13 @@ function buildEntity(
     }
   }
   // What a reference to another file's declaration resolves against: `entity=List`, `entity=billing.Invoice`.
-  const references: ReferenceScope = { imports: importNames, duplicates, own: [{ name: entity.name, from: self }] };
+  const references: ReferenceScope = { imports: importNames, duplicates, own: [{ name: entity.name, from: self }], self };
   const entityKind = referenceKind("entity", declaredFile);
   // An event is the file's own when an owner section of the file declares it inline; any other is named by an import.
-  const eventReferences: ReferenceScope = { imports: importNames, duplicates, own: ownEvents };
+  const eventReferences: ReferenceScope = { imports: importNames, duplicates, own: ownEvents, self };
   const eventKind = referenceKind("event", declaredFile);
   // `on=PayInvoice` or `on=billing.PayInvoice`: an import's command, or one the file's `commands` section declares.
-  const commandReferences: ReferenceScope = { imports: importNames, duplicates, own: ownCommands };
+  const commandReferences: ReferenceScope = { imports: importNames, duplicates, own: ownCommands, self };
   const commandKind = referenceKind("command", declaredFile);
   // A listing line of the `events` section names an event as a `publish` does, and an unknown one is no failed publish.
   const listedEventKind = referenceKind("event", declaredFile, "MESH_UNKNOWN_EVENT");

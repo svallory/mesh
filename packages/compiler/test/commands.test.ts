@@ -183,7 +183,7 @@ describe("MESH_UNKNOWN_COMMAND", () => {
     const result = build("    update on=Line\n    update on=Invoice\n", `${IMPORT}import { Line } from "./line.mesh.mx"\n`, { "billing/line.mesh.mx": "entity :Line\n  attributes\n    uuid :id primary-key\n" });
     expect(unknown(result).map((d) => [d[1], d[2], d[5]])).toEqual([
       [9, 14, "Line is not an imported command."],
-      [10, 14, "Invoice is not an imported command."],
+      [10, 14, "Invoice is not an imported command: the file declares Invoice as an entity."],
     ]);
   });
 

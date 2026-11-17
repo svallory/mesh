@@ -153,7 +153,7 @@ describe("listing lines in the model", () => {
     ["a qualifier that is no import", "  events\n    alerts.InvoiceOverdue\n", [[12, 4, "MESH_UNKNOWN_EVENT", "alerts.InvoiceOverdue is not an imported event: no import of this file is named alerts.", null]]],
     ["a head of three parts", "  events\n    a.b.c\n", [[12, 4, "MESH_UNKNOWN_EVENT", "a.b.c is not an imported event: a listing is an imported identifier (`InvoicePaid`) or a member of a namespace import (`notices.InvoiceOverdue`)", null]]],
     ["an entity", "  events\n    Task\n", [[12, 4, "MESH_UNKNOWN_EVENT", "Task is not an imported event.", null]]],
-    ["the file's own entity", "  events\n    Invoice\n", [[12, 4, "MESH_UNKNOWN_EVENT", "Invoice is not an imported event.", null]]],
+    ["the file's own entity", "  events\n    Invoice\n", [[12, 4, "MESH_UNKNOWN_EVENT", "Invoice is not an imported event: the file declares Invoice as an entity.", null]]],
     ["a command under events", "  events\n    PayInvoice\n", [[12, 4, "MESH_UNKNOWN_EVENT", "PayInvoice is not an imported event.", null]]],
     ["an event under commands", "  commands\n    InvoicePaid\n", [[12, 4, "MESH_UNKNOWN_COMMAND", "InvoicePaid is not an imported command.", null]]],
     ["a namespace alias under commands", "  commands\n    notices.InvoiceOverdue\n", [[12, 4, "MESH_UNKNOWN_COMMAND", "notices.InvoiceOverdue is not an imported command: notices is a namespace import of ./notices/invoice-overdue.mesh.mx, which is not a command file", null]]],

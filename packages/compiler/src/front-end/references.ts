@@ -51,6 +51,11 @@ export interface ReferenceScope {
    * commands for a command position. Absent or empty for a kind the file declares none of.
    */
   own?: readonly { name: string; from: string }[];
+  /**
+   * The file's own path (`./invoice.mesh.mx`): a name the file declares as another kind than the position's is reported
+   * as what it is (`InvoiceVoided is not an imported command: the file declares InvoiceVoided as an event`).
+   */
+  self?: string;
 }
 
 /** What a position references: `entity=` takes an entity, a `publish` function's `new` an event, and `on=` will take a command. */
@@ -108,7 +113,9 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
     const imported = scope.imports.get(name);
     if (!imported) {
       const own = scope.own?.find((declaration) => declaration.name === name);
-      return own ? { ok: true, identifier, from: own.from, declared: own.name } : unknown();
+      if (own) return { ok: true, identifier, from: own.from, declared: own.name };
+      const found = scope.self === undefined ? undefined : kind.kindOf(scope.self, name);
+      return unknown(found === undefined || found === kind.noun ? "" : `: the file declares ${name} as ${an(found)}`);
     }
     if (!imported.namespace) {
       if (!kind.declares(imported.from)) return unknown();
