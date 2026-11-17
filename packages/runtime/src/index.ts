@@ -28,6 +28,8 @@ export { dispatchCommand, type ActionResult, type CommandAction } from "./dispat
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
 export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, SubscriptionFilter, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
+export { SQL_FUNCTION_ARITY, allOf, bindCondition, hasHop, orderOf, whereFor } from "./condition.ts";
+export type { Bound, Condition, ConditionLiteral, ConditionNode, DeclaredKey, Hop, LiteralNode, Mark, OrderKey, ParamNode, SqlFunction, TableOf, ValueClass, Where } from "./condition.ts";
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
 export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";

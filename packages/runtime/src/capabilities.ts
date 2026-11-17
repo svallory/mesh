@@ -8,13 +8,17 @@ import { FrameworkError } from "./errors.ts";
  *
  * - `aggregates`: `max` and `count` (no joins).
  * - `integer-key-fill`: an insert without an integer primary key gets the next integer.
- * - `joins`, `upserts`, `atomic-expressions`: declared so a build can refuse an entity
- *   that needs them; no adapter has them before 1.0.
+ * - `conditions`: the adapter honours `Query.where`, `Query.order` and the `where` argument of `max` and `count`,
+ *   and runs every core function of a condition (the expression tables through the data layer). A layer without it
+ *   never receives a condition, since one that dropped `where` would return rows a read policy denies.
+ * - `joins`: a condition may cross a relationship (`one`, `some`, `every`, `count`, `first`: correlated subqueries).
+ * - `upserts`, `atomic-expressions`: declared so a build can refuse an entity that needs them; no adapter has them
+ *   before 1.0.
  * - `gapless-positions`: the outbox's positions have no gap after a rollback or a failed insert, and deleting a
  *   prefix of rows leaves none above the deleted-through position (spec, Events and commands, "The outbox"). Only a
  *   client that audits a stream for holes needs it; the never-skip order of the read is mandatory for every adapter.
  */
-export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions"] as const;
+export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions"] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
 

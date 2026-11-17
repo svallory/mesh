@@ -929,8 +929,8 @@ function readOnlyOperations(tx: DataOperations, question: Question): DataOperati
     selectByKey: (table, key) => tx.selectByKey(table, key),
     selectByKeyForUpdate: (table, key) => tx.selectByKeyForUpdate(table, key),
     select: (table, query) => tx.select(table, query),
-    max: (table, attribute, filter) => tx.max(table, attribute, filter),
-    count: (table, attribute, filter) => tx.count(table, attribute, filter),
+    max: (table, attribute, filter, where) => tx.max(table, attribute, filter, where),
+    count: (table, attribute, filter, where) => tx.count(table, attribute, filter, where),
   } satisfies DataOperations);
 }
 

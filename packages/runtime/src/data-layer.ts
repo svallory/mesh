@@ -1,3 +1,5 @@
+import type { Condition, OrderKey } from "./condition.ts";
+
 /** Attribute names mapped to generated TypeScript values (including Date and boolean).
  * Storage conversions belong to the adapter, not the caller.
  */
@@ -68,6 +70,19 @@ export type Sort = readonly string[];
 export interface Query {
   readonly filter?: Filter | undefined;
   readonly sort?: Sort | undefined;
+  /**
+   * Set only by generated code, never from a caller's input: every row returned makes this condition true (an unknown
+   * result leaves the row out). Combined with `filter` by AND. Requires the `conditions` capability; a hop in it
+   * (`one`, `some`, `every`, `count`, `first`) also requires `joins`. An adapter without `conditions` must never
+   * receive one: `whereFor` refuses before the call.
+   */
+  readonly where?: Condition | undefined;
+  /**
+   * Set only by generated code, in place of `sort` (both set is a FrameworkError): the order, first key first; rows that
+   * tie on every key come back in primary-key order. Nulls are the smallest value and strings order by code point.
+   * Requires the `conditions` capability.
+   */
+  readonly order?: readonly OrderKey[] | undefined;
   readonly limit?: number | undefined;
   readonly offset?: number | undefined;
 }
@@ -105,11 +120,12 @@ export interface DataOperations {
   deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
   /**
    * The highest value of one attribute among the rows matching `filter`, or null when no
-   * row matches or every match is null. No joins. Requires the `aggregates` capability.
+   * row matches or every match is null. Requires the `aggregates` capability. `where`, as `Query.where`, narrows the
+   * rows further and requires `conditions` (and `joins` for a hop).
    */
-  max(table: TableHandle, attribute: string, filter?: Filter): Promise<Exclude<Scalar, boolean> | null>;
-  /** How many matching rows have a value (not null) in `attribute`. Requires `aggregates`. */
-  count(table: TableHandle, attribute: string, filter?: Filter): Promise<number>;
+  max(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<Exclude<Scalar, boolean> | null>;
+  /** How many matching rows have a value (not null) in `attribute`. Requires `aggregates`; `where` as for `max`. */
+  count(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<number>;
   /** The outbox append; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
   appendEvent?: OutboxOperations["appendEvent"];
   /** The outbox delete; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
