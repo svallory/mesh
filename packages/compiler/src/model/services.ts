@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Service } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { checkPolicyHasChecks } from "./lifecycle-limits.ts";
-import type { RuleSetting } from "./architecture-rules.ts";
+import type { Finding, RuleInput } from "./architecture-rules.ts";
 
 const atoms = (names: readonly string[]) => names.map((name) => `:${name}`).join(", ");
 
@@ -12,30 +12,20 @@ const atoms = (names: readonly string[]) => names.map((name) => `:${name}`).join
  * of that entity, its `auto=` actions included (`MESH_UNKNOWN_ACTION`); one entity in two `uses` lines of an operation is
  * `MESH_DUPLICATE_MEMBER`; a policy with no check is `MESH_POLICY_NO_CHECKS`, as for an entity. A line whose `entity=`
  * resolved to no built entity is skipped: its import or reference was reported.
- *
- * An operation whose `uses` lines name exactly one entity is the warning `MESH_SERVICE_ONE_ENTITY` (R3, OD-10): an
- * operation that touches one entity belongs on that entity, as an action. It is the code and default level of the
- * architecture rule `:service-touches-one-entity` (`model/architecture-rules.ts`), raised here directly until architecture
- * PR 2 moves it into the catalogue's check. `oneEntity` is that rule's setting from the architecture file: `off` (its
- * `disable` line) raises nothing, and a `severity` line sets the level.
+ * The one-entity warning is the architecture rule's check, `serviceTouchesOneEntity` below.
  */
 export function checkServices(
   document: { entities: readonly Entity[]; services?: readonly Service[] },
   diagnostics: Diagnostic[],
   nearestName: (name: string, candidates: Iterable<string>) => string | undefined,
-  oneEntity: RuleSetting = "warning",
 ): void {
   const byFile = new Map(document.entities.map((entity) => [resolve("/", entity.file), entity] as const));
   for (const service of document.services ?? []) {
     for (const operation of service.operations) {
       const reached = new Map<string, Entity>();
-      let resolvedAll = true;
       for (const use of operation.uses) {
         const entity = use.entity.from ? byFile.get(resolve("/", dirname(service.file), use.entity.from)) : undefined;
-        if (!entity) {
-          resolvedAll = false;
-          continue;
-        }
+        if (!entity) continue;
         use.fqn = entity.fqn;
         if (reached.has(entity.fqn))
           diagnostics.push(error("MESH_DUPLICATE_MEMBER", `Duplicate uses of ${entity.fqn}: one line per entity; list every action it calls in that line's actions=`, use.position, "merge the two lines into one"));
@@ -47,17 +37,29 @@ export function checkServices(
             diagnostics.push(error("MESH_UNKNOWN_ACTION", `:${action.name} is not an action of ${entity.fqn}: a \`uses\` line names actions of the entity it uses${actions.length ? ` (${atoms(actions)})` : ", and it has none"}.${near === undefined ? "" : ` Did you mean :${near}?`}`, action.position));
           }
       }
-      if (oneEntity !== "off" && resolvedAll && reached.size === 1) {
-        const [only] = reached.values();
-        diagnostics.push({
-          severity: oneEntity,
-          code: "MESH_SERVICE_ONE_ENTITY",
-          message: `operation :${operation.name} of ${service.fqn} uses only ${only!.fqn}: an operation that touches one entity belongs on that entity, as an action`,
-          position: operation.position,
-          fix: `move it to ${only!.name} as an action, or add the other entities it reaches`,
-        });
-      }
     }
     for (const policy of service.policies) checkPolicyHasChecks(policy, service.fqn, diagnostics);
   }
+}
+
+/**
+ * The check of the architecture rule `:service-touches-one-entity` (`model/architecture-rules.ts`; services design R3,
+ * OD-10, ruling D42): an operation whose `uses` lines name exactly one entity, `MESH_SERVICE_ONE_ENTITY` at its line, since
+ * an operation that touches one entity belongs on that entity, as an action. It reads `ServiceUse.fqn`, which
+ * `checkServices` sets; an operation with a line that resolved to no entity is skipped (that line's error is enough).
+ */
+export function serviceTouchesOneEntity({ document }: RuleInput, report: (finding: Finding) => void): void {
+  const byFqn = new Map(document.entities.map((entity) => [entity.fqn, entity] as const));
+  for (const service of document.services ?? [])
+    for (const operation of service.operations) {
+      const reached = new Set(operation.uses.map((use) => use.fqn));
+      if (reached.has(undefined) || reached.size !== 1) continue;
+      const only = byFqn.get([...reached][0]!);
+      if (!only) continue;
+      report({
+        message: `operation :${operation.name} of ${service.fqn} uses only ${only.fqn}: an operation that touches one entity belongs on that entity, as an action`,
+        position: operation.position,
+        fix: `move it to ${only.name} as an action, add the other entities it reaches, or switch the rule off in the architecture file: \`disable :service-touches-one-entity\``,
+      });
+    }
 }
