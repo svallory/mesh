@@ -5,7 +5,7 @@ import { and, eq, not, or } from "../src/expr.ts";
 /**
  * An in-memory data layer that understands the filters loading uses (`eq`, `in`, `nil`) and an ascending `sort` with the
  * key (`id`) appended, and records every call. Of translated conditions it runs a `where` over the row's own columns
- * (`column`, `value`, `eq`, `and`, `or`, `not`, `isTrue`, `isFalse`) and fails loudly on anything else, an `order` included.
+ * (`column`, `value`, `eq`, `ne`, `lt`, `gt`, `and`, `or`, `not`, `isTrue`, `isFalse`) and fails loudly on anything else, an `order` included.
  */
 function memory(tables: Record<string, Row[]>) {
   const calls: string[] = [];
@@ -27,6 +27,13 @@ function memory(tables: Record<string, Row[]>) {
     const [a, b] = node.args.map((arg) => () => value(arg, row));
     switch (node.fn) {
       case "eq": return eq(a!(), b!());
+      case "ne": return not(eq(a!(), b!()));
+      case "lt": case "gt": {
+        // Dates compare by instant, as the database compares them.
+        const [x, y] = [a!(), b!()].map((v) => (v instanceof Date ? v.getTime() : v));
+        if (x === null || y === null) return null;
+        return node.fn === "lt" ? (x as number) < (y as number) : (x as number) > (y as number);
+      }
       case "not": return not(a!());
       case "isTrue": return a!() === true;
       case "isFalse": return a!() === false;
@@ -821,6 +828,143 @@ describe("a read policy that reads the record admits a caller's load row by row"
     const rows = (await tx.select(handle("nodes"))) as Row[];
     await expect(loadRows({ ...base, Owner: { ...base.Owner!, reads: [bare] } }, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true }))
       .rejects.toThrow(/policy :bare reads the record, and its check carries no condition to fold into the query/);
+  });
+});
+
+describe("a rollup with a filter", () => {
+  /** `filter=(child) => child.state === :open`, as the build lowers it: a column of the last table compared with a value. */
+  const stateIs = (state: string): ConditionLiteral<never> => ({
+    what: "the filter of count :openKids of Node", entity: "Node",
+    tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "state", class: "string" }, { kind: "value", value: state, class: "string" }] },
+    params: () => [],
+  });
+  /** `filter=(child) => child.dueOn < %.now`: the instant is a parameter, computed with the load's clock. */
+  const overdue: ConditionLiteral<never> = {
+    what: "the filter of count :lateKids of Node", entity: "Node",
+    tree: { kind: "call", fn: "lt", args: [{ kind: "column", depth: 0, name: "dueOn", class: "date" }, { kind: "param", index: 0, class: "date" }] },
+    params: ((s: { clock: () => Date }) => [s.clock()]) as never,
+  };
+  /** A filter that folds to a constant: `filter=(child) => 1 === 2`. */
+  const never: ConditionLiteral<never> = {
+    what: "the filter of max :noRank of Node", entity: "Node",
+    tree: { kind: "call", fn: "eq", args: [{ kind: "value", value: 1, class: "integer" }, { kind: "value", value: 2, class: "integer" }] },
+    params: () => [],
+  };
+  const filtered = (handle: (name: string) => never, extra: Partial<LoadPlan> = {}): LoadPlan => {
+    const base = plan(handle);
+    return {
+      ...base,
+      Node: { ...base.Node!, computed: {
+        ...base.Node!.computed,
+        openKids: { kind: "rollup", fn: "count", of: ["children"], filter: () => stateIs("open") },
+        openRank: { kind: "rollup", fn: "max", of: ["children", "rank"], filter: () => stateIs("open") },
+        openSize: { kind: "rollup", fn: "sum", of: ["children", "size"], filter: () => stateIs("open") },
+        openGrandkids: { kind: "rollup", fn: "count", of: ["children", "children"], filter: () => stateIs("open") },
+        openOwnerRank: { kind: "rollup", fn: "max", of: ["owner", "rank"], filter: () => stateIs("open") },
+        lateKids: { kind: "rollup", fn: "count", of: ["children"], filter: () => overdue },
+        noRank: { kind: "rollup", fn: "max", of: ["owner", "rank"], filter: () => never },
+      } },
+      ...extra,
+    };
+  };
+  const data = () => memory({
+    nodes: [
+      { id: 1, parentId: null, ownerId: 10, rank: 3, size: 1, state: "open", dueOn: new Date("2026-01-01") },
+      { id: 2, parentId: 1, ownerId: 10, rank: 8, size: 2, state: "open", dueOn: new Date("2026-03-01") },
+      { id: 3, parentId: 1, ownerId: 11, rank: 5, size: 7, state: "closed", dueOn: new Date("2026-01-15") },
+      { id: 4, parentId: 2, ownerId: 12, rank: null, size: 4, state: "open", dueOn: null },
+      { id: 5, parentId: 2, ownerId: 12, rank: 6, size: 1, state: null, dueOn: new Date("2026-01-20") },
+    ],
+    owners: [{ id: 10, rank: 7, state: "open" }, { id: 11, rank: 4, state: "closed" }, { id: 12, rank: 2, state: "open" }],
+  });
+  const stored = async (tx: DataOperations, handle: (name: string) => never) => (await tx.select(handle("nodes"))) as Row[];
+
+  test("a filtered count or max over one has-many is one batched rollup with the filter as where, never a per-row call", async () => {
+    const { tx, calls, handle } = data();
+    const rows = await stored(tx, handle);
+    calls.length = 0;
+    const loaded = await loadRows(filtered(handle), "Node", tx, rows, ["openKids", "openRank", "kids"]);
+    // Node 1's children 2 (open) and 3 (closed); node 2's children 4 (open, no rank) and 5 (unknown state: left out).
+    expect(loaded.map((r) => [r.id, r.openKids, r.openRank, r.kids])).toEqual([[1, 1, 8, 2], [2, 1, null, 2], [3, 0, null, 0], [4, 0, null, 0], [5, 0, null, 0]]);
+    expect(calls.filter((c) => c.startsWith("rollup"))).toEqual([
+      "rollup count nodes.id by parentId where [1,2,3,4,5]", "rollup max nodes.rank by parentId where [1,2,3,4,5]"]);
+    // The unfiltered count keeps its per-row call (ruling D33, OD3).
+    expect(calls.filter((c) => c.startsWith("count nodes.id"))).toHaveLength(5);
+  });
+
+  test("a filtered sum asks with the filter; over a two-hop path the filter is on the last hop only", async () => {
+    const { tx, calls, handle } = data();
+    const rows = await stored(tx, handle);
+    calls.length = 0;
+    const loaded = await loadRows(filtered(handle), "Node", tx, rows, ["openSize", "openGrandkids"]);
+    // Node 1: open child 2 has size 2; its grandchildren 4 (open) and 5 (unknown) give one. The middle hop is not filtered:
+    // the closed child 3 has no children, and a closed middle row would still lead on.
+    expect(loaded.map((r) => [r.id, r.openSize, r.openGrandkids])).toEqual([[1, 2, 1], [2, 4, 0], [3, null, 0], [4, null, 0], [5, null, 0]]);
+    expect(calls).toEqual(["rollup sum nodes.size by parentId where [1,2,3,4,5]", "rollup count nodes.id by id via nodes.nodes[where] [1,2,3,4,5]"]);
+  });
+
+  test("a filtered rollup never works its value out from rows the same call loaded", async () => {
+    const { tx, calls, handle } = data();
+    const rows = await stored(tx, handle);
+    calls.length = 0;
+    const loaded = await loadRows(filtered(handle), "Node", tx, rows, ["children", "owner", "openKids", "openOwnerRank", "rankMin"]);
+    expect(loaded.map((r) => [r.id, r.openKids, r.openOwnerRank])).toEqual([[1, 1, 7], [2, 1, 7], [3, 0, null], [4, 0, 2], [5, 0, 2]]);
+    // The unfiltered min uses the loaded children; both filtered rollups ask (closed owner 11 once more, to tell it from a dangling key).
+    expect(calls.filter((c) => c.startsWith("rollup"))).toEqual([
+      "rollup count nodes.id by parentId where [1,2,3,4,5]", "rollup max owners.rank by id where [10,11,12]", "rollup max owners.rank by id [11]"]);
+  });
+
+  test("%.now in a filter is the load's instant, from the injected clock", async () => {
+    const { tx, handle } = data();
+    const rows = await stored(tx, handle);
+    const at = (iso: string) => loadRows(filtered(handle), "Node", tx, rows.slice(0, 2), ["lateKids"], { clock: () => new Date(iso) });
+    expect((await at("2026-02-01")).map((r) => r.lateKids)).toEqual([1, 1]);
+    expect((await at("2026-04-01")).map((r) => r.lateKids)).toEqual([2, 1]);
+    expect((await at("2025-01-01")).map((r) => r.lateKids)).toEqual([0, 0]);
+  });
+
+  test("over required belongs-to only, a row the filter leaves out is null and a key that names no row is still the error", async () => {
+    const { tx, calls, handle } = data();
+    calls.length = 0;
+    const kept = await loadRows(filtered(handle), "Node", tx, [{ id: 1, parentId: null, ownerId: 10 }, { id: 3, parentId: null, ownerId: 11 }], ["openOwnerRank"]);
+    expect(kept.map((r) => r.openOwnerRank)).toEqual([7, null]);
+    // Owner 11 is closed: asked once more with no filter, it exists, so it is excluded, not dangling.
+    expect(calls).toEqual(["rollup max owners.rank by id where [10,11]", "rollup max owners.rank by id [11]"]);
+    await expect(loadRows(filtered(handle), "Node", tx, [{ id: 9, parentId: null, ownerId: 99 }], ["openOwnerRank"]))
+      .rejects.toThrow("`max :openOwnerRank of=&owner.rank` on Node 9 reaches no Owner row: a key on its path points at a row that does not exist");
+  });
+
+  test("a filter that folds to false asks nothing but whether the keys name rows", async () => {
+    const { tx, calls, handle } = data();
+    calls.length = 0;
+    const loaded = await loadRows(filtered(handle), "Node", tx, [{ id: 1, parentId: null, ownerId: 10 }], ["noRank"]);
+    expect(loaded[0]!.noRank).toBeNull();
+    expect(calls).toEqual(["rollup max owners.rank by id [10]"]);
+    await expect(loadRows(filtered(handle), "Node", tx, [{ id: 9, parentId: null, ownerId: 99 }], ["noRank"])).rejects.toThrow("reaches no Owner row");
+  });
+
+  test("a filter and a read policy's row condition on the same table both apply", async () => {
+    const { tx, calls, handle } = data();
+    const byRank: PolicySpec = { name: "ranked", when: null, checks: [{ kind: "authorize-if", check: "() => &rank > 4", record: true, run: (() => { throw new Error("folded"); }) as never,
+      sql: () => ({ what: "policy :ranked authorize-if", entity: "Node", params: () => [],
+        tree: { kind: "call", fn: "gt", args: [{ kind: "column", depth: 0, name: "rank", class: "integer" }, { kind: "value", value: 4, class: "integer" }] } }) as never }] };
+    const base = filtered(handle);
+    const policed = { ...base, Node: { ...base.Node!, reads: [byRank] } } as LoadPlan;
+    const rows = await stored(tx, handle);
+    calls.length = 0;
+    // Node 1's children: 2 (open, rank 8) and 3 (closed, rank 5): one row passes both; node 2's: 4 (open, no rank) and 5 (rank 6, unknown state): none.
+    const loaded = await loadRows(policed, "Node", tx, rows.slice(0, 2), ["openKids"], { policies: true });
+    expect(loaded.map((r) => r.openKids)).toEqual([1, 0]);
+    expect(calls.filter((c) => c.startsWith("rollup"))).toEqual(["rollup count nodes.id by parentId where [1,2]"]);
+  });
+
+  test("a filter goes only to a layer that declares conditions", async () => {
+    const { tx, handle } = data();
+    const rows = await stored(tx, handle);
+    await expect(loadRows(filtered(handle), "Node", tx, rows, ["openKids"], { layer: { capabilities: { adapter: "plain", capabilities: ["aggregates"] } } }))
+      .rejects.toThrow("does not declare the conditions capability");
+    const loaded = await loadRows(filtered(handle), "Node", tx, rows.slice(0, 1), ["openKids"], { layer: { capabilities: { adapter: "sql", capabilities: ["aggregates", "conditions"] } } });
+    expect(loaded[0]!.openKids).toBe(1);
   });
 });
 
