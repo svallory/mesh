@@ -293,7 +293,7 @@ describe("a registration sees a hole as a deletion", () => {
 });
 
 describe("a database without the holes column", () => {
-  test("reads no hole, and a per-event keep refuses to start, naming mesh db push", async () => {
+  test("reads no hole, a per-event keep refuses to start, naming mesh db push, and a later push is seen without a restart", async () => {
     const file = join(dir, "no-holes.db");
     const onDisk = sqlite({ file });
     await createSchema(onDisk, tables);
@@ -314,6 +314,13 @@ describe("a database without the holes column", () => {
       // a single rule still delivers on it
       const plain = bindDomain(domain, old, { events: { bus: testBus(), keep: "until-delivered", load: async () => everything } }, new AsyncLocalStorage() as never);
       await plain.deliver();
+      // the column added by a push from another connection: the same layer sees it, since a missing column is asked again
+      const pusher = new Database(file);
+      pusher.run("ALTER TABLE mesh_outbox_state ADD COLUMN holes text");
+      pusher.close();
+      expect((await old.readOutbox!(0, 10)).holes).toEqual({});
+      expect((await state(old)).holes).toEqual({});
+      await bindDomain(domain, old, { events: { bus: testBus(), keep: PER_EVENT, load: async () => everything } }, new AsyncLocalStorage() as never).deliver();
     } finally { await old.close(); }
   });
 });

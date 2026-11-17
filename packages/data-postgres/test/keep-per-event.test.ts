@@ -4,7 +4,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
-  bindDomain, DECLARATION, EventsDeletedError, publishEvent, readEvents,
+  bindDomain, DECLARATION, EventsDeletedError, FrameworkError, publishEvent, readEvents,
   type DataLayer, type DataOperations, type Declaration, type DeliveryOperations,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
@@ -49,5 +49,28 @@ describeServer("the deletion pass under a per-event keep, Postgres", () => {
     const error = await readEvents(frame as never, binding, { after: 1 }).then(() => undefined, (thrown: unknown) => thrown) as EventsDeletedError;
     expect([error instanceof EventsDeletedError, error.eventName, error.oldestKept]).toEqual([true, "core.Gone", 5]);
     expect((await readEvents(frame as never, binding, { after: 1, names: ["audit.Kept"] })).events.map((event) => event.position)).toEqual([2]);
+  });
+
+  test("a database without the holes column reads no hole, a per-event keep refuses to start, and a later push is seen without a restart", async () => {
+    const layer = await database.freshLayer();
+    const schema = layer.database!.split("#")[1];
+    await database.admin.unsafe(`ALTER TABLE "${schema}".mesh_outbox_state DROP COLUMN holes`);
+    await publish(layer, Gone);
+    expect(Object.hasOwn(await layer.readOutbox!(0, 10), "holes")).toBe(false);
+    expect(Object.hasOwn(await state(layer), "holes")).toBe(false);
+    const load = async () => ({ handlers: { process: { h: { events: [Kept, Gone], run: () => {} } } } });
+    const perEvent = () => bindDomain({ Kept, Gone }, layer, {
+      events: { bus: testBus({ retryDelays: [0, 0] }), keep: { default: "until-delivered", events: { "audit.Kept": "all" } }, load },
+    }, new AsyncLocalStorage() as never);
+    const error = await perEvent().deliver().then(() => undefined, (thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect((error as Error).message).toBe("A per-event events.keep needs mesh_outbox_state.holes, which this database does not have: run mesh db push");
+    // a single rule still delivers on it
+    await bindDomain({ Kept, Gone }, layer, { events: { bus: testBus({ retryDelays: [0, 0] }), keep: "all", load } }, new AsyncLocalStorage() as never).deliver();
+    // the column added by a push: the same layer sees it, since a missing column is asked again
+    await database.admin.unsafe(`ALTER TABLE "${schema}".mesh_outbox_state ADD COLUMN holes jsonb`);
+    expect((await layer.readOutbox!(0, 10)).holes).toEqual({});
+    expect((await state(layer)).holes).toEqual({});
+    await perEvent().deliver();
   });
 });
