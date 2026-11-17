@@ -11,6 +11,8 @@ Accepted
 
 Amended 2026-10-11 (operator, decision ENT-03): a `json` accepts `null` with or without `nullable`, which is redundant on it and warns; shape validation is revisited later. This supersedes the lead's narrowing of 2026-10-10 below, which is kept for the record.
 
+Amended 2026-11-17 (M9, the Postgres adapter, [ADR-0089](./0089-postgres-adapter.md)): `@meshfw/data-postgres` stores a `json` as `jsonb`, which reorders object keys and refuses the `\u0000` escape (SQLSTATE `22P05`), so a value read back equals the one written as JSON data, not as text. A hand-written filter that compares a `json` column is refused there with a `FrameworkError` (`nil` alone is allowed), as the generated filters already leave such a column out.
+
 ## Date
 
 2026-10-10

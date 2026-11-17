@@ -3,7 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { FrameworkError, type Row } from "@meshfw/runtime";
 import { drizzleOperations, filterCondition, selectOptions, type DrizzleCommands } from "../src/index.ts";
-import { testDialect } from "./dialect.ts";
+import { orderingDialect, testDialect } from "./dialect.ts";
 
 const dialect = new SQLiteSyncDialect();
 const tasks = sqliteTable("tasks", {
@@ -162,6 +162,37 @@ describe("selectOptions", () => {
   ])("rejects %j", (query, message) => {
     expect(() => selectOptions(tasks, query as never)).toThrow(FrameworkError);
     expect(() => selectOptions(tasks, query as never)).toThrow(message);
+  });
+});
+
+describe("a dialect's order and collation reach the caller's sort and filter", () => {
+  const conditions = { dialect: orderingDialect, resolve: (handle: unknown) => handle as never };
+  const orderOf = (query: object) => selectOptions(tasks, query as never, conditions).orderBy.map((part) => dialect.sqlToQuery(part).sql);
+
+  test("every sort key, the primary-key tie-break included, gets the dialect's nulls; text keys its collation", () => {
+    expect(orderOf({ sort: ["rank", "-parentId"] })).toEqual([
+      '"tasks"."rank" asc nulls first', '"tasks"."parentId" collate "C" desc nulls last', '"tasks"."id" collate "C" asc nulls first',
+    ]);
+    expect(orderOf({})).toEqual(['"tasks"."id" collate "C" asc nulls first']);
+  });
+
+  test("a range comparison of a text column is collated, with the operand still bound; equality and other columns are not", () => {
+    const at = new Date("2026-01-02T03:04:05.678Z");
+    const where = (filter: object) => { const { sql, params } = dialect.sqlToQuery(selectOptions(tasks, { filter } as never, conditions).where!); return { sql, params }; };
+    expect(where({ parentId: { lt: "b" } })).toEqual({ sql: '"tasks"."parentId" collate "C" < ?', params: ["b"] });
+    expect(where({ parentId: { gte: "b", lte: "c" } })).toEqual({ sql: '("tasks"."parentId" collate "C" >= ? and "tasks"."parentId" collate "C" <= ?)', params: ["b", "c"] });
+    expect(where({ or: [{ parentId: { gt: "x" } }] })).toEqual({ sql: '"tasks"."parentId" collate "C" > ?', params: ["x"] });
+    expect(where({ parentId: { eq: "b" } })).toEqual({ sql: '"tasks"."parentId" = ?', params: ["b"] });
+    expect(where({ parentId: { in: ["b"] } })).toEqual({ sql: '"tasks"."parentId" in (?)', params: ["b"] });
+    expect(where({ rank: { lt: 3 } })).toEqual({ sql: '"tasks"."rank" < ?', params: [3] });
+    expect(where({ createdAt: { gt: at } })).toEqual({ sql: '"tasks"."createdAt" > ?', params: [at.getTime()] });
+  });
+
+  test("without a dialect, or with one that has no collation (SQLite), the SQL is unchanged", () => {
+    expect(selectOptions(tasks, { sort: ["parentId"] }).orderBy.map((part) => dialect.sqlToQuery(part).sql)).toEqual(['"tasks"."parentId" asc', '"tasks"."id" asc']);
+    const plain = { dialect: testDialect, resolve: (handle: unknown) => handle as never };
+    expect(selectOptions(tasks, { sort: ["parentId"] }, plain).orderBy.map((part) => dialect.sqlToQuery(part).sql)).toEqual(['"tasks"."parentId" asc', '"tasks"."id" asc']);
+    expect(dialect.sqlToQuery(filterCondition(tasks, { parentId: { lt: "b" } }, testDialect)!).sql).toBe('"tasks"."parentId" < ?');
   });
 });
 

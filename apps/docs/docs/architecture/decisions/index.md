@@ -56,6 +56,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) decides how translated conditions reach the database (M10): a plain-data condition tree, bound in memory and set only by generated code, honoured by adapters that declare the new `conditions` capability. It amends 0010 and 0013.
 
+[Record 0089](./0089-postgres-adapter.md) decides how the Postgres adapter (M9) runs: transactions one at a time per layer at `SERIALIZABLE`, transient errors as `MESH_DATABASE_BUSY` with a `reason`, a failed statement failing the call, and SQLite's sort order.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -136,6 +138,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted, amended 2026-10-13: `Mesh` without `now` and `today` (PRJ-22, SYN-29) | operator |
 | [0087](./0087-raw-sql-escape-hatch.md) | The raw-SQL escape hatch: a read-only `query` function exported by `#mesh` before 1.0 (Option E), with Ash's `fragment` left to M10 | Accepted by the lead for Option E, pending the operator (2026-11-17); questions 1, 7 and 14 open | operator; lead for Option E |
 | [0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) | Translated conditions cross the data layer as bound condition trees | Accepted (lead ruling D32, pending operator review) | lead, delegated |
+| [0089](./0089-postgres-adapter.md) | Postgres adapter: serializable transactions, transient errors and SQLite's order | Accepted (lead ruling D30, pending operator review) | lead, delegated |
 
 ## Superseded records
 

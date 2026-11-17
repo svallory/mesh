@@ -10,3 +10,10 @@ export const testDialect: SqlDialect = {
   divide: (a: SQL, b: SQL) => sql`(cast(${a} as real) / nullif(${b}, 0))`,
   nulls: () => undefined,
 };
+
+/** A server dialect's ordering, for these tests: nulls as the smallest value and strings by code point (`COLLATE "C"`). */
+export const orderingDialect: SqlDialect = {
+  ...testDialect,
+  nulls: (desc: boolean) => desc ? sql`nulls last` : sql`nulls first`,
+  collate: (key: SQL, kind) => kind === "string" ? sql`${key} collate "C"` : key,
+};

@@ -12,13 +12,16 @@ export interface SqlDialect {
   param(value: Scalar, kind: ValueClass): SQL;
   /** Drizzle's `alias(table, name)` of the dialect's core (`sqlite-core`, `pg-core`): each depth's table. */
   alias(table: Table, name: string): Table;
-  /** `length` of a string in code points. SQLite `length(x)`; Postgres `char_length(x)`. */
+  /** `length` of a string in code points. SQLite `length(x)`; Postgres `char_length((x)::text)`, so a number reads as its text, as SQLite's length does. */
   length(operand: SQL): SQL;
   /** Exact division (`div`), null for a zero divisor. SQLite `(CAST(a AS REAL) / NULLIF(b, 0))`. */
   divide(a: SQL, b: SQL): SQL;
   /** What follows `ASC`/`DESC` so nulls sort as the smallest value; SQLite needs nothing. */
   nulls(desc: boolean): SQL | undefined;
-  /** A string sort key wrapped so strings order by code point; SQLite's BINARY already does. */
+  /**
+   * A string sort key, or the left side of a range comparison (`lt`, `lte`, `gt`, `gte`), wrapped so strings order and
+   * compare by code point; a key of another class is returned as it is. SQLite's BINARY already does, so it has none.
+   */
   collate?(key: SQL, kind: ValueClass): SQL;
 }
 
@@ -120,7 +123,14 @@ function printer(root: Table, options: ConditionSqlOptions) {
     }
     const a = node.args.map((arg) => print(arg, depth));
     switch (node.fn) {
-      case "eq": case "ne": case "lt": case "lte": case "gt": case "gte": case "add": case "sub": case "mul":
+      case "lt": case "lte": case "gt": case "gte": {
+        // Strings compare by code point on every database: the left side goes through the dialect's `collate`, as a
+        // sort key does (an explicit collation on one operand decides the comparison). Equality needs none.
+        const kind = classOfNode(node.args[0]!) ?? classOfNode(node.args[1]!);
+        const left = options.dialect.collate && kind !== undefined ? options.dialect.collate(a[0]!, kind) : a[0];
+        return sql`(${left} ${sql.raw(COMPARISONS[node.fn])} ${a[1]})`;
+      }
+      case "eq": case "ne": case "add": case "sub": case "mul":
         return sql`(${a[0]} ${sql.raw(COMPARISONS[node.fn])} ${a[1]})`;
       case "isNull": return sql`(${a[0]} is null)`;
       case "isNotNull": return sql`(${a[0]} is not null)`;

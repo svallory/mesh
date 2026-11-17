@@ -79,6 +79,19 @@ describe("the suite catches adapters that break the contract", () => {
     }), "nested transaction joins the running one", "nested transactions are not supported");
   });
 
+  test("a layer that resolves a transaction it rolled back, as a server dialect would after an aborted statement", async () => {
+    // The first transaction, the one that meets the refused statement, rolls back and resolves; later ones are real.
+    const rolledBack = new Error("rolled back quietly");
+    let calls = 0;
+    await broken((layer) => ({
+      close: layer.close,
+      transaction: (run) => ++calls > 1 ? layer.transaction(run) : layer.transaction(async (tx) => { await run(tx); throw rolledBack; }).catch((cause: unknown) => {
+        if (cause === rolledBack) return undefined as never;
+        throw cause;
+      }),
+    }), "a statement the database refuses and the callback catches never lets the transaction resolve as if it wrote nothing", "must have committed everything");
+  });
+
   test("a select that ignores the limit", async () => {
     await broken((layer) => ({ close: layer.close, transaction: (run) => layer.transaction((tx) => run({ ...tx, select: (table, query) => tx.select(table, { ...query, limit: undefined }) })) }),
       "limit and offset page the result, and an offset past the end is empty", "first page");

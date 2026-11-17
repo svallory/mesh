@@ -52,6 +52,10 @@ if (ran === 0) {
 }
 
 console.log(`\n=== verify: ${ran - failed.length}/${ran} steps passed ===`);
+// data-postgres's server tests skip without a server, so a run that skipped them says so in its summary.
+if (steps.some((step) => step.cwd === "packages/data-postgres" && step.label.endsWith(": test")) && !process.env.MESH_TEST_POSTGRES_URL?.trim()) {
+  console.log("data-postgres server tests: skipped (MESH_TEST_POSTGRES_URL not set)");
+}
 if (failed.length > 0) {
   for (const label of failed) console.error(`FAILED: ${label}`);
   process.exit(1);
