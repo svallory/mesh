@@ -91,6 +91,8 @@ entity :Tagging table="taggings"
   relationships
     belongs-to :doc entity=Doc
     belongs-to :tag entity=Tag
+  computed
+    sum :teamScore of=&doc.team.docs.score
   actions auto=[:read]
   policies
     policy :live types=[:read]
@@ -303,6 +305,14 @@ describe("a caller's load keeps only the related rows the policies admit", () =>
       expect(values(all, load)).toEqual([[12, 5, 2], [2, -1, 2]]);
       const plan = (await binding.run(() => privilegedOf(domain.Doc).read({ filter: { title: { eq: "plan" } }, load: docLoad }, nobody)))[0];
       expect([plan.tagTotal, plan.teamTop]).toEqual([2, 7]);
+      // A sum over a joined route whose start (the link's doc) has a policy that reads the record, and so does its last hop
+      // (the team's docs). Bob may read neither link's doc d11, so nothing is reached; d14 is public, and of t2's docs he
+      // may read notes (old is forbidden by its score).
+      const sums = async (context: unknown) => (await mesh.readTagging({ sort: ["id"], load: ["teamScore"] }, context)).map((row: { teamScore: unknown }) => row.teamScore);
+      expect(await sums(bob)).toEqual([null, null, 3]);
+      expect(await sums(alice)).toEqual([5, 5, 3]);
+      expect((await binding.run(() => privilegedOf(domain.Tagging).read({ sort: ["id"], load: ["teamScore"] }, nobody))).map((row: { teamScore: unknown }) => row.teamScore))
+        .toEqual([12, 12, 2, 2]);
     } finally { await db.close(); }
   });
 

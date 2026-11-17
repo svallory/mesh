@@ -790,6 +790,28 @@ describe("a read policy that reads the record admits a caller's load row by row"
     expect(calls).toEqual(["rollup max owners.rank by id where [10,99]", "rollup max owners.rank by id [10,99]"]);
     expect((await loadRows(owned(handle), "Node", tx, rows.slice(0, 1), ["ownerRank"], { actor: { id: "a" }, policies: true }))[0]!.ownerRank).toBeNull();
     expect((await loadRows(owned(handle), "Node", tx, rows.slice(0, 1), ["ownerRank"], { actor: { id: "b" }, policies: true }))[0]!.ownerRank).toBe(7);
+    // A count over an excluded required belongs-to is 0, as over no row at all, never null.
+    expect((await loadRows(owned(handle), "Node", tx, rows.slice(0, 1), ["ownerRank", "ownerCount"], { actor: { id: "a" }, policies: true }))[0])
+      .toMatchObject({ ownerRank: null, ownerCount: 0 });
+  });
+
+  test("on a joined route of required belongs-to a row the condition hides partway is null, and a dangling key on a hop is still the error", async () => {
+    const { tx, calls, handle } = memory({
+      nodes: [],
+      owners: [{ id: 10, by: "a", bossId: 100 }, { id: 11, by: "b", bossId: 101 }, { id: 12, by: "a", bossId: 999 }, { id: 13, by: "a", bossId: 102 }],
+      bosses: [{ id: 100, by: "a", rank: 3 }, { id: 101, by: "a", rank: 4 }, { id: 102, by: "b", rank: 5 }],
+    });
+    const base = owned(handle);
+    const policed = { ...base, Boss: { ...base.Boss!, reads: [mine("by")] } } as LoadPlan;
+    // Node 1 reaches its owner and boss; node 2's owner is b's; node 3's owner is a's, its boss b's: both hidden, so null.
+    const rows = [{ id: 1, parentId: null, ownerId: 10 }, { id: 2, parentId: null, ownerId: 11 }, { id: 3, parentId: null, ownerId: 13 }];
+    const a = await loadRows(policed, "Node", tx, rows, ["bossRank"], { actor: { id: "a" }, policies: true });
+    expect(a.map((row) => row.bossRank)).toEqual([3, null, null]);
+    // The excluded anchors are asked once more with no condition at the start nor on any hop.
+    expect(calls).toEqual(["rollup max owners.rank by id via bosses[where] where [10,11,13]", "rollup max owners.rank by id via bosses [11,13]"]);
+    // Owner 12 is a's, and its boss 999 does not exist: the error, as a privileged load gives it.
+    await expect(loadRows(policed, "Node", tx, [{ id: 4, parentId: null, ownerId: 12 }], ["bossRank"], { actor: { id: "a" }, policies: true }))
+      .rejects.toThrow("`max :bossRank of=&owner.boss.rank` on Node 4 reaches no Boss row: a key on its path points at a row that does not exist");
   });
 
   test("a check that reads the record with no condition to fold is a framework error", async () => {
