@@ -251,10 +251,12 @@ export function checkSqlRequired(document: ModelDocument, diagnostics: Diagnosti
       for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, place.head, "policy"));
     }
     // A rollup's filter is new, so it must translate from the start (R19): what it reads is checked first (R18).
+    // What it reads is reported even where the type pass found an error: `line.product.active` over a nullable product is
+    // first a relationship the filter may not read, not a read that needs `?.`, whose fix would lead to this error anyway.
     for (const place of rollupFilters(document, entity, reported)) {
-      if (holdsError(place.filter.position, place.filter.source.length)) continue;
       const reads = rollupFilterProblems(place);
       if (reads.length) { found.push(...reads); continue; }
+      if (holdsError(place.filter.position, place.filter.source.length)) continue;
       const lowered = place.lower();
       if (lowered.ok) continue;
       for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, `${place.subject} must run as SQL`, "filter"));

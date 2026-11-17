@@ -167,9 +167,15 @@ describe("what the filter may read", () => {
     ["(line) => before === null", "the filter of count :n reads before; it reads only line, the billing.Line the path reaches, and fixed values"],
     ["(line) => line.invoice.limit > 1", "the filter of count :n reads line.invoice, a relationship of billing.Line; it reads only stored columns of line"],
     ["(line) => line.big === true", "the filter of count :n reads line.big, a computed field of billing.Line; it reads only stored columns of line"],
+    ["(line) => line.product?.active === true", "the filter of count :n reads line.product, a relationship of billing.Line; it reads only stored columns of line"],
   ])("filter=%s is MESH_ROLLUP_FILTER", (fn, message) => {
     const diagnostics = errors(build(`count :n of=&lines filter=${fn}`).diagnostics);
     expect(diagnostics.map((d) => [d.code, d.message, d.fix])).toEqual([["MESH_ROLLUP_FILTER", message, fix]]);
+  });
+
+  test("a nullable relationship read without ?. is MESH_ROLLUP_FILTER too, beside the type pass's own error", () => {
+    const diagnostics = errors(build("count :n of=&lines filter=(line) => line.product.active").diagnostics);
+    expect(diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_NULLABLE_ACCESS", "MESH_ROLLUP_FILTER"]);
   });
 
   test("a helper call is MESH_ROLLUP_FILTER at the call", () => {

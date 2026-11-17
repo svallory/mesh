@@ -1189,6 +1189,17 @@ describe("a has-many through a link entity", () => {
       expect(loaded.map((row) => row.courseRollup)).toEqual([1, 0]);
       expect(calls).toEqual(["rollup count students.id by id via enrollments>courses[where] [s1,s2]"]);
     });
+    test("a filter reads the far entity: it goes on the far hop's where, never on the link's", async () => {
+      const { tx, calls, handle } = data();
+      const base = school(handle);
+      // `filter=(c) => c.id !== "c13"`, lowered against Course, the entity the path reaches last.
+      const notC13: ConditionLiteral<never> = { what: "the filter of count :openCourses of Student", entity: "Course",
+        tree: { kind: "call", fn: "ne", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "value", value: "c13", class: "string" }] }, params: () => [] };
+      const plan = { ...base, Student: { ...base.Student!, computed: { ...base.Student!.computed, openCourses: { kind: "rollup", fn: "count", of: ["courses"], filter: () => notC13 } } } } as LoadPlan;
+      const loaded = await loadRows(plan, "Student", tx, [{ id: "s1" }, { id: "s2" }, { id: "s3" }], ["openCourses"]);
+      expect(loaded.map((row) => row.openCourses)).toEqual([2, 1, 0]);
+      expect(calls).toEqual(["rollup count students.id by id via enrollments>courses[where] [s1,s2,s3]"]);
+    });
   });
 
   describe("loadInto", () => {

@@ -599,3 +599,15 @@ describe("the contract", () => {
       "`has-many`: entity must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`entity=List`, `entity=billing.Invoice`)"]]);
   });
 });
+
+describe("a rollup filter over a through route", () => {
+  const filtered = (fn: string) => school({ student: student(undefined, `\n  computed\n    count :heavy of=&courses filter=${fn}`) });
+  test("reads the far entity, the record the path reaches last", () => {
+    expect(filtered("(c) => c.credits > 3").diagnostics).toEqual([]);
+  });
+  test("a column of the link entity is no member of the far one: MESH_UNKNOWN_MEMBER naming Course", () => {
+    const diagnostics = filtered("(c) => c.studentId === null").diagnostics.filter((d) => d.severity === "error");
+    expect(diagnostics.map((d) => d.code)).toEqual(["MESH_UNKNOWN_MEMBER"]);
+    expect(diagnostics[0]!.message).toContain("Course");
+  });
+});
