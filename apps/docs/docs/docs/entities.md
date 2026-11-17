@@ -459,7 +459,7 @@ A line rule carries Mesh's standard code and message, and the issue points at th
 | `max=N` | `integer`, `float`, `decimal` | `too_big` | must be at most N |
 | `match=/p/f` | `string` | `no_match` | must match /p/f |
 
-A string's length counts characters as Unicode code points, so one emoji is one character. A value of the wrong type or a missing field has no code: its issue carries the validator's message.
+A string's length counts Unicode code points: "😀" is one, but an emoji built from several code points, such as a flag or a skin-tone variant, counts as several. A value of the wrong type or a missing field has no code: its issue carries the validator's message.
 
 The atom after `check` names the rule and is the label the caller sees. Name what must hold: `check :invoiceIsSent`, not the failure you are trying to avoid. Brackets let the options span several lines. A check's name is a member of the entity, like an attribute's or an action's: it is unique in the entity, so two checks, or a check and another member, cannot share it (`MESH_DUPLICATE_MEMBER`). Two rules with the same name in two actions are either one rule, declared once as below, or two rules that need two names.
 
