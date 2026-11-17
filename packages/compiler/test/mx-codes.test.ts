@@ -4,7 +4,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { fixture, fixtureDir } from "./helpers.ts";
-import { buildModel, meshDiagnostic, parseEntitySource, relationshipValueFix, staticFileFix, type MxDiagnostic } from "../src/front-end/build.ts";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildModel, meshDiagnostic, otherFileResolver, parseEntitySource, relationshipValueFix, staticFileFix, type MxDiagnostic, type OtherFile } from "../src/front-end/build.ts";
 import { build, keyed } from "./v4.ts";
 
 describe("MX codes arrive as Mesh's", () => {
@@ -51,6 +54,104 @@ describe("meshDiagnostic", () => {
   test("a warning keeps its severity and code", () => {
     const d = meshDiagnostic({ ...base, severity: "warning", code: "MESH_DUPLICATE_OPTION" } as MxDiagnostic, "a.mesh.mx");
     expect([d.severity, d.code]).toEqual(["warning", "MESH_DUPLICATE_OPTION"]);
+  });
+
+  // MX names another file in `file` (a tag template's, a sidecar's, a concept's) and gives `offset: -1` there.
+  const elsewhere = { ...base, code: "MESH_UNKNOWN_OPTION", offset: -1, file: "/project/src/concepts/money.mesh.mx" } as MxDiagnostic;
+  const answer = (other: OtherFile) => (path: string) => {
+    expect(path).toBe("/project/src/concepts/money.mesh.mx");
+    return other;
+  };
+  test("a diagnostic in a project file is reported in that file, its offset counted in that file's text", () => {
+    const source = "concept :Money\n  attributes\n    decimal :amount\n";
+    const d = meshDiagnostic(elsewhere, "a.mesh.mx", answer({ kind: "project", file: "src/concepts/money.mesh.mx", source }));
+    expect(d).toEqual({
+      severity: "error", code: "MESH_UNKNOWN_OPTION", message: "m",
+      position: { file: "src/concepts/money.mesh.mx", line: 3, column: 4, offset: 32 }, fix: null,
+    });
+    expect(source.slice(d.position.offset)).toStartWith("decimal");
+  });
+  test("a diagnostic in a file the build does not read is reported at 1:0 of the lowered file, naming the other file", () => {
+    const d = meshDiagnostic(elsewhere, "a.mesh.mx", answer({ kind: "unread", name: "src/concepts/money.mesh.mx" }));
+    expect([d.message, d.position]).toEqual(["m (in `src/concepts/money.mesh.mx`)", { file: "a.mesh.mx", line: 1, column: 0, offset: 0 }]);
+  });
+  test("with no resolver, the other file is named as MX gave it", () => {
+    const d = meshDiagnostic(elsewhere, "a.mesh.mx");
+    expect([d.message, d.position]).toEqual(["m (in `/project/src/concepts/money.mesh.mx`)", { file: "a.mesh.mx", line: 1, column: 0, offset: 0 }]);
+  });
+  test("a diagnostic in the lowered file never asks the resolver", () => {
+    const d = meshDiagnostic(base as MxDiagnostic, "a.mesh.mx", () => { throw new Error("asked"); });
+    expect(d.position).toEqual({ file: "a.mesh.mx", line: 3, column: 4, offset: 20 });
+  });
+  test("the fix line is kept on a diagnostic in another file", () => {
+    const d = meshDiagnostic({ ...elsewhere, message: "`belongs-to`: unknown option `value`" }, "a.mesh.mx", answer({ kind: "unread", name: "x.mesh.mx" }));
+    expect(d.fix).toBe(relationshipValueFix({ code: "MESH_UNKNOWN_OPTION", message: "`belongs-to`: unknown option `value`" }));
+    expect(d.fix).not.toBeNull();
+  });
+});
+
+describe("otherFileResolver", () => {
+  const sources = new Map([
+    ["/project/src/domain/todo.mesh.mx", { file: "src/domain/todo.mesh.mx", source: "entity :Todo\n" }],
+  ]);
+  // `/project` does not exist on disk, so the root is used as given (a virtual project).
+  const resolveOther = otherFileResolver("/project", sources);
+  test("an absolute path of a project file gives that file, project-relative, with its source", () => {
+    expect(resolveOther("/project/src/domain/todo.mesh.mx")).toEqual({ kind: "project", file: "src/domain/todo.mesh.mx", source: "entity :Todo\n" });
+  });
+  test("a backslash is a separator, and a leading pair of them is a UNC path", () => {
+    expect(resolveOther("\\project\\src\\domain\\todo.mesh.mx")).toEqual({ kind: "project", file: "src/domain/todo.mesh.mx", source: "entity :Todo\n" });
+    expect(resolveOther("/project/src\\domain\\todo.mesh.mx").kind).toBe("project");
+    expect(resolveOther("\\\\server\\share\\todo.mesh.mx")).toEqual({ kind: "unread", name: "//server/share/todo.mesh.mx" });
+  });
+  test("a path inside the root that the build does not read is named project-relative, never absolute", () => {
+    expect(resolveOther("/project/src/concepts/Money.mesh.mx")).toEqual({ kind: "unread", name: "src/concepts/Money.mesh.mx" });
+  });
+  test("a path that climbs out and back in is named by where it lands", () => {
+    expect(resolveOther("/project/src/../src/domain/todo.mesh.mx").kind).toBe("project");
+  });
+  test.each([
+    ["outside the root", "/elsewhere/Money.mesh.mx"],
+    ["a sibling whose name starts like the root", "/project-other/Money.mesh.mx"],
+    ["relative", "src/domain/todo.mesh.mx"],
+    ["relative with a dot", "./todo.mesh.mx"],
+    ["a Windows drive path", "C:/project/src/domain/todo.mesh.mx"],
+    ["a UNC path", "//server/share/todo.mesh.mx"],
+    ["that is the root itself", "/project"],
+    ["that climbs back to the root", "/project/src/.."],
+  ])("a path %s is named as given", (_, path) => {
+    expect(resolveOther(path)).toEqual({ kind: "unread", name: path });
+  });
+
+  test("a path MX gives under the realpath of a symlinked root resolves to the project file", () => {
+    // macOS: /tmp is /private/tmp. MX realpaths the directories it scans; the build keys files under the root as given.
+    const base = mkdtempSync(join(tmpdir(), "mesh-other-file-"));
+    try {
+      mkdirSync(join(base, "real", "src"), { recursive: true });
+      symlinkSync(join(base, "real"), join(base, "link"));
+      // MX gives the realpath; the temp directory may itself sit under a symlink (macOS /var).
+      const real = realpathSync(join(base, "real"));
+      const link = join(base, "link");
+      const files = new Map([[join(link, "src/todo.mesh.mx"), { file: "src/todo.mesh.mx", source: "entity :Todo\n" }]]);
+      const resolveLinked = otherFileResolver(link, files);
+      for (const root of [real, link])
+        expect(resolveLinked(join(root, "src/todo.mesh.mx"))).toEqual({ kind: "project", file: "src/todo.mesh.mx", source: "entity :Todo\n" });
+      expect(resolveLinked(join(real, "src/Money.mesh.mx"))).toEqual({ kind: "unread", name: "src/Money.mesh.mx" });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("buildModel still resolves an import of a sibling virtual file", () => {
+    const result = buildModel({
+      root: "/project",
+      files: [
+        { file: "todo.mesh.mx", source: 'import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :list entity=List\n  actions auto=[:read]\n' },
+        { file: "list.mesh.mx", source: "entity :List\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
+      ],
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document?.entities.map((e) => e.name).sort()).toEqual(["List", "Todo"]);
   });
 });
 

@@ -97,7 +97,6 @@ What is inside, for the tutorial's two entities:
 | `.mesh/domain/todo/todo.validators.ts` | The input schemas for those actions |
 | `.mesh/schema.ts` | The database tables, written by the data adapter |
 | `.mesh/model.json` | One document per entity, with the source position of every declaration |
-| `.mesh/mx-contracts.js` | The tag contracts for the editor extension that highlights and checks `.mesh.mx` files |
 | `.mesh/rules.md` | A short description of your entities and of Mesh's vocabulary, for a coding agent to read |
 
 That is the whole of it. You should not have to think about any of it day to day, and you never have to edit it. Two reasons it is committed rather than hidden:

@@ -7,7 +7,7 @@
  * both halves and the project shell (`../config.ts`) share that are not the
  * model: what a build takes and returns, and how a diagnostic is made.
  */
-export { error, positionAt } from "./diagnostics.ts";
+export { error, offsetAt, positionAt } from "./diagnostics.ts";
 export type { BuildResult, EntityFile, ProjectDescription } from "./project.ts";
 export { checkExpressions } from "./check-expressions.ts";
 export type { CheckOptions } from "./check-expressions.ts";
