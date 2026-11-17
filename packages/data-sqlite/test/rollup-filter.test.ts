@@ -63,12 +63,25 @@ entity :Product table="products"
       authorize-if=() => true
 `;
 
+// An entity whose one expression is a rollup's filter: the plan imports only its `$conditions`. Over a required
+// belongs-to the filter can still leave the line out, so the rollup is nullable.
+const note = `import { Line } from "./line.mesh.mx"
+entity :Note table="notes"
+  attributes
+    uuid :id primary-key
+  relationships
+    belongs-to :line entity=Line
+  computed
+    max :openAmount of=&line.amount filter=(l) => l.state === :open
+  actions auto=[:read]
+`;
+
 async function generate(): Promise<string> {
   const dir = await mkdtemp(join(import.meta.dir, ".scratch-rollup-filter-"));
   const data: ResolvedConfig["data"] = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: { file: ":memory:" } };
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data };
   await mkdir(join(dir, "src/domain"), { recursive: true });
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ invoice, line, product }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ invoice, line, product, note }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
@@ -124,6 +137,7 @@ describe("the generated files", () => {
 
   test("the plan reads each filter when a load runs, never when it loads", async () => {
     const load = await Bun.file(join(dir, ".mesh/load.ts")).text();
+    expect(load).toContain('import { $conditions as $Note$conditions } from "./domain/note.expressions";');
     expect(load).toContain('filter: () => $Invoice$conditions["rollup.openLines.filter"]');
     expect(load).toContain('allLines: { kind: "rollup", fn: "count", of: ["lines"] }');
     // Enter the import cycle through the expressions file, then read a filter from the plan: no temporal dead zone.
@@ -147,6 +161,18 @@ describe("a filtered rollup aggregates only the rows its filter keeps", () => {
         [3, 4, 14, at("2026-02-10"), 1, 3],
         [0, 0, null, null, 0, 0],
       ]);
+    } finally { await db.close(); }
+  });
+
+  test("over a required belongs-to, a row the filter leaves out is null", async () => {
+    const { db, binding } = await seeded();
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(app.tables.notes, { id: id(31), lineId: id(11) });
+        await tx.insert(app.tables.notes, { id: id(33), lineId: id(13) });
+      });
+      const rows = await binding.run(() => privilegedOf(domain.Note).read({ sort: ["id"], load: ["openAmount"] }));
+      expect(rows.map((row: { openAmount: unknown }) => row.openAmount)).toEqual([5, null]);
     } finally { await db.close(); }
   });
 

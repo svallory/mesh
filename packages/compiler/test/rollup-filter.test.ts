@@ -232,7 +232,8 @@ describe("what is generated", () => {
       { key: "all", plan: '{ kind: "rollup", fn: "count", of: ["lines"] }' },
     ]);
     expect(view.expressionImports).toEqual([
-      { local: "$billing$Invoice$expressions", fromLiteral: '"./domain/billing/invoice.expressions"', conditions: "$billing$Invoice$conditions" },
+      // Invoice's one expression a load runs is the filter, so only its `$conditions` is imported (noUnusedLocals).
+      { local: null, fromLiteral: '"./domain/billing/invoice.expressions"', conditions: "$billing$Invoice$conditions" },
       { local: "$billing$Line$expressions", fromLiteral: '"./domain/billing/line.expressions"', conditions: null },
     ]);
     const invoiceEntity = document!.entities.find((entity) => entity.name === "Invoice")!;
