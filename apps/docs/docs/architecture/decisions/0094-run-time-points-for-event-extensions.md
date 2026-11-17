@@ -7,7 +7,7 @@ description: "Decision record 0094: core publishes a run-time point through whic
 
 ## Status
 
-Proposed (lead ruling D46, pending operator review). Amends [ADR-0020](./0020-extension-contributions-through-declared-points.md) as [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) did: core publishes a run-time point to extensions before the extension host's manifest exists. Adds one consequence to [ADR-0079](./0079-commands-events-and-the-outbox.md). The later pull requests of the same unit add the upcasting point and the partial-history rule of `project` to this record.
+Proposed (lead ruling D46, pending operator review). Amends [ADR-0020](./0020-extension-contributions-through-declared-points.md) as [ADR-0075](./0075-seams-use-the-extension-hosts-names.md) did: core publishes a run-time point to extensions before the extension host's manifest exists. Adds one consequence to [ADR-0079](./0079-commands-events-and-the-outbox.md). The partial-history rule of `project` (decision 6) came with `@meshfw/event-sourcing`; the next pull request of the same unit adds the upcasting point to this record.
 
 ## Date
 
@@ -31,6 +31,8 @@ The extension host (milestone M11, after 1.0) is where an extension would declar
 4. **A refusal fails the whole start (Q6 (a)).** A throw from `check`, `start`, `adopt` or `stored` rejects `connect()`, `startDelivery()` or `deliver()` and rolls the registration transaction back: the claim's generation is not raised and no progress row is written, as for `MESH_HANDLER_OPTION`. One case has no start left to reject: in delivery from several processes, a `renamedFrom` move that waits until no live process registers the former name runs from a later renewal of the leases, after `connect()` resolved. A refusal there rolls that move's transaction back, leaving the former row as it was, and stops delivery with `MESH_DELIVERER_LOST`, whose message names the move.
 5. **A contributed kind runs as `process` does, with a quiet call chain.** Its body runs in the handler transaction and its progress is written in it. Until the handler call settles, a publish by any action of its call chain (the body, every action it calls at any depth, and every action a seam starts for one of them, the handler transaction's own `afterCommit` included) and a `dispatch` anywhere in it are `FrameworkError`s with `retryable: false`, so the handler stops at its first attempt. A call started after the chain settled (a timer that fires later) begins a new chain and is not refused. Seams still run for a quiet chain; only a publish or a dispatch from them is refused.
 
+6. **`project`'s history rule counts any deletion (Q3 (a)).** `@meshfw/event-sourcing` decides, through `start` and `adopt`, that a `project` handler whose `from` is `"beginning"` starts at position 0, or takes on an added event, only while `Registration.deletedAny` is false; otherwise the start fails with `MESH_HANDLER_HISTORY`, whose remedies never include `keep: "all"`, which cannot bring back a deleted row. An added event is also refused when a kept row of it lies at or below the handler's position. Through `stored`, the progress row records whether the handled history is complete (`project`) or not (`project:now`: started from now, taken over from another kind, or grown under `from: "now"`), and a `from: "beginning"` handler refuses any row that is not `project`. The spec's deleted-names record in `mesh_outbox_state`, which would let an event no deletion touched start from history, is not built: it needs a core column and a write in core's deletion pass for an extension's check, and adding it later only relaxes a refusal.
+
 ## Options considered
 
 1. Wait for the host (Q0 (b)): no read model built from history and no upcasting until after M11, which has no date; applications would write them by hand over `readEvents` and `process` handlers, which the spec's "Later" section exists to replace.
@@ -38,6 +40,7 @@ The extension host (milestone M11, after 1.0) is where an extension would declar
 3. Declare kinds in `mesh.config.ts` `extensions` with a run-time part (Q2 (b)): needs a template change to pass it from `connect()`, so generated output changes, and it decides the host's manifest shape, which the extension-host page leaves open.
 4. `project` as a third core kind (Q2 (c)): contradicts the spec and ADR-0081.
 5. A refused start registers the other handlers and reports the one (Q6 (b)): needs a "not registered" state and a report channel, and leaves a read model silently stale in production.
+6. The deleted-names record (Q3 (b)): a `deleted_names` column on `mesh_outbox_state` written by every deletion batch, so a database that has deleted rows of some events can still start a read model of the others from history. Its cost is a core column and a core write path for an extension's check; databases that deleted rows before it existed could not know what they deleted.
 
 ## Trade-off analysis
 
@@ -52,6 +55,6 @@ The point costs one published core contract that the host must wrap rather than 
 ## Action items
 
 - [x] The contributed-kind point in core: `HANDLER_KIND`, `HandlerKind`, `KindHandler`, `Registration`, start, adopt and stored at registration, the quiet call chain.
-- [ ] `@meshfw/event-sourcing` with `project`, `from` and the partial-history check (`MESH_HANDLER_HISTORY`), the next pull request of the unit.
+- [x] `@meshfw/event-sourcing` with `project`, `from` and the partial-history check (`MESH_HANDLER_HISTORY`).
 - [ ] The events module's `upcast` point, the pull request after it.
 - [ ] When the extension host is built: require `extensions: [...]` for a package that contributes a kind.
