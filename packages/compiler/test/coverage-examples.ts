@@ -8,6 +8,17 @@ const defaults: Record<string, string> = { entity: "entity :Sample", create: "cr
 export function coverageProject(tag: string, option: string | undefined, example: string) {
   // An event or a command is the root of a file of its own: the example is the whole file.
   if (tag === "event" || tag === "command") return { root: "/project", files: [{ file: "docs/sample.mesh.mx", source: `${example}\n  uuid :id\n` }] };
+  // An aggregate is the root of a file of its own: Sample is its root, and Line, tied to Sample by its one belongs-to, its part.
+  if (tag === "aggregate" || tag === "root" || tag === "entities") {
+    const lines = tag === "aggregate" ? [example, "  root entity=Sample"]
+      : tag === "root" ? ["aggregate :Sales", `  ${example}`]
+      : ["aggregate :Sales", "  root entity=Sample", ...(option === "reference" ? ["  entities", `    ${example}`] : [`  ${example}`, "    Line"])];
+    return { root: "/project", files: [
+      { file: "docs/sales.mesh.mx", source: `import { Sample } from "./sample.mesh.mx"\nimport { Line } from "./line.mesh.mx"\n${lines.join("\n")}\n` },
+      { file: "docs/sample.mesh.mx", source: "entity :Sample\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
+      { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :owner entity=Sample\n' },
+    ] };
+  }
   // The kind's contract is shared, but `optional` is legal only on a command's field. Keep the table cell as authored.
   if (option === "optional" && ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number])) return { root: "/project", files: [
     { file: "docs/change.mesh.mx", source: `command :Change\n  uuid :id\n  ${example}\n` },

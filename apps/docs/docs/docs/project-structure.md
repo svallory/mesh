@@ -51,6 +51,31 @@ To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.t
 
 An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`, or the file as a namespace, `import * as lists from "./list.mesh.mx"`, then `belongs-to :list entity=lists.List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict: the import path distinguishes them, each module's specifier exports its own `List`, and Mesh writes the two as `school.List` and `work.List` wherever it names an entity. The one thing they cannot share is a table: both would be stored in `list`, so give one of them `table=` (that is a build error, naming both, until you do).
 
+Besides entity files, the domain folder holds event and command files ([Events](./events.md)) and aggregate files, below. Each declares one thing, its root line, and sits in the module folder of what it is about.
+
+### Aggregates
+
+An aggregate is a root entity and the entities it writes together with it, one consistency boundary. Its file names them; it declares no data of its own:
+
+```mx "src/domain/work/task-aggregate.mesh.mx"
+import { Task } from "./task.mesh.mx"
+import { Dependency } from "./dependency.mesh.mx"
+import * as talk from "../talk/comment.mesh.mx"
+
+aggregate :TaskAggregate
+  root entity=Task
+  entities
+    Dependency prop=:dependent
+    talk.Comment
+  events
+    event :TaskReopened
+      uuid :taskId
+```
+
+`root entity=` names the root, once. Each line of `entities` is a part: an entity the file imports, or a member of a namespace import, alone on its line or with `prop=`. A part is tied to the root by one of its `belongs-to` links to the root: its only one, or, when it has several (Dependency has a `:dependent` and a `:prerequisite`), the one `prop=` names. A part with no `belongs-to` to the root, several and no `prop=`, or a `prop=` that names no `belongs-to` to the root is `MESH_AGGREGATE_PART`; so is the root listed as a part, and a part listed twice is `MESH_DUPLICATE_MEMBER`. A root or a part the file does not import is `MESH_UNKNOWN_ENTITY`.
+
+An aggregate's `events` and `commands` sections work as an entity's do ([Events](./events.md#declaring-events-where-they-belong)): the events it lists or declares there may be published by the actions of its root and of every part, and by no other entity unless that entity owns them too. Another file imports an event the aggregate file declares from it by its class name (`import { TaskReopened } from "./task-aggregate.mesh.mx"`). The aggregate's own name is no value: nothing is generated from an aggregate, so it has no class, type or table, an import of `TaskAggregate` is `MESH_UNKNOWN_IMPORT`, and its name is kept as written. The aggregate is recorded in `model.json`. An entity may be a part of two aggregates; Mesh does not prevent it. An aggregate file imports `.mesh.mx` files only: it has no function to call a helper in.
+
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 
 ## Generated code

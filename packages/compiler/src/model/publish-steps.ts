@@ -1,6 +1,7 @@
 import type { Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { mayPublish, ownersOf } from "./owners.ts";
+import type { AggregateMembership } from "./aggregates.ts";
 
 /**
  * A `new` a `publish` function returns, resolved to an event by the front end: the declaring file (as the import writes it),
@@ -33,18 +34,20 @@ function flatten(steps: readonly Step[]): Step[] {
  *
  * `MESH_PUBLISH`, the fourth of the spec's cases (the other three are the front end's: a `publish` that is no function or
  * names no event, and one in a `validate`, a `check` or a read): a `publish` of an event that owners list, from an action
- * of an entity that is none of them ("Owners publish"). Only a `new` the build resolved is checked; a function that returns
+ * of an entity that is none of them and neither the root nor a part of an aggregate that is one ("Owners publish"). Only a `new` the build resolved is checked; a function that returns
  * a helper's result is not. When a file of the project did not parse (`complete` false) it is not checked at all: the
  * missing file may list the entity as an owner.
  */
 export function checkPublishSteps(
   document: ModelDocument,
   diagnostics: Diagnostic[],
-  { targetsOf, fqnOf, complete }: {
+  { targetsOf, fqnOf, membership = () => [], complete }: {
     /** The `new`s a publish function returns, resolved (`publishTargetsOf`). */
     targetsOf: (fn: Expression) => readonly PublishTarget[];
     /** The FQN of the event a target names, from the entity's file; undefined when no event is built for it. */
     fqnOf: (entity: Entity, target: PublishTarget) => string | undefined;
+    /** The aggregates an entity is the root or a part of (`aggregatesOf`); none when absent. */
+    membership?: (entityFqn: string) => readonly AggregateMembership[];
     complete: boolean;
   },
 ): void {
@@ -56,7 +59,7 @@ export function checkPublishSteps(
       for (const target of targetsOf(step.fn)) {
         const fqn = fqnOf(entity, target);
         if (fqn === undefined) continue;
-        const allowed = mayPublish(owners, entity.fqn, fqn);
+        const allowed = mayPublish(owners, membership, entity.fqn, fqn);
         if (allowed.ok) continue;
         const listers = allowed.owners.join(", ");
         const one = allowed.owners.length === 1;

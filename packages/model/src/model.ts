@@ -208,7 +208,7 @@ export interface CommandRef {
   /** Where `on=` is written. */
   position: SourcePosition;
 }
-/** An event or a command an owner's `events` or `commands` section names: a listing line (`InvoicePaid`, `notices.InvoiceOverdue`). */
+/** An event or a command an owner's (an entity's or an aggregate's) `events` or `commands` section names: a listing line (`InvoicePaid`, `notices.InvoiceOverdue`) or an inline declaration. */
 export interface DeclarationRef {
   /** As written: `InvoicePaid`, the alias `Paid`, or `notices.InvoiceOverdue`. Only messages read it. */
   identifier: string;
@@ -302,12 +302,47 @@ export interface EventDeclaration {
 }
 /** A command declaration: the fields of a request to run a write action (`command :PayInvoice`, a file of its own). */
 export type CommandDeclaration = EventDeclaration;
+/** One part of an aggregate: a line of its `entities` section (`Dependency prop=:dependent`). */
+export interface AggregatePart {
+  /** The part entity, as the line head writes it (`Dependency`, `talk.Comment`). */
+  entity: EntityRef;
+  /**
+   * The part's `belongs-to` that ties it to the root: the one `prop=` names, or the part's only `belongs-to` to the root.
+   * Set when the build resolves it.
+   */
+  prop?: string;
+  /** The line's head. */
+  position: SourcePosition;
+}
+/**
+ * An aggregate file (`aggregate :TaskAggregate`, ADR-0080): a root entity and its parts, one consistency boundary, and the
+ * events and commands it owns. No code is generated from it.
+ */
+export interface Aggregate {
+  /** The declared name, as written: nothing is generated from it, so it is not converted to a class name. */
+  name: string;
+  /** `<module>.<Name>`, the module's folders joined by `.`; the name alone at the domain root. */
+  fqn: string;
+  file: string;
+  module: string;
+  imports: Import[];
+  /** `root entity=Task`: the root entity, and where the `root` line is. */
+  root: { entity: EntityRef; position: SourcePosition };
+  parts: AggregatePart[];
+  /** The events the aggregate owns: its `events` section's lines. The root's and the parts' actions may publish them. */
+  events?: DeclarationRef[];
+  /** The commands the aggregate owns: its `commands` section's lines. */
+  commands?: DeclarationRef[];
+  position: SourcePosition;
+}
 export interface ModelDocument {
   entities: Entity[];
   /** Present only when the project declares an event, so a project with none keeps its `model.json` as it was. */
   events?: EventDeclaration[];
   /** Present only when the project declares a command. */
   commands?: CommandDeclaration[];
+  /** Present only when the project declares an aggregate, so a project with none keeps its `model.json` as it was. */
+  aggregates?: Aggregate[];
   /** Selected adapter identity only; options may contain secrets and never serialize. */
   data?: { name: string };
 }
