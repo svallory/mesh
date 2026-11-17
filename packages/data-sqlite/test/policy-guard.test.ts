@@ -95,12 +95,64 @@ const node = `entity :Node table="nodes"
       forbid-if=() => &parent?.locked === true
 `;
 
+// An integer key (cast to text in the marker), an enum compared with an atom, `%.now` (bound from the pre-check's
+// clock) and two rollups over has-many, one per destroy, each inside the delete's WHERE.
+const box = `import { Thing } from "./thing.mesh.mx"
+entity :Box table="boxes"
+  attributes
+    integer :id primary-key
+    enum :state values=[:draft, :closed]
+    datetime :closesAt nullable
+  relationships
+    has-many :things entity=Thing
+  computed
+    count :thingCount of=&things
+  actions auto=[:read]
+    destroy :empty
+    destroy :drafted
+    destroy :expired
+    destroy :noneDone
+  policies
+    policy :open types=[:read]
+      authorize-if=() => true
+    policy :isEmpty actions=[&empty]
+      forbid-if=() => &thingCount > 0
+    policy :isDraft actions=[&drafted]
+      authorize-if=() => &state === :draft
+    policy :isExpired actions=[&expired]
+      authorize-if=() => &closesAt !== null && &closesAt < %.now
+    policy :noneDoneYet actions=[&noneDone]
+      forbid-if=() => &things.some((t) => t.done)
+`;
+const thing = `import { Box } from "./box.mesh.mx"
+entity :Thing table="things"
+  attributes
+    uuid :id primary-key
+    boolean :done
+  relationships
+    belongs-to :box entity=Box
+  actions auto=[:read]
+  policies
+    policy :open types=[:read]
+      authorize-if=() => true
+`;
+// One policy covers the read and the destroy: the guarded check reuses the read policy's literal.
+const pad = `entity :Pad table="pads"
+  attributes
+    uuid :id primary-key
+    uuid :ownerId
+  actions auto=[:read, :destroy]
+  policies
+    policy :mine types=[:read, :destroy]
+      authorize-if=({ actor }) => &ownerId === actor.id
+`;
+
 async function generate(): Promise<string> {
   const dir = await mkdtemp(join(import.meta.dir, ".scratch-policy-guard-"));
   const data: ResolvedConfig["data"] = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: { file: ":memory:" } };
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data };
   await mkdir(join(dir, "src/domain"), { recursive: true });
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ user, note, doc, folder, item, node }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ user, note, doc, folder, item, node, box, thing, pad }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
@@ -139,6 +191,14 @@ async function seed(tx: DataOperations) {
   await tx.insert(app.tables.nodes, { id: id(42), locked: false, parentId: id(41) });
   await tx.insert(app.tables.nodes, { id: id(43), locked: false, parentId: null });
   await tx.insert(app.tables.nodes, { id: id(44), locked: false, parentId: id(43) });
+  // Box 1: a draft, closed in the past, with one thing done. Box 2: closed, closing next century, empty. Box 3: a draft
+  // with no closing time and one thing not done.
+  await tx.insert(app.tables.boxes, { id: 1, state: "draft", closesAt: new Date(Date.UTC(2020, 0, 1)) });
+  await tx.insert(app.tables.boxes, { id: 2, state: "closed", closesAt: new Date(Date.UTC(2120, 0, 1)) });
+  await tx.insert(app.tables.boxes, { id: 3, state: "draft", closesAt: null });
+  await tx.insert(app.tables.things, { id: id(51), done: true, boxId: 1 });
+  await tx.insert(app.tables.things, { id: id(52), done: false, boxId: 3 });
+  await tx.insert(app.tables.pads, { id: id(61), ownerId: id(91) });
 }
 
 /**
@@ -208,7 +268,7 @@ describe("the generated files", () => {
   }, 30_000);
 
   test("every destroy here is guarded", async () => {
-    for (const entity of ["note", "doc", "item", "node"])
+    for (const entity of ["note", "doc", "item", "node", "box", "pad"])
       expect(await Bun.file(join(dir, `.mesh/domain/${entity}.actions.ts`)).text()).toContain("tx.deleteByKeyGuarded!(");
   });
 });
@@ -286,6 +346,48 @@ describe("a guarded destroy", () => {
     const root = await bothPaths((mesh) => mesh.destroyNode({ id: id(43) }, alice), "nodes");
     expect(root.guarded).toEqual(root.read);
     expect((root.guarded as any).forbidden.breakdown[0].result).toBe(null);
+  });
+});
+
+describe("what a guarded check may read", () => {
+  /** Each key's outcome on both paths, which must agree; `true` where the delete went through. */
+  async function outcomes(call: (mesh: any, key: number) => Promise<unknown>, keys: readonly number[]) {
+    const seen: Record<number, unknown> = {};
+    for (const key of keys) {
+      const result = await bothPaths((mesh) => call(mesh, key), "boxes");
+      expect(result.guarded).toEqual(result.read);
+      expect(result.guardedCounts).toEqual({ locked: 0, guarded: 1 });
+      seen[key] = result.guarded === "done" ? true : result.guarded === "not found" ? "not found" : (result.guarded as any).forbidden.breakdown.map((entry: any) => entry.result);
+    }
+    return seen;
+  }
+
+  test("an integer key: a missing one is not found, never forbidden", async () => {
+    expect(await outcomes((mesh, key) => mesh.draftedBox({ id: key }, alice), [1, 2, 9])).toEqual({ 1: true, 2: [false], 9: "not found" });
+  });
+
+  test("an enum compared with an atom", async () => {
+    expect(await outcomes((mesh, key) => mesh.draftedBox({ id: key }, alice), [3, 2])).toEqual({ 3: true, 2: [false] });
+  });
+
+  test("%.now, bound from the clock: past is allowed, future denied, no closing time unknown", async () => {
+    expect(await outcomes((mesh, key) => mesh.expiredBox({ id: key }, alice), [1, 2, 3])).toEqual({ 1: true, 2: [false], 3: [false] });
+  });
+
+  test("a count rollup inside the delete: an empty box goes, a full one stays", async () => {
+    expect(await outcomes((mesh, key) => mesh.emptyBox({ id: key }, alice), [2, 1])).toEqual({ 2: true, 1: [true] });
+  });
+
+  test("a some over has-many inside the delete", async () => {
+    expect(await outcomes((mesh, key) => mesh.noneDoneBox({ id: key }, alice), [1, 3, 2])).toEqual({ 1: [true], 3: true, 2: true });
+  });
+
+  test("a check whose policy covers the read too: the owner deletes, a stranger is forbidden", async () => {
+    const denied = await bothPaths((mesh) => mesh.destroyPad({ id: id(61) }, bob), "pads");
+    expect(denied.guarded).toEqual(denied.read);
+    expect(denied).toMatchObject({ rows: [id(61)], guardedCounts: { locked: 0, guarded: 1 } });
+    expect((denied.guarded as any).forbidden).toMatchObject({ policies: ["mine"], reason: "failed" });
+    expect(await bothPaths((mesh) => mesh.destroyPad({ id: id(61) }, alice), "pads")).toMatchObject({ guarded: "done", read: "done", rows: [], guardedCounts: { locked: 0, guarded: 1 } });
   });
 });
 
