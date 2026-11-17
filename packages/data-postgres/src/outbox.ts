@@ -149,6 +149,31 @@ export async function deleteOutboxThrough(query: Query, sequence: string, positi
 }
 
 /**
+ * Whether `mesh_outbox_state` has the `holes` column (the hole record of a per-event `events.keep`), asked once per
+ * layer once true. A database not pushed since the column was added has none, and then no hole can have been written,
+ * so every read reports none; while false it is asked again, so a `mesh db push` that adds it is seen.
+ */
+export class HolesColumn {
+  #present = false;
+
+  async present(query: Query): Promise<boolean> {
+    if (this.#present) return true;
+    const rows = await query(
+      "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = 'holes'",
+      [OUTBOX_STATE_TABLE],
+    );
+    this.#present = rows.length > 0;
+    return this.#present;
+  }
+}
+
+/** The hole record as read (`holes::text`, or null for none), as `OutboxPage.holes` and `DeliveryState.holes` carry it. */
+export function holesOf(stored: unknown): Readonly<Record<string, number>> {
+  if (stored === null || stored === undefined) return Object.freeze({});
+  return Object.freeze(JSON.parse(stored as string) as Record<string, number>);
+}
+
+/**
  * A sample of the reader rule: every position at or below `v` was handed out to a transaction among `waitsFor` (the
  * appenders running just after `v` was read) or to one that had already ended.
  */
@@ -165,8 +190,9 @@ export class OutboxReader {
   #samples: Sample[] = [];
   #settled = 0;
   readonly #key: readonly [number, number];
+  readonly #holes: HolesColumn;
 
-  constructor(key: readonly [number, number]) { this.#key = key; }
+  constructor(key: readonly [number, number], holes: HolesColumn = new HolesColumn()) { this.#key = key; this.#holes = holes; }
 
   /**
    * The rows after `after`, at most `limit`, none above the settled position, in three statements, each after the one
@@ -202,11 +228,13 @@ export class OutboxReader {
       this.#settled = largest;
       this.#samples = this.#samples.filter((sample) => sample.v > this.#settled);
       const settled = this.#settled;
+      // The hole record comes from the same statement as the rows, when the database has its column.
+      const holes = await this.#holes.present(query);
       const result = await query(
-        `SELECT s.deleted_through AS s_deleted_through, s.highest AS s_highest, o.position, o.id, o.name, o.entity, o.action,
+        `SELECT s.deleted_through AS s_deleted_through, s.highest AS s_highest${holes ? ", s.holes AS s_holes" : ""}, o.position, o.id, o.name, o.entity, o.action,
                 o.key::text AS key, o.caused_by, o.metadata::text AS metadata, o.occurred_at, o.payload::text AS payload
          FROM (SELECT COALESCE((SELECT deleted_through FROM ${OUTBOX_STATE_TABLE} WHERE id = 1), 0) AS deleted_through,
-                      ${highestOf(sequence)} AS highest) AS s
+                      ${highestOf(sequence)} AS highest${holes ? `, (SELECT holes::text FROM ${OUTBOX_STATE_TABLE} WHERE id = 1) AS holes` : ""}) AS s
          LEFT JOIN LATERAL (SELECT * FROM ${OUTBOX_TABLE} WHERE position > $1 AND position <= $2 ORDER BY position LIMIT $3) AS o ON true
          ORDER BY o.position`,
         [after, settled, limit],
@@ -233,7 +261,7 @@ export class OutboxReader {
       // Rows at or below the deleted-through position are gone, so the floor may rise to it; it never exceeds the
       // sequence, which a backup restore can move back under a running process.
       this.#settled = Math.min(Math.max(this.#settled, deletedThrough), highest);
-      return Object.freeze({ rows: Object.freeze(rows), deletedThrough, highest, settled: this.#settled });
+      return Object.freeze({ rows: Object.freeze(rows), deletedThrough, highest, settled: this.#settled, ...(holes ? { holes: holesOf(first.s_holes) } : {}) });
     });
   }
 }

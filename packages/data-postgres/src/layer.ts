@@ -7,7 +7,7 @@ import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityMa
 import { deliveryOperations, failureOperations, multiProcessOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
-import { appendEvent, deleteOutboxThrough, OutboxReader, outboxChannel, outboxLockKey, outboxSequence, type Appender, type Query } from "./outbox.ts";
+import { appendEvent, deleteOutboxThrough, HolesColumn, OutboxReader, outboxChannel, outboxLockKey, outboxSequence, type Appender, type Query } from "./outbox.ts";
 import { AppendedListeners } from "./wakeup.ts";
 
 /**
@@ -166,7 +166,9 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   const lockKey = outboxLockKey(channel);
   /** The outbox's sequence, resolved on the first outbox call; forgotten by close(). */
   let sequenceName: string | undefined;
-  let reader = new OutboxReader(lockKey);
+  // Whether mesh_outbox_state has the holes column, shared by the reader and every transaction's delivery operations.
+  let holesColumn = new HolesColumn();
+  let reader = new OutboxReader(lockKey, holesColumn);
   /** The connection outbox reads run on, reserved on the first read and kept until close() or until it breaks. */
   let readConnection: ReservedSQL | undefined;
   /** The last read, so reads run one at a time. */
@@ -274,9 +276,9 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
         ...entities,
         appendEvent: (row) => appendEvent(appender, row),
         deleteOutboxThrough: async (position) => deleteOutboxThrough(query, await sequence(), position),
-        ...deliveryOperations(query, sequence),
+        ...deliveryOperations(query, sequence, holesColumn),
         ...failureOperations(query),
-        ...multiProcessOperations(query, sequence),
+        ...multiProcessOperations(query, sequence, holesColumn),
       } satisfies DataOperations);
     },
     async commit(conn) {
@@ -356,7 +358,8 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       readConnection?.release();
       readConnection = undefined;
       sequenceName = undefined;
-      reader = new OutboxReader(lockKey);
+      holesColumn = new HolesColumn();
+      reader = new OutboxReader(lockKey, holesColumn);
       await closing?.close();
     },
   };

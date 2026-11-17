@@ -270,16 +270,22 @@ function failures(tx: DataOperations): FailureOperations {
   return tx as DataOperations & FailureOperations;
 }
 
-/** The retention operation of a transaction, asserted present. */
+/** The retention operations of a transaction, asserted present together. */
 function retention(tx: DataOperations): RetentionOperations {
-  assert(typeof tx.firstOutboxRowSince === "function", "the transaction's operations have no firstOutboxRowSince (RetentionOperations)");
+  const names = ["firstOutboxRowSince", "deleteOutboxRows", "writeHoles"] as const;
+  const present = names.filter((name) => typeof tx[name] === "function");
+  assert(present.length === names.length, `the transaction's operations have ${present.join(", ") || "none"} of ${names.join(", ")} (RetentionOperations): an adapter has all three or none`);
   return tx as DataOperations & RetentionOperations;
 }
+
+/** The hole record as a read reports it: an absent one is no hole. */
+const holesIn = (holes: Readonly<Record<string, number>> | undefined) => JSON.stringify(Object.entries(holes ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)));
 
 /**
  * The retention checks a data adapter runs beside `outboxConformance` (spec, Events and commands, "Retention", "Handler
  * failures"): the four dead-letter operations on `mesh_outbox_failures` (`FailureOperations`), all present together,
- * and the keep period's `firstOutboxRowSince` (`RetentionOperations`); each check owns and closes its layer, as
+ * and the retention operations of a keep period and of the per-event form (`RetentionOperations`: `firstOutboxRowSince`,
+ * `deleteOutboxRows`, `writeHoles`, and the hole record on `DeliveryState` and `OutboxPage`); each check owns and closes its layer, as
  * `outboxConformance`'s do. `makeLayer` gives a fresh database with
  * core's tables for a project that declares an event.
  */
@@ -380,6 +386,66 @@ export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): R
       assert((await first(0, p5, base + 10_000)) === null, "no row is after a since younger than all of them");
       await layer.transaction((tx) => tx.deleteOutboxThrough!(p2));
       assert((await first(0, p5, base)) === p3, "a deleted row is not found");
+    }),
+    "per-event keep: firstOutboxRowSince with names finds only rows of those stored names": withLayer(async (layer) => {
+      const base = 1_760_000_000_000;
+      const [p1, p2, p3] = await layer.transaction(async (tx) => [
+        await tx.appendEvent!(outboxRow(1, { name: "a.One", occurredAt: new Date(base + 5000) })),
+        await tx.appendEvent!(outboxRow(2, { name: "a.Two", occurredAt: new Date(base + 5000) })),
+        await tx.appendEvent!(outboxRow(3, { name: "a.One", occurredAt: new Date(base + 5000) })),
+      ]) as [number, number, number];
+      const first = (after: number, names?: readonly string[]) => layer.transaction((tx) => retention(tx).firstOutboxRowSince(after, p3, new Date(base), names));
+      assert((await first(0, ["a.Two"])) === p2, "a.Two's first young row is row 2");
+      assert((await first(p1, ["a.One"])) === p3, "after is exclusive with names too");
+      assert((await first(0, ["a.Three"])) === null, "a name no row has finds none");
+      assert((await first(0, [])) === null, "an empty list finds none");
+      assert((await first(0)) === p1, "without names every row counts");
+    }),
+    "per-event keep: deleteOutboxRows deletes the rows of the names in range, lowest first, up to the limit, and returns each name's highest": withLayer(async (layer) => {
+      const base = 1_760_000_000_000;
+      // 1 a.One, 2 a.Two, 3 a.One (young), 4 a.Two, 5 a.One, 6 a.Three
+      const stamped = [["a.One", 0], ["a.Two", 0], ["a.One", 10_000], ["a.Two", 0], ["a.One", 0], ["a.Three", 0]] as const;
+      const positions = await layer.transaction(async (tx) => {
+        const out: number[] = [];
+        for (const [n, [name, age]] of stamped.entries()) out.push(await tx.appendEvent!(outboxRow(n + 1, { name, occurredAt: new Date(base + age) })));
+        return out;
+      });
+      const [p1, p2, p3, p4, p5, p6] = positions as [number, number, number, number, number, number];
+      const del = (after: number, through: number, names: readonly string[], since: Date | null, limit: number) =>
+        layer.transaction((tx) => retention(tx).deleteOutboxRows(after, through, names, since, limit));
+      const left = async () => (await layer.readOutbox!(0, 100)).rows.map((row) => row.position);
+      let result = await del(p1, p5, ["a.One"], new Date(base), 10);
+      assert(result.deleted === 1 && JSON.stringify(result.highest) === JSON.stringify({ "a.One": p5 }), `after exclusive, since inclusive: row 3 is younger, row 5 goes; got ${JSON.stringify(result)}`);
+      assert(JSON.stringify(await left()) === JSON.stringify([p1, p2, p3, p4, p6]), `left ${JSON.stringify(await left())}`);
+      result = await del(0, p6, ["a.One", "a.Two"], null, 2);
+      assert(result.deleted === 2 && JSON.stringify(Object.entries(result.highest).sort()) === JSON.stringify([["a.One", p1], ["a.Two", p2]]), `the limit takes the lowest two; got ${JSON.stringify(result)}`);
+      result = await del(0, p3, ["a.One", "a.Two"], null, 10);
+      assert(result.deleted === 1 && result.highest["a.One"] === p3 && !Object.hasOwn(result.highest, "a.Two"), `through is inclusive, and a name with no deleted row is not returned; got ${JSON.stringify(result)}`);
+      result = await del(0, p6, ["a.Nobody"], null, 10);
+      assert(result.deleted === 0 && JSON.stringify(result.highest) === "{}", `a name no row has deletes nothing; got ${JSON.stringify(result)}`);
+      assert(JSON.stringify(await left()) === JSON.stringify([p4, p6]), `left ${JSON.stringify(await left())}`);
+      const state = await layer.transaction(async (tx) => (tx as DataOperations & { readDeliveryState(): Promise<{ deletedThrough: number }> }).readDeliveryState());
+      assert(state.deletedThrough === 0, `deleteOutboxRows writes no deleted-through position; got ${state.deletedThrough}`);
+    }),
+    "per-event keep: writeHoles replaces the hole record, which readDeliveryState and readOutbox report, {} when cleared": withLayer(async (layer) => {
+      const state = () => layer.transaction(async (tx) => (tx as DataOperations & { readDeliveryState(): Promise<{ holes?: Readonly<Record<string, number>> }> }).readDeliveryState());
+      assert(holesIn((await state()).holes) === "[]", `a new database has no hole; got ${holesIn((await state()).holes)}`);
+      assert(holesIn((await layer.readOutbox!(0, 10)).holes) === "[]", "a new database's page has no hole");
+      const [p] = await layer.transaction(async (tx) => [await tx.appendEvent!(outboxRow(1))]);
+      await layer.transaction((tx) => retention(tx).writeHoles({ "a.One": 7, "billing.InvoicePaid": 9 }));
+      assert((await state()).holes !== undefined, "readDeliveryState reports the hole record once it is written");
+      assert(holesIn((await state()).holes) === JSON.stringify([["a.One", 7], ["billing.InvoicePaid", 9]]), `got ${holesIn((await state()).holes)}`);
+      const page = await layer.readOutbox!(0, 10);
+      assert(holesIn(page.holes) === JSON.stringify([["a.One", 7], ["billing.InvoicePaid", 9]]) && page.rows.length === 1 && page.rows[0]!.position === p, `the page reports the record with its rows; got ${holesIn(page.holes)}`);
+      await layer.transaction((tx) => retention(tx).writeHoles({ "a.One": 8 }));
+      assert(holesIn((await layer.readOutbox!(0, 10)).holes) === JSON.stringify([["a.One", 8]]), "a write replaces the record whole");
+      await layer.transaction((tx) => retention(tx).writeHoles({}));
+      assert(holesIn((await state()).holes) === "[]" && holesIn((await layer.readOutbox!(0, 10)).holes) === "[]", "{} clears it");
+      await rejects(() => layer.transaction(async (tx) => { await retention(tx).writeHoles({ "a.One": 3 }); throw new Error("rolled back"); }), (error) => error instanceof Error && error.message === "rolled back", "the write's transaction was to roll back");
+      assert(holesIn((await layer.readOutbox!(0, 10)).holes) === "[]", "a rolled-back write leaves the record as it was");
+      await layer.transaction((tx) => retention(tx).writeHoles({ "a.One": 3 }));
+      await layer.transaction((tx) => tx.deleteOutboxThrough!(p!));
+      assert(holesIn((await layer.readOutbox!(0, 10)).holes) === JSON.stringify([["a.One", 3]]), "deleteOutboxThrough leaves the record: core prunes it");
     }),
     "dead letters: a failure row outlives the deletion of its outbox row": withLayer(async (layer) => {
       const row = outboxRow(1);

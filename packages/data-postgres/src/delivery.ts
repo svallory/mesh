@@ -6,7 +6,7 @@ import {
   type SubscriptionProgressRow,
 } from "@meshfw/runtime";
 import { int8, int8OrNull } from "./int8.ts";
-import { sqlstateOf, type Query } from "./outbox.ts";
+import { HolesColumn, holesOf, sqlstateOf, type Query } from "./outbox.ts";
 
 /**
  * Core's delivery operations on Postgres (spec, Events and commands, "The deliverer", "Retention"): the claim in
@@ -50,6 +50,7 @@ function stateOf(row: Record<string, unknown>): DeliveryState {
     deletedThrough: int8(row.deleted_through, "mesh_outbox_state.deleted_through"),
     highest: int8(row.highest, "the outbox's highest position"),
     generation, claim, now: date(row.now)!,
+    ...(Object.hasOwn(row, "holes") ? { holes: holesOf(row.holes) } : {}),
   });
 }
 
@@ -57,8 +58,10 @@ function stateOf(row: Record<string, unknown>): DeliveryState {
  * `mesh_outbox_state` (created first), with the highest position, the database's clock and `extra` columns, under its
  * row lock unless `lock` is false. `ON CONFLICT DO NOTHING` takes no lock on a row that exists.
  */
-async function lockedState(query: Query, sequence: () => Promise<string>, extra = "", lock = true): Promise<Record<string, unknown>> {
+async function lockedState(query: Query, sequence: () => Promise<string>, holes: HolesColumn, extra = "", lock = true): Promise<Record<string, unknown>> {
   const seq = await sequence();
+  // The hole record, when the database has its column (a database not pushed since it was added has no hole).
+  if (await holes.present(query)) extra += ", holes::text AS holes";
   await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through) VALUES (1, 0) ON CONFLICT (id) DO NOTHING`);
   const [row] = await query(
     `SELECT deleted_through, COALESCE(generation, 0) AS generation, run_id, renewed_at, host, pid, started_at, clock_timestamp() AS now,
@@ -69,10 +72,10 @@ async function lockedState(query: Query, sequence: () => Promise<string>, extra 
 }
 
 /** The delivery operations over `query` (the running transaction's statements); `sequence` resolves the outbox's sequence. */
-export function deliveryOperations(query: Query, sequence: () => Promise<string>): DeliveryOperations & RetentionOperations {
+export function deliveryOperations(query: Query, sequence: () => Promise<string>, holes: HolesColumn = new HolesColumn()): DeliveryOperations & RetentionOperations {
   const exec = <T>(statement: () => Promise<T>) => withTables(statement);
   return {
-    readDeliveryState: () => exec(async () => stateOf(await lockedState(query, sequence))),
+    readDeliveryState: () => exec(async () => stateOf(await lockedState(query, sequence, holes))),
     writeClaim: (claim) => exec(async () => {
       await query(
         `INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, run_id, generation, renewed_at, host, pid, started_at)
@@ -134,12 +137,44 @@ export function deliveryOperations(query: Query, sequence: () => Promise<string>
       );
       return row === undefined ? null : int8(row.position, "mesh_outbox.position");
     }),
-    firstOutboxRowSince: (after, through, since) => exec(async () => {
-      const [row] = await query(
-        `SELECT position FROM ${OUTBOX_TABLE} WHERE position > $1 AND position <= $2 AND occurred_at > $3::text::timestamptz ORDER BY position LIMIT 1`,
-        [after, through, iso(since)],
-      );
+    firstOutboxRowSince: (after, through, since, names) => exec(async () => {
+      const [row] = names === undefined
+        ? await query(
+          `SELECT position FROM ${OUTBOX_TABLE} WHERE position > $1 AND position <= $2 AND occurred_at > $3::text::timestamptz ORDER BY position LIMIT 1`,
+          [after, through, iso(since)],
+        )
+        : await query(
+          `SELECT position FROM ${OUTBOX_TABLE}
+           WHERE position > $1 AND position <= $2 AND occurred_at > $3::text::timestamptz AND name IN (SELECT jsonb_array_elements_text($4::text::jsonb))
+           ORDER BY position LIMIT 1`,
+          [after, through, iso(since), JSON.stringify(names)],
+        );
       return row === undefined ? null : int8(row.position, "mesh_outbox.position");
+    }),
+    deleteOutboxRows: (after, through, names, since, limit) => exec(async () => {
+      if (!Number.isSafeInteger(limit) || limit < 1) throw new FrameworkError(`deleteOutboxRows takes a limit that is a whole number, 1 or more, and was given ${limit}`);
+      const deleted = await query(
+        `DELETE FROM ${OUTBOX_TABLE} WHERE position IN (
+           SELECT position FROM ${OUTBOX_TABLE}
+           WHERE position > $1 AND position <= $2 AND name IN (SELECT jsonb_array_elements_text($3::text::jsonb))
+             AND ($4::text IS NULL OR occurred_at <= $4::text::timestamptz)
+           ORDER BY position LIMIT $5)
+         RETURNING name, position`,
+        [after, through, JSON.stringify(names), iso(since), limit],
+      );
+      const highest: Record<string, number> = {};
+      for (const row of deleted) {
+        const position = int8(row.position, "mesh_outbox.position");
+        highest[row.name as string] = Math.max(highest[row.name as string] ?? 0, position);
+      }
+      return Object.freeze({ deleted: deleted.length, highest: Object.freeze(highest) });
+    }),
+    writeHoles: (record) => exec(async () => {
+      const stored = Object.keys(record).length === 0 ? null : JSON.stringify(record);
+      await query(
+        `INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, holes) VALUES (1, 0, $1::text::jsonb) ON CONFLICT (id) DO UPDATE SET holes = excluded.holes`,
+        [stored],
+      );
     }),
   };
 }
@@ -216,14 +251,14 @@ const LEASE_COLUMNS = "name, kind, position, events::text AS events, generation,
  * and columns each fails with a `FrameworkError` naming
  * `mesh db push`.
  */
-export function multiProcessOperations(query: Query, sequence: () => Promise<string>): MultiProcessOperations {
+export function multiProcessOperations(query: Query, sequence: () => Promise<string>, holes: HolesColumn = new HolesColumn()): MultiProcessOperations {
   const exec = <T>(statement: () => Promise<T>) => withTables(statement, MULTI_MISSING);
   return {
     lockDeliveryState: () => exec(async () => {
-      const row = await lockedState(query, sequence, ", keep");
+      const row = await lockedState(query, sequence, holes, ", keep");
       return Object.freeze({ ...stateOf(row), keep: (row.keep as "until-delivered" | "all" | null) ?? null }) satisfies LockedDeliveryState;
     }),
-    readDeliveryStateUnlocked: () => exec(async () => stateOf(await lockedState(query, sequence, "", false))),
+    readDeliveryStateUnlocked: () => exec(async () => stateOf(await lockedState(query, sequence, holes, "", false))),
     writeKeep: (keep) => exec(async () => {
       await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, keep) VALUES (1, 0, $1) ON CONFLICT (id) DO UPDATE SET keep = excluded.keep`, [keep]);
     }),

@@ -228,6 +228,7 @@ export const tables = {
     host: text("host"),
     pid: integer("pid"),
     started_at: integer("started_at", { mode: "timestamp_ms" }),
+    holes: text("holes", { mode: "json" }),
   }),
   mesh_handler_progress: _meshSqlite("mesh_handler_progress", {
     name: text("name").notNull().primaryKey(),
