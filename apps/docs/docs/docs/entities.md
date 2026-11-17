@@ -377,6 +377,10 @@ entity :Invoice
 | `min :firstDueOn of=&lines.dueOn` | The smallest value |
 | `max :lastDueOn of=&lines.dueOn` | The largest value |
 
+`sum` and `avg` take an `integer` or `decimal` field, and `min` and `max` also a `date` or `datetime`; `count` ends at the relationship. A `sum`, `avg`, `min` or `max` over no row, or over rows whose field is null, is `null`, and a `count` is `0`.
+
+The path may start at any relationship. Over a `belongs-to` it reads the one related record: `max :customerRating of=&customer.rating` is the customer's rating, and when the `belongs-to` and the field are both required it is never null, except where no customer is known yet (on a create's new instance, before the input names one, it is `null`) or the caller may not read the customer. A required `belongs-to` whose key names a row that does not exist is an error when the rollup loads, as it is when the relationship loads. A path through more than one relationship, or through a `has-many ... through=`, needs a join, which arrives with the SQL evaluator (M10): until then it is a build error (`MESH_NOT_IMPLEMENTED`), and a computed field with a body can compute the value from the loaded relationships instead. Until then too, a rollup whose path reaches an entity with a read policy that reads the record must be a `count` or a `max` over one `has-many` or `has-one`; any other is a build error (`MESH_NOT_IMPLEMENTED`).
+
 Paths are checked at build time. Inside the entity, checks, steps, filters and policies can read `&lineCount` without asking. A caller sees a computed field only when they name it in `load`; otherwise reading it is a type error.
 
 A computed body that cannot be translated runs in memory after the rows load, at the cost of an extra pass. `label` above is one of those, and that is not a mistake. An error arises only where SQL is required: a filter, a sort key, a policy, a rollup's path or another translated expression. `mesh explain` says which computed fields translate.

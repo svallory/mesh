@@ -1,5 +1,5 @@
 import { whereFor, type Condition, type TableOf } from "./condition.ts";
-import type { DataOperations, Filter, Row, TableHandle } from "./data-layer.ts";
+import { ROLLUP_ANCHORS, type DataOperations, type Filter, type RollupQuery, type Row, type Scalar, type TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
 import type { ActionFrame } from "./entity.ts";
@@ -36,8 +36,10 @@ function evaluating<T>(what: string, fn: () => T): T {
  *   the keys, sorted by their exit column, then the far rows whose key is one of their exit keys.
  * - A computed field with a body first loads what its body reads (its `needs`), then runs the body in
  *   memory once per row, with the scope the expression functions take.
- * - A `count` or `max` rollup calls the data layer's `count` and `max` once per row. That is one query
- *   per row until M10 translates rollups into one statement.
+ * - A `count` or `max` rollup over one has-many or has-one calls the data layer's `count` and `max` once per row. Every
+ *   other rollup (`sum`, `avg`, `min`, and any rollup over a belongs-to) is one `rollup` call for the whole list of rows,
+ *   per `ROLLUP_ANCHORS` anchors: the target's rows grouped by the column the relationship follows. A rollup over more
+ *   than one relationship waits for M10's joins.
  * - What a caller loads (`policies: true`: a read's `load`, a write's `load` step) runs the read policies of each entity it
  *   reaches, and of the link entity of a `through`, with the caller's scope: a relationship to an entity they do not admit is `[]` (has-many) or `null`
  *   (belongs-to, has-one), and a rollup over one counts no row (`0`, or `null` for `max`). The policies are decided first,
@@ -214,7 +216,7 @@ function assertServable(plan: LoadPlan, entity: string, entityPlan: EntityPlan, 
     return;
   }
   const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
-  if (computed?.kind === "rollup") rollupShape(plan, entity, entityPlan, name, computed);
+  if (computed?.kind === "rollup") rollupRoute(plan, entity, entityPlan, name, computed);
 }
 
 /** A fresh empty value for each row, so that no two rows share one list. */
@@ -266,7 +268,12 @@ async function admissions(plan: LoadPlan, entity: string, names: readonly string
     if (!over) continue;
     const where = await admits(over.target);
     if (where === false) denied.set(name, computed.fn === "count" ? 0 : null);
-    else if (where !== true) narrowed.set(name, { target: where });
+    else if (where !== true) {
+      // The batched `rollup` takes no row condition yet; the build refuses such a rollup first (MESH_NOT_IMPLEMENTED).
+      if (!perRow(computed, over))
+        throw new FrameworkError(`${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity} reaches ${over.target}, whose read policy reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`);
+      narrowed.set(name, { target: where });
+    }
   }
   return { denied, narrowed };
 }
@@ -285,7 +292,7 @@ async function admittedValues(
   if (!relation) {
     const computed = entityPlan.computed[name] as Extract<ComputedPlan, { kind: "rollup" }>;
     const values: unknown[] = [];
-    for (const row of work) values.push(await rollup(plan, entity, entityPlan, name, computed, tx, row, narrowing.target));
+    for (const row of work) values.push(await rollupOneRow(plan, entity, entityPlan, name, computed, tx, row, narrowing.target));
     return values;
   }
   if (!loadedForBodies) {
@@ -357,7 +364,9 @@ async function ensureField(
   const computed = Object.hasOwn(entityPlan.computed, name) ? entityPlan.computed[name] : undefined;
   if (!computed) throw new FrameworkError(unknownName(plan, entity, name));
   if (computed.kind === "rollup") {
-    for (const row of todo) row[name] = await rollup(plan, entity, entityPlan, name, computed, tx, row);
+    const route = rollupRoute(plan, entity, entityPlan, name, computed);
+    if (perRow(computed, route.relation)) for (const row of todo) row[name] = await rollupOneRow(plan, entity, entityPlan, name, computed, tx, row);
+    else await rollupRows(entity, entityPlan, name, computed, route, tx, todo, (options as Options).pending);
     return;
   }
   for (const path of computed.needs) await ensurePath(plan, entity, tx, todo, path.split("."), options, depth + 1);
@@ -676,46 +685,106 @@ async function loadThrough(
     });
 }
 
-/** What a rollup counts over, or the error that says why it cannot be loaded (the same for every row and every caller). */
-function rollupShape(
+/** Does the rollup keep its per-row `count`/`max` call (one has-many or has-one, ruling D33 OD3), or go through `rollup`? */
+const perRow = (computed: Extract<ComputedPlan, { kind: "rollup" }>, relation: RelationPlan) =>
+  (computed.fn === "count" || computed.fn === "max") && relation.kind !== "belongs-to";
+
+/**
+ * What a rollup aggregates: the rows of `target` that its one relationship reaches, and `column`, the value (the
+ * target's key for a count). Or the error that says why it cannot be loaded, the same for every row and every caller.
+ */
+interface RollupRoute {
+  path: string;
+  relation: RelationPlan;
+  target: EntityPlan;
+  column: string;
+}
+function rollupRoute(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>,
-): { path: string; relation: HasPlan & { column: string }; target: EntityPlan; column: string } {
+): RollupRoute {
   const label = `${computed.fn} :${name} of=&${computed.of.join(".")} on ${entity}`;
-  if (computed.fn !== "count" && computed.fn !== "max")
-    throw new FrameworkError(`${label} cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it`);
   const [path, attribute, ...more] = computed.of as [string, string?, ...string[]];
   const relation = Object.hasOwn(entityPlan.relations, path) ? entityPlan.relations[path] : undefined;
   if (!relation) throw new FrameworkError(`${label} cannot be loaded: ${entity} has no relationship ${path}`);
+  if (more.length > 0 || (attribute !== undefined && Object.hasOwn(planOf(plan, relation.target).relations, attribute)))
+    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now`);
   if (relation.kind === "has-many" && relation.through)
-    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now`);
-  const through = relation.kind === "belongs-to" || more.length > 0 || (attribute !== undefined && Object.hasOwn(planOf(plan, relation.target).relations, attribute));
-  if (through)
-    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over ${relation.kind === "belongs-to" ? "a belongs-to" : "more than one relationship"} needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now`);
-  if (relation.column === null)
+    throw new FrameworkError(`${label} cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now`);
+  if (relation.kind !== "belongs-to" && relation.column === null)
     throw new FrameworkError(`${label} cannot be loaded: ${relation.target} has no belongs-to back to ${entity}`);
   const target = planOf(plan, relation.target);
-  return { path, relation: relation as HasPlan & { column: string }, target, column: attribute ?? target.key };
+  return { path, relation, target, column: attribute ?? target.key };
+}
+
+/** What a rollup gives when it reaches no row: `0` for a count, `null` for the others. */
+const nothing = (computed: Extract<ComputedPlan, { kind: "rollup" }>) => (computed.fn === "count" ? 0 : null);
+
+/**
+ * A rollup served by the data layer's `rollup` for every row at once. Each row's anchor is the value its relationship
+ * starts from (its key for a has-many or has-one, its key column for a belongs-to); the anchors are distinct, so rows
+ * that share a target ask once. A row with no anchor reaches nothing (a create's new instance, a nullable belongs-to
+ * with a null key), except a stored row with a null key on a required belongs-to, which is an error as its load is. An
+ * anchor the result leaves out reached no row: `0` or `null`, except over a required belongs-to, whose key then points
+ * at a row that does not exist, an error as its load is. `count`, `min` and `max` over a relationship the row already
+ * holds are worked out from it; `sum` and `avg` always ask the database, so the value never depends on what was loaded
+ * (JavaScript's sum of floats is not SQL's; ruling D33 OD4).
+ */
+async function rollupRows(
+  entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, route: RollupRoute, tx: DataOperations, rows: Work[], pending?: object,
+): Promise<void> {
+  const { path, relation, target, column } = route;
+  const owned = relation.kind === "belongs-to";
+  const anchorOf = (row: Work) => row[owned ? relation.column : entityPlan.key];
+  const asked: Work[] = [];
+  for (const row of rows) {
+    if (computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
+      row[name] = fromLoaded(computed, related(row[path]), column);
+      continue;
+    }
+    const anchor = anchorOf(row);
+    if (anchor === null || anchor === undefined) {
+      if (owned && !relation.nullable && row !== pending) throw new FrameworkError(`${describe(entity, path, relation)} has no key in ${relation.column}, and it is not nullable`);
+      row[name] = nothing(computed);
+      continue;
+    }
+    asked.push(row);
+  }
+  const anchors = [...new Set(asked.map(anchorOf))] as RollupQuery["anchors"][number][];
+  const found = new Map<unknown, unknown>();
+  const query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column };
+  for (let at = 0; at < anchors.length; at += ROLLUP_ANCHORS)
+    for (const result of await tx.rollup({ ...query, anchors: anchors.slice(at, at + ROLLUP_ANCHORS) })) found.set(result.anchor, result.value);
+  for (const row of asked) {
+    const anchor = anchorOf(row);
+    if (found.has(anchor)) row[name] = found.get(anchor);
+    else if (owned && !relation.nullable)
+      throw new FrameworkError(`\`${computed.fn} :${name} of=&${computed.of.join(".")}\` on ${entity} ${JSON.stringify(row[entityPlan.key])} reaches no ${relation.target} row: a key on its path points at a row that does not exist`);
+    else row[name] = nothing(computed);
+  }
+}
+
+/** A `count`, `min` or `max` over rows already loaded: the answer the data layer gives (nulls skipped; none is null, a count 0). */
+function fromLoaded(computed: Extract<ComputedPlan, { kind: "rollup" }>, rows: Row[], column: string): unknown {
+  const values = rows.map((r) => r[column]).filter((value) => value !== null && value !== undefined) as Exclude<Scalar, null>[];
+  if (computed.fn === "count") return values.length;
+  const rank = (value: unknown) => (value instanceof Date ? value.getTime() : (value as number | string));
+  const better = computed.fn === "min" ? (a: unknown, b: unknown) => rank(a) < rank(b) : (a: unknown, b: unknown) => rank(a) > rank(b);
+  return values.reduce<unknown>((best, value) => (best === undefined || better(value, best) ? value : best), undefined) ?? null;
 }
 
 /**
- * One row's rollup. With `where` (a caller's load the read policies admit row by row) it is always queried with it: the
- * rows loaded on `row` may be the copy the computed bodies loaded, which no policy filtered.
+ * One row's `count` or `max` over a has-many or has-one. With `where` (a caller's load the read policies admit row by
+ * row) it is always queried with it: the rows loaded on `row` may be the copy the computed bodies loaded, which no
+ * policy filtered.
  */
-async function rollup(
+async function rollupOneRow(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, tx: DataOperations, row: Work, where?: Condition,
 ): Promise<unknown> {
-  const { path, relation, target, column } = rollupShape(plan, entity, entityPlan, name, computed);
+  const { path, relation, target, column } = rollupRoute(plan, entity, entityPlan, name, computed);
   // The rows are already here: the same answer the data layer gives (nulls are skipped; none is null, a count is 0), with no query.
-  if (!where && Object.hasOwn(row, path)) {
-    const loaded = row[path];
-    const related = (Array.isArray(loaded) ? loaded : loaded === null || loaded === undefined ? [] : [loaded]) as Row[];
-    const values = related.map((r) => r[column]).filter((value) => value !== null && value !== undefined);
-    if (computed.fn === "count") return values.length;
-    const rank = (value: unknown) => (value instanceof Date ? value.getTime() : (value as number | string));
-    return values.reduce<unknown>((best, value) => (best === undefined || rank(value) > rank(best) ? value : best), undefined) ?? null;
-  }
-  if (row[entityPlan.key] === null || row[entityPlan.key] === undefined) return computed.fn === "count" ? 0 : null;
-  const filter: Filter = { [relation.column]: { eq: row[entityPlan.key] as never } };
+  if (!where && Object.hasOwn(row, path)) return fromLoaded(computed, related(row[path]), column);
+  if (row[entityPlan.key] === null || row[entityPlan.key] === undefined) return nothing(computed);
+  const filter: Filter = { [(relation as HasPlan & { column: string }).column]: { eq: row[entityPlan.key] as never } };
   if (where) return computed.fn === "count" ? tx.count(target.table, column, filter, where) : tx.max(target.table, column, filter, where);
   return computed.fn === "count" ? tx.count(target.table, column, filter) : tx.max(target.table, column, filter);
 }

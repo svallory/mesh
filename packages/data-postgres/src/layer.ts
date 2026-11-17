@@ -3,7 +3,7 @@ import { count, getTableColumns, getTableName, is, max, sql, SQL as DrizzleSQL, 
 import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
 import { PgJsonb, PgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { deliveryOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
@@ -241,7 +241,8 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
         }),
         update: (table, condition, changes) => run(async () => await db.update(table).set(jsonIn(table, changes)).where(condition).returning(fieldsOf(table))),
         delete: (table, condition) => run(async () => await db.delete(table).where(condition).returning(fieldsOf(table))),
-      }, guard));
+        rows: (statement) => run(async () => [...await db.execute<Row>(statement)]),
+      }, guard, capabilities));
       return Object.freeze({
         ...entities,
         appendEvent: (row) => appendEvent(appender, row),

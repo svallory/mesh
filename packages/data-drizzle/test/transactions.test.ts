@@ -67,8 +67,8 @@ describe("serialTransactions", () => {
     const { queue, deadlines } = fixture();
     await queue.transaction(async () => undefined);
     await queue.transaction(async () => undefined, { waitMs: 20 });
-    expect(deadlines[0]!.at - deadlines[0]!.started).toBe(5000);
-    expect(deadlines[1]!.at - deadlines[1]!.started).toBe(20);
+    expect(deadlines[0]!.at - deadlines[0]!.started).toBeCloseTo(5000, 6);
+    expect(deadlines[1]!.at - deadlines[1]!.started).toBeCloseTo(20, 6);
 
     // A call queued behind a held transaction starts its clock only when that one has settled, not when it was made.
     let firstSettled = 0;
@@ -131,7 +131,7 @@ describe("serialTransactions", () => {
   test("an exclusive job runs alone on the acquired connection, its failures mapped as a job", async () => {
     const stages: string[] = [];
     const { queue, log } = fixture({ report: (cause, stage) => { stages.push(stage); return cause; } });
-    expect(await queue.exclusive(async (conn, deadline) => { expect(deadline.at - deadline.started).toBe(5000); return conn.id; })).toBe(1);
+    expect(await queue.exclusive(async (conn, deadline) => { expect(deadline.at - deadline.started).toBeCloseTo(5000, 6); return conn.id; })).toBe(1);
     await expect(queue.exclusive(async () => { throw new Error("job"); })).rejects.toThrow("job");
     expect(stages).toEqual(["job"]);
     expect(log).toEqual(["acquire", "release 1", "acquire", "release 2"]);

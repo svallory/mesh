@@ -56,7 +56,7 @@ function memoryLayer(options: { outbox?: boolean; appended?: boolean } = {}) {
   let open = false;
   const refuse = async (): Promise<never> => { throw new Error("not used by these tests"); };
   const ops: DataOperations = {
-    insert: refuse, selectByKey: refuse, selectByKeyForUpdate: refuse, select: refuse, updateByKey: refuse, deleteByKey: refuse, max: refuse, count: refuse,
+    insert: refuse, selectByKey: refuse, selectByKeyForUpdate: refuse, select: refuse, updateByKey: refuse, deleteByKey: refuse, max: refuse, count: refuse, rollup: refuse,
     ...(options.outbox === false ? {} : {
       appendEvent: async (row) => { const position = ++state.highest; state.rows.push({ ...row, position }); return position; },
       deleteOutboxThrough: async (position) => {

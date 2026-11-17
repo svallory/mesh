@@ -36,6 +36,7 @@ function fake(mode: "correct" | "no rollback" | "wrong error" | "no commit" | "b
         async selectByKeyForUpdate(_table, key) { return structuredClone(pending.get(lookupKey(key, "select"))); },
         async max() { throw new Error("not used"); },
         async count() { throw new Error("not used"); },
+        async rollup() { throw new Error("not used"); },
       };
       if (token) token.tx = tx;
       try {

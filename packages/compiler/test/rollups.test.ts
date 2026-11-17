@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import type { Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
+import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../src/model/new-instance.ts";
 const target = `import { Invoice } from "./invoice.mesh.mx"
 import { Line } from "./line.mesh.mx"
 entity :Line
@@ -62,35 +64,71 @@ test.each([
   });
 });
 
-// sum, avg and min are valid, typed and not built: the build says so, naming when (ADR-0018).
+// sum, avg and min build with the type and nullability of the spec's table: over a has-many they can reach no record.
 test.each([
-  ["sum", "lines.units"], ["sum", "lines.amount"], ["avg", "lines.units"], ["avg", "lines.amount"],
-  ["min", "lines.units"], ["min", "lines.amount"], ["min", "lines.dueOn"], ["min", "lines.paidAt"],
-] as const)("%s of %s is not implemented yet, and the build says when", (fn, path) => {
+  ["sum", "lines.units", "integer"], ["sum", "lines.amount", "decimal"], ["avg", "lines.units", "decimal"], ["avg", "lines.amount", "decimal"],
+  ["min", "lines.units", "integer"], ["min", "lines.amount", "decimal"], ["min", "lines.dueOn", "date"], ["min", "lines.paidAt", "datetime"],
+] as const)("%s of %s builds as a nullable %s", (fn, path, type) => {
+  const { result } = build(fn, path);
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities[0]!.computed[0]).toMatchObject({ type, nullable: true, rollup: { fn, of: path } });
+});
+
+test.each([
+  ["sum", "lines.ratio", "a number", "float"], ["sum", "lines.createdAt", "a number", "timestamp"], ["avg", "lines.title", "a number", "string"],
+  ["sum", "lines.done", "a number", "boolean"], ["min", "lines.createdAt", "a number, date or datetime", "timestamp"], ["min", "lines.title", "a number, date or datetime", "string"],
+] as const)("%s of %s is MESH_ROLLUP_TYPE", (fn, path, needs, type) => {
+  const { result } = build(fn, path);
+  expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_ROLLUP_TYPE", message: `${fn} needs ${needs}, &${path.split(".")[1]} is :${type}` })]);
+});
+
+// One belongs-to hop is one table (`select id, max(units) from lines where id in (...) group by id`): no join, so it
+// builds. It reaches exactly one record when the belongs-to and the attribute are both required, so it is not nullable then.
+test.each([
+  ["max", "lines.units", "belongs-to :lines entity=Line", "integer", false],
+  ["sum", "lines.amount", "belongs-to :lines entity=Line", "decimal", false],
+  ["min", "lines.dueOn", "belongs-to :lines entity=Line", "date", false],
+  ["avg", "lines.units", "belongs-to :lines entity=Line", "decimal", false],
+  ["max", "lines.units", "belongs-to :lines entity=Line nullable", "integer", true],
+  ["count", "lines", "belongs-to :lines entity=Line", "integer", false],
+  ["count", "lines", "belongs-to :lines entity=Line nullable", "integer", false],
+  ["max", "lines.units", "has-one :lines entity=Line", "integer", true],
+  ["sum", "lines.units", "has-one :lines entity=Line", "integer", true],
+] as const)("%s of %s over %s builds as %s, nullable %p", (fn, path, relationship, type, nullable) => {
+  const { result } = build(fn, path, relationship);
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities[0]!.computed[0]).toMatchObject({ type, nullable, rollup: { fn, of: path } });
+});
+
+test("a rollup over one belongs-to is nullable when the attribute is", () => {
+  const { result } = build("max", "lines.units", "belongs-to :lines entity=Line");
+  expect(result.document!.entities[0]!.computed[0]!.nullable).toBe(false);
+  const optional = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source: build("max", "lines.units", "belongs-to :lines entity=Line").source },
+    { file: "billing/line.mesh.mx", source: target.replace("integer :units", "integer :units nullable") },
+  ] });
+  expect(optional.diagnostics).toEqual([]);
+  expect(optional.document!.entities[0]!.computed[0]).toMatchObject({ type: "integer", nullable: true });
+});
+
+// A path through more than one relationship needs a join, which is M10.
+test.each([
+  ["max", "lines.parent.dueOn"],
+  ["count", "lines.parent"],
+  ["sum", "lines.invoice.amount"],
+] as const)("%s of %s needs a join: a build error that names M10", (fn, path) => {
   const { result } = build(fn, path);
   expect(result.document).toBeNull();
   expect(result.diagnostics).toEqual([expect.objectContaining({
     code: "MESH_NOT_IMPLEMENTED",
-    message: `${fn} rollups are not implemented yet: only count and max run before Mesh 1.0; sum, avg and min come after it`,
+    message: `${fn} :value goes through more than one relationship, which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`,
+    fix: null,
   })]);
 });
 
-// A path through a belongs-to or through more than one relationship needs a join, which is M10.
-test.each([
-  ["max", "lines.parent.dueOn", "more than one relationship"],
-  ["count", "lines.parent", "more than one relationship"],
-] as const)("%s of %s needs a join: a build error that names M10", (fn, path, what) => {
-  const { result } = build(fn, path);
-  expect(result.document).toBeNull();
-  expect(result.diagnostics).toEqual([expect.objectContaining({
-    code: "MESH_NOT_IMPLEMENTED",
-    message: expect.stringContaining(`goes through ${what}, which needs a join; joins arrive with the SQL evaluator (M10)`),
-  })]);
-});
-
-test("a rollup through a belongs-to needs a join too", () => {
-  const { result } = build("count", "lines", "belongs-to :lines entity=Line");
-  expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_NOT_IMPLEMENTED", message: expect.stringContaining("goes through a belongs-to") })]);
+test("a path that starts at a belongs-to and goes on needs a join too", () => {
+  const { result } = build("count", "lines.parent", "belongs-to :lines entity=Line");
+  expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_NOT_IMPLEMENTED", message: expect.stringContaining("goes through more than one relationship") })]);
 });
 
 test("a rollup over a relationship that nothing points back at is the one MESH_NO_INVERSE, at the has-many line", () => {
@@ -308,4 +346,80 @@ test("the entity a rollup reads needs a read like any relationship's target: the
     ["MESH_ON_LOAD", "billing/invoice.mesh.mx", 7, "has-many :lines of billing.Invoice reaches billing.Line, which has neither `on:load=` nor an auto read, so Mesh has no read to load it with"],
     ["MESH_ON_LOAD", "billing/line.mesh.mx", 15, "belongs-to :parent of billing.Line reaches billing.Line, which has neither `on:load=` nor an auto read, so Mesh has no read to load it with"],
   ]);
+});
+
+// Until M10's SQL rollups fold read policies into the batched rollup, a rollup it serves (anything but a count or max
+// over one has-many or has-one) must not reach an entity whose read policy reads the record: it would count rows the
+// caller may not read. The per-row count and max take the policy's condition already, so they build.
+describe("a rollup over an entity whose read policy reads the record", () => {
+  const policed = (policy: string) => target.replace("  actions auto=[:read]\n", `  actions auto=[:read]\n  policies\n    ${policy}\n`);
+  const builtWith = (fn: string, path: string, relationship: string, policy: string) => buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source: build(fn, path, relationship).source },
+    { file: "billing/line.mesh.mx", source: policed(policy) },
+  ] });
+  const recordReading = "policy :open types=[:read]\n      authorize-if=() => &done === false";
+  test.each([
+    ["sum", "lines.units", "has-many :lines entity=Line"],
+    ["avg", "lines.units", "has-many :lines entity=Line"],
+    ["min", "lines.dueOn", "has-one :lines entity=Line"],
+    ["max", "lines.units", "belongs-to :lines entity=Line"],
+    ["count", "lines", "belongs-to :lines entity=Line"],
+  ] as const)("%s of %s over %s is MESH_NOT_IMPLEMENTED at the rollup", (fn, path, relationship) => {
+    const result = builtWith(fn, path, relationship, recordReading);
+    expect(result.diagnostics).toEqual([{
+      severity: "error",
+      code: "MESH_NOT_IMPLEMENTED",
+      message: `${fn} :value reaches billing.Line, whose read policy :open reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`,
+      position: expect.objectContaining({ file: "billing/invoice.mesh.mx", line: 9 }),
+      fix: "compute the value in a computed field's body from the loaded relationship, or make the read policy read only actor and context",
+    }]);
+  });
+  test.each([
+    ["count", "lines", "has-many :lines entity=Line", recordReading],
+    ["max", "lines.units", "has-one :lines entity=Line", recordReading],
+    ["sum", "lines.units", "has-many :lines entity=Line", "policy :staff types=[:read]\n      authorize-if=({ actor }) => actor.staff === true"],
+    // A policy that does not cover the read a load runs is not run by the load.
+    ["sum", "lines.units", "has-many :lines entity=Line", "policy :edit types=[:update]\n      authorize-if=() => &done === false"],
+  ] as const)("%s of %s over %s under %s builds", (fn, path, relationship, policy) => {
+    expect(builtWith(fn, path, relationship, policy).diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+  });
+});
+
+// On a create's new instance a required belongs-to has no key yet, so a rollup over it reaches nothing until the input
+// fills the key: Mesh gives it no value (`null`), and the build treats it like any field null on the new instance.
+describe("a rollup over a required belongs-to on a create's new instance", () => {
+  const invoice = (computed: string, relationship = "belongs-to :lines entity=Line", extra = "") => `import { Line } from "./line.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+  relationships
+    ${relationship}
+  computed
+    ${computed}
+  actions auto=[:read]
+    create :make
+      input
+        &lines${extra}
+`;
+  const entityOf = (source: string) => {
+    const result = buildModel({ root: "/project", files: [{ file: "billing/invoice.mesh.mx", source }, { file: "billing/line.mesh.mx", source: target }] });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    return { result, entity: result.document!.entities.find((e) => e.name === "Invoice")! };
+  };
+  const nullOnNew = (entity: Entity) => newInstanceComputed(entity, new Set(newInstanceMembers(newInstanceGaps(entity), true)));
+  test.each(["max :value of=&lines.units", "sum :value of=&lines.amount", "min :value of=&lines.dueOn"])("%s is null on the new instance", (computed) => {
+    expect(nullOnNew(entityOf(invoice(computed)).entity)).toEqual(["value"]);
+  });
+  test("a count over it (0 or 1) and a rollup over a has-many are not tainted, nor one over a nullable belongs-to", () => {
+    expect(nullOnNew(entityOf(invoice("count :value of=&lines")).entity)).toEqual([]);
+    expect(nullOnNew(entityOf(invoice("sum :value of=&lines.units", "has-many :lines entity=Line").replace("      input\n        &lines\n", "")).entity)).toEqual([]);
+    expect(nullOnNew(entityOf(invoice("max :value of=&lines.units", "belongs-to :lines entity=Line nullable")).entity)).toEqual([]);
+  });
+  test("a computed body that reads such a rollup is null on the new instance too", () => {
+    expect(nullOnNew(entityOf(invoice("max :value of=&lines.units\n    integer :next() { return &value + 1 }")).entity)).toEqual(["value", "next"]);
+  });
+  test("a create's check that compares it is warned as a member nothing has filled", () => {
+    const { result } = entityOf(invoice("max :value of=&lines.units", undefined, "\n      validate\n        check :rated that=() => &value > 3 code=\"low\" message=\"low\""));
+    expect(result.diagnostics.map((d) => d.code)).toContain("MESH_VALIDATE_UNFILLED");
+  });
 });

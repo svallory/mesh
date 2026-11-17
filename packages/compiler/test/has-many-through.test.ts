@@ -414,22 +414,17 @@ describe("MESH_HAS_ONE_SHARED_KEY", () => {
 
 describe("rollups and bodies", () => {
   const computed = (lines: string) => student("has-many :courses entity=Course through=Enrollment", "").replace("  actions", `  computed\n    ${lines}\n  actions`);
-  test("a count or max over a through relationship waits for M10", () => {
-    for (const [line, fn, name] of [["count :courseCount of=&courses", "count", "courseCount"], ["max :most of=&courses.credits", "max", "most"]] as const) {
+  test("a rollup over a through relationship waits for M10", () => {
+    for (const [line, fn, name] of [["count :courseCount of=&courses", "count", "courseCount"], ["max :most of=&courses.credits", "max", "most"], ["sum :total of=&courses.credits", "sum", "total"]] as const) {
       const result = school({ student: computed(line) });
       expect(result.diagnostics.map(brief)).toEqual([{
         code: "MESH_NOT_IMPLEMENTED",
         severity: "error",
-        message: `${fn} :${name} goes through a link entity (has-many :courses through=Enrollment), which needs a join; joins arrive with the SQL evaluator (M10). Only a ${fn} over one has-many or has-one runs before then`,
+        message: `${fn} :${name} goes through a link entity (has-many :courses through=Enrollment), which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`,
         at: "app/student.mesh.mx:9:4",
         fix: null,
       }]);
     }
-  });
-
-  test("sum keeps its own message", () => {
-    const result = school({ student: computed("sum :total of=&courses.credits") });
-    expect(result.diagnostics.map((d) => d.message)).toEqual(["sum rollups are not implemented yet: only count and max run before Mesh 1.0; sum, avg and min come after it"]);
   });
 
   test("a body reads the list of far records, and needs the relationship alone", () => {

@@ -128,21 +128,19 @@ export function resolveRollups(
     // What the path means is checked; whether the loader can serve it is known now too, so say so at the build (ADR-0018).
     if (diagnostics.length !== before) continue;
     const { fn } = computed.rollup;
-    if (fn !== "count" && fn !== "max") {
-      fail("MESH_NOT_IMPLEMENTED", `${fn} rollups are not implemented yet: only count and max run before Mesh 1.0; sum, avg and min come after it`, computed.position);
-      continue;
-    }
     const first = entity.relationships.find((r) => r.name === segments[0]!.name);
     if (!first) continue;
-    if (first.kind === "belongs-to" || segments.length > 2 || (fn === "count" && segments.length > 1)) {
-      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through ${first.kind === "belongs-to" ? "a belongs-to" : "more than one relationship"}, which needs a join; joins arrive with the SQL evaluator (M10). Only a ${fn} over one has-many or has-one runs before then`, computed.position);
+    // A count ends at a relationship; every other rollup at an attribute after the last one.
+    const relationships = fn === "count" ? segments.length : segments.length - 1;
+    if (relationships > 1) {
+      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through more than one relationship, which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`, computed.position);
       continue;
     }
     if (first.through) {
-      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through a link entity (has-many :${first.name} through=${first.through.entity.identifier}), which needs a join; joins arrive with the SQL evaluator (M10). Only a ${fn} over one has-many or has-one runs before then`, computed.position);
+      fail("MESH_NOT_IMPLEMENTED", `${fn} :${computed.name} goes through a link entity (has-many :${first.name} through=${first.through.entity.identifier}), which needs a join; joins arrive with the SQL evaluator (M10). Only a rollup over one relationship runs before then`, computed.position);
       continue;
     }
-    if (first.inverse === undefined) {
+    if (first.kind !== "belongs-to" && first.inverse === undefined) {
       const problem = inverseProblem(document, entity, first);
       if (problem) diagnostics.push({ severity: "error", code: problem.code, message: `${fn} :${computed.name} reads ${first.kind} :${first.name}, which cannot be loaded: ${problem.because}`, position: computed.position, fix: problem.fix });
     }

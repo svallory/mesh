@@ -87,6 +87,34 @@ export interface Query {
   readonly offset?: number | undefined;
 }
 
+/** A rollup's function. */
+export type RollupFn = "count" | "sum" | "avg" | "min" | "max";
+
+/** Most anchors one `rollup` call takes (`RollupQuery.anchors`); the loader asks in chunks of this many. */
+export const ROLLUP_ANCHORS = 500;
+
+/**
+ * A rollup for many owner rows at once: over the rows of `table` whose `anchor` column holds one of `anchors`, grouped
+ * by that column. `value` is a column of `table` (its primary key for a `count`).
+ */
+export interface RollupQuery {
+  readonly fn: RollupFn;
+  readonly table: TableHandle;
+  readonly anchor: string;
+  /** Distinct, non-null, at most `ROLLUP_ANCHORS` (more is a `FrameworkError`). An empty list returns no row. */
+  readonly anchors: readonly Exclude<Scalar, null | boolean>[];
+  readonly value: string;
+}
+
+/**
+ * One anchor's result. An anchor that reaches no row is left out; one that reaches rows whose values are all null is
+ * present with `value: null` for `sum`, `avg`, `min` and `max`, and `0` for `count` (which counts non-null values).
+ */
+export interface RollupRow {
+  readonly anchor: Exclude<Scalar, null | boolean>;
+  readonly value: Exclude<Scalar, boolean> | null;
+}
+
 /**
  * Contract v1: operations are available only inside a transaction.
  *
@@ -126,6 +154,12 @@ export interface DataOperations {
   max(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<Exclude<Scalar, boolean> | null>;
   /** How many matching rows have a value (not null) in `attribute`. Requires `aggregates`; `where` as for `max`. */
   count(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<number>;
+  /**
+   * A rollup for each anchor (see `RollupQuery`), in one statement: `count`, `sum` and `avg` are numbers (an `avg` of
+   * integers is fractional); `min` and `max` decode as the column decodes (a `Date` for a date column). Requires
+   * `aggregates`.
+   */
+  rollup(query: RollupQuery): Promise<RollupRow[]>;
   /** The outbox append; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */
   appendEvent?: OutboxOperations["appendEvent"];
   /** The outbox delete; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */

@@ -6,7 +6,7 @@ import { FrameworkError } from "./errors.ts";
  * update, delete, transactions (re-entrant), read for update, filters, sort and
  * pagination are mandatory, so they are not names here.
  *
- * - `aggregates`: `max` and `count` (no joins).
+ * - `aggregates`: `max`, `count` and `rollup` (a `rollup` over the rows of one table, grouped by their anchor column).
  * - `integer-key-fill`: an insert without an integer primary key gets the next integer.
  * - `conditions`: the adapter honours `Query.where`, `Query.order` and the `where` argument of `max` and `count`,
  *   and runs every core function of a condition (the expression tables through the data layer). A layer without it

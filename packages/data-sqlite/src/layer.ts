@@ -3,7 +3,7 @@ import { count, getTableName, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { resolve } from "node:path";
 import { sqliteDialect } from "./dialect.ts";
 import { deliveryOperations, multiProcessOperations } from "./delivery.ts";
@@ -222,7 +222,8 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       }),
       update: (table, condition, changes) => busy(() => database.update(table).set(changes).where(condition).returning().all()),
       delete: (table, condition) => busy(() => database.delete(table).where(condition).returning().all()),
-    }, guard),
+      rows: (statement) => busy(() => database.all<Row>(statement)),
+    }, guard, capabilities),
       appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
       deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
       query: async (statement) => { guard(); return busy(() => rawQuery(connection!, statement)); },

@@ -2,7 +2,8 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Expression, ModelDocument, Relationship, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions, checksOf, VALIDATE_KINDS } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
-import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
+import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, readsRecord, recordReason } from "./policies.ts";
+import { rollupOperation, rollupTarget } from "./rollup-operation.ts";
 
 /**
  * What the action lifecycle (M5) cannot run is a build error, never a silent skip (ADR-0018): `before` in a check or in a
@@ -71,6 +72,18 @@ export function checkLifecycleLimits(
         `${relation.kind} :${relation.name} of ${from.fqn} reaches ${target.fqn}, and no policy of ${target.fqn} covers the read a load runs, so every caller's load of it is ${empty}${rollups} (through \`Mesh.privileged\` and in a computed field's body it is loaded)`,
         relation.position,
         `If callers may load it, give ${target.fqn} a policy that covers its read: \`types=[:read]\`, \`actions=[&read]\` or no scope`), severity: "warning" });
+    }
+  for (const entity of document.entities)
+    // A rollup served by the batched `rollup` operation takes no row condition yet: over an entity whose read policy
+    // reads the record, a caller's load would count rows the policy hides. The per-row `count` and `max` take it.
+    for (const field of entity.computed) {
+      if (rollupOperation(entity, field) !== "rollup") continue;
+      const target = rollupTarget(document, entity, field);
+      const policy = target && loadPolicies(target).find((candidate) => policyExpressions(candidate).some(({ expression }) => readsRecord(expression, "read")));
+      if (target && policy)
+        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
+          `${field.rollup!.fn} :${field.name} reaches ${target.fqn}, whose read policy :${policy.name} reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now`,
+          field.position, "compute the value in a computed field's body from the loaded relationship, or make the read policy read only actor and context"));
     }
   for (const entity of document.entities) {
     // A computed field is worked out when a record is loaded, outside any action, so it has no transaction to compose in:

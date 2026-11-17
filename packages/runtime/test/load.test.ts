@@ -52,6 +52,19 @@ function memory(tables: Record<string, Row[]>) {
       const values = rowsOf(table).filter((row) => matches(row, filter) && holds(row, where)).map((row) => row[attribute]).filter((v): v is number => v != null);
       return values.length ? Math.max(...values) : null;
     },
+    rollup: async ({ fn, table, anchor, anchors, value }: { fn: string; table: unknown; anchor: string; anchors: unknown[]; value: string }) => {
+      calls.push(`rollup ${fn} ${(table as { name: string }).name}.${value} by ${anchor} [${anchors.join(",")}]`);
+      if (anchors.length > 500) throw new Error("this test double takes at most 500 anchors, as the contract says");
+      return anchors.flatMap((key) => {
+        const reached = rowsOf(table).filter((row) => row[anchor] === key);
+        if (reached.length === 0) return [];
+        const values = reached.map((row) => row[value]).filter((v): v is number => v != null);
+        const total = values.reduce((a, b) => a + b, 0);
+        const result = fn === "count" ? values.length : values.length === 0 ? null
+          : fn === "sum" ? total : fn === "avg" ? total / values.length : fn === "min" ? Math.min(...values) : Math.max(...values);
+        return [{ anchor: key, value: result }];
+      });
+    },
   } as unknown as DataOperations;
   return { tx, calls, handle };
 }
@@ -74,6 +87,11 @@ const plan = (handle: (name: string) => never, extra: Partial<LoadPlan> = {}): L
       maxRank: { kind: "rollup", fn: "max", of: ["children", "rank"] },
       kids: { kind: "rollup", fn: "count", of: ["children"] },
       sizeSum: { kind: "rollup", fn: "sum", of: ["children", "size"] },
+      rankAvg: { kind: "rollup", fn: "avg", of: ["children", "rank"] },
+      rankMin: { kind: "rollup", fn: "min", of: ["children", "rank"] },
+      ownerRank: { kind: "rollup", fn: "max", of: ["owner", "rank"] },
+      parentRank: { kind: "rollup", fn: "min", of: ["parent", "rank"] },
+      badgeSum: { kind: "rollup", fn: "sum", of: ["badge", "points"] },
       deep: { kind: "rollup", fn: "count", of: ["children", "children"] },
       ownerCount: { kind: "rollup", fn: "count", of: ["owner"] },
       badRelation: { kind: "rollup", fn: "count", of: ["nowhere"] },
@@ -200,14 +218,75 @@ describe("loadRows", () => {
       expect(calls.filter((c) => c.startsWith("count nodes.id")).length).toBe(4);
     });
 
-    test("sum, avg, min, a path through two relationships and a belongs-to are errors that say when", async () => {
+    test("a path through two relationships is an error that says when; a relationship that cannot be loaded says why", async () => {
       const { tx, handle } = memory({});
       const row = [{ id: 1, ownerId: 1 }];
-      await expect(loadRows(plan(handle), "Node", tx, row, ["sizeSum"])).rejects.toThrow('sum :sizeSum of=&children.size on Node cannot be loaded: only count and max rollups run before Mesh 1.0; sum, avg and min come after it');
-      await expect(loadRows(plan(handle), "Node", tx, row, ["deep"])).rejects.toThrow("a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10)");
-      await expect(loadRows(plan(handle), "Node", tx, row, ["ownerCount"])).rejects.toThrow("a rollup over a belongs-to needs a join");
+      await expect(loadRows(plan(handle), "Node", tx, row, ["deep"])).rejects.toThrow("count :deep of=&children.children on Node cannot be loaded yet: a rollup over more than one relationship needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now");
       await expect(loadRows(plan(handle), "Node", tx, row, ["badRelation"])).rejects.toThrow("Node has no relationship nowhere");
       await expect(loadRows(plan(handle), "Node", tx, row, ["looseCount"])).rejects.toThrow("Badge has no belongs-to back to Node");
+    });
+
+    // Everything but a count or max over one has-many or has-one: one `rollup` call per 500 anchors (ruling D33, OD3).
+    const tree = () => memory({
+      nodes: [
+        { id: 1, parentId: null, ownerId: 10, rank: 3, size: 1 }, { id: 2, parentId: 1, ownerId: 10, rank: 8, size: 2 },
+        { id: 3, parentId: 1, ownerId: 11, rank: 5, size: null }, { id: 4, parentId: 2, ownerId: 12, rank: null, size: 4 },
+      ],
+      owners: [{ id: 10, rank: 7 }, { id: 11, rank: null }, { id: 12, rank: 2 }],
+      badges: [{ id: 70, nodeId: 1, points: 6 }],
+    });
+    test("sum, avg and min over a has-many are one rollup call for every row", async () => {
+      const { tx, calls, handle } = tree();
+      const rows = (await tx.select(handle("nodes"))) as Row[];
+      calls.length = 0;
+      const loaded = await loadRows(plan(handle), "Node", tx, rows, ["sizeSum", "rankAvg", "rankMin", "badgeSum"]);
+      expect(loaded.map((r) => [r.id, r.sizeSum, r.rankAvg, r.rankMin, r.badgeSum])).toEqual([[1, 2, 6.5, 5, 6], [2, 4, null, null, null], [3, null, null, null, null], [4, null, null, null, null]]);
+      expect(calls).toEqual([
+        "rollup sum nodes.size by parentId [1,2,3,4]", "rollup avg nodes.rank by parentId [1,2,3,4]",
+        "rollup min nodes.rank by parentId [1,2,3,4]", "rollup sum badges.points by nodeId [1,2,3,4]",
+      ]);
+    });
+    test("over a belongs-to the anchors are the distinct key values: rows that share a target share one anchor", async () => {
+      const { tx, calls, handle } = tree();
+      const rows = (await tx.select(handle("nodes"))) as Row[];
+      calls.length = 0;
+      const loaded = await loadRows(plan(handle), "Node", tx, rows, ["ownerRank", "parentRank"]);
+      expect(loaded.map((r) => [r.id, r.ownerRank, r.parentRank])).toEqual([[1, 7, null], [2, 7, 3], [3, null, 3], [4, 2, 8]]);
+      // Node 1 has no parent: a nullable belongs-to with a null key reaches nothing, with no anchor.
+      expect(calls).toEqual(["rollup max owners.rank by id [10,11,12]", "rollup min nodes.rank by id [1,2]"]);
+    });
+    test("a long list is asked in chunks of 500 anchors", async () => {
+      const many = Array.from({ length: 1001 }, (_, index) => ({ id: index + 1, parentId: null, ownerId: 10 }));
+      const { tx, calls, handle } = memory({ nodes: many, owners: [{ id: 10, rank: 1 }] });
+      const loaded = await loadRows(plan(handle), "Node", tx, many, ["sizeSum"]);
+      expect(loaded.every((r) => r.sizeSum === null)).toBe(true);
+      expect(calls.map((c) => c.split(" [")[0])).toEqual(["rollup sum nodes.size by parentId", "rollup sum nodes.size by parentId", "rollup sum nodes.size by parentId"]);
+      expect(calls.map((c) => c.split(",").length)).toEqual([500, 500, 1]);
+    });
+    test("min and count use a relationship the same call loaded; sum and avg always ask the database", async () => {
+      const { tx, calls, handle } = tree();
+      const rows = (await tx.select(handle("nodes"))) as Row[];
+      calls.length = 0;
+      const loaded = await loadRows(plan(handle), "Node", tx, rows, ["children", "owner", "rankMin", "ownerRank", "rankAvg"]);
+      expect(loaded.map((r) => [r.rankMin, r.ownerRank, r.rankAvg])).toEqual([[5, 7, 6.5], [null, 7, null], [null, null, null], [null, 2, null]]);
+      expect(calls.filter((c) => c.startsWith("rollup"))).toEqual(["rollup avg nodes.rank by parentId [1,2,3,4]"]);
+    });
+    test("a required belongs-to with no key is an error, one whose key points at nothing too; a nullable one gives null", async () => {
+      const { tx, calls, handle } = tree();
+      await expect(loadRows(plan(handle), "Node", tx, [{ id: 5, parentId: null, ownerId: null }], ["ownerRank"])).rejects.toThrow("belongs-to :owner of Node has no key in ownerId, and it is not nullable");
+      await expect(loadRows(plan(handle), "Node", tx, [{ id: 5, parentId: null, ownerId: 99 }], ["ownerRank"]))
+        .rejects.toThrow("`max :ownerRank of=&owner.rank` on Node 5 reaches no Owner row: a key on its path points at a row that does not exist");
+      calls.length = 0;
+      const [dangling] = await loadRows(plan(handle), "Node", tx, [{ id: 5, parentId: 99, ownerId: 10 }], ["parentRank"]);
+      expect(dangling!.parentRank).toBeNull();
+      expect(calls).toEqual(["rollup min nodes.rank by id [99]"]);
+    });
+    test("a create's new instance with no key yet gives null and asks nothing", async () => {
+      const { tx, calls, handle } = tree();
+      const record: Row = { id: null, parentId: null, ownerId: null };
+      await loadInto(plan(handle), "Node", tx, record, ["ownerRank", "sizeSum"], { newInstance: true });
+      expect([record.ownerRank, record.sizeSum]).toEqual([null, null]);
+      expect(calls).toEqual([]);
     });
   });
 });
@@ -425,6 +504,38 @@ describe("what a caller loads runs the read policies of the entity it reaches", 
     await expect(loadRows(guarded(handle), "Node", tx, rows, ["loose"], { actor: { id: "guest" }, policies: true })).rejects.toThrow(/has no belongs-to back/);
   });
 
+});
+
+describe("a batched rollup under the read policies of what it reaches", () => {
+  const adminOnly: PolicySpec = { name: "admins", when: null, checks: [{ kind: "authorize-if", check: "({ actor }) => actor.id === \"admin\"", record: false,
+    run: ((s: { actor: { id?: string } }) => s.actor?.id === "admin") as never }] };
+  const open: PolicySpec = { name: "anyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
+  const byRecord: PolicySpec = { name: "mine", when: null, checks: [{ kind: "authorize-if", check: "({ actor }) => &by === actor.id", record: true,
+    run: (() => { throw new Error("folded, never run in memory"); }) as never,
+    sql: () => ({ what: "policy :mine authorize-if", entity: "Any", tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "by", class: "string" }, { kind: "param", index: 0, class: "string" }] }, params: (sc: { actor?: { id?: unknown } }) => [sc.actor?.id] }) as never }] };
+  const data = () => memory({ nodes: [{ id: 1, parentId: null, ownerId: 10, size: 3 }, { id: 2, parentId: 1, ownerId: 10, size: 4 }], owners: [{ id: 10, rank: 7 }] });
+  const policed = (handle: (name: string) => never, owner: PolicySpec, node: PolicySpec = open) => {
+    const base = plan(handle);
+    return { ...base, Node: { ...base.Node!, reads: [node] }, Owner: { ...base.Owner!, reads: [owner] } } as LoadPlan;
+  };
+  test("a caller the target denies gets null and nothing is asked; through privileged (no policies) the value", async () => {
+    const { tx, calls, handle } = data();
+    const rows = [{ id: 2, parentId: 1, ownerId: 10 }];
+    expect((await loadRows(policed(handle, adminOnly), "Node", tx, rows, ["ownerRank"], { actor: { id: "guest" }, policies: true }))[0]!.ownerRank).toBeNull();
+    expect(calls).toEqual([]);
+    expect((await loadRows(policed(handle, adminOnly), "Node", tx, rows, ["ownerRank"], { actor: { id: "admin" }, policies: true }))[0]!.ownerRank).toBe(7);
+    expect((await loadRows(policed(handle, adminOnly), "Node", tx, rows, ["ownerRank"]))[0]!.ownerRank).toBe(7);
+  });
+  test("a target whose read policy reads the record is refused before anything is asked, which the build refuses first", async () => {
+    const { tx, calls, handle } = data();
+    const rows = [{ id: 1, parentId: null, ownerId: 10 }];
+    await expect(loadRows(policed(handle, byRecord), "Node", tx, rows, ["ownerRank"], { actor: { id: "a" }, policies: true }))
+      .rejects.toThrow("max :ownerRank of=&owner.rank on Node reaches Owner, whose read policy reads the record; a rollup restricted row by row arrives with M10's SQL rollups");
+    await expect(loadRows(policed(handle, open, byRecord), "Node", tx, rows, ["sizeSum"], { actor: { id: "a" }, policies: true })).rejects.toThrow("sum :sizeSum of=&children.size on Node reaches Node");
+    expect(calls).toEqual([]);
+    // Through privileged no policy runs, so nothing restricts it.
+    expect((await loadRows(policed(handle, open, byRecord), "Node", tx, rows, ["sizeSum"]))[0]!.sizeSum).toBe(4);
+  });
 });
 
 describe("a read policy that reads the record admits a caller's load row by row", () => {
@@ -716,7 +827,7 @@ describe("a has-many through a link entity", () => {
     });
     test("a rollup over it waits for M10, for every caller", async () => {
       const { tx, calls, handle } = data();
-      const message = "count :courseRollup of=&courses on Student cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a count or max over one has-many or has-one runs now";
+      const message = "count :courseRollup of=&courses on Student cannot be loaded yet: a rollup over a has-many through a link entity needs a join, which arrives with the SQL evaluator (M10); only a rollup over one relationship runs now";
       await expect(loadRows(school(handle), "Student", tx, [{ id: "s1" }], ["courseRollup"])).rejects.toThrow(message);
       const base = school(handle);
       const denied = { ...base, Course: { ...base.Course!, reads: [] } } as LoadPlan;
