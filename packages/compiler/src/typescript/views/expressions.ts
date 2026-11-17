@@ -104,8 +104,9 @@ export interface ExpressionsView {
   /** One function per expression, in the order of the entity file. */
   readonly entries: readonly ExpressionEntry[];
   /**
-   * `$conditions` (M10): one condition literal per declared filter and per declared sort key that is a computed field, in
-   * the order of the entity file; the read binds it and hands it to the data layer as SQL. Empty when the entity has none,
+   * `$conditions` (M10): one condition literal per declared filter, per declared sort key that is a computed field, and
+   * per function of a read or load policy that reads the record: the filters and sorts first, then the policies, each
+   * group in file order. The read (and a caller's load) binds it and hands it to the data layer as SQL. Empty when the entity has none,
    * and then the file declares no `$conditions`.
    */
   readonly conditions: readonly ExpressionEntry[];

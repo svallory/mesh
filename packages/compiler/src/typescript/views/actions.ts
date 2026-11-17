@@ -57,7 +57,7 @@ export interface ActionsView {
   readonly schemaFromLiteral: string;
   /** The entity's expressions file as a quoted string literal, or `null` when it has no expression an action runs. */
   readonly expressionsFromLiteral: string | null;
-  /** What the file imports from the expressions file as values: `$expressions`, and `$conditions` when a read binds a condition (M10). */
+  /** What the file imports from the expressions file as values: `$expressions`, and `$conditions` when a read binds a condition or a read policy folds one (M10). */
   readonly expressionsValues: readonly string[];
   /**
    * Module-level declarations printed after the imports, each line in full: `$tableOf` and `$sortClasses`, which a read

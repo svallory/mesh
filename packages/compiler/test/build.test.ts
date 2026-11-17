@@ -114,6 +114,8 @@ test(
     });
     // The read policy `:staffOrOwnerReads` reads the record (`&customer.userId`), so it is folded into the query and
     // must run as SQL (M10); the fixture's Customer has no `userId`, so the function is plain and has no SQL form.
+    // This pins a gap, not the M10 behaviour: an unknown member in a policy should be MESH_UNKNOWN_MEMBER (and the
+    // fixture should name a member Customer has). When that is fixed, this assertion changes with it.
     const refused = buildWith(postSource);
     expect(refused.diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN", "MESH_EXPR_NOT_SQL"]);
     expect(refused.diagnostics[1]!.message).toContain("policy :staffOrOwnerReads authorize-if must run as SQL");
