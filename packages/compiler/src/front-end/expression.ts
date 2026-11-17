@@ -84,6 +84,12 @@ export interface ConvertContext {
    */
   noHelpers?: boolean;
   /**
+   * A function of a service file (services design, section 5.1): plain by position, `why` `service` (an operation's body
+   * is a `run` step too, and `runStep` comes first). A service function is never a tree, so the model's type pass has
+   * nothing to do for one; `tsc` checks it in the generated file.
+   */
+  service?: boolean;
+  /**
    * Identifiers a `publish` function names as the callee of a `new` it returns: `checkPublished` reports a name that is no
    * event as `MESH_PUBLISH` with the suggestion `entity=` gives, so neither the free-variable error nor a namespace
    * member's `MESH_UNKNOWN_ENTITY` reports it too.
@@ -1309,6 +1315,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);
     if (ctx.publishStep) throw new Plain("publish-step", "a publish step is plain code", f);
     if (ctx.handlerBody) throw new Plain("handler", "a handler is plain code", f);
+    if (ctx.service) throw new Plain("service", "a service function is plain code", f);
     // A function that reads through `Mesh.privileged` or names an entity is plain code as a whole, whatever else it does: what
     // it reads is not an expression over the record, so its `await` or its comparisons are no reason to warn.
     if (called.has("privileged")) throw new Plain("uses-privileged", "reads through `Mesh.privileged`", f);

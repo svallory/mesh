@@ -70,6 +70,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0096](./0096-rollups-run-as-one-grouped-query-per-route.md) decides how a rollup reaches the database: one `rollup` operation that computes it for 500 owner rows in one grouped statement, a path through several relationships or a link entity printed with the hops of translated conditions (0088) and needing `joins`, and each record the path reaches counted once per owner row. It amends 0013 and 0070.
 
+[Record 0097](./0097-the-service-construct.md) decides the service construct 0078 left open: a `service :Name` file of `operation` members, each with its `uses` lines, `input` and `run` body; fail-closed policies; `uses` checked by the build on the names the body writes and at run time on every call the body makes; no operation inside another; the one-entity warning.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -139,7 +141,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079); amended 2026-10-12 by 0086; note 2026-11-14: re-argued for projects (lead, at the operator's request; the decision is unchanged) | operator |
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted; being built (0095) | operator |
-| [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct) | operator |
+| [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct); the construct is proposed in [0097](./0097-the-service-construct.md) | operator |
 | [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted, amended 2026-11-17: one process delivers per database in single mode; several in multi mode (0091) | operator |
 | [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted, amended 2026-11-17: concept files and concept-typed members built (0092) | operator; one lead note on DOM-31, for operator review |
 | [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted, amended 2026-11-17: the first slice of `@meshfw/event-sourcing` (`project` handlers) is built over 0094 | operator; lead for the 2026-11-17 amendment |
@@ -158,6 +160,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0094](./0094-run-time-points-for-event-extensions.md) | Run-time points for event extensions: contributed handler kinds, published before the extension host | Proposed (lead ruling D46, pending operator review) | lead, delegated |
 | [0095](./0095-surface-files-are-read-from-their-own-folder.md) | Surface files are read from their own folder; `fields=` names attributes, belongs-to and computed fields | Proposed (lead ruling D41, pending operator review) | lead, delegated |
 | [0096](./0096-rollups-run-as-one-grouped-query-per-route.md) | Rollups run as one grouped query per route: the `rollup` operation, joined routes over the hops of conditions, each record once | Accepted (lead ruling D33, pending operator review) | lead, delegated |
+| [0097](./0097-the-service-construct.md) | The service construct: a file of operations, each with its `uses` lines, enforced at run time | Proposed (lead ruling D42, pending operator review) | lead, delegated |
 
 ## Superseded records
 

@@ -158,6 +158,11 @@ export function buildEmitters(adapter?: AdapterBuild | null): readonly (Emitter 
  * whichever of them comes from the adapter. Templates are looked up once per call.
  */
 export async function generateFiles(input: EmitInput, adapter?: AdapterBuild | null): Promise<GeneratedFile[]> {
+  // A service is read and checked, and nothing is generated from it yet (services design, PR 1 stopgap): a project that
+  // declares one never gets half its code (ADR-0018). The services generator replaces this.
+  const service = input.document.services?.[0];
+  if (service)
+    throw emitError("MESH_NOT_IMPLEMENTED", `service :${service.name} is read and checked, but no code is generated for a service yet; generated services are built with the services unit (bead mesh-services)`, service.position, "remove the service file, or keep it out of the domain until services are generated");
   const files: GeneratedFile[] = [];
   const owners = new Map<string, string>();
   const emitters = buildEmitters(adapter);

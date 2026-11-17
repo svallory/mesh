@@ -38,6 +38,21 @@ export function coverageProject(tag: string, option: string | undefined, example
       { file: "surfaces/admin/admin.mesh.mx", source: `import { Sample } from "../../domain/sample.mesh.mx"\n${lines.join("\n")}\n` },
     ] } };
   }
+  // A service file sits in the domain beside Sample and Line: its one operation uses both, so no one-entity warning.
+  if (tag === "service" || tag === "operation" || tag === "uses") {
+    const lines = [
+      tag === "service" ? example : "service :Work",
+      `  ${tag === "operation" ? example : "operation :close"}`,
+      `    ${tag === "uses" ? example : "uses entity=Sample actions=[:read]"}`,
+      "    uses entity=Line actions=[:read]",
+      "    run() {}",
+    ];
+    return { root: "/project", files: [
+      { file: "docs/work.mesh.mx", source: `import { Sample } from "./sample.mesh.mx"\nimport { Line } from "./line.mesh.mx"\n${lines.join("\n")}\n` },
+      { file: "docs/sample.mesh.mx", source: "entity :Sample\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
+      { file: "docs/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
+    ] };
+  }
   // The kind's contract is shared, but `optional` is legal only on a command's field. Keep the table cell as authored.
   if (option === "optional" && ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number])) return { root: "/project", files: [
     { file: "docs/change.mesh.mx", source: `command :Change\n  uuid :id\n  ${example}\n` },

@@ -1,5 +1,5 @@
 import { dirname, resolve } from "node:path";
-import type { Diagnostic, Entity, Expression, ModelDocument, Relationship, SourcePosition, Step } from "@meshfw/model";
+import type { Diagnostic, Entity, Expression, ModelDocument, Policy, Relationship, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions, checksOf, VALIDATE_KINDS } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
 import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
@@ -154,12 +154,7 @@ export function checkLifecycleLimits(
                 : "decide in the policy from the record and what it loads, and ask in a step or a `validate` check of a write action"));
       }
     // A policy with no check would pass every call it covers: the build says so, and asks for it written out.
-    for (const policy of entity.policies)
-      if (!policy.authorizeIf.length && !policy.forbidIf.length)
-        diagnostics.push(error("MESH_POLICY_NO_CHECKS",
-          `policy :${policy.name} of ${entity.fqn} has no \`authorize-if\` and no \`forbid-if\`, so it would pass every call it covers`,
-          policy.position,
-          "To let every caller through, say so: `authorize-if=() => true`. Otherwise write the check the policy stands for"));
+    for (const policy of entity.policies) checkPolicyHasChecks(policy, entity.fqn, diagnostics);
     for (const policy of entity.policies) {
       const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
       if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
@@ -226,4 +221,16 @@ export function checkLifecycleLimits(
       }
     }
   }
+}
+
+/**
+ * A policy with no `authorize-if` and no `forbid-if` would pass every call it covers: `MESH_POLICY_NO_CHECKS` at the
+ * policy, naming its owner by FQN (an entity's, or a service's, `model/services.ts`).
+ */
+export function checkPolicyHasChecks(policy: Policy, owner: string, diagnostics: Diagnostic[]): void {
+  if (!policy.authorizeIf.length && !policy.forbidIf.length)
+    diagnostics.push(error("MESH_POLICY_NO_CHECKS",
+      `policy :${policy.name} of ${owner} has no \`authorize-if\` and no \`forbid-if\`, so it would pass every call it covers`,
+      policy.position,
+      "To let every caller through, say so: `authorize-if=() => true`. Otherwise write the check the policy stands for"));
 }
