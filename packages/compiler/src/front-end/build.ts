@@ -263,8 +263,12 @@ export function moduleOfFolder(folder: string): { module: string; bareUnderscore
  * command: where a tag and an offset are in the file, how an error is reported, the options an attribute line takes
  * (`shape`) and the checks on them (`checkShape`).
  */
-function attributeReaders(source: string, file: string, diagnostics: Diagnostic[]) {
-  const at = (offset: number) => positionAt(source, file, offset);
+function attributeReaders(
+  source: string,
+  file: string,
+  diagnostics: Diagnostic[],
+  at: (offset: number) => SourcePosition = (offset) => positionAt(source, file, offset),
+) {
   const pos = (tag: Tag) => at(tag.nameSpan.sourceStart);
   const fail = (code: string, message: string, tag: Tag | SourcePosition, fix?: string) =>
     diagnostics.push(error(code, message, "nameSpan" in tag ? pos(tag) : tag, fix ?? null));
@@ -453,6 +457,36 @@ function readPolicyLine(
   } satisfies Policy;
 }
 
+/** The section kinds an entity's line sources are read by, in reading order. */
+const SECTION_KINDS = ["attributes", "relationships", "computed", "checks", "actions", "policies"] as const;
+type SectionReaders = Record<(typeof SECTION_KINDS)[number], (section: Tag) => void>;
+
+/** What a function written in one line source sees besides `&members` and the scope roots. */
+interface ExpressionScope {
+  helpers: ReadonlyMap<string, string>;
+  imported: ReadonlySet<string>;
+  entities: ReadonlySet<string>;
+  namespaces: ReadonlySet<string>;
+  events: ReadonlySet<string>;
+  commands: ReadonlySet<string>;
+  duplicates: ReadonlySet<string>;
+  mesh: ReadonlySet<string>;
+  /** What a reference to another file's declaration resolves against, by the kind it names. */
+  references: { entity: ReferenceScope; event: ReferenceScope; command: ReferenceScope };
+}
+
+/**
+ * One place an entity's lines are read from: today only the entity's own file. `at` turns an offset of `source` into a
+ * position, so a source whose text is not the entity's file reports where its own lines are.
+ */
+interface LineSource {
+  /** The root line's section children. */
+  sections: Tag[];
+  source: string;
+  at: (offset: number) => SourcePosition;
+  scope: ExpressionScope;
+}
+
 function buildEntity(
   root: Tag,
   irImports: readonly IrImport[],
@@ -468,8 +502,7 @@ function buildEntity(
   declaredNames: Map<CommandRef | DeclarationRef, string>,
   inline: { events: EventDeclaration[]; commands: CommandDeclaration[] },
 ): Entity {
-  const readers = attributeReaders(source, file, diagnostics);
-  const { at, pos, fail, opt, shape, checkShape } = readers;
+  const { at, pos, fail, opt } = attributeReaders(source, file, diagnostics);
   const sections = tags(root.children);
   const section = (name: string) => sections.find((t) => t.name === name);
   // The name is written in any casing and converted as an event's or a command's is (`notes/spec/names.md`): `entity :todo`
@@ -639,188 +672,34 @@ function buildEntity(
   for (const entry of entity.imports)
     if (entry.mesh && entry.identifiers.includes(entity.name))
       fail("MESH_DUPLICATE_IMPORT", `Duplicate import identifier ${entity.name}: the entity is named ${entity.name} too`, entry.position);
-  const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish"): Expression =>
-    expression(
-      a,
-      source,
-      at,
-      (ref) => checkRef(ref, scope),
-      ({ ref, position }) =>
-        fail(
-          "MESH_MEMBER_ASSIGN",
-          `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
-          position,
-        ),
-      {
-        helpers: helperImports,
-        imported: new Set([...importNames.keys(), ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
-        entities,
-        namespaces,
-        reference: (written) => resolveReference(written, references, entityKind),
-        memberReference: (written) => resolveReference(written, references, memberKind),
-        events,
-        commands,
-        eventReference: (written) => resolveReference(written, eventReferences, eventKind),
-        commandReference: (written) => resolveReference(written, commandReferences, commandKind),
-        duplicates,
-        mesh: meshImports,
-        report: (d) => {
-          if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
-        },
-        ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : {}),
-      },
-    );
-  const authoredMember = (line: Tag) =>
-    fail(
-      "MESH_SYNTAX",
-      "`<member>` is not a known tag: write a member line as `&name`",
-      line,
-    );
-  for (const tag of tags(section("attributes")?.children ?? [])) {
-    const on = attr(tag, "on");
-    const field: Attribute = {
-      ...shape(tag),
-      primaryKey: opt(tag, "primary-key") === true,
-      unique: opt(tag, "unique") === true,
-      ...(atomOf(on) ? { on: atomOf(on)!.name as "create" | "update" } : {}),
-    };
-    if (attr(tag, "value"))
-      fail(
-        "MESH_ATTRIBUTE_RULE",
-        "A stored attribute cannot have a function body",
-        tag,
-      );
-    if (field.primaryKey && field.nullable)
-      fail("MESH_PRIMARY_KEY", "A primary key cannot be nullable", tag);
-    checkShape(field);
-    entity.attributes.push(field);
-  }
-  for (const tag of tags(section("relationships")?.children ?? [])) {
-    // `entity=List` or `entity=billing.Invoice`; an entity relates to its own type by its own name, with no import.
-    const written = writtenReference(nodeOf(attr(tag, "entity")));
-    const target = written ? resolveReference(written, references, entityKind) : undefined;
-    if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
-    const name = declaredName(tag);
-    const kind = tag.name as Relationship["kind"];
-    const inverse = atomOf(attr(tag, "inverse"))?.name;
-    // `through=Link` (has-many only): the link entity, resolved as `entity=` is and reported the same way.
-    const throughAttr = kind === "has-many" ? attr(tag, "through") : undefined;
-    const writtenLink = throughAttr ? writtenReference(nodeOf(throughAttr)) : undefined;
-    const link = writtenLink ? resolveReference(writtenLink, references, entityKind) : undefined;
-    if (link && !link.ok && "code" in link) fail(link.code, link.message, at(link.offset), link.fix);
-    const relation: Relationship = {
-      kind,
-      name,
-      entity: { identifier: written ? referenceText(written) : "", from: target?.ok ? target.from : "" },
-      nullable: opt(tag, "nullable") === true,
-      ...(kind === "belongs-to" ? { keyColumn: `${name}Id` } : {}),
-      ...(inverse !== undefined ? { inverse } : {}),
-      ...(writtenLink ? { through: { entity: { identifier: referenceText(writtenLink), from: link?.ok ? link.from : "" } } } : {}),
-      position: pos(tag),
-    };
-    entity.relationships.push(relation);
-    if (inverse !== undefined) inversePositions.set(relation, at(attrOffset(attr(tag, "inverse")!)));
-    if (writtenLink) throughPositions.set(relation, at(attrOffset(throughAttr!)));
-  }
-  for (const tag of tags(section("computed")?.children ?? [])) {
-    const base = { name: declaredName(tag), position: pos(tag) };
-    if (["count", "sum", "avg", "min", "max"].includes(tag.name)) {
-      const segments = readMemberPath(attr(tag, "of"), at);
-      const of = segments.map((s) => s.name).join(".");
-      const computed: Computed = {
-        ...base,
-        type: "integer",
-        nullable: false,
-        rollup: { fn: tag.name as Rollup["fn"], of },
-      };
-      entity.computed.push(computed);
-      rollups.push({ entity, computed, segments });
-    } else {
-      const allowed = tag.name === "enum" ? ["name", "value", "values"] : ["name", "value"];
-      if (tag.attrs.some((a) => a.kind !== "spread" && !allowed.includes(a.name)))
-        fail(
-          "MESH_COMPUTED_OPTIONS",
-          tag.name === "enum"
-            ? "A computed enum takes only its name, its values and its body"
-            : "A computed function takes only its name and body",
-          tag,
-        );
-      const body = readAt(tag, at, () => expr(attr(tag, "value")));
-      if (body.diagnostic) diagnostics.push(body.diagnostic);
-      else {
-        const field: Computed = { ...base, type: tag.name as AttributeType, body: body.value };
-        const values = attr(tag, "values");
-        if (tag.name === "enum") {
-          // The values are optional on a computed enum: without them its TypeScript type is `string`.
-          if (values) {
-            field.values = atomList(values).map((value) => ({ value }));
-            checkShape({ type: "enum", nullable: false, values: field.values, position: base.position });
-          }
-        }
-        entity.computed.push(field);
-      }
-    }
-  }
-  /** A check's `message=`: fixed text, or a function of the arguments `that` gets. Anything else is refused. */
-  const message = (tag: Tag): string | Expression => {
-    const a = attr(tag, "message");
-    const text = textOf(a);
-    if (text !== undefined) return text;
-    if (nodeOf(a)?.type === "ArrowFunctionExpression" || nodeOf(a)?.type === "FunctionExpression") return expr(a);
-    throw new Error("A check's `message=` is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)");
+  // The entity's own lines. A line source is read with what its file sees: here, the file's imports and its own declarations.
+  const own: LineSource = {
+    sections,
+    source,
+    at,
+    scope: {
+      helpers: helperImports,
+      imported: new Set([...importNames.keys(), ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
+      entities,
+      namespaces,
+      events,
+      commands,
+      duplicates,
+      mesh: meshImports,
+      references: { entity: references, event: eventReferences, command: commandReferences },
+    },
   };
-  /**
-   * `publish` is no `validate` line and no part of a `check`: it raises an event after the row is written, and a check only
-   * decides (`MESH_PUBLISH`). The contract admits it there so that the build can say so; it builds nothing.
-   */
-  const refusePublish = (tag: Tag, where: string) =>
-    fail("MESH_PUBLISH", `a \`publish\` step is not allowed ${where}: it raises an event after the action's row is written, in the action's \`do\``, tag, "move it under `do`");
-  /** Where an option is written: its name (`when` of `when=...`). */
-  const optionAt = (a: Attr) => at("nameSpan" in a && a.nameSpan ? a.nameSpan.sourceStart : attrOffset(a));
-  /**
-   * One declared check, inline in a `validate` or under `checks`: its functions are built here, once. The contract
-   * requires nothing of a `check` line, since a reference (`check &name`) takes none of a declaration's options, so the
-   * form rules are here, reported line by line: a line that declares and refers, and a declaration missing an option
-   * (the first missing, with MX's text for a required option). Such a line declares no check.
-   */
-  const declaredCheck = (tag: Tag): Check | undefined => {
-    const reference = attr(tag, "member");
-    if (reference) {
-      fail("MESH_MEMBER_REFERENCE", "`check`: a line declares a check (`check :name` with its options) or uses one (`check &name` alone), not both", optionAt(reference));
-      return undefined;
-    }
-    const missing = ["name", "that", "code", "message"].find((key) => !attr(tag, key));
-    if (missing) {
-      fail("MESH_MISSING_OPTION", `\`check\`: missing required option \`${missing}\``, tag);
-      return undefined;
-    }
-    for (const inner of tags(tag.children)) if (inner.name === "publish") refusePublish(inner, "in a `check`");
-    return { label: declaredName(tag), that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
-  };
+  /** Every line source of the entity, in reading order: the entity's own first. */
+  const sources: LineSource[] = [own];
   // The checks the `checks` section declares, by name (the first of a name; a second is a duplicate member, below), and
   // every check name that counts as a member of the entity, named or inline, with where it is written.
   const namedChecks = new Map<string, Check>();
-  const checkMembers: { name: string; position: SourcePosition }[] = [];
+  // `sourceIndex` is the place of the check's line source in `sources`: offsets of two files do not compare.
+  const checkMembers: { name: string; position: SourcePosition; sourceIndex: number }[] = [];
   /** The names of declarations under `checks` that a form rule refused: a reference to one is no second error. */
   const brokenChecks = new Set<string>();
   /** The members of `checkMembers` declared under `checks`, not inline in a `validate`. */
   const sectionChecks = new Set<unknown>();
-  for (const tag of tags(section("checks")?.children ?? [])) {
-    const reference = attr(tag, "member");
-    if (reference) {
-      fail("MESH_MEMBER_REFERENCE", "`checks` declares checks: a line under it is `check :name` with its options, and `check &name` is how a `validate` block uses one", optionAt(reference));
-      continue;
-    }
-    const check = declaredCheck(tag);
-    if (!check) {
-      if (attr(tag, "name")) brokenChecks.add(declaredName(tag));
-      continue;
-    }
-    const member = { name: check.label, position: check.position };
-    checkMembers.push(member);
-    sectionChecks.add(member);
-    if (!namedChecks.has(check.label)) namedChecks.set(check.label, check);
-  }
   /** The named checks some `validate` refers to, a refused reference included: one no block uses never runs. */
   const usedChecks = new Set<string>();
   /** A named check as one `validate` block uses it: its own expression objects, so the model pass types it in that block's scope. */
@@ -832,245 +711,454 @@ function buildEntity(
     ...(declared.details ? { details: copyExpression(declared.details) } : {}),
     reference,
   });
-  /**
-   * One `check` line of a `validate` block, at its top or under a `when` in it: an inline declaration, or a named check the
-   * block uses by reference. `listed` is the block's, one map for the whole nesting, so a reference listed twice anywhere
-   * in one `validate` is a duplicate (ruling D27, point 5).
-   */
-  const checkOf = (tag: Tag, listed: Map<string, "inline" | "reference">): Check[] => {
-    const reference = attr(tag, "member");
-    if (reference && !attr(tag, "name")) {
-      const ref = readMember(reference, at);
-      usedChecks.add(ref.name);
-      const option = tag.attrs.find((a) => a.kind === "spread" || a.name !== "member");
-      if (option) {
-        fail("MESH_UNKNOWN_OPTION", `\`check\`: a reference to a check takes no option: remove \`${option.kind === "spread" ? "..." : option.name}\`, or change the check where \`checks\` declares it`, optionAt(option));
-        return [];
-      }
-      const child = tags(tag.children)[0];
-      if (child) {
-        fail("MESH_TAG_NOT_ALLOWED", `\`check\`: a reference to a check takes no line under it: remove \`${child.name}\``, child);
-        return [];
-      }
-      checkRef(ref, "check");
-      const declared = namedChecks.get(ref.name);
-      if (!declared) return [];
-      const before = listed.get(ref.name);
-      if (before === "reference") {
-        fail("MESH_DUPLICATE_MEMBER", `Duplicate check &${ref.name}: this \`validate\` already lists it, and a check runs once`, ref.position);
-        return [];
-      }
-      // An inline check of the block took the name: the member list reports the pair once, at the later line.
-      if (before === "inline") return [];
-      listed.set(ref.name, "reference");
-      return [usedCheck(declared, ref.position)];
-    }
-    // An inline check's name is a member of the entity, counted once however many blocks write it (SYN-08): the member
-    // list reports a repeat, here or in another block, and a name another member has.
-    const check = declaredCheck(tag);
-    if (!check) return [];
-    checkMembers.push({ name: check.label, position: check.position });
-    listed.set(check.label, "inline");
-    return [check];
-  };
-  /** The lines under a `validate`, or under a `when` inside one, in order: checks, and `when` lines with theirs. */
-  const validateLines = (holder: Tag, listed: Map<string, "inline" | "reference">): ValidateItem[] =>
-    tags(holder.children).flatMap((tag): ValidateItem[] => {
-      if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return []; }
-      if (tag.name === "when")
-        return [{ kind: "when", condition: expr(attr(tag, "value")), lines: validateLines(tag, listed), position: pos(tag) }];
-      if (tag.name === "check") return checkOf(tag, listed);
-      // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a step here; directly under
-      // `validate` it admits only `check`, `when` and `publish`.
-      fail("MESH_TAG_NOT_ALLOWED", `\`when\` in \`validate\`: \`${tag.name}\` is not allowed here; allowed children: \`check\`, \`when\``, tag);
-      return [];
-    });
-  /** The lines of an action's or an `always` block's `validate`. */
-  const checks = (holder: Tag): ValidateItem[] => {
-    const block = tags(holder.children).find((t) => t.name === "validate");
-    return block ? validateLines(block, new Map()) : [];
-  };
-  /** The steps under a `do` or a `when`. */
-  const steps = (holder: Tag): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag) ?? []);
-  const buildStep = (tag: Tag): Step | undefined => {
-      const position = pos(tag);
-      const assigned = new Set<string>();
-      if (tag.name === "set")
-        return {
-          kind: "set",
-          assignments: tags(tag.children).flatMap((line) => {
-            if (!isMemberLine(line)) { authoredMember(line); return []; }
-            const read = readAt(line, at, () => readMemberLine(line, at));
-            if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
-            const member = read.value;
-            checkRef(member.ref, "set");
-            if (assigned.has(member.ref.name))
-              fail("MESH_DUPLICATE_SET", `\`&${member.ref.name}\` is set twice in this action`, line);
-            assigned.add(member.ref.name);
-            if (!member.value) {
-              fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
-              return [];
-            }
-            const value = readAt(line, at, () => {
-              const n = nodeOf(member.value);
-              if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
-              let literal: ReturnType<typeof valueOf>;
-              try { literal = valueOf(member.value); }
-              catch { throw new Error(`\`&${member.ref.name}=\` needs a literal value here`); }
-              const field = entity.attributes.find((attribute) => attribute.name === member.ref.name);
-              if (field?.type === "json" && containsAtom(member.value))
-                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is json, and an atom is not JSON: write a string`, member.ref.position);
-              if (field && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
-                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
-              // A belongs-to stores its target's key: a literal is that key (or null on a nullable one). Its type is checked at the call, by the key column.
-              const relation = field ? undefined : entity.relationships.find((r) => r.name === member.ref.name);
-              if (relation && (literal === null ? !relation.nullable : typeof literal !== "string" && typeof literal !== "number"))
-                fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` stores the key of :${relation.entity.identifier}: write its id${relation.nullable ? ", null" : ""} or a function`, member.ref.position);
-              return literal;
-            });
-            if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
-            return [{ member: member.ref, value: value.value }];
-          }),
-          position,
-        };
-      if (tag.name === "when")
-        return {
-          kind: "when",
-          condition: expr(attr(tag, "value")),
-          steps: steps(tag),
-          position,
-        };
-      if (tag.name === "load")
-        return {
-          kind: "load",
-          members: readMembers(attr(tag, "value"), at).map((ref) =>
-            checkRef(ref, "load"),
-          ),
-          position,
-        };
-      if (tag.name === "run") {
-        // The contract admits `:write` only (ADR-0068 decision 2); MX reports any other value at the attribute.
-        const after = atomOf(attr(tag, "after"))?.name === "write";
-        return { kind: "run", fn: expr(attr(tag, "value"), "expression", "run"), ...(after ? { after: "write" as const } : {}), position };
-      }
-      // A read has no `do` (its contract leaves it out), so no publish is written in one. The fourth case of `MESH_PUBLISH`,
-      // an event that owners list and the action's owner does not, needs every entity built (`checkPublishSteps`).
-      if (tag.name === "publish")
-        return { kind: "publish", fn: expr(attr(tag, "value"), "expression", "publish"), position };
-      // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a `check` under a step `when`
-      // (`do` itself does not take one).
-      if (tag.name === "check") {
-        // A reference is still a use of its check: refused here, it is not also reported unused.
-        const reference = attr(tag, "member");
-        if (reference && !attr(tag, "name")) usedChecks.add(readMember(reference, at).name);
-        fail("MESH_TAG_NOT_ALLOWED", "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`", tag);
-        return undefined;
-      }
-      throw new Error(`Unexpected step ${tag.name}`);
-  };
-  const body = (holder: Tag) => {
-    const block = tags(holder.children).find((t) => t.name === "do");
-    return { validate: checks(holder), do: block ? steps(block) : [] };
-  };
-  const types = (a: Attr) =>
-    atomList(a).map((value): ActionType => {
-      if (!isActionKind(value)) throw new Error(`Unknown action type ${value}`);
-      return value;
-    });
-  const scope = (tag: Tag) => ({
-    ...(attr(tag, "types") ? { types: types(attr(tag, "types")!) } : {}),
-    ...(attr(tag, "actions")
-      ? {
-          actions: readMembers(attr(tag, "actions"), at).map((ref) =>
-            checkRef(ref, "actions"),
-          ),
-        }
-      : {}),
-  });
-  const actionSection = section("actions");
   // The actions whose name the author wrote, as against one named after its command.
   const authorNamed = new Set<Action>();
-  if (actionSection) {
-    const auto = attr(actionSection, "auto");
-    if (auto) entity.auto = types(auto);
-    if (new Set(entity.auto).size !== entity.auto.length)
-      fail(
-        "MESH_DUPLICATE_MEMBER",
-        "auto contains a duplicate action type",
-        actionSection,
-      );
-    const onLoad = attr(actionSection, "on:load");
-    if (onLoad) entity.onLoad = checkRef(readMember(onLoad, at), "actions");
-    for (const tag of tags(actionSection.children)) {
-      if (tag.name === "always") {
-        entity.always.push({
-          ...scope(tag),
-          ...body(tag),
-          position: pos(tag),
-        } satisfies Always);
-        continue;
-      }
-      const kind = tag.name as ActionType;
-      // `on=` answers a command and, with no name written, names the action: the command's class name with its first letter
-      // in lower case, whatever name this file binds (`notes/spec/events-and-commands.md`, "Answering a command").
-      const onAttr = attr(tag, "on");
-      const written = onAttr ? writtenReference(nodeOf(onAttr)) : undefined;
-      const answered = written ? resolveReference(written, commandReferences, commandKind) : undefined;
-      if (answered && !answered.ok && "code" in answered) fail(answered.code, answered.message, at(answered.offset), answered.fix);
-      // The command's class name, whatever name this file binds; none for a file the project lacks (the import is reported).
-      const commandClass = answered?.ok && declaredFile(answered.from) ? answered.declared : undefined;
-      const writtenName = attr(tag, "name") ? declaredName(tag) : undefined;
-      // A name and no `on=` is the one case a contract leaves nothing to say about; with neither, `MESH_NAME` has been reported.
-      const actionName = writtenName ?? (commandClass ? commandClass.charAt(0).toLowerCase() + commandClass.slice(1) : written ? written.name.charAt(0).toLowerCase() + written.name.slice(1) : undefined);
-      if (actionName === undefined) continue;
-      const command: Action["command"] = written && onAttr
-        ? { identifier: referenceText(written), from: answered?.ok ? answered.from : "", fqn: "", position: at(attrOffset(onAttr)) }
-        : undefined;
-      if (command && answered?.ok) declaredNames.set(command, answered.declared);
-      const input = readInputLines(tag, {
-        readers,
-        memberLine: (line) => {
-          if (!isMemberLine(line)) { authoredMember(line); return undefined; }
-          const read = readAt(line, at, () => readMemberLine(line, at));
-          if (read.diagnostic) { diagnostics.push(read.diagnostic); return undefined; }
-          if (kind === "read")
-            fail(
-              "MESH_READ_INPUT_MEMBER",
-              "A read input may declare arguments only",
-              line,
-            );
-          return { kind: "member", ref: checkRef(read.value.ref, "input") };
+  /** Where each `auto` member is, in the order of `entity.auto`. */
+  const autoPositions: SourcePosition[] = [];
+  /**
+   * The readers of one line source, by section kind: each reads one section line of `src` into the entity, with positions,
+   * function text and references taken from `src`, and writes into the state above, which every source shares.
+   */
+  const readersFor = (src: LineSource): SectionReaders => {
+    const sourceIndex = sources.indexOf(src);
+    const readers = attributeReaders(src.source, file, diagnostics, src.at);
+    const { at, pos, fail, opt, shape, checkShape } = readers;
+    const { entity: references, event: eventReferences, command: commandReferences } = src.scope.references;
+    const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish"): Expression =>
+      expression(
+        a,
+        src.source,
+        at,
+        (ref) => checkRef(ref, scope),
+        ({ ref, position }) =>
+          fail(
+            "MESH_MEMBER_ASSIGN",
+            `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
+            position,
+          ),
+        {
+          helpers: src.scope.helpers,
+          imported: src.scope.imported,
+          entities: src.scope.entities,
+          namespaces: src.scope.namespaces,
+          reference: (written) => resolveReference(written, references, entityKind),
+          memberReference: (written) => resolveReference(written, references, memberKind),
+          events: src.scope.events,
+          commands: src.scope.commands,
+          eventReference: (written) => resolveReference(written, eventReferences, eventKind),
+          commandReference: (written) => resolveReference(written, commandReferences, commandKind),
+          duplicates: src.scope.duplicates,
+          mesh: src.scope.mesh,
+          report: (d) => {
+            if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
+          },
+          ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : {}),
         },
+      );
+    const authoredMember = (line: Tag) =>
+      fail(
+        "MESH_SYNTAX",
+        "`<member>` is not a known tag: write a member line as `&name`",
+        line,
+      );
+    /** A check's `message=`: fixed text, or a function of the arguments `that` gets. Anything else is refused. */
+    const message = (tag: Tag): string | Expression => {
+      const a = attr(tag, "message");
+      const text = textOf(a);
+      if (text !== undefined) return text;
+      if (nodeOf(a)?.type === "ArrowFunctionExpression" || nodeOf(a)?.type === "FunctionExpression") return expr(a);
+      throw new Error("A check's `message=` is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)");
+    };
+    /**
+     * `publish` is no `validate` line and no part of a `check`: it raises an event after the row is written, and a check only
+     * decides (`MESH_PUBLISH`). The contract admits it there so that the build can say so; it builds nothing.
+     */
+    const refusePublish = (tag: Tag, where: string) =>
+      fail("MESH_PUBLISH", `a \`publish\` step is not allowed ${where}: it raises an event after the action's row is written, in the action's \`do\``, tag, "move it under `do`");
+    /** Where an option is written: its name (`when` of `when=...`). */
+    const optionAt = (a: Attr) => at("nameSpan" in a && a.nameSpan ? a.nameSpan.sourceStart : attrOffset(a));
+    /**
+     * One declared check, inline in a `validate` or under `checks`: its functions are built here, once. The contract
+     * requires nothing of a `check` line, since a reference (`check &name`) takes none of a declaration's options, so the
+     * form rules are here, reported line by line: a line that declares and refers, and a declaration missing an option
+     * (the first missing, with MX's text for a required option). Such a line declares no check.
+     */
+    const declaredCheck = (tag: Tag): Check | undefined => {
+      const reference = attr(tag, "member");
+      if (reference) {
+        fail("MESH_MEMBER_REFERENCE", "`check`: a line declares a check (`check :name` with its options) or uses one (`check &name` alone), not both", optionAt(reference));
+        return undefined;
+      }
+      const missing = ["name", "that", "code", "message"].find((key) => !attr(tag, key));
+      if (missing) {
+        fail("MESH_MISSING_OPTION", `\`check\`: missing required option \`${missing}\``, tag);
+        return undefined;
+      }
+      for (const inner of tags(tag.children)) if (inner.name === "publish") refusePublish(inner, "in a `check`");
+      return { label: declaredName(tag), that: expr(attr(tag, "that")), code: String(opt(tag, "code")), message: message(tag), ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}), ...(attr(tag, "details") ? { details: expr(attr(tag, "details")) } : {}), position: pos(tag) };
+    };
+    /**
+     * One `check` line of a `validate` block, at its top or under a `when` in it: an inline declaration, or a named check the
+     * block uses by reference. `listed` is the block's, one map for the whole nesting, so a reference listed twice anywhere
+     * in one `validate` is a duplicate (ruling D27, point 5).
+     */
+    const checkOf = (tag: Tag, listed: Map<string, "inline" | "reference">): Check[] => {
+      const reference = attr(tag, "member");
+      if (reference && !attr(tag, "name")) {
+        const ref = readMember(reference, at);
+        usedChecks.add(ref.name);
+        const option = tag.attrs.find((a) => a.kind === "spread" || a.name !== "member");
+        if (option) {
+          fail("MESH_UNKNOWN_OPTION", `\`check\`: a reference to a check takes no option: remove \`${option.kind === "spread" ? "..." : option.name}\`, or change the check where \`checks\` declares it`, optionAt(option));
+          return [];
+        }
+        const child = tags(tag.children)[0];
+        if (child) {
+          fail("MESH_TAG_NOT_ALLOWED", `\`check\`: a reference to a check takes no line under it: remove \`${child.name}\``, child);
+          return [];
+        }
+        checkRef(ref, "check");
+        const declared = namedChecks.get(ref.name);
+        if (!declared) return [];
+        const before = listed.get(ref.name);
+        if (before === "reference") {
+          fail("MESH_DUPLICATE_MEMBER", `Duplicate check &${ref.name}: this \`validate\` already lists it, and a check runs once`, ref.position);
+          return [];
+        }
+        // An inline check of the block took the name: the member list reports the pair once, at the later line.
+        if (before === "inline") return [];
+        listed.set(ref.name, "reference");
+        return [usedCheck(declared, ref.position)];
+      }
+      // An inline check's name is a member of the entity, counted once however many blocks write it (SYN-08): the member
+      // list reports a repeat, here or in another block, and a name another member has.
+      const check = declaredCheck(tag);
+      if (!check) return [];
+      checkMembers.push({ name: check.label, position: check.position, sourceIndex });
+      listed.set(check.label, "inline");
+      return [check];
+    };
+    /** The lines under a `validate`, or under a `when` inside one, in order: checks, and `when` lines with theirs. */
+    const validateLines = (holder: Tag, listed: Map<string, "inline" | "reference">): ValidateItem[] =>
+      tags(holder.children).flatMap((tag): ValidateItem[] => {
+        if (tag.name === "publish") { refusePublish(tag, "in `validate`"); return []; }
+        if (tag.name === "when")
+          return [{ kind: "when", condition: expr(attr(tag, "value")), lines: validateLines(tag, listed), position: pos(tag) }];
+        if (tag.name === "check") return checkOf(tag, listed);
+        // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a step here; directly under
+        // `validate` it admits only `check`, `when` and `publish`.
+        fail("MESH_TAG_NOT_ALLOWED", `\`when\` in \`validate\`: \`${tag.name}\` is not allowed here; allowed children: \`check\`, \`when\``, tag);
+        return [];
       });
-      const filterTag = tags(tag.children).find((t) => t.name === "filter");
-      const filter =
-        attr(tag, "filter") ?? (filterTag && attr(filterTag, "value"));
-      if (attr(tag, "filter") && filterTag)
-        fail("MESH_DUPLICATE_MEMBER", "A read has only one filter", filterTag);
-      const sort = tags(tag.children).find((t) => t.name === "sort");
-      const action: Action = {
-        kind,
-        name: actionName,
-        ...(command ? { command } : {}),
-        input,
-        ...body(tag),
-        ...(filter ? { filter: expr(filter, "filter") } : {}),
-        ...(sort
-          ? {
-              sort: tags(sort.children).map((t) => ({
-                direction: t.name as "asc" | "desc",
-                member: checkRef(readMember(attr(t, "member"), at), "sort"),
-              })),
+    /** The lines of an action's or an `always` block's `validate`. */
+    const checks = (holder: Tag): ValidateItem[] => {
+      const block = tags(holder.children).find((t) => t.name === "validate");
+      return block ? validateLines(block, new Map()) : [];
+    };
+    /** The steps under a `do` or a `when`. */
+    const steps = (holder: Tag): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag) ?? []);
+    const buildStep = (tag: Tag): Step | undefined => {
+        const position = pos(tag);
+        const assigned = new Set<string>();
+        if (tag.name === "set")
+          return {
+            kind: "set",
+            assignments: tags(tag.children).flatMap((line) => {
+              if (!isMemberLine(line)) { authoredMember(line); return []; }
+              const read = readAt(line, at, () => readMemberLine(line, at));
+              if (read.diagnostic) { diagnostics.push(read.diagnostic); return []; }
+              const member = read.value;
+              checkRef(member.ref, "set");
+              if (assigned.has(member.ref.name))
+                fail("MESH_DUPLICATE_SET", `\`&${member.ref.name}\` is set twice in this action`, line);
+              assigned.add(member.ref.name);
+              if (!member.value) {
+                fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
+                return [];
+              }
+              const value = readAt(line, at, () => {
+                const n = nodeOf(member.value);
+                if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
+                let literal: ReturnType<typeof valueOf>;
+                try { literal = valueOf(member.value); }
+                catch { throw new Error(`\`&${member.ref.name}=\` needs a literal value here`); }
+                const field = entity.attributes.find((attribute) => attribute.name === member.ref.name);
+                if (field?.type === "json" && containsAtom(member.value))
+                  fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is json, and an atom is not JSON: write a string`, member.ref.position);
+                if (field && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
+                  fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
+                // A belongs-to stores its target's key: a literal is that key (or null on a nullable one). Its type is checked at the call, by the key column.
+                const relation = field ? undefined : entity.relationships.find((r) => r.name === member.ref.name);
+                if (relation && (literal === null ? !relation.nullable : typeof literal !== "string" && typeof literal !== "number"))
+                  fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` stores the key of :${relation.entity.identifier}: write its id${relation.nullable ? ", null" : ""} or a function`, member.ref.position);
+                return literal;
+              });
+              if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
+              return [{ member: member.ref, value: value.value }];
+            }),
+            position,
+          };
+        if (tag.name === "when")
+          return {
+            kind: "when",
+            condition: expr(attr(tag, "value")),
+            steps: steps(tag),
+            position,
+          };
+        if (tag.name === "load")
+          return {
+            kind: "load",
+            members: readMembers(attr(tag, "value"), at).map((ref) =>
+              checkRef(ref, "load"),
+            ),
+            position,
+          };
+        if (tag.name === "run") {
+          // The contract admits `:write` only (ADR-0068 decision 2); MX reports any other value at the attribute.
+          const after = atomOf(attr(tag, "after"))?.name === "write";
+          return { kind: "run", fn: expr(attr(tag, "value"), "expression", "run"), ...(after ? { after: "write" as const } : {}), position };
+        }
+        // A read has no `do` (its contract leaves it out), so no publish is written in one. The fourth case of `MESH_PUBLISH`,
+        // an event that owners list and the action's owner does not, needs every entity built (`checkPublishSteps`).
+        if (tag.name === "publish")
+          return { kind: "publish", fn: expr(attr(tag, "value"), "expression", "publish"), position };
+        // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a `check` under a step `when`
+        // (`do` itself does not take one).
+        if (tag.name === "check") {
+          // A reference is still a use of its check: refused here, it is not also reported unused.
+          const reference = attr(tag, "member");
+          if (reference && !attr(tag, "name")) usedChecks.add(readMember(reference, at).name);
+          fail("MESH_TAG_NOT_ALLOWED", "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`", tag);
+          return undefined;
+        }
+        throw new Error(`Unexpected step ${tag.name}`);
+    };
+    const body = (holder: Tag) => {
+      const block = tags(holder.children).find((t) => t.name === "do");
+      return { validate: checks(holder), do: block ? steps(block) : [] };
+    };
+    const types = (a: Attr) =>
+      atomList(a).map((value): ActionType => {
+        if (!isActionKind(value)) throw new Error(`Unknown action type ${value}`);
+        return value;
+      });
+    const scope = (tag: Tag) => ({
+      ...(attr(tag, "types") ? { types: types(attr(tag, "types")!) } : {}),
+      ...(attr(tag, "actions")
+        ? {
+            actions: readMembers(attr(tag, "actions"), at).map((ref) =>
+              checkRef(ref, "actions"),
+            ),
+          }
+        : {}),
+    });
+    const attributes = (section: Tag) => {
+      for (const tag of tags(section.children)) {
+        const on = attr(tag, "on");
+        const field: Attribute = {
+          ...shape(tag),
+          primaryKey: opt(tag, "primary-key") === true,
+          unique: opt(tag, "unique") === true,
+          ...(atomOf(on) ? { on: atomOf(on)!.name as "create" | "update" } : {}),
+        };
+        if (attr(tag, "value"))
+          fail(
+            "MESH_ATTRIBUTE_RULE",
+            "A stored attribute cannot have a function body",
+            tag,
+          );
+        if (field.primaryKey && field.nullable)
+          fail("MESH_PRIMARY_KEY", "A primary key cannot be nullable", tag);
+        checkShape(field);
+        entity.attributes.push(field);
+      }
+    };
+    const relationships = (section: Tag) => {
+      for (const tag of tags(section.children)) {
+        // `entity=List` or `entity=billing.Invoice`; an entity relates to its own type by its own name, with no import.
+        const written = writtenReference(nodeOf(attr(tag, "entity")));
+        const target = written ? resolveReference(written, references, entityKind) : undefined;
+        if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
+        const name = declaredName(tag);
+        const kind = tag.name as Relationship["kind"];
+        const inverse = atomOf(attr(tag, "inverse"))?.name;
+        // `through=Link` (has-many only): the link entity, resolved as `entity=` is and reported the same way.
+        const throughAttr = kind === "has-many" ? attr(tag, "through") : undefined;
+        const writtenLink = throughAttr ? writtenReference(nodeOf(throughAttr)) : undefined;
+        const link = writtenLink ? resolveReference(writtenLink, references, entityKind) : undefined;
+        if (link && !link.ok && "code" in link) fail(link.code, link.message, at(link.offset), link.fix);
+        const relation: Relationship = {
+          kind,
+          name,
+          entity: { identifier: written ? referenceText(written) : "", from: target?.ok ? target.from : "" },
+          nullable: opt(tag, "nullable") === true,
+          ...(kind === "belongs-to" ? { keyColumn: `${name}Id` } : {}),
+          ...(inverse !== undefined ? { inverse } : {}),
+          ...(writtenLink ? { through: { entity: { identifier: referenceText(writtenLink), from: link?.ok ? link.from : "" } } } : {}),
+          position: pos(tag),
+        };
+        entity.relationships.push(relation);
+        if (inverse !== undefined) inversePositions.set(relation, at(attrOffset(attr(tag, "inverse")!)));
+        if (writtenLink) throughPositions.set(relation, at(attrOffset(throughAttr!)));
+      }
+    };
+    const computed = (section: Tag) => {
+      for (const tag of tags(section.children)) {
+        const base = { name: declaredName(tag), position: pos(tag) };
+        if (["count", "sum", "avg", "min", "max"].includes(tag.name)) {
+          const segments = readMemberPath(attr(tag, "of"), at);
+          const of = segments.map((s) => s.name).join(".");
+          const computed: Computed = {
+            ...base,
+            type: "integer",
+            nullable: false,
+            rollup: { fn: tag.name as Rollup["fn"], of },
+          };
+          entity.computed.push(computed);
+          rollups.push({ entity, computed, segments });
+        } else {
+          const allowed = tag.name === "enum" ? ["name", "value", "values"] : ["name", "value"];
+          if (tag.attrs.some((a) => a.kind !== "spread" && !allowed.includes(a.name)))
+            fail(
+              "MESH_COMPUTED_OPTIONS",
+              tag.name === "enum"
+                ? "A computed enum takes only its name, its values and its body"
+                : "A computed function takes only its name and body",
+              tag,
+            );
+          const body = readAt(tag, at, () => expr(attr(tag, "value")));
+          if (body.diagnostic) diagnostics.push(body.diagnostic);
+          else {
+            const field: Computed = { ...base, type: tag.name as AttributeType, body: body.value };
+            const values = attr(tag, "values");
+            if (tag.name === "enum") {
+              // The values are optional on a computed enum: without them its TypeScript type is `string`.
+              if (values) {
+                field.values = atomList(values).map((value) => ({ value }));
+                checkShape({ type: "enum", nullable: false, values: field.values, position: base.position });
+              }
             }
-          : {}),
-        position: pos(tag),
-      };
-      entity.actions.push(action);
-      if (writtenName !== undefined) authorNamed.add(action);
+            entity.computed.push(field);
+          }
+        }
+      }
+    };
+    const checksSection = (section: Tag) => {
+      for (const tag of tags(section.children)) {
+        const reference = attr(tag, "member");
+        if (reference) {
+          fail("MESH_MEMBER_REFERENCE", "`checks` declares checks: a line under it is `check :name` with its options, and `check &name` is how a `validate` block uses one", optionAt(reference));
+          continue;
+        }
+        const check = declaredCheck(tag);
+        if (!check) {
+          if (attr(tag, "name")) brokenChecks.add(declaredName(tag));
+          continue;
+        }
+        const member = { name: check.label, position: check.position, sourceIndex };
+        checkMembers.push(member);
+        sectionChecks.add(member);
+        if (!namedChecks.has(check.label)) namedChecks.set(check.label, check);
+      }
+    };
+    const actions = (actionSection: Tag) => {
+      const auto = attr(actionSection, "auto");
+      const listed = auto ? types(auto) : [];
+      if (new Set(listed).size !== listed.length)
+        fail(
+          "MESH_DUPLICATE_MEMBER",
+          "auto contains a duplicate action type",
+          actionSection,
+        );
+      // An `auto` member is at the `actions` line of the source that lists it.
+      for (const type of listed) {
+        entity.auto.push(type);
+        autoPositions.push(pos(actionSection));
+      }
+      const onLoad = attr(actionSection, "on:load");
+      if (onLoad) entity.onLoad = checkRef(readMember(onLoad, at), "actions");
+      for (const tag of tags(actionSection.children)) {
+        if (tag.name === "always") {
+          entity.always.push({
+            ...scope(tag),
+            ...body(tag),
+            position: pos(tag),
+          } satisfies Always);
+          continue;
+        }
+        const kind = tag.name as ActionType;
+        // `on=` answers a command and, with no name written, names the action: the command's class name with its first letter
+        // in lower case, whatever name this file binds (`notes/spec/events-and-commands.md`, "Answering a command").
+        const onAttr = attr(tag, "on");
+        const written = onAttr ? writtenReference(nodeOf(onAttr)) : undefined;
+        const answered = written ? resolveReference(written, commandReferences, commandKind) : undefined;
+        if (answered && !answered.ok && "code" in answered) fail(answered.code, answered.message, at(answered.offset), answered.fix);
+        // The command's class name, whatever name this file binds; none for a file the project lacks (the import is reported).
+        const commandClass = answered?.ok && declaredFile(answered.from) ? answered.declared : undefined;
+        const writtenName = attr(tag, "name") ? declaredName(tag) : undefined;
+        // A name and no `on=` is the one case a contract leaves nothing to say about; with neither, `MESH_NAME` has been reported.
+        const actionName = writtenName ?? (commandClass ? commandClass.charAt(0).toLowerCase() + commandClass.slice(1) : written ? written.name.charAt(0).toLowerCase() + written.name.slice(1) : undefined);
+        if (actionName === undefined) continue;
+        const command: Action["command"] = written && onAttr
+          ? { identifier: referenceText(written), from: answered?.ok ? answered.from : "", fqn: "", position: at(attrOffset(onAttr)) }
+          : undefined;
+        if (command && answered?.ok) declaredNames.set(command, answered.declared);
+        const input = readInputLines(tag, {
+          readers,
+          memberLine: (line) => {
+            if (!isMemberLine(line)) { authoredMember(line); return undefined; }
+            const read = readAt(line, at, () => readMemberLine(line, at));
+            if (read.diagnostic) { diagnostics.push(read.diagnostic); return undefined; }
+            if (kind === "read")
+              fail(
+                "MESH_READ_INPUT_MEMBER",
+                "A read input may declare arguments only",
+                line,
+              );
+            return { kind: "member", ref: checkRef(read.value.ref, "input") };
+          },
+        });
+        const filterTag = tags(tag.children).find((t) => t.name === "filter");
+        const filter =
+          attr(tag, "filter") ?? (filterTag && attr(filterTag, "value"));
+        if (attr(tag, "filter") && filterTag)
+          fail("MESH_DUPLICATE_MEMBER", "A read has only one filter", filterTag);
+        const sort = tags(tag.children).find((t) => t.name === "sort");
+        const action: Action = {
+          kind,
+          name: actionName,
+          ...(command ? { command } : {}),
+          input,
+          ...body(tag),
+          ...(filter ? { filter: expr(filter, "filter") } : {}),
+          ...(sort
+            ? {
+                sort: tags(sort.children).map((t) => ({
+                  direction: t.name as "asc" | "desc",
+                  member: checkRef(readMember(attr(t, "member"), at), "sort"),
+                })),
+              }
+            : {}),
+          position: pos(tag),
+        };
+        entity.actions.push(action);
+        if (writtenName !== undefined) authorNamed.add(action);
+      }
+    };
+    const policies = (section: Tag) => {
+      for (const tag of tags(section.children))
+        entity.policies.push(readPolicyLine(tag, { expr: (a) => expr(a), scope, pos }));
+    };
+    return { attributes, relationships, computed, checks: checksSection, actions, policies };
+  };
+  // Read by kind, in `SECTION_KINDS` order, and within a kind source by source: every source's checks are read before any
+  // `validate` looks one up.
+  const sourceReaders = new Map(sources.map((src) => [src, readersFor(src)] as const));
+  for (const kind of SECTION_KINDS)
+    for (const src of sources) {
+      const line = src.sections.find((t) => t.name === kind);
+      if (line) sourceReaders.get(src)![kind](line);
     }
-  }
-  for (const tag of tags(section("policies")?.children ?? []))
-    entity.policies.push(readPolicyLine(tag, { expr: (a) => expr(a), scope, pos }));
   // The owner sections (`notes/spec/events-and-commands.md`, "Where a declaration lives"): each line declares an event or a
   // command inline (`event :InvoiceVoided` with its fields), or lists one an import of the file names, `InvoicePaid` or
   // `notices.InvoiceOverdue`, resolved as `entity=` is. An inline declaration means what the same declaration in a file of
@@ -1153,12 +1241,12 @@ function buildEntity(
     ...entity.relationships,
     ...entity.computed,
     ...entity.actions,
-    ...entity.auto.map((name) => ({
+    ...entity.auto.map((name, index) => ({
       name,
-      position: actionSection ? pos(actionSection) : entity.position,
+      position: autoPositions[index]!,
     })),
     ...entity.policies,
-    ...checkMembers.sort((a, b) => a.position.offset - b.position.offset),
+    ...checkMembers.sort((a, b) => a.sourceIndex - b.sourceIndex || a.position.offset - b.position.offset),
   ];
   for (const [name, check] of namedChecks)
     if (!usedChecks.has(name))

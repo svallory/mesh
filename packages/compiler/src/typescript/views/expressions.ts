@@ -457,7 +457,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     usesExpr ||= emitted.expr;
     return {
       key: JSON.stringify(f.id),
-      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${entity.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
+      comment: `${f.what}, ${f.expression.tree ? "translated" : `plain (${f.expression.plain!.why})`} (${f.expression.position.file}:${f.expression.position.line}:${f.expression.position.column + 1})`
         .replace(/[\r\n\u2028\u2029]/g, " "),
       code,
     };
