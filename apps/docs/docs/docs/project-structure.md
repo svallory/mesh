@@ -25,6 +25,9 @@ todo-app/
         list.mesh.mx
         todo.mesh.mx
         todo.helpers.ts    hand-written code that todo.mesh.mx calls
+    surfaces/             surface files, one folder per audience, when mesh.config.ts sets `surfaces`
+      admin/
+        admin.mesh.mx
     extensions/           project-local extensions, if any
     context.ts            declares the action context type
     main.ts               the program (Mesh does not prescribe this)
@@ -32,7 +35,7 @@ todo-app/
     todo.test.ts          tests, which bind their own database
 ```
 
-Mesh prescribes nothing under `src/`. `context.ts`, the starter's `demo.ts` and the tutorial's `main.ts` are only convention; what matters is that the domain folder is where the `.mesh.mx` files are.
+Mesh prescribes nothing under `src/`. `context.ts`, the starter's `demo.ts` and the tutorial's `main.ts` are only convention; what matters is that the domain folder is where the `.mesh.mx` files are, and that surface files sit in the folder `surfaces` names, outside the domain ([Configuration](./configuration.md#surfaces)).
 
 ## The domain
 

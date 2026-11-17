@@ -7,7 +7,7 @@ description: "Decision record 0077: the `surface` file kind, core's ownership of
 
 ## Status
 
-Accepted. Supersedes [ADR-0035](./0035-meaning-of-public.md) (the `public` flag). Amends [ADR-0027](./0027-no-mcp-agent-surface.md) (the generated agent CLI reads a surface), [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) (every file is `.mesh.mx`; its root tag is its kind) and [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (the JSON-RPC adapter is before the gate).
+Accepted. Supersedes [ADR-0035](./0035-meaning-of-public.md) (the `public` flag). Amends [ADR-0027](./0027-no-mcp-agent-surface.md) (the generated agent CLI reads a surface), [ADR-0051](./0051-mesh-mx-files-and-the-mesh-host.md) (every file is `.mesh.mx`; its root tag is its kind) and [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (the JSON-RPC adapter is before the gate). Being built from 2026-11-17: [ADR-0095](./0095-surface-files-are-read-from-their-own-folder.md) records how the build finds and checks surface files.
 
 Rows: DOM-11, DOM-12, DOM-20, DOM-21, DOM-22 and the `publishes` half of DOM-02 (the `publish` half is in [ADR-0079](./0079-commands-events-and-the-outbox.md)). No row of this record is open.
 
