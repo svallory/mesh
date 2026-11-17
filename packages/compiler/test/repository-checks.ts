@@ -253,15 +253,15 @@ export const DOCS_SYNTAX = "syntax v4";
 /**
  * A complete v4 file of the domain: comments and imports may come first, then `entity :Name`, or `event :Name` or
  * `command :Name` for an event or a command, which are files of their own (spec, Events and commands), or
- * `aggregate :Name` for an aggregate file, `concept :Name` for a concept file, or `architecture :name` for the
- * architecture file.
+ * `aggregate :Name` for an aggregate file, `concept :Name` for a concept file, `service :Name` for a service file, or
+ * `architecture :name` for the architecture file.
  */
 export function isV4EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^(?:entity|event|command|aggregate|concept|architecture|surface)\s+:\w+/.test(text);
+    return /^(?:entity|event|command|aggregate|concept|architecture|surface|service)\s+:\w+/.test(text);
   }
   return false;
 }
@@ -310,9 +310,11 @@ export function oldSpellingInV4(block: string): string | null {
     if (/\b(?:belongs-to|has-many|has-one)\s*=/.test(text) || /\bentity\s*=\s*:/.test(text)) {
       return `line ${index + 1}: a relationship is \`kind :name entity=ImportedName\` (${text})`;
     }
-    // A surface's `expose` line names its fields with atoms (`fields=[:id, :title]`): there they are names, not references.
+    // A surface's `expose` line names its fields with atoms (`fields=[:id, :title]`), and a service's `uses` line the
+    // actions of another entity (`actions=[:complete]`): there they are names, not references.
     const fields = text.startsWith("expose ") ? "" : "|fields";
-    if (new RegExp(`^(?:asc|desc)\\s+:|^:\\w+\\s*=|\\b(?:load|actions${fields})\\s*=\\s*\\[[^\\]]*:\\w|\\bon:load\\s*=\\s*:`).test(text)) {
+    const actions = text.startsWith("uses ") ? "" : "|actions";
+    if (new RegExp(`^(?:asc|desc)\\s+:|^:\\w+\\s*=|\\b(?:load${actions}${fields})\\s*=\\s*\\[[^\\]]*:\\w|\\bon:load\\s*=\\s*:`).test(text)) {
       return `line ${index + 1}: a member reference is \`&name\`, not an atom (${text})`;
     }
     // A read's order is a `sort` section with `asc`/`desc` lines (ADR-0066).
@@ -342,7 +344,8 @@ const V4_TOKENS = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])
 const v4Operand = (previous: string) => previous === "" || /^(?:return|throw|typeof|void|delete|yield|await)$/.test(previous) ||
   /^(?:=>|&&|\|\||===|!==|==|!=|<=|>=|[=([{,:?!+*/%<>|&^~-])$/.test(previous);
 const v4LineReference = (prefix: string) => /^[\t ]*$/.test(prefix) || /^[\t ]*(?:asc|desc)[\t ]+$/.test(prefix);
-const V4_MEMBER_SECTIONS = new Set(["attributes", "relationships", "computed", "actions", "policies"]);
+// A service's `operation :name` lines are its members: a service policy names them (`actions=[&retire]`).
+const V4_MEMBER_SECTIONS = new Set(["attributes", "relationships", "computed", "actions", "policies", "service"]);
 
 function invalidMembersInV4(source: string): string | null {
   const masked = source.replace(V4_TOKENS, (token) => /^["'`/]/.test(token)
@@ -468,7 +471,7 @@ export function checkDocsSyntaxV4(dir: string) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
-      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\`, \`aggregate :Name\`, \`concept :Name\` or \`architecture :name\`)`);
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\`, \`aggregate :Name\`, \`concept :Name\`, \`service :Name\` or \`architecture :name\`)`);
       continue;
     }
     checked++;

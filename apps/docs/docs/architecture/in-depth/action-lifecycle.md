@@ -104,6 +104,17 @@ What is handed over is read-only. A record that an entity call or a `Mesh.privil
 
 A nested call that changes the caller's own row must come after the caller's write. Before an update writes, if any call made during its earlier phases wrote anything, the update reads its row again by key and compares it with the copy it read under the lock. A difference means a nested call changed or deleted this very row, so the update's checks and steps decided on a stale row, and the update rejects with a `FrameworkError` that says so and says to move the call to a `run [after=:write]` step. A nested write to another row passes.
 
+## A service operation
+
+A service's operation ([ADR-0097](../decisions/0097-the-service-construct.md)) is called on its generated value, `Lists.retire(input, context)`, and runs `runOperation` in `packages/runtime/src/entity.ts`, in this order:
+
+1. **Enter.** On the binding in scope, else the connected one, counted in flight so `disconnect()` waits for it. It is refused (a `FrameworkError`) while a computed field or a read policy is evaluated, inside a `Mesh.checkPolicies` question, and inside another operation's body or an action's transaction, a step, check, policy or helper of them included; the last fails the running transaction, since an inner operation would widen the outer one's `uses` lines. The instant is pinned once: the joined transaction's, else a new one, for the policies and the body alike.
+2. **Cast** with the operation's generated schema (`InvalidInputError`).
+3. **Pre-check.** The service's covering policies through the same `authorizer` an action uses: the checks that read only `actor`, `input` and `context` run before any transaction, and a denial is `ForbiddenError` naming the service and the operation. None covering is forbidden.
+4. **Transaction.** One transaction, joined when one is running, as an application `transaction(fn)` opens one: no `beforeTransaction` seam, for the operation or for the calls inside it, which join it. The remaining policy checks run first, in a store that does not carry the operation, so what a policy reads is the policy's and not held to `uses`.
+5. **Body.** The authored `run` function, in a store that carries the operation's label and `uses` lines. There, an entity call (`dispatchCall`), a `Mesh.privileged` read and a `Mesh.checkPolicies`/`Mesh.can` question the lines do not list are refused through `failNested`, so the transaction rolls back even when the body catches the error. A listed action's own steps, and what a listed read loads, run in that call's store and are not checked. Entity calls resolve with plain values, and the operation resolves with what the body returns.
+6. **Commit and after commit.** `afterCommit` runs once, with every change, when the operation opened the transaction.
+
 ## The plan: chosen at build time
 
 The plan is chosen when the project is built, once, and printed by `mesh explain <entity> <action>` ([roadmap](../roadmap/roadmap.md), M5). `explain` is tested in the compiler and the CLI; no example commits its output yet. At run time phase 3 does not choose anything; it runs the steps in the order the plan fixed, and it still gets its own tracing span once tracing returns. Until atomic updates return after Mesh 1.0, every update or destroy is read-then-write and `explain` says so ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).

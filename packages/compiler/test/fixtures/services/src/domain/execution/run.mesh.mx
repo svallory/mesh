@@ -1,0 +1,12 @@
+entity :Run table="runs"
+  attributes
+    uuid :id primary-key
+    enum :state values=[:running, :cancelled] default=:running
+  actions auto=[:read, :create]
+    update :cancel
+      do
+        set
+          &state=:cancelled
+  policies
+    policy :anyone
+      authorize-if=() => true

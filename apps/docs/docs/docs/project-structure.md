@@ -54,7 +54,7 @@ To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.t
 
 An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`, or the file as a namespace, `import * as lists from "./list.mesh.mx"`, then `belongs-to :list entity=lists.List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict: the import path distinguishes them, each module's specifier exports its own `List`, and Mesh writes the two as `school.List` and `work.List` wherever it names an entity. The one thing they cannot share is a table: both would be stored in `list`, so give one of them `table=` (that is a build error, naming both, until you do).
 
-Besides entity files, the domain folder holds event and command files ([Events](./events.md)), aggregate files and the architecture file, below. Each has one root line, which declares one thing of its kind; an aggregate file may also declare events and commands in its sections, as an entity file may.
+Besides entity files, the domain folder holds event and command files ([Events](./events.md)), service files ([Services](./services.md)), aggregate files and the architecture file, below. Each has one root line, which declares one thing of its kind; an aggregate file may also declare events and commands in its sections, as an entity file may. A service file sits in the module folder of the entities it works on (`src/domain/todo/lists.mesh.mx`, `service :Lists`), belongs to that module (`todo.Lists`), and generates `.mesh/domain/todo/lists.service.ts` and `lists.inputs.ts`, exported from `#mesh/domain/todo` as the value `Lists` and its operations' input types; a folder that holds only a service still gets its barrel.
 
 ### Aggregates
 
@@ -103,7 +103,7 @@ Presets apply first, in the order the file writes them, then the file's own `sev
 | Rule | Default | What it reports |
 |---|---|---|
 | `:action-calls-other-aggregate` | `warning` | a function of an entity's action or `always` block that calls a create, update or destroy action of an entity of another [aggregate](#aggregates) (`MESH_ACTION_CALLS_OTHER_AGGREGATE`), reported at the call; only entities that aggregate files list are checked, and a read, a handler body and a helper module's code are not |
-| `:service-touches-one-entity` | `warning` | a service operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`) |
+| `:service-touches-one-entity` | `warning` | a [service](./services.md) operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`) |
 
 Mesh's own invariants, such as an import that reaches outside the domain root, are ordinary build errors: no line of the file names, re-grades or disables one.
 

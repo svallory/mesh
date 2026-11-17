@@ -65,6 +65,10 @@
               "path": "/docs/event-sourcing/"
             },
             {
+              "title": "Services",
+              "path": "/docs/services/"
+            },
+            {
               "title": "Surfaces",
               "path": "/docs/surfaces/"
             },

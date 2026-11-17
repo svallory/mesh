@@ -58,12 +58,12 @@ describe("binding, module and index views", () => {
     expect(root).toEqual({
       module: "", specifier: "#mesh/domain", description: "the domain root",
       entities: [{ name: "Tag", values: ["Tag"], actionsFromLiteral: '"./tag.actions"', types: [], hasTypes: false, typesFromLiteral: '"./tag.types"' }],
-      declarations: [], concepts: [], namespaces: [{ name: "notes", fromLiteral: '"./notes/index"' }] });
+      declarations: [], concepts: [], services: [], namespaces: [{ name: "notes", fromLiteral: '"./notes/index"' }] });
     expect(notes).toEqual({
       module: "notes", specifier: "#mesh/domain/notes", description: 'module "notes"',
       entities: [{ name: "Note", values: ["Note"], actionsFromLiteral: '"./note.actions"', hasTypes: true, typesFromLiteral: '"./note.types"',
         types: ["CreateNoteInput", "EditNoteInput", "ReadNoteInput", "DestroyNoteInput", "NoteFilter", "NoteSort"] }],
-      declarations: [], concepts: [], namespaces: [] });
+      declarations: [], concepts: [], services: [], namespaces: [] });
   });
 
   test("the index view names every module's specifier and nothing of an entity", () => {

@@ -1,15 +1,15 @@
 // Service files in the model (`notes/architecture/services-design.md`, PR 1, sections 2, 5.1 and 6; ruling D42): a file
 // whose root line is `service :Name`, built into `ModelDocument.services` by `buildService` (`front-end/services.ts`) and
 // checked against the built entities by `checkServices` (`model/services.ts`); the import rules (R16, OD-12); the
-// one-entity warning (R3); the `MESH_NOT_IMPLEMENTED` stopgap in `generateFiles`; and a project without services, whose
-// document is unchanged (R13).
+// one-entity warning (R3); and a project without services, whose document is unchanged (R13). What is generated from a
+// service is `services-generated.test.ts`.
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Diagnostic, Service } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
-import { generateFiles, stableJsonStringify, type ResolvedConfig } from "../src/index.ts";
+import { stableJsonStringify } from "../src/index.ts";
 
 type Files = Record<string, string>;
 const entity = (name: string, { imports = "", body = "", actions = "", auto = "[:read]" } = {}) => `${imports}entity :${name}
@@ -378,18 +378,5 @@ describe("files and imports (R6, R7, R16, OD-12)", () => {
     expect(diags(missing).map((d) => [d[1], d[4], d[5]])).toEqual([[6, "MESH_UNKNOWN_IMPORT", 'Cannot resolve import "./gone.mesh.mx" inside the project']]);
     const misnamed = build(work(op("return 1"), `${HEAD}import { Tsk } from "./task.mesh.mx"\n`));
     expect(diags(misnamed).map((d) => [d[1], d[4], d[5]])).toEqual([[6, "MESH_UNKNOWN_IMPORT", "`Tsk` is not what ./task.mesh.mx declares; it declares `Task`"]]);
-  });
-});
-
-describe("generateFiles (PR 1 stopgap)", () => {
-  test("a project that declares a service is MESH_NOT_IMPLEMENTED at the service line, before any emitter runs", async () => {
-    const result = build({ [WORK_FILE]: WORK });
-    const config = { root: "/project", output: "/project/.mesh" } as unknown as ResolvedConfig;
-    const thrown = await generateFiles({ document: result.document!, config } as Parameters<typeof generateFiles>[0]).then(() => undefined, (cause: unknown) => cause);
-    expect((thrown as { diagnostic?: Diagnostic }).diagnostic).toMatchObject({
-      code: "MESH_NOT_IMPLEMENTED",
-      message: "service :Work is read and checked, but no code is generated for a service yet; generated services are built with the services unit (bead mesh-services)",
-      position: { file: WORK_FILE, line: 7, column: 0 },
-    });
   });
 });

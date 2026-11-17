@@ -19,6 +19,7 @@ import { loadGenerator } from "./emitters/load.ts";
 import { globalsGenerator } from "./emitters/globals.ts";
 import { declarationsGenerator } from "./emitters/declarations.ts";
 import { conceptsGenerator } from "./emitters/concepts.ts";
+import { serviceInputsGenerator, servicesGenerator } from "./emitters/services.ts";
 import { compareText, outputPrefix } from "./emitters/order.ts";
 import { formatTypescript } from "./format.ts";
 import { renderTemplate, type Template } from "./render.ts";
@@ -121,7 +122,7 @@ export async function renderGenerator<View extends object>(
 }
 
 /** The emitters of the core build, in a fixed order. The result is sorted by path anyway. */
-export const EMITTERS: readonly (Emitter | Generator)[] = Object.freeze([modelJsonEmitter, typesGenerator, validatorsGenerator, declarationsGenerator, conceptsGenerator, expressionsGenerator, loadGenerator, actionsGenerator, bindingGenerator, moduleGenerator, surfacesGenerator, indexGenerator, globalsGenerator]);
+export const EMITTERS: readonly (Emitter | Generator)[] = Object.freeze([modelJsonEmitter, typesGenerator, validatorsGenerator, declarationsGenerator, conceptsGenerator, expressionsGenerator, loadGenerator, actionsGenerator, serviceInputsGenerator, servicesGenerator, bindingGenerator, moduleGenerator, surfacesGenerator, indexGenerator, globalsGenerator]);
 
 /** The generators among `EMITTERS`: the ones with a template. */
 export const GENERATORS: readonly Generator[] = Object.freeze(EMITTERS.filter(isGenerator));
@@ -158,11 +159,6 @@ export function buildEmitters(adapter?: AdapterBuild | null): readonly (Emitter 
  * whichever of them comes from the adapter. Templates are looked up once per call.
  */
 export async function generateFiles(input: EmitInput, adapter?: AdapterBuild | null): Promise<GeneratedFile[]> {
-  // A service is read and checked, and nothing is generated from it yet (services design, PR 1 stopgap): a project that
-  // declares one never gets half its code (ADR-0018). The services generator replaces this.
-  const service = input.document.services?.[0];
-  if (service)
-    throw emitError("MESH_NOT_IMPLEMENTED", `service :${service.name} is read and checked, but no code is generated for a service yet; generated services are built with the services unit (bead mesh-services)`, service.position, "remove the service file, or keep it out of the domain until services are generated");
   const files: GeneratedFile[] = [];
   const owners = new Map<string, string>();
   const emitters = buildEmitters(adapter);

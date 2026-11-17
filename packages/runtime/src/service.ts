@@ -26,8 +26,12 @@ export interface OperationSpec {
   readonly policies: readonly PolicySpec[];
   /** The operation's `uses` lines: each entity's FQN, and the actions of it the body may call, read or ask about. */
   readonly uses: Readonly<Record<string, readonly string[]>>;
-  /** The body: the authored `run` function, printed over the scope. What it resolves with is what the call resolves with. */
-  readonly body: (scope: OperationScope<never>) => Promise<unknown> | unknown;
+  /**
+   * The body: the authored `run` function, printed over the scope. What it resolves with is what the call resolves with.
+   * Its parameter is `never`, as a policy function's is (`PolicyFunction`): the generated body takes the scope typed with
+   * its operation's input and the project's actor, which `OperationScope`'s `unknown` actor is not assignable to.
+   */
+  readonly body: (scope: never) => Promise<unknown> | unknown;
 }
 
 /**

@@ -1,0 +1,15 @@
+import { Task } from "./task.mesh.mx"
+
+entity :Claim table="claims"
+  attributes
+    uuid :id primary-key
+    string :reason nullable
+  relationships
+    belongs-to :task entity=Task
+  actions auto=[:read]
+    update :end
+      input
+        &reason
+  policies
+    policy :anyone
+      authorize-if=() => true

@@ -4,6 +4,7 @@ import { classLocal, className, declarationPath, declarationsOf } from "./declar
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityLocal, entityPath, moduleSpecifier, propertyName, typeName } from "./inputs.ts";
 import { modulesOf } from "./module.ts";
+import { orderedServices } from "../emitters/services.ts";
 import { conceptsOf } from "./concepts.ts";
 import { declaresRawSql } from "./binding.ts";
 
@@ -16,7 +17,7 @@ import { declaresRawSql } from "./binding.ts";
  * template prints and loops. A project's own `index.ts.jig` depends on this shape.
  */
 export interface IndexView {
-  /** The import specifier of every module that holds an entity, an event, a command or a concept, by module path, e.g. `#mesh/domain/blog`: named in the header only. */
+  /** The import specifier of every module that holds an entity, an event, a command, a concept or a service, by module path, e.g. `#mesh/domain/blog`: named in the header only. */
   readonly modules: readonly string[];
   /** The events of the project; `null` when it declares none, so the file is as it was. */
   readonly events: IndexEvents | null;
@@ -102,7 +103,7 @@ function commandsView(input: EmitInput, declarations: ReturnType<typeof declarat
 /** The index view of the whole model. Pure and synchronous. */
 export function indexView(input: EmitInput): IndexView {
   const declarations = declarationsOf(input.document);
-  const modules = modulesOf(orderedEntities(input.document), declarations, conceptsOf(input.document)).map(({ module }) => moduleSpecifier(module));
+  const modules = modulesOf(orderedEntities(input.document), declarations, conceptsOf(input.document), orderedServices(input.document.services)).map(({ module }) => moduleSpecifier(module));
   const events = declarations.filter((declaration) => declaration.kind === "event");
   const commands = commandsView(input, declarations, events.length > 0);
   const rawSql = declaresRawSql(input);
