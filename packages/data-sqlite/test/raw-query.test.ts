@@ -75,6 +75,11 @@ describe("sqliteText, the lexer", () => {
     ["select @a", PARAMETER("@a")],
     ["select $a", PARAMETER("$a")],
     ["select $1", PARAMETER("$1")],
+    ["select #a as v", PARAMETER("#a")],
+    // SQLite counts $ as a name character after : @ # and $
+    ["select :$ as v", PARAMETER(":$")],
+    ["select $$ as v", PARAMETER("$$")],
+    ["select 1 where 1 = @$", PARAMETER("@$")],
   ])("refuses %j", (input, message) => {
     expect(() => sqliteText(one(input))).toThrow(new FrameworkError(message));
   });
@@ -109,7 +114,7 @@ describe("sqliteText, the lexer", () => {
 describe("rawQuery on a connection", () => {
   const tasks = sqliteTable("tasks", {
     id: text("id").primaryKey().notNull(),
-    createdAt: integer("createdAt", { mode: "timestamp" }).notNull(),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
     done: integer("done", { mode: "boolean" }).notNull(),
   });
 
@@ -122,7 +127,7 @@ describe("rawQuery on a connection", () => {
         await tx.insert(tasks, { id: "a", createdAt: at, done: true });
         return tx.query!({ text: ["select \"createdAt\", done, ", " as d, ", " as b from tasks"], values: [at, false] });
       });
-      expect(rows).toEqual([{ createdAt: Math.floor(at.getTime() / 1000), done: 1, d: at.getTime(), b: 0 }]);
+      expect(rows).toEqual([{ createdAt: at.getTime(), done: 1, d: at.getTime(), b: 0 }]);
     } finally { await layer.close(); }
   });
 
@@ -154,6 +159,41 @@ describe("rawQuery on a connection", () => {
       expect((error as Error).message).toBe("A raw query cannot write: the database refused the statement as a write");
       expect(((error as Error).cause as { code?: string }).code).toStartWith("SQLITE_READONLY");
       expect((error as Error).message).not.toContain("secret-value");
+    } finally { connection.close(); }
+  });
+
+  test("a database error that quotes a value keeps the value out of the message and SQLite's message in the cause", () => {
+    const connection = new Database(":memory:");
+    try {
+      connection.run("begin immediate");
+      for (const text of [["select json_extract('{\"a\":1}', ", ") as v"], ["select json_set('{}', ", ", 1) as v"], ["select * from json_each('{}', ", ")"]]) {
+        let error: unknown;
+        try { rawQuery(connection, { text, values: ["secret-ssn-123"] }); } catch (caught) { error = caught; }
+        expect(error).toBeInstanceOf(FrameworkError);
+        expect((error as Error).message).toBe("The raw query failed in the database, with a message that quotes one of its values: see the cause");
+        expect((error as Error).message).not.toContain("secret-ssn-123");
+        expect(((error as Error).cause as Error).message).toContain("secret-ssn-123");
+      }
+      expect(connection.inTransaction).toBe(true);
+    } finally { connection.close(); }
+  });
+
+  test("a database error that quotes no value keeps SQLite's message", () => {
+    const connection = new Database(":memory:");
+    try {
+      connection.run("begin immediate");
+      expect(() => rawQuery(connection, { text: ["select ", " from nope"], values: ["secret-ssn-123"] }))
+        .toThrow(new FrameworkError("The raw query failed in the database: no such table: nope"));
+    } finally { connection.close(); }
+  });
+
+  test("a parameter the lexer let through is refused by the paramsCount guard, never bound as NULL", () => {
+    const connection = new Database(":memory:");
+    try {
+      connection.run("begin immediate");
+      expect(() => rawQuery(connection, one("select :a as v"), (statement) => statement.text.join("?")))
+        .toThrow(new FrameworkError("A raw query's text holds a parameter the adapter did not place: every value goes in a ${…}, never in the text"));
+      expect(connection.inTransaction).toBe(true);
     } finally { connection.close(); }
   });
 

@@ -43,7 +43,8 @@ export function bindable(values: readonly unknown[]): SQLQueryBindings[] {
 const ALLOWED = new Set(["select", "with", "values"]);
 const WORD_START = /[A-Za-z_\u0080-￿]/;
 const WORD_PART = /[A-Za-z0-9_$\u0080-￿]/;
-const PARAMETER_NAME = /[A-Za-z0-9_\u0080-￿]/;
+/** A name character after `:`, `@`, `#` or `$`: SQLite counts `$` among them, so `:$` and `$$` are parameters. */
+const PARAMETER_NAME = /[A-Za-z0-9_$\u0080-￿]/;
 const DIGIT = /[0-9]/;
 
 const firstWord = (what: string) => new FrameworkError(`A raw query runs one select, with or values statement, and this one ${what}`);
@@ -56,7 +57,7 @@ const quotedValue = (n: number) =>
  * shapes that can hide a `;`, a `?` or a word (`'…'` strings, `"…"`, `` `…` `` and `[…]` quoted names, `-- …` and
  * `/* … *\/` comments, words, where SQLite allows `$` after the first character) and decides nothing about meaning. It
  * refuses a first token that is a comment or a word other than `select`, `with` or `values` (E9); a parameter written in
- * the text, `?`, `?1`, `:a`, `@a` or `$a` (E11); a placed `?` that falls inside a quoted string, a quoted name or a
+ * the text, `?`, `?1`, `:a`, `@a`, `#a` or `$a`, `$` counting as a name character (`:$`, `$$`) (E11); a placed `?` that falls inside a quoted string, a quoted name or a
  * comment (E12); and anything but whitespace, comments and `;` after the first `;` (E10). An unterminated quote or
  * comment runs to the end of the text, where SQLite reports the syntax error.
  */
@@ -132,7 +133,7 @@ export function sqliteText(statement: RawStatement): string {
       at = stop;
       continue;
     }
-    if ((char === ":" || char === "@" || char === "$") && at + 1 < text.length && PARAMETER_NAME.test(text[at + 1]!)) {
+    if ((char === ":" || char === "@" || char === "#" || char === "$") && at + 1 < text.length && PARAMETER_NAME.test(text[at + 1]!)) {
       let stop = at + 1;
       while (stop < text.length && WORD_PART.test(text[stop]!)) stop++;
       throw textParameter(text.slice(at, stop));
@@ -141,6 +142,19 @@ export function sqliteText(statement: RawStatement): string {
   }
   if (first) throw firstWord("is empty");
   return text;
+}
+
+/**
+ * E14's message: SQLite's own, unless it holds the text of one of the statement's values (`bad JSON path: '…'` quotes
+ * the path it was given), when it is a fixed text and SQLite's message stays only in the cause. Conservative on
+ * purpose: a short value such as `1` or `"a"` that happens to occur in the message also gives the fixed text.
+ */
+function databaseMessage(message: string, values: readonly SQLQueryBindings[]): string {
+  const quotes = values.some((value) =>
+    (typeof value === "string" && value !== "") || typeof value === "number" || typeof value === "bigint" ? message.includes(String(value)) : false);
+  return quotes
+    ? "The raw query failed in the database, with a message that quotes one of its values: see the cause"
+    : `The raw query failed in the database: ${message}`;
 }
 
 /** True for a SQLite error whose code starts with one of `prefixes`. */
@@ -153,11 +167,12 @@ function coded(cause: unknown, ...prefixes: string[]): boolean {
  * Run `statement` on `connection`, which holds the running transaction, synchronously. Resolves to the rows as stored:
  * each integer exact (a `number` when it is a safe integer, a `bigint` beyond), plain objects keyed by the statement's
  * column names. Every refusal is a `FrameworkError` that leaves the transaction open and unchanged; a lock is left as
- * SQLite raised it, for the layer to report as busy.
+ * SQLite raised it, for the layer to report as busy. `lex` is `sqliteText`; a test replaces it to reach the
+ * `paramsCount` guard, which stands behind the lexer.
  */
-export function rawQuery(connection: Database, statement: RawStatement): RawRow[] {
+export function rawQuery(connection: Database, statement: RawStatement, lex: (statement: RawStatement) => string = sqliteText): RawRow[] {
   const values = bindable(statement.values);
-  const text = sqliteText(statement);
+  const text = lex(statement);
   let prepared: Statement | undefined;
   let rows: Record<string, unknown>[];
   connection.run("PRAGMA query_only = ON");
@@ -177,7 +192,7 @@ export function rawQuery(connection: Database, statement: RawStatement): RawRow[
   } catch (cause) {
     if (cause instanceof MeshError || coded(cause, "SQLITE_BUSY", "SQLITE_LOCKED")) throw cause;
     if (coded(cause, "SQLITE_READONLY")) throw new FrameworkError("A raw query cannot write: the database refused the statement as a write", { cause });
-    throw new FrameworkError(`The raw query failed in the database: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    throw new FrameworkError(databaseMessage(cause instanceof Error ? cause.message : String(cause), values), { cause });
   } finally {
     prepared?.finalize();
     connection.run("PRAGMA query_only = OFF");

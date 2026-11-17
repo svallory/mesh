@@ -55,7 +55,7 @@ function rawSqlFixture(kind: "memory" | "file", dirs: string[]) {
     columns: { id: '"id"', createdAt: '"createdAt"' },
     stored: { boolean: (value) => value ? 1 : 0, date: (value) => value.getTime() },
     refusedStatements: ["pragma query_only = off", "pragma foreign_keys = off", "attach ':memory:' as x", "detach x", "vacuum", "explain select 1", "reindex", "analyze"],
-    textParameters: ["?", "?1", ":a", "@a", "$a"],
+    textParameters: ["?", "?1", ":a", "@a", "#a", "$a", ":$", "$$"],
   });
 }
 
