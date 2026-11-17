@@ -16,8 +16,12 @@ import { dirname, resolve } from "node:path";
 export type NotSql =
   /** The function itself is plain (a block body, a helper given the record, a construct Mesh does not translate). */
   | { kind: "plain"; position: SourcePosition; detail: string }
-  /** It reads a computed field Mesh runs in memory: `field` names it, `through` the translated field that reads it, if any. */
+  /**
+   * It reads a computed field Mesh runs in memory: `field` names it, `through` the translated field that reads it, if any;
+   * both are paths as written, from their root (`&customer.label`, `l.invoice.customer.label`).
+   */
   | { kind: "plain-computed"; position: SourcePosition; field: string; detail: string; through?: string }
+  /** `field` is the path as written (`&nLines`, `i.nLines`); `relation` the relationship from the same root (`i.lines`). */
   | { kind: "rollup"; position: SourcePosition; field: string; fn: string; relation: string }
   /** A quantifier whose list is not a relationship of a row (`input.ids.some((i) => i === &id)`). */
   | { kind: "foreign-list"; position: SourcePosition; op: "some" | "every" | "find" | "filter" }
@@ -25,7 +29,9 @@ export type NotSql =
   | { kind: "self-reaching"; position: SourcePosition; field: string }
   | { kind: "json"; position: SourcePosition; member: string }
   /** Only with `mode: "write"`: a call that, in a write policy, counts as reading the record. */
-  | { kind: "write-call"; position: SourcePosition; callee: string };
+  | { kind: "write-call"; position: SourcePosition; callee: string }
+  /** It inlines a computed body that already holds an error (`LowerOptions.reported`): that error is the one to fix. */
+  | { kind: "reported"; position: SourcePosition; field: string };
 
 export interface Lowered {
   tree: LiteralNode;
@@ -45,6 +51,8 @@ export interface LowerOptions {
    * imported function is a `write-call` problem instead, since in a write policy it counts as reading the record.
    */
   mode?: "read" | "write";
+  /** Does this computed body already hold an error? Inlining one is a `reported` problem, which no diagnostic repeats. */
+  reported?: (body: Expression) => boolean;
 }
 
 export type LowerResult = { ok: true; lowered: Lowered } | { ok: false; problems: NotSql[] };
@@ -314,7 +322,13 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
     }
     const field = entity.computed.find((c) => c.name === name);
     if (field) {
-      if (field.rollup) return refuse({ kind: "rollup", position, field: scope.outer?.field ?? path.replace(/^&/, ""), fn: field.rollup.fn, relation: field.rollup.of.split(".")[0]! });
+      if (field.rollup) {
+        // The relationship the fix names, from the record the rollup is a member of: `i.lines` for `i.nLines`. Inside an
+        // inlined body, from that body's own record (`&lines`), which the outer condition cannot name.
+        const relation = field.rollup.of.split(".")[0]!;
+        const root = scope.outer ? "&" : path.includes(".") ? path.slice(0, path.lastIndexOf(".") + 1) : path.startsWith("&") ? "&" : "";
+        return refuse({ kind: "rollup", position, field: scope.outer?.field ?? path, fn: field.rollup.fn, relation: `${root}${relation}` });
+      }
       if (!last || end.mode === "list") return plain(`a member of computed :${name}, which is not a record`);
       return inline(depth, entity, field.name, scope, node, path);
     }
@@ -325,9 +339,10 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
   const inline = (depth: number, entity: Entity, name: string, scope: Scope, node: ExprNode, path: string): LiteralNode => {
     const field = entity.computed.find((c) => c.name === name)!;
     const key = `${entity.fqn}#${name}`;
-    const outer = scope.outer ?? { position: node.position, path, field: path.replace(/^&/, "") };
+    const outer = scope.outer ?? { position: node.position, path, field: path };
     if (scope.inlining.includes(key) || scope.inlining.length >= MAX_INLINE) refuse({ kind: "self-reaching", position: outer.position, field: name });
     const body = field.body!;
+    if (options.reported?.(body)) refuse({ kind: "reported", position: outer.position, field: name });
     if (!body.tree) {
       const plain = body.plain;
       const through = scope.outer ? scope.outer.field : undefined;
@@ -550,7 +565,7 @@ export function lowerCondition(document: ModelDocument, entity: Entity, expressi
 }
 
 /** One declared sort key: an attribute (a column) or a computed field (its lowered body). */
-export function lowerSortKey(document: ModelDocument, entity: Entity, key: SortKey): LowerResult {
+export function lowerSortKey(document: ModelDocument, entity: Entity, key: SortKey, options: Pick<LowerOptions, "reported"> = {}): LowerResult {
   const node: ExprNode = { kind: "member", object: { kind: "var", name: "self", position: key.member.position }, name: key.member.name, optional: false, position: key.member.position };
-  return lowerer(document, entity, {}).all(node, rootScope(document, entity, undefined, {}), undefined);
+  return lowerer(document, entity, options).all(node, rootScope(document, entity, undefined, {}), undefined);
 }

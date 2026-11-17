@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { Action, Diagnostic, Entity, Expression, ModelDocument, SortKey, SourcePosition } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
-import { lowerCondition, lowerSortKey, type LowerResult, type NotSql } from "./sql-condition.ts";
+import { lowerCondition, lowerSortKey, type LowerOptions, type LowerResult, type NotSql } from "./sql-condition.ts";
 
 /** What the fix of a function that does not translate says, wherever SQL is required. */
 export const NOT_SQL_FIX = "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record";
@@ -26,31 +26,31 @@ export interface SqlPosition {
 }
 
 /** Every declared filter and sort key of the entity's reads, in written order. */
-export function sqlPositions(document: ModelDocument, entity: Entity): SqlPosition[] {
+export function sqlPositions(document: ModelDocument, entity: Entity, options: Pick<LowerOptions, "reported"> = {}): SqlPosition[] {
   const out: SqlPosition[] = [];
   for (const action of entity.actions) {
     if (action.kind !== "read") continue;
     const filter = action.filter;
     if (filter)
       out.push({ entity, action, kind: "filter", subject: `the filter of read :${action.name} of ${entity.fqn}`, position: filter.position, expression: filter,
-        lower: () => lowerCondition(document, entity, filter) });
+        lower: () => lowerCondition(document, entity, filter, options) });
     (action.sort ?? []).forEach((key, index) =>
       out.push({ entity, action, kind: "sort", subject: `the sort of read :${action.name} of ${entity.fqn}`, position: key.member.position, key, index,
-        lower: () => lowerSortKey(document, entity, key) }));
+        lower: () => lowerSortKey(document, entity, key, options) }));
   }
   return out;
 }
 
 /** The diagnostic for one problem of a function in a SQL position. `head` is "<subject> must run as SQL[, since ...]". */
-function notSql(problem: NotSql, subject: string, head: string, kind: "filter" | "sort" | "policy"): Diagnostic {
+function notSql(problem: Exclude<NotSql, { kind: "reported" }>, subject: string, head: string, kind: "filter" | "sort" | "policy"): Diagnostic {
   switch (problem.kind) {
     case "plain":
       return error("MESH_EXPR_NOT_SQL", `${head}, and Mesh does not translate it (${problem.detail})`, problem.position, NOT_SQL_FIX);
     case "plain-computed": {
-      const name = problem.through ? problem.field.split(" ")[0]! : problem.field.split(".").at(-1)!;
+      const name = problem.through ? problem.field.split(" ")[0]! : problem.field.split(".").at(-1)!.replace(/^&/, "");
       const message = problem.through
-        ? `${head}, and &${problem.through} reads computed :${problem.field}, which Mesh runs in memory (${problem.detail})`
-        : `${head}, and &${problem.field} is a computed field Mesh runs in memory (${problem.detail})`;
+        ? `${head}, and ${problem.through} reads computed :${problem.field}, which Mesh runs in memory (${problem.detail})`
+        : `${head}, and ${problem.field} is a computed field Mesh runs in memory (${problem.detail})`;
       return error("MESH_EXPR_NOT_SQL", message, problem.position, `rewrite computed :${name} as one expression Mesh translates, or write the condition over the members it reads`);
     }
     case "foreign-list":
@@ -60,10 +60,12 @@ function notSql(problem: NotSql, subject: string, head: string, kind: "filter" |
       return error("MESH_EXPR_NOT_SQL", `${head}, and computed :${problem.field} reaches itself again through a relationship, which a query cannot unfold`,
         problem.position, "store the value in an attribute, or write the condition over a fixed number of steps");
     case "rollup":
-      return error("MESH_NOT_IMPLEMENTED", `${subject} reads &${problem.field}, a ${problem.fn} rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)`,
-        problem.position, `write the condition over the relationship itself, which translates: \`&${problem.relation}.length > 2\`, \`&${problem.relation}.some((x) => x.n > 2)\``);
+      return error("MESH_NOT_IMPLEMENTED", `${subject} reads ${problem.field}, a ${problem.fn} rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)`,
+        problem.position, `write the condition over the relationship itself, which translates: \`${problem.relation}.length > 2\`, \`${problem.relation}.some((x) => x.n > 2)\``);
     case "json":
-      return error("MESH_FILTER_TYPE", `${problem.member} is :json, which a ${kind === "sort" ? "sort" : "filter"} cannot use: the database does not look inside it`, problem.position);
+      return kind === "sort"
+        ? error("MESH_SORT_TYPE", `${problem.member} is :json, which a sort cannot use: the database does not look inside it`, problem.position)
+        : error("MESH_FILTER_TYPE", `${problem.member} is :json, which a filter cannot use: the database does not look inside it`, problem.position);
     case "write-call":
       return error("MESH_EXPR_NOT_SQL", `${head}, and it calls ${problem.callee}, which in a write policy counts as reading the record`, problem.position, NOT_SQL_FIX);
   }
@@ -74,7 +76,7 @@ function notSql(problem: NotSql, subject: string, head: string, kind: "filter" |
  * roadmap principle 2): a read's declared filter and each key of its declared sort are lowered to a condition
  * (`lowerCondition`, `lowerSortKey`) and each problem is reported; any plain function of a policy that covers a read or a
  * load is `MESH_EXPR_NOT_SQL`, whatever made it plain (a block body, a helper given the record). A function that already
- * holds an error is left alone; one that holds only a warning (`MESH_EXPR_PLAIN` from the type pass) still gets the error.
+ * holds an error is left alone, and so is one that inlines a computed body that holds one; one that holds only a warning (`MESH_EXPR_PLAIN` from the type pass) still gets the error.
  * A read policy check that reads the record is still `MESH_NOT_IMPLEMENTED` (`checkLifecycleLimits`) and is not lowered here.
  */
 export function checkSqlRequired(document: ModelDocument, diagnostics: Diagnostic[]): void {
@@ -86,12 +88,12 @@ export function checkSqlRequired(document: ModelDocument, diagnostics: Diagnosti
   ])));
   const found: Diagnostic[] = [];
   for (const entity of document.entities) {
-    for (const place of sqlPositions(document, entity)) {
+    for (const place of sqlPositions(document, entity, { reported: (body) => holdsError(body.position, body.source.length) })) {
       const length = place.expression ? place.expression.source.length : place.key!.member.name.length + 1;
       if (holdsError(place.position, length)) continue;
       const lowered = place.lower();
       if (lowered.ok) continue;
-      for (const problem of lowered.problems) found.push(notSql(problem, place.subject, `${place.subject} must run as SQL`, place.kind));
+      for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, `${place.subject} must run as SQL`, place.kind));
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];

@@ -152,9 +152,9 @@ describe("what has no SQL form", () => {
     ]);
     expect(results.map(kinds)).toEqual([["plain-computed"], ["plain-computed"], ["rollup"], ["plain"], ["json"], ["plain-computed", "rollup"]]);
     const [direct, through, rollup] = results as (LowerResult & { ok: false })[];
-    expect(direct!.problems[0]).toMatchObject({ field: "customer.label", detail: "arithmetic on values that are not numbers" });
-    expect(through!.problems[0]).toMatchObject({ field: "label of billing.Customer", through: "shout" });
-    expect(rollup!.problems[0]).toMatchObject({ field: "nLines", fn: "count", relation: "lines" });
+    expect(direct!.problems[0]).toMatchObject({ field: "&customer.label", detail: "arithmetic on values that are not numbers" });
+    expect(through!.problems[0]).toMatchObject({ field: "label of billing.Customer", through: "&shout" });
+    expect(rollup!.problems[0]).toMatchObject({ field: "&nLines", fn: "count", relation: "&lines" });
     // Reported at the read in the function, not inside the body it inlines.
     expect(through!.problems[0]!.position.offset).toBe(built.source.indexOf('&shout === "a!"'));
   });

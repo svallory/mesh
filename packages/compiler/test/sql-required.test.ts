@@ -28,6 +28,15 @@ describe("MESH_EXPR_NOT_SQL", () => {
     ]);
   });
 
+  test("a path read from a quantifier's element is named from that element, as written", () => {
+    const built = build(['() => &lines.some((l) => l.invoice.customer.label === "x")', "() => &customer.invoices.some((i) => i.nLines > 1)"]);
+    expect(errors(built.diagnostics).map((d) => [d.code, d.message, d.fix])).toEqual([
+      ["MESH_EXPR_NOT_SQL", "the filter of read :r0 of billing.Invoice must run as SQL, and l.invoice.customer.label is a computed field Mesh runs in memory (arithmetic on values that are not numbers)", FIX_COMPUTED],
+      ["MESH_NOT_IMPLEMENTED", "the filter of read :r1 of billing.Invoice reads i.nLines, a count rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)",
+        "write the condition over the relationship itself, which translates: `i.lines.length > 2`, `i.lines.some((x) => x.n > 2)`"],
+    ]);
+  });
+
   test("a sort key that is a computed field Mesh runs in memory is refused at the key", () => {
     const built = build([], "    read :sorted\n      sort\n        asc &dueOn\n        desc &shout\n");
     expect(errors(built.diagnostics).map(brief)).toEqual([
@@ -58,6 +67,10 @@ describe("MESH_EXPR_NOT_SQL", () => {
     expect(errors(both.diagnostics).map((d) => d.code)).toEqual(["MESH_EXPR_NOT_SQL", "MESH_NOT_IMPLEMENTED"]);
     const unknown = build(['() => &nope === "a" && &customer.label === "a"']);
     expect(errors(unknown.diagnostics).map((d) => d.code)).toEqual(["MESH_UNKNOWN_MEMBER"]);
+    // An error inside a computed body the filter or a sort key inlines is the one reported, not a second at the read.
+    const customer = FILES["billing/customer.mesh.mx"]!.replace("    string :label()", "    boolean :bad() { return &nope === 1 }\n    string :label()");
+    const inlined = fixture.build(invoice(["() => &customer.bad"], "    read :sorted\n      sort\n        asc &cb\n", "    boolean :cb() { return &customer.bad }\n"), { "billing/customer.mesh.mx": customer });
+    expect(errors(inlined.diagnostics).map((d) => [d.code, d.position.file])).toEqual([["MESH_UNKNOWN_MEMBER", "billing/customer.mesh.mx"]]);
   });
 });
 
@@ -74,12 +87,20 @@ describe("a rollup where SQL is required waits for SQL rollups (MESH_NOT_IMPLEME
   });
 });
 
-describe("a json member read inside an inlined computed body (MESH_FILTER_TYPE)", () => {
+describe("a json member read inside an inlined computed body (MESH_FILTER_TYPE, MESH_SORT_TYPE)", () => {
   test("is refused at the read inside the body", () => {
     const customer = FILES["billing/customer.mesh.mx"]!.replace("    string :label()", "    boolean :described() { return &meta !== null }\n    string :label()");
     const built = build(["() => &customer.described"], "", { "billing/customer.mesh.mx": customer });
     expect(errors(built.diagnostics).map(brief)).toEqual([
       { code: "MESH_FILTER_TYPE", message: "&meta is :json, which a filter cannot use: the database does not look inside it", at: `billing/customer.mesh.mx:${customer.indexOf("&meta !== null")}`, fix: null },
+    ]);
+  });
+
+  test("in a sort key, through another computed field, is the sort's code", () => {
+    const customer = FILES["billing/customer.mesh.mx"]!.replace("    string :label()", "    boolean :described() { return &meta !== null }\n    string :label()");
+    const built = fixture.build(invoice([], "    read :sorted\n      sort\n        asc &cd\n", "    boolean :cd() { return &customer.described }\n"), { "billing/customer.mesh.mx": customer });
+    expect(errors(built.diagnostics).map(brief)).toEqual([
+      { code: "MESH_SORT_TYPE", message: "&meta is :json, which a sort cannot use: the database does not look inside it", at: `billing/customer.mesh.mx:${customer.indexOf("&meta !== null")}`, fix: null },
     ]);
   });
 });
