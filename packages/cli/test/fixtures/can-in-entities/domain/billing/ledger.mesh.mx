@@ -47,10 +47,7 @@ entity :Ledger
     policy :adding types=[:create]
       authorize-if=() => true
     policy :looking types=[:read]
-      authorize-if=({ context }) => {
-        if (context.probe === "policy") return askQuietly("can", context)
-        return true
-      }
+      authorize-if=({ context }) => context.probe === "policy" ? askQuietly("can", context) : true
     policy :renaming actions=[&rename]
       authorize-if=async ({ self, context }) => await askLoudly("can", context, self.invoiceId)
     policy :auditing actions=[&audit]

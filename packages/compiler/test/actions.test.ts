@@ -312,12 +312,12 @@ describe("build errors", () => {
   });
 });
 
-describe("a read's filter that does not translate warns until M10", () => {
-  // A filter runs as SQL, so one Mesh does not translate is an error from M10. Until then the build warns, whatever
-  // made the filter plain: a block body and a helper given the record draw no warning anywhere else.
+describe("a read's filter that does not translate is an error (MESH_EXPR_NOT_SQL)", () => {
+  // A filter runs as SQL, so one Mesh does not translate is an error, whatever made the filter plain: a block body and a
+  // helper given the record draw no diagnostic anywhere else.
   const fix = "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record";
   const warning = (reason: string, read = "shown") =>
-    `the filter of read :${read} of shop.Item must run as SQL, and Mesh does not translate it (${reason}): a warning until the SQL evaluator (M10), an error from then`;
+    `the filter of read :${read} of shop.Item must run as SQL, and Mesh does not translate it (${reason})`;
   const item = (actions: string) => `import { big, open } from "./helpers"
 
 entity :Item
@@ -358,29 +358,29 @@ ${actions}    create :add
     [awaited, "awaits an imported function", awaited],
   ];
 
-  test("each plain filter is one warning, at the construct, naming the read", async () => {
+  test("each plain filter is one error, at the construct, naming the read", async () => {
     await withHelpers((build) => {
       for (const [filter, reason, at] of plain) {
         const built = build(`    read :shown filter=${filter}\n`);
         expect(built.diagnostics, filter).toEqual([{
-          severity: "warning",
-          code: "MESH_EXPR_PLAIN",
+          severity: "error",
+          code: "MESH_EXPR_NOT_SQL",
           message: warning(reason),
           position: expect.objectContaining({ file: "shop/item.mesh.mx", offset: built.source.indexOf(at) }),
           fix,
         }]);
-        // A warning: the model is built, and the filter stays plain code.
-        expect(built.document?.entities[0]!.actions[0]!.filter?.plain, filter).toBeDefined();
+        // An error: no model is built.
+        expect(built.document, filter).toBeNull();
       }
     });
   });
 
-  test("a filter on its own line warns the same, and each read is named for its own filter", async () => {
+  test("a filter on its own line is refused the same, and each read is named for its own filter", async () => {
     await withHelpers((build) => {
       const built = build(`    read :shown\n      filter=${block}\n    read :sized filter=() => &m > 1\n    read :listed\n      filter=() => [1, 2].includes(&n)\n`);
       expect(built.diagnostics.map((d) => [d.severity, d.code, d.message, d.position.offset])).toEqual([
-        ["warning", "MESH_EXPR_PLAIN", warning("a block body of 2 statements"), built.source.indexOf(block)],
-        ["warning", "MESH_EXPR_PLAIN", warning("a method call", "listed"), built.source.indexOf("[1, 2].includes(&n)")],
+        ["error", "MESH_EXPR_NOT_SQL", warning("a block body of 2 statements"), built.source.indexOf(block)],
+        ["error", "MESH_EXPR_NOT_SQL", warning("a method call", "listed"), built.source.indexOf("[1, 2].includes(&n)")],
       ]);
     });
   });
@@ -399,12 +399,18 @@ ${actions}    create :add
     });
   });
 
-  test("nothing is said twice: a filter the null-rules warning names, or one that holds an error, gets no second diagnostic", async () => {
+  test("a warning does not swallow the error, and a filter that holds an error gets no second one", async () => {
     await withHelpers((build) => {
       const said = (filter: string) => build(`    read :shown filter=${filter}\n`).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`);
-      // A differing operator beside the plain construct already draws the warning of the expression pass.
-      expect(said("() => big(&n) && &m > 1")).toEqual(["warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of a call to big, which is given the record"]);
-      expect(said('() => &title + "x" === "ax"')).toEqual(["warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers"]);
+      // A differing operator beside the plain construct draws the warning of the expression pass, and the error.
+      expect(said("() => big(&n) && &m > 1")).toEqual([
+        "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of a call to big, which is given the record",
+        `error:MESH_EXPR_NOT_SQL:${warning("a call to big, which is given the record")}`,
+      ]);
+      expect(said('() => &title + "x" === "ax"')).toEqual([
+        "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers",
+        `error:MESH_EXPR_NOT_SQL:${warning("arithmetic on values that are not numbers")}`,
+      ]);
       // An error inside the filter stands alone.
       const refused = build("    read :shown filter=() => [1, 2].includes(&nope)\n").diagnostics;
       expect(refused.map((d) => d.severity)).toEqual(["error"]);
