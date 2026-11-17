@@ -49,7 +49,8 @@ export function newInstanceMembers(gaps: NewInstanceGaps, withRelationships: boo
  * while `qty` is, `&publishedAt === null` is not (`isNull` is never unknown), `&a ?? 0` is not (`??` is null only when
  * every operand can be), and a computed field that reads such a field is null too. `unfilled` is every member null on the
  * new instance (`newInstanceMembers`). `and`, `or` (Kleene) and the quantifiers are conservative: tainted when an
- * operand or the body is, which says "may be null". A plain body is the author's TypeScript: whatever it returns for the
+ * operand or the body is, which says "may be null". A rollup other than a `count` over a required `belongs-to` the instance has
+ * no key for yet is null there. A plain body is the author's TypeScript: whatever it returns for the
  * nulls is its own result, so it keeps its declared type (the reads it makes through `self.x` are not visible here).
  */
 export function newInstanceComputed(entity: Entity, unfilled: ReadonlySet<string>): string[] {
@@ -71,6 +72,14 @@ export function newInstanceComputed(entity: Entity, unfilled: ReadonlySet<string
       default: return false;
     }
   };
+  // A rollup other than a count whose path starts at a belongs-to the new instance has no key for yet reaches nothing, so
+  // the loader gives it null with no query (a count gives 0).
+  for (const computed of entity.computed) {
+    const rollup = computed.rollup;
+    if (!rollup || rollup.fn === "count") continue;
+    const first = entity.relationships.find((relation) => relation.name === rollup.of.split(".")[0]);
+    if (first?.kind === "belongs-to" && (unfilled.has(first.name) || (first.keyColumn !== undefined && unfilled.has(first.keyColumn)))) tainted.add(computed.name);
+  }
   // Grow the set until no computed field joins it: one that reads a null computed field is null.
   for (let grew = true; grew;) {
     grew = false;

@@ -249,7 +249,9 @@ function loadableDeclaration(document: EmitInput["document"], entity: Entity, re
       // An enum that lists no values is a string, not `never`.
       type: field.type === "enum" && !field.values?.length ? `string${field.nullable ? " | null" : ""}` : valueType({ ...field, nullable: field.nullable ?? false }),
     };
-    members.push(member);
+    // A caller's load gives a rollup other than a count `null` when the read policies deny what it reaches (a count 0).
+    const nullForCaller = field.rollup && field.rollup.fn !== "count" && !field.nullable;
+    members.push(nullForCaller ? { ...member, type: `${member.type} | null` } : member);
     txMembers.push(member);
     loadedMembers.push(member);
   }

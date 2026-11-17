@@ -2,13 +2,14 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
 import { BUS_CAPABILITIES, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
+import { rollupOperation } from "./model/rollup-operation.ts";
 import { policyConditions, sqlPositions } from "./model/sql-required.ts";
 
 /**
  * What the model needs from the configured data adapter, checked against its static
  * capability manifest (ADR-0013): an error for each entity that needs a capability the
  * adapter does not declare, never a run-time surprise. Today those are the `integer-key-fill`
- * an integer primary key needs, the `aggregates` a `count` or `max` rollup calls (M7), and for a read's declared filter
+ * an integer primary key needs, the `aggregates` every rollup calls (`count`, `max` or `rollup`; M7, M10), and for a read's declared filter
  * or sort and a read policy that reads the record, which run as SQL (M10), `conditions`, plus `joins` where the condition
  * crosses a relationship (a correlated subquery: `aggregates` covers the data layer's `max`/`count`, not SQL inside a condition).
  */
@@ -23,9 +24,10 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
         key.position, `Use a data adapter that declares integer-key-fill, or make :${key.name} a uuid`));
     }
     for (const field of entity.computed) {
-      if ((field.rollup?.fn === "count" || field.rollup?.fn === "max") && !declared.includes("aggregates")) {
+      const operation = rollupOperation(entity, field);
+      if (field.rollup && operation && !declared.includes("aggregates")) {
         diagnostics.push(error("MESH_CAPABILITY",
-          `Entity ${entity.fqn} has the ${field.rollup.fn} rollup :${field.name}, which calls the data layer's ${field.rollup.fn}, and the data adapter "${adapter.name}" does not declare the aggregates capability`,
+          `Entity ${entity.fqn} has the ${field.rollup.fn} rollup :${field.name}, which calls the data layer's ${operation}, and the data adapter "${adapter.name}" does not declare the aggregates capability`,
           field.position, "Use a data adapter that declares aggregates, or remove the rollup"));
       }
     }

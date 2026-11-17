@@ -217,6 +217,18 @@ describe("the types and the read views name what is loadable", () => {
     expect(postView.imports).toEqual([{ name: "$app$Author$Record", names: "Author as $app$Author$Record, AuthorLoaded as $app$Author$Loaded", fromLiteral: '"./author.types"' }]);
   });
 
+  test("a rollup over a required belongs-to is not null through privileged, and null for a caller who may not read its target", () => {
+    const rated = post.replace("    datetime :postedAt\n", "    datetime :postedAt\n").replace("  actions auto=[:read]\n", "  computed\n    max :authorSince of=&author.joinedOn\n    count :authorCount of=&author\n    sum :replyTotal of=&replies.rank\n  actions auto=[:read]\n");
+    const document = documentOf({ author: author.replace("    string :name\n", "    string :name\n    date :joinedOn\n"), post: rated.replace("    datetime :postedAt\n", "    datetime :postedAt\n    integer :rank\n"), lonely });
+    const postView = typesView(input(document), document.entities.find((e) => e.name === "Post")!);
+    const typed = (members: readonly { name: string; type: string }[]) => Object.fromEntries(members.filter((m) => ["authorSince", "authorCount", "replyTotal"].includes(m.name)).map((m) => [m.name, m.type]));
+    // The model: one required belongs-to to a required date reaches exactly one value.
+    expect(typed(postView.loadable!.tx!.members)).toEqual({ authorSince: "$Date", authorCount: "number", replyTotal: "number | null" });
+    expect(typed(postView.loadable!.loadedMembers)).toEqual({ authorSince: "$Date", authorCount: "number", replyTotal: "number | null" });
+    // A caller's load gives null for a target the read policies deny (a count gives 0).
+    expect(typed(postView.loadable!.members)).toEqual({ authorSince: "$Date | null", authorCount: "number", replyTotal: "number | null" });
+  });
+
   test("an entity with neither has no loadable declaration", () => {
     const document = documentOf();
     expect(typesView(input(document), document.entities.find((e) => e.name === "Lonely")!).loadable).toBeNull();
