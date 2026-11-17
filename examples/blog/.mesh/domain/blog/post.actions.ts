@@ -3,20 +3,21 @@
 // Mesh's own imports carry a `$`, and so do the globals it uses (from `$globals.ts`), so that no entity name can shadow them.
 
 import {
-  FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
+  allOf as $allOf,
   authorizer as $authorizer,
+  bindCondition as $bindCondition,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
   entity as $entity,
-  failJoined as $failJoined,
   guarded as $guarded,
   loadInto as $loadInto,
   loadRows as $loadRows,
   noteWrite as $noteWrite,
+  orderOf as $orderOf,
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
@@ -26,6 +27,7 @@ import {
   scope as $scope,
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
+  whereFor as $whereFor,
   writeCount as $writeCount,
   type ActionContext as $ActionContext,
   type ActionFrame as $ActionFrame,
@@ -39,6 +41,9 @@ import {
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
+  type TableHandle as $TableHandle,
+  type TableOf as $TableOf,
+  type ValueClass as $ValueClass,
 } from "@meshfw/runtime";
 import type {
   Post as $Record,
@@ -64,7 +69,11 @@ import {
   destroyPostInputSchema,
 } from "./post.validators";
 import { tables } from "../../schema";
-import { $expressions, type $blog$Post$StoredScope as $StoredScope } from "./post.expressions";
+import {
+  $conditions,
+  $expressions,
+  type $blog$Post$StoredScope as $StoredScope,
+} from "./post.expressions";
 import { loadPlan as $loadPlan } from "../../load";
 import {
   $Date,
@@ -75,6 +84,25 @@ import {
   type $Promise,
   $Set,
 } from "../../$globals";
+
+/** The table of each entity the conditions of this file's reads reach, by FQN. */
+const $tableOf: $TableOf = (fqn) => (({}) as { readonly [fqn: string]: $TableHandle })[fqn]!;
+/** How each column a caller may sort by is stored, for the order a read with a declared sort hands the data layer. */
+const $sortClasses: { readonly [name: string]: $ValueClass } = {
+  id: "string",
+  title: "string",
+  body: "string",
+  views: "integer",
+  rating: "float",
+  price: "float",
+  featured: "boolean",
+  publicationDate: "date",
+  publishedAt: "date",
+  state: "string",
+  insertedAt: "date",
+  updatedAt: "date",
+  authorId: "string",
+};
 
 /**
  * The reads of this entity without their policies: what `Mesh.privileged(Post)` runs. The read actions
@@ -88,15 +116,54 @@ export function bindPostReads(
   return $Object.freeze({
     async published<const L extends readonly (keyof PostLoadable)[] = readonly []>(
       input: $Omit<PublishedPostInput, "load"> & PostLoadArg<L>,
-      _context?: unknown,
+      context?: unknown,
+      clock?: () => $Date,
+      policies?: boolean,
+      cast?: $CastOutput<typeof publishedPostInputSchema>,
     ): $Promise<L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never> {
-      await $castInput(layer, publishedPostInputSchema, input);
-      return $failJoined(
-        layer,
-        new $FrameworkError(
-          "blog.Post#published cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10",
-        ),
-      );
+      // enter, cast: only the declared input passes; a failed cast inside a transaction fails it. The read action casts it
+      // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
+      const parsed = cast ?? (await $castInput(layer, publishedPostInputSchema, input));
+      return layer.transaction(async (tx) => {
+        const $filter = rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
+        const $context = (context ?? {}) as unknown as { [key: string]: unknown };
+        const $clock = clock ?? $pinClock(options.clock);
+        const $s = $scope(
+          {
+            input: $readOnlyRecord(parsed as never, "blog.Post#published"),
+            actor: $context.actor,
+            context: $context,
+          },
+          { clock: $clock },
+        );
+        const $where = $allOf([
+          $bindCondition($tableOf, $conditions["read.published.filter"], $s as never),
+        ]);
+        if ($where === false)
+          return [] as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
+        const $rows = (await tx.select(tables.posts, {
+          filter: $filter,
+          where: $whereFor(layer, $where),
+          order: $orderOf(
+            $tableOf,
+            parsed.sort,
+            $sortClasses,
+            [{ column: "insertedAt", class: "date", desc: true }],
+            $s as never,
+          ),
+          limit: parsed.limit,
+          offset: parsed.offset,
+        })) as Post[];
+        if (!parsed.load?.length)
+          return $rows as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
+        return (await $loadRows($loadPlan, "blog.Post", tx, $rows, parsed.load, {
+          actor: $context.actor,
+          context: $context,
+          clock: $clock,
+          policies,
+          frame,
+        })) as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
+      });
     },
 
     async read<const L extends readonly (keyof PostLoadable)[] = readonly []>(
@@ -437,7 +504,50 @@ export function bindPost(
     ): $Promise<L extends unknown ? PostWith<PostLoadNames<L>>[] : never> {
       // Not run in this version: on:load published
 
-      return $reads.published(input, context);
+      // pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them
+      const $context = (context ?? {}) as unknown as { [key: string]: unknown };
+      const $actor = $context.actor;
+      const $clock = frame.clock(options.clock);
+      const $parsed = await $castInput(layer, publishedPostInputSchema, input);
+      if (
+        !(await $authorizer(
+          "blog.Post",
+          "published",
+          [
+            {
+              name: "public",
+              when: null,
+              checks: [
+                {
+                  kind: "authorize-if",
+                  check: "() => true",
+                  record: false,
+                  run: $expressions["policy.public.authorize-if.0"],
+                },
+              ],
+            },
+          ],
+          frame,
+        ).filter(
+          layer,
+          $scope(
+            {
+              input: $readOnlyRecord($parsed as never, "blog.Post#published"),
+              actor: $actor,
+              context: $context,
+            },
+            { clock: $clock },
+          ),
+        ))
+      )
+        return [] as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
+      return (await $reads.published(
+        input,
+        context,
+        $clock,
+        true,
+        $parsed,
+      )) as unknown as L extends unknown ? PostWith<PostLoadNames<L>>[] : never;
     },
 
     async read<const L extends readonly (keyof PostLoadable)[] = readonly []>(

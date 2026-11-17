@@ -79,3 +79,33 @@ export const $expressions = {
     >,
   ) => $.eq($s.self.author?.id, $s.actor?.id),
 } as const;
+
+/**
+ * The functions above that must run as SQL, as condition literals (M10): the tree the data adapter prints, and the
+ * parameters, computed in memory with the forms above and bound before the query.
+ */
+export const $conditions = {
+  // read :published filter (src/domain/blog/post.mesh.mx:41:14)
+  "read.published.filter": {
+    what: "the filter of read :published of blog.Post",
+    entity: "blog.Post",
+    tree: {
+      args: [
+        {
+          class: "string",
+          depth: 0,
+          kind: "column",
+          name: "state",
+        },
+        {
+          class: "string",
+          kind: "value",
+          value: "published",
+        },
+      ],
+      fn: "eq",
+      kind: "call",
+    },
+    params: (_$s: $blog$Post$Scope<$blog$Post$PublishedPostInput>) => [],
+  },
+} as const;

@@ -159,12 +159,27 @@ test("a constant set is applied: Post.publish sets state to published", async ()
   } finally { await db.close(); }
 });
 
-test("a read with filter and sort throws the M4 FrameworkError instead of returning unfiltered rows", async () => {
-  const { db, blog } = await fresh();
+test("a read's own filter and sort run as SQL: Post.published returns the published posts, newest first", async () => {
+  // One clock tick per read of it, so every post has its own insertedAt.
+  let tick = Date.UTC(2026, 0, 1);
+  const { db, blog } = await fresh(() => new Date(tick += 1000));
   try {
     await blog.run(async () => {
-      await expect(Post.published({}, context)).rejects.toThrow(
-        new FrameworkError("blog.Post#published cannot run in this version: its filter and sort are evaluated by the SQL evaluator, which arrives in M10"));
+      const author = await User.create({ name: "Alice" }, context);
+      const titles = ["first", "second", "third", "fourth"];
+      const posts = [];
+      for (const title of titles) posts.push(await Post.create({ title, author: author.id }, context));
+      for (const post of [posts[0]!, posts[2]!, posts[3]!]) await Post.publish({ id: post.id }, as(author));
+      const titlesOf = (rows: readonly { title: string }[]) => rows.map((row) => row.title);
+      expect(titlesOf(await Post.published({}, context))).toEqual(["fourth", "third", "first"]);
+      // The caller's filter, sort and paging combine with the read's own: the caller's sort keys come first (O3).
+      expect(titlesOf(await Post.published({ filter: { title: { ne: "third" } } }, context))).toEqual(["fourth", "first"]);
+      expect(titlesOf(await Post.published({ sort: ["title"] }, context))).toEqual(["first", "fourth", "third"]);
+      expect(titlesOf(await Post.published({ limit: 1, offset: 1 }, context))).toEqual(["third"]);
+      // `Mesh.privileged` runs the same filter and sort, and no policy.
+      expect(titlesOf(await Mesh.privileged(Post).published({}))).toEqual(["fourth", "third", "first"]);
+      // A caller's filter on a computed field is still refused before the query.
+      await expect(Post.published({ filter: { excerpt: { eq: "x" } } }, context)).rejects.toThrow(FrameworkError);
     });
   } finally { await db.close(); }
 });
@@ -286,7 +301,8 @@ describe("ids (UUIDv7, filled when Mesh builds the new record)", () => {
 
   test("the generated create fills the id itself, never from the input, and a client cannot send one", async () => {
     // A uuid key is filled when Mesh builds the record, so a check or a step already reads `&id`; an integer key is left to the data layer.
-    const actions = readFileSync(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"), "utf8");
+    // `$sortClasses` names every sortable column, `id` among them, with its class: no value is written there.
+    const actions = readFileSync(resolve(import.meta.dir, "../.mesh/domain/blog/post.actions.ts"), "utf8").replace(/^const \$sortClasses[^;]*;$/m, "");
     expect(actions.match(/^\s+id: \$uuidv7\(\),$/gm)).toHaveLength(1);
     expect(actions).not.toMatch(/randomUUID|^\s+id: (?!\$uuidv7\(\),$)/m);
     const { db, blog, author } = await seeded([]);

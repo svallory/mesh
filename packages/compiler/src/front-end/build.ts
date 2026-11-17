@@ -58,6 +58,7 @@ import {
 } from "./rollups.ts";
 import { resolveRelationships } from "./relationships.ts";
 import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
+import { checkSqlRequired } from "../model/sql-required.ts";
 import { checkCommands } from "../model/commands.ts";
 import { checkPublishSteps } from "../model/publish-steps.ts";
 import { aggregatesOf, resolveAggregates } from "../model/aggregates.ts";
@@ -1974,6 +1975,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   checkLifecycleLimits(document, diagnostics, {
     privilegedCallsOf, askCallsOf, asynchronyOf, scopeReachOf, throughPositionOf: (relation) => throughPositions.get(relation),
   });
+  checkSqlRequired(document, diagnostics);
   // A file that did not parse may list an event's owner: with one missing, who owns an event is not known.
   checkPublishSteps(document, diagnostics, {
     targetsOf: publishTargetsOf,

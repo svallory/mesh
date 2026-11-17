@@ -236,12 +236,12 @@ ${covered}` }] });
   });
 });
 
-describe("a read policy's condition that does not translate warns until M10", () => {
-  // A read policy's conditions run as SQL from M10, where one that does not translate is an error. Until then the build
-  // warns, whatever made the condition plain: a block body and an awaited helper draw no warning anywhere else.
+describe("a read policy's condition that does not translate is an error (MESH_EXPR_NOT_SQL)", () => {
+  // A read policy's conditions run as SQL, where one that does not translate is an error, whatever made the condition
+  // plain: a block body and an awaited helper draw no diagnostic anywhere else.
   const fix = "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record";
   const warning = (what: string, covers: string, reason: string) =>
-    `${what} must run as SQL, since the policy covers ${covers} of blog.Post, and Mesh does not translate it (${reason}): a warning until the SQL evaluator (M10), an error from then`;
+    `${what} must run as SQL, since the policy covers ${covers} of blog.Post, and Mesh does not translate it (${reason})`;
   const rest = (types: string) => `    policy :rest types=[${types}]\n      authorize-if=() => true\n`;
   /** Build one Post beside a real `helpers.ts`, which an awaited helper needs to resolve. */
   async function withHelpers(run: (build: (policies: string) => ReturnType<typeof buildModel> & { source: string }) => void): Promise<void> {
@@ -267,32 +267,32 @@ describe("a read policy's condition that does not translate warns until M10", ()
     [awaited, "awaits an imported function", awaited],
   ];
 
-  test("each plain condition of a policy that covers a read is one warning, at the construct, naming the policy and the read", async () => {
+  test("each plain condition of a policy that covers a read is one error, at the construct, naming the policy and the read", async () => {
     await withHelpers((build) => {
       for (const [condition, reason, at] of plain) {
         const built = build(`  policies\n    policy :p types=[:read]\n      authorize-if=${condition}\n${rest(":create, :update, :destroy")}`);
         expect(built.diagnostics, condition).toEqual([{
-          severity: "warning",
-          code: "MESH_EXPR_PLAIN",
+          severity: "error",
+          code: "MESH_EXPR_NOT_SQL",
           message: warning("policy :p authorize-if", "read :read", reason),
           position: expect.objectContaining({ file: "blog/post.mesh.mx", offset: built.source.indexOf(at) }),
           fix,
         }]);
-        // A warning: the model is built.
-        expect(built.document, condition).not.toBeNull();
+        // An error: no model.
+        expect(built.document, condition).toBeNull();
       }
     });
   });
 
-  test("the policy covers the read by type, by name or with no scope, and a `forbid-if` and a `when` warn as an `authorize-if` does", async () => {
+  test("the policy covers the read by type, by name or with no scope, and a `forbid-if` and a `when` are refused as an `authorize-if` is", async () => {
     await withHelpers((build) => {
       const messages = (policies: string) => build(policies).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`);
       expect(messages(`  policies\n    policy :p actions=[&read]\n      forbid-if=${method}\n${rest(":create, :update, :destroy")}`))
-        .toEqual([`warning:MESH_EXPR_PLAIN:${warning("policy :p forbid-if", "read :read", "a method call")}`]);
+        .toEqual([`error:MESH_EXPR_NOT_SQL:${warning("policy :p forbid-if", "read :read", "a method call")}`]);
       // No scope: the policy covers every action, the read among them. Each plain function is named once, in written order.
       expect(messages(`  policies\n    policy :all when=${method}\n      authorize-if=${block}\n      authorize-if=() => true\n`)).toEqual([
-        `warning:MESH_EXPR_PLAIN:${warning("policy :all when", "read :read", "a method call")}`,
-        `warning:MESH_EXPR_PLAIN:${warning("policy :all authorize-if", "read :read", "a block body of 2 statements")}`,
+        `error:MESH_EXPR_NOT_SQL:${warning("policy :all when", "read :read", "a method call")}`,
+        `error:MESH_EXPR_NOT_SQL:${warning("policy :all authorize-if", "read :read", "a block body of 2 statements")}`,
       ]);
     });
   });
@@ -304,7 +304,7 @@ describe("a read policy's condition that does not translate warns until M10", ()
       const comment = { file: "blog/comment.mesh.mx", source: `entity :Comment\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n    create :add\n  policies\n    policy :p\n      authorize-if=${method}\n` };
       const reaching = { file: "blog/post.mesh.mx", source: 'import { Comment } from "./comment.mesh.mx"\nentity :Post\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :comment entity=Comment\n  actions auto=[:read]\n  policies\n    policy :open\n      authorize-if=() => true\n' };
       expect(buildModel({ root, files: [comment, reaching] }).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`)).toEqual([
-        "warning:MESH_EXPR_PLAIN:policy :p authorize-if must run as SQL, since the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment, and Mesh does not translate it (a method call): a warning until the SQL evaluator (M10), an error from then",
+        "error:MESH_EXPR_NOT_SQL:policy :p authorize-if must run as SQL, since the policy covers read :read, the loads of it (a relationship or a rollup that reaches it) of blog.Comment, and Mesh does not translate it (a method call)",
       ]);
       // Reached by no relationship and with no read, the same policy covers only a write and builds clean.
       expect(buildModel({ root, files: [{ ...comment, source: comment.source.replace("actions auto=[:read]", "actions") }] }).diagnostics).toEqual([]);
@@ -326,20 +326,21 @@ describe("a read policy's condition that does not translate warns until M10", ()
     });
   });
 
-  test("nothing is said twice: the null-rules warning, and each error a read policy already gets, stand alone", async () => {
+  test("nothing is swallowed and nothing is said twice: beside the null-rules warning the error stands, and an error a read policy already gets stands alone", async () => {
     await withHelpers((build) => {
       const read = (condition: string, more = "") => build(`  policies\n    policy :p types=[:read]\n      authorize-if=${condition}\n${more}${rest(":create, :update, :destroy")}`);
-      // A differing operator already draws the warning of the expression pass.
+      // A differing operator draws the warning of the expression pass; a warning does not swallow the error.
       const concat = read('({ actor }) => actor.id + "x" === "ax"');
       expect(concat.diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`)).toEqual([
         "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers",
+        `error:MESH_EXPR_NOT_SQL:${warning("policy :p authorize-if", "read :read", "arithmetic on values that are not numbers")}`,
       ]);
-      // Plain code that reads the record is the M10 refusal, once per policy, and no warning beside it: on the first
+      // Plain code that reads the record is the M10 refusal, once per policy, and no second error beside it: on the first
       // condition, and on a second one that the refusal does not name.
       expect(codes(read("({ self }) => { return self.title === null }").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
       expect(codes(read("() => &title === null", "      forbid-if=({ self }) => { return self.title === null }\n").diagnostics)).toEqual(["error:MESH_NOT_IMPLEMENTED"]);
-      // A plain condition that does not read the record still warns beside the refusal of another one.
-      expect(codes(read(method, "      forbid-if=() => &title === null\n").diagnostics)).toEqual(["warning:MESH_EXPR_PLAIN", "error:MESH_NOT_IMPLEMENTED"]);
+      // A plain condition that does not read the record is still refused beside the refusal of another one.
+      expect(codes(read(method, "      forbid-if=() => &title === null\n").diagnostics)).toEqual(["error:MESH_EXPR_NOT_SQL", "error:MESH_NOT_IMPLEMENTED"]);
     });
     // `Mesh.privileged`, an entity's action and a question to another policy are each their own error, with no warning.
     const scoped = (condition: string) => MESH + post(`  policies\n    policy :q types=[:read]\n      authorize-if=${condition}\n    policy :rest types=[:create, :update, :destroy]\n      authorize-if=() => true\n`);
@@ -469,9 +470,9 @@ describe("mesh explain lists each policy and where its checks run", () => {
     ]);
     expect(explainAction(entity(), "remove")!).toContain("  policies     none covers it: every call is forbidden (an action no policy covers is denied)");
   });
-  test("a read that fails with M10 runs no policy; a `when` and a load say what they do", () => {
+  test("a read with its own filter runs its policies before the query; a `when` and a load say what they do", () => {
     const filtered = entityOf(post("  policies\n    policy :all\n      authorize-if=() => true\n").replace("  actions auto=[:read]\n", "  actions auto=[:read]\n    read :titled\n      filter=() => &title !== null\n"));
-    expect(section(explainAction(filtered, "titled")!)).toEqual(["  policies     none run: the read's filter is the SQL evaluator's (M10), so every call fails before its policies are evaluated"]);
+    expect(section(explainAction(filtered, "titled")!)[0]).toBe("  policies     :all");
     const when = entityOf(MESH + post("  policies\n    policy :staff when=({ context }) => Mesh.isSystem(context)\n      authorize-if=() => true\n"));
     expect(section(explainAction(when, "publish")!)).toContain("               a policy whose when is false does not apply; with none applying, the call is forbidden");
     expect(section(explainAction(when, "read")!)).toContain("               a policy whose when is false does not apply; with none applying, the caller gets no rows");

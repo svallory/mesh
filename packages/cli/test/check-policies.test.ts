@@ -208,13 +208,10 @@ describe("Mesh.checkPolicies and Mesh.can from application code", () => {
         expect(await todo.Todo.read({}, { actor: bob })).toHaveLength(1);
         expect(await application.typed(list.id, milk.id)).toEqual([true, false, true, true]);
 
-        // `pending` has a filter and a sort, which the SQL evaluator runs (M10): the call fails before its policies, and
-        // the question throws what the call throws.
-        const asked = await outcome(Mesh.can(todo.Todo.pending, {}, { actor: bob }));
-        const called = await outcome(todo.Todo.pending({}, { actor: bob }));
-        expect(asked).toEqual({ ok: false, error: expect.any(FrameworkError) });
-        expect(((asked as { error: Error }).error).message).toBe(((called as { error: Error }).error).message);
-        expect(((asked as { error: Error }).error).message).toContain("M10");
+        // `pending` has its own filter and sort, which run as SQL: the question answers from its policies, and the call
+        // returns the todos that are not done.
+        expect(await Mesh.can(todo.Todo.pending, {}, { actor: bob })).toBe(true);
+        expect((await todo.Todo.pending({}, { actor: bob })).map((row: { id: string }) => row.id)).toEqual([milk.id]);
       });
     } finally {
       await db.close();

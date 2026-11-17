@@ -116,10 +116,10 @@ describe("actions view", () => {
       ["destroy", '"blog.Article#destroy"', "DestroyArticleInput", "destroyArticleInputSchema", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
-      "checkUnchanged as $checkUnchanged", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
-      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
-    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions"]);
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "allOf as $allOf", "authorizer as $authorizer", "bindCondition as $bindCondition", "castInput as $castInput", "checkScope as $checkScope",
+      "checkUnchanged as $checkUnchanged", "entity as $entity", "guarded as $guarded", "loadRows as $loadRows",
+      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "whereFor as $whereFor", "writeCount as $writeCount"]);
+    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions", "TableHandle as $TableHandle", "TableOf as $TableOf"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
@@ -197,13 +197,29 @@ describe("actions view", () => {
     expect(text).not.toContain("$policies.inside");
   });
 
-  test("a read selects every row; a read with filter or sort validates, then throws naming M10", () => {
+  test("a read selects every row; a read with its own filter binds it and hands it to the data layer as SQL", () => {
     const view = viewOf("Article");
     // The body lives in the reads table (`bindArticleReads`), which `tx` uses; the method evaluates the read's policies, then calls it.
     expect(view.readsBindName).toBe("bindArticleReads");
     const live = view.reads.find((m) => m.name === "live")!;
-    expect(live.unsupported).toBe('"blog.Article#live cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
-    expect(live.statements).toEqual([]);
+    const returns = "(L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never)";
+    expect(live).toMatchObject({ unsupported: null, usesParsed: true, statements: [
+      "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
+      "const $clock = clock ?? $pinClock(options.clock);",
+      'const $s = $scope({ input: $readOnlyRecord(parsed as never, "blog.Article#live"), actor: $context.actor, context: $context }, { clock: $clock });',
+      // The filter's parameters are computed on the read's scope; one that folds to false or unknown runs no query.
+      'const $where = $allOf([$bindCondition($tableOf, $conditions["read.live.filter"], $s as never)]);',
+      `if ($where === false) return [] as unknown as ${returns};`,
+      "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, where: $whereFor(layer, $where), sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
+      `if (!parsed.load?.length) return $rows as unknown as ${returns};`,
+      `return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${returns};`,
+    ] });
+    // No hop: the table map is empty, and no read has a declared sort, so there is no `$sortClasses`.
+    expect(view.moduleLines).toEqual([
+      "/** The table of each entity the conditions of this file's reads reach, by FQN. */",
+      "const $tableOf: $TableOf = (fqn) => ({} as { readonly [fqn: string]: $TableHandle })[fqn]!;",
+    ]);
+    expect(view.expressionsValues).toEqual(["$conditions", "$expressions"]);
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
@@ -217,12 +233,12 @@ describe("actions view", () => {
       contextParam: ", context?: unknown, clock?: () => $Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInputSchema>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
-      ["live", "$reads.live(input, context)", []],
+      ["live", "(await $reads.live(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
       ["load", "(await $reads.load(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
       ["read", "(await $reads.read(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []]]);
     expect(view.methods.find((m) => m.name === "read")!.txReturnType).toBe("(L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never)");
-    // A read's policies are a filter; the read the SQL evaluator must run fails in its body whatever they say.
-    expect(view.methods.find((m) => m.name === "live")!.preCheck).toEqual([]);
+    // A read's policies are a filter, evaluated before its own filter runs as SQL.
+    expect(view.methods.find((m) => m.name === "live")!.preCheck.at(-1)).toContain('$authorizer("blog.Article", "live"');
     const readMethod = view.methods.find((m) => m.name === "read")!;
     // The checks see the cast input, as a write's do (N2 of the review); an invalid input is reported as one, denied or not.
     expect(readMethod.preCheck.slice(4)).toEqual([
@@ -312,12 +328,12 @@ describe("build errors", () => {
   });
 });
 
-describe("a read's filter that does not translate warns until M10", () => {
-  // A filter runs as SQL, so one Mesh does not translate is an error from M10. Until then the build warns, whatever
-  // made the filter plain: a block body and a helper given the record draw no warning anywhere else.
+describe("a read's filter that does not translate is an error (MESH_EXPR_NOT_SQL)", () => {
+  // A filter runs as SQL, so one Mesh does not translate is an error, whatever made the filter plain: a block body and a
+  // helper given the record draw no diagnostic anywhere else.
   const fix = "rewrite it as one expression with comparisons, `&&`, `||`, `!`, `??`, `?.`, `%.now`, `%.today` and the list methods some, every, find and filter to have Mesh translate it; a helper may be called, but neither awaited nor given the record";
   const warning = (reason: string, read = "shown") =>
-    `the filter of read :${read} of shop.Item must run as SQL, and Mesh does not translate it (${reason}): a warning until the SQL evaluator (M10), an error from then`;
+    `the filter of read :${read} of shop.Item must run as SQL, and Mesh does not translate it (${reason})`;
   const item = (actions: string) => `import { big, open } from "./helpers"
 
 entity :Item
@@ -358,29 +374,29 @@ ${actions}    create :add
     [awaited, "awaits an imported function", awaited],
   ];
 
-  test("each plain filter is one warning, at the construct, naming the read", async () => {
+  test("each plain filter is one error, at the construct, naming the read", async () => {
     await withHelpers((build) => {
       for (const [filter, reason, at] of plain) {
         const built = build(`    read :shown filter=${filter}\n`);
         expect(built.diagnostics, filter).toEqual([{
-          severity: "warning",
-          code: "MESH_EXPR_PLAIN",
+          severity: "error",
+          code: "MESH_EXPR_NOT_SQL",
           message: warning(reason),
           position: expect.objectContaining({ file: "shop/item.mesh.mx", offset: built.source.indexOf(at) }),
           fix,
         }]);
-        // A warning: the model is built, and the filter stays plain code.
-        expect(built.document?.entities[0]!.actions[0]!.filter?.plain, filter).toBeDefined();
+        // An error: no model is built.
+        expect(built.document, filter).toBeNull();
       }
     });
   });
 
-  test("a filter on its own line warns the same, and each read is named for its own filter", async () => {
+  test("a filter on its own line is refused the same, and each read is named for its own filter", async () => {
     await withHelpers((build) => {
       const built = build(`    read :shown\n      filter=${block}\n    read :sized filter=() => &m > 1\n    read :listed\n      filter=() => [1, 2].includes(&n)\n`);
       expect(built.diagnostics.map((d) => [d.severity, d.code, d.message, d.position.offset])).toEqual([
-        ["warning", "MESH_EXPR_PLAIN", warning("a block body of 2 statements"), built.source.indexOf(block)],
-        ["warning", "MESH_EXPR_PLAIN", warning("a method call", "listed"), built.source.indexOf("[1, 2].includes(&n)")],
+        ["error", "MESH_EXPR_NOT_SQL", warning("a block body of 2 statements"), built.source.indexOf(block)],
+        ["error", "MESH_EXPR_NOT_SQL", warning("a method call", "listed"), built.source.indexOf("[1, 2].includes(&n)")],
       ]);
     });
   });
@@ -399,12 +415,18 @@ ${actions}    create :add
     });
   });
 
-  test("nothing is said twice: a filter the null-rules warning names, or one that holds an error, gets no second diagnostic", async () => {
+  test("a warning does not swallow the error, and a filter that holds an error gets no second one", async () => {
     await withHelpers((build) => {
       const said = (filter: string) => build(`    read :shown filter=${filter}\n`).diagnostics.map((d) => `${d.severity}:${d.code}:${d.message}`);
-      // A differing operator beside the plain construct already draws the warning of the expression pass.
-      expect(said("() => big(&n) && &m > 1")).toEqual(["warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of a call to big, which is given the record"]);
-      expect(said('() => &title + "x" === "ax"')).toEqual(["warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers"]);
+      // A differing operator beside the plain construct draws the warning of the expression pass, and the error.
+      expect(said("() => big(&n) && &m > 1")).toEqual([
+        "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of a call to big, which is given the record",
+        `error:MESH_EXPR_NOT_SQL:${warning("a call to big, which is given the record")}`,
+      ]);
+      expect(said('() => &title + "x" === "ax"')).toEqual([
+        "warning:MESH_EXPR_PLAIN:this expression runs as plain TypeScript with JavaScript's rules for null, not Mesh's, because of arithmetic on values that are not numbers",
+        `error:MESH_EXPR_NOT_SQL:${warning("arithmetic on values that are not numbers")}`,
+      ]);
       // An error inside the filter stands alone.
       const refused = build("    read :shown filter=() => [1, 2].includes(&nope)\n").diagnostics;
       expect(refused.map((d) => d.severity)).toEqual(["error"]);
@@ -474,7 +496,8 @@ describe("the generated file", () => {
     expect(published.updatedAt).not.toBe(created.updatedAt);
     expect(typeof created.id).toBe("string");
     expect(await articles.read({})).toHaveLength(1);
-    await expect(articles.live({})).rejects.toBeInstanceOf(FrameworkError);
+    // The memory layer declares no capability: a condition is refused before it reaches a layer that would ignore it.
+    await expect(articles.live({})).rejects.toThrow("does not declare the conditions capability");
     await expect(articles.create({ title: "x", author: ada.id, typo: 1 })).rejects.toBeInstanceOf(InvalidInputError);
     await expect(articles.live({ typo: 1 })).rejects.toBeInstanceOf(InvalidInputError);
     await articles.destroy({ id: created.id });
@@ -482,6 +505,44 @@ describe("the generated file", () => {
     await expect(articles.rename({ id: created.id, title: "x" })).rejects.toBeInstanceOf(NotFoundError);
     expect(await articles.read({})).toEqual([]);
   });
+});
+
+describe("a read with its own filter and sort in a project with no relationship and no computed field", () => {
+  // No entity has a loader, so no `load.ts` is emitted: the read binds its condition without the load plan.
+  const lone = `entity :Note table="notes"
+  attributes
+    uuid :id primary-key
+    boolean :done default=false
+    integer :rank
+  actions auto=[:read]
+    create :add
+      input
+        &rank
+    read :open
+      filter=({ input }) => &done === false && &rank > input.above
+      input
+        integer :above
+      sort
+        desc &rank
+  policies
+    policy :anyone
+      authorize-if=() => true
+`;
+  test("emits no load.ts, reads no plan and type-checks", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-lone-"));
+    roots.push(root);
+    const config = configOf(root);
+    const files = await generateFiles({ document: documentOf({ "notes/note.mesh.mx": lone }), config });
+    expect(files.some((file) => file.path.endsWith("load.ts"))).toBe(false);
+    const actions = files.find((file) => file.path.endsWith("note.actions.ts"))!.contents;
+    expect(actions).not.toContain("$loadPlan");
+    expect(actions).toContain('[{ column: "rank", class: "integer", desc: true }]');
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { notes: { rows: new Map() } };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"]))
+      .toEqual({ code: 0, output: "" });
+  }, 30_000);
 });
 
 describe("explain", () => {

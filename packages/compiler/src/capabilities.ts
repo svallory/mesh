@@ -1,12 +1,16 @@
+import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
 import { BUS_CAPABILITIES, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
+import { sqlPositions } from "./model/sql-required.ts";
 
 /**
  * What the model needs from the configured data adapter, checked against its static
  * capability manifest (ADR-0013): an error for each entity that needs a capability the
  * adapter does not declare, never a run-time surprise. Today those are the `integer-key-fill`
- * an integer primary key needs and the `aggregates` a `count` or `max` rollup calls (M7).
+ * an integer primary key needs, the `aggregates` a `count` or `max` rollup calls (M7), and for a read's declared filter
+ * or sort, which run as SQL (M10), `conditions`, plus `joins` where the condition crosses a relationship (a correlated
+ * subquery: `aggregates` covers the data layer's `max`/`count`, not SQL inside a condition).
  */
 export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdapter): Diagnostic[] {
   const declared: readonly string[] = adapter.capabilities?.capabilities ?? [];
@@ -24,6 +28,27 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
           `Entity ${entity.fqn} has the ${field.rollup.fn} rollup :${field.name}, which calls the data layer's ${field.rollup.fn}, and the data adapter "${adapter.name}" does not declare the aggregates capability`,
           field.position, "Use a data adapter that declares aggregates, or remove the rollup"));
       }
+    }
+    for (const place of sqlPositions(document, entity)) {
+      const lowered = place.lower();
+      if (!lowered.ok) continue; // the build reported it
+      if (!declared.includes("conditions")) {
+        diagnostics.push(error("MESH_CAPABILITY",
+          `${place.subject} runs as SQL, and the data adapter "${adapter.name}" does not declare the conditions capability, so it would ignore the ${place.kind === "sort" ? "order" : "condition"}`,
+          place.position, "Use a data adapter that declares conditions"));
+        continue;
+      }
+      if (!declared.includes("joins"))
+        for (const crossing of lowered.lowered.crossings) {
+          const name = crossing.path.replace(/^&/, "").split(".")[0];
+          // Only a belongs-to holds the related record's key, which a condition compares with no join.
+          const relation = crossing.path.startsWith("&") ? entity.relationships.find((r) => r.name === name && r.kind === "belongs-to") : undefined;
+          const target = relation && document.entities.find((e) => resolve(e.file) === resolve(dirname(entity.file), relation.entity.from));
+          const key = target?.attributes.find((a) => a.primaryKey)?.name;
+          diagnostics.push(error("MESH_CAPABILITY",
+            `${place.subject} reads ${crossing.path} through a relationship, which runs as a subquery, and the data adapter "${adapter.name}" does not declare the joins capability`,
+            crossing.position, key ? `Use a data adapter that declares joins, or compare the related record's key (\`&${name}.${key}\`), which needs no join` : "Use a data adapter that declares joins"));
+        }
     }
   }
   return diagnostics;

@@ -1402,9 +1402,10 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     }]);
     const named = withImport('import { Mesh as input } from "meshfw"', "({ context }) => Mesh.isSystem(context)");
     expect(problems(named)).toMatchObject([{ code: "MESH_EXPR_FREE_VARIABLE", fix: 'import it: `import { Mesh } from "meshfw"`', offset: named.indexOf("Mesh.isSystem") }]);
-    // `input.isSystem(context)` is a call on the caller's input, not Mesh's function: no Mesh rule applies to it.
+    // `input.isSystem(context)` is a call on the caller's input, not Mesh's function: no Mesh rule applies to it. (The
+    // policy covers a write: a read policy must run as SQL, which a method call cannot, MESH_EXPR_NOT_SQL.)
     const onInput = build(withImport('import { Mesh as input } from "meshfw"', "({ input, context }) => input.isSystem(context)") +
-      "  policies\n    policy :q types=[:read]\n      authorize-if=({ input, context }) => input.privileged(context) !== null\n    policy :w types=[:update]\n      authorize-if=() => true\n");
+      "  policies\n    policy :q types=[:update]\n      authorize-if=({ input, context }) => input.privileged(context) !== null\n    policy :w types=[:update]\n      authorize-if=() => true\n");
     expect(onInput.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(checksOf(onInput.document!.entities[0]!.actions.find((a) => a.name === "go")!.validate)[0]!.that.plain?.mesh).toBeUndefined();
     // An alias a binding hides where the bare name is read: the fix names it and says to rename the binding.

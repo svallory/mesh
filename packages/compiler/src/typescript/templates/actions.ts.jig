@@ -37,7 +37,9 @@ import {
 import { tables } from {{ schemaFromLiteral }};
 @if(expressionsFromLiteral)
 import {
-  $expressions,
+  @each(name in expressionsValues)
+  {{ name }},
+  @end
   @each(name in scopeImports)
   type {{ name }},
   @end
@@ -48,6 +50,12 @@ import { loadPlan as $loadPlan } from {{ loadFromLiteral }};
 @end
 @if(globals)
 {{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
+@end
+@if(moduleLines.length)
+
+@each(line in moduleLines)
+{{ line }}
+@end
 @end
 
 @if(readsBindName)
