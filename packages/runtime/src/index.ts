@@ -20,7 +20,7 @@ export interface EventMetadata {}
  */
 export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
-export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError, EventsConfigError, HandlerOptionError, DelivererTakenError, DelivererLostError, SubscriptionOverflowError, HandlerStoppedError } from "./errors.ts";
+export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError, EventsConfigError, HandlerOptionError, DelivererTakenError, DelivererLostError, HandlerLostError, SubscriptionOverflowError, HandlerStoppedError } from "./errors.ts";
 export type { ClaimHolder, DatabaseBusyOptions, DatabaseBusyReason, StoppedHandler, DenialReason, Issue, IssueSource, MeshErrorOptions, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";

@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  FrameworkError, HandlerStoppedError, resumeHandler, subscribe, SubscriptionOverflowError,
+  FrameworkError, HandlerLostError, HandlerStoppedError, resumeHandler, subscribe, SubscriptionOverflowError,
   type BusCore, type DataLayer, type DeliveryOperations, type EventBus, type TableHandle,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
@@ -148,10 +148,27 @@ describe("localBus(options)", () => {
       try { localBus(options as never); } catch (error) { return (error as Error).message; }
       return "(accepted)";
     };
-    expect(message("fast")).toBe('localBus takes { pollInterval, retryDelays, maxQueue, onStopped }, and was given "fast"');
-    expect(message({ onStop: () => undefined })).toBe('localBus has no option "onStop"; its options are pollInterval, retryDelays, maxQueue and onStopped');
+    expect(message("fast")).toBe('localBus takes { pollInterval, retryDelays, maxQueue, onStopped, processes }, and was given "fast"');
+    expect(message({ onStop: () => undefined })).toBe('localBus has no option "onStop"; its options are pollInterval, retryDelays, maxQueue, onStopped and processes');
     expect(message({ onStopped: "log" })).toBe('localBus: onStopped is the function called with the HandlerStoppedError when a handler stops after start(), and is "log"');
     expect(message({ onStopped: {} })).toBe("localBus: onStopped is the function called with the HandlerStoppedError when a handler stops after start(), and is a value of type object");
+  });
+
+  test("processes: \"one\" (the default) keeps the manifest object; \"many\" declares multi-process; anything else is a FrameworkError", () => {
+    const one = localBus().manifest;
+    expect(localBus({ processes: "one" }).manifest).toBe(one);
+    expect(localBus({}).manifest).toBe(one);
+    expect(localBus({ processes: undefined } as never).manifest).toBe(one);
+    const many = localBus({ processes: "many" }).manifest;
+    expect(many).toEqual({ adapter: "local", capabilities: ["ordered-delivery", "replay", "subscribe", "multi-process"] });
+    expect(localBus({ processes: "many", pollInterval: 5 }).manifest).toBe(many);
+    expect(Object.isFrozen(many) && Object.isFrozen(many.capabilities)).toBe(true);
+    for (const [value, shown] of [[3, "3"], ["several", '"several"'], [null, "null"], [true, "true"], ["Many", '"Many"']] as const) {
+      let thrown: unknown;
+      try { localBus({ processes: value } as never); } catch (error) { thrown = error; }
+      expect(thrown).toBeInstanceOf(FrameworkError);
+      expect((thrown as Error).message).toBe(`localBus: processes is how many processes may deliver the database, "one" or "many", and is ${shown}`);
+    }
   });
 
   test("the descriptor starts nothing, and create calls nothing on core but onClaimLost, and sets no timer", () => {
@@ -718,5 +735,121 @@ describe("started delivery", () => {
       await delivery.stop().catch(() => undefined);
       await layer.close();
     }
+  });
+});
+
+describe("localBus and handlers another process holds (MESH_HANDLER_LOST)", () => {
+  const lostError = (name: string, position: number) => new HandlerLostError(name, "taken", position, `the handler ${name} was taken over`);
+  const page = (positions: number[]) => ({ rows: positions.map((position) => ({ position, name: "x.E" })), deletedThrough: 0, highest: positions.at(-1) ?? 0, settled: positions.at(-1) ?? 0 });
+
+  test("a lost handler in a started round is reported nowhere, schedules no back-off, and the other handlers and the deletion pass go on", async () => {
+    const reports: unknown[] = [];
+    const ran: string[] = [];
+    let passes = 0;
+    let listener: (() => void) | undefined;
+    const core = fakeCore({
+      handlers: [{ name: "a" }, { name: "b" }],
+      position: async () => 0,
+      rows: async (after: number) => page(after === 0 ? [1] : []),
+      lists: () => true,
+      runHandler: async (handler: { name: string }, row: { position: number }) => { ran.push(`${handler.name}@${row.position}`); if (handler.name === "a") throw lostError("a", row.position); },
+      isRetryable: () => true,
+      deletionPass: async () => { passes++; },
+      onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
+    });
+    const counting = countingTimers();
+    const instance = createLocalBus({ pollInterval: 60_000, retryDelays: [5] }, { timers: counting.timers, report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+    await instance.start();
+    await until(() => passes === 1, "the first round's deletion pass");
+    expect(ran).toEqual(["a@1", "b@1"]);
+    expect(reports).toEqual([]);
+    // no back-off timer was set for the lost handler: only the poll is live
+    expect(counting.timeouts()).toBe(0);
+    // the next round feeds it again from its cursor while it is still listed
+    listener!();
+    await until(() => passes === 2, "the next round");
+    expect(ran).toEqual(["a@1", "b@1", "a@1", "b@1"]);
+    await instance.stop();
+    expect(counting.live.size).toBe(0);
+  });
+
+  test("a lost handler's position read ends it for the round unreported, in a started round and in deliver()", async () => {
+    for (const mode of ["started", "deliver"] as const) {
+      const reports: unknown[] = [];
+      const read: string[] = [];
+      let passes = 0;
+      const core = fakeCore({
+        handlers: [{ name: "a" }, { name: "b" }],
+        position: async (handler: { name: string }) => { read.push(handler.name); if (handler.name === "a") throw lostError("a", 0); return 0; },
+        rows: async () => page([]),
+        deletionPass: async () => { passes++; },
+      });
+      const counting = countingTimers();
+      const instance = createLocalBus({ pollInterval: 60_000 }, { timers: counting.timers, report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+      if (mode === "started") {
+        await instance.start();
+        await until(() => passes === 1, "the round's deletion pass");
+        await instance.stop();
+      } else {
+        await instance.deliver();
+      }
+      expect(read).toEqual(["a", "b"]);
+      expect(reports).toEqual([]);
+      expect(passes).toBe(1);
+      expect(counting.live.size).toBe(0);
+    }
+  });
+
+  test("in deliver(), core.retry's MESH_HANDLER_LOST is no stop: the round resolves and the other handler is fed", async () => {
+    const fed: string[] = [];
+    const core = fakeCore({
+      handlers: [{ name: "a" }, { name: "b" }],
+      position: async () => 0,
+      rows: async (after: number) => page(after === 0 ? [1, 2] : []),
+      lists: () => true,
+      retry: async (handler: { name: string }, row: { position: number }) => { fed.push(`${handler.name}@${row.position}`); if (handler.name === "a") throw lostError("a", row.position); return null; },
+    });
+    const instance = createLocalBus(undefined).create(core, { keep: "until-delivered" });
+    await instance.deliver();
+    expect(fed).toEqual(["a@1", "b@1", "b@2"]);
+  });
+
+  test("a handler that leaves core.handlers loses its lane: its pending back-off timer is cleared, and it is fed afresh once it is back", async () => {
+    const reports: unknown[] = [];
+    let handlers = [{ name: "a" }, { name: "b" }];
+    let fail = true;
+    let passes = 0;
+    let listener: (() => void) | undefined;
+    const ran: string[] = [];
+    const base = fakeCore({
+      position: async () => 0,
+      rows: async (after: number) => page(after === 0 ? [1] : []),
+      lists: () => true,
+      runHandler: async (handler: { name: string }) => { ran.push(handler.name); if (handler.name === "a" && fail) throw new Error("flaky"); },
+      isRetryable: () => true,
+      deletionPass: async () => { passes++; },
+      onPublished: (wake: () => void) => { listener = wake; return () => { listener = undefined; }; },
+    });
+    // core.handlers is read afresh each round
+    const core = new Proxy(base, { get: (target, key) => key === "handlers" ? handlers : target[key as keyof BusCore] });
+    const counting = countingTimers();
+    const instance = createLocalBus({ pollInterval: 60_000, retryDelays: [60_000] }, { timers: counting.timers, report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+    await instance.start();
+    await until(() => passes === 1, "the first round");
+    // a backs off on its own timer
+    expect(counting.live.size).toBe(2);
+    handlers = [{ name: "b" }];
+    listener!();
+    await until(() => passes === 2, "the round after a left");
+    expect(counting.live.size).toBe(1);
+    // a comes back with no back-off left over: it is fed in the next round, not after the 60 s delay
+    fail = false;
+    handlers = [{ name: "a" }, { name: "b" }];
+    listener!();
+    await until(() => passes === 3, "the round after a came back");
+    expect(ran.filter((name) => name === "a")).toHaveLength(2);
+    expect(reports).toEqual([]);
+    await instance.stop();
+    expect(counting.live.size).toBe(0);
   });
 });

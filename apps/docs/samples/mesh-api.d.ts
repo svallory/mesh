@@ -536,6 +536,8 @@ declare module "@meshfw/runtime" {
     readonly lapsesAt: Date;
     /** True when the holder is another binding, or another round, of this process. */
     readonly thisProcess: boolean;
+    /** True when the database is delivered from several processes (a bus that declares `multi-process`): no single process holds it. */
+    readonly multiProcess: boolean;
   }
 
   /** Another process or binding holds the deliverer claim, or a `deliver()` overlapped a round. Retryable. Its code is `MESH_DELIVERER_TAKEN`. */
@@ -548,6 +550,14 @@ declare module "@meshfw/runtime" {
   /** This process lost the deliverer claim (it was taken over after a lapse); delivery stopped. Its code is `MESH_DELIVERER_LOST`. */
   export class DelivererLostError extends MeshError {
     override code: "MESH_DELIVERER_LOST";
+  }
+
+  /** In delivery from several processes, this process no longer holds the handler: another process took it over, or a build that lists a pending event will. A bus ends the handler here without reporting it. Its code is `MESH_HANDLER_LOST`. */
+  export class HandlerLostError extends MeshError {
+    override code: "MESH_HANDLER_LOST";
+    readonly handler: string;
+    readonly reason: "taken" | "pending";
+    readonly position: number;
   }
 
   /** A subscription's queue passed its limit (10 000 events) because its callback is slower than publishing. Retryable: reopen it. Its code is `MESH_SUBSCRIPTION_OVERFLOW`. */
@@ -608,9 +618,11 @@ declare module "@meshfw/bus-local" {
     readonly maxQueue?: number;
     /** After `start()`, called with the `HandlerStoppedError` each time a handler stops, in place of the line the bus writes to stderr by default; a `deliver()` round rejects with that error and does not call it. */
     readonly onStopped?: (error: HandlerStoppedError) => void;
+    /** How many processes may deliver the database: `"one"` (the default) or `"many"`, which declares `multi-process`: each handler is then held by one process at a time and moves to another when its holder stops. */
+    readonly processes?: "one" | "many";
   }
 
-  /** The first event bus: delivers in the deliverer's process, on any data adapter. Declares `ordered-delivery`, `replay` and `subscribe`. */
+  /** The first event bus: delivers in the deliverer's process, on any data adapter. Declares `ordered-delivery`, `replay` and `subscribe`, and `multi-process` with `processes: "many"`. */
   export function localBus(options?: LocalBusOptions): EventBus;
 }
 

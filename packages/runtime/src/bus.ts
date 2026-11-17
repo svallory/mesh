@@ -18,7 +18,7 @@ import type { ActionContext } from "./index.ts";
  * - `replay`: `readEvents` from any kept position. `#mesh` exports `readEvents` only when the bus declares it.
  * - `subscribe`: live subscriptions. `#mesh` exports `subscribe` only when the bus declares it.
  * - `dead-letters`: `onFailure: "skip"` and `retryFailed`.
- * - `multi-process`: handlers and subscriptions in every process on the database (later, with Postgres).
+ * - `multi-process`: handlers and subscriptions in every process on the database (`localBus({ processes: "many" })`).
  */
 export const BUS_CAPABILITIES = ["ordered-delivery", "replay", "subscribe", "dead-letters", "multi-process"] as const;
 
@@ -106,22 +106,32 @@ export interface LiveSubscription {
 export interface BusCore {
   /** The one read of the outbox: the committed rows above `after`, at most `limit`, checked against both positions. */
   rows(after: number, limit: number): Promise<OutboxPage>;
-  /** The handlers registered for this claim, in name order. */
+  /**
+   * The handlers this instance delivers now, in name order: every registered handler in single mode; in delivery from
+   * several processes (the bus declares `multi-process`) the ones whose lease this process holds, which changes between
+   * rounds. A bus re-reads it each round.
+   */
   readonly handlers: readonly RegisteredHandler[];
-  /** The handler's cursor: its progress row's low-water position, read now. A bus re-reads it each round. */
+  /**
+   * The handler's cursor: its progress row's low-water position, read now. A bus re-reads it each round. Rejects with
+   * `MESH_HANDLER_LOST` for a handler this process no longer holds.
+   */
   position(handler: RegisteredHandler): Promise<number>;
   /** True when the handler is to be handed `row`: it lists the row's event, or no declared event matches the row's name. */
   lists(handler: RegisteredHandler, row: OutboxRow): boolean;
   /**
    * Deliver `row` to `handler`, the only way a bus delivers: the handler transaction, the generation check, the
    * progress check and write. Rejects with the handler's error (nothing recorded), `MESH_DATABASE_BUSY` (the round ends;
-   * never a handler failure), `MESH_DELIVERER_LOST` (the instance is over) or `MESH_EVENT_UNDECLARED`.
+   * never a handler failure), `MESH_DELIVERER_LOST` (the instance is over), `MESH_EVENT_UNDECLARED`, or, in delivery
+   * from several processes, `MESH_HANDLER_LOST` (this process no longer holds the handler: the end of that handler in
+   * this instance until it is back in `handlers`; never a failure, never reported, no retry, and the round goes on).
    */
   runHandler(handler: RegisteredHandler, row: OutboxRow): Promise<void>;
   /**
    * Core's retry path: `runHandler`, retried after each of `delays` (milliseconds; the bus's schedule) while the error is
    * retryable. Resolves with null once handled, or with the stop to report: at once for an error whose `retryable` is
-   * false, after the schedule otherwise. `MESH_DATABASE_BUSY` and `MESH_DELIVERER_LOST` reject, and do not count as a try.
+   * false, after the schedule otherwise. `MESH_DATABASE_BUSY`, `MESH_DELIVERER_LOST` and `MESH_HANDLER_LOST` reject, and do
+   * not count as a try.
    */
   retry(handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]): Promise<StoppedHandler | null>;
   /** Whether a retry of a handler that threw `error` makes sense: its own `retryable`, true for an error that sets none. */

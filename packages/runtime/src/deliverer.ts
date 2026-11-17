@@ -7,7 +7,7 @@ import type {
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, FrameworkError,
-  HandlerOptionError, SubscriptionOverflowError, type ClaimHolder, type StoppedHandler,
+  HandlerLostError, HandlerOptionError, SubscriptionOverflowError, type ClaimHolder, type StoppedHandler,
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
@@ -50,6 +50,8 @@ export function setDeliveryTiming(changes: Partial<DeliveryTiming> | null): void
 /** This process run's id: drawn once, never the pid (containers run every process as pid 1). */
 const RUN_ID: string = crypto.randomUUID();
 const STARTED_AT = new Date();
+/** The run id of the nil claim: the database is delivered from several processes, and no single process claims it. */
+export const NIL_RUN_ID = "00000000-0000-0000-0000-000000000000";
 const PID: number | null = typeof (globalThis as { process?: { pid?: unknown } }).process?.pid === "number" ? (globalThis as unknown as { process: { pid: number } }).process.pid : null;
 
 /** A row a deliverer reads from `mesh_handler_progress` and the handler as the events module declares it. */
@@ -126,7 +128,7 @@ function lapsed(claim: DelivererClaim, now: Date): boolean {
 function holderOf(database: string, claim: DelivererClaim, now: Date): ClaimHolder {
   return {
     database, pid: claim.pid, host: claim.host, startedAt: claim.startedAt, renewedAgoMs: Math.max(0, now.getTime() - claim.renewedAt.getTime()),
-    lapsesAt: new Date(claim.renewedAt.getTime() + timing.lapseMs), thisProcess: claim.runId === RUN_ID,
+    lapsesAt: new Date(claim.renewedAt.getTime() + timing.lapseMs), thisProcess: claim.runId === RUN_ID, multiProcess: claim.runId === NIL_RUN_ID,
   };
 }
 
@@ -135,7 +137,7 @@ function takenHere(db: DatabaseState, holder: Deliverer | undefined): DelivererT
   const renewedAt = holder?.renewedAt ?? Date.now();
   return new DelivererTakenError({
     database: db.name, pid: PID, host: null, startedAt: STARTED_AT, renewedAgoMs: Math.max(0, Date.now() - renewedAt),
-    lapsesAt: new Date(renewedAt + timing.lapseMs), thisProcess: true,
+    lapsesAt: new Date(renewedAt + timing.lapseMs), thisProcess: true, multiProcess: false,
   });
 }
 
@@ -468,7 +470,8 @@ class Deliverer {
 
   /**
    * Core's retry path: `runHandler`, then again after each delay while the error is retryable. Resolves with null once
-   * handled, else with the stop to report (at once for `retryable: false`). Busy and lost reject and are not a try.
+   * handled, else with the stop to report (at once for `retryable: false`). Busy, a lost claim and a lost handler lease
+   * reject and are not a try.
    */
   async retry(handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]): Promise<StoppedHandler | null> {
     if (!Array.isArray(delays) || delays.some((delay) => typeof delay !== "number" || !(delay >= 0)))
@@ -478,7 +481,7 @@ class Deliverer {
         await this.runHandler(handler, row);
         return null;
       } catch (error) {
-        if (error instanceof DatabaseBusyError || error instanceof DelivererLostError) throw error;
+        if (error instanceof DatabaseBusyError || error instanceof DelivererLostError || error instanceof HandlerLostError) throw error;
         if (this.lost) throw this.lost;
         if (!isRetryable(error) || attempt >= delays.length)
           return Object.freeze({ handler: handler.name, position: row.position, event: row.name, cause: error });

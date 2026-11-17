@@ -1,5 +1,5 @@
 import {
-  DatabaseBusyError, DelivererLostError, FrameworkError, HandlerStoppedError,
+  DatabaseBusyError, DelivererLostError, FrameworkError, HandlerLostError, HandlerStoppedError,
   type BusCore, type BusManifest, type EventBus, type EventBusInstance, type LiveSubscription, type OutboxRow, type RegisteredHandler, type StoppedHandler,
 } from "@meshfw/runtime";
 
@@ -27,6 +27,11 @@ export interface LocalBusOptions {
    * writes to stderr by default. A `deliver()` round does not call it: its rejection is that error.
    */
   readonly onStopped?: (error: HandlerStoppedError) => void;
+  /**
+   * How many processes may deliver the database: `"one"` (the default), as one deliverer per database; `"many"`, several at
+   * once, each handler held by one of them at a time (the manifest then declares `multi-process`).
+   */
+  readonly processes?: "one" | "many";
 }
 
 /** The timer functions the bus uses; tests pass their own to count what is left after `stop()`. */
@@ -47,11 +52,13 @@ export interface LocalBusInternals {
 const STARTED_DELAYS: readonly number[] = Object.freeze([100, 1000, 10_000]);
 const DELIVER_DELAYS: readonly number[] = Object.freeze([0, 0, 0]);
 const POLL_INTERVAL = 1000;
-const OPTION_NAMES = new Set(["pollInterval", "retryDelays", "maxQueue", "onStopped"]);
+const OPTION_NAMES = new Set(["pollInterval", "retryDelays", "maxQueue", "onStopped", "processes"]);
 /** The rows one read asks for. */
 const PAGE = 100;
 
 const MANIFEST: BusManifest = Object.freeze({ adapter: "local", capabilities: Object.freeze(["ordered-delivery", "replay", "subscribe"] as const) });
+/** The manifest of `localBus({ processes: "many" })`: delivery from several processes on one database. */
+const MANY_MANIFEST: BusManifest = Object.freeze({ adapter: "local", capabilities: Object.freeze(["ordered-delivery", "replay", "subscribe", "multi-process"] as const) });
 
 const SYSTEM_TIMERS: LocalBusTimers = Object.freeze({
   setTimeout: (run: () => void, ms: number) => setTimeout(run, ms),
@@ -75,13 +82,14 @@ const isDelay = (value: unknown, least: number): boolean => typeof value === "nu
 /** The options, checked: a `FrameworkError` names the first one that is wrong. */
 function checked(options: LocalBusOptions | undefined): {
   pollInterval: number; retryDelays: readonly number[] | undefined; maxQueue: number | undefined; onStopped: ((error: HandlerStoppedError) => void) | undefined;
+  processes: "one" | "many";
 } {
-  if (options === undefined) return { pollInterval: POLL_INTERVAL, retryDelays: undefined, maxQueue: undefined, onStopped: undefined };
+  if (options === undefined) return { pollInterval: POLL_INTERVAL, retryDelays: undefined, maxQueue: undefined, onStopped: undefined, processes: "one" };
   if (typeof options !== "object" || options === null || Array.isArray(options))
-    throw new FrameworkError(`localBus takes { pollInterval, retryDelays, maxQueue, onStopped }, and was given ${describe(options)}`);
+    throw new FrameworkError(`localBus takes { pollInterval, retryDelays, maxQueue, onStopped, processes }, and was given ${describe(options)}`);
   for (const key of Object.keys(options))
-    if (!OPTION_NAMES.has(key)) throw new FrameworkError(`localBus has no option ${JSON.stringify(key)}; its options are pollInterval, retryDelays, maxQueue and onStopped`);
-  const { pollInterval, retryDelays, maxQueue, onStopped } = options;
+    if (!OPTION_NAMES.has(key)) throw new FrameworkError(`localBus has no option ${JSON.stringify(key)}; its options are pollInterval, retryDelays, maxQueue, onStopped and processes`);
+  const { pollInterval, retryDelays, maxQueue, onStopped, processes } = options;
   if (pollInterval !== undefined && !isDelay(pollInterval, 1))
     throw new FrameworkError(`localBus: pollInterval is how often a round runs after start(), in milliseconds, a whole number from 1 to ${MAX_DELAY}, and is ${describe(pollInterval)}`);
   if (retryDelays !== undefined && (!Array.isArray(retryDelays) || retryDelays.some((delay) => !isDelay(delay, 0))))
@@ -90,7 +98,9 @@ function checked(options: LocalBusOptions | undefined): {
     throw new FrameworkError(`localBus: maxQueue is how many rows a subscription may have waiting for its callback, a whole number of 1 or more, and is ${describe(maxQueue)}`);
   if (onStopped !== undefined && typeof onStopped !== "function")
     throw new FrameworkError(`localBus: onStopped is the function called with the HandlerStoppedError when a handler stops after start(), and is ${describe(onStopped)}`);
-  return { pollInterval: pollInterval ?? POLL_INTERVAL, retryDelays: retryDelays === undefined ? undefined : Object.freeze([...retryDelays]), maxQueue, onStopped };
+  if (processes !== undefined && processes !== "one" && processes !== "many")
+    throw new FrameworkError(`localBus: processes is how many processes may deliver the database, "one" or "many", and is ${describe(processes)}`);
+  return { pollInterval: pollInterval ?? POLL_INTERVAL, retryDelays: retryDelays === undefined ? undefined : Object.freeze([...retryDelays]), maxQueue, onStopped, processes: processes ?? "one" };
 }
 
 /** The line a stopped handler gets on stderr when the application takes no `onStopped`, or its `onStopped` fails. */
@@ -143,7 +153,7 @@ export function createLocalBus(options: LocalBusOptions | undefined, internals: 
     else handStopped(onStopped, error);
   });
   return Object.freeze({
-    manifest: MANIFEST,
+    manifest: settings.processes === "many" ? MANY_MANIFEST : MANIFEST,
     create(core: BusCore): EventBusInstance {
       return instance(core, { pollInterval: settings.pollInterval, startedDelays, deliverDelays, feedOptions, timers, report });
     },
@@ -206,6 +216,8 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
     } catch (error) {
       // After stop() or a lost claim the instance schedules and reports nothing: its timers are already cleared.
       if (lost) throw lost;
+      // Another process holds the handler now (multi-process): it ends here until it is back in core.handlers.
+      if (error instanceof HandlerLostError) { lane.backoff = undefined; return false; }
       if (!started) return false;
       // Busy ends the round and is not a try: the backoff is left as it was, so the next round tries again.
       if (error instanceof DatabaseBusyError || error instanceof DelivererLostError) throw error;
@@ -243,6 +255,11 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
     } catch (error) {
       if (lost) throw lost;
       if (error instanceof DelivererLostError || error instanceof DatabaseBusyError) throw error;
+      // Not this process's handler any more (multi-process): no stop, no report; the round goes on with the others.
+      if (error instanceof HandlerLostError) {
+        if (lane) lane.backoff = undefined;
+        return null;
+      }
       if (mode === "started" && !started) return null;
       const stop: StoppedHandler = { handler: handler.name, position: (cursor ?? 0) + 1, event: "(the read failed)", cause: error };
       if (!lane) return stop;
@@ -291,7 +308,17 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
   const round = async (mode: "started" | "deliver"): Promise<void> => {
     if (lost) throw lost;
     const stopped: StoppedHandler[] = [];
-    for (const handler of core.handlers) {
+    const handlers = core.handlers;
+    // A handler that left core.handlers (multi-process: its lease moved to another process) loses its lane and back-off.
+    if (mode === "started") {
+      const listed = new Set(handlers.map((handler) => handler.name));
+      for (const [name, lane] of lanes) {
+        if (listed.has(name)) continue;
+        if (lane.backoff?.timer !== undefined) timers.clearTimeout(lane.backoff.timer);
+        lanes.delete(name);
+      }
+    }
+    for (const handler of handlers) {
       if (mode === "started") {
         if (!started) return;
         const lane = laneOf(handler);

@@ -5,7 +5,7 @@ import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, ForbiddenError, FrameworkError,
-  HandlerOptionError, HandlerStoppedError, SubscriptionOverflowError, type StoppedHandler,
+  HandlerLostError, HandlerOptionError, HandlerStoppedError, SubscriptionOverflowError, type StoppedHandler,
 } from "./errors.ts";
 import { publishEvent, type EventRecord, type EventsConfig, type EventsModule } from "./events.ts";
 import type { ActionContext } from "./index.ts";
@@ -34,7 +34,9 @@ const PAGE = 100;
 /**
  * A bus that does what every bus must and nothing more: a round feeds each handler from its own cursor, in position
  * order, through core's retry path, then each subscription from its own cursor, then runs the deletion pass. After
- * `start()` a round runs at once, after each commit that published in this process, and every `pollMs`.
+ * `start()` a round runs at once, after each commit that published in this process, and every `pollMs`. A handler this
+ * process no longer holds (`MESH_HANDLER_LOST`, delivery from several processes) ends for the round and is not reported;
+ * the other handlers go on. It declares `multi-process` when `capabilities` lists it.
  */
 export function testBus(options: TestBusOptions = {}): EventBus {
   const capabilities = Object.freeze([...(options.capabilities ?? ["ordered-delivery", "replay", "subscribe"])]);
@@ -54,17 +56,22 @@ export function testBus(options: TestBusOptions = {}): EventBus {
       const round = async (): Promise<void> => {
         const stopped: StoppedHandler[] = [];
         for (const handler of core.handlers) {
-          let cursor = await core.position(handler);
-          handled: for (;;) {
-            const page = await core.rows(cursor, PAGE);
-            for (const row of page.rows) {
-              if (core.lists(handler, row)) {
-                const stop = await core.retry(handler, row, retryDelays);
-                if (stop) { stopped.push(stop); break handled; }
+          try {
+            let cursor = await core.position(handler);
+            handled: for (;;) {
+              const page = await core.rows(cursor, PAGE);
+              for (const row of page.rows) {
+                if (core.lists(handler, row)) {
+                  const stop = await core.retry(handler, row, retryDelays);
+                  if (stop) { stopped.push(stop); break handled; }
+                }
+                cursor = row.position;
               }
-              cursor = row.position;
+              if (page.rows.length < PAGE) break;
             }
-            if (page.rows.length < PAGE) break;
+          } catch (error) {
+            // This process no longer holds the handler (multi-process): that handler ends for the round, unreported.
+            if (!(error instanceof HandlerLostError)) throw error;
           }
         }
         for (const subscription of core.subscriptions()) {
