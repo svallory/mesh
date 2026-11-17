@@ -62,7 +62,8 @@ export interface PostgresLayer extends DataAdapter, DataLayer {
    * (opening the pool if needed), the last unsubscribe stops it, and close() stops it while keeping the listeners, so
    * it starts again when the layer opens again. Best effort: a `LISTEN` that fails is reported once with
    * `console.error` and retried after 1 s, doubling to 30 s, while listeners remain; a dropped connection is reopened
-   * and then wakes every listener; a listener that throws is reported and the others still run. A bus keeps its poll.
+   * by Bun.SQL (which prints a line of its own for each attempt that fails while the server is down) and then wakes
+   * every listener; a listener that throws is reported and the others still run. A bus keeps its poll.
    */
   onAppended(listener: () => void): () => void;
 }
@@ -152,7 +153,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   if (typeof options !== "object" || options === null || (options.url !== undefined && typeof options.url !== "string")) {
     throw new FrameworkError(`postgres requires { url }: a postgres:// URL string, or undefined while it is not configured; got ${describeValue(options)}`);
   }
-  if (tuning.schema !== undefined && !SCHEMA_NAME.test(tuning.schema)) throw new FrameworkError(`A test schema must be a lowercase identifier, not ${JSON.stringify(tuning.schema)}`);
+  if (tuning.schema !== undefined && !SCHEMA_NAME.test(tuning.schema)) throw new FrameworkError(`A test schema must be a lowercase identifier of at most 51 bytes (its NOTIFY channel mesh_outbox_<schema> must fit Postgres's 63), not ${JSON.stringify(tuning.schema)}`);
   const configured: PostgresOptions = Object.freeze({ url: options.url });
   const defaultWaitMs = tuning.waitMs ?? DEFAULT_WAIT_MS;
   const named = databaseName(configured.url);
@@ -180,13 +181,17 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     return configured.url;
   };
 
-  /** The pool, made on first use: one connection for the running transaction, two more for the outbox reader and LISTEN. */
+  /**
+   * The pool, made on first use: one connection for the running transaction and one for the outbox reader. The
+   * `LISTEN` is not in it: Bun.SQL's `listen()` opens a dedicated connection of its own (shared by every `listen()` of
+   * this pool), so a third pool connection would serve nothing.
+   */
   const open = (): BunSQL => {
     if (pool) return pool;
     const target = url("postgres");
     // Bun's connect timeout is in seconds and 30 by default; bounded by the layer's lock wait, a connect that never
     // answers ends soon after the job that asked for it gave up (`reserveWithin`), so close() is not held by it.
-    try { pool = new BunSQL(target, { max: 3, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
+    try { pool = new BunSQL(target, { max: 2, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
     catch (cause) { throw mapPostgresError(cause, label, "connect"); }
     // Listeners kept across close() listen again on the new pool.
     appended.resume();
