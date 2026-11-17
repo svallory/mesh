@@ -178,6 +178,7 @@ export function multiProcessOperations(client: () => Database, run: <T>(statemen
       const row = db().query(stateQuery(", s.keep")).get() as StateRow & { keep: "until-delivered" | "all" | null };
       return Object.freeze({ ...stateOf(row), keep: row.keep }) satisfies LockedDeliveryState;
     }),
+    readDeliveryStateUnlocked: () => exec(() => Object.freeze(stateOf(db().query(stateQuery("")).get() as StateRow)) satisfies DeliveryState),
     writeKeep: (keep) => exec(() => {
       db().query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, keep) VALUES (1, 0, ?) ON CONFLICT (id) DO UPDATE SET keep = excluded.keep`).run(keep);
     }),

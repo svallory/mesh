@@ -9,6 +9,8 @@ import build from "../src/build.ts";
 import { createSchema, postgres } from "../src/index.ts";
 import { push, pushCommand } from "../src/push-command.ts";
 import { missingDrizzleKit } from "../src/push-schema.ts";
+import type { BusCapability } from "@meshfw/runtime";
+import { testBus } from "@meshfw/runtime/testing";
 import { databaseUrl, describeServer, serverUrl } from "./support.ts";
 
 const dirs: string[] = [];
@@ -130,6 +132,61 @@ describeServer("mesh db push against a server", () => {
     const again = io();
     expect(await pushCommand({ projectRoot: root, config, args: [], ...again })).toBe(0);
     expect(again.out.join("")).toStartWith("schema is up to date: ");
+  }, 60_000);
+
+  test("switching the bus to multi-process adds the process table and three columns, and switching back drops them", async () => {
+    const url = await emptyDatabase();
+    const root = await mkdtemp(join(import.meta.dir, ".scratch-emitted-push-"));
+    dirs.push(root);
+    const built = buildModel({ root, domainRoot: join(root, "src/domain"), files: [
+      { file: "src/domain/billing/invoice.mesh.mx", source: 'entity :Invoice\n  attributes\n    uuid :id primary-key\n' },
+      { file: "src/domain/billing/invoice-paid.mesh.mx", source: "event :InvoicePaid\n  string :note\n" },
+    ] });
+    expect(built.diagnostics).toEqual([]);
+    const configFor = async (capabilities: readonly BusCapability[]) => {
+      const config: ResolvedConfig = {
+        root, configFile: join(root, "mesh.config.ts"), entityFiles: [], domainRoot: join(root, "src/domain"), output: join(root, ".mesh"),
+        data: { kind: "data-adapter", name: "postgres", build: "@meshfw/data-postgres/build", capabilities: { adapter: "postgres", capabilities: [] }, options: { url } },
+        events: { bus: testBus({ capabilities }) },
+      };
+      await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
+      return config;
+    };
+    const pushed = async (config: ResolvedConfig) => {
+      const streams = io();
+      const code = await pushCommand({ projectRoot: root, config, args: [], ...streams });
+      return { code, out: streams.out.join(""), err: streams.err.join("") };
+    };
+    const columns = async () => (await run(`SELECT table_name || '.' || column_name AS c FROM information_schema.columns WHERE table_schema = 'public' AND (column_name IN ('run_id', 'keep') OR table_name = 'mesh_delivery_process') ORDER BY 1`, url)).map((row: { c: string }) => row.c);
+    const single = await configFor(["ordered-delivery", "replay", "subscribe"]);
+    expect(await pushed(single)).toMatchObject({ code: 0, err: "" });
+    expect(await columns()).toEqual(["mesh_outbox_state.run_id"]);
+    // a single-mode database that has delivered: the state row and a progress row exist
+    await run(`INSERT INTO mesh_outbox_state (id, deleted_through) VALUES (1, 0); INSERT INTO mesh_handler_progress (name, kind, position, events, generation) VALUES ('notify', 'process', 0, '[]', 1)`, url);
+    const multi = await configFor(["ordered-delivery", "replay", "subscribe", "multi-process"]);
+    const added = await pushed(multi);
+    expect(added).toMatchObject({ code: 0, err: "" });
+    expect(added.out).toContain('CREATE TABLE "mesh_delivery_process"');
+    expect(await columns()).toEqual([
+      "mesh_delivery_process.declared", "mesh_delivery_process.handlers", "mesh_delivery_process.host", "mesh_delivery_process.keep",
+      "mesh_delivery_process.pid", "mesh_delivery_process.renewed_at", "mesh_delivery_process.run_id", "mesh_delivery_process.started_at",
+      "mesh_handler_progress.run_id", "mesh_outbox_state.keep", "mesh_outbox_state.run_id", "mesh_subscription_progress.run_id",
+    ]);
+    expect((await pushed(multi)).out).toStartWith("schema is up to date: ");
+    // back to single mode: the process table is Mesh's own, not a foreign table, and goes with the three columns
+    // the build writes schema.ts again, without the additions
+    const back = await pushed(await configFor(["ordered-delivery", "replay", "subscribe"]));
+    // the columns hold the state row and a progress row, so dropping them is refused until --force, like any column
+    expect(back.code).toBe(1);
+    expect(back.err).not.toContain("holds only this project's tables");
+    expect(back.err).toContain('DROP TABLE "mesh_delivery_process" CASCADE;');
+    expect(back.err).toContain('ALTER TABLE "mesh_outbox_state" DROP COLUMN "keep";');
+    expect(back.err).toContain('ALTER TABLE "mesh_handler_progress" DROP COLUMN "run_id";');
+    expect(back.err).toContain('ALTER TABLE "mesh_subscription_progress" DROP COLUMN "run_id";');
+    expect(await pushCommand({ projectRoot: root, config: single, args: ["--force"], ...io() })).toBe(0);
+    expect(await columns()).toEqual(["mesh_outbox_state.run_id"]);
+    expect((await run(`SELECT name FROM mesh_handler_progress`, url))).toEqual([{ name: "notify" }]);
+    expect((await pushed(single)).out).toStartWith("schema is up to date: ");
   }, 60_000);
 
   test("a missing drizzle-kit names the command and the version to install", async () => {

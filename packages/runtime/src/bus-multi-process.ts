@@ -3,7 +3,7 @@ import type { DataLayer, DataOperations, DeliveryOperations, FailureOperations, 
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { PID, adoptByName, forgetByName, keepByValue, resumeHandler, retryFailed, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
-import { DelivererLostError, DelivererTakenError, EventUndeclaredError, FrameworkError, HandlerLostError, HandlerStoppedError } from "./errors.ts";
+import { DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, FrameworkError, HandlerLostError, HandlerStoppedError } from "./errors.ts";
 import { publishEvent, type EventRecord, type EventsModule } from "./events.ts";
 
 /**
@@ -74,6 +74,23 @@ async function until(test: () => boolean | Promise<boolean>, what: string, ms = 
   while (!(await test())) {
     if (Date.now() > end) throw new Error(`Bus conformance (multi-process): timed out waiting until ${what}`);
     await sleep(10);
+  }
+}
+/**
+ * The check's own call `run`, made again while it fails with a serialization failure or a deadlock, for up to 5 s: on a
+ * server at `SERIALIZABLE` a check's read or publish beside a working worker can fail so, which Mesh leaves to the
+ * caller to repeat. A lock wait (`locked`, `lock-timeout`) is not repeated: it means a transaction held a row longer
+ * than it should, and the check fails on it.
+ */
+async function again<T>(run: () => Promise<T>): Promise<T> {
+  const end = Date.now() + 5000;
+  for (;;) {
+    try { return await run(); }
+    catch (error) {
+      const transient = error instanceof DatabaseBusyError && (error.reason === "serialization" || error.reason === "deadlock");
+      if (!transient || Date.now() > end) throw error;
+      await sleep(10);
+    }
   }
 }
 async function rejection(run: () => Promise<unknown>): Promise<unknown> {
@@ -256,14 +273,14 @@ export function multiProcessChecks(
           return worker;
         },
         publish(binding, ...events) {
-          return binding.transaction(() => layer.transaction(async (tx) => {
+          return again(() => binding.transaction(() => layer.transaction(async (tx) => {
             const positions: number[] = [];
             for (const [Class, n] of events)
               positions.push((await publishEvent(tx, undefined, { entity: "multi.Thing", action: "make", key: { id: `k${n}` }, at: "multi" }, new Class({ n }), {}, CLOCK)).position);
             return positions;
-          }));
+          })));
         },
-        leases: () => layer.transaction((tx) => ops(tx).readHandlerLeases()),
+        leases: () => again(() => layer.transaction((tx) => ops(tx).readHandlerLeases())),
         lease: async (name) => (await ctx.leases()).find((row) => row.name === name),
         async outbox() {
           const rows: OutboxRow[] = [];
@@ -288,7 +305,7 @@ export function multiProcessChecks(
           return counts;
         },
         writeFake: (runId, handlers, declared, keep = "until-delivered") =>
-          layer.transaction((tx) => ops(tx).writeProcess({ runId, host: "elsewhere", pid: 4242, startedAt: null, keep, handlers, declared })),
+          again(() => layer.transaction((tx) => ops(tx).writeProcess({ runId, host: "elsewhere", pid: 4242, startedAt: null, keep, handlers, declared }))),
       };
       try {
         await run(ctx);
@@ -305,22 +322,30 @@ export function multiProcessChecks(
   const OTHER = "00000000-0000-4000-8000-0000000000e1";
   const IN_PROCESS = { renewMs: 30, lapseMs: 1500 };
   /**
-   * Pause `worker` where it holds no transaction: on a single-writer database (SQLite) a process paused inside one keeps
-   * the write lock, so every other process waits for it. A short transaction tells; until one goes through, resume it and
-   * try again.
+   * Pause `worker` where it holds no transaction: a process paused inside one keeps its locks (on SQLite the write lock;
+   * on a server the rows it locked, such as mesh_outbox_state and a progress row), so every other process waits for it.
+   * A short transaction that takes the locks a takeover takes tells; until one goes through, resume it and try again. On a
+   * server a statement the worker sent before it stopped still runs and may take its locks once the probe ends, so the
+   * probe must go through twice.
    */
   const pause = async (ctx: Ctx, worker: MultiProcessWorker) => {
+    const free = (tx: DataOperations) => (async () => {
+      await ops(tx).lockDeliveryState();
+      for (const lease of await ops(tx).readHandlerLeases()) await ops(tx).lockHandlerProgress(lease.name);
+      return true;
+    })();
     for (let attempt = 0; attempt < 50; attempt++) {
       worker.kill("SIGSTOP");
       await sleep(10);
-      if (await ctx.layer.transaction(async () => true, { waitMs: 150 }).catch(() => false)) return;
+      const probe = () => ctx.layer.transaction(free, { waitMs: 150 }).catch(() => false);
+      if (await probe() && (await sleep(20), await probe())) return;
       worker.kill("SIGCONT");
       await sleep(15 + attempt);
     }
     throw new Error("Bus conformance (multi-process): could not pause the worker outside a transaction");
   };
-  const pidOf = async (ctx: Ctx, runId: string | null) => runId === null ? null : (await ctx.layer.transaction((tx) => ops(tx).readProcesses())).find((row) => row.runId === runId)?.pid ?? null;
-  const ownRunId = async (ctx: Ctx) => (await ctx.layer.transaction((tx) => ops(tx).readProcesses())).find((row) => row.pid === PID && row.host !== "elsewhere")?.runId;
+  const pidOf = async (ctx: Ctx, runId: string | null) => runId === null ? null : (await again(() => ctx.layer.transaction((tx) => ops(tx).readProcesses()))).find((row) => row.runId === runId)?.pid ?? null;
+  const ownRunId = async (ctx: Ctx) => (await again(() => ctx.layer.transaction((tx) => ops(tx).readProcesses()))).find((row) => row.pid === PID && row.host !== "elsewhere")?.runId;
 
   // ---- in one process, the others' rows written by the check ----
 
@@ -838,7 +863,7 @@ export function multiProcessChecks(
     const positions = [...await ctx.publish(binding, [Alpha, 1], [Alpha, 2]), ...await ctx.publish(binding, [Alpha, 3])];
     const last = positions.at(-1)!;
     await until(async () => ((await ctx.lease("count"))?.position ?? -1) >= last && ((await ctx.lease("log"))?.position ?? -1) >= last, "both handlers reached the last event");
-    const processes = await ctx.layer.transaction((tx) => ops(tx).readProcesses());
+    const processes = await again(() => ctx.layer.transaction((tx) => ops(tx).readProcesses()));
     assert(processes.length === 2, `two process rows, got ${processes.length}`);
     for (const name of ["count", "log"]) {
       const lease = (await ctx.lease(name))!;
@@ -957,7 +982,7 @@ export function multiProcessChecks(
       await ctx.publish(binding, [Alpha, 99]);
       await sleep(400);
       const through = await deleted();
-      const readers = [...(await ctx.leases()).map((lease) => lease.position), ...(await ctx.layer.transaction((tx) => ops(tx).readSubscriptionOwners())).map((row) => row.position)];
+      const readers = [...(await ctx.leases()).map((lease) => lease.position), ...(await again(() => ctx.layer.transaction((tx) => ops(tx).readSubscriptionOwners()))).map((row) => row.position)];
       assert(through <= Math.min(...readers), `deleted through ${through}, past a reader at ${Math.min(...readers)}`);
       if (keep === "all") assert(through === 0, "keep: all deletes nothing");
       else assert(through > 0 && through <= positions[3]!, `until-delivered deletes up to the acknowledged position, got ${through}`);

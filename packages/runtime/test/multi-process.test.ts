@@ -78,12 +78,12 @@ describe("the strategy follows the bus's manifest (rule M1), and multi mode need
     const tx: Record<string, unknown> = {};
     for (const name of ["readDeliveryState", "writeClaim", "renewClaim", "releaseClaim", "readHandlerProgress", "writeHandlerProgress", "deleteHandlerProgress",
       "readSubscriptionProgress", "writeSubscriptionProgress", "deleteSubscriptionProgress", "firstOutboxRow",
-      "lockDeliveryState", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
+      "lockDeliveryState", "readDeliveryStateUnlocked", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
       "readProcesses", "writeProcess", "renewProcess", "deleteProcess", "readSubscriptionOwners", "writeSubscriptionOwner"]) {
       if (missing.includes(name)) continue;
       tx[name] = async () => {
         calls.push(name);
-        if (name === "readDeliveryState" || name === "lockDeliveryState") return { ...state, keep: null };
+        if (name === "readDeliveryState" || name === "readDeliveryStateUnlocked" || name === "lockDeliveryState") return { ...state, keep: null };
         if (name.startsWith("read")) return [];
         return true;
       };

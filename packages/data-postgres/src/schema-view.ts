@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { EmitError, conceptTypeImport, type EmitInput } from "@meshfw/compiler";
 import type { Attribute, AttributeType, Entity, ModelDocument, SourcePosition } from "@meshfw/model";
-import { coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
+import { DELIVERY_PROCESS_TABLE, coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
 import { POSTGRES_NAME_BYTES, nameBytes, postgresNameProblem } from "./identifiers.ts";
 
 /**
@@ -14,7 +14,7 @@ export interface PostgresSchemaView {
   readonly builders: readonly string[];
   /**
    * One table per entity, sorted by entity name, module and file; then, when the project declares an event, core's
-   * tables.
+   * tables (with the multi-process table and columns when the configured bus declares `multi-process`).
    */
   readonly tables: readonly PostgresTableView[];
   /**
@@ -180,7 +180,7 @@ function tableView(entity: Entity, conceptLocalOf: (fqn: string) => string): Pos
 }
 
 /** The schema view of the whole model. Pure and synchronous; a model it cannot store is an `EmitError`. */
-export function schemaView({ document }: EmitInput): PostgresSchemaView {
+export function schemaView({ document, config }: EmitInput): PostgresSchemaView {
   // Each concept a column holds is imported into `schema.ts` by the compiler's one naming rule (`conceptTypeImport`).
   const imports = new Map<string, { local: string; specifier: string; name: string }>();
   const conceptLocalOf = (fqn: string): string => {
@@ -204,11 +204,15 @@ export function schemaView({ document }: EmitInput): PostgresSchemaView {
     tableOwners.set(entity.table, entity);
     tables.push(view);
   }
-  for (const core of coreTablesFor(document)) {
+  // Delivery from several processes adds a table and three columns, only when the configured bus declares it.
+  const multiProcess = config.events?.bus?.manifest.capabilities.includes("multi-process") === true;
+  for (const core of coreTablesFor(document, { multiProcess })) {
     const entity = tableOwners.get(core.name);
     if (entity) {
       fail("MESH_SCHEMA_DUPLICATE_TABLE",
-        `Entity ${describe(entity)} uses the Postgres table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
+        core.name === DELIVERY_PROCESS_TABLE
+          ? `Entity ${describe(entity)} uses the Postgres table "${entity.table}", which is Mesh's own once the project's bus declares multi-process: it holds the processes that deliver`
+          : `Entity ${describe(entity)} uses the Postgres table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
         entity.position, 'Set table="..." on the entity to another name');
     }
     tables.push(coreTableView(core));

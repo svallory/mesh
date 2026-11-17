@@ -1,6 +1,6 @@
 import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import type { BunSQLDatabase } from "drizzle-orm/bun-sql";
-import { FrameworkError, type TableHandle } from "@meshfw/runtime";
+import { FrameworkError, MULTI_PROCESS_CORE, OUTBOX_STATE_TABLE, type TableHandle } from "@meshfw/runtime";
 import { postgresNameProblem } from "./identifiers.ts";
 import { postgresTable } from "./layer.ts";
 
@@ -130,13 +130,18 @@ export async function planSchemaPush(
   loader?: DrizzleKitLoader,
 ): Promise<SchemaPush> {
   const names = Object.values(tables).map((handle) => getTableName(postgresTable(handle)));
-  const foreign = await foreignObjects(db, names);
+  // A project that declares an event owns core's tables also when its bus does not declare multi-process: the process
+  // table left by a switch back to one process is the project's, so the push drops it instead of refusing it.
+  const owned = names.includes(OUTBOX_STATE_TABLE)
+    ? [...names, ...MULTI_PROCESS_CORE.tables.map((core) => core.name).filter((name) => !names.includes(name))]
+    : names;
+  const foreign = await foreignObjects(db, owned);
   if (foreign.length > 0) {
     throw new FrameworkError(`${caller} prepares a Postgres schema that holds only this project's tables, and public also holds ${foreign.join(", ")}: use a database of its own for this project, or drop them`);
   }
   const kit = await loadDrizzleKit(caller, loader);
   const bridge = { execute: async (query: unknown) => ({ rows: [...await db.execute(query as never)] }) };
-  const plan = await withStdoutMuted(() => kit.pushSchema({ ...tables }, bridge, ["public"], names));
+  const plan = await withStdoutMuted(() => kit.pushSchema({ ...tables }, bridge, ["public"], owned));
   return {
     statements: [...plan.statementsToExecute],
     warnings: [...plan.warnings],
