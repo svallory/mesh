@@ -3,6 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { FrameworkError, type Row } from "@meshfw/runtime";
 import { drizzleOperations, filterCondition, selectOptions, type DrizzleCommands } from "../src/index.ts";
+import { testDialect } from "./dialect.ts";
 
 const dialect = new SQLiteSyncDialect();
 const tasks = sqliteTable("tasks", {
@@ -168,6 +169,7 @@ describe("generated keys", () => {
   function recorder(highest: unknown) {
     const inserted: Row[] = [];
     const commands: DrizzleCommands<typeof tasks> = {
+    dialect: testDialect,
       table: () => tasks,
       insert: (_table, row) => { inserted.push(row); return row; },
       select: () => [],
