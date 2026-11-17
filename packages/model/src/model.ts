@@ -428,6 +428,14 @@ export interface Exposure {
   actions: ExposedAction[];
   position: SourcePosition;
 }
+/** One event a surface sends out: a line of its `publishes` section. */
+export interface PublishedEvent {
+  /** The line head as written (`TaskCompleted`, `billing.InvoicePaid`). */
+  identifier: string;
+  /** The event's FQN (`work.TaskCompleted`). */
+  fqn: string;
+  position: SourcePosition;
+}
 /** A surface (`surface :admin`, a surface file): what one audience may call and see, under which names. */
 export interface Surface {
   /** The surface's name, as written (`admin`). A surface has no module: its identity is its name. */
@@ -435,6 +443,8 @@ export interface Surface {
   /** Project-relative path of the surface file. */
   file: string;
   expose: Exposure[];
+  /** The `publishes` section's events, in written order; absent when the file has no `publishes` section. */
+  publishes?: PublishedEvent[];
   position: SourcePosition;
 }
 /** One `uses` line of an operation: an entity the operation reaches and the actions of it the operation may call. */

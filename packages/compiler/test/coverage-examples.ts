@@ -29,13 +29,18 @@ export function coverageProject(tag: string, option: string | undefined, example
     const source = tag === "architecture" ? `${example}\n` : `import { MeshRecommended } from "meshfw/architecture"\narchitecture :project\n  ${example}\n`;
     return { root: "/project", files: [{ file, source }] };
   }
-  // A surface file lives in the surfaces folder, in the folder named after its surface, and exposes the domain's Sample.
-  if (tag === "surface" || tag === "expose" || tag === "action") {
-    const lines = tag === "surface" ? [example] : tag === "expose" ? ["surface :admin", `  ${example}`] : ["surface :admin", "  expose :samples entity=Sample", `    ${example}`];
+  // A surface file lives in the surfaces folder, in the folder named after its surface, and exposes the domain's Sample;
+  // its `publishes` listing line lists the domain's event `Paid`.
+  if (tag === "surface" || tag === "expose" || tag === "action" || tag === "publishes") {
+    const lines = tag === "surface" ? [example]
+      : tag === "expose" ? ["surface :admin", `  ${example}`]
+      : tag === "publishes" ? ["surface :admin", option === "reference" ? `  publishes\n    ${example}` : `  ${example}`]
+      : ["surface :admin", "  expose :samples entity=Sample", `    ${example}`];
     return { root: "/project", domainRoot: "domain", files: [
       { file: "domain/sample.mesh.mx", source: "entity :Sample\n  attributes\n    uuid :id primary-key\n    string :title\n  actions auto=[:read]\n" },
+      { file: "domain/paid.mesh.mx", source: "event :Paid\n  uuid :id\n" },
     ], surfaces: { root: "surfaces", files: [
-      { file: "surfaces/admin/admin.mesh.mx", source: `import { Sample } from "../../domain/sample.mesh.mx"\n${lines.join("\n")}\n` },
+      { file: "surfaces/admin/admin.mesh.mx", source: `import { Sample } from "../../domain/sample.mesh.mx"\nimport { Paid } from "../../domain/paid.mesh.mx"\n${lines.join("\n")}\n` },
     ] } };
   }
   // A service file sits in the domain beside Sample and Line: its one operation uses both, so no one-entity warning.

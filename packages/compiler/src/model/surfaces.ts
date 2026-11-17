@@ -1,5 +1,6 @@
 import { dirname, resolve } from "node:path";
-import type { Diagnostic, Entity, Exposure, SourcePosition, Surface } from "@meshfw/model";
+import type { Diagnostic, Entity, EventDeclaration, Exposure, PublishedEvent, SourcePosition, Surface } from "@meshfw/model";
+import { classNameOf } from "./class-name.ts";
 import { error } from "./index.ts";
 
 /**
@@ -11,9 +12,19 @@ export interface PendingExposure {
   target?: string;
   fields: { name: string; position: SourcePosition }[];
 }
+/**
+ * One line of a `publishes` section as the builder read it: the absolute path of the file its head resolved to and the
+ * name that file gives the event (an alias resolves to the real name, a namespace member to its own).
+ */
+export interface PendingPublished {
+  event: PublishedEvent;
+  target: string;
+  declared: string;
+}
 export interface PendingSurface {
   surface: Surface;
   exposures: PendingExposure[];
+  publishes: PendingPublished[];
 }
 
 const atoms = (names: readonly string[]) => names.map((name) => `:${name}`).join(", ");
@@ -26,17 +37,27 @@ const suggestion = (name: string | undefined) => (name === undefined ? "" : ` Di
  * included (`MESH_UNKNOWN_ACTION`). `fields=` names an attribute, a `belongs-to` or a computed field (OD3): a `has-many` or
  * a `has-one` is `MESH_OPTION_VALUE` (OD13), since a related record does not leave through a surface, and any other name is
  * `MESH_UNKNOWN_MEMBER`. An exposure whose `entity=` resolved to no built entity is skipped: its import or reference was
- * reported, and a second diagnostic would only repeat it.
+ * reported, and a second diagnostic would only repeat it. A `publishes` line takes the FQN of the event declared in the
+ * file its head points to under the name it resolved to; a line whose event was not built (its file did not parse, or
+ * its import did not resolve, both reported) is dropped quietly, for the same reason.
  */
 export function resolveSurfaces(
-  document: { entities: readonly Entity[] },
+  document: { entities: readonly Entity[]; events?: readonly EventDeclaration[] },
   rootPath: string,
   pending: readonly PendingSurface[],
   diagnostics: Diagnostic[],
   nearestName: (name: string, candidates: Iterable<string>) => string | undefined,
 ): void {
   const byFile = new Map(document.entities.map((entity) => [resolve(rootPath, entity.file), entity] as const));
-  for (const { surface, exposures } of pending) {
+  const events = document.events ?? [];
+  for (const { surface, exposures, publishes } of pending) {
+    const unbuilt = new Set<PublishedEvent>();
+    for (const { event, target, declared } of publishes) {
+      const found = events.find((candidate) => resolve(rootPath, candidate.file) === target && classNameOf(candidate.name) === declared);
+      if (found) event.fqn = found.fqn;
+      else unbuilt.add(event);
+    }
+    if (surface.publishes && unbuilt.size) surface.publishes = surface.publishes.filter((event) => !unbuilt.has(event));
     const names = new Set<string>();
     const exposed = new Map<string, Exposure>();
     for (const { exposure, target, fields } of exposures) {

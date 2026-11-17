@@ -314,6 +314,18 @@ test("surfaces: a surface that imports a domain file `ignore` excludes is MESH_I
     ["src/surfaces/admin/admin.mesh.mx", 1, 0, "MESH_IGNORED_IMPORT", 'src/surfaces/admin/admin.mesh.mx imports ../../domain/blog/list.mesh.mx, which `ignore` in mesh.config.ts excludes (pattern "**/list.mesh.mx"); import a file that is not ignored, or remove the pattern', null],
   ]);
 });
+test("surfaces: a publishes line naming an event of an ignored file reports the import only", async () => {
+  const root = await project(surfacesConfig("src/surfaces", { ignore: "**/todo-done.mesh.mx" }));
+  await writeFile(resolve(root, "src/domain/blog/todo-done.mesh.mx"), "event :TodoDone\n  uuid :todoId\n");
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { TodoDone } from "../../domain/blog/todo-done.mesh.mx"\nsurface :admin\n  publishes\n    TodoDone\n');
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics.map((d) => [d.position.file, d.position.line, d.position.column, d.code, d.message])).toEqual([
+    ["src/surfaces/admin/admin.mesh.mx", 1, 0, "MESH_IGNORED_IMPORT", 'src/surfaces/admin/admin.mesh.mx imports ../../domain/blog/todo-done.mesh.mx, which `ignore` in mesh.config.ts excludes (pattern "**/todo-done.mesh.mx"); import a file that is not ignored, or remove the pattern'],
+  ]);
+});
 test("surfaces: an ignore pattern that matches only a surface file is used and excludes it", async () => {
   const root = await withSurface(surfacesConfig("src/surfaces", { ignore: "src/surfaces/admin/**" }));
   const loaded = await loadConfig(root);

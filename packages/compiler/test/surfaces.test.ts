@@ -350,6 +350,96 @@ describe("imports", () => {
   // (MESH_IGNORED_IMPORT) needs the files on disk: both are in config.test.ts.
 });
 
+// The publishes section (design PR 3, sections 2 R20 to R22, 5 and 6; ruling D41, OD7): each line resolves by the file
+// its head points to and the name the declaring file gives the event, so an event declared inline in an owner resolves
+// to itself and not to its file's first declaration.
+describe("publishes", () => {
+  /** Tag, with two events declared inline in its `events` section: TagRemoved first, then TagAdded. */
+  const TAG = `entity :Tag
+  attributes
+    uuid :id primary-key
+  actions auto=[:read]
+  events
+    event :TagRemoved
+      uuid :tagId
+    event :TagAdded
+      uuid :tagId
+  policies
+    policy :anyone
+      authorize-if=() => true
+`;
+  const domain = { ...DOMAIN, "src/domain/work/tag.mesh.mx": TAG };
+  const EVENTS = 'import { TaskCompleted } from "../../domain/work/task-completed.mesh.mx"\nimport * as work from "../../domain/work/tag.mesh.mx"\n';
+  const published = (lines: string, imports = EVENTS) => build(admin(`  publishes\n${lines}`, imports), domain);
+  const at = (line: number, column: number) => ({ file: ADMIN_FILE, line, column, offset: expect.any(Number) });
+
+  test("the events in written order, each by its FQN, through a named import and a namespace member", () => {
+    const result = published("    work.TagRemoved\n    TaskCompleted\n    work.TagAdded\n");
+    expect(errors(result)).toEqual([]);
+    expect(surfaceOf(result).publishes).toEqual([
+      { identifier: "work.TagRemoved", fqn: "work.TagRemoved", position: at(5, 4) },
+      { identifier: "TaskCompleted", fqn: "work.TaskCompleted", position: at(6, 4) },
+      { identifier: "work.TagAdded", fqn: "work.TagAdded", position: at(7, 4) },
+    ]);
+  });
+  test("an event declared inline, imported by name or under an alias, is itself, not its file's first declaration", () => {
+    const result = published("    TagAdded\n    Gone\n", 'import { TagAdded, TagRemoved as Gone } from "../../domain/work/tag.mesh.mx"\n');
+    expect(errors(result)).toEqual([]);
+    expect(surfaceOf(result).publishes!.map(({ identifier, fqn }) => [identifier, fqn])).toEqual([["TagAdded", "work.TagAdded"], ["Gone", "work.TagRemoved"]]);
+  });
+  test("no section leaves publishes absent; an empty section is []; a surface may hold only a section", () => {
+    expect(Object.hasOwn(surfaceOf(build({ [ADMIN_FILE]: ADMIN })), "publishes")).toBe(false);
+    const empty = published("");
+    expect(errors(empty)).toEqual([]);
+    expect(surfaceOf(empty)).toMatchObject({ expose: [], publishes: [] });
+  });
+  test("a section written before the expose lines", () => {
+    const result = build(admin("  publishes\n    TaskCompleted\n  expose :tasks entity=Task\n", `${IMPORT}${EVENTS}`), domain);
+    expect(errors(result)).toEqual([]);
+    expect(surfaceOf(result)).toMatchObject({ expose: [{ name: "tasks", entity: "work.Task" }], publishes: [{ fqn: "work.TaskCompleted" }] });
+  });
+  test("a head that names no event is MESH_UNKNOWN_EVENT (OD7), with the reference texts", () => {
+    expect(errors(published("    TaskComplete\n    Task\n    work.TagGone\n    work.Tag\n", `${EVENTS}${IMPORT}`))).toEqual([
+      [ADMIN_FILE, 6, 4, "MESH_UNKNOWN_EVENT", "TaskComplete is not an imported event. Did you mean TaskCompleted?", null],
+      [ADMIN_FILE, 7, 4, "MESH_UNKNOWN_EVENT", "Task is not an imported event.", null],
+      [ADMIN_FILE, 8, 9, "MESH_UNKNOWN_EVENT", "work.TagGone is not an imported event: ../../domain/work/tag.mesh.mx declares `TagRemoved`, `TagAdded`.", null],
+      [ADMIN_FILE, 9, 9, "MESH_UNKNOWN_EVENT", "work.Tag is not an imported event: ../../domain/work/tag.mesh.mx declares `TagRemoved`, `TagAdded`.", null],
+    ]);
+  });
+  test("a head of three parts is no reference", () => {
+    expect(errors(published("    work.Tag.TagAdded\n"))).toEqual([
+      [ADMIN_FILE, 5, 4, "MESH_UNKNOWN_EVENT", "work.Tag.TagAdded is not an imported event: a listing is an imported identifier (`InvoicePaid`) or a member of a namespace import (`notices.InvoiceOverdue`)", null],
+    ]);
+  });
+  test("one event listed twice, under one name or two, is MESH_DUPLICATE_MEMBER at the later line", () => {
+    const imports = `${EVENTS}import { TaskCompleted as Done } from "../../domain/work/task-completed.mesh.mx"\nimport { TagAdded } from "../../domain/work/tag.mesh.mx"\n`;
+    const result = published("    TaskCompleted\n    TaskCompleted\n    Done\n    work.TagAdded\n    TagAdded\n", imports);
+    expect(errors(result)).toEqual([
+      [ADMIN_FILE, 8, 4, "MESH_DUPLICATE_MEMBER", "TaskCompleted is listed twice in the publishes section of surface admin", "remove one"],
+      [ADMIN_FILE, 9, 4, "MESH_DUPLICATE_MEMBER", "Done is listed twice in the publishes section of surface admin", "remove one"],
+      [ADMIN_FILE, 11, 4, "MESH_DUPLICATE_MEMBER", "TagAdded is listed twice in the publishes section of surface admin", "remove one"],
+    ]);
+  });
+  test("a tag parameter on a line is MESH_SYNTAX", () => {
+    expect(errors(published("    TaskCompleted|x|\n")).map(([, line, , code]) => [line, code])).toEqual([[5, "MESH_SYNTAX"]]);
+  });
+  test("a head through an import that does not resolve reports the import only", () => {
+    expect(errors(published("    Gone\n", 'import { Gone } from "../../domain/work/gone.mesh.mx"\n'))).toEqual([
+      [ADMIN_FILE, 1, 0, "MESH_UNKNOWN_IMPORT", 'Cannot resolve import "../../domain/work/gone.mesh.mx" inside the project', null],
+    ]);
+  });
+  test("a head whose event file did not parse reports the parse error only", () => {
+    const broken = { ...domain, "src/domain/work/broken.mesh.mx": "event :Broken\n  bogus :x\n" };
+    const result = build(admin("  publishes\n    Broken\n", 'import { Broken } from "../../domain/work/broken.mesh.mx"\n'), broken);
+    expect(errors(result).map(([file, , , code]) => [file, code])).toEqual([["src/domain/work/broken.mesh.mx", "MESH_UNKNOWN_TAG"]]);
+  });
+  test("an event no surface lists is still an event of the project (R22)", () => {
+    const result = build({ [ADMIN_FILE]: ADMIN }, domain);
+    expect(errors(result)).toEqual([]);
+    expect(result.document!.events!.map(({ fqn }) => fqn).sort()).toEqual(["work.TagAdded", "work.TagRemoved", "work.TaskCompleted"]);
+  });
+});
+
 describe("regressions", () => {
   test("a surface leaves the unanswered-command check as it was", () => {
     const domain = { ...DOMAIN, "src/domain/work/archive-task.mesh.mx": "command :ArchiveTask\n  uuid :id\n" };
