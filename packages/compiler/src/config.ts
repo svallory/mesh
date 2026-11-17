@@ -32,7 +32,7 @@ export interface ResolvedConfig {
    * Where keys of `events` sit in `mesh.config.ts`, for the checks that need the model (`eventsDiagnostics`): present
    * only for a key the config sets. Never part of `model.json`.
    */
-  positions?: { readonly renamed?: Diagnostic["position"] };
+  positions?: { readonly renamed?: Diagnostic["position"]; readonly keep?: Diagnostic["position"] };
 }
 export interface ConfigResult { config: ResolvedConfig | null; diagnostics: Diagnostic[] }
 const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
@@ -289,18 +289,20 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
       } catch (cause) { fail(field, `Cannot read ${noun.toLowerCase()} file "${name}" (${errorCode(cause) ?? "UNKNOWN"})`); }
     }
   const renamedAt = record(config.events) && Object.hasOwn(config.events, "renamed") ? at("renamed") : undefined;
+  const keepAt = record(config.events) && Object.hasOwn(config.events, "keep") ? at("keep") : undefined;
+  const positions = { ...(renamedAt ? { renamed: renamedAt } : {}), ...(keepAt ? { keep: keepAt } : {}) };
   return { config: diagnostics.some((d) => d.severity === "error") ? null : {
     root, configFile, domainRoot, entityFiles: files, ignoredFiles, output, data: data as DataAdapter,
     ...(surfacesRoot !== undefined ? { surfacesRoot, surfaceFiles } : {}),
     ...(Object.hasOwn(config, "extensions") ? { extensions: extensions as readonly ExtensionDescriptor[] } : {}),
     ...(Object.hasOwn(config, "events") ? { events: config.events as EventsConfig } : {}),
-    ...(renamedAt ? { positions: { renamed: renamedAt } } : {}),
+    ...(Object.keys(positions).length > 0 ? { positions } : {}),
   }, diagnostics };
 }
 
 /**
  * The checks of the `events` key (spec, Events and commands, "Configuration and the events module"), each a
- * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values or a period of whole days (`keepProblem`, which refuses a period on a bus that delivers from several processes), whose `load` is a function, whose `bus` is an event
+ * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values, a period of whole days or a rule per event (`keepProblem`, which refuses a period and the per-event form on a bus that delivers from several processes; `eventsDiagnostics` checks the per-event form's names against the declared events), whose `load` is a function, whose `bus` is an event
  * bus, whose `requires` lists capabilities, and whose `renamed` is an object of non-empty former FQNs to non-empty event
  * names (`renamedShapeProblems`; `eventsDiagnostics` checks it against the declared events).
  */

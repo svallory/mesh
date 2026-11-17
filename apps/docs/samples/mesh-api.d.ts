@@ -30,6 +30,11 @@ declare module "@meshfw/runtime" {
 
   /** One retention rule of `events.keep`; a period's age is the row's `occurredAt` against the database's clock. */
   export type Keep = "until-delivered" | "all" | { readonly days: number };
+  /** `events.keep` with a rule per event FQN (shortened or former names allowed) and a default for every other event. */
+  export interface PerEventKeep {
+    readonly default: Keep;
+    readonly events: Readonly<Record<string, Keep>>;
+  }
 
   /** The `events` key of `mesh.config.ts`, and the `events` option of `bind`. */
   export interface EventsConfig {
@@ -37,8 +42,8 @@ declare module "@meshfw/runtime" {
     bus?: EventBus;
     /** Loads the events module at run time; the build never imports it. */
     load?: () => Promise<EventsModule>;
-    /** How long the outbox keeps a row: until every reader has passed it (the default), always, or until every reader has passed it and it is `days` whole days old. */
-    keep?: Keep;
+    /** How long the outbox keeps a row: until every reader has passed it (the default), always, or until every reader has passed it and it is `days` whole days old; or a rule per event. */
+    keep?: Keep | PerEventKeep;
     /** Capabilities the project needs from the bus and the data adapter: the build fails when one is missing. */
     requires?: readonly (BusCapability | Capability)[];
     /** Former event FQN to the declared event it now is: a row stored under the former name is read as that event. */
@@ -130,6 +135,8 @@ declare module "@meshfw/runtime" {
     readonly highest: number;
     /** Every position at or below it is final (committed, or never to commit); a reader past a short page moves no further. SQLite: `highest`. */
     readonly settled: number;
+    /** The hole record (per-event `events.keep`): each stored event name with rows deleted above `deletedThrough`, to the highest such position. Absent or `{}` when there is none. */
+    readonly holes?: Readonly<Record<string, number>>;
   }
 
   /** What a subscription filters on, stored with its row. */
@@ -577,8 +584,10 @@ declare module "@meshfw/runtime" {
     override code: "MESH_EVENTS_DELETED";
     /** The cursor the read was given. */
     readonly after: number;
-    /** The oldest position the outbox still keeps. */
+    /** The oldest position the outbox still keeps: under a rule per event, one above the event's highest deleted row. */
     readonly oldestKept: number;
+    /** Under a rule per event, the event whose rows above the cursor were deleted while older rows were kept. */
+    readonly eventName?: string;
   }
 
   /** A `readEvents` cursor above the highest position the outbox ever assigned (a restored backup). Its code is `MESH_CURSOR_AHEAD`. */

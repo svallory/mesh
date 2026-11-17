@@ -743,6 +743,7 @@ describe("core's tables", () => {
       ["host", "string", true, false],
       ["pid", "integer", true, false],
       ["started_at", "timestamp", true, false],
+      ["holes", "json", true, false],
     ]);
     expect(handlers!.columns.map(({ name, type, primaryKey }) => [name, type, primaryKey])).toEqual([
       ["name", "string", true], ["kind", "string", false], ["position", "integer", false], ["events", "json", false], ["generation", "integer", false],

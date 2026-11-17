@@ -226,8 +226,10 @@ export interface DataOperations {
   readFailures?: FailureOperations["readFailures"];
   deleteFailure?: FailureOperations["deleteFailure"];
   renameFailures?: FailureOperations["renameFailures"];
-  /** Keep periods; see `RetentionOperations`. Mandatory only for a project whose `events.keep` is `{ days }`. */
+  /** Keep periods and per-event keep; see `RetentionOperations`. Mandatory only for a project whose `events.keep` is `{ days }` or `{ default, events }`. */
   firstOutboxRowSince?: RetentionOperations["firstOutboxRowSince"];
+  deleteOutboxRows?: RetentionOperations["deleteOutboxRows"];
+  writeHoles?: RetentionOperations["writeHoles"];
   /** Delivery from several processes; see `MultiProcessOperations`. Mandatory only when the bus declares `multi-process`. */
   lockDeliveryState?: MultiProcessOperations["lockDeliveryState"];
   readDeliveryStateUnlocked?: MultiProcessOperations["readDeliveryStateUnlocked"];
@@ -319,6 +321,12 @@ export interface OutboxPage {
    * `highest`. Required: every layer object, a fake included, sets it; core never falls back to `highest`.
    */
   readonly settled: number;
+  /**
+   * The hole record (`mesh_outbox_state.holes`), from the same statement as the rows: each stored event name with rows
+   * deleted above `deletedThrough` (a per-event `events.keep`), mapped to the highest such deleted position. Absent or
+   * `{}` when no hole exists, which is always so on a database without the column.
+   */
+  readonly holes?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -370,6 +378,11 @@ export interface DeliveryState {
   readonly claim: DelivererClaim | null;
   /** The database's clock now: every lapse and every `seenAt` is measured on it. */
   readonly now: Date;
+  /**
+   * The hole record, as `OutboxPage.holes`: stored name to the highest deleted position above `deletedThrough`. Absent
+   * on an adapter without the per-event operations, and on a database without the column; `{}` when no hole exists.
+   */
+  readonly holes?: Readonly<Record<string, number>>;
 }
 
 /** One row of `mesh_handler_progress`: a handler's low-water position, as last registered. */
@@ -479,15 +492,27 @@ export interface FailureOperations {
 /**
  * The operations a retention rule beyond the two string values of `events.keep` needs (spec, Events and commands,
  * "Retention"), each in the running transaction, beside `DeliveryOperations`. Only core calls them. Mandatory for a data
- * adapter of a project whose `events.keep` is a period (`{ days }`): core checks them at the start of delivery then, and
- * calls none of them otherwise.
+ * adapter of a project whose `events.keep` is a period (`{ days }`, `firstOutboxRowSince`) or the per-event form
+ * (`{ default, events }`, all three, and the `holes` of `DeliveryState` and `OutboxPage`): core checks them at the start
+ * of delivery then, and calls none of them otherwise.
  */
 export interface RetentionOperations {
   /**
    * The position of the first outbox row above `after` and at or below `through` whose `occurredAt` is after `since`
-   * (a row too young for a period to delete), or null. A row stamped exactly `since` is not after it.
+   * (a row too young for a period to delete), and, when `names` is given, whose stored name is one of them; or null. A
+   * row stamped exactly `since` is not after it.
    */
-  firstOutboxRowSince(after: number, through: number, since: Date): Promise<number | null>;
+  firstOutboxRowSince(after: number, through: number, since: Date, names?: readonly string[]): Promise<number | null>;
+  /**
+   * Delete at most `limit` outbox rows above `after` and at or below `through` whose stored name is one of `names` (and,
+   * when `since` is given, whose `occurredAt` is at or before it), lowest positions first. Resolves with how many were
+   * deleted and, for each name with a deleted row, its highest deleted position. Writes nothing else: the
+   * deleted-through position is unchanged, and core keeps the hole record (`writeHoles`).
+   */
+  deleteOutboxRows(after: number, through: number, names: readonly string[], since: Date | null, limit: number):
+    Promise<{ readonly deleted: number; readonly highest: Readonly<Record<string, number>> }>;
+  /** Replace the hole record in `mesh_outbox_state` (creating the row when there is none); `{}` clears it. */
+  writeHoles(holes: Readonly<Record<string, number>>): Promise<void>;
 }
 
 /** One row of `mesh_delivery_process`: a process that delivers in multi mode (the bus declares `multi-process`). */

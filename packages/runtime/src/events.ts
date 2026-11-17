@@ -5,7 +5,7 @@ import type { Capability } from "./capabilities.ts";
 import { CursorAheadError, EventUndeclaredError, EventsConfigError, EventsDeletedError, FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
 import type { ActionContext, EventMetadata } from "./index.ts";
-import { NO_RENAMES, storedToDeclared } from "./stored-names.ts";
+import { NO_RENAMES, resolveEventName, storedToDeclared } from "./stored-names.ts";
 import { uuidv7 } from "./uuid.ts";
 
 /**
@@ -87,9 +87,10 @@ export interface EventsConfig {
   /**
    * How long the outbox keeps a row: `"until-delivered"` (the default) deletes a row once every reader is past it; `"all"`
    * keeps every row, for an application that reads history or whose clients resume from cursors; `{ days: n }` deletes a
-   * row once every reader is past it and it is at least `n` whole days old. Read by whatever starts delivery.
+   * row once every reader is past it and it is at least `n` whole days old; `{ default, events }` applies a rule per
+   * event (`PerEventKeep`). Read by whatever starts delivery.
    */
-  keep?: Keep;
+  keep?: Keep | PerEventKeep;
   /** Capabilities the project needs from the bus and the data adapter: checked by the build, ignored by `bind`. */
   requires?: readonly (BusCapability | Capability)[];
   /**
@@ -107,6 +108,24 @@ export interface EventsConfig {
  * database's clock.
  */
 export type Keep = "until-delivered" | "all" | { readonly days: number };
+
+/**
+ * `events.keep` with a rule per event: `events` maps an event's FQN (which may be shortened to the fewest trailing
+ * segments that pick one declared event, or be a former FQN of `events.renamed`) to its rule, and `default` is the rule
+ * of every other row. A row is deleted once every reader has passed it and its own event's rule allows it, so rows can be
+ * deleted while an older row is kept (a hole); a history read that takes an event from below one of its holes is then
+ * `MESH_EVENTS_DELETED`.
+ */
+export interface PerEventKeep {
+  readonly default: Keep;
+  readonly events: Readonly<Record<string, Keep>>;
+}
+
+/** The rules of `events.keep` resolved against the declared events: `events` by declared FQN, `default` for the rest. */
+export interface KeepRules {
+  readonly default: Keep;
+  readonly events: ReadonlyMap<string, Keep>;
+}
 
 /** The two string values of `events.keep`. */
 export const KEEP_VALUES: readonly ("until-delivered" | "all")[] = Object.freeze(["until-delivered", "all"]);
@@ -126,38 +145,135 @@ export interface KeepProblem {
  */
 export const MAX_KEEP_DAYS = 100_000;
 
-/**
- * The problem with an `events.keep` value, or null when it is one of `KEEP_VALUES` or `{ days }` with a whole number
- * of days from 1 to `MAX_KEEP_DAYS`, on a bus that delivers from one process. Shared by the build's check of `mesh.config.ts` and
- * `bind`'s check of its `events` option. A period is refused on a bus that declares `multi-process`: the keep recorded
- * for several processes is one of the two strings, and a process without the period would delete the rows it keeps.
- */
-export function keepProblem(keep: unknown, bus?: unknown): KeepProblem | null {
+/** True for an object `events.keep` value that is the per-event form (it has `default` or `events`), not a period. */
+function isPerEvent(keep: unknown): keep is Record<string, unknown> {
+  return typeof keep === "object" && keep !== null && !Array.isArray(keep) && !Object.hasOwn(keep, "days")
+    && (Object.hasOwn(keep, "default") || Object.hasOwn(keep, "events"));
+}
+
+/** The problem with one rule (`"until-delivered"`, `"all"` or `{ days }`) at `field` (`events.keep`, `events.keep.default`, ...), or null. */
+function ruleProblem(keep: unknown, field: string, forms: string, fix: string): KeepProblem | null {
   if ((KEEP_VALUES as readonly unknown[]).includes(keep)) return null;
   if (typeof keep === "object" && keep !== null && !Array.isArray(keep) && Object.hasOwn(keep, "days")) {
     const extra = Object.keys(keep).find((key) => key !== "days");
     if (extra !== undefined)
-      return { message: `\`events.keep\` { days } takes no other field, and has ${JSON.stringify(extra)}`, fix: "Remove the field, as in keep: { days: 30 }" };
+      return { message: `\`${field}\` { days } takes no other field, and has ${JSON.stringify(extra)}`, fix: "Remove the field, as in keep: { days: 30 }" };
     const days = (keep as { days: unknown }).days;
     if (!(typeof days === "number" && Number.isSafeInteger(days) && days >= 1 && days <= MAX_KEEP_DAYS))
-      return { message: `\`events.keep.days\` must be a whole number of days, from 1 to ${MAX_KEEP_DAYS}, and is ${describeValue(days)}`, fix: "Set days to a whole number, such as 30" };
-    const manifest = (bus as { manifest?: { adapter?: unknown; capabilities?: unknown } } | null | undefined)?.manifest;
-    if (Array.isArray(manifest?.capabilities) && manifest.capabilities.includes("multi-process"))
+      return { message: `\`${field}.days\` must be a whole number of days, from 1 to ${MAX_KEEP_DAYS}, and is ${describeValue(days)}`, fix: "Set days to a whole number, such as 30" };
+    return null;
+  }
+  return { message: `\`${field}\` must be ${forms}, and is ${describeValue(keep)}`, fix };
+}
+
+/**
+ * The problem with an `events.keep` value, or null when it is one of `KEEP_VALUES`, `{ days }` with a whole number
+ * of days from 1 to `MAX_KEEP_DAYS`, or `{ default, events }` (`PerEventKeep`) whose `default` and every value of
+ * `events` is one of those, on a bus that delivers from one process. Shared by the build's check of `mesh.config.ts`
+ * and `bind`'s check of its `events` option; the names of `events` are checked against the declared events by
+ * `keepEventsProblems`. A period or the per-event form is refused on a bus that declares `multi-process`: the keep
+ * recorded for several processes is one of the two strings, and a process without the rule would delete the rows it keeps.
+ */
+export function keepProblem(keep: unknown, bus?: unknown): KeepProblem | null {
+  if ((KEEP_VALUES as readonly unknown[]).includes(keep)) return null;
+  const manifest = (bus as { manifest?: { adapter?: unknown; capabilities?: unknown } } | null | undefined)?.manifest;
+  const multi = Array.isArray(manifest?.capabilities) && manifest.capabilities.includes("multi-process");
+  if (isPerEvent(keep)) {
+    const extra = Object.keys(keep).find((key) => key !== "default" && key !== "events");
+    if (extra !== undefined)
+      return { message: `\`events.keep\` { default, events } takes no other field, and has ${JSON.stringify(extra)}`, fix: "Remove the field, as in keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } }" };
+    for (const field of ["default", "events"] as const)
+      if (!Object.hasOwn(keep, field))
+        return { message: `\`events.keep\` { default, events } needs both fields, and has no ${field}`, fix: "Set both, as in keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } }" };
+    const single = ruleProblem(keep.default, "events.keep.default", "\"until-delivered\", \"all\" or { days }", "Set default to \"until-delivered\", \"all\" or { days: 30 }");
+    if (single) return single;
+    const events = keep.events;
+    const prototype = typeof events === "object" && events !== null && !Array.isArray(events) ? Object.getPrototypeOf(events) : undefined;
+    if (prototype !== Object.prototype && prototype !== null)
+      return { message: `\`events.keep.events\` must be an object from an event's FQN to its rule, such as { "audit.Viewed": "all" }, and is ${describeValue(events)}`, fix: "Set events: { \"<event FQN>\": \"all\" }" };
+    for (const [name, rule] of Object.entries(events as Record<string, unknown>)) {
+      if (name.trim() === "")
+        return { message: "`events.keep.events` has an empty key: each key names a declared event", fix: "Write the event's FQN as the key" };
+      const problem = ruleProblem(rule, `events.keep.events[${JSON.stringify(name)}]`, "\"until-delivered\", \"all\" or { days }", "Set the event's rule to \"until-delivered\", \"all\" or { days: 30 }");
+      if (problem) return problem;
+    }
+    if (multi)
       return {
-        message: `\`events.keep\` is { days: ${days} }, and the bus ${String(manifest.adapter)} delivers from several processes (multi-process), whose recorded keep is "until-delivered" or "all": a process without the period would delete the rows this one keeps`,
+        message: `\`events.keep\` sets a rule per event ({ default, events }), and the bus ${String(manifest!.adapter)} delivers from several processes (multi-process), whose recorded keep is "until-delivered" or "all": a process without the rule would delete the rows this one keeps`,
         fix: "Set keep: \"until-delivered\" or keep: \"all\", or deliver from one process",
       };
     return null;
   }
-  return {
-    message: `\`events.keep\` must be "until-delivered", "all" or { days }, and is ${describeValue(keep)}`,
-    fix: "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept) or keep: { days: 30 } (a delivered row is kept 30 days)",
-  };
+  const problem = ruleProblem(keep, "events.keep", "\"until-delivered\", \"all\", { days } or { default, events }",
+    "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept), keep: { days: 30 } (a delivered row is kept 30 days) or keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } } (a rule per event)");
+  if (problem) return problem;
+  if (multi)
+    return {
+      message: `\`events.keep\` is { days: ${(keep as { days: number }).days} }, and the bus ${String(manifest!.adapter)} delivers from several processes (multi-process), whose recorded keep is "until-delivered" or "all": a process without the period would delete the rows this one keeps`,
+      fix: "Set keep: \"until-delivered\" or keep: \"all\", or deliver from one process",
+    };
+  return null;
 }
 
-/** The whole days of a period rule, or null for `"until-delivered"`, `"all"` and an absent `keep`. */
-export function keepDays(keep: Keep | undefined): number | null {
-  return typeof keep === "object" && keep !== null ? keep.days : null;
+/** The whole days of a period rule, or null for `"until-delivered"`, `"all"`, the per-event form and an absent `keep`. */
+export function keepDays(keep: Keep | PerEventKeep | undefined): number | null {
+  return typeof keep === "object" && keep !== null && Object.hasOwn(keep, "days") ? (keep as { days: number }).days : null;
+}
+
+/** The per-event form of a `keep` already checked by `keepProblem`, or null for a single rule. */
+export function perEventKeep(keep: Keep | PerEventKeep | undefined): PerEventKeep | null {
+  return isPerEvent(keep) ? keep as unknown as PerEventKeep : null;
+}
+
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Every problem of the names of a per-event `events.keep` (`keep.events`) against the declared FQNs (rule RN4): each key
+ * is a former FQN of the checked rename map `renamed` (read as the event it now is) or picks one declared event, exactly
+ * or by its trailing segments; no two keys pick the same event. A single rule has no names, and no problem here.
+ */
+export function keepEventsProblems(keep: unknown, fqns: readonly string[], renamed: ReadonlyMap<string, string> = NO_RENAMES): KeepProblem[] {
+  if (!isPerEvent(keep) || typeof keep.events !== "object" || keep.events === null) return [];
+  const names = Object.keys(keep.events);
+  if (names.length === 0) return [];
+  if (fqns.length === 0)
+    return [{ message: `\`events.keep.events\` names ${JSON.stringify(names[0])}, and the project declares no event: each key names a declared event`, fix: "Remove the entry, or declare the event" }];
+  const problems: KeepProblem[] = [];
+  const sorted = [...fqns].sort(byCodeUnit);
+  const seen = new Map<string, string>();
+  for (const name of names) {
+    const former = renamed.get(name);
+    const found = former !== undefined ? { kind: "found" as const, fqn: former } : resolveEventName(name, fqns);
+    if (found.kind === "ambiguous") {
+      problems.push({ message: `\`events.keep.events\` names ${JSON.stringify(name)}, which is ambiguous: ${found.candidates.join(" or ")}`, fix: "Write more of the name" });
+      continue;
+    }
+    if (found.kind === "unknown") {
+      problems.push({ message: `\`events.keep.events\` names ${JSON.stringify(name)}, which is no declared event; the project declares ${sorted.join(", ")}`, fix: "Correct the name" });
+      continue;
+    }
+    const before = seen.get(found.fqn);
+    if (before !== undefined)
+      problems.push({ message: `\`events.keep.events\` names ${found.fqn} twice (as ${JSON.stringify(before)} and ${JSON.stringify(name)})`, fix: "Remove the second one" });
+    else seen.set(found.fqn, name);
+  }
+  return problems;
+}
+
+/**
+ * The rules of a per-event `keep` (checked by `keepProblem` and `keepEventsProblems`) by declared FQN; null for a
+ * single rule. A key that is a former FQN or a shortened name is stored under the event it picks.
+ */
+export function keepRulesOf(keep: Keep | PerEventKeep | undefined, fqns: readonly string[], renamed: ReadonlyMap<string, string> = NO_RENAMES): KeepRules | null {
+  const form = perEventKeep(keep);
+  if (form === null) return null;
+  const events = new Map<string, Keep>();
+  for (const [name, rule] of Object.entries(form.events)) {
+    const former = renamed.get(name);
+    const found = former !== undefined ? { kind: "found" as const, fqn: former } : resolveEventName(name, fqns);
+    if (found.kind === "found") events.set(found.fqn, rule);
+  }
+  return Object.freeze({ default: form.default, events });
 }
 
 function describeValue(value: unknown): string {
@@ -445,9 +561,11 @@ export function describe(value: unknown): string {
  * in order. A cursor behind the deleted-through position is `MESH_EVENTS_DELETED`, naming the oldest kept position, and
  * one above the highest position ever assigned is `MESH_CURSOR_AHEAD`; both are checked against the same statement that
  * read the rows, so no row is ever skipped silently. With `renamed`, the binding's checked rename map, a row stored under
- * a former FQN comes back under the name of the event it now is.
+ * a former FQN comes back under the name of the event it now is. With `check`, a reader that chose its own cursor (a
+ * history read) is also refused with `MESH_EVENTS_DELETED` when an event it takes has a hole above the cursor (rule KE3),
+ * checked against the hole record of the same statement.
  */
-export async function rows(layer: DataLayer, after: number, limit: number, renamed: ReadonlyMap<string, string> = NO_RENAMES): Promise<OutboxPage> {
+export async function rows(layer: DataLayer, after: number, limit: number, renamed: ReadonlyMap<string, string> = NO_RENAMES, check?: HoleCheck): Promise<OutboxPage> {
   if (typeof layer.readOutbox !== "function")
     throw new FrameworkError("The data layer has no readOutbox: a project that declares an event needs a data adapter with the outbox operations");
   if (!Number.isSafeInteger(after) || after < 0)
@@ -457,7 +575,32 @@ export async function rows(layer: DataLayer, after: number, limit: number, renam
   const page = await layer.readOutbox(after, limit);
   if (after < page.deletedThrough) throw new EventsDeletedError(after, page.deletedThrough + 1);
   if (after > page.highest) throw new CursorAheadError(after, page.highest);
+  if (check !== undefined) {
+    const hole = holeError(page.holes, after, renamed, check);
+    if (hole) throw hole;
+  }
   return renamedPage(page, renamed);
+}
+
+/** What a reader takes, for the hole check: true for each declared event name its filter takes. */
+export interface HoleCheck {
+  takes(name: string): boolean;
+}
+
+/**
+ * The `MESH_EVENTS_DELETED` for a read from `after` that takes an event with rows deleted above `after` while older
+ * rows are kept (a hole of the hole record `holes`, stored names read through `renamed`), naming the event whose hole
+ * is highest; null when the read takes no such event (rule KE3).
+ */
+export function holeError(holes: Readonly<Record<string, number>> | undefined, after: number, renamed: ReadonlyMap<string, string>, check: HoleCheck): EventsDeletedError | null {
+  let worst: { name: string; highest: number } | undefined;
+  for (const [stored, highest] of Object.entries(holes ?? {})) {
+    if (highest <= after) continue;
+    const name = storedToDeclared(renamed, stored);
+    if (!check.takes(name)) continue;
+    if (worst === undefined || highest > worst.highest || (highest === worst.highest && name < worst.name)) worst = { name, highest };
+  }
+  return worst === undefined ? null : new EventsDeletedError(after, worst.highest + 1, { eventName: worst.name });
 }
 
 /**
@@ -536,8 +679,9 @@ export async function readEventsFrom(
   }
   if (entity !== undefined && typeof entity !== "string") throw new FrameworkError("readEvents: entity must be an entity's FQN, such as \"billing.Invoice\"");
   if (key !== undefined && (typeof key !== "object" || key === null || Array.isArray(key))) throw new FrameworkError("readEvents: key must be a record's key, such as { id }");
-  const page = await rows(layer, after, limit, renamed);
   const wanted = names && new Set(names);
+  // A history read chooses its own cursor: an event it takes with rows deleted above it (a hole) is refused, never skipped.
+  const page = await rows(layer, after, limit, renamed, { takes: (name) => wanted === undefined || wanted.has(name) });
   const events: EventRecord[] = [];
   for (const row of page.rows) {
     const eventClass = classes.get(row.name);

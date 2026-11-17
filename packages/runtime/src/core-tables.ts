@@ -37,9 +37,9 @@ export interface CoreTable {
 /** One row per published event, never updated; `position` is its place in the outbox's order. */
 export const OUTBOX_TABLE = "mesh_outbox";
 /**
- * One row, `id` 1, written by the first delete or the first claim: the highest deleted position (`deleted_through`) and
+ * One row, `id` 1, written by the first delete or the first claim: the highest deleted position (`deleted_through`),
  * the deliverer claim (run id, generation, `renewed_at` by the database's clock, and host, pid and start time for
- * messages).
+ * messages), and the hole record of a per-event `events.keep` (`holes`, JSON, null when no hole was ever written).
  */
 export const OUTBOX_STATE_TABLE = "mesh_outbox_state";
 /** One row per handler: its kind, its low-water position, its sorted event list and the generation that registered it. */
@@ -85,6 +85,8 @@ export const CORE_TABLES: readonly CoreTable[] = Object.freeze([
     column("host", "string", { nullable: true }),
     column("pid", "integer", { nullable: true }),
     column("started_at", "timestamp", { nullable: true }),
+    // The hole record of a per-event events.keep: stored name -> highest deleted position above deleted_through; null is {}.
+    column("holes", "json", { nullable: true }),
   ]),
   table(HANDLER_PROGRESS_TABLE, [
     column("name", "string", { primaryKey: true }),

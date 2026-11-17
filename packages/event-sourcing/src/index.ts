@@ -87,6 +87,14 @@ function refusedRow(handler: KindHandler, row: HandlerProgressRow, registration:
 }
 
 /**
+ * How far rows were deleted, for a refusal: up to the deleted-through position, or, when that is 0 and a deletion still
+ * happened, rows above a kept one under a per-event `events.keep` (the hole record).
+ */
+function deletedExtent(registration: Registration): string {
+  return registration.deletedThrough > 0 ? `up to position ${registration.deletedThrough}` : "above a kept row, under a per-event events.keep";
+}
+
+/**
  * The `project` kind, as core receives it (ADR-0094). Its handlers run in the handler transaction with a quiet call chain
  * (core's), never skip an event, and start at position 0 (`from: "beginning"`) or at the highest position (`from: "now"`).
  * A progress row stores `"project"` while the history it handled is complete, and `"project:now"` otherwise.
@@ -109,7 +117,7 @@ export const PROJECT: HandlerKind = Object.freeze({
     if (!registration.deletedAny) return 0;
     const one = handler.events.length === 1;
     throw new HandlerHistoryError(handler.name, handler.events, "deleted",
-      `The project handler ${JSON.stringify(handler.name)} starts from the beginning of history, and outbox rows have been deleted on this database (up to position ${registration.deletedThrough}; keep is ${JSON.stringify(registration.keep)}), so its read model would be built from part of the history of ${listed(handler.events)}. Set from: "now" and backfill the read model from current rows. If ${one ? "this event is" : "these events are"} new and none has been published yet, from: "now" misses nothing`);
+      `The project handler ${JSON.stringify(handler.name)} starts from the beginning of history, and outbox rows have been deleted on this database (${deletedExtent(registration)}; keep is ${JSON.stringify(registration.keep)}), so its read model would be built from part of the history of ${listed(handler.events)}. Set from: "now" and backfill the read model from current rows. If ${one ? "this event is" : "these events are"} new and none has been published yet, from: "now" misses nothing`);
   },
   async adopt(handler: KindHandler, row: HandlerProgressRow, added: readonly string[], registration: Registration): Promise<void> {
     if (fromOf(handler) === "now") return;
@@ -118,7 +126,7 @@ export const PROJECT: HandlerKind = Object.freeze({
     const name = JSON.stringify(handler.name);
     if (registration.deletedAny)
       throw new HandlerHistoryError(handler.name, added, "deleted",
-        `The project handler ${name} now lists ${listed(added)}, and outbox rows have been deleted on this database (up to position ${registration.deletedThrough}), so it would miss part of ${added.length === 1 ? "that event's" : "those events'"} history. Set from: "now" (the handler keeps its position for the events it already lists) and backfill the read model for ${listed(added)} from current rows`);
+        `The project handler ${name} now lists ${listed(added)}, and outbox rows have been deleted on this database (${deletedExtent(registration)}), so it would miss part of ${added.length === 1 ? "that event's" : "those events'"} history. Set from: "now" (the handler keeps its position for the events it already lists) and backfill the read model for ${listed(added)} from current rows`);
     const kept = await registration.firstRow(registration.deletedThrough, row.position + 1, added);
     if (kept !== null)
       throw new HandlerHistoryError(handler.name, added, "kept-below",

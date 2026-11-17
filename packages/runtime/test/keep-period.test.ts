@@ -40,10 +40,10 @@ describe("keepProblem", () => {
     });
   });
 
-  test.each([["forever", "\"forever\""], [30, "30"], [{}, "{}"], [{ hours: 1 }, "{\"hours\":1}"], [[], "[]"], [null, "null"], [true, "true"]])("%p is refused with the three forms", (keep, shown) => {
+  test.each([["forever", "\"forever\""], [30, "30"], [{}, "{}"], [{ hours: 1 }, "{\"hours\":1}"], [[], "[]"], [null, "null"], [true, "true"]])("%p is refused with the four forms", (keep, shown) => {
     expect(keepProblem(keep)).toEqual({
-      message: `\`events.keep\` must be "until-delivered", "all" or { days }, and is ${shown}`,
-      fix: "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept) or keep: { days: 30 } (a delivered row is kept 30 days)",
+      message: `\`events.keep\` must be "until-delivered", "all", { days } or { default, events }, and is ${shown}`,
+      fix: "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept), keep: { days: 30 } (a delivered row is kept 30 days) or keep: { default: \"until-delivered\", events: { \"audit.Viewed\": \"all\" } } (a rule per event)",
     });
   });
 

@@ -11,7 +11,7 @@ import {
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
-  PerDatabase, causedIn, describe, keepDays, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
+  PerDatabase, causedIn, describe, holeError, keepDays, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule, type Keep, type KeepRules,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
 import { NO_RENAMES, storedNamesOf, storedToDeclared } from "./stored-names.ts";
@@ -152,10 +152,30 @@ export async function moveFailures(tx: DataOperations | DeliveryOperations, from
  * adapter lacks and `why` they are needed. Not part of `operations()`: an adapter without them delivers every project
  * whose `events.keep` is `"until-delivered"` or `"all"`.
  */
-export function retentionOperations(tx: DataOperations | DeliveryOperations, why: string): RetentionOperations {
-  if (typeof (tx as Partial<RetentionOperations>).firstOutboxRowSince !== "function")
-    throw new FrameworkError(`The data layer's transactions have no firstOutboxRowSince: ${why}, which needs a data adapter with the retention operations (RetentionOperations in @meshfw/runtime)`);
+export function retentionOperations(
+  tx: DataOperations | DeliveryOperations, why: string, needed: readonly (keyof RetentionOperations)[] = ["firstOutboxRowSince"],
+): RetentionOperations {
+  const missing = needed.find((name) => typeof (tx as Partial<RetentionOperations>)[name] !== "function");
+  if (missing !== undefined)
+    throw new FrameworkError(`The data layer's transactions have no ${missing}: ${why}, which needs a data adapter with the retention operations (RetentionOperations in @meshfw/runtime)`);
   return tx as unknown as RetentionOperations;
+}
+
+/** Every retention operation: what a per-event `events.keep` needs. */
+const PER_EVENT_OPERATIONS: readonly (keyof RetentionOperations)[] = ["firstOutboxRowSince", "deleteOutboxRows", "writeHoles"];
+
+/** The hole record with `found` (each name's highest newly deleted position) merged in, the larger per name, less every entry at or below `through`. */
+function nextHoles(holes: Readonly<Record<string, number>>, found: Readonly<Record<string, number>>, through: number): Record<string, number> {
+  const next: Record<string, number> = {};
+  for (const [name, highest] of [...Object.entries(holes), ...Object.entries(found)])
+    if (highest > through) next[name] = Math.max(next[name] ?? 0, highest);
+  return next;
+}
+
+/** True when two hole records hold the same entries. */
+function sameHoles(a: Readonly<Record<string, number>>, b: Readonly<Record<string, number>>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => b[key] === a[key]);
 }
 
 /** One day, in milliseconds: the unit of a keep period (`{ days }`). */
@@ -276,14 +296,15 @@ export interface HandlerStart {
  * with the former FQNs the rename map (`renamed`) reads as it.
  */
 export function registrationOf(
-  ops: DeliveryOperations, state: Pick<DeliveryState, "deletedThrough" | "highest">, keep: "until-delivered" | "all", declared: readonly string[],
+  ops: DeliveryOperations, state: Pick<DeliveryState, "deletedThrough" | "highest" | "holes">, keep: "until-delivered" | "all", declared: readonly string[],
   renamed: ReadonlyMap<string, string> = NO_RENAMES,
 ): Registration {
   // `firstOutboxRow` is SQL over stored names: a former FQN the rename map reads as a listed or declared event counts as it.
   const stored = storedNamesOf(renamed, declared);
   return Object.freeze({
     deletedThrough: state.deletedThrough,
-    deletedAny: state.deletedThrough > 0,
+    // A per-event keep can delete rows above a deleted-through position of 0: the hole record says so (rule KE2).
+    deletedAny: state.deletedThrough > 0 || Object.keys(state.holes ?? {}).length > 0,
     highest: state.highest,
     keep,
     firstRow: (after: number, before: number, names: readonly string[]) => ops.firstOutboxRow(after, before, storedNamesOf(renamed, names), stored),
@@ -422,6 +443,11 @@ export class Deliverer {
   readonly keep: "until-delivered" | "all";
   /** The whole days of `events.keep` when it is a period, else null: the deletion pass keeps passed rows younger than that. */
   readonly days: number | null;
+  /**
+   * A per-event `events.keep` by declared FQN (resolved at bind), else null: the deletion pass then deletes each row by
+   * its own event's rule, leaving holes it records per stored name (rule KE2).
+   */
+  readonly rules: KeepRules | null;
   readonly instance: EventBusInstance;
   readonly core: BusCore;
   readonly strategy: ClaimStrategy;
@@ -444,9 +470,14 @@ export class Deliverer {
     this.db = databases.get(layer);
     this.bus = checkedBus(config.bus);
     this.days = keepDays(config.keep);
-    this.keep = typeof config.keep === "string" ? config.keep : "until-delivered";
     this.declared = [...events.keys()].sort();
     this.renamed = bindingParts(binding).renamed;
+    this.rules = bindingParts(binding).keepRules;
+    // A rule other than the two strings is "until-delivered" to the bus and the gates, since a passed row may be gone; the
+    // per-event form is "all" only when every one of its rules is.
+    this.keep = typeof config.keep === "string" ? config.keep
+      : this.rules !== null && [this.rules.default, ...this.rules.events.values()].every((rule) => rule === "all") ? "all"
+      : "until-delivered";
     this.strategy = isMultiProcess(this.bus) ? new MultiClaim(this) : new SingleClaim(this);
     const self = this;
     this.core = Object.freeze({
@@ -509,6 +540,13 @@ export class Deliverer {
       if (skipping) await this.layer.transaction(async (tx) => { failureOperations(tx, `the handler ${JSON.stringify(skipping.registered.name)} has onFailure "skip"`); });
       // A keep period needs its retention operation: an adapter without it fails the start, not the first deletion pass.
       if (this.days !== null) await this.layer.transaction(async (tx) => { retentionOperations(tx, this.#periodWhy()); });
+      // A per-event keep needs every retention operation and the hole record's column: checked at the start too.
+      if (this.rules !== null)
+        await this.layer.transaction(async (tx) => {
+          retentionOperations(tx, "events.keep sets a rule per event ({ default, events })", PER_EVENT_OPERATIONS);
+          if ((await operations(tx).readDeliveryState()).holes === undefined)
+            throw new FrameworkError("A per-event events.keep needs mesh_outbox_state.holes, which this database does not have: run mesh db push");
+        });
       this.#readHead = await this.strategy.register(declared);
       this.#handlers = new Map(declared.map((entry) => [entry.registered.name, entry]));
       this.holding = true;
@@ -807,7 +845,22 @@ export class Deliverer {
             const young = await retentionOperations(tx, this.#periodWhy()).firstOutboxRowSince(state.deletedThrough, through, since);
             if (young !== null) { through = young - 1; capped = false; }
           }
-          if (through > state.deletedThrough) deleted = await tx.deleteOutboxThrough!(through);
+          let found: Readonly<Record<string, number>> = {};
+          if (this.rules !== null && through > state.deletedThrough) {
+            const perEvent = await this.#perEvent(tx, state, through, bound);
+            through = perEvent.through;
+            found = perEvent.found;
+            deleted += perEvent.deleted;
+            if (perEvent.stopped) capped = perEvent.capped;
+          }
+          if (through > state.deletedThrough) deleted += await tx.deleteOutboxThrough!(through);
+          // The hole record, under every rule: holes the prefix has now passed are dropped, so it holds only holes above it
+          // and is {} when none exists (rule KE2). A record exists only on an adapter with writeHoles.
+          const holes = state.holes ?? {};
+          if (Object.keys(holes).length > 0 || Object.keys(found).length > 0) {
+            const next = nextHoles(holes, found, Math.max(through, state.deletedThrough));
+            if (!sameHoles(holes, next)) await retentionOperations(tx, "a per-event events.keep left holes", ["writeHoles"]).writeHoles(next);
+          }
         }
         return { state, handlers: handlerRows, subscriptions: subscriptionRows, deleted, capped, end, full: page !== null && page.rows.length === timing.batch };
       });
@@ -817,6 +870,61 @@ export class Deliverer {
       if (cursor === null && !outcome.capped) break;
     }
     if (last) this.#reportOrphans(last.state, last.handlers, last.subscriptions);
+  }
+
+  /**
+   * A deletion batch's per-event step (design section 5.4), in its transaction: the prefix end `through` lowered to just
+   * below the first row above the deleted-through position that its own rule keeps (an undeclared row counts as kept);
+   * then, when it was lowered, each deleting rule's rows above it and at or below `bound` deleted, lowest first, within a
+   * budget of one batch shared by the rules (`capped` when the budget ran out). Resolves with the new `through`, the rows
+   * deleted as holes, and each stored name's highest such position.
+   */
+  async #perEvent(tx: DataOperations, state: DeliveryState, through: number, bound: number): Promise<{
+    readonly through: number; readonly deleted: number; readonly found: Readonly<Record<string, number>>; readonly stopped: boolean; readonly capped: boolean;
+  }> {
+    const rules = this.rules!;
+    const ops = retentionOperations(tx, "events.keep sets a rule per event ({ default, events })", PER_EVENT_OPERATIONS);
+    // Each rule's stored names: a declared event's own rule or the default, with every former FQN read as it.
+    const groups = new Map<string, { rule: Keep; names: string[] }>();
+    for (const fqn of this.declared) {
+      const rule = rules.events.get(fqn) ?? rules.default;
+      const key = JSON.stringify(rule);
+      const group = groups.get(key) ?? { rule, names: [] };
+      group.names.push(...this.storedNames([fqn]));
+      groups.set(key, group);
+    }
+    const sinceOf = (rule: Keep) => (typeof rule === "object" ? new Date(state.now.getTime() - rule.days * DAY_MS) : null);
+    const all = this.storedNames(this.declared);
+    // The first row a rule keeps: a row of an "all" rule, a row too young for its period, or an undeclared row.
+    const kept: number[] = [];
+    const forever = [...groups.values()].filter((group) => group.rule === "all").flatMap((group) => group.names);
+    const first = await operations(tx).firstOutboxRow(state.deletedThrough, through + 1, forever, all);
+    if (first !== null) kept.push(first);
+    for (const group of groups.values()) {
+      const since = sinceOf(group.rule);
+      if (since === null) continue;
+      const young = await ops.firstOutboxRowSince(state.deletedThrough, through, since, group.names);
+      if (young !== null) kept.push(young);
+    }
+    if (kept.length === 0) return { through, deleted: 0, found: {}, stopped: false, capped: false };
+    const end = Math.min(...kept) - 1;
+    // Above the kept row: each deleting rule's own rows, up to the bound, within one batch's budget.
+    let budget = timing.batch;
+    let deleted = 0;
+    const found: Record<string, number> = {};
+    for (const group of groups.values()) {
+      if (group.rule === "all" || budget === 0) continue;
+      const result = await ops.deleteOutboxRows(end, bound, group.names, sinceOf(group.rule), budget);
+      budget -= result.deleted;
+      deleted += result.deleted;
+      for (const [name, highest] of Object.entries(result.highest)) found[name] = Math.max(found[name] ?? 0, highest);
+    }
+    return { through: end, deleted, found, stopped: true, capped: budget === 0 };
+  }
+
+  /** What a row at `position` holds, for the reports: under a per-event keep, holes make the count an upper bound. */
+  #held(state: DeliveryState, position: number): string {
+    return `${this.rules !== null ? "up to " : ""}${held(state, position)}`;
   }
 
   /** Why a period needs the retention operations, for their `FrameworkError`. */
@@ -835,7 +943,7 @@ export class Deliverer {
     };
     for (const row of handlers) {
       if (!this.strategy.isOrphan(row, state) || !due(`handler:${row.name}`)) continue;
-      console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is ${this.strategy instanceof MultiClaim ? "registered by no live process" : "not registered by this deliverer"}, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
+      console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is ${this.strategy instanceof MultiClaim ? "registered by no live process" : "not registered by this deliverer"}, and its progress row, at position ${row.position}, holds ${this.#held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
     }
     // Delivery from several processes: a handler held by none for the lapse time, and a recorded keep "all" (rules K6, K7).
     if (this.strategy instanceof MultiClaim)
@@ -845,9 +953,9 @@ export class Deliverer {
       const open = this.db.subscriptions.get(row.name);
       if (open) {
         if (!open.lagging(now) || !due(`subscription:${row.name}`)) continue;
-        console.warn(`Mesh: the subscription ${JSON.stringify(row.name)} has rows handed to its callback above its acknowledged position, ${row.position}, and has not acknowledged for more than an hour; it holds ${held(state, row.position)} outbox rows. Call ack(position) once a row is processed`);
+        console.warn(`Mesh: the subscription ${JSON.stringify(row.name)} has rows handed to its callback above its acknowledged position, ${row.position}, and has not acknowledged for more than an hour; it holds ${this.#held(state, row.position)} outbox rows. Call ack(position) once a row is processed`);
       } else if (this.strategy.isOrphan(row, state) && due(`subscription:${row.name}`)) {
-        console.warn(`Mesh: the subscription ${JSON.stringify(row.name)} has not been open for more than an hour, and its row, acknowledged at position ${row.position}, holds ${held(state, row.position)} outbox rows. If its client is not coming back, drop it with \`mesh events forget ${row.name}\` or forgetSubscription(${JSON.stringify(row.name)})`);
+        console.warn(`Mesh: the subscription ${JSON.stringify(row.name)} has not been open for more than an hour, and its row, acknowledged at position ${row.position}, holds ${this.#held(state, row.position)} outbox rows. If its client is not coming back, drop it with \`mesh events forget ${row.name}\` or forgetSubscription(${JSON.stringify(row.name)})`);
       }
     }
   }
@@ -1351,6 +1459,11 @@ class OpenSubscription implements LiveSubscription {
   }
 }
 
+/** The hole check's view of a subscription filter: every event when it names none, else the events it names. */
+export function filterTakes(filter: SubscriptionFilter): { takes(name: string): boolean } {
+  return { takes: (name) => filter.names === undefined || filter.names.includes(name) };
+}
+
 /** `subscribe` of `#mesh` (spec, "`subscribe`"): open (or reopen) the subscription `query.name` on `binding`'s database. */
 export async function subscribe(binding: Binding, query: SubscribeQuery, callback: (event: EventRecord) => unknown): Promise<Subscription> {
   const { layer, events, config, renamed } = bindingParts(binding);
@@ -1397,6 +1510,10 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
         if (start < state.deletedThrough) throw new EventsDeletedError(start, state.deletedThrough + 1);
         if (start > state.highest) throw new CursorAheadError(start, state.highest);
       }
+      // A hole above the cursor of an event the filter takes would be skipped (rule KE3): refused before the row is
+      // written. A reopen's stored position is never below one (a hole is made only at or below every reader's row).
+      const hole = holeError(state.holes, start, renamed, filterTakes(filter));
+      if (hole) throw hole;
       const generation = db.deliverer?.holding ? db.deliverer.generation : state.generation;
       await ops.writeSubscriptionProgress({ name, position: start, filter, open: true, generation });
       return start;

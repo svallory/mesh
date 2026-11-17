@@ -281,23 +281,31 @@ export class DatabaseBusyError extends MeshError {
 /**
  * A read of the outbox from behind its deleted-through position (`MESH_EVENTS_DELETED`): the rows between the cursor and
  * the oldest kept one were deleted once delivered, so reading on would skip them silently. The remedy is to reload current
- * state and read from the newest position; an application that reads history sets `events.keep` to `"all"`.
+ * state and read from the newest position; an application that reads history sets `events.keep` to `"all"`. Under a
+ * per-event `events.keep`, also a read that takes an event with rows deleted above the cursor (a hole): `eventName`
+ * names it, and `oldestKept` is one above its highest deleted position.
  */
 export class EventsDeletedError extends MeshError {
   readonly code = "MESH_EVENTS_DELETED";
   /** The cursor the read was given. */
   readonly after: number;
-  /** The oldest position still kept: one above the deleted-through position. */
+  /** The oldest position still kept: one above the deleted-through position, or above the event's highest deleted row. */
   readonly oldestKept: number;
+  /** The event whose rows above the cursor were deleted while older rows were kept (a per-event `events.keep`); else undefined. */
+  declare readonly eventName?: string;
 
-  constructor(after: number, oldestKept: number, options?: MeshErrorOptions) {
+  constructor(after: number, oldestKept: number, options?: MeshErrorOptions & { readonly eventName?: string }) {
     super(
-      `Cannot read the outbox after position ${after}: the rows up to position ${oldestKept - 1} were deleted, so the oldest kept position is ${oldestKept}. `
-        + "Reload current state and read from the newest position, or set events.keep to \"all\" to keep every row",
+      options?.eventName === undefined
+        ? `Cannot read the outbox after position ${after}: the rows up to position ${oldestKept - 1} were deleted, so the oldest kept position is ${oldestKept}. `
+          + "Reload current state and read from the newest position, or set events.keep to \"all\" to keep every row"
+        : `The read from position ${after} takes the event ${options.eventName}, whose rows above it were deleted through position ${oldestKept - 1} (events.keep sets that event apart). `
+          + `Read with names that leave it out, or from position ${oldestKept - 1}`,
       options,
     );
     this.after = after;
     this.oldestKept = oldestKept;
+    if (options?.eventName !== undefined) this.eventName = options.eventName;
   }
 }
 

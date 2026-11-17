@@ -13,7 +13,7 @@ import { DECLARATION, type Declaration } from "./declarations.ts";
 import { dispatching } from "./dispatch.ts";
 import type { HandlerKind } from "./bus.ts";
 import { NO_RENAMES, renamedMap } from "./stored-names.ts";
-import { causedIn, keepProblem, loadEvents, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { causedIn, keepEventsProblems, keepProblem, keepRulesOf, loadEvents, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type KeepRules, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
 import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
 /**
@@ -169,6 +169,8 @@ interface BindingState {
   readonly events: Map<string, EventClass>;
   /** The checked rename map of `events.renamed` (former FQN to declared FQN), read once at bind; empty without one. */
   renamed: ReadonlyMap<string, string>;
+  /** A per-event `events.keep` resolved against the domain's events at bind (rules by declared FQN); null for a single rule. */
+  keepRules: KeepRules | null;
   /** The domain's service values by FQN: a service has no data, so nothing of it is bound to the layer. */
   readonly services: Map<string, object>;
   /** Calls on this binding that have not settled; `settled` waits for them. */
@@ -567,7 +569,7 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
   const entities: BindingState["entities"] = new Map();
   const events: BindingState["events"] = new Map();
   const services: BindingState["services"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, services, inFlight: 0, idle: [], released: false, frame };
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, keepRules: null, services, inFlight: 0, idle: [], released: false, frame };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -622,6 +624,12 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
     const checked = renamedMap(renamed, [...events.keys()]);
     if ("problem" in checked) throw new EventsConfigError(checked.problem);
     state.renamed = checked.map;
+  }
+  // A per-event keep's names are checked against the domain's events, after the rename map, since a key may be a former FQN.
+  if (keep !== undefined && events.size > 0) {
+    const [problem] = keepEventsProblems(keep, [...events.keys()], state.renamed);
+    if (problem) throw new EventsConfigError(problem.message);
+    state.keepRules = keepRulesOf(keep, [...events.keys()], state.renamed);
   }
   for (const { value } of entities.values()) frames.set(value, frame);
   for (const value of services.values()) frames.set(value, frame);
@@ -939,12 +947,14 @@ export interface BindingParts {
   readonly frame: AsyncFrame;
   /** The checked rename map (`events.renamed`): a stored former FQN to the declared event it now is. */
   readonly renamed: ReadonlyMap<string, string>;
+  /** A per-event `events.keep` by declared FQN; null for a single rule. */
+  readonly keepRules: KeepRules | null;
 }
 
 /** The parts of `binding` the deliverer reads (`deliverer.ts`); a `FrameworkError` for a value `bind()` did not make. */
 export function bindingParts(binding: Binding): BindingParts {
   const state = stateOf(binding);
-  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame, renamed: state.renamed };
+  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame, renamed: state.renamed, keepRules: state.keepRules };
 }
 
 /**

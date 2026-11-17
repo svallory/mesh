@@ -47,23 +47,48 @@ export function appendEvent(client: Database, row: OutboxAppend): number {
   return stored.position;
 }
 
+/** The connections whose `mesh_outbox_state` was seen to have the `holes` column: only a positive answer is kept. */
+const withHoles = new WeakSet<Database>();
+
+/**
+ * True when `mesh_outbox_state` has the `holes` column (the hole record of a per-event `events.keep`). A database not
+ * pushed since the column was added has none, and then no hole can have been written, so every read reports none.
+ * Asked once per connection once true; while false it is asked again, so a `mesh db push` that adds it is seen.
+ */
+export function hasHolesColumn(client: Database): boolean {
+  if (withHoles.has(client)) return true;
+  const columns = client.query(`PRAGMA table_info(${OUTBOX_STATE_TABLE})`).all() as { name: string }[];
+  if (!columns.some((column) => column.name === "holes")) return false;
+  withHoles.add(client);
+  return true;
+}
+
+/** The hole record as stored (JSON text, or null for none), as `OutboxPage.holes` and `DeliveryState.holes` carry it. */
+export function holesOf(stored: string | null | undefined): Readonly<Record<string, number>> {
+  if (stored === null || stored === undefined) return Object.freeze({});
+  return Object.freeze(JSON.parse(stored) as Record<string, number>);
+}
+
 /**
  * The rows after `after` and both positions in one statement. Outside `BEGIN` a statement is its own transaction on
  * SQLite, so the rows, the deleted-through position and the highest position describe one state of the database: a
  * delete can never commit between them. `sqlite_sequence` keeps the highest position `AUTOINCREMENT` ever gave. One
  * writer at a time means every position ever given is final once a read outside it sees it, so `settled` is `highest`.
+ * The hole record comes from the same statement, when the database has its column.
  */
 export function readOutbox(client: Database, after: number, limit: number): OutboxPage {
   checkPosition(after, "readOutbox's after", 0);
   checkPosition(limit, "readOutbox's limit", 1);
+  const holes = withTables(() => hasHolesColumn(client));
   const result = withTables(() => client.query(
-    `SELECT s.deleted_through AS s_deleted_through, s.highest AS s_highest, o.* FROM (
+    `SELECT s.deleted_through AS s_deleted_through, s.highest AS s_highest${holes ? ", s.holes AS s_holes" : ""}, o.* FROM (
        SELECT COALESCE((SELECT deleted_through FROM ${OUTBOX_STATE_TABLE} WHERE id = 1), 0) AS deleted_through,
-              COALESCE((SELECT seq FROM sqlite_sequence WHERE name = '${OUTBOX_TABLE}'), 0) AS highest
+              COALESCE((SELECT seq FROM sqlite_sequence WHERE name = '${OUTBOX_TABLE}'), 0) AS highest${holes ? `,
+              (SELECT holes FROM ${OUTBOX_STATE_TABLE} WHERE id = 1) AS holes` : ""}
      ) AS s
      LEFT JOIN (SELECT * FROM ${OUTBOX_TABLE} WHERE position > ? ORDER BY position LIMIT ?) AS o ON 1
      ORDER BY o.position`,
-  ).all(after, limit) as (StoredRow & { s_deleted_through: number; s_highest: number })[]);
+  ).all(after, limit) as (StoredRow & { s_deleted_through: number; s_highest: number; s_holes?: string | null })[]);
   const first = result[0]!;
   const rows: OutboxRow[] = [];
   for (const stored of result) {
@@ -81,7 +106,10 @@ export function readOutbox(client: Database, after: number, limit: number): Outb
       payload: JSON.parse(stored.payload),
     }));
   }
-  return Object.freeze({ rows: Object.freeze(rows), deletedThrough: first.s_deleted_through, highest: first.s_highest, settled: first.s_highest });
+  return Object.freeze({
+    rows: Object.freeze(rows), deletedThrough: first.s_deleted_through, highest: first.s_highest, settled: first.s_highest,
+    ...(holes ? { holes: holesOf(first.s_holes) } : {}),
+  });
 }
 
 /**

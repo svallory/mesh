@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
-import { BUS_CAPABILITIES, renamedProblems, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
+import { BUS_CAPABILITIES, keepEventsProblems, renamedMap, renamedProblems, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
 import { sectionHandlers } from "./model/handlers.ts";
 import { rollupOperation, rollupRoute } from "./model/rollup-operation.ts";
@@ -77,19 +77,28 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
  * capability `events.requires` lists is declared by the bus (a bus capability) or by the data adapter (a data
  * capability), else `MESH_CAPABILITY` naming the capability and the adapter; and `events.renamed` maps former FQNs that no
  * event declares to declared events (`renamedProblems`), each problem a `MESH_EVENTS_CONFIG` at the `renamed` key
- * (`positions.renamed`, else `at`); and a handler of a `handlers` section needs a bus that declares `ordered-delivery`, else
+ * (`positions.renamed`, else `at`); and a per-event `events.keep` names declared events (`keepEventsProblems`, a former FQN
+ * of a valid `renamed` read as its event), each problem a `MESH_EVENTS_CONFIG` at the `keep` key; and a handler of a `handlers` section needs a bus that declares `ordered-delivery`, else
  * `MESH_CAPABILITY` at its line. `checkEvents` in `config.ts` has already refused a bus that is not one, a name that
  * is no capability and a `renamed` of the wrong shape.
  */
 export function eventsDiagnostics(
   document: ModelDocument, config: { readonly data: DataAdapter; readonly events?: EventsConfig }, at: Diagnostic["position"],
-  positions?: { readonly renamed?: Diagnostic["position"] },
+  positions?: { readonly renamed?: Diagnostic["position"]; readonly keep?: Diagnostic["position"] },
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  const fqns = (document.events ?? []).map((event) => event.fqn);
   const renamed = config.events?.renamed;
-  if (renamed !== undefined)
-    for (const problem of renamedProblems(renamed, (document.events ?? []).map((event) => event.fqn)))
-      diagnostics.push(error("MESH_EVENTS_CONFIG", problem.message, positions?.renamed ?? at, problem.fix));
+  const renamedChecks = renamed === undefined ? [] : renamedProblems(renamed, fqns);
+  for (const problem of renamedChecks)
+    diagnostics.push(error("MESH_EVENTS_CONFIG", problem.message, positions?.renamed ?? at, problem.fix));
+  // A per-event keep may name an event by a former FQN, so its names are checked once the rename map is valid.
+  if (renamedChecks.length === 0) {
+    const checked = renamed === undefined ? undefined : renamedMap(renamed, fqns);
+    const map = checked !== undefined && "map" in checked ? checked.map : undefined;
+    for (const problem of keepEventsProblems(config.events?.keep, fqns, map))
+      diagnostics.push(error("MESH_EVENTS_CONFIG", problem.message, positions?.keep ?? at, problem.fix));
+  }
   const bus = config.events?.bus;
   const declared = document.events ?? [];
   if (declared.length > 0 && bus === undefined) {
