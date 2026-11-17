@@ -37,13 +37,15 @@ jobs:
         group: [compiler, cli, data, hyper, rest]
     # The data group runs data-postgres, whose tests need a Postgres server: a service
     # container that lives for the job. An empty image starts no service, so the other
-    # groups pay nothing for it. The password is a throwaway for that one container.
+    # groups pay nothing for it. The password is a throwaway for that one container; it
+    # differs from the user and database names, or the test that a connection error never
+    # prints the password would find it in the user name.
     services:
       postgres:
         image: ${{ matrix.group == 'data' && 'postgres:16.16' || '' }}
         env:
           POSTGRES_USER: mesh
-          POSTGRES_PASSWORD: mesh
+          POSTGRES_PASSWORD: ci-throwaway-pw
           POSTGRES_DB: mesh
         ports: ["5432:5432"]
         options: >-
@@ -51,7 +53,7 @@ jobs:
     env:
       # data-postgres's tests read it; with CI set and the variable empty they fail
       # instead of skipping, so only the group that runs them sets it.
-      MESH_TEST_POSTGRES_URL: ${{ matrix.group == 'data' && 'postgres://mesh:mesh@localhost:5432/mesh' || '' }}
+      MESH_TEST_POSTGRES_URL: ${{ matrix.group == 'data' && 'postgres://mesh:ci-throwaway-pw@localhost:5432/mesh' || '' }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
