@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { sql, type SQL } from "drizzle-orm";
 import { DatabaseBusyError, FrameworkError, NotFoundError, PolicyGuardDenial, defineCapabilities, type CapabilityManifest, type Row } from "@meshfw/runtime";
-import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { SQLiteSyncDialect, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, keyCondition, type DrizzleCommands, type SqlDialect } from "../src/index.ts";
 
 const table = sqliteTable("rows", { id: integer("id"), tenant: text("tenant"), title: text("title") });
@@ -363,9 +363,9 @@ describe("deleteByKeyGuarded (policy-guards, ADR-0046 B)", () => {
   const keyed = sqliteTable("keyed", { id: integer("id").primaryKey(), title: text("title") });
   const raising: SqlDialect = { ...testDialect, raise: (marker) => sql`(json_extract('{}', ${marker}) is null)`, raised: (error) => (error as { driver?: string }).driver };
   const guard = { checks: [false], policies: [{ forbid: [], authorize: [0] }] };
-  function guarded(dialect: SqlDialect, manifest: CapabilityManifest | undefined, remove: (statement: SQL) => Row[]) {
-    const commands: DrizzleCommands<typeof keyed> = {
-      dialect, table: () => keyed, insert: (_t, v) => v, select: () => [], aggregate: () => null, update: () => [],
+  function guarded(dialect: SqlDialect, manifest: CapabilityManifest | undefined, remove: (statement: SQL) => Row[], on: SQLiteTable = keyed) {
+    const commands: DrizzleCommands<SQLiteTable> = {
+      dialect, table: () => on, insert: (_t, v) => v, select: () => [], aggregate: () => null, update: () => [],
       delete: (_table, condition) => remove(condition),
     };
     return drizzleOperations(commands, () => {}, manifest);
@@ -402,5 +402,48 @@ describe("deleteByKeyGuarded (policy-guards, ADR-0046 B)", () => {
     const echoed = await operations((n) => new Error(`params: mesh:forbidden:${n}:t:`)).deleteByKeyGuarded!(keyed, { id: 3 }, guard).catch((e: unknown) => e);
     expect(echoed).toBeInstanceOf(FrameworkError);
     expect((echoed as Error).message).toBe("Database operation failed");
+  });
+
+  test("a malformed guard is refused with its own message before any delete runs", async () => {
+    let deletes = 0;
+    const operations = guarded(raising, declaring, () => { deletes++; return []; });
+    const refusal = (bad: unknown) => operations.deleteByKeyGuarded!(keyed, { id: 3 }, bad as never).catch((e: unknown) => e);
+    const pointsAt = (index: string, length: number) => `A policy guard's policy points at check ${index}, and the guard has ${length}`;
+    const shape = "A policy guard must be { checks, policies } with two lists";
+    const policyShape = "Each policy of a policy guard must be { forbid, authorize } with forbid a list and authorize a list or null";
+    const cases: [unknown, string][] = [
+      [{ checks: [true], policies: [{ forbid: [1], authorize: null }] }, pointsAt("1", 1)],
+      [{ checks: [true], policies: [{ forbid: [], authorize: [-1] }] }, pointsAt("-1", 1)],
+      [{ checks: [true, false], policies: [{ forbid: [0.5], authorize: null }] }, pointsAt("0.5", 2)],
+      [{ checks: [true], policies: [{ forbid: ["0"], authorize: null }] }, pointsAt("0", 1)],
+      [{ checks: [], policies: [{ forbid: [], authorize: [0] }] }, pointsAt("0", 0)],
+      [{ checks: "x", policies: [] }, shape],
+      [{ checks: [], policies: {} }, shape],
+      [null, shape],
+      [{ checks: [], policies: [{ forbid: "x", authorize: null }] }, policyShape],
+      [{ checks: [true], policies: [{ forbid: [], authorize: 0 }] }, policyShape],
+      [{ checks: [], policies: [null] }, policyShape],
+    ];
+    for (const [bad, message] of cases) {
+      const error = await refusal(bad);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toBe(message);
+      expect((error as Error).cause).toBeUndefined();
+    }
+    expect(deletes).toBe(0);
+  });
+
+  test("a table without a single-column primary key is refused before any delete runs", async () => {
+    const composite = sqliteTable("composite", { a: integer("a"), b: integer("b"), title: text("title") }, (t) => [primaryKey({ columns: [t.a, t.b] })]);
+    const twoMarked = sqliteTable("two_marked", { a: integer("a").primaryKey(), b: integer("b").primaryKey() });
+    const unkeyed = sqliteTable("unkeyed", { a: integer("a"), title: text("title") });
+    const message = "A guarded delete needs a table with a single-column primary key";
+    for (const [on, key] of [[composite, { a: 1, b: 2 }], [twoMarked, { a: 1, b: 2 }], [unkeyed, { a: 1 }]] as const) {
+      let deletes = 0;
+      const error = await guarded(raising, declaring, () => { deletes++; return []; }, on).deleteByKeyGuarded!(on, key, guard).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toBe(message);
+      expect(deletes).toBe(0);
+    }
   });
 });
