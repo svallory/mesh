@@ -117,7 +117,8 @@ test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS",
 // Repository scans read `dist/dialect.js` while tests run (the mx rule covers what the CLI ships), so the build never
 // deletes `dist/` and never leaves a half-written file there: it builds into `.scratch-build-XXXXXX/` beside it,
 // finishes the file there and renames it onto `dist/dialect.js`.
-test("the build replaces dist/dialect.js by a rename: dist/ is never removed, the bytes repeat, no scratch dir is left", async () => {
+// A failing build (here the bundle mentions MX's package) leaves the previous file in place and removes its scratch dir.
+test("the build replaces dist/dialect.js by a rename: dist/ is never removed, the bytes repeat, no scratch dir is left, a failure keeps the old file", async () => {
   const copy = join(work, "atomic-cli");
   mkdirSync(join(copy, "scripts"), { recursive: true });
   mkdirSync(join(copy, "src"));
@@ -137,6 +138,12 @@ test("the build replaces dist/dialect.js by a rename: dist/ is never removed, th
   expect(build()).toBe(first);
   expect(first).toBe(readFileSync(join(cli, "dist/dialect.js"), "utf8"));
   expect(readdirSync(join(copy, "dist")).sort()).toEqual(["dialect.js", "probe"]);
+  expect(readdirSync(copy).filter((name) => name.startsWith(".scratch-"))).toEqual([]);
+  writeFileSync(join(copy, "src/dialect.ts"), 'export const name = "mxlang";\n');
+  const failed = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
+  expect(failed.exitCode).toBe(1);
+  expect(failed.stderr.toString()).toContain("still mentions MX's package");
+  expect(readFileSync(join(copy, "dist/dialect.js"), "utf8")).toBe(first);
   expect(readdirSync(copy).filter((name) => name.startsWith(".scratch-"))).toEqual([]);
 }, 30_000);
 
