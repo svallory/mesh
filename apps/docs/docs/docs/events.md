@@ -602,11 +602,11 @@ declare module "@meshfw/runtime" {
   }
 }
 
-export const metadata: MetadataFunction = ({ context }) => {
+export const metadata: MetadataFunction = () => {
   const trace: Record<string, string> = {};
   // The publishing call's active span, as the propagator writes it (W3C: traceparent and tracestate).
   propagation.inject(otel.active(), trace);
-  return { actor: context.actor?.id ?? null, trace };
+  return { trace };
 };
 
 /** Runs a handler's body in the trace that published its event. */
