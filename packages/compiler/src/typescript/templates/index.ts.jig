@@ -41,6 +41,11 @@ export type { ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
 export { subscribe } from "./binding";
 export type { SubscribeQuery, Subscription } from "@meshfw/runtime";
 @end
+@if(events.multiProcess)
+/** `adoptHandler(name, { drop })`, a handler's registered union shrunk: the bus declares multi-process. */
+export { adoptHandler } from "./binding";
+export type { Adopted } from "@meshfw/runtime";
+@end
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   @each(entry in events.table)

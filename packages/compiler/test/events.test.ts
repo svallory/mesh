@@ -551,6 +551,44 @@ entity :Invoice
     expect(checked).toEqual({ code: 0, output: "" });
   }, 30_000);
 
+  test("a bus that declares multi-process: #mesh exports adoptHandler and the type Adopted, and type-checks; without it neither file names them", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
+    roots.push(root);
+    const many = { manifest: { adapter: "fake", capabilities: ["ordered-delivery", "replay", "subscribe", "multi-process"] as const }, create: () => { throw new Error("never started"); } };
+    const one = { manifest: { adapter: "fake", capabilities: ["ordered-delivery", "replay", "subscribe"] as const }, create: () => { throw new Error("never started"); } };
+    const config = { ...configOf(root), events: { bus: many } };
+    const generated = await generateFiles({ document: full().document!, config });
+    const without = await generateFiles({ document: full().document!, config: { ...configOf(root), events: { bus: one } } });
+    const index = text(generated, "generated/index.ts");
+    const binding = text(generated, "generated/binding.ts");
+    expect(index).toContain('export { adoptHandler } from "./binding";\nexport type { Adopted } from "@meshfw/runtime";');
+    expect(index).toContain('    "multi-process": true;');
+    expect(binding).toContain("  adoptHandler as $adoptHandler,\n  forgetHandler as $forgetHandler,");
+    expect(binding).toContain("  type Adopted as $Adopted,\n  type Delivery as $Delivery,");
+    expect(binding).toContain('export function adoptHandler(\n  name: string,\n  options?: { readonly drop?: readonly string[] },\n): $Promise<$Adopted> {\n  return $adoptHandler($deliveryBinding("adoptHandler"), name, options);\n}');
+    // the flag adds those lines and the capability, and nothing else
+    const strip = (source: string) => source.replace(/\n@?.*adoptHandler.*|\n.*Adopted.*|\n {4}"multi-process": true;/g, "");
+    const plain = { index: text(without, "generated/index.ts"), binding: text(without, "generated/binding.ts") };
+    expect(plain.index).not.toContain("adoptHandler");
+    expect(plain.binding).not.toContain("adoptHandler");
+    expect(plain.binding).not.toContain("Adopted");
+    expect(strip(index)).toBe(plain.index);
+    expect(binding.replace(/\n\n\/\*\*\n \* Shrink the registered union[\s\S]*?\n}\n/, "\n").replace(/\n {2}(adoptHandler as \$adoptHandler|type Adopted as \$Adopted),/g, "")).toBe(plain.binding);
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    await writeFile(resolve(root, "adopt.ts"), [
+      'import { adoptHandler, type Adopted } from "./generated/index";',
+      'export const adopted: Promise<Adopted> = adoptHandler("notify", { drop: ["billing.InvoiceVoided"] });',
+      "export const union = adopted.then((result) => result.kept.map((each) => [each.event, each.listedBy ?? \"none\"]));",
+      "// @ts-expect-error drop is a list of event names",
+      'export const bad = adoptHandler("notify", { drop: "billing.InvoiceVoided" });',
+      "",
+    ].join("\n"));
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "adopt.ts")]);
+    expect(checked).toEqual({ code: 0, output: "" });
+  }, 30_000);
+
   test("a publish function that returns what is not a DomainEvent fails the project's type check, at the generated line", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);
