@@ -90,6 +90,8 @@ From the repository root:
 ```bash
 bun install        # at the repository root; the @mxlang scope resolves from the registry
 bun run verify      # every package's tests, type check, build, validate and conformance, plus the docs checks
+bun run verify -- --group <name>
+                   # only one CI group's steps (scripts/verify-groups.json)
 bun run test        # tests only, every file in every package
 bun run typecheck   # type checks only
 bun run test:affected [--dry-run] [--slow] [--base <ref>]
@@ -191,11 +193,21 @@ install from either is reproducible without asking the registry for a version ra
 ## Continuous integration
 
 `.github/workflows/verify.yml` runs `bun run verify` on GitHub Actions, on every pull request and on
-every push to `main`. One job on `ubuntu-latest`: check out the repository, install Bun 1.4.2 (the
-version `package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run verify`. The
-same script contributors run locally is the whole check; nothing in it needs a browser or a Docker
-daemon, so nothing is skipped or split out on the runner. `verify` is a required check on `main` (branch protection), so a pull
-request whose verify fails cannot merge.
+every push to `main`, split into groups of workspace packages that run side by side. `scripts/verify-groups.json`
+names five groups (`compiler`, `cli`, `data`, `hyper` and `rest`, which also holds the repository's own steps:
+the type check and the tests of `scripts/`), and every workspace package is in exactly one of them. One job per
+group on `ubuntu-latest`, named `verify (<group>)`: check out the repository, install Bun 1.4.2 (the version
+`package.json#packageManager` pins), `bun install --frozen-lockfile`, `bun run verify -- --group <group>`. The
+groups together run exactly the steps `bun run verify` runs locally, and nothing in them needs a browser or a
+Docker daemon, so nothing is skipped on the runner. A group job does not stop the others when it fails.
+
+`verify --group` refuses to run when the groups file and the workspace disagree (a package in no group or in
+two, a group naming a directory that is not a workspace package, other than one group holding the root steps),
+so a pull request that adds a package must add it to one group in `scripts/verify-groups.json`; `bun run verify`
+without `--group` only warns.
+
+A last job, named `verify`, waits for every group job and passes only when all of them passed. It is the
+required check on `main` (branch protection), so a pull request whose verify fails cannot merge.
 
 What the workflow deliberately does not do:
 
@@ -209,7 +221,7 @@ What the workflow deliberately does not do:
 - **`--frozen-lockfile`**, which fails if `bun.lock` would change: a pull request cannot pass CI on a
   lockfile it forgot to commit.
 - **Concurrency cancellation.** One run per ref; a newer push cancels the run it supersedes, so a branch
-  with five pushes does not queue five full installs.
+  with five pushes does not queue five full runs.
 
 ADR-0031 recorded why this file did not exist: the `@mxlang` packages came from a `link:` checkout a
 hosted runner cannot have. They are published now, which is what removed the blocker.

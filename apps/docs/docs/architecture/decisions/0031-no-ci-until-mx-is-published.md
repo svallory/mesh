@@ -7,6 +7,8 @@ description: "Decision record 0031: No continuous integration until MX is publis
 
 > **Amended** on 2026-10-05: the `@mxlang` packages are published, which is the condition this record set. `packages/compiler` installs them from the registry by exact version, and `.github/workflows/verify.yml` runs `bun run verify` on every pull request and every push to `main`. `verify` is a required check on `main` (branch protection), so a pull request whose verify fails cannot merge. The body below is kept as history; see the amendment at the end of the record.
 
+> **Amended** on 2026-11-17: `.github/workflows/verify.yml` runs `verify` as five group jobs side by side (`bun run verify -- --group <name>`, groups in `scripts/verify-groups.json`) and one last job named `verify` that passes only when every group passed. That job stays the required check, and together the groups run every `verify` step, so the decision does not change, only how the run is laid out; see the second amendment at the end of the record.
+
 ## Status
 
 Accepted
@@ -110,3 +112,15 @@ browser or a Docker daemon, so the workflow is that script and nothing else. The
 pre-releases: a pinned version is still pinned, so an MX change reaches Mesh when Mesh bumps the pin, not
 the day MX pushes. The `link:` route for an unpublished MX commit is unchanged and still local-only (the
 contributing page, "What exists today").
+
+## Amendment — 2026-11-17: verify runs in groups
+
+One job running every step took about 3.5 minutes on the runner (193 s in `bun run verify` alone, run
+43805256584). The workflow now runs one job per group of workspace packages, side by side:
+`scripts/verify-groups.json` names five groups (`compiler`, `cli`, `data`, `hyper`, `rest`; `rest` also holds
+the repository's own steps), every workspace package is in exactly one, and each job runs
+`bun run verify -- --group <name>`, which refuses to run when a package is in no group. A last job named
+`verify` waits for all of them and passes only when every group passed; it is still the required check on
+`main`, so branch protection did not change. The groups together run exactly the steps `bun run verify`
+runs with no arguments (`scripts/verify/plan.test.ts` checks it), so `verify` is still the one command that
+runs every check.
