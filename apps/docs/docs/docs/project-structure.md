@@ -51,7 +51,7 @@ To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.t
 
 An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`, or the file as a namespace, `import * as lists from "./list.mesh.mx"`, then `belongs-to :list entity=lists.List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict: the import path distinguishes them, each module's specifier exports its own `List`, and Mesh writes the two as `school.List` and `work.List` wherever it names an entity. The one thing they cannot share is a table: both would be stored in `list`, so give one of them `table=` (that is a build error, naming both, until you do).
 
-Besides entity files, the domain folder holds event and command files ([Events](./events.md)) and aggregate files, below. Each declares one thing, its root line, and sits in the module folder of what it is about.
+Besides entity files, the domain folder holds event and command files ([Events](./events.md)) and aggregate files, below. Each has one root line, which declares one thing of its kind; an aggregate file may also declare events and commands in its sections, as an entity file may.
 
 ### Aggregates
 
