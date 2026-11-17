@@ -57,7 +57,9 @@ export class HandlerHistoryError extends MeshError {
 const OWNER = "@meshfw/event-sourcing";
 const NOW = "project:now";
 
-const fromOf = (handler: KindHandler): unknown => (handler.handler as Partial<ProjectHandler>).from ?? "beginning";
+/** `from` as given, "beginning" only when it is left out: any other value, `null` included, is checked and refused. */
+const fromValue = (options: object): unknown => { const from = (options as { from?: unknown }).from; return from === undefined ? "beginning" : from; };
+const fromOf = (handler: KindHandler): unknown => fromValue(handler.handler);
 const quoted = (value: unknown): string => (typeof value === "string" ? JSON.stringify(value) : value === null ? "null" : typeof value === "object" || typeof value === "function" ? `a ${typeof value === "function" ? "function" : Array.isArray(value) ? "list" : "plain object"}` : String(value));
 const listed = (events: readonly string[]): string => events.join(", ");
 
@@ -73,7 +75,7 @@ function rebuildOr(handler: KindHandler, row: HandlerProgressRow, registration: 
 function refusedRow(handler: KindHandler, row: HandlerProgressRow, registration: Registration): HandlerHistoryError {
   const takes = row.name === handler.name ? "" : ` (it takes over the progress of ${JSON.stringify(row.name)}, renamedFrom)`;
   if (row.kind === NOW) {
-    const message = `The project handler ${JSON.stringify(handler.name)} starts from the beginning of history (from: "beginning", the default)${takes}, and its progress row started from now (from: "now"), at a position after earlier rows: its read model lacks every event before that start. `
+    const message = `The project handler ${JSON.stringify(handler.name)} starts from the beginning of history (from: "beginning", the default)${takes}, and its progress row started from now (from: "now"), so Mesh cannot tell whether its read model has every event before that start. `
       + rebuildOr(handler, row, registration, `Keep from: "now" (rows have been deleted, so the history cannot be rebuilt)`);
     return new HandlerHistoryError(handler.name, handler.events, "from", message);
   }
@@ -139,6 +141,6 @@ export function project<const C extends readonly ListedEvent[]>(options: {
   run(event: EventRecord<InstanceType<C[number]>>, tools: HandlerTools): void | Promise<void>;
   readonly renamedFrom?: string;
 } & FromOption): ProjectHandler<InstanceType<C[number]>> {
-  const from = (options as { from?: unknown }).from ?? "beginning";
+  const from = fromValue(options);
   return Object.freeze({ ...options, from, [HANDLER_KIND]: PROJECT }) as unknown as ProjectHandler<InstanceType<C[number]>>;
 }

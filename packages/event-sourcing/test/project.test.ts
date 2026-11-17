@@ -3,6 +3,7 @@
 // InvoiceVoided, and the read model `PaidInvoice`). Each test binds a fresh in-memory database with the handlers it
 // needs; the last one connects through the fixture's own events module.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -204,7 +205,7 @@ describe("the options a project handler is checked for at start", () => {
   test("a from other than beginning or now is MESH_HANDLER_OPTION", async () => {
     const layer = await database();
     try {
-      for (const [from, shown] of [["later", '"later"'], [3, "3"]] as const) {
+      for (const [from, shown] of [["later", '"later"'], [3, "3"], [null, "null"]] as const) {
         const handler = { ...recorder([]), from };
         const error = await unchangedBy(layer, () => bind(layer, { project: { totals: handler } }).deliver());
         expect(error).toBeInstanceOf(HandlerOptionError);
@@ -287,6 +288,49 @@ describe("restarting a project handler that has a progress row", () => {
     } finally { await layer.close(); }
   });
 
+  test("a kept row of an added event at exactly the handler's position is kept-below too", async () => {
+    const layer = await database();
+    try {
+      await pay(layer, 1);
+      await voidOne(layer);
+      await bind(layer, { project: { totals: recorder([]) } }).deliver();
+      expect(await rows(layer)).toEqual([["totals", "project", 2, "billing.InvoicePaid"]]);
+      const error = await unchangedBy(layer, () => bind(layer, { project: { totals: recorder([], { events: [InvoicePaid, InvoiceVoided] }) } }).deliver());
+      expect(history(error, { handler: "totals", events: ["billing.InvoiceVoided"], reason: "kept-below" })).toContain(
+        "the kept row at position 2 (of an added event, or of a name no event declares) lies at or below its position, 2,");
+    } finally { await layer.close(); }
+  });
+
+  test("a kept row of a name no event declares, below the position, is kept-below when the list grows", async () => {
+    const file = join(root, "undeclared.db");
+    const layer = sqlite({ file }) as Layer;
+    await createSchema(layer, app.tables);
+    try {
+      // a row passed while its event was declared, whose declaration has since gone (here: renamed in place)
+      await voidOne(layer);
+      await pay(layer, 1);
+      await bind(layer, { project: { totals: recorder([]) } }).deliver();
+      expect(await rows(layer)).toEqual([["totals", "project", 2, "billing.InvoicePaid"]]);
+      const raw = new Database(file);
+      try { raw.run("UPDATE mesh_outbox SET name = 'billing.InvoiceGone' WHERE position = 1"); } finally { raw.close(); }
+      const error = await unchangedBy(layer, () => bind(layer, { project: { totals: recorder([], { events: [InvoicePaid, InvoiceVoided] }) } }).deliver());
+      expect(history(error, { handler: "totals", events: ["billing.InvoiceVoided"], reason: "kept-below" })).toContain("the kept row at position 1 ");
+    } finally { await layer.close(); }
+  });
+
+  test("through renamedFrom, kept-below names the former row and offers leaving renamedFrom out", async () => {
+    const layer = await database();
+    try {
+      await bind(layer, { project: { totals: recorder([]) } }).deliver();
+      await voidOne(layer);
+      await pay(layer, 1);
+      await bind(layer, { project: { totals: recorder([]) } }).deliver();
+      const error = await unchangedBy(layer, () => bind(layer, { project: { paid: recorder([], { events: [InvoicePaid, InvoiceVoided], renamedFrom: "totals" }) } }).deliver());
+      expect(history(error, { handler: "paid", events: ["billing.InvoiceVoided"], reason: "kept-below" })).toBe(
+        'The project handler "paid" now lists billing.InvoiceVoided, and the kept row at position 1 (of an added event, or of a name no event declares) lies at or below its position, 2, so it would never be handled. Clear its read model and forget the former row (mesh events forget totals) to build it again, leave out renamedFrom so that it starts as a new handler, or set from: "now" and backfill');
+    } finally { await layer.close(); }
+  });
+
   test("an added event with no kept row at or below the position is taken on, and its later rows are handled", async () => {
     const layer = await database();
     try {
@@ -324,10 +368,10 @@ describe("restarting a project handler that has a progress row", () => {
       await bind(layer, { project: { totals: recorder([], { from: "now" }), early: recorder([], { from: "now" }) } }).deliver();
       const byName = await unchangedBy(layer, () => bind(layer, { project: { totals: recorder([]), early: recorder([], { from: "now" }) } }).deliver());
       expect(history(byName, { handler: "totals", events: ["billing.InvoicePaid"], reason: "from" })).toBe(
-        'The project handler "totals" starts from the beginning of history (from: "beginning", the default), and its progress row started from now (from: "now"), at a position after earlier rows: its read model lacks every event before that start. Clear its read model and forget it (mesh events forget totals) to build it again, or register it under a new name');
+        'The project handler "totals" starts from the beginning of history (from: "beginning", the default), and its progress row started from now (from: "now"), so Mesh cannot tell whether its read model has every event before that start. Clear its read model and forget it (mesh events forget totals) to build it again, or register it under a new name');
       const renamed = await unchangedBy(layer, () => bind(layer, { project: { totals: recorder([], { from: "now" }), late: recorder([], { renamedFrom: "early" }) } }).deliver());
-      expect(history(renamed, { handler: "late", events: ["billing.InvoicePaid"], reason: "from" })).toContain(
-        '(from: "beginning", the default) (it takes over the progress of "early", renamedFrom), and its progress row started from now');
+      expect(history(renamed, { handler: "late", events: ["billing.InvoicePaid"], reason: "from" })).toBe(
+        'The project handler "late" starts from the beginning of history (from: "beginning", the default) (it takes over the progress of "early", renamedFrom), and its progress row started from now (from: "now"), so Mesh cannot tell whether its read model has every event before that start. Clear its read model and forget the former row (mesh events forget early) to build it again, or leave out renamedFrom so that it starts as a new handler');
     } finally { await layer.close(); }
   });
 
@@ -337,10 +381,10 @@ describe("restarting a project handler that has a progress row", () => {
       await pay(layer, 1);
       await bind(layer, { project: { now: recorder([], { from: "now" }) }, process: { totals: processHandler() } }, { keep: "until-delivered" }).deliver();
       expect((await state(layer)).state.deletedThrough).toBe(1);
-      const kind = history(await rejection(bind(layer, { project: { totals: recorder([]), now: recorder([], { from: "now" }) } }).deliver()), { handler: "totals", events: ["billing.InvoicePaid"], reason: "kind" });
+      const kind = history(await unchangedBy(layer, () => bind(layer, { project: { totals: recorder([]), now: recorder([], { from: "now" }) } }).deliver()), { handler: "totals", events: ["billing.InvoicePaid"], reason: "kind" });
       expect(kind).toEndWith('says nothing of the rows before it. Set from: "now" (rows have been deleted, so the history cannot be rebuilt)');
-      const from = history(await rejection(bind(layer, { project: { now: recorder([]) }, process: { totals: processHandler() } }).deliver()), { handler: "now", events: ["billing.InvoicePaid"], reason: "from" });
-      expect(from).toEndWith('lacks every event before that start. Keep from: "now" (rows have been deleted, so the history cannot be rebuilt)');
+      const from = history(await unchangedBy(layer, () => bind(layer, { project: { now: recorder([]) }, process: { totals: processHandler() } }).deliver()), { handler: "now", events: ["billing.InvoicePaid"], reason: "from" });
+      expect(from).toEndWith('has every event before that start. Keep from: "now" (rows have been deleted, so the history cannot be rebuilt)');
     } finally { await layer.close(); }
   });
 
@@ -354,7 +398,7 @@ describe("restarting a project handler that has a progress row", () => {
       await bind(layer, { project: { totals: recorder([]) } }).deliver();
       await bind(layer, { project: { totals: recorder([], { from: "now", events: [InvoicePaid, InvoiceVoided] }) } }).deliver();
       expect(await rows(layer)).toEqual([["totals", "project:now", 1, "billing.InvoicePaid,billing.InvoiceVoided"]]);
-      const error = await rejection(bind(layer, { project: { totals: recorder([], { events: [InvoicePaid, InvoiceVoided] }) } }).deliver());
+      const error = await unchangedBy(layer, () => bind(layer, { project: { totals: recorder([], { events: [InvoicePaid, InvoiceVoided] }) } }).deliver());
       history(error, { handler: "totals", events: ["billing.InvoiceVoided", "billing.InvoicePaid"].sort(), reason: "from" });
     } finally { await layer.close(); }
   });
