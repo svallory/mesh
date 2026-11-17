@@ -20,8 +20,10 @@ import { FrameworkError } from "./errors.ts";
  *   client that audits a stream for holes needs it; the never-skip order of the read is mandatory for every adapter.
  * - `raw-sql`: the `query` operation: one read-only statement written by hand, run in the running transaction
  *   (`DataOperations.query`, ADR-0087). `#mesh` exports `query` only for an adapter that declares it.
+ * - `policy-guards`: `deleteByKeyGuarded`. The adapter evaluates a policy guard inside the delete statement and reports a
+ *   denial as `PolicyGuardDenial` (ADR-0046, option B).
  */
-export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions", "raw-sql"] as const;
+export const CAPABILITIES = ["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions", "raw-sql", "policy-guards"] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
 

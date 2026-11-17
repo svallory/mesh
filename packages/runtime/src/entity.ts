@@ -1250,6 +1250,7 @@ function readOnlyOperations(tx: DataOperations, question: Question): DataOperati
     insert: refuse,
     updateByKey: refuse,
     deleteByKey: refuse,
+    deleteByKeyGuarded: refuse,
     appendEvent: refuse,
     deleteOutboxThrough: refuse,
     selectByKey: (table, key) => tx.selectByKey(table, key),

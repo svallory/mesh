@@ -136,6 +136,50 @@ function denialMessage({ entity, action, policies, reason }: PolicyDenial): stri
   return `${entity}#${action} is forbidden by ${names.length === 1 ? "policy" : "policies"} ${names.join(", ")}`;
 }
 
+/**
+ * An adapter's report that a policy guard denied a one-statement write (ADR-0046, option B): one result per check of the
+ * guard (`WriteGuard.checks`), in its order, `null` for unknown. The generated action turns it into a `ForbiddenError`
+ * (`Authorizer.statement`); a caller never sees it. Exported because adapters, which live in other packages, make it
+ * (through `guardDenialOf`).
+ */
+export class PolicyGuardDenial extends Error {
+  readonly results: readonly (boolean | null)[];
+  constructor(results: readonly (boolean | null)[], options?: { cause?: unknown }) {
+    super("A policy guard denied the write", options);
+    this.name = "PolicyGuardDenial";
+    this.results = Object.freeze([...results]);
+  }
+}
+
+/** How deep `guardDenialOf` follows an error's `cause`s. */
+const GUARD_CAUSE_DEPTH = 8;
+
+/**
+ * Read a policy guard's marker from a failed statement: `mesh:forbidden:<nonce>:<results>:<key>`, one letter per check
+ * (`t` true, `f` false, `n` unknown). Walks `error` and its `cause`s (8 deep) and reads only the errors `raised`
+ * accepts, which is the dialect's own raise error (SQLite's bad JSON path, Postgres SQLSTATE 22P02), never a wrapper
+ * whose message echoes bound parameters; the nonce is drawn by the adapter after the input is fixed, so no input value
+ * can forge a denial. Undefined when no accepted message carries this statement's marker; a marker whose results are
+ * not one per check is a `FrameworkError`.
+ */
+export function guardDenialOf(error: unknown, expected: { readonly checks: number; readonly nonce: string; readonly raised: (error: unknown) => string | undefined }): PolicyGuardDenial | undefined {
+  if (!/^[A-Za-z0-9]{8,}$/.test(expected.nonce)) throw new FrameworkError("A policy guard's nonce must be at least 8 letters and digits");
+  const marker = new RegExp(`mesh:forbidden:${expected.nonce}:([tfn]*):`);
+  let current: unknown = error;
+  for (let depth = 0; depth < GUARD_CAUSE_DEPTH && current !== null && current !== undefined; depth++) {
+    const message = expected.raised(current);
+    const found = message === undefined ? null : marker.exec(message);
+    if (found) {
+      const letters = found[1]!;
+      if (letters.length !== expected.checks)
+        throw new FrameworkError(`A policy guard reported ${letters.length} results for ${expected.checks} checks: the data adapter decoded its own guard wrongly`, { cause: error });
+      return new PolicyGuardDenial([...letters].map((letter) => (letter === "t" ? true : letter === "f" ? false : null)), { cause: error });
+    }
+    current = typeof current === "object" ? (current as { cause?: unknown }).cause : undefined;
+  }
+  return undefined;
+}
+
 function describeKey(key: unknown): string {
   try { return JSON.stringify(key) ?? String(key); }
   catch { return "[unserializable key]"; }

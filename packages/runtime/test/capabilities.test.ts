@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { CAPABILITIES, FrameworkError, defineCapabilities, validateCapabilityManifest } from "@meshfw/runtime";
 
 test("the closed set names the optional capabilities", () => {
-  expect([...CAPABILITIES]).toEqual(["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions", "raw-sql"]);
+  expect([...CAPABILITIES]).toEqual(["aggregates", "integer-key-fill", "joins", "upserts", "atomic-expressions", "gapless-positions", "conditions", "raw-sql", "policy-guards"]);
 });
 
 test("raw-sql is a capability name, and a near miss is refused naming the closed set", () => {
   expect(defineCapabilities("x", ["raw-sql"]).capabilities).toEqual(["raw-sql"]);
-  expect(() => validateCapabilityManifest({ adapter: "x", capabilities: ["raw_sql"] })).toThrow('unknown capability "raw_sql"; the closed set is aggregates, integer-key-fill, joins, upserts, atomic-expressions, gapless-positions, conditions, raw-sql');
+  expect(() => validateCapabilityManifest({ adapter: "x", capabilities: ["raw_sql"] })).toThrow('unknown capability "raw_sql"; the closed set is aggregates, integer-key-fill, joins, upserts, atomic-expressions, gapless-positions, conditions, raw-sql, policy-guards');
 });
 
 test("defineCapabilities returns a frozen manifest and keeps the literal names", () => {
