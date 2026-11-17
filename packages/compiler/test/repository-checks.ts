@@ -251,14 +251,15 @@ export const DOCS_SYNTAX = "syntax v4";
 /**
  * A complete v4 file of the domain: comments and imports may come first, then `entity :Name`, or `event :Name` or
  * `command :Name` for an event or a command, which are files of their own (spec, Events and commands), or
- * `aggregate :Name` for an aggregate file, or `concept :Name` for a concept file.
+ * `aggregate :Name` for an aggregate file, `concept :Name` for a concept file, or `architecture :name` for the
+ * architecture file.
  */
 export function isV4EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^(?:entity|event|command|aggregate|concept)\s+:\w+/.test(text);
+    return /^(?:entity|event|command|aggregate|concept|architecture)\s+:\w+/.test(text);
   }
   return false;
 }
@@ -447,7 +448,7 @@ export function checkDocsSyntaxV4(dir: string) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
-      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\`, \`aggregate :Name\` or \`concept :Name\`)`);
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\`, \`aggregate :Name\`, \`concept :Name\` or \`architecture :name\`)`);
       continue;
     }
     checked++;

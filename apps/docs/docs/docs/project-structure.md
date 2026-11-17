@@ -45,13 +45,13 @@ Two folder rules decide a file's module:
 - **A nested folder is a submodule.** `src/domain/todo/reminders/reminder.mesh.mx` belongs to module `todo/reminders`, its generated code goes to `.mesh/domain/todo/reminders/`, and your code imports it as `#mesh/domain/todo/reminders`.
 - **A folder whose name starts with `_` only organises files.** A file's module is its folder path with every segment that starts with `_` removed (a segment that is only `_` is an error). `src/domain/todo/_scheduling/schedule.mesh.mx` belongs to module `todo`, and its generated code goes to `.mesh/domain/todo/`. A group directly under `src/domain/`, such as `src/domain/_misc/`, belongs to the domain root. A group inside a submodule stays in that submodule: `todo/reminders/_x/` is module `todo/reminders`.
 
-`_name/` is the only folder marker; a folder named only `_` is a build error. A group changes the module, not the file: imports still use the real path (`import { List } from "../list.mesh.mx"`), and a name stays in one place, so `entity :Task` in `tasks/` and again in `tasks/_x/` is a duplicate entity, `MESH_DUPLICATE_ENTITY`. A folder name uses letters, digits, `-` and `_`; any other character is `MESH_MODULE_NAME`. An entity is made private to its module by an option in its file or by an architecture rule, never by its folder.
+`_name/` is the only folder marker; a folder named only `_` is a build error. A group changes the module, not the file: imports still use the real path (`import { List } from "../list.mesh.mx"`), and a name stays in one place, so `entity :Task` in `tasks/` and again in `tasks/_x/` is a duplicate entity, `MESH_DUPLICATE_ENTITY`. A folder name uses letters, digits, `-` and `_`; any other character is `MESH_MODULE_NAME`. An entity is made private to its module by an option in its file, never by its folder.
 
 To keep files out of Mesh altogether, list them under `ignore` in `mesh.config.ts`. It takes globs relative to the project root, and ignored files are not read, so errors in them are not reported. See [Configuration](./configuration.md#ignoring-files).
 
 An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in one file is a build error. Another entity is imported by relative path: `import { List } from "./list.mesh.mx"`, then `belongs-to :list entity=List`, or the file as a namespace, `import * as lists from "./list.mesh.mx"`, then `belongs-to :list entity=lists.List`. Each file exports its declared entity name. Two folders may each declare an `entity :List` without conflict: the import path distinguishes them, each module's specifier exports its own `List`, and Mesh writes the two as `school.List` and `work.List` wherever it names an entity. The one thing they cannot share is a table: both would be stored in `list`, so give one of them `table=` (that is a build error, naming both, until you do).
 
-Besides entity files, the domain folder holds event and command files ([Events](./events.md)) and aggregate files, below. Each has one root line, which declares one thing of its kind; an aggregate file may also declare events and commands in its sections, as an entity file may.
+Besides entity files, the domain folder holds event and command files ([Events](./events.md)), aggregate files and the architecture file, below. Each has one root line, which declares one thing of its kind; an aggregate file may also declare events and commands in its sections, as an entity file may.
 
 ### Aggregates
 
@@ -75,6 +75,36 @@ aggregate :TaskAggregate
 `root entity=` names the root, once. Each line of `entities` is a part: an entity the file imports, or a member of a namespace import, alone on its line or with `prop=`. A part is tied to the root by one of its `belongs-to` links to the root: its only one, or, when it has several (Dependency has a `:dependent` and a `:prerequisite`), the one `prop=` names. A part with no `belongs-to` to the root, several and no `prop=`, or a `prop=` that names no `belongs-to` to the root is `MESH_AGGREGATE_PART`; so is the root listed as a part, and a part listed twice is `MESH_DUPLICATE_MEMBER`. A root or a part the file does not import is `MESH_UNKNOWN_ENTITY`.
 
 An aggregate's `events` and `commands` sections work as an entity's do ([Events](./events.md#declaring-events-where-they-belong)): the events it lists or declares there may be published by the actions of its root and of every part, and by no other entity unless that entity owns them too. Another file imports an event the aggregate file declares from it by its class name (`import { TaskReopened } from "./task-aggregate.mesh.mx"`). The aggregate's own name is no value: nothing is generated from an aggregate, so it has no class, type or table, an import of `TaskAggregate` is `MESH_UNKNOWN_IMPORT`, and its name is kept as written. The aggregate is recorded in `model.json`. An entity may be a part of two aggregates; Mesh does not prevent it. An aggregate file imports `.mesh.mx` files only: it has no function to call a helper in.
+
+### The architecture file
+
+The architecture rules are checks Mesh runs over the whole domain, after every file is read. Each has a name and a default level, `warning` or `error`; a project with no architecture file runs every rule at its default level. The file `architecture.mesh.mx`, directly in the domain root and one per project, re-grades or switches off a rule:
+
+```mx "src/domain/architecture.mesh.mx"
+import { MeshRecommended } from "meshfw/architecture"
+
+architecture :project
+  use preset=MeshRecommended
+  disable :service-touches-one-entity
+  severity :action-calls-other-aggregate level=:error
+```
+
+Its root line is `architecture :name`, and it takes three kinds of line, each any number of times and none with a child:
+
+- **`use preset=Name`** includes a preset, a named set of levels: an identifier the file imports from `meshfw/architecture`, written bare (an alias works, `import { MeshRecommended as Recommended }`). Mesh ships one, `MeshRecommended`, which sets every rule to its default level.
+- **`severity :rule level=:error`** (or `level=:warning`) sets a rule's level. An `error` fails the build.
+- **`disable :rule`** switches a rule off: it is not checked.
+
+Presets apply first, in the order the file writes them, then the file's own `severity` and `disable` lines, whose order does not matter: one rule set by two of them is `MESH_DUPLICATE_MEMBER`, as is one preset used twice. A name that is no rule is `MESH_UNKNOWN_RULE`, with the nearest rule's name when one is close. The rules are:
+
+| Rule | Default | What it reports |
+|---|---|---|
+| `:action-calls-other-aggregate` | `warning` | an entity action that calls a write action of an entity of another [aggregate](#aggregates) (`MESH_ACTION_CALLS_OTHER_AGGREGATE`); not checked yet |
+| `:service-touches-one-entity` | `warning` | a service operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`); not checked until services exist |
+
+Mesh's own invariants, such as an import that reaches outside the domain root, are ordinary build errors: no line of the file names, re-grades or disables one.
+
+The file declares nothing, so no other file imports it (`MESH_UNKNOWN_IMPORT`), and it imports from `meshfw/architecture` alone, by name (another path is `MESH_UNKNOWN_IMPORT`, a namespace, default or type import `MESH_IMPORT_FORM`). An `architecture` line in a file anywhere else, a subfolder or another file name, is `MESH_ARCHITECTURE_FILE`, and that file is not read. With a list of files as `domain`, list the file too; the domain root is the common folder of the other files, so the file sits there and never moves the root. An `ignore` pattern that matches the file leaves it unread, and every rule runs at its default level. Nothing is generated from the file, and adding it changes no generated file.
 
 A hand-written helper next to the entity that uses it is the ordinary way to keep an entity file small. `todo.helpers.ts` is a normal TypeScript module; a `check` or a `do` step in `todo.mesh.mx` calls into it.
 

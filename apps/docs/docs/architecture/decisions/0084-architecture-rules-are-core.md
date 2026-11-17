@@ -1,9 +1,11 @@
 ---
 title: "0084. Architecture rules are core, in an `architecture.mesh.mx` file"
-description: "Decision record 0084: built-in invariants no file can remove, and an `architecture :name` file with presets, severity and disable, checked by Mesh's own checker. Status: Accepted (DOM-30, DOM-10). Amended 2026-10-15 (DOM-30: a preset is imported and included as a mixin is; DOM-10: ruled, built after 1.0)."
+description: "Decision record 0084: built-in invariants no file can remove, and an `architecture :name` file with presets, severity and disable, checked by Mesh's own checker. Status: Accepted (DOM-30, DOM-10). Amended 2026-10-15 (DOM-30: a preset is imported and included as a mixin is; DOM-10: ruled, built after 1.0) and 2026-11-17 (the file built, on the operator's order, lead ruling D40)."
 ---
 
 # 0084. Architecture rules are core, in an `architecture.mesh.mx` file
+
+> **Amendment, 2026-11-17 (the architecture file built).** On the operator's order of 2026-11-17 to build every unblocked bead (lead ruling D28), the architecture file is built before 1.0, with the open points of its design ruled as the design recommends (lead ruling D40; design `notes/architecture/architecture-file-design.md`). This replaces the DOM-10 date below. What the design adds to this record: a rule's level is set by `severity :rule level=:error` or `level=:warning`, the one form MX's `kind :name options` line accepts; the rules are a fixed catalogue in the compiler, `:action-calls-other-aggregate` and `:service-touches-one-entity`, both `warning` by default, and a project with no file runs every rule at its default level; `MeshRecommended` sets every rule to its default; levels resolve from the default, then each `use preset=` line in written order, then the file's own `severity` and `disable` lines, whose order does not matter (a rule set twice is `MESH_DUPLICATE_MEMBER`); a name that is no rule is the error `MESH_UNKNOWN_RULE`; the file must be `architecture.mesh.mx` directly in the domain root (`MESH_ARCHITECTURE_FILE`), imports from `meshfw/architecture` alone, and no file imports it; the settings stay inside the compiler, with no model node and no generated output; built-in invariants stay ordinary build errors with their own codes, and no line names one. The cross-aggregate warning can be re-graded and switched off like any rule (lead ruling D40 chose option (a) of the design's OD7, which reads, in `notes/architecture/architecture-file-design.md`: "Switchable: `disable` and `severity` both apply"); it is checked from the second pull request of the unit, and the service rule from the services unit.
 
 > **Amendment, 2026-10-15 (DOM-30, DOM-10).** A preset is imported and included as a mixin is (DOM-33): `import { MeshRecommended } from "meshfw/architecture"` at the top of the file, then `use preset=MeshRecommended`. There is no atom form. The Decision section and the example now show this form; the options below name the first ruling (`use :mesh-recommended`) as history. DOM-10 is ruled: the architecture rules are built after 1.0, so the item that was Open is answered and nothing is left for the operator. The operator ruled DOM-30's form on 2026-10-15 and DOM-10 on 2026-10-11 and 2026-10-13.
 
@@ -55,8 +57,8 @@ Core keeps the rules next to the model they read and keeps the warnings consiste
 
 ## Consequences
 
-- Rules are switched off or re-graded here, not in the entity. Which rules are built-in invariants and which can be disabled is ruled only for the one-entity service warning (DOM-16, switchable); the others are not yet ruled.
-- Nothing is built. DOM-10 puts the rules after 1.0.
+- Rules are switched off or re-graded here, not in the entity. Which rules are built-in invariants and which can be disabled is ruled for the one-entity service warning (DOM-16, switchable) and, by the lead, for the cross-aggregate warning (lead ruling D40 chose option (a) of OD7 in the design `notes/architecture/architecture-file-design.md`: switchable; see the 2026-11-17 amendment).
+- The architecture file, its presets and its settings are built (2026-11-17 amendment); DOM-10 had put them after 1.0.
 
 ## Action items
 

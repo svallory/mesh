@@ -49,6 +49,8 @@ const fn = (required = false): CustomTagAttribute => ({
   required,
 });
 const named = () => ({ name: atom(true) });
+/** A rule's name in the architecture file: an atom that may hold hyphens, as an enum value may. */
+const ruleName = (): CustomTagAttribute => ({ type: "mesh:Atom", required: true, pattern: "^[A-Za-z_][A-Za-z0-9_-]*$" });
 /**
  * A field parent: a tag whose children are field lines (`attributes`, `event`, `command`, `concept`). It admits a concept
  * use (`Money :total`), whose name no contract can list in advance (a concept is a tag file MX finds by its file name,
@@ -293,6 +295,41 @@ const contracts: ContractMap = {
   concept: fieldParent({
     parents: ["#root"],
     attributes: named(),
+  }),
+  // The architecture file (`notes/spec/other-file-kinds.md`, "The architecture file"; ruling D40): one per project,
+  // directly in the domain root, holding only its three kinds of line, none of which takes a child.
+  architecture: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: children("use", "severity", "disable"),
+  }),
+  // `use preset=MeshRecommended` includes a preset the file imports. `use` is shared with the mixins an entity includes,
+  // so the option is optional here and `checkUseOptions` (`syntax/use-options.ts`) requires the parent's option; the hook
+  // checks the shape of what is written: a reference, written bare.
+  use: closed({
+    parents: ["architecture"],
+    attributes: { preset: { type: "expression" } },
+    analyze(calls, ctx) {
+      for (const call of calls) {
+        const a = get(call, "preset");
+        if (!a) continue;
+        if (!isReference(a))
+          ctx.fail("preset must be an imported preset (`preset=MeshRecommended`)", { at: a.loc, code: "MESH_OPTION_VALUE" });
+        else if (isWrapped(a))
+          ctx.fail("preset must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`preset=MeshRecommended`)", { at: a.valueSpan, code: "MESH_OPTION_VALUE" });
+      }
+    },
+  }),
+  // `severity :rule level=:error` re-grades a rule; `disable :rule` switches it off. A rule name may hold hyphens
+  // (`:service-touches-one-entity`), and which names are rules is the builder's check (`MESH_UNKNOWN_RULE`), so a
+  // misspelt or camelCase name gets the nearest rule's name instead of MX's pattern error.
+  severity: closed({
+    parents: ["architecture"],
+    attributes: { name: ruleName(), level: { type: "mesh:Atom", required: true, values: ["error", "warning"] } },
+  }),
+  disable: closed({
+    parents: ["architecture"],
+    attributes: { name: ruleName() },
   }),
   relationships: closed({
     parents: ["entity"],

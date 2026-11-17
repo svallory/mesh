@@ -68,7 +68,7 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. A part line of an aggregate's `entities` section is the same kind of wildcard child, whose head is an imported entity (`Line`): its row is `entities.reference.prop`, tested in an aggregate file whose root is Sample. A `concept` row is tested as a concept file, `concepts/Sample.mesh.mx`, with one field; a concept use (`Money :total`) has no row, since its contract is the concept file's and not one of the dialect's. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. A part line of an aggregate's `entities` section is the same kind of wildcard child, whose head is an imported entity (`Line`): its row is `entities.reference.prop`, tested in an aggregate file whose root is Sample. A `concept` row is tested as a concept file, `concepts/Sample.mesh.mx`, with one field. An `architecture` row is tested as the architecture file, `architecture.mesh.mx` at the domain root, holding its root line alone; a `severity` or `disable` row, and a `use` row whose example holds `preset=`, is tested in that file under `architecture :project` and with the `MeshRecommended` import; a concept use (`Money :total`) has no row, since its contract is the concept file's and not one of the dialect's. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
 The `optional` rows are command field lines, tested in a command file with an answering update; `optional` is refused on event fields, attributes, arguments and computed fields ([Events: Answering a command](../../docs/events.md#answering-a-command)).
 
@@ -84,6 +84,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `always` | `always types=[:update]` | `always` | on main |
 | `always.types` | `always types=[:update]` | `always.types` | on main |
 | `always.actions` | `always actions=[&custom]` | `always.actions` | on main |
+| `architecture` | `architecture :project` | `architecture` | on main |
+| `architecture.name` | `architecture :project` | `architecture.name` | on main |
 | `asc` | `asc &title` | `asc` | on main |
 | `asc.member` | `asc &title` | `asc.member` | on main |
 | `attributes` | `attributes` | `attributes` | on main |
@@ -155,6 +157,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `destroy` | `destroy :work` | `destroy` | on main |
 | `destroy.name` | `destroy :work` | `destroy.name` | on main |
 | `destroy.on` | `destroy on=Paid` | `destroy.on` | on main |
+| `disable` | `disable :service-touches-one-entity` | `disable` | on main |
+| `disable.name` | `disable :service-touches-one-entity` | `disable.name` | on main |
 | `do` | `do` | `do` | on main |
 | `entities` | `entities` | `entities` | on main |
 | `entities` part line | `Line prop=:owner` | `entities.reference.prop` | on main |
@@ -245,6 +249,9 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `run.value` | `run({ self }) { audit(self) }` | `run.value` | on main |
 | `set` | `set` | `set` | on main |
 | `set` assignment line | `&title="new"` | `set.member.value` | on main |
+| `severity` | `severity :action-calls-other-aggregate level=:error` | `severity` | on main |
+| `severity.name` | `severity :action-calls-other-aggregate level=:error` | `severity.name` | on main |
+| `severity.level` | `severity :action-calls-other-aggregate level=:error` | `severity.level` | on main |
 | `sort` | `sort` | `sort` | on main |
 | `string` | `string :field` | `string` | on main |
 | `string.name` | `string :field` | `string.name` | on main |
@@ -273,6 +280,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `update` | `update :work` | `update` | on main |
 | `update.name` | `update :work` | `update.name` | on main |
 | `update.on` | `update on=Paid` | `update.on` | on main |
+| `use` | `use preset=MeshRecommended` | `use` | on main |
+| `use.preset` | `use preset=MeshRecommended` | `use.preset` | on main |
 | `uuid` | `uuid :field` | `uuid` | on main |
 | `uuid.name` | `uuid :field` | `uuid.name` | on main |
 | `uuid.nullable` | `uuid :field nullable` | `uuid.nullable` | on main |

@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime, checkScratchPrefixes } from "./repository-checks.ts";
+import { checkDocsSamples, checkDocsSyntaxV4, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime, checkScratchPrefixes } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -515,6 +515,16 @@ test("Docs MX samples: a concept file is a complete fence, parsed as authored", 
     expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 0, errors: [] });
     writeFileSync(join(dir, "concept.md"), '```mx "concepts/Money.mesh.mx"\nconcept :Money\n  belongs-to :x entity=X\n```\n');
     expect(checkDocsSamples(dir).errors.join("\n")).toContain("`belongs-to` must be inside `relationships`");
+  });
+});
+
+test("Docs MX samples: the architecture file is a complete fence, parsed as authored", () => {
+  temporary((dir) => {
+    writeFileSync(join(dir, "architecture.md"), '```mx "src/domain/architecture.mesh.mx"\nimport { MeshRecommended } from "meshfw/architecture"\n\narchitecture :project\n  use preset=MeshRecommended\n  disable :service-touches-one-entity\n```\n');
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 0, errors: [] });
+    expect(checkDocsSyntaxV4(dir)).toMatchObject({ checked: 1, errors: [] });
+    writeFileSync(join(dir, "architecture.md"), '```mx "src/domain/architecture.mesh.mx"\narchitecture :project\n  use\n```\n');
+    expect(checkDocsSamples(dir).errors.join("\n")).toContain("`use` names what it includes");
   });
 });
 
