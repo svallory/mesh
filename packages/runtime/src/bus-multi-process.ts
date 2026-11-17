@@ -77,16 +77,18 @@ async function until(test: () => boolean | Promise<boolean>, what: string, ms = 
   }
 }
 /**
- * The check's own call `run`, made again while it fails with a retryable `DatabaseBusyError`, for up to 5 s: on a server
- * at `SERIALIZABLE` a check's read or publish beside a working worker can fail with a serialization failure, which Mesh
- * leaves to the caller to repeat.
+ * The check's own call `run`, made again while it fails with a serialization failure or a deadlock, for up to 5 s: on a
+ * server at `SERIALIZABLE` a check's read or publish beside a working worker can fail so, which Mesh leaves to the
+ * caller to repeat. A lock wait (`locked`, `lock-timeout`) is not repeated: it means a transaction held a row longer
+ * than it should, and the check fails on it.
  */
 async function again<T>(run: () => Promise<T>): Promise<T> {
   const end = Date.now() + 5000;
   for (;;) {
     try { return await run(); }
     catch (error) {
-      if (!(error instanceof DatabaseBusyError && error.retryable) || Date.now() > end) throw error;
+      const transient = error instanceof DatabaseBusyError && (error.reason === "serialization" || error.reason === "deadlock");
+      if (!transient || Date.now() > end) throw error;
       await sleep(10);
     }
   }
@@ -261,7 +263,7 @@ export function multiProcessChecks(
           return ctx.bind(domain, recorded, bindOptions);
         },
         async start(binding) {
-          const delivery = await again(() => binding.startDelivery());
+          const delivery = await binding.startDelivery();
           stops.push(() => delivery.stop());
           return delivery;
         },
