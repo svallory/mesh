@@ -989,6 +989,18 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         assert(empty.handled === 0 && empty.failed === null, "a call with nothing set aside resolves with nothing handled");
       });
 
+      add("dead letters: two bindings of one process that start delivery together with a skip handler: one claims, the other is MESH_DELIVERER_TAKEN", async (world) => {
+        const module = () => ({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } });
+        const first = world.bind(module());
+        const second = world.bind(module());
+        // The start checks the layer's failure operations in a transaction before it claims: the in-process guard
+        // must hold across that await.
+        const settled = await Promise.allSettled([start(world, first), start(world, second)]);
+        const taken = settled.filter((each) => each.status === "rejected");
+        assert(settled.filter((each) => each.status === "fulfilled").length === 1 && taken.length === 1
+          && taken[0]!.reason instanceof DelivererTakenError && taken[0]!.reason.holder.thisProcess, `got ${JSON.stringify(settled.map((each) => each.status === "fulfilled" ? "started" : String(each.reason)))}`);
+      });
+
       add("dead letters: a listen handler replayed by retryFailed runs outside any transaction, and its row is removed after", async (world) => {
         const broken = new Set<number>([1]);
         let joined: boolean | undefined;

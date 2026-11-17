@@ -475,14 +475,16 @@ export class Deliverer {
 
   /** Claim and register through the strategy (spec, "The claim", "Registration"); this instance then holds the claim. */
   async claim(declared: readonly DeclaredHandler[]): Promise<void> {
-    if (this.db.deliverer !== undefined && this.db.deliverer !== this) throw takenHere(this.db, this.db.deliverer);
+    // This process's place is taken before the first await: another binding (or a round reusing this instance) that
+    // claims meanwhile sees it and is MESH_DELIVERER_TAKEN, instead of claiming under the same run id.
+    if (this.db.deliverer !== undefined) throw takenHere(this.db, this.db.deliverer);
     if (this.holding) throw takenHere(this.db, this);
-    // A handler that sets events aside needs the dead-letter operations: an adapter without them fails the start, not
-    // the first set-aside.
-    const skipping = declared.find((entry) => entry.registered.onFailure === "skip");
-    if (skipping) await this.layer.transaction(async (tx) => { failureOperations(tx, `the handler ${JSON.stringify(skipping.registered.name)} has onFailure "skip"`); });
     this.db.deliverer = this;
     try {
+      // A handler that sets events aside needs the dead-letter operations: an adapter without them fails the start, not
+      // the first set-aside.
+      const skipping = declared.find((entry) => entry.registered.onFailure === "skip");
+      if (skipping) await this.layer.transaction(async (tx) => { failureOperations(tx, `the handler ${JSON.stringify(skipping.registered.name)} has onFailure "skip"`); });
       this.#readHead = await this.strategy.register(declared);
       this.#handlers = new Map(declared.map((entry) => [entry.registered.name, entry]));
       this.holding = true;
