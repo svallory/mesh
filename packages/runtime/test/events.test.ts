@@ -3,11 +3,13 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, FAILURES_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
-  subscribe, Mesh, HANDLER_KIND, EventsConfigError, type HandlerKind,
+  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, runAction, type EventRecord, type HandlerKind,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { notifyPublished, onPublished } from "../src/events.ts";
-import type { DataLayer, DataOperations, Declaration, EventsConfig, EventsModule, OutboxRow } from "@meshfw/runtime";
+import type {
+  DataLayer, DataOperations, Declaration, DelivererClaim, DeliveryOperations, EventsConfig, EventsModule, HandlerProgressRow, OutboxRow, SubscriptionProgressRow,
+} from "@meshfw/runtime";
 
 /** An event class shaped as `mesh build` generates one: a private brand, the declaration under DECLARATION, frozen instances. */
 class InvoicePaid {
@@ -51,7 +53,7 @@ class PayInvoice {
  * `state.settled` (undefined: `highest`) withholds the rows above it, as a server dialect does while an append is open;
  * `appended` gives the layer `onAppended`, whose listeners the test calls through `state.listeners`.
  */
-function memoryLayer(options: { outbox?: boolean; appended?: boolean } = {}) {
+function memoryLayer(options: { outbox?: boolean; appended?: boolean; delivery?: boolean } = {}) {
   const state = { rows: [] as OutboxRow[], deletedThrough: 0, highest: 0, settled: undefined as number | undefined, listeners: new Set<() => void>() };
   let open = false;
   const refuse = async (): Promise<never> => { throw new Error("not used by these tests"); };
@@ -66,8 +68,10 @@ function memoryLayer(options: { outbox?: boolean; appended?: boolean } = {}) {
         return before - state.rows.length;
       },
     }),
+    ...(options.delivery ? memoryDelivery(state) : {}),
   };
   const layer: DataLayer = {
+    ...(options.delivery ? { database: `memory #${Math.random()}` } : {}),
     refuseIfFailed: () => open,
     async transaction<T>(run: (tx: DataOperations) => Promise<T>): Promise<T> {
       if (open) return run(ops);
@@ -86,6 +90,35 @@ function memoryLayer(options: { outbox?: boolean; appended?: boolean } = {}) {
     ...(options.appended ? { onAppended: (listener: () => void) => { state.listeners.add(listener); return () => { state.listeners.delete(listener); }; } } : {}),
   };
   return { layer, state, ops };
+}
+
+/**
+ * The delivery operations (`DeliveryOperations`) over `memoryLayer`'s rows, kept in memory and never rolled back: enough
+ * for `deliver()` to claim, register its handlers and run them through the real deliverer.
+ */
+function memoryDelivery(outbox: { rows: OutboxRow[]; deletedThrough: number; highest: number }): DeliveryOperations {
+  let generation = 0;
+  let claim: DelivererClaim | null = null;
+  const handlers = new Map<string, HandlerProgressRow>();
+  const subscriptions = new Map<string, SubscriptionProgressRow>();
+  const holds = (runId: string, held: number) => claim?.runId === runId && claim.generation === held;
+  return {
+    readDeliveryState: async () => ({ deletedThrough: outbox.deletedThrough, highest: outbox.highest, generation, claim, now: new Date() }),
+    writeClaim: async (next) => {
+      generation = next.generation;
+      claim = { runId: next.runId, generation: next.generation, renewedAt: new Date(), host: next.host ?? null, pid: next.pid, startedAt: next.startedAt };
+    },
+    renewClaim: async (runId, held) => { if (!holds(runId, held)) return false; claim = { ...claim!, renewedAt: new Date() }; return true; },
+    releaseClaim: async (runId, held) => { if (!holds(runId, held)) return false; claim = null; return true; },
+    readHandlerProgress: async () => [...handlers.values()],
+    writeHandlerProgress: async (row) => { handlers.set(row.name, row); },
+    deleteHandlerProgress: async (name) => handlers.delete(name),
+    readSubscriptionProgress: async () => [...subscriptions.values()],
+    writeSubscriptionProgress: async (row) => { subscriptions.set(row.name, { ...row, seenAt: row.seenAt ?? new Date() }); },
+    deleteSubscriptionProgress: async (name) => subscriptions.delete(name),
+    firstOutboxRow: async (after, before, listed, declared) =>
+      outbox.rows.find((row) => row.position > after && row.position < before && (listed.includes(row.name) || !declared.includes(row.name)))?.position ?? null,
+  };
 }
 
 const at = new Date("2026-10-18T12:00:00.000Z");
@@ -809,6 +842,75 @@ describe("testBus's round loop", () => {
       await instance.stop();
       expect({ depth, passes }).toEqual({ depth, passes: 2 });
     }
+  });
+});
+
+describe("the async context a metadata function runs in (trace context in metadata)", () => {
+  // The docs' trace-context recipe ("The events module and metadata", "Trace context") rests on two properties of the
+  // code, pinned here with an AsyncLocalStorage store standing for OpenTelemetry's active context: the metadata function
+  // runs in the async context of the call that published, and a handler's run body's async context reaches the metadata
+  // of every event its calls publish.
+  const Invoice = entity("billing.Invoice", (layer, options, frame = NO_FRAME) => Object.freeze({
+    // As `mesh build` writes an action that publishes: runAction, the binding's frame, and publishEvent with the binding's events.
+    async pay(input: { readonly id: string }, context?: object) {
+      const clock = frame.clock(options.clock);
+      return runAction(layer, options.seams, { entity: "billing.Invoice", action: "pay" }, input, context, (tx) =>
+        frame.within(tx, clock, "billing.Invoice#pay", () =>
+          frame.plain(() => publishEvent(tx, options.events, { ...target, key: { id: input.id } }, paid(input.id), context ?? {}, clock))));
+    },
+  }), null, (call) => ({
+    pay(input: { readonly id: string }, ...context: [context?: object]): Promise<EventRecord> {
+      return call("pay", input, context);
+    },
+  }));
+  const trace = new AsyncLocalStorage<string>();
+  const metadata = () => ({ trace: trace.getStore() ?? null });
+  // An entity value is bound through one async frame, as a project's own bind() passes it.
+  const frame = new AsyncLocalStorage<unknown>();
+
+  test("a store set around an action call is what the metadata function sees", async () => {
+    const { layer, state } = memoryLayer();
+    const binding = bindDomain({ Invoice, InvoicePaid }, layer, { events: { load: async () => ({ metadata }) }, clock }, frame);
+    await binding.run(() => trace.run("caller-a", () => Invoice.pay({ id: "a" })));
+    await trace.run("caller-b", () => binding.run(() => Invoice.pay({ id: "b" })));
+    await binding.run(() => Invoice.pay({ id: "c" }));
+    expect(state.rows.map((row) => row.metadata)).toEqual([{ trace: "caller-a" }, { trace: "caller-b" }, { trace: null }]);
+  });
+
+  test("a store set inside a handler's run is what the metadata function sees for the events its action publishes", async () => {
+    const { layer, state } = memoryLayer({ delivery: true });
+    const module: EventsModule = {
+      metadata,
+      handlers: {
+        // Each acts on the first event only, so the events their own calls publish end the chain.
+        process: {
+          repay: Mesh.handler({
+            events: [InvoicePaid],
+            run: async (event, { context }) => {
+              if (event.payload.invoiceId === "a") await trace.run(`handled ${event.position}`, () => Invoice.pay({ id: "from-handler" }, context));
+            },
+          }),
+        },
+        listen: {
+          mails: Mesh.handler({
+            events: [InvoicePaid],
+            run: async (event) => {
+              if (event.payload.invoiceId === "a") await trace.run(`mailed ${event.position}`, () => Invoice.pay({ id: "from-listener" }));
+            },
+          }),
+        },
+      },
+    };
+    const binding = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus(), keep: "all", load: async () => module }, clock }, frame);
+    await binding.deliver();
+    await trace.run("caller", () => binding.run(() => Invoice.pay({ id: "a" })));
+    await binding.deliver();
+    // keep: "all" holds the delivered row; the two handlers run in no fixed order, so the rows are compared by key.
+    expect(Object.fromEntries(state.rows.map((row) => [(row.key as { id: string }).id, row.metadata]))).toEqual({
+      a: { trace: "caller" },
+      "from-handler": { trace: "handled 1" },
+      "from-listener": { trace: "mailed 1" },
+    });
   });
 });
 
