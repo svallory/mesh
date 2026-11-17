@@ -1,0 +1,13 @@
+import { Mesh } from "meshfw"
+
+entity :PaidInvoice
+  attributes
+    uuid :id primary-key
+    uuid :invoiceId
+  actions auto=[:read]
+    create :record
+      input
+        &invoiceId
+  policies
+    policy :system types=[:create, :read]
+      authorize-if=({ context }) => Mesh.isSystem(context)

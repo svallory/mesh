@@ -64,7 +64,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0093](./0093-line-rule-message-and-code.md) decides how a line rule gets a message and a code of its own: `message="..."` and `code="..."` on its line, text only, for every rule of the line, on attribute, argument, event-field and command-field lines alike. It amends 0090.
 
-[Record 0094](./0094-run-time-points-for-event-extensions.md) publishes a run-time point through which an extension makes handlers of a kind of its own, before the extension host exists: the kind decides where a new handler starts and what its progress row records, and its call chain may neither publish nor dispatch. It amends 0020.
+[Record 0094](./0094-run-time-points-for-event-extensions.md) publishes a run-time point through which an extension makes handlers of a kind of its own, before the extension host exists: the kind decides where a new handler starts and what its progress row records, and its call chain may neither publish nor dispatch. It amends 0020. Its first user, `project` of `@meshfw/event-sourcing`, refuses a read model built from part of the history once any outbox row was deleted.
 
 ## Current records
 
@@ -138,7 +138,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct) | operator |
 | [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted, amended 2026-11-17: one process delivers per database in single mode; several in multi mode (0091) | operator |
 | [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted, amended 2026-11-17: concept files built (0092) | operator; one lead note on DOM-31, for operator review |
-| [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |
+| [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted, amended 2026-11-17: the first slice of `@meshfw/event-sourcing` (`project` handlers) is built over 0094 | operator; lead for the 2026-11-17 amendment |
 | [0082](./0082-named-checks-and-mixins.md) | Named checks in a `checks` section; `mixin` files with `use`; step files dropped | Accepted | operator; lead reading for DOM-33 |
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
 | [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is decided | Accepted, amended 2026-11-17: the architecture file built (lead ruling D40) | operator; lead for the 2026-11-17 amendment |

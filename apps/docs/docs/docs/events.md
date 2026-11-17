@@ -307,7 +307,7 @@ There are two kinds, one per answer to "what may the body do, and when does the 
 
 A `process` handler is exactly once for the database: if the body or the commit fails, its writes roll back with the record, and the event is handled again. On SQLite a write transaction holds the whole database's write lock, so an email or an HTTP call inside a `process` body would make every other write wait for it; that is what `listen` is for. A `listen` body is at least once, so pass `event.id` to the service as its idempotency key where the service takes one. An event a `process` handler's action publishes carries the handled event in `causedBy`.
 
-Both kinds start from now: a handler handles the events published after it is first registered, never history. A new receipt handler must not send a receipt for every past payment; a handler that needs past data reads it from current rows.
+Both kinds start from now: a handler handles the events published after it is first registered, never history. A new receipt handler must not send a receipt for every past payment; a handler that needs past data reads it from current rows. A third kind, `project`, comes from the extension `@meshfw/event-sourcing`: it builds a read model from every event it lists, from the beginning of history (see [Event sourcing](./event-sourcing.md)).
 
 ### The context a handler runs with
 
@@ -630,6 +630,7 @@ Whether a retry makes sense is on the error. Every Mesh error carries `retryable
 |:--|:--|:--|:--|
 | `EventsConfigError` | `MESH_EVENTS_CONFIG` | `false` | The `events` configuration is not valid, or the events module exports handlers while no bus is set |
 | `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A handler lists something other than an event class of the project, asks for `onFailure: "skip"` without `dead-letters`, or has a `renamedFrom` that names a registered handler or that two handlers name |
+| `HandlerHistoryError` | `MESH_HANDLER_HISTORY` | `false` | A project handler (from `@meshfw/event-sourcing`) would build its read model from part of the history; see [Event sourcing](./event-sourcing.md#the-history-rule) |
 | `DelivererTakenError` | `MESH_DELIVERER_TAKEN` | `true` | Another process or binding holds the claim, or a `deliver()` overlapped a round. Names the `holder` and `lapsesAt`. Stop the other process, or connect this one with `{ deliver: false }` |
 | `HandlerLostError` | `MESH_HANDLER_LOST` | `false` | With a bus that declares `multi-process`, this process no longer holds the handler: another process took it over (`reason` `"taken"`), or this process gave it up at an event another build of the handler lists and this one does not (`"pending"`). Names the `handler` and the `position`. A bus ends that handler in this process and reports nothing |
 | `DelivererLostError` | `MESH_DELIVERER_LOST` | `false` | This process no longer holds the claim: another process took it over after it lapsed, or a renewal updated no row, stayed blocked by a lock past the lapse, or kept failing with another transient database error (core retries it, at once and then every 500 ms) until the lapse. This process's delivery stopped |

@@ -5,7 +5,7 @@
 // This is not Mesh. Mesh does not exist as an installable runtime yet, so the file
 // states the shape the pages promise: the generated entry points (`#mesh` and the
 // `#mesh/domain/<module>` specifiers) for the entities of the pages, the run-time error
-// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter, the local event bus, the JSON-RPC transport and the configuration helper. If a page and this file
+// classes, `Mesh` (the functions that are the same in every project), the SQLite adapter, the local event bus, the event-sourcing extension, the JSON-RPC transport and the configuration helper. If a page and this file
 // disagree, the page is a bug or this file is; both are cheap to fix and the sample
 // check is what notices.
 //
@@ -796,10 +796,49 @@ declare module "meshfw" {
   export { defineConfig, type MeshConfig } from "@meshfw/runtime";
 }
 
+declare module "@meshfw/event-sourcing" {
+  import { MeshError } from "@meshfw/runtime";
+  import type { EventBusCapabilities, EventRecord, Handler, HandlerKind, HandlerTools, ListedEvent } from "@meshfw/runtime";
+
+  /** `from`, as `project()` takes it: optional ("beginning" by default) on a bus that declares `replay`; required, and only "now", on one that does not. */
+  export type FromOption = "replay" extends keyof EventBusCapabilities
+    ? { readonly from?: "beginning" | "now" }
+    : { readonly from: "now" };
+
+  /** A handler `project()` made: a `Handler` that carries the `project` kind and its `from`. */
+  export interface ProjectHandler<E extends object = object> extends Handler<E> {
+    readonly from: "beginning" | "now";
+  }
+
+  /** Why a project handler failed to start: rows were deleted, a kept row of an added event lies below its position, or its progress row was registered under another kind or started from now. */
+  export type HistoryReason = "deleted" | "kept-below" | "kind" | "from";
+
+  /** `MESH_HANDLER_HISTORY`: a project handler would build its read model from part of the history, so delivery does not start. Never retryable. */
+  export class HandlerHistoryError extends MeshError {
+    readonly code: "MESH_HANDLER_HISTORY";
+    readonly retryable: false;
+    /** The handler that failed to start. */
+    readonly handler: string;
+    /** The events whose history it would miss. */
+    readonly events: readonly string[];
+    readonly reason: HistoryReason;
+  }
+
+  /** The `project` kind, as core receives it. */
+  export const PROJECT: HandlerKind;
+
+  /** A project handler: builds a read model from every event it lists, from the beginning of history unless `from: "now"`. Its body runs in the handler transaction, may neither publish nor dispatch, and never skips an event. */
+  export function project<const C extends readonly ListedEvent[]>(options: {
+    readonly events: C;
+    run(event: EventRecord<InstanceType<C[number]>>, tools: HandlerTools): void | Promise<void>;
+    readonly renamedFrom?: string;
+  } & FromOption): ProjectHandler<InstanceType<C[number]>>;
+}
+
 // The generated entry points, as ADR-0086 lays them out: `#mesh` holds the framework's names only, and each
 // module of the domain gets its own specifier, `#mesh/domain/<module>`, which exports each of its entities as a value
 // (`Todo`, whose methods are the entity's actions) and the record type under the same name. The pages'
-// entities live in two modules: `Todo` and `List` in `src/domain/todo/`, `Invoice` in `src/domain/billing/`.
+// entities live in two modules: `Todo` and `List` in `src/domain/todo/`, `Invoice` and `PaidInvoice` in `src/domain/billing/`.
 // The types below that no single module owns (`Condition`, `Filter`, `Decision`) are this file's shorthand for the
 // per-entity types the generator writes into each module.
 
@@ -947,6 +986,21 @@ declare module "#mesh/domain/billing" {
     readonly paidAt: Date;
   }
 
+  /** The read model of the event-sourcing page: one row per paid invoice, written by a project handler. */
+  export interface PaidInvoice {
+    id: string;
+    invoiceId: string;
+  }
+
+  /** The entity value of `PaidInvoice`. */
+  export const PaidInvoice: {
+    record(input: { invoiceId: string }, context: ActionContext): Promise<PaidInvoice>;
+    read(input: object, context: ActionContext): Promise<PaidInvoice[]>;
+  } & EntityValue<{
+      record(input: { invoiceId: string }, context?: ActionContext): Promise<PaidInvoice>;
+      read(input: object, context?: ActionContext): Promise<PaidInvoice[]>;
+  }>;
+
   /** The entity value of `Invoice`. */
   export const Invoice: {
     pay(input: { id: string }, context: ActionContext): Promise<Invoice>;
@@ -958,6 +1012,16 @@ declare module "#mesh/domain/billing" {
       pay(input: { id: string }, context?: ActionContext): Promise<Invoice>;
       payInvoice(input: { id: string; paidAt?: Date }, context?: ActionContext): Promise<Invoice>;
   }>;
+}
+
+// What the generated `.mesh/index.ts` merges into the runtime for the pages' bus, `localBus()`: one `true` member per
+// capability it declares, so an option the bus cannot honour is a type error.
+declare module "@meshfw/runtime" {
+  interface EventBusCapabilities {
+    "ordered-delivery": true;
+    replay: true;
+    subscribe: true;
+  }
 }
 
 declare module "#mesh" {

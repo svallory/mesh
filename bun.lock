@@ -172,6 +172,23 @@
         "drizzle-kit",
       ],
     },
+    "packages/event-sourcing": {
+      "name": "@meshfw/event-sourcing",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@meshfw/bus-local": "workspace:*",
+        "@meshfw/compiler": "workspace:*",
+        "@meshfw/data-sqlite": "workspace:*",
+        "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
+        "drizzle-orm": "0.45.3",
+        "meshfw": "workspace:*",
+        "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@meshfw/runtime": "workspace:*",
+      },
+    },
     "packages/jsonrpc": {
       "name": "@meshfw/jsonrpc",
       "version": "0.0.0",
@@ -374,6 +391,8 @@
     "@meshfw/data-postgres": ["@meshfw/data-postgres@workspace:packages/data-postgres"],
 
     "@meshfw/data-sqlite": ["@meshfw/data-sqlite@workspace:packages/data-sqlite"],
+
+    "@meshfw/event-sourcing": ["@meshfw/event-sourcing@workspace:packages/event-sourcing"],
 
     "@meshfw/jsonrpc": ["@meshfw/jsonrpc@workspace:packages/jsonrpc"],
 

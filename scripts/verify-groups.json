@@ -3,7 +3,7 @@
   "groups": {
     "compiler": { "packages": ["packages/compiler"] },
     "cli": { "packages": ["packages/cli"] },
-    "data": { "packages": ["packages/data-sqlite", "packages/data-postgres", "packages/bus-local", "packages/jsonrpc"] },
+    "data": { "packages": ["packages/data-sqlite", "packages/data-postgres", "packages/bus-local", "packages/event-sourcing", "packages/jsonrpc"] },
     "hyper": { "packages": ["examples/hyper"] },
     "rest": {
       "root": true,
