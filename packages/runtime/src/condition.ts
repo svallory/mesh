@@ -210,25 +210,30 @@ export function bindCondition<S>(tableOf: TableOf, literal: ConditionLiteral<S>,
   if (!Array.isArray(raw)) throw new FrameworkError(`${what}: its parameters must be a list, not ${described(raw)}`);
   const params = raw.map((v) => (v === undefined ? null : v));
 
-  const checked = (v: unknown, cls: ValueClass, source: string): Value => {
-    if (!fits(v, cls)) throw new FrameworkError(`${what} compares a${cls === "integer" ? "n" : ""} ${cls} with ${described(v)} from ${source}: the database would convert it, so Mesh refuses it`);
+  const checked = (v: unknown, cls: ValueClass, source: string, side: Side): Value => {
+    if (!fits(v, cls)) {
+      const refused = "the database would convert it, so Mesh refuses it";
+      if (side?.column) throw new FrameworkError(`${what} compares ${side.column} (${cls}) with ${described(v)} from ${source}: ${refused}`);
+      const a = `a${cls === "integer" ? "n" : ""} ${cls}`;
+      throw new FrameworkError(`${what} needs ${a}${side ? ` for ${side.position}` : ""} and got ${described(v)} from ${source}: ${refused}`);
+    }
     return value(v as Scalar, cls);
   };
   const hop = (h: Hop<string>): Hop<TableHandle> => ({
     table: tableOf(h.table), column: h.column, outer: h.outer, key: h.key,
     ...(h.through ? { through: { table: tableOf(h.through.table), entry: h.through.entry, exit: h.through.exit } } : {}),
   });
-  const bind = (part: LiteralNode, depth: number): Condition => {
+  const bind = (part: LiteralNode, depth: number, side?: Side): Condition => {
     if (depth > 256) throw new FrameworkError(`${what} is nested more than 256 levels deep`);
     if (typeof part !== "object" || part === null) throw new FrameworkError(`${what} has a node that is not an object`);
     switch (part.kind) {
       case "column": return { kind: "column", depth: part.depth, name: part.name, class: classOf(part.class, what) };
-      case "value": return checked(part.value, classOf(part.class, what), "a literal value");
+      case "value": return checked(part.value, classOf(part.class, what), "a literal value", side);
       case "param": {
         if (!Number.isInteger(part.index) || part.index < 0 || part.index >= params.length) {
           throw new FrameworkError(`${what} reads parameter ${String(part.index)}, and its parameters are ${params.length}`);
         }
-        return checked(params[part.index], classOf(part.class, what), part.source ?? `parameter ${part.index}`);
+        return checked(params[part.index], classOf(part.class, what), part.source ?? `parameter ${part.index}`, side);
       }
       case "call": {
         const arity = Object.hasOwn(SQL_FUNCTION_ARITY, part.fn) ? SQL_FUNCTION_ARITY[part.fn] : undefined;
@@ -237,7 +242,7 @@ export function bindCondition<S>(tableOf: TableOf, literal: ConditionLiteral<S>,
         if (!Array.isArray(part.args) || (many ? part.args.length < 2 : part.args.length !== arity)) {
           throw new FrameworkError(`${what} calls ${part.fn} with ${Array.isArray(part.args) ? part.args.length : "no"} arguments`);
         }
-        return fold(part.fn, part.args.map((a) => bind(a, depth + 1)));
+        return fold(part.fn, part.args.map((a, i) => bind(a, depth + 1, sideOf(part.fn, part.args, i))));
       }
       case "one": return { kind: "one", hop: hop(part.hop), value: bind(part.value, depth + 1) };
       case "some":
@@ -252,6 +257,40 @@ export function bindCondition<S>(tableOf: TableOf, literal: ConditionLiteral<S>,
   const bound = bind(literal.tree, 0);
   if (isValue(bound) && (bound.value === null || typeof bound.value === "boolean")) return bound.value;
   return bound;
+}
+
+/** What a value meets, for the class-check message (design 6.3): the column side it is compared with, else its place. */
+type Side = { readonly column?: string; readonly position: string } | undefined;
+
+/** The stored side of an expression, as the message names it: `the column s`, `length of the column s`. */
+function columnSide(node: LiteralNode): string | undefined {
+  if (typeof node !== "object" || node === null) return undefined;
+  switch (node.kind) {
+    case "column": return `the column ${node.name}`;
+    case "call": {
+      for (const arg of Array.isArray(node.args) ? node.args : []) {
+        const inner = columnSide(arg);
+        if (inner !== undefined) return `${node.fn} of ${inner}`;
+      }
+      return undefined;
+    }
+    case "one":
+    case "first": { const inner = columnSide(node.value); return inner && `${inner} of a related row`; }
+    case "count": return "the count of related rows";
+    default: return undefined;
+  }
+}
+
+/** Argument `i` of `fn` meets the other arguments it is compared or combined with: not a logic operand or a `cond` test. */
+function sideOf(fn: SqlFunction, args: readonly LiteralNode[], i: number): Side {
+  const position = `argument ${i + 1} of ${fn}`;
+  if (fn === "and" || fn === "or" || fn === "not" || (fn === "cond" && i === 0)) return { position };
+  const others = fn === "cond" ? args.filter((_, j) => j !== 0 && j !== i) : args.filter((_, j) => j !== i);
+  for (const other of others) {
+    const column = columnSide(other);
+    if (column !== undefined) return { column, position };
+  }
+  return { position };
 }
 
 /** `a AND b AND ...` for a WHERE: any `false` or `null` part is `false` (a WHERE keeps only true rows), `true` parts drop out. */
@@ -272,14 +311,18 @@ export function hasHop(part: Condition): boolean {
 }
 
 /**
- * What a read passes as `Query.where`: `undefined` for `true`, else the condition (`false` as a constant). A condition
+ * What a read passes as `Query.where`: `undefined` for `true`, else the condition. `false` is refused for every layer:
+ * it means no row, so the caller returns no row without running the query (design 3.1) and never calls this. A condition
  * goes only to a layer whose capability manifest declares `conditions`, and one that crosses a relationship only to a
  * layer that also declares `joins`: an adapter that does not honour `where` would return rows a policy denies. The
  * build refuses both first; this is the defence behind it.
  */
 export function whereFor(layer: object, where: Where): Condition | undefined {
   if (where === true) return undefined;
-  const condition: Condition = where === false ? value(false, "boolean") : where;
+  if (where === false) {
+    throw new FrameworkError("A read whose condition is false returns no row without running the query; whereFor was handed false, so the caller ran it");
+  }
+  const condition: Condition = where;
   const manifest = (layer as { capabilities?: CapabilityManifest }).capabilities;
   const declared: readonly string[] = Array.isArray(manifest?.capabilities) ? manifest.capabilities : [];
   const adapter = typeof manifest?.adapter === "string" ? `the data adapter "${manifest.adapter}"` : "the data layer, which has no capability manifest,";

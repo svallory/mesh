@@ -154,11 +154,19 @@ describe("bindCondition", () => {
       for (const [cls, value] of [["string", 1], ["integer", 2.5], ["date", "2026-01-01"], ["date", new Date(Number.NaN)], ["boolean", 1], ["float", Number.POSITIVE_INFINITY], ["string", { id: 1 }], ["integer", "1"]] as const) {
         expect(at(cls, value)).toThrow(FrameworkError);
       }
-      expect(at("string", 1)).toThrow("the filter of read :open of billing.Invoice compares a string with the number 1 from parameter 0: the database would convert it, so Mesh refuses it");
+      expect(at("string", 1)).toThrow("the filter of read :open of billing.Invoice compares the column x (string) with the number 1 from parameter 0: the database would convert it, so Mesh refuses it");
     });
     test("the parameter's source text, when the literal carries it, is named", () => {
       const tree = call("eq", col("ownerId"), { kind: "param", index: 0, class: "string", source: "actor.id" });
-      expect(() => bind(tree, [7])).toThrow("compares a string with the number 7 from actor.id:");
+      expect(() => bind(tree, [7])).toThrow("compares the column ownerId (string) with the number 7 from actor.id:");
+    });
+    test("the column side is named on either side, and through a function", () => {
+      expect(() => bind(call("eq", param(0, "string"), col("ownerId")), [7])).toThrow("compares the column ownerId (string) with the number 7 from parameter 0:");
+      expect(() => bind(call("eq", call("length", col("s")), param(0, "integer")), ["x"])).toThrow("compares length of the column s (integer) with the string \"x\" from parameter 0:");
+    });
+    test("where no column is met, the message names the function argument it fills", () => {
+      expect(() => bind(call("isTrue", param(0, "boolean")), [1])).toThrow("needs a boolean for argument 1 of isTrue and got the number 1 from parameter 0:");
+      expect(() => bind(param(0, "boolean"), [1])).toThrow("needs a boolean and got the number 1 from parameter 0:");
     });
     test("a literal value is checked too", () => {
       expect(() => bind(call("eq", col("n", "integer"), val("1", "integer")))).toThrow(FrameworkError);
@@ -190,7 +198,10 @@ describe("whereFor", () => {
   test("a condition goes to a layer that declares conditions", () => {
     expect(whereFor(manifest("conditions"), c)).toBe(c);
     expect(whereFor(manifest("conditions", "joins"), hop)).toBe(hop);
-    expect(whereFor(manifest("conditions"), false)).toEqual({ kind: "value", value: false, class: "boolean" });
+  });
+  test("false is refused for any layer: the caller returns no row without a query", () => {
+    expect(() => whereFor(manifest("conditions"), false)).toThrow("returns no row without running the query");
+    expect(() => whereFor({}, false)).toThrow(FrameworkError);
   });
   test("a layer without conditions is refused, and a hop needs joins", () => {
     expect(() => whereFor({}, c)).toThrow(FrameworkError);
