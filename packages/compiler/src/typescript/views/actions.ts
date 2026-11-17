@@ -1050,7 +1050,6 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   return { ...view, globals: globalsImport(`${entityPath(entity)}.actions`, view, fixed) };
 }
 
-/** True when a `run [after=:write]` or a `publish` is among the steps, at any depth: both run after the write. */
 /**
  * What a write's `load` steps name: at the top of the body a load always runs, so its member is present on the result;
  * one under a `when` may not run, so its member is typed as possibly absent.
@@ -1107,6 +1106,7 @@ export function methodSignature(entity: Entity, action: Action, input: PlannedIn
     : { ...base, returnType: present, typeNames: [input.name, `${recordName}With`], globals: [] };
 }
 
+/** True when a `run [after=:write]` or a `publish` is among the steps, at any depth: both run after the write. */
 export function hasAfterWrite(steps: readonly Step[]): boolean {
   return steps.some((step) => step.kind === "publish" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
 }

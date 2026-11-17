@@ -55,7 +55,7 @@ export interface SurfaceEntityImport {
 export interface SurfaceExposureView {
   /** What the line is, for a comment: `expose :tasks, work.Task`. */
   readonly comment: string;
-  /** The exposed name as an object key (`tasks`, or `"to-do"` quoted when it is no identifier). */
+  /** The exposed name as an object key (`tasks`; the `expose` contract holds it to an identifier, `propertyName` quotes it regardless). */
   readonly key: string;
   /** The entity's FQN as a quoted string literal. */
   readonly entityLiteral: string;
@@ -124,6 +124,7 @@ export function surfaceView({ document }: EmitInput, surface: Surface): SurfaceV
     const entity = document.entities.find((candidate) => candidate.fqn === exposure.entity);
     if (!entity) throw emitError("MESH_EMIT_NAME", `Surface ${surface.name} exposes ${exposure.entity}, which the model does not hold`, exposure.position);
     const recordName = typeName(entity.name, entity.position);
+    // Locals are numbered by line, not named after the exposure: short, and stable when a line is renamed.
     const local = `$${index}`;
     const { properties, computed } = exposedProperties(entity, exposure.fields);
     const fieldsLocal = `${local}$fields`;
