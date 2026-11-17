@@ -68,7 +68,7 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. A part line of an aggregate's `entities` section is the same kind of wildcard child, whose head is an imported entity (`Line`): its row is `entities.reference.prop`, tested in an aggregate file whose root is Sample. A `concept` row is tested as a concept file, `concepts/Sample.mesh.mx`, with one field. An `architecture` row is tested as the architecture file, `architecture.mesh.mx` at the domain root, holding its root line alone; a `severity` or `disable` row, and a `use` row whose example holds `preset=`, is tested in that file under `architecture :project` and with the `MeshRecommended` import; a concept use (`Money :total`) has no row, since its contract is the concept file's and not one of the dialect's. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. A part line of an aggregate's `entities` section is the same kind of wildcard child, whose head is an imported entity (`Line`): its row is `entities.reference.prop`, tested in an aggregate file whose root is Sample. A `concept` row is tested as a concept file, `concepts/Sample.mesh.mx`, with one field. An `architecture` row is tested as the architecture file, `architecture.mesh.mx` at the domain root, holding its root line alone; a `severity` or `disable` row, and a `use` row whose example holds `preset=`, is tested in that file under `architecture :project` and with the `MeshRecommended` import; a `surface`, `expose` or `action` row is tested as a surface file, `surfaces/admin/admin.mesh.mx` in the project's surfaces folder, whose `expose :samples entity=Sample` line (with `action :read` under it) exposes the Sample entity of the domain; a concept use (`Money :total`) has no row, since its contract is the concept file's and not one of the dialect's. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
 The `optional` rows are command field lines, tested in a command file with an answering update; `optional` is refused on event fields, attributes, arguments and computed fields ([Events: Answering a command](../../docs/events.md#answering-a-command)).
 
@@ -76,6 +76,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 
 | Construct | Example | Contract | Status |
 |---|---|---|---|
+| `action` | `action :read` | `action` | on main |
+| `action.name` | `action :read` | `action.name` | on main |
 | `actions` | `actions auto=[:read]` | `actions` | on main |
 | `actions.auto` | `actions auto=[:read]` | `actions.auto` | on main |
 | `actions.max-limit` | `actions auto=[:read] max-limit=100` | `actions.max-limit` | on main |
@@ -178,6 +180,11 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `event.name` | `event :Paid` | `event.name` | on main |
 | `events` | `events` | `events` | on main |
 | `events` listing line | `Paid` | `events.reference` | on main |
+| `expose` | `expose :samples entity=Sample label="Samples" fields=[:title]` | `expose` | on main |
+| `expose.name` | `expose :samples entity=Sample` | `expose.name` | on main |
+| `expose.entity` | `expose :samples entity=Sample` | `expose.entity` | on main |
+| `expose.label` | `expose :samples entity=Sample label="Samples"` | `expose.label` | on main |
+| `expose.fields` | `expose :samples entity=Sample fields=:all` | `expose.fields` | on main |
 | `filter` | `filter=() => true` | `filter` | on main |
 | `filter.value` | `filter=() => true` | `filter.value` | on main |
 | `float` | `float :field` | `float` | on main |
@@ -270,6 +277,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `sum` | `sum :total of=&lines.amount` | `sum` | on main |
 | `sum.name` | `sum :total of=&lines.amount` | `sum.name` | on main |
 | `sum.of` | `sum :total of=&lines.amount` | `sum.of` | on main |
+| `surface` | `surface :admin` | `surface` | on main |
+| `surface.name` | `surface :admin` | `surface.name` | on main |
 | `timestamp` | `timestamp :field` | `timestamp` | on main |
 | `timestamp.name` | `timestamp :field` | `timestamp.name` | on main |
 | `timestamp.nullable` | `timestamp :field nullable` | `timestamp.nullable` | on main |

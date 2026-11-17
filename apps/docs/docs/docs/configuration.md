@@ -50,6 +50,7 @@ export default defineConfig({
 | Key | Required | What it is |
 |:--|:--|:--|
 | `domain` | yes | The folder holding the `.mesh.mx` files, read recursively, relative to the project root |
+| `surfaces` | no | The folder holding the project's surface files, relative to the project root, conventionally `src/surfaces`; see [Surfaces](#surfaces) |
 | `output` | yes | The folder generated code is written to, relative to the project root |
 | `ignore` | no | Globs, relative to the project root, of `.mesh.mx` files Mesh skips; see [Ignoring files](#ignoring-files) |
 | `data` | yes | The data adapter for this project. Exactly one |
@@ -74,6 +75,12 @@ export default defineConfig({
 Patterns match files, so write `src/legacy/**` rather than `src/legacy`. A pattern that matches no entity file produces a warning naming it, `MESH_IGNORE_UNUSED`, since it is usually a typo. `ignore` applies to a `domain` folder, glob or list alike. A glob that reaches outside the project, or one that excludes every entity file, is a configuration error. A file that a kept file imports must not be ignored: importing an ignored file is the error `MESH_IGNORED_IMPORT`. To organise files without excluding them, use a `_name/` folder; see [Project structure](./project-structure.md#the-domain).
 
 `connect()` reads this file, which is why the build, the commands and your application can never disagree about where the data is. There is nowhere else to configure a connection.
+
+### Surfaces
+
+A surface is an entry point for one audience, such as an admin console or a public API: a file whose root line is `surface :name`, which lists the entities that audience may reach (`expose` lines), the actions it may call on each (`action` lines) and the fields that may leave (`fields=`). Surface files sit in the folder `surfaces` names, each in the folder named after its surface (`src/surfaces/admin/admin.mesh.mx` for `surface :admin`), and the build reads them from there. `surfaces` is one folder inside the project, never a glob or a list; it may hold no file yet. A project without the key has no surfaces, and a `surface` file in its domain is the error `MESH_SURFACE_PATH`.
+
+The surfaces folder must lie outside what `domain` reads: a file both would read is a configuration error, so `domain: "src"` with `surfaces: "src/surfaces"` is refused as soon as the surfaces folder holds a surface file, while `domain: "src/domain"` beside it is the usual layout. `ignore` applies to surface files as to entity files. A surface file imports only the domain's `.mesh.mx` files, and no domain file imports a surface. The build checks each surface against the domain and records it in the model; nothing is generated from it yet.
 
 ## src/context.ts
 

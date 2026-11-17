@@ -29,6 +29,15 @@ export function coverageProject(tag: string, option: string | undefined, example
     const source = tag === "architecture" ? `${example}\n` : `import { MeshRecommended } from "meshfw/architecture"\narchitecture :project\n  ${example}\n`;
     return { root: "/project", files: [{ file, source }] };
   }
+  // A surface file lives in the surfaces folder, in the folder named after its surface, and exposes the domain's Sample.
+  if (tag === "surface" || tag === "expose" || tag === "action") {
+    const lines = tag === "surface" ? [example] : tag === "expose" ? ["surface :admin", `  ${example}`] : ["surface :admin", "  expose :samples entity=Sample", `    ${example}`];
+    return { root: "/project", domainRoot: "domain", files: [
+      { file: "domain/sample.mesh.mx", source: "entity :Sample\n  attributes\n    uuid :id primary-key\n    string :title\n  actions auto=[:read]\n" },
+    ], surfaces: { root: "surfaces", files: [
+      { file: "surfaces/admin/admin.mesh.mx", source: `import { Sample } from "../../domain/sample.mesh.mx"\n${lines.join("\n")}\n` },
+    ] } };
+  }
   // The kind's contract is shared, but `optional` is legal only on a command's field. Keep the table cell as authored.
   if (option === "optional" && ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number])) return { root: "/project", files: [
     { file: "docs/change.mesh.mx", source: `command :Change\n  uuid :id\n  ${example}\n` },

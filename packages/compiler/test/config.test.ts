@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { defineConfig, loadConfig, loadProject } from "../src/index.ts";
@@ -173,4 +173,151 @@ test("invalid module segment is positioned on the entity line", async () => {
     code: "MESH_MODULE_NAME", position: { file: "src/domain/bad.name/todo.mesh.mx", line: 1, column: 0 },
     message: 'Module segment "bad.name" must contain only letters, digits, - or _',
   }]);
+});
+
+// The `surfaces` key (`notes/architecture/surfaces-design.md`, PR 1, section 5 "Load"; ruling D41, OD1): a folder only,
+// inside the project, scanned as a `domain` folder is; absent, nothing changes.
+const surfacesConfig = (surfaces: unknown, extra: Record<string, unknown> = {}) =>
+  `export default ${JSON.stringify({ domain: "src/domain", surfaces, output: ".mesh", data, ...extra })}`;
+const ADMIN_SURFACE = 'import { Todo } from "../../domain/blog/todo.mesh.mx"\nsurface :admin\n  expose :todos entity=Todo fields=:all\n';
+async function withSurface(config: string, file = "src/surfaces/admin/admin.mesh.mx") {
+  const root = await project(config);
+  await mkdir(resolve(root, file, ".."), { recursive: true });
+  await writeFile(resolve(root, file), ADMIN_SURFACE);
+  return root;
+}
+test("surfaces: absent gives no surfacesRoot and no surfaceFiles", async () => {
+  const config = (await loadConfig(await project(configSource()))).config!;
+  expect(Object.hasOwn(config, "surfacesRoot")).toBe(false);
+  expect(Object.hasOwn(config, "surfaceFiles")).toBe(false);
+});
+test("surfaces: a folder is scanned, and loadProject builds its files into the model", async () => {
+  const root = await withSurface(surfacesConfig("src/surfaces"));
+  await writeFile(resolve(root, "src/surfaces/admin/notes.md"), "not a surface");
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(loaded.config).toMatchObject({ surfacesRoot: resolve(root, "src/surfaces"), surfaceFiles: [resolve(root, "src/surfaces/admin/admin.mesh.mx")] });
+  expect(loaded.config!.entityFiles).toHaveLength(2);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics).toEqual([]);
+  expect(built.document!.surfaces).toMatchObject([{ name: "admin", file: "src/surfaces/admin/admin.mesh.mx", expose: [{ entity: "blog.Todo", fields: "all" }] }]);
+});
+test("surfaces: an empty folder is legal and adds nothing to the model", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  await mkdir(resolve(root, "src/surfaces"));
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(loaded.config!.surfaceFiles).toEqual([]);
+  expect(Object.hasOwn((await loadProject(loaded.config!)).document!, "surfaces")).toBe(false);
+});
+test.each([
+  ["an empty string", "", "Configuration field `surfaces` must be a non-empty relative folder"],
+  ["a number", 3, "Configuration field `surfaces` must be a non-empty relative folder"],
+  ["a list", ["src/surfaces"], "Configuration field `surfaces` must be a non-empty relative folder"],
+  ["an absolute path", "/tmp/surfaces", "Configuration field `surfaces` must be a relative folder inside the project"],
+  ["a path out of the project", "../surfaces", "Configuration field `surfaces` must be a relative folder inside the project"],
+  ["a glob", "src/surfaces/*", "Configuration field `surfaces` must be a relative folder inside the project"],
+  ["a missing folder", "src/surfaces", "Configuration field `surfaces` names no folder: src/surfaces"],
+  ["a file", "src/domain/blog/todo.mesh.mx", "Configuration field `surfaces` names no folder: src/domain/blog/todo.mesh.mx"],
+])("surfaces: %s is MESH_CONFIG", async (_, surfaces, message) => {
+  const result = await loadConfig(await project(surfacesConfig(surfaces)));
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message, position: { file: "mesh.config.ts" } }]);
+});
+test.each([
+  ["a folder domain that holds the surfaces folder", { domain: "src" }, "src/surfaces/admin/admin.mesh.mx"],
+  ["a glob domain that reaches it", { domain: "src/**/*.mesh.mx" }, "src/surfaces/admin/admin.mesh.mx"],
+])("surfaces: %s overlaps", async (_, fields, shared) => {
+  const result = await loadConfig(await withSurface(surfacesConfig("src/surfaces", fields)));
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: `Configuration field \`surfaces\` overlaps \`domain\`: ${shared} is read by both`, fix: "Move the surfaces folder out of what `domain` reads, or narrow `domain`" }]);
+});
+test("surfaces: a domain folder inside the surfaces folder overlaps", async () => {
+  const root = await project(surfacesConfig("src", { domain: "src/domain" }));
+  const result = await loadConfig(root);
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: "Configuration field `surfaces` overlaps `domain`: src/domain/blog/list.mesh.mx is read by both" }]);
+});
+test("surfaces: a list domain whose common parent holds the surfaces folder does not overlap", async () => {
+  // The design's case: `domain: ["src/a.mesh.mx"]` makes the domain root `src`, which holds `src/surfaces`; the overlap
+  // is checked by file, and the one listed file is not under the surfaces folder.
+  const root = await project(surfacesConfig("src/surfaces", { domain: ["src/a.mesh.mx"] }));
+  await writeFile(resolve(root, "src/a.mesh.mx"), keyed);
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { Todo } from "../../a.mesh.mx"\nsurface :admin\n  expose :todos entity=Todo fields=:all\n');
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(loaded.config!.domainRoot).toBe(resolve(root, "src"));
+  expect(loaded.config!.surfaceFiles).toEqual([resolve(root, "src/surfaces/admin/admin.mesh.mx")]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics).toEqual([]);
+  expect(built.document!.surfaces).toMatchObject([{ name: "admin", file: "src/surfaces/admin/admin.mesh.mx", expose: [{ entity: "Todo", fields: "all" }] }]);
+});
+test("surfaces: a surfaces folder that is a link to a folder outside the project is MESH_CONFIG", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  const outside = await mkdtemp(resolve(tmpdir(), "mesh-outside-"));
+  roots.push(outside);
+  await symlink(outside, resolve(root, "src/surfaces"));
+  const result = await loadConfig(root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: "Configuration field `surfaces` resolves outside the project", position: { file: "mesh.config.ts" } }]);
+});
+test("surfaces: a surface file that is a link to a file outside the project is MESH_CONFIG", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  const outside = await mkdtemp(resolve(tmpdir(), "mesh-outside-"));
+  roots.push(outside);
+  await writeFile(resolve(outside, "admin.mesh.mx"), ADMIN_SURFACE);
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await symlink(resolve(outside, "admin.mesh.mx"), resolve(root, "src/surfaces/admin/admin.mesh.mx"));
+  const result = await loadConfig(root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: 'Surface file "src/surfaces/admin/admin.mesh.mx" resolves outside the project', position: { file: "mesh.config.ts" } }]);
+});
+test("surfaces: undefined is treated as absent, as `ignore` is", async () => {
+  const root = await project('export default { domain: "src/domain", surfaces: undefined, output: ".mesh", data: ' + adapter + " }");
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(Object.hasOwn(loaded.config!, "surfacesRoot")).toBe(false);
+  expect(Object.hasOwn(loaded.config!, "surfaceFiles")).toBe(false);
+});
+test("surfaces: a surface file that cannot be read is named a surface file, with the surfaces fix", async () => {
+  const root = await withSurface(surfacesConfig("src/surfaces"));
+  const loaded = await loadConfig(root);
+  await rm(resolve(root, "src/surfaces/admin/admin.mesh.mx"));
+  const built = await loadProject(loaded.config!);
+  expect(built.document).toBeNull();
+  expect(built.diagnostics).toMatchObject([{
+    code: "MESH_ENTITY_READ", message: 'Cannot read surface file "src/surfaces/admin/admin.mesh.mx" (ENOENT)',
+    position: { file: "src/surfaces/admin/admin.mesh.mx", line: 1, column: 0 }, fix: "Restore the surface file or fix the surfaces folder",
+  }]);
+});
+test("surfaces: a surface that imports a project file outside both folders is MESH_UNKNOWN_ENTITY", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  await mkdir(resolve(root, "src/other"), { recursive: true });
+  await writeFile(resolve(root, "src/other/y.mesh.mx"), keyed.replace(":Todo", ":Y"));
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { Y } from "../../other/y.mesh.mx"\nsurface :admin\n  expose :ys entity=Y\n');
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics.map((d) => [d.position.file, d.position.line, d.position.column, d.code, d.message, d.fix])).toEqual([
+    ["src/surfaces/admin/admin.mesh.mx", 1, 0, "MESH_UNKNOWN_ENTITY", "../../other/y.mesh.mx exists but is not under the configured entity directories", null],
+  ]);
+});
+test("surfaces: a surface that imports a domain file `ignore` excludes is MESH_IGNORED_IMPORT", async () => {
+  const root = await project(surfacesConfig("src/surfaces", { ignore: "**/list.mesh.mx" }));
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { List } from "../../domain/blog/list.mesh.mx"\nsurface :admin\n  expose :lists entity=List\n');
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics.map((d) => [d.position.file, d.position.line, d.position.column, d.code, d.message, d.fix])).toEqual([
+    ["src/surfaces/admin/admin.mesh.mx", 1, 0, "MESH_IGNORED_IMPORT", 'src/surfaces/admin/admin.mesh.mx imports ../../domain/blog/list.mesh.mx, which `ignore` in mesh.config.ts excludes (pattern "**/list.mesh.mx"); import a file that is not ignored, or remove the pattern', null],
+  ]);
+});
+test("surfaces: an ignore pattern that matches only a surface file is used and excludes it", async () => {
+  const root = await withSurface(surfacesConfig("src/surfaces", { ignore: "src/surfaces/admin/**" }));
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(loaded.config!.surfaceFiles).toEqual([]);
+  expect(loaded.config!.ignoredFiles).toEqual([{ file: resolve(root, "src/surfaces/admin/admin.mesh.mx"), pattern: "src/surfaces/admin/**" }]);
 });

@@ -45,6 +45,8 @@ import {
   type SourcePosition,
   type Step,
   isExpression,
+  type Surface,
+  type Exposure,
 } from "@meshfw/model";
 import { RELATIONSHIP_KINDS, SYNTAX_MESSAGES } from "./contracts.ts";
 import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-file.ts";
@@ -72,7 +74,9 @@ import { checkPublishSteps } from "../model/publish-steps.ts";
 import { aggregatesOf, resolveAggregates } from "../model/aggregates.ts";
 import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
+import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import {
+  atomForwards,
   atomList,
   atomOf,
   attr,
@@ -121,21 +125,22 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture";
+type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture" | "surface";
 /**
  * What a file of the project declares: its root line's kind, and every declaration by the name an import of it binds (the
  * root's, as Mesh converts it: `entity :todo` declares `Todo`), the root's first, then each inline event and command of
  * its owner sections. An aggregate file's entry for the aggregate itself is `{ kind: "aggregate", name }`, its name as
  * written: recorded so a message can name it, never a name an import may bind (an aggregate is no value). The architecture
- * file declares nothing: its entry is `{ kind: "architecture", declares: [] }`, and an import of it is refused.
+ * file declares nothing: its entry is `{ kind: "architecture", declares: [] }`, and an import of it is refused. A file
+ * whose root is `surface`, and every file of the surfaces folder, declares nothing either: `{ kind: "surface", declares: [] }`.
  */
 interface DeclaredFile {
   kind: DeclarationKind;
   declares: { kind: DeclarationKind; name: string }[];
 }
-const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture"]);
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture", "surface"]);
 /** The subject of "<noun> file must contain exactly one <kind>", by the file's root kind. */
-const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture" };
+const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture", surface: "A surface" };
 /** The declarations an import of the file may bind: all but an aggregate's own name and a concept, which is never imported. */
 const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate" && declaration.kind !== "concept");
 /**
@@ -146,7 +151,7 @@ const importable = (file: DeclaredFile | undefined) => file?.declares.filter((de
  * "Errors"), and in a listing `MESH_UNKNOWN_EVENT`.
  */
 const referenceKind = (
-  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture">,
+  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture" | "surface">,
   declared: (from: string) => DeclaredFile | undefined,
   code = kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 ): ReferenceKind => ({
@@ -710,8 +715,9 @@ function fileImports(
       // A named import of the aggregate its file declares binds nothing too: the import check reports it
       // (`MESH_UNKNOWN_IMPORT`, R24a), and a use of the name reports nothing more, as for any name its file does not declare.
       const target = entry.namespace || entry.helper || entry.mesh ? undefined : declaredFile(entry.from);
-      // A concept file binds nothing either: a concept is never imported (the import check reports it).
-      if (target?.kind === "concept" || target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
+      // A concept file binds nothing either: a concept is never imported (the import check reports it). Nor does a surface
+      // file, which nothing imports (the import check reports it).
+      if (target?.kind === "concept" || target?.kind === "surface" || target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
         duplicates.add(name);
         continue;
       }
@@ -1616,6 +1622,73 @@ function buildAggregate(
 }
 
 /**
+ * A surface file (`notes/spec/other-file-kinds.md`, "Surface files"; ADR-0077, ADR-0095): `surface :name`, then one
+ * `expose` line per entity the audience may reach, each with its `action` lines. The file imports Mesh files only:
+ * it holds no function, so a helper, a package or `meshfw` is `MESH_UNKNOWN_IMPORT` (OD5); where an import of it may
+ * point is the import check's (`buildModel`). `entity=` resolves as a relationship's does, with no own declaration;
+ * what needs the built entities (the entity's FQN, its actions and fields) is `resolveSurfaces`' (`model/surfaces.ts`).
+ */
+function buildSurface(
+  root: Tag,
+  irImports: readonly IrImport[],
+  source: string,
+  file: string,
+  absolute: string,
+  diagnostics: Diagnostic[],
+  importDetails: Map<Import, ParsedImport>,
+  declaredFile: (from: string) => DeclaredFile | undefined,
+): { surface: Surface; imports: Import[]; pending: PendingSurface } {
+  const { at, pos, fail } = attributeReaders(source, file, diagnostics);
+  const meshImports = irImports.filter((entry) => {
+    const from = entry.from ?? "";
+    if ((from.startsWith("./") || from.startsWith("../")) && hasMeshExtension(from)) return true;
+    fail("MESH_UNKNOWN_IMPORT", `A surface file imports only ${meshExtensionsText} files of the domain: its lines name entities and events, and it holds no function`, at(entry.span.sourceStart), "remove the import");
+    return false;
+  });
+  const { imports, importNames, duplicates, bindings } = fileImports(meshImports, file, new Map(), importDetails, declaredFile, at, fail);
+  for (const { entry, index, name } of bindings)
+    if (/^(\$|l\$)/.test(name)) {
+      const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+      fail("MESH_HELPER_NAME", `The entity import name ${name} cannot start with $ or l$: generated code uses those prefixes for its own names`, localOffset === undefined ? entry.position : at(localOffset));
+    }
+  const prototypeName = (name: string, what: string, tag: Tag) => {
+    if (name === PROTOTYPE_SETTING_NAME)
+      fail("MESH_NAME", `:${name} cannot be ${what}: __proto__ sets an object's prototype instead of adding a property. Choose another name.`, tag);
+  };
+  const surface: Surface = { name: atomOf(attr(root, "name"))?.name ?? "", file, expose: [], position: pos(root) };
+  prototypeName(surface.name, "a surface name", root);
+  const references: ReferenceScope = { imports: importNames, duplicates, own: [], self: `./${basename(file)}` };
+  const entityKind = referenceKind("entity", declaredFile);
+  const pending: PendingSurface = { surface, exposures: [] };
+  for (const line of tags(root.children)) {
+    if (line.name !== "expose") continue;
+    const written = writtenReference(nodeOf(attr(line, "entity")));
+    const target = written ? resolveReference(written, references, entityKind) : undefined;
+    if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
+    const fieldsAttr = attr(line, "fields");
+    const fieldSpans = [...atomForwards(fieldsAttr)].map(([forward, span]) => ({ name: String((forward as { value?: unknown }).value), position: at(span.sourceStart) }));
+    const listed = atomOf(fieldsAttr)?.name === "all" ? "all" : fieldSpans.map(({ name }) => name);
+    const label = textOf(attr(line, "label"));
+    const exposure: Exposure = {
+      name: atomOf(attr(line, "name"))?.name ?? "",
+      entity: "",
+      identifier: written ? referenceText(written) : "",
+      ...(label !== undefined ? { label } : {}),
+      fields: listed,
+      actions: tags(line.children).filter((action) => action.name === "action")
+        .map((action) => ({ name: atomOf(attr(action, "name"))?.name ?? "", position: pos(action) })),
+      position: pos(line),
+    };
+    prototypeName(exposure.name, "an exposed name", line);
+    surface.expose.push(exposure);
+    const entry: PendingExposure = { exposure, fields: listed === "all" ? [] : fieldSpans };
+    if (target?.ok) entry.target = resolve(dirname(absolute), target.from);
+    pending.exposures.push(entry);
+  }
+  return { surface, imports, pending };
+}
+
+/**
  * An event or a command: a file of its own whose root line declares it and whose children are field lines
  * (`notes/spec/events-and-commands.md`, "Events" and "Commands"). A field line is an attribute line with the options that
  * constrain a value only: `nullable`, `values`, `min`, `max` and `match`, `message` and `code` beside a rule (ADR-0092),
@@ -2094,6 +2167,18 @@ export function buildModel(project: ProjectDescription): BuildResult {
     if (path) sources.set(path.absolute, { file: path.file, source: input.source });
   });
   const virtualFiles = new Set(sources.keys());
+  // The surface files (OD1): read from their own folder, kept apart from the domain's files, so `virtualFiles` and every
+  // "each domain file parsed" count stay the domain's. Their texts join `sources` only so that a diagnostic MX positions in
+  // one of them is reported there.
+  const surfacesRoot = project.surfaces && resolve(rootPath, normalizePath(project.surfaces.root));
+  const surfacesLabel = surfacesRoot === undefined ? undefined : normalizePath(relative(rootPath, surfacesRoot)) || ".";
+  const surfaceInputs = (project.surfaces?.files ?? []).map((input) => ({ input, path: resolveEntityFile(rootPath, input.file) }));
+  const surfacePaths = new Set<string>();
+  for (const { input, path } of surfaceInputs)
+    if (path) {
+      surfacePaths.add(path.absolute);
+      sources.set(path.absolute, { file: path.file, source: input.source });
+    }
   const otherFile = otherFileResolver(rootPath, sources);
   // Every file is parsed before any is built: a reference through a namespace import (`billing.Invoice`) is
   // checked against what the imported file declares.
@@ -2154,8 +2239,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
       const module = moduleOfFolder(inConceptsFolder(path.absolute) ? normalizePath(dirname(folder)) : folder).module;
       conceptIndex.set(realPath(path.absolute), { name, fqn: [...module.split("/").filter(Boolean), name].join("."), file: path.file });
     }
-    // The architecture file declares nothing an import may bind (R8).
-    const ofKind = kind === "architecture" ? [] : roots.filter((root) => root.name === kind);
+    // The architecture file declares nothing an import may bind (R8), and neither does a surface file.
+    const ofKind = kind === "architecture" || kind === "surface" ? [] : roots.filter((root) => root.name === kind);
     declaredByPath.set(resolve(rootPath, path.file), {
       kind,
       declares: [
@@ -2166,6 +2251,26 @@ export function buildModel(project: ProjectDescription): BuildResult {
               .flatMap((line) => [named(line)].flat().map((name) => ({ kind: line.name as DeclarationKind, name: classNameOf(name) }))))),
       ],
     });
+  }
+  // The surface files, parsed as entity files are, into their own list. Each declares nothing an import may bind, whatever
+  // its root: the surfaces folder holds surface files only, and the domain never imports one (R4).
+  const parsedSurfaces: { source: string; path: NonNullable<ReturnType<typeof resolveEntityFile>>; ir: NonNullable<ReturnType<typeof parseEntitySource>["ir"]> }[] = [];
+  for (const { input, path } of surfaceInputs) {
+    if (!path) {
+      diagnostics.push(error("MESH_ENTITY_PATH", "Surface file path must resolve inside the project", positionAt("", "mesh.config.ts", 0)));
+      continue;
+    }
+    declaredByPath.set(path.absolute, { kind: "surface", declares: [] });
+    const parsed = parseEntitySource(input.source, path.absolute);
+    diagnostics.push(...parsed.diagnostics.map((d) => meshDiagnostic(d, path.file, otherFile)));
+    for (const d of parsed.scanDiagnostics) {
+      if (otherFile(d.file).kind !== "project") continue;
+      const key = `${d.file}\0${d.message}`;
+      if (scanReported.has(key)) continue;
+      scanReported.add(key);
+      diagnostics.push(meshDiagnostic(scanDiagnostic(d), path.file, otherFile));
+    }
+    if (parsed.ir) parsedSurfaces.push({ source: input.source, path, ir: parsed.ir });
   }
   const concepts: ConceptDeclaration[] = [];
   const architectureFiles: { root: Tag; imports: readonly IrImport[]; source: string; file: string; absolute: string }[] = [];
@@ -2194,6 +2299,16 @@ export function buildModel(project: ProjectDescription): BuildResult {
         diagnostics.push(error(problem.code, problem.message, positionAt(input.source, file, problem.offset)));
       continue;
     }
+    // A surface lives in the surfaces folder, never in the domain (R3, OD2): not built.
+    if (roots.length === 1 && roots[0]!.name === "surface") {
+      const name = atomOf(attr(roots[0]!, "name"))?.name ?? "name";
+      diagnostics.push(error("MESH_SURFACE_PATH", "A surface file lives in the surfaces folder, not in the domain: the domain never imports a surface",
+        positionAt(input.source, file, roots[0]!.nameSpan.sourceStart),
+        surfacesLabel === undefined
+          ? `move it to a surfaces folder, \`src/surfaces/${name}/\`, and set \`surfaces: "src/surfaces"\` in mesh.config.ts`
+          : `move it to \`${surfacesLabel === "." ? "" : `${surfacesLabel}/`}${name}/\``));
+      continue;
+    }
     if (roots.length !== 1)
       diagnostics.push(
         error(
@@ -2209,6 +2324,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
         if (root === roots[0]) architectureFiles.push({ root, imports: ir.imports, source: input.source, file, absolute: path.absolute });
         continue;
       }
+      // A second root that is a surface is the duplicate reported above, and is not read.
+      if (root.name === "surface") continue;
       try {
         if (root.name === "event" || root.name === "command") {
           const declaration = buildDeclaration(root, ir.imports, input.source, file, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute))));
@@ -2248,6 +2365,51 @@ export function buildModel(project: ProjectDescription): BuildResult {
       }
     }
   }
+  // The surface files (R1 to R3, OD2): one `surface` root, in the folder named after the surface, directly under the
+  // surfaces root. A file with more than one root is one error at the second, and only its first root is read.
+  const surfaces: Surface[] = [];
+  const pendingSurfaces: PendingSurface[] = [];
+  const surfaceImports: { file: string; source: string; imports: Import[] }[] = [];
+  for (const { source, path, ir } of parsedSurfaces) {
+    const file = path.file;
+    const roots = tags(ir.body);
+    const first = roots[0];
+    if (!first) continue;
+    if (roots.length > 1)
+      diagnostics.push(error("MESH_DUPLICATE_ENTITY", "A surface file must contain exactly one surface", positionAt(source, file, roots[1]!.nameSpan.sourceStart)));
+    const position = positionAt(source, file, first.nameSpan.sourceStart);
+    const name = atomOf(attr(first, "name"))?.name;
+    if (first.name !== "surface") {
+      diagnostics.push(error("MESH_SURFACE_PATH", `\`${file}\` declares \`${first.name}${name === undefined ? "" : ` :${name}`}\`; the surfaces folder holds surface files only`, position, `move it under the domain folder (\`${domainLabel}\`)`));
+      continue;
+    }
+    if (name === undefined) continue; // MX reports the missing name
+    const folder = normalizePath(relative(surfacesRoot!, dirname(path.absolute)));
+    if (folder !== name) {
+      const target = `${surfacesLabel === "." ? "" : `${surfacesLabel}/`}${name}/`;
+      const renamed = /^[A-Za-z_][A-Za-z0-9_]*$/.test(folder) ? `, or rename the surface \`:${folder}\`` : "";
+      diagnostics.push(error("MESH_SURFACE_PATH", `Surface :${name} is declared in \`${file}\`; a surface file lives in the folder named after its surface, \`${target}\``, position, `move the file to \`${target}\`${renamed}`));
+      continue;
+    }
+    try {
+      const declared = (from: string) => declaredByPath.get(resolve(rootPath, dirname(file), from));
+      const built = buildSurface(first, ir.imports, source, file, path.absolute, diagnostics, importDetails, declared);
+      surfaces.push(built.surface);
+      pendingSurfaces.push(built.pending);
+      surfaceImports.push({ file, source, imports: built.imports });
+    } catch (cause) {
+      diagnostics.push(error("MESH_MODEL_SHAPE", cause instanceof Error ? cause.message : String(cause), position));
+    }
+  }
+  {
+    const firstSurface = new Map<string, string>();
+    for (const surface of surfaces) {
+      if (firstSurface.has(surface.name))
+        diagnostics.push(error("MESH_DUPLICATE_ENTITY", `Duplicate surface ${surface.name}; first declared in ${firstSurface.get(surface.name)}`, surface.position));
+      else firstSurface.set(surface.name, surface.file);
+    }
+  }
+  if (surfaces.length) document.surfaces = surfaces;
   // The architecture file is the file named so directly in the domain root (R2): any other `architecture` root is refused
   // and not read, and a project with none runs every rule at its default level. The settings are not read further yet:
   // no rule has a check.
@@ -2336,11 +2498,19 @@ export function buildModel(project: ProjectDescription): BuildResult {
       );
     else identities.set(entity.fqn, entity.file);
   }
-  // The imports of every file that takes them: an entity file's and an aggregate file's.
-  for (const entity of [...document.entities, ...aggregates]) {
+  // The imports of every file that takes them: an entity file's, an aggregate file's and a surface file's.
+  const sourceOf = (file: string) =>
+    surfaceImports.find((owner) => owner.file === file)?.source ?? project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === file)!.source;
+  const surfaceOwners = new Set(surfaceImports.map(({ file }) => file));
+  for (const entity of [...document.entities, ...aggregates, ...surfaceImports]) {
     for (const imported of entity.imports) {
       if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
+      // Nothing imports a surface file (R4, R5): neither the domain nor another surface.
+      if (hasMeshExtension(imported.from) && (surfacePaths.has(target) || declaredByPath.get(target)?.kind === "surface")) {
+        diagnostics.push(error("MESH_UNKNOWN_ENTITY", `${imported.from} is a surface file: ${surfaceOwners.has(entity.file) ? "a surface imports only files under the domain folder" : "the domain never imports a surface"}`, imported.position, "remove the import"));
+        continue;
+      }
       // What the imported file declares, for a named import to check its name against: an entity, event or command file's
       // root, and each event and command an entity file's owner sections declare inline.
       const declared = builtFiles.has(target) ? declaredByPath.get(target) : undefined;
@@ -2353,7 +2523,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       // The architecture file declares nothing to import (R8): each binding of a named import, or the namespace import once.
       if (hasMeshExtension(imported.from) && declaredByPath.get(target)?.kind === "architecture") {
         const bindings = imported.namespace ? [] : importDetails.get(imported)?.bindings ?? [];
-        const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
+        const source = sourceOf(entity.file);
         if (!bindings.length)
           diagnostics.push(error("MESH_UNKNOWN_IMPORT", `${imported.from} is the architecture file, which declares nothing to import`, imported.position, "remove the import"));
         for (const binding of bindings)
@@ -2366,7 +2536,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
         // A namespace import names the file, not what it declares: its references are checked where they are written.
         for (const binding of imported.namespace ? [] : importDetails.get(imported)?.bindings ?? []) {
           if (!importable(declared)!.some(({ name }) => name === binding.imported)) {
-            const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
+            const source = sourceOf(entity.file);
             diagnostics.push(error("MESH_UNKNOWN_IMPORT", aggregate?.name === binding.imported
               ? `\`${binding.imported}\` is the aggregate ${imported.from} declares, and an aggregate is no value: import the events or commands it declares${importableNames.length ? ` (${importableNames.join(", ")})` : ", and it declares none"}`
               : `\`${binding.imported}\` is not what ${imported.from} declares; it declares ${importableNames.length ? importableNames.join(", ") : `the aggregate \`${aggregate?.name}\` only, which is no value`}`,
@@ -2405,6 +2575,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     }
   }
   resolveRelationships(document, inversePositions, throughPositions, diagnostics);
+  resolveSurfaces(document, rootPath, pendingSurfaces, diagnostics, nearestName);
   resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });

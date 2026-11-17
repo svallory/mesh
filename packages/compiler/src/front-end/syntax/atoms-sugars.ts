@@ -983,9 +983,10 @@ function checkAtomContracts(unit: LoweredUnit): void {
 }
 
 /** A host expression node, as far as `checkAtomSlots` reads one: its type, an identifier's name, a list's items and the source offsets MX keeps on it. */
-interface HostNode {
+export interface HostNode {
   readonly type?: string;
   readonly name?: unknown;
+  readonly value?: unknown;
   readonly start?: number | null;
   readonly end?: number | null;
   readonly elements?: ReadonlyArray<HostNode | null>;
@@ -998,13 +999,25 @@ interface HostNode {
  */
 const GLOBAL_VALUES: ReadonlySet<string> = new Set(["undefined", "NaN", "Infinity"]);
 function atomFix(node: HostNode | null, declaration: AtomDeclaration): string {
-  if (node?.type !== "Identifier" || typeof node.name !== "string") return "";
-  const { name } = node;
+  // A string item of a list the contract leaves open (`fields=[:a, "b"]`, `itemNotAtom`) gets the same fix: core never
+  // passes a string here, since it refuses one in an atom slot itself.
+  const name = node?.type === "Identifier" ? node.name : node?.type === "StringLiteral" ? node.value : undefined;
+  if (typeof name !== "string") return "";
   const { values, pattern } = declaration;
   if (GLOBAL_VALUES.has(name) || !new RegExp(`^${NAME}$`).test(name)) return "";
   if (values && !values.includes(name)) return "";
   if (pattern !== undefined && !new RegExp(pattern).test(name)) return "";
   return `; write it as \`:${name}\``;
+}
+
+/**
+ * The text for an option's value, or one item of its list, that is no atom: `option fields item 1 must be atom, got
+ * expression; write it as \`:a\``. `checkAtomSlots` prints it for an atom slot, and a contract hook prints it for a list
+ * its contract leaves open (`expose`'s `fields=`, which also takes `:all`), so one mistake reads the same in both.
+ */
+export function itemNotAtom(option: string, index: number | undefined, node: HostNode | null, declaration: AtomDeclaration = {}): string {
+  const got = !node ? "nothing" : node.type === "StringLiteral" ? "string" : "expression";
+  return `option ${option}${index === undefined ? "" : ` item ${index + 1}`} must be atom, got ${got}${describeAttribute(declaration as Readonly<Record<string, unknown>>)}${atomFix(node, declaration)}`;
 }
 
 /**
@@ -1035,15 +1048,16 @@ export function checkAtomSlots(unit: LoweredUnit): void {
       const atoms = new Set<unknown>();
       for (const each of expression.nodes ?? []) if (each.type === "mesh:Atom") atoms.add(each.forward);
       const whole = unwrapped(expression.node) as HostNode | null;
-      const refuse = (item: string, got: string, node: HostNode | null, at: SourceSpan | undefined): never =>
+      const refuse = (index: number | undefined, node: HostNode | null, at: SourceSpan | undefined): never =>
         unit.fail(
-          `${tagLabel(call.tag)}: option ${attr.label}${item} must be atom, got ${got}${describeAttribute(declaration as Readonly<Record<string, unknown>>)}${atomFix(node, declaration)}`,
+          `${tagLabel(call.tag)}: ${itemNotAtom(attr.label, index, node, declaration)}`,
           { code: "MESH_OPTION_VALUE", ...(at ? { at } : {}) },
         );
       if (declaration.type === "mesh:Atom") {
         if (expression.nodes?.length === 1 && atoms.has(whole)) continue;
         if (whole?.type === "StringLiteral" && !atoms.has(whole)) continue;
-        refuse("", "expression", whole, expression.span);
+        // A whole value that is no atom: an expression (a string returned above), whatever its node is.
+        refuse(undefined, whole ?? {}, expression.span);
       }
       if (whole?.type !== "ArrayExpression") continue;
       for (const [index, element] of (whole.elements ?? []).entries()) {
@@ -1053,7 +1067,7 @@ export function checkAtomSlots(unit: LoweredUnit): void {
         if (item?.type === "StringLiteral") break;
         // An empty item (`[:a, , :b]`) has no place of its own: the list is where it is.
         const at = typeof item?.start === "number" && typeof item.end === "number" ? { sourceStart: item.start, sourceEnd: item.end } : expression.span;
-        refuse(` item ${index + 1}`, item ? "expression" : "nothing", item, at);
+        refuse(index, item, at);
       }
     }
   }

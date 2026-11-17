@@ -19,6 +19,8 @@ declare module "@meshfw/runtime" {
   /** What `mesh.config.ts` default-exports. In the runtime, because `connect()` loads the config at run time. */
   export type MeshConfig = {
     domain: string;
+    /** The folder of the project's surface files, conventionally `src/surfaces`; absent, the project has none. */
+    surfaces?: string;
     output: string;
     data: SqliteDataLayer | PostgresDataLayer;
     extensions?: unknown[];

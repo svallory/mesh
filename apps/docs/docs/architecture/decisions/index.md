@@ -66,6 +66,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0094](./0094-run-time-points-for-event-extensions.md) publishes a run-time point through which an extension makes handlers of a kind of its own, before the extension host exists: the kind decides where a new handler starts and what its progress row records, and its call chain may neither publish nor dispatch. It amends 0020. Its first user, `project` of `@meshfw/event-sourcing`, refuses a read model built from part of the history once any outbox row was deleted.
 
+[Record 0095](./0095-surface-files-are-read-from-their-own-folder.md) builds the surface file of 0077 in parts, starting with the file kind: a `surfaces` folder in `mesh.config.ts`, one folder per surface, what a surface file may import, what `fields=` may name, which duplicates are refused, and the model node.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -134,7 +136,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0074](./0074-write-policies-may-read-through-tx.md) | A write policy may read other entities through `tx` | Accepted, amended 2026-10-12 by 0086 | operator |
 | [0075](./0075-seams-use-the-extension-hosts-names.md) | Three lifecycle seams, named and shaped as the extension host's run-time points | Accepted, amended 2026-10-11: domain events replace the application's event table (0079); amended 2026-10-12 by 0086; note 2026-11-14: re-argued for projects (lead, at the operator's request; the decision is unchanged) | operator |
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
-| [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
+| [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted; being built (0095) | operator |
 | [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct) | operator |
 | [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted, amended 2026-11-17: one process delivers per database in single mode; several in multi mode (0091) | operator |
 | [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted, amended 2026-11-17: concept files and concept-typed members built (0092) | operator; one lead note on DOM-31, for operator review |
@@ -152,6 +154,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md) | Concepts are found by MX's scan, generated as a type and a schema, and stored as one JSON value | Accepted (lead ruling D36, pending operator review), amended 2026-11-17: concept-typed members built | lead, delegated |
 | [0093](./0093-line-rule-message-and-code.md) | `message=` and `code=` on a line rule's line replace its standard message and code, for every rule of the line | Accepted (lead ruling D38, pending operator review) | lead, delegated |
 | [0094](./0094-run-time-points-for-event-extensions.md) | Run-time points for event extensions: contributed handler kinds, published before the extension host | Proposed (lead ruling D46, pending operator review) | lead, delegated |
+| [0095](./0095-surface-files-are-read-from-their-own-folder.md) | Surface files are read from their own folder; `fields=` names attributes, belongs-to and computed fields | Proposed (lead ruling D41, pending operator review) | lead, delegated |
 
 ## Superseded records
 
