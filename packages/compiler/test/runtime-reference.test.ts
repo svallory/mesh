@@ -27,7 +27,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     const names = [...section.matchAll(/export (?:interface|class) (\w+)/g)].map((match) => match[1]!);
     expect(names).toEqual([
       "EventsConfig", "EventsModule", "EventBusCapabilities", "BusManifest", "EventBus", "BusOptions", "EventBusInstance", "RegisteredHandler", "OutboxRow",
-      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress", "Adopted",
+      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "HandlerKind", "KindHandler", "Registration", "HandlerProgressRow", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress", "Adopted",
       "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
       "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
       "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError", "HandlerLostError",
@@ -52,6 +52,12 @@ type LiveSubscriptionParity = Assert<Equal<Docs.LiveSubscription, Actual.LiveSub
 type BusCapabilityParity = Assert<Equal<Docs.BusCapability, Actual.BusCapability>>;
 type CapabilityParity = Assert<Equal<Docs.Capability, Actual.Capability>>;
 type HandlerParity = Assert<Same<Docs.Handler, Actual.Handler>>;
+// The contributed-kind point (ADR-0094), compared whole. The sample's \`Handler\` leaves out the optional \`[HANDLER_KIND]\`
+// member (a unique symbol of each module cannot match), so the two that embed a \`Handler\` are compared by assignability.
+type HandlerKindParity = Assert<Same<Docs.HandlerKind, Actual.HandlerKind>>;
+type RegistrationParity = Assert<Equal<Docs.Registration, Actual.Registration>>;
+type KindHandlerParity = Assert<Same<Docs.KindHandler, Actual.KindHandler>>;
+type HandlerProgressRowParity = Assert<Equal<Docs.HandlerProgressRow, Actual.HandlerProgressRow>>;
 type SubscriptionParity = Assert<Equal<Docs.Subscription, Actual.Subscription>>;
 type SubscriptionProgressParity = Assert<Equal<Docs.SubscriptionProgress, Actual.SubscriptionProgress>>;
 type ReadEventsPageParity = Assert<Equal<Docs.ReadEventsPage, Actual.ReadEventsPage>>;

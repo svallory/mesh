@@ -1,0 +1,2 @@
+command :RefundInvoice
+  uuid :id

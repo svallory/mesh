@@ -1,0 +1,27 @@
+import { RefundInvoice } from "./refund-invoice.mesh.mx"
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import { RefundIssued } from "./refund-issued.mesh.mx"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    boolean :paid default=false
+  actions auto=[:read]
+    create :open
+    update :pay
+      do
+        set
+          &paid=true
+        publish=() => new InvoicePaid({ invoiceId: &id })
+    update :settle
+      do
+        run [after=:write] ({ self, context }) {
+          await Invoice.pay({ id: self.id }, context);
+        }
+    update :refund on=RefundInvoice
+      do
+        when=() => &paid
+          publish=() => new RefundIssued({ invoiceId: &id })
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true

@@ -1,4 +1,4 @@
-import type { OutboxPage, OutboxRow, SubscriptionFilter } from "./data-layer.ts";
+import type { HandlerProgressRow, OutboxPage, OutboxRow, SubscriptionFilter } from "./data-layer.ts";
 import type { StoppedHandler } from "./errors.ts";
 import { FrameworkError } from "./errors.ts";
 import type { EventRecord } from "./events.ts";
@@ -71,9 +71,10 @@ export interface EventBusInstance {
 
 /** A handler as core registered it for this claim: what a bus feeds. */
 export interface RegisteredHandler {
-  /** The handler's name, unique across both kinds. */
+  /** The handler's name, unique across every kind. */
   readonly name: string;
-  readonly kind: "process" | "listen";
+  /** `"process"`, `"listen"`, or the name of a kind an extension contributes (`HandlerKind`), such as `"project"`. */
+  readonly kind: string;
   /** The sorted FQNs it lists. */
   readonly events: readonly string[];
   readonly onFailure: "stop" | "skip";
@@ -172,6 +173,67 @@ export interface Handler<E extends object = object> {
   readonly onFailure?: OnFailure;
   /** The handler's former name, whose progress row it takes over at registration. */
   readonly renamedFrom?: string;
+  /** The kind an extension contributes, set by that extension's helper (such as `project()`), never by hand. */
+  readonly [HANDLER_KIND]?: HandlerKind;
+}
+
+/**
+ * The key under which a handler made by an extension carries its kind (ADR-0094). Owned by the runtime, as `DECLARATION`
+ * is: a project with two copies of `@meshfw/runtime` would not recognise the other copy's kinds.
+ */
+export const HANDLER_KIND: unique symbol = Symbol("mesh.handlerKind");
+
+/**
+ * A handler kind an extension contributes (ADR-0094), beside core's `process` and `listen`. Its handlers are listed under
+ * `handlers.<name>` in the events module and run as `process` handlers do (the body in the handler transaction, the
+ * progress written in it), with a quiet call chain: a publish or a dispatch anywhere in it, until the handler call
+ * settles, is a `FrameworkError`. The kind decides where a new handler starts, may refuse a start, and names what the
+ * progress row stores as its kind.
+ */
+export interface HandlerKind {
+  /** The key it is listed under in the events module's `handlers`, and `RegisteredHandler.kind`: one lowercase word, never `process` or `listen`. */
+  readonly name: string;
+  /** The package that contributes it, for messages: `"@meshfw/event-sourcing"`. */
+  readonly owner: string;
+  /** Checked at start with core's option checks, before them and before anything is claimed; throws `HandlerOptionError`. */
+  check(handler: KindHandler, bus: BusManifest): void;
+  /** In the registration transaction, for a handler with no progress row: the position it starts after, from `deletedThrough` to `highest`. */
+  start(handler: KindHandler, registration: Registration): Promise<number>;
+  /**
+   * In the registration transaction, for a handler whose row exists (its own, or its `renamedFrom`'s), before the row is
+   * rewritten; `added` is what its list gained over the row's. Throws to fail the whole start.
+   */
+  adopt(handler: KindHandler, row: HandlerProgressRow, added: readonly string[], registration: Registration): Promise<void>;
+  /**
+   * The progress row's stored `kind`, written in the same transaction after `start` or `adopt` (`row` is the existing
+   * row, or undefined for a new one; `added` as for `adopt`, empty for a new row): `name`, or `name:` followed by one
+   * lowercase word (`"project:now"`). Core stores it as it is and hands it back to `adopt` as `row.kind`.
+   */
+  stored(handler: KindHandler, row: HandlerProgressRow | undefined, added: readonly string[]): string;
+}
+
+/** A handler of a contributed kind, as core hands it to its kind. */
+export interface KindHandler {
+  readonly name: string;
+  /** The sorted FQNs it lists. */
+  readonly events: readonly string[];
+  readonly handler: Handler;
+}
+
+/** What a kind reads in the registration transaction. */
+export interface Registration {
+  readonly deletedThrough: number;
+  /** True when any outbox row has ever been deleted on this database (`deletedThrough > 0`). */
+  readonly deletedAny: boolean;
+  /** The highest position ever assigned. */
+  readonly highest: number;
+  /** The `keep` in force. */
+  readonly keep: "until-delivered" | "all";
+  /**
+   * The position of the first kept row above `after` and below `before` whose name is in `names` or matches no declared
+   * event; null when there is none. One indexed query.
+   */
+  firstRow(after: number, before: number, names: readonly string[]): Promise<number | null>;
 }
 
 /**

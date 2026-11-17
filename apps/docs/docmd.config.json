@@ -502,6 +502,10 @@
             {
               "title": "0093. A line rule's own message and code",
               "path": "/architecture/decisions/0093-line-rule-message-and-code/"
+            },
+            {
+              "title": "0094. Run-time points for event extensions: contributed handler kinds",
+              "path": "/architecture/decisions/0094-run-time-points-for-event-extensions/"
             }
           ]
         },

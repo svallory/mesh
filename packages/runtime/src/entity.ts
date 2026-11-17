@@ -7,7 +7,9 @@ import type { BindOptions } from "./lifecycle.ts";
 import { evaluatingNow, readOnlyRecord } from "./load.ts";
 import { outermost } from "./seams.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import { causedIn, publishedIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { dispatching } from "./dispatch.ts";
+import type { HandlerKind } from "./bus.ts";
+import { causedIn, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
 import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
 /**
@@ -205,6 +207,11 @@ interface CallRoot {
   /** The id of the event whose handler began the chain: what every event the chain publishes carries as `causedBy`. */
   readonly causedBy?: string;
   /**
+   * Set when the chain's root is a handler of a kind an extension contributes (ADR-0094): until the chain settles, a
+   * publish (`within` marks the transaction) and a `dispatch` anywhere in it are `FrameworkError`s.
+   */
+  readonly quiet?: HandlerKind;
+  /**
    * Set when a call is made more than `MAX_CALL_DEPTH` deep. The error sticks to the chain: every call made under the root
    * throws it at entry, so a helper that catches it cannot keep a cycle going. Inside a transaction it also fails that
    * transaction, like any failed nested call, so the root rejects with it and that transaction writes nothing
@@ -343,7 +350,13 @@ function bindingFor(value: object, label: string, caller: FrameStore | undefined
 function dispatch(value: object, fqn: string, action: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
   // Refused by throwing, not by rejecting, as `Mesh.privileged` and `Mesh.checkPolicies` are: a computed field whose helper
   // returns the promise of a refused call would otherwise report "returned a promise" and lose the reason.
-  const mark = inScope(frames.get(value))?.mark ?? evaluatingNow();
+  const caller = inScope(frames.get(value));
+  // A `dispatch` of `#mesh` starting this call (synchronously) inside a quiet chain: refused before anything runs.
+  if (dispatching.n > 0 && caller?.calls?.root.quiet !== undefined && !caller.calls.settled) {
+    const { label, quiet } = caller.calls.root;
+    throw new FrameworkError(`dispatch(${dispatching.command}) was called inside ${label}, or in code it or a seam started while it ran, and a ${quiet.name} handler may not dispatch: a handler of a kind ${quiet.owner} contributes is run again over history to rebuild what it writes, and a rebuild must never re-issue commands. Dispatch from a process handler`);
+  }
+  const mark = caller?.mark ?? evaluatingNow();
   if (mark !== undefined) throw marked(`${fqn}#${action}`, mark);
   return dispatchCall(value, fqn, action, input, context);
 }
@@ -478,6 +491,10 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
       // An action run for an event's handler: its publishes carry that event's id as `causedBy`.
       const cause = store.calls?.root.causedBy;
       if (cause !== undefined) causedIn(tx, cause);
+      // An action of a quiet chain, joined to the handler transaction or in one of its own (a seam started it): its
+      // publishes are refused (ADR-0094).
+      const quiet = store.calls?.root.quiet;
+      if (quiet !== undefined && !store.calls!.settled) quietIn(tx, store.calls!.root.label, quiet);
       return frame.run(kept({ state, scope: store.scope, tx, clock, label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
     },
     plain<T>(fn: () => Promise<T>): Promise<T> {
@@ -629,11 +646,13 @@ export function bindingParts(binding: Binding): BindingParts {
 /**
  * Run `fn`, a handler's body, on `binding` for the event `causedBy`: in a transaction of the binding (a `process`
  * handler) or with the binding in scope and no transaction (a `listen` handler). Every action it calls is nested in one
- * chain whose root is the handler (`label`), and every event those actions publish carries `causedBy`.
+ * chain whose root is the handler (`label`), and every event those actions publish carries `causedBy`. With `quiet`,
+ * the handler's contributed kind, the chain is quiet until the call settles (ADR-0094): no action of it may publish, and
+ * nothing in it may `dispatch`, seams included, since the chain follows them.
  */
-export async function handlerScope<T>(binding: Binding, label: string, causedBy: string, transactional: boolean, fn: () => Promise<T>): Promise<T> {
+export async function handlerScope<T>(binding: Binding, label: string, causedBy: string, transactional: boolean, fn: () => Promise<T>, quiet?: HandlerKind): Promise<T> {
   const state = stateOf(binding);
-  const calls: CallChain = { depth: 0, root: { label, causedBy }, settled: false };
+  const calls: CallChain = { depth: 0, root: { label, causedBy, ...(quiet ? { quiet } : {}) }, settled: false };
   try {
     return await counted(state, () => scoped(state.frame, { state, scope: live(state, state.frame), calls }, () => transactional ? binding.transaction(fn) : fn()));
   } finally {

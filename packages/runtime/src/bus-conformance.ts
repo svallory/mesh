@@ -1,4 +1,4 @@
-import type { BusCapability, BusCore, EventBus, EventBusInstance, Handler } from "./bus.ts";
+import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind } from "./bus.ts";
 import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
@@ -629,6 +629,35 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       assert(lines.some((line) => line.includes('"renamed"') && line.includes('"old"')), "the move is reported naming both names");
       const { handlers } = await world.state();
       assert(handlers.length === 1 && handlers[0]!.name === "renamed" && handlers[0]!.kind === "listen", `rows ${JSON.stringify(handlers)}`);
+    });
+
+    add("a handler of a contributed kind is registered under its kind, fed from where its kind starts it, and its row stores what the kind names", async (world) => {
+      const publisher = world.bind({});
+      await world.publish(publisher, [Alpha, 1], [Alpha, 2], [Alpha, 3]);
+      const kind: HandlerKind = Object.freeze({
+        name: "conformance", owner: "@meshfw/runtime/testing",
+        check() {}, start: async () => 0, adopt: async () => {}, stored: () => "conformance",
+      });
+      const kinds: string[] = [];
+      const watching: EventBus = Object.freeze({
+        manifest: world.bus.manifest,
+        create(core: BusCore, options: Parameters<EventBus["create"]>[1]) {
+          const instance = world.bus.create(core, options);
+          // Forward each member rather than spread: a bus whose instance is a class keeps its methods on the prototype.
+          return Object.freeze({
+            start: () => instance.start(),
+            stop: () => instance.stop(),
+            deliver: async () => { kinds.push(...core.handlers.map((handler) => handler.kind)); return instance.deliver(); },
+            ...(instance.resumeHandler ? { resumeHandler: (handler: Parameters<NonNullable<typeof instance.resumeHandler>>[0]) => instance.resumeHandler!(handler) } : {}),
+          });
+        },
+      });
+      const binding = world.bind({ handlers: { conformance: { model: { ...world.recorder("model", [Alpha]), [HANDLER_KIND]: kind } } } }, { bus: watching });
+      await binding.deliver();
+      assert(JSON.stringify(positions(world, "model")) === "[1,2,3]", `a handler its kind starts at 0 was to be fed rows 1, 2 and 3 in order, got ${JSON.stringify(positions(world, "model"))}`);
+      assert(kinds.length > 0 && kinds.every((each) => each === "conformance"), `core.handlers was to hand the bus the kind "conformance", got ${JSON.stringify(kinds)}`);
+      const { handlers } = await world.state();
+      assert(handlers.length === 1 && handlers[0]!.position === 3 && handlers[0]!.kind === "conformance", `row ${JSON.stringify(handlers)}`);
     });
 
     add("renamedFrom with no former row starts from now; naming a registered handler, or one former name twice, is MESH_HANDLER_OPTION before any claim", async (world) => {
