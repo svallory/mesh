@@ -25,6 +25,7 @@ import { ATOM, NAME_SUGAR, atomsHooks, checkAtomSlots, checkAtomUse, type AtomNo
 import { MEMBER, MEMBER_NODE, Member, checkMemberSlots, lowerMember } from "./member.ts";
 import { TRANSACTION, lowerTransaction } from "./transaction.ts";
 import { checkFieldOptions } from "./field-options.ts";
+import { checkUseOptions } from "./use-options.ts";
 
 /**
  * `:name` as a whole attribute value: the value row claims it as a
@@ -94,5 +95,6 @@ export const MESH_SYNTAX = {
     checkAtomSlots(unit);
     checkMemberSlots(unit);
     checkFieldOptions(unit);
+    checkUseOptions(unit);
   },
 } satisfies Omit<Dialect, "id" | "name" | "tagRules">;

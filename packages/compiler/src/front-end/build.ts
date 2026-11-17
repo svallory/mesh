@@ -48,6 +48,7 @@ import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-fi
 import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
+import { architectureFileText, isArchitectureFileName, readArchitectureFile } from "./architecture-file.ts";
 import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
@@ -116,18 +117,21 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept";
+type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture";
 /**
  * What a file of the project declares: its root line's kind, and every declaration by the name an import of it binds (the
  * root's, as Mesh converts it: `entity :todo` declares `Todo`), the root's first, then each inline event and command of
  * its owner sections. An aggregate file's entry for the aggregate itself is `{ kind: "aggregate", name }`, its name as
- * written: recorded so a message can name it, never a name an import may bind (an aggregate is no value).
+ * written: recorded so a message can name it, never a name an import may bind (an aggregate is no value). The architecture
+ * file declares nothing: its entry is `{ kind: "architecture", declares: [] }`, and an import of it is refused.
  */
 interface DeclaredFile {
   kind: DeclarationKind;
   declares: { kind: DeclarationKind; name: string }[];
 }
-const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept"]);
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture"]);
+/** The subject of "<noun> file must contain exactly one <kind>", by the file's root kind. */
+const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture" };
 /** The declarations an import of the file may bind: all but an aggregate's own name and a concept, which is never imported. */
 const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate" && declaration.kind !== "concept");
 /**
@@ -138,7 +142,7 @@ const importable = (file: DeclaredFile | undefined) => file?.declares.filter((de
  * "Errors"), and in a listing `MESH_UNKNOWN_EVENT`.
  */
 const referenceKind = (
-  kind: Exclude<DeclarationKind, "aggregate" | "concept">,
+  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture">,
   declared: (from: string) => DeclaredFile | undefined,
   code = kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 ): ReferenceKind => ({
@@ -2024,7 +2028,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
       const module = moduleOfFolder(inConceptsFolder(path.absolute) ? normalizePath(dirname(folder)) : folder).module;
       conceptIndex.set(realPath(path.absolute), { name, fqn: [...module.split("/").filter(Boolean), name].join("."), file: path.file });
     }
-    const ofKind = roots.filter((root) => root.name === kind);
+    // The architecture file declares nothing an import may bind (R8).
+    const ofKind = kind === "architecture" ? [] : roots.filter((root) => root.name === kind);
     declaredByPath.set(resolve(rootPath, path.file), {
       kind,
       declares: [
@@ -2037,6 +2042,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     });
   }
   const concepts: ConceptDeclaration[] = [];
+  const architectureFiles: { root: Tag; imports: readonly IrImport[]; source: string; file: string; absolute: string }[] = [];
   const domainLabel = normalizePath(relative(rootPath, domainRoot)) || ".";
   const outside = (path: string) => {
     const other = otherFile(path);
@@ -2066,11 +2072,17 @@ export function buildModel(project: ProjectDescription): BuildResult {
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          `${roots[0]?.name === "event" ? "An event" : roots[0]?.name === "command" ? "A command" : roots[0]?.name === "aggregate" ? "An aggregate" : "An entity"} file must contain exactly one ${roots[0]?.name ?? "entity"}`,
+          `${ROOT_NOUN[roots[0]?.name ?? ""] ?? ROOT_NOUN.entity} file must contain exactly one ${roots[0]?.name ?? "entity"}`,
           positionAt(input.source, file, roots[1]?.nameSpan.sourceStart ?? 0),
         ),
       );
     for (const root of roots) {
+      // The architecture file is read once every file is built, against the domain root; a second root in it is the
+      // duplicate reported above, and is not read.
+      if (root.name === "architecture") {
+        if (root === roots[0]) architectureFiles.push({ root, imports: ir.imports, source: input.source, file, absolute: path.absolute });
+        continue;
+      }
       try {
         if (root.name === "event" || root.name === "command") {
           const declaration = buildDeclaration(root, ir.imports, input.source, file, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute))));
@@ -2108,6 +2120,22 @@ export function buildModel(project: ProjectDescription): BuildResult {
           ),
         );
       }
+    }
+  }
+  // The architecture file is the file named so directly in the domain root (R2): any other `architecture` root is refused
+  // and not read, and a project with none runs every rule at its default level. The settings are not read further yet:
+  // no rule has a check.
+  let architectureFile: string | undefined;
+  for (const candidate of architectureFiles) {
+    const position = positionAt(candidate.source, candidate.file, candidate.root.nameSpan.sourceStart);
+    if (dirname(candidate.absolute) !== domainRoot || !isArchitectureFileName(candidate.absolute)) {
+      const target = domainLabel === "." ? architectureFileText : `${domainLabel}/${architectureFileText}`;
+      diagnostics.push(error("MESH_ARCHITECTURE_FILE", `The architecture file is ${architectureFileText} directly in the domain root (${domainLabel === "." ? "the project root" : domainLabel}), and this is ${candidate.file}`, position, `move it to ${target}`));
+    } else if (architectureFile !== undefined)
+      diagnostics.push(error("MESH_ARCHITECTURE_FILE", `A project has one architecture file, and ${architectureFile} is it`, position, "remove this file"));
+    else {
+      architectureFile = candidate.file;
+      readArchitectureFile(candidate, diagnostics);
     }
   }
   // An event and a command are identified by their FQN as an entity is: two files of one module declaring one name are one error.
@@ -2194,6 +2222,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
         const concept = declaredByPath.get(target)!.declares[0]?.name ?? tagNameOfFile(target);
         diagnostics.push(error("MESH_UNKNOWN_IMPORT", `${concept} is a concept, and a concept is never imported: write \`${concept} :price\` and Mesh finds it in the nearest \`concepts\` folder`, imported.position, "remove the import"));
         continue;
+      }
+      // The architecture file declares nothing to import (R8): each binding of a named import, or the namespace import once.
+      if (hasMeshExtension(imported.from) && declaredByPath.get(target)?.kind === "architecture") {
+        const bindings = imported.namespace ? [] : importDetails.get(imported)?.bindings ?? [];
+        const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
+        if (!bindings.length)
+          diagnostics.push(error("MESH_UNKNOWN_IMPORT", `${imported.from} is the architecture file, which declares nothing to import`, imported.position, "remove the import"));
+        for (const binding of bindings)
+          diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares: it is the architecture file, which declares nothing to import`, positionAt(source, entity.file, binding.offset), "remove the import"));
       }
       if (hasMeshExtension(imported.from) && declared?.declares.length) {
         // An aggregate's own name is no value and binds nothing: only what the file declares besides it is importable.

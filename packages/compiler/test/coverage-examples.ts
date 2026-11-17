@@ -1,4 +1,5 @@
 import contracts, { ATTRIBUTE_TYPES } from "../src/front-end/contracts.ts";
+import { MESH_EXTENSIONS } from "../src/front-end/extensions.ts";
 
 interface Node { line: string; children: Node[] }
 const node = (line: string, children: Node[] = []): Node => ({ line, children });
@@ -20,6 +21,13 @@ export function coverageProject(tag: string, option: string | undefined, example
       { file: "docs/sample.mesh.mx", source: "entity :Sample\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
       { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :owner entity=Sample\n' },
     ] };
+  }
+  // The architecture file is a file of its own at the domain root, the virtual project root here. `use` is placed by its
+  // text, never by its tag alone: a `use` that includes a mixin (`mixin=`) belongs to an entity, below.
+  if (tag === "architecture" || tag === "severity" || tag === "disable" || (tag === "use" && example.includes("preset="))) {
+    const file = `architecture${MESH_EXTENSIONS[0]}`;
+    const source = tag === "architecture" ? `${example}\n` : `import { MeshRecommended } from "meshfw/architecture"\narchitecture :project\n  ${example}\n`;
+    return { root: "/project", files: [{ file, source }] };
   }
   // The kind's contract is shared, but `optional` is legal only on a command's field. Keep the table cell as authored.
   if (option === "optional" && ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number])) return { root: "/project", files: [

@@ -6,6 +6,7 @@ import { BUS_CAPABILITIES, busProblem, CAPABILITIES, FrameworkError, KEEP_VALUES
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
+import { isArchitectureFileName } from "./front-end/architecture-file.ts";
 import { capabilityDiagnostics, eventsDiagnostics } from "./capabilities.ts";
 import { error, positionAt, type BuildResult } from "./model/index.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
@@ -231,8 +232,11 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
     if (before > 0 && files.length === 0) fail("ignore", "Configuration field `ignore` excludes every entity file");
   }
   if (Array.isArray(domain) && files.length) {
-    domainRoot = dirname(files[0]!);
-    for (const file of files) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
+    // The common parent of the listed files, the architecture file left out (unless it is all the list names): the file
+    // must sit in the domain root, so it never moves the root it is checked against.
+    const rooting = files.some((file) => !isArchitectureFileName(file)) ? files.filter((file) => !isArchitectureFileName(file)) : files;
+    domainRoot = dirname(rooting[0]!);
+    for (const file of rooting) while (!inside(domainRoot, file)) domainRoot = dirname(domainRoot);
   }
   for (const file of files) {
     const name = projectPath(root, file);
