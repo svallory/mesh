@@ -1,4 +1,4 @@
-import type { Condition, OrderKey } from "./condition.ts";
+import type { Condition, Hop, OrderKey } from "./condition.ts";
 
 /** Attribute names mapped to generated TypeScript values (including Date and boolean).
  * Storage conversions belong to the adapter, not the caller.
@@ -96,6 +96,11 @@ export const ROLLUP_ANCHORS = 500;
 /**
  * A rollup for many owner rows at once: over the rows of `table` whose `anchor` column holds one of `anchors`, grouped
  * by that column. `value` is a column of `table` (its primary key for a `count`).
+ *
+ * With `hops` (a joined route), the rows aggregated are those of the last hop's table that the hops reach from each row
+ * of `table` whose `anchor` holds one of `anchors`; `value` and `key` are columns of that last table. Each of its rows
+ * counts once per anchor, however many paths reach it, and a hop that matches nothing (a null or dangling key, a link
+ * row with a null exit) adds nothing. Requires `joins` as well as `aggregates`.
  */
 export interface RollupQuery {
   readonly fn: RollupFn;
@@ -104,6 +109,15 @@ export interface RollupQuery {
   /** Distinct, non-null, at most `ROLLUP_ANCHORS` (more is a `FrameworkError`). An empty list returns no row. */
   readonly anchors: readonly Exclude<Scalar, null | boolean>[];
   readonly value: string;
+  /** The hops of a joined route, in order, each from the row the one before reached (the first from `table`'s). */
+  readonly hops?: readonly RollupHop[] | undefined;
+  /** With `hops`: the primary key of the last hop's table, which tells its rows apart. */
+  readonly key?: string | undefined;
+}
+
+/** One hop of a rollup's joined route: a relationship, as a condition's `Hop` states it. */
+export interface RollupHop {
+  readonly hop: Hop;
 }
 
 /**
@@ -157,7 +171,7 @@ export interface DataOperations {
   /**
    * A rollup for each anchor (see `RollupQuery`), in one statement: `count`, `sum` and `avg` are numbers (an `avg` of
    * integers is fractional); `min` and `max` decode as the column decodes (a `Date` for a date column). Requires
-   * `aggregates`.
+   * `aggregates`, and `joins` for a query with `hops`.
    */
   rollup(query: RollupQuery): Promise<RollupRow[]>;
   /** The outbox append; see `OutboxOperations`. Mandatory for an adapter of a project that declares an event. */

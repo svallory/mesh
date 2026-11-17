@@ -1,10 +1,10 @@
 import { and, eq, getTableColumns, inArray, is, sql, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
 import { FrameworkError, MeshError, ROLLUP_ANCHORS, uuidv7, type CapabilityManifest, type Condition, type DataOperations, type Filter, type Key, type Query, type RollupQuery, type RollupRow, type Row, type TableHandle } from "@meshfw/runtime";
 import { columnOf, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
-import type { ConditionSqlOptions, SqlDialect } from "./condition.ts";
+import { hopLink, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 
 export { columnOf, filterCondition, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
-export { classOfNode, conditionSql, orderSql, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
+export { classOfNode, conditionSql, hopLink, orderSql, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 export { serialTransactions, type Deadline, type SerialTransactions, type TransactionDriver } from "./transactions.ts";
 
 /** Dialect-specific query builders; shared validation and key semantics stay here.
@@ -92,14 +92,20 @@ function updateSet(table: Table, changes: Row): Row {
   return set;
 }
 
-/** What a rollup's value column is aggregated as: a text column through the dialect's `collate` for `min` and `max`. */
-function rollupValue(fn: RollupQuery["fn"], column: Column, dialect: SqlDialect): SQL {
-  if (fn === "count") return sql`count(${column})`;
-  if (fn === "sum") return sql`sum(${column})`;
-  if (fn === "avg") return sql`avg(${column})`;
-  const key = dialect.collate && column.dataType === "string" ? dialect.collate(sql`${column}`, "string") : sql`${column}`;
+/**
+ * What a rollup's value is aggregated as: `operand` is the value column (or the derived table's column that holds it), and
+ * a text column goes through the dialect's `collate` for `min` and `max`.
+ */
+function rollupValue(fn: RollupQuery["fn"], operand: SQL, column: Column, dialect: SqlDialect): SQL {
+  if (fn === "count") return sql`count(${operand})`;
+  if (fn === "sum") return sql`sum(${operand})`;
+  if (fn === "avg") return sql`avg(${operand})`;
+  const key = dialect.collate && column.dataType === "string" ? dialect.collate(operand, "string") : operand;
   return fn === "min" ? sql`min(${key})` : sql`max(${key})`;
 }
+
+/** Most hops a rollup's route takes, as a condition's depth is bounded. */
+const ROLLUP_HOPS = 64;
 
 /**
  * The guard revokes operations as soon as their transaction callback settles. `capabilities` is the adapter's manifest:
@@ -190,9 +196,40 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       if (query.anchors.length > ROLLUP_ANCHORS) throw new FrameworkError(`A rollup takes at most ${ROLLUP_ANCHORS} anchors, and this one has ${query.anchors.length}: ask in chunks`);
       const table = commands.table(query.table);
       const anchor = columnOf(table, query.anchor);
-      const value = columnOf(table, query.value);
-      if (query.anchors.length === 0) return [];
-      const statement = sql`select ${anchor} as "anchor", ${rollupValue(query.fn, value, commands.dialect)} as "value" from ${table} where ${inArray(anchor, query.anchors as never[])} group by ${anchor}`;
+      let value: Column;
+      let statement: SQL;
+      if (query.hops === undefined) {
+        value = columnOf(table, query.value);
+        if (query.anchors.length === 0) return [];
+        statement = sql`select ${anchor} as "anchor", ${rollupValue(query.fn, sql`${value}`, value, commands.dialect)} as "value" from ${table} where ${inArray(anchor, query.anchors as never[])} group by ${anchor}`;
+      } else {
+        // A joined route: the owner table is `h0`, each hop's table `h1`, `h2`, ... (a link table `hl1`, ...), joined by
+        // the hop printer of conditions. The distinct derived table keeps each last row once per anchor (R12), however
+        // many paths reach it; an inner join drops a hop that matches nothing.
+        if (!declared("joins")) throw new FrameworkError(`A rollup with hops crosses relationships, which runs as a join, and the ${capabilities?.adapter ?? "Drizzle"} data layer does not declare the joins capability`);
+        if (!Array.isArray(query.hops) || query.hops.length === 0) throw new FrameworkError("A rollup's hops must be a non-empty list of { hop }; a rollup over one table has none");
+        if (query.hops.length > ROLLUP_HOPS) throw new FrameworkError(`A rollup crosses at most ${ROLLUP_HOPS} relationships, and this one crosses ${query.hops.length}`);
+        if (typeof query.key !== "string") throw new FrameworkError("A rollup with hops needs key, the primary key of the last hop's table");
+        const aliases: Table[] = [commands.dialect.alias(table, "h0")];
+        const joins: SQL[] = [];
+        let last: Table = table;
+        query.hops.forEach((step, index) => {
+          const hop = typeof step === "object" && step !== null ? step.hop : undefined;
+          if (typeof hop !== "object" || hop === null) throw new FrameworkError("Each of a rollup's hops must be { hop: { table, column, outer, key } }");
+          const n = index + 1;
+          last = commands.table(hop.table);
+          const far = commands.dialect.alias(last, `h${n}`);
+          joins.push(sql` inner join ${last} as ${sql.identifier(`h${n}`)} on ${hopLink(hop, aliases[index]!, far, `hl${n}`, conditions)}`);
+          aliases.push(far);
+        });
+        const reached = aliases[aliases.length - 1]!;
+        const from = columnOf(aliases[0]!, query.anchor);
+        const key = columnOf(reached, query.key);
+        value = columnOf(last, query.value);
+        const v = columnOf(reached, query.value);
+        if (query.anchors.length === 0) return [];
+        statement = sql`select "anchor", ${rollupValue(query.fn, sql`"v"`, value, commands.dialect)} as "value" from (select distinct ${from} as "anchor", ${key} as "k", ${v} as "v" from ${table} as ${sql.identifier("h0")}${sql.join(joins)} where ${inArray(from, query.anchors as never[])}) as "reached" group by "anchor"`;
+      }
       const numeric = query.fn === "count" || query.fn === "sum" || query.fn === "avg";
       return (await commands.rows(statement)).map((row) => ({
         anchor: anchor.mapFromDriverValue(row.anchor) as RollupRow["anchor"],

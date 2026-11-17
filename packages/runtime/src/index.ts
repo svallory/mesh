@@ -27,7 +27,7 @@ export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from
 export { dispatchCommand, type ActionResult, type CommandAction } from "./dispatch.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, RollupFn, RollupQuery, RollupRow, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, RawRow, RawStatement, RawValue, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, RollupFn, RollupHop, RollupQuery, RollupRow, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, RawRow, RawStatement, RawValue, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
 export { ROLLUP_ANCHORS } from "./data-layer.ts";
 export { SQL_FUNCTION_ARITY, allOf, bindCondition, hasHop, orderOf, whereFor } from "./condition.ts";
 export type { Bound, Condition, ConditionLiteral, ConditionNode, DeclaredKey, Hop, LiteralNode, Mark, OrderKey, ParamNode, SqlFunction, TableOf, ValueClass, Where } from "./condition.ts";

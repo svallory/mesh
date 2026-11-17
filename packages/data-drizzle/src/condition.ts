@@ -62,6 +62,24 @@ export function classOfNode(node: Condition): ValueClass | undefined {
   }
 }
 
+/**
+ * The condition that relates the rows of `far` (an alias of the hop's table) to the row of `outer` (the table, or alias,
+ * the hop starts from): `far.column = outer.outer`, or, through a link entity,
+ * `far.column in (select exit from link as <linkAlias> where entry = outer.outer and exit is not null)`, so a far row
+ * counts once however many link rows lead to it and a link row with no exit leads nowhere (D14). A condition's hop
+ * subqueries and a rollup's joined route both print their hops with it.
+ */
+export function hopLink(hop: Hop, outer: Table, far: Table, linkAlias: string, options: Pick<ConditionSqlOptions, "dialect" | "resolve">): SQL {
+  const from = sql`${columnOf(outer, hop.outer)}`;
+  const column = sql`${columnOf(far, hop.column)}`;
+  if (!hop.through) return sql`${column} = ${from}`;
+  if (typeof hop.through !== "object") throw new FrameworkError("A hop's through must be an object { table, entry, exit }");
+  const linkOriginal = options.resolve(hop.through.table);
+  const link = options.dialect.alias(linkOriginal, linkAlias);
+  const exit = sql`${columnOf(link, hop.through.exit)}`;
+  return sql`${column} in (select ${exit} from ${linkOriginal} as ${sql.identifier(linkAlias)} where ${columnOf(link, hop.through.entry)} = ${from} and ${exit} is not null)`;
+}
+
 /** A printer over one root: a stack of each depth's table, depth 0 the root. */
 function printer(root: Table, options: ConditionSqlOptions) {
   const prefix = options.aliasPrefix ?? "t";
@@ -74,15 +92,7 @@ function printer(root: Table, options: ConditionSqlOptions) {
     const n = depth + 1;
     const original = options.resolve(hop.table);
     const far = options.dialect.alias(original, `${prefix}${n}`);
-    const outer = sql`${columnOf(tables[depth]!, hop.outer)}`;
-    const column = sql`${columnOf(far, hop.column)}`;
-    let link: SQL;
-    if (hop.through) {
-      const linkOriginal = options.resolve(hop.through.table);
-      const linkAlias = options.dialect.alias(linkOriginal, `${linkPrefix}${n}`);
-      const exit = sql`${columnOf(linkAlias, hop.through.exit)}`;
-      link = sql`${column} in (select ${exit} from ${linkOriginal} as ${sql.identifier(`${linkPrefix}${n}`)} where ${columnOf(linkAlias, hop.through.entry)} = ${outer} and ${exit} is not null)`;
-    } else link = sql`${column} = ${outer}`;
+    const link = hopLink(hop, tables[depth]!, far, `${linkPrefix}${n}`, options);
     const key = sql`${columnOf(far, hop.key)}`;
     tables.push(far);
     try {

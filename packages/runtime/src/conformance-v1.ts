@@ -362,6 +362,54 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       });
       assert(inside.length === 1 && inside[0]!.anchor === "p3" && inside[0]!.value === 42, `a rollup must see the transaction's own insert, and gave ${describe(inside)}`);
     })],
+    ["rollup with hops follows a joined route and counts each row it reaches once per anchor", withTasks(async (_read, { layer, taskTable }) => {
+      const run = <T>(use: (tx: DataOperations) => Promise<T>) => layer.transaction(use);
+      // A task's parent (belongs-to): `id` of the parent row equals the task's `parentId`. Its children (has-many): the
+      // rows whose `parentId` is the task's `id`.
+      const parent = { hop: { table: taskTable, column: "id", outer: "parentId", key: "id" } };
+      const children = { hop: { table: taskTable, column: "parentId", outer: "id", key: "id" } };
+      const query = (fn: RollupFn, value: string, hops: RollupQuery["hops"], anchors: readonly string[]): RollupQuery =>
+        ({ fn, table: taskTable, anchor: "id", anchors, value, hops, key: "id" });
+      if (!declared("aggregates") || !declared("joins")) {
+        if (declared("aggregates"))
+          assert(await failure(layer, (tx) => tx.rollup(query("count", "id", [parent], ["a2"]))) instanceof FrameworkError, "an adapter without joins must refuse a rollup with hops with FrameworkError");
+        return;
+      }
+      // p1 (rank 10) is a root; p2 (rank 20) is a child of p1. a2, a3, a4, a6 and p2 are p1's children; a5 is p2's.
+      await run(async (tx) => {
+        await tx.insert(taskTable, { id: "p1", parentId: null, createdAt: day(6), title: "Papa", rank: 10 });
+        await tx.insert(taskTable, { id: "p2", parentId: "p1", createdAt: day(7), title: "Quebec", rank: 20 });
+      });
+      const byAnchor = async (rollup: RollupQuery) => {
+        const out: Record<string, unknown> = {};
+        for (const row of await run((tx) => tx.rollup(rollup))) {
+          assert(!Object.hasOwn(out, String(row.anchor)), `a rollup with hops must give each anchor once, and gave ${String(row.anchor)} twice`);
+          out[String(row.anchor)] = row.value;
+        }
+        return out;
+      };
+      const same = (actual: Record<string, unknown>, expected: Record<string, unknown>, message: string) =>
+        assert(describe(Object.fromEntries(Object.entries(actual).sort())) === describe(Object.fromEntries(Object.entries(expected).sort())), `${message}: expected ${describe(expected)} but got ${describe(actual)}`);
+      // One hop from the owner table: each task's parent. a1 has no parent (a null key adds nothing), a5's is p2.
+      same(await byAnchor(query("max", "rank", [parent], ["a1", "a2", "a5", "p2"])), { a2: 10, a5: 20, p2: 10 }, "a hop that matches nothing leaves the anchor out");
+      // Children, then their parent: p1's five children all reach p1, which counts once (R12).
+      same(await byAnchor(query("count", "id", [children, parent], ["p1"])), { p1: 1 }, "a row reached by several paths counts once");
+      same(await byAnchor(query("sum", "rank", [children, parent], ["p1"])), { p1: 10 }, "a row reached by several paths is summed once");
+      // Children of children: p1 reaches a5 through p2; p2 reaches nothing two hops down.
+      same(await byAnchor(query("sum", "rank", [children, children], ["p1", "p2"])), { p1: 5 }, "two has-many hops");
+      // a3's parent's children: p1's five children, a3 itself among them; ranks 1, null, 5, 2 and 20.
+      same(await byAnchor(query("count", "rank", [parent, children], ["a3"])), { a3: 4 }, "count skips nulls over a joined route");
+      same(await byAnchor(query("avg", "rank", [parent, children], ["a3"])), { a3: 7 }, "avg over a joined route");
+      const earliest = await byAnchor(query("min", "createdAt", [parent, children], ["a3"]));
+      assert(earliest.a3 instanceof Date && earliest.a3.getTime() === day(2).getTime(), `min of a date over a joined route must be a Date, not ${describe(earliest.a3)}`);
+      assert((await run((tx) => tx.rollup(query("sum", "rank", [parent], [])))).length === 0, "a rollup with hops and no anchor returns no row");
+      for (const name of ["nope", "constructor"]) {
+        assert(await failure(layer, (tx) => tx.rollup(query("count", "id", [{ hop: { ...parent.hop, column: name } }], ["a2"]))) instanceof FrameworkError, `a hop on the column ${name} must be a FrameworkError`);
+        assert(await failure(layer, (tx) => tx.rollup(query("count", "id", [{ hop: { ...parent.hop, outer: name } }], ["a2"]))) instanceof FrameworkError, `a hop from the column ${name} must be a FrameworkError`);
+        assert(await failure(layer, (tx) => tx.rollup({ ...query("count", "id", [parent], ["a2"]), key: name })) instanceof FrameworkError, `a rollup keyed on the column ${name} must be a FrameworkError`);
+      }
+      assert(await failure(layer, (tx) => tx.rollup(query("count", "id", [], ["a2"]))) instanceof FrameworkError, "a rollup with an empty list of hops must be a FrameworkError");
+    })],
     ["reads on an empty table return nothing and aggregates are null or 0", withFixture(async ({ layer, uuidTable }) => {
       await layer.transaction(async (tx) => {
         assert((await tx.select(uuidTable)).length === 0, "select on an empty table must return no rows");

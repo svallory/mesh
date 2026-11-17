@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DatabaseBusyError, FrameworkError, NotFoundError, defineCapabilities } from "@meshfw/runtime";
+import { DatabaseBusyError, FrameworkError, NotFoundError, defineCapabilities, type CapabilityManifest } from "@meshfw/runtime";
 import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, keyCondition, type DrizzleCommands } from "../src/index.ts";
 
@@ -96,7 +96,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { pgTable, text as pgText } from "drizzle-orm/pg-core";
 import { drizzleTable } from "../src/index.ts";
-import { testDialect } from "./dialect.ts";
+import { orderingDialect, testDialect } from "./dialect.ts";
 
 const posts = sqliteTable("posts", {
   id: integer("id").primaryKey(),
@@ -263,4 +263,72 @@ test("rollup is refused without the aggregates capability, without a rows comman
   }
   await expect(operations.rollup({ ...query, anchors: Array.from({ length: 501 }, (_, index) => `t${index}`) })).rejects.toThrow("A rollup takes at most 500 anchors, and this one has 501");
   await expect(operations.rollup({ ...query, fn: "median" as never })).rejects.toThrow('Unknown rollup function "median"');
+});
+
+// A joined route: the owner table is h0, each hop's table h1, h2, ... joined by the condition printer's hop link, and the
+// distinct derived table keeps each last row once per anchor.
+const students = sqliteTable("students", { id: text("id") });
+const courses = sqliteTable("courses", { id: text("id"), credits: integer("credits"), code: text("code") });
+const enrollments = sqliteTable("enrollments", { id: text("id"), studentId: text("studentId"), courseId: text("courseId") });
+const school = { students, courses, enrollments, rows: table } as const;
+function joined(capabilities: CapabilityManifest = defineCapabilities("test", ["aggregates", "joins"]), dialect = testDialect) {
+  const statements: { sql: string; params: unknown[] }[] = [];
+  const { commands } = fixture();
+  const operations = drizzleOperations({
+    ...commands,
+    dialect,
+    table: (handle) => handle as typeof table,
+    rows: (statement) => {
+      const { sql, params } = new SQLiteSyncDialect().sqlToQuery(statement);
+      statements.push({ sql, params });
+      return [{ anchor: "s1", value: "7" }];
+    },
+  }, () => {}, capabilities);
+  return { operations, statements };
+}
+const courseHop = { hop: { table: school.courses, column: "id", outer: "id", key: "id", through: { table: school.enrollments, entry: "studentId", exit: "courseId" } } };
+
+test("rollup with hops prints the hops as joins inside a distinct derived table, a through hop by its link", async () => {
+  const { operations, statements } = joined();
+  expect(await operations.rollup({ fn: "sum", table: students, anchor: "id", anchors: ["s1", "s2"], value: "credits", hops: [courseHop], key: "id" })).toEqual([{ anchor: "s1", value: 7 }]);
+  expect(statements).toEqual([{
+    sql: 'select "anchor", sum("v") as "value" from (select distinct "h0"."id" as "anchor", "h1"."id" as "k", "h1"."credits" as "v" from "students" as "h0"'
+      + ' inner join "courses" as "h1" on "h1"."id" in (select "hl1"."courseId" from "enrollments" as "hl1" where "hl1"."studentId" = "h0"."id" and "hl1"."courseId" is not null)'
+      + ' where "h0"."id" in (?, ?)) as "reached" group by "anchor"',
+    params: ["s1", "s2"],
+  }]);
+  // Two plain hops: each from the alias of the one before it.
+  await operations.rollup({ fn: "count", table: students, anchor: "id", anchors: ["s1"], value: "id", key: "id", hops: [
+    { hop: { table: enrollments, column: "studentId", outer: "id", key: "id" } },
+    { hop: { table: courses, column: "id", outer: "courseId", key: "id" } },
+  ] });
+  expect(statements[1]!.sql).toBe('select "anchor", count("v") as "value" from (select distinct "h0"."id" as "anchor", "h2"."id" as "k", "h2"."id" as "v" from "students" as "h0"'
+    + ' inner join "enrollments" as "h1" on "h1"."studentId" = "h0"."id" inner join "courses" as "h2" on "h2"."id" = "h1"."courseId"'
+    + ' where "h0"."id" in (?)) as "reached" group by "anchor"');
+});
+
+test("rollup with hops takes the min and max of a text value through the dialect's collate", async () => {
+  const { operations, statements } = joined(undefined, orderingDialect);
+  await operations.rollup({ fn: "min", table: students, anchor: "id", anchors: ["s1"], value: "code", hops: [courseHop], key: "id" });
+  expect(statements[0]!.sql.startsWith('select "anchor", min("v" collate "C") as "value" from (select distinct')).toBe(true);
+});
+
+test("rollup with hops is refused without joins, and for an empty list of hops, a missing key or an unknown column", async () => {
+  const query = { fn: "count", table: students, anchor: "id", anchors: ["s1"], value: "id", hops: [courseHop], key: "id" } as const;
+  await expect(joined(defineCapabilities("test", ["aggregates"])).operations.rollup(query)).rejects.toThrow("A rollup with hops crosses relationships, which runs as a join, and the test data layer does not declare the joins capability");
+  const { operations, statements } = joined();
+  await expect(operations.rollup({ ...query, hops: [] })).rejects.toThrow("A rollup's hops must be a non-empty list");
+  await expect(operations.rollup({ ...query, key: undefined })).rejects.toThrow("A rollup with hops needs key");
+  await expect(operations.rollup({ ...query, hops: [{}] as never })).rejects.toThrow("Each of a rollup's hops must be { hop: { table, column, outer, key } }");
+  for (const name of ["nope", "toString"]) {
+    await expect(operations.rollup({ ...query, key: name })).rejects.toThrow(`Unknown column "${name}"`);
+    await expect(operations.rollup({ ...query, value: name })).rejects.toThrow(`Unknown column "${name}"`);
+    await expect(operations.rollup({ ...query, anchor: name })).rejects.toThrow(`Unknown column "${name}"`);
+    await expect(operations.rollup({ ...query, hops: [{ hop: { ...courseHop.hop, through: { ...courseHop.hop.through, exit: name } } }] })).rejects.toThrow(`Unknown column "${name}"`);
+    await expect(operations.rollup({ ...query, hops: [{ hop: { ...courseHop.hop, outer: name } }] })).rejects.toThrow(`Unknown column "${name}"`);
+  }
+  // An unknown column is refused before an empty list of anchors returns.
+  await expect(operations.rollup({ ...query, anchors: [], key: "nope" })).rejects.toThrow('Unknown column "nope"');
+  expect(await operations.rollup({ ...query, anchors: [] })).toEqual([]);
+  expect(statements).toEqual([]);
 });
