@@ -1,3 +1,4 @@
+import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
 import { BUS_CAPABILITIES, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
@@ -41,10 +42,12 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
         for (const crossing of lowered.lowered.crossings) {
           const name = crossing.path.replace(/^&/, "").split(".")[0];
           // Only a belongs-to holds the related record's key, which a condition compares with no join.
-          const belongsTo = crossing.path.startsWith("&") && entity.relationships.some((r) => r.name === name && r.kind === "belongs-to");
+          const relation = crossing.path.startsWith("&") ? entity.relationships.find((r) => r.name === name && r.kind === "belongs-to") : undefined;
+          const target = relation && document.entities.find((e) => resolve(e.file) === resolve(dirname(entity.file), relation.entity.from));
+          const key = target?.attributes.find((a) => a.primaryKey)?.name;
           diagnostics.push(error("MESH_CAPABILITY",
             `${place.subject} reads ${crossing.path} through a relationship, which runs as a subquery, and the data adapter "${adapter.name}" does not declare the joins capability`,
-            crossing.position, belongsTo ? `Use a data adapter that declares joins, or compare the related record's key (\`&${name}.id\`), which needs no join` : "Use a data adapter that declares joins"));
+            crossing.position, key ? `Use a data adapter that declares joins, or compare the related record's key (\`&${name}.${key}\`), which needs no join` : "Use a data adapter that declares joins"));
         }
     }
   }

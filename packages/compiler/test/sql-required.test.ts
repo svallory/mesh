@@ -152,6 +152,18 @@ describe("the capabilities a condition needs (MESH_CAPABILITY)", () => {
   });
 });
 
+describe("the joins fix names the related record's own key", () => {
+  test("a belongs-to whose target key is not `id`", () => {
+    const adapter = { kind: "data-adapter" as const, name: "test", build: "x", options: {}, capabilities: { adapter: "test", capabilities: ["aggregates", "conditions"] } } as never;
+    const customer = FILES["billing/customer.mesh.mx"]!.replace("uuid :id primary-key", "uuid :code primary-key");
+    const built = build(["({ actor }) => &customer.ownerId === actor.id"], "", { "billing/customer.mesh.mx": customer });
+    expect(errors(built.diagnostics)).toEqual([]);
+    expect(capabilityDiagnostics(built.document!, adapter).map((d) => d.fix)).toEqual([
+      "Use a data adapter that declares joins, or compare the related record's key (`&customer.code`), which needs no join",
+    ]);
+  });
+});
+
 describe("mesh explain of a read with its own filter and sort", () => {
   test("names what the one query carries and each relationship it crosses", () => {
     const built = build(["({ actor }) => &customer.ownerId === actor.id && &lines.length > 1"], "    read :sorted\n      sort\n        desc &dueOn\n        asc &isLate\n");
