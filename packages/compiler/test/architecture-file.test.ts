@@ -151,6 +151,12 @@ describe("imports (R7, ruling D40 OD6)", () => {
   ])("%s", (_, imports, code, message, fix, column) => {
     expect(brief(build({ ...PROJECT, [FILE]: arch("", imports) }).diagnostics)).toEqual([[FILE, 1, column, code, message, fix]]);
   });
+  test.each([
+    ["a type import", 'import type { MeshRecommended } from "meshfw/architecture"\n'],
+    ["a default import beside a named one", 'import X, { MeshRecommended } from "meshfw/architecture"\n'],
+  ])("a preset named by an import refused for its form draws no second error at its use line: %s", (_, imports) => {
+    expect(codes(build({ ...PROJECT, [FILE]: arch("  use preset=MeshRecommended\n", imports) }).diagnostics)).toEqual([[FILE, 1, 0, "MESH_IMPORT_FORM"]]);
+  });
 });
 
 describe("use lines", () => {
@@ -189,10 +195,14 @@ describe("settings (R9 to R15, ruling D40 OD3 to OD5)", () => {
     expect(settingsOf(arch("  disable :serviceTouchesOneEntity\n  severity :cross-aggregate level=:error\n"))).toEqual({
       settings: DEFAULTS,
       diagnostics: [
-        [FILE, 3, 10, "MESH_UNKNOWN_RULE", "`:serviceTouchesOneEntity` is not an architecture rule", fix],
+        [FILE, 3, 10, "MESH_UNKNOWN_RULE", "`:serviceTouchesOneEntity` is not an architecture rule. Did you mean `:service-touches-one-entity`?", fix],
         [FILE, 4, 11, "MESH_UNKNOWN_RULE", "`:cross-aggregate` is not an architecture rule", fix],
       ],
     });
+    // camelCase and misspelt at once: the nearest rule to the kebab spelling.
+    expect(settingsOf(arch("  disable :actionCallsOtherAgregate\n")).diagnostics).toEqual([
+      [FILE, 3, 10, "MESH_UNKNOWN_RULE", "`:actionCallsOtherAgregate` is not an architecture rule. Did you mean `:action-calls-other-aggregate`?", fix],
+    ]);
     expect(settingsOf(arch("  disable :action-calls-other-agregate\n")).diagnostics).toEqual([
       [FILE, 3, 10, "MESH_UNKNOWN_RULE", "`:action-calls-other-agregate` is not an architecture rule. Did you mean `:action-calls-other-aggregate`?", fix],
     ]);
@@ -230,6 +240,12 @@ describe("R8: no file imports the architecture file", () => {
       ["todo/list.mesh.mx", 1, 0, "MESH_UNKNOWN_IMPORT", "../architecture.mesh.mx is the architecture file, which declares nothing to import", "remove the import"],
     ]);
   });
+  test("in a form readImports refuses (type-only, side-effect, default), once at the import with R8's message", () => {
+    for (const statement of ['import type { Project } from "../architecture.mesh.mx"', 'import "../architecture.mesh.mx"', 'import Project from "../architecture.mesh.mx"'])
+      expect(brief(build({ ...ARCH, "todo/list.mesh.mx": `${statement}\n${LIST}` }).diagnostics)).toEqual([
+        ["todo/list.mesh.mx", 1, 0, "MESH_UNKNOWN_IMPORT", "../architecture.mesh.mx is the architecture file, which declares nothing to import", "remove the import"],
+      ]);
+  });
   test("from an aggregate file too", () => {
     const aggregate = 'import { List } from "./list.mesh.mx"\nimport { Project } from "../architecture.mesh.mx"\naggregate :Lists\n  root entity=List\n';
     expect(codes(build({ ...ARCH, "todo/list.mesh.mx": LIST, "todo/lists.mesh.mx": aggregate }).diagnostics)).toEqual([
@@ -258,25 +274,36 @@ describe("a project on disk: the domain root never moves for the file", () => {
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
   });
   const data = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: "app.db" } };
-  async function project(domain: string | string[], files: Files) {
+  async function project(domain: string | string[], files: Files, extra: Record<string, unknown> = {}) {
     const root = await mkdtemp(resolve(tmpdir(), "mesh-architecture-"));
     roots.push(root);
     for (const [file, source] of Object.entries(files)) {
       await mkdir(resolve(root, file, ".."), { recursive: true });
       await writeFile(resolve(root, file), source);
     }
-    await writeFile(resolve(root, "mesh.config.ts"), `export default ${JSON.stringify({ domain, output: ".mesh", data })}`);
+    await writeFile(resolve(root, "mesh.config.ts"), `export default ${JSON.stringify({ domain, output: ".mesh", data, ...extra })}`);
     const loaded = await loadConfig(root);
     expect(loaded.diagnostics).toEqual([]);
     return { root, loaded: loaded.config!, built: await loadProject(loaded.config!) };
   }
   const work = { "src/domain/work/list.mesh.mx": LIST };
-  test("a folder and a glob domain read the file at their root", async () => {
+  test("a folder and a glob domain read the file at their root, and the document is the one built without it", async () => {
     for (const domain of ["src/domain", "src/domain/**/*.mesh.mx"]) {
       const { built } = await project(domain, { ...work, [`src/domain/${FILE}`]: SPEC });
       expect(built.diagnostics).toEqual([]);
       expect(built.document!.entities.map((e) => e.fqn)).toEqual(["work.List"]);
+      const without = await project(domain, work);
+      expect(without.built.diagnostics).toEqual([]);
+      expect(built.document).toEqual(without.built.document);
     }
+  });
+  test("an ignore pattern that matches the file leaves it unread", async () => {
+    const files = { ...work, [`src/domain/${FILE}`]: "architecture :project\n  disable :nope\n" };
+    const read = await project("src/domain", files);
+    expect(codes(read.built.diagnostics)).toEqual([[`src/domain/${FILE}`, 2, 10, "MESH_UNKNOWN_RULE"]]);
+    const ignored = await project("src/domain", files, { ignore: [`**/${FILE}`] });
+    expect(ignored.built.diagnostics).toEqual([]);
+    expect(ignored.built.document!.entities.map((e) => e.fqn)).toEqual(["work.List"]);
   });
   test("a list: the file is left out of the common parent", async () => {
     const listed = ["src/domain/work/list.mesh.mx"];

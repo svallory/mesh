@@ -651,8 +651,14 @@ function fileImports(
   fail: (code: string, message: string, at: SourcePosition, fix?: string) => void,
 ) {
   const parsed = readImports(irImports);
-  for (const problem of parsed.problems)
-    fail(problem.code, problem.message, at(problem.offset), problem.fix);
+  for (const problem of parsed.problems) {
+    // An import of the architecture file in a form readImports refuses (type-only, default, side-effect) is the R8 error
+    // too: the form advice would point to a named import, which R8 refuses as well, of a file that declares nothing.
+    const from = problem.code === "MESH_IMPORT_FORM" ? irImports.find((entry) => entry.span.sourceStart === problem.offset)?.from : undefined;
+    if (from !== undefined && hasMeshExtension(from) && declaredFile(from)?.kind === "architecture")
+      fail("MESH_UNKNOWN_IMPORT", `${from} is the architecture file, which declares nothing to import`, at(problem.offset), "remove the import");
+    else fail(problem.code, problem.message, at(problem.offset), problem.fix);
+  }
   const imports = parsed.imports.map(
     (i): Import => {
       const renames = !i.namespace && i.bindings.some((binding) => binding.imported !== binding.local);

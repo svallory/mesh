@@ -55,6 +55,8 @@ export function readArchitectureFile(
     }
     if (!names.length || entry.typeOnly || names.some((name) => name.typeOnly || name.kind !== "named")) {
       fail("MESH_IMPORT_FORM", `import a preset by name: "${MESHFW_ARCHITECTURE}" gives the named export${PRESET_NAMES.length === 1 ? "" : "s"} ${quoted(PRESET_NAMES.map((name) => `\`${name}\``))}`, offset, `write ${IMPORT_EXAMPLE}`);
+      // Its named bindings of a preset still name it, so a `use` line of one draws no second error asking for the import.
+      for (const name of names) if (name.kind === "named" && PRESETS.has(name.imported)) scope.set(name.local, name.imported);
       continue;
     }
     for (const name of names) {
@@ -98,7 +100,10 @@ export function readArchitectureFile(
     const level = line.name === "severity" ? atomOf(attr(line, "level"))?.name : "off";
     if (name === undefined || level === undefined || (line.name === "severity" && !LEVELS.includes(level))) continue;
     if (!RULE_NAMES.includes(name)) {
-      const near = nearestName(name, RULE_NAMES);
+      // A camelCase name (`:serviceTouchesOneEntity`) is too far from its kebab spelling for `nearestName`: try that
+      // spelling first, then the nearest rule to it.
+      const kebab = name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+      const near = RULE_NAMES.includes(kebab) ? kebab : nearestName(kebab, RULE_NAMES);
       fail("MESH_UNKNOWN_RULE", `\`:${name}\` is not an architecture rule${near ? `. Did you mean \`:${near}\`?` : ""}`,
         attrOffset(nameOption!), `the rules are ${quoted(RULE_NAMES.map((rule) => `:${rule}`))}`);
       continue;
