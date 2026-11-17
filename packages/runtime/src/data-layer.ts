@@ -156,7 +156,33 @@ export interface DataOperations {
   deleteProcess?: MultiProcessOperations["deleteProcess"];
   readSubscriptionOwners?: MultiProcessOperations["readSubscriptionOwners"];
   writeSubscriptionOwner?: MultiProcessOperations["writeSubscriptionOwner"];
+  /**
+   * One read-only statement written by hand, run in the running transaction (capability `raw-sql`, ADR-0087); present
+   * exactly when the adapter declares it. The adapter writes its own placeholders between the text pieces, and refuses
+   * a statement that is not a query (a first word other than `select`, `with` or `values`, or a leading comment), more
+   * than one statement, a parameter written in the text, a value it cannot bind, a result that names a column twice,
+   * and any write the database would make; each refusal is a `FrameworkError` that leaves the transaction open and
+   * unchanged, and no message carries a value. Resolves with the rows as stored, integers exact (a `bigint` beyond
+   * 2^53).
+   */
+  query?(statement: RawStatement): Promise<readonly RawRow[]>;
 }
+
+/** A value a raw query binds: anything else is refused, never bound as NULL. A `bigint` must fit in signed 64 bits. */
+export type RawValue = string | number | bigint | boolean | Date | null;
+
+/**
+ * One raw statement as plain data: the template's cooked text pieces (never `undefined`) and the values between them,
+ * `text.length === values.length + 1`. The adapter writes its own placeholders between the pieces; core assembles no
+ * SQL string. Frozen.
+ */
+export interface RawStatement {
+  readonly text: readonly string[];
+  readonly values: readonly RawValue[];
+}
+
+/** A row of a raw query: the column names the statement gives, the values as stored. */
+export type RawRow = Readonly<Record<string, unknown>>;
 
 /**
  * One row of `mesh_outbox`: an event record as stored. Rows are never updated. `key`, `metadata` and `payload` are JSON

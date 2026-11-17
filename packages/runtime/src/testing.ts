@@ -7,6 +7,7 @@ export type { DataLayerFixtureV1 } from "./conformance-v1.ts";
 export { outboxConformance, outboxRow, type OutboxConformanceOptions, type OutboxFixture } from "./outbox-conformance.ts";
 export { busConformance, testBus, type BusConformanceFixture, type TestBusOptions } from "./bus-conformance.ts";
 export { setDeliveryTiming, type DeliveryTiming } from "./deliverer.ts";
+export { rawSqlConformance, type RawSqlFixture } from "./raw-sql-conformance.ts";
 export { multiProcessConformance, type MultiProcessConformanceOptions } from "./multi-process-conformance.ts";
 export { runMultiProcessWorker, type MultiProcessFixture, type MultiProcessWorker, type MultiProcessWorkerParts } from "./bus-multi-process.ts";
 

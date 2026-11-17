@@ -21,7 +21,7 @@ const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor });
 
 ## Where the entities come from
 
-`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types, and `query` when the data adapter supports [raw SQL](#raw-sql-queries) (not built yet; [ADR-0087](../architecture/decisions/0087-raw-sql-escape-hatch.md)).
+`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types, and `query` with its types when the data adapter supports [raw SQL](#raw-sql-queries) ([ADR-0087](../architecture/decisions/0087-raw-sql-escape-hatch.md)).
 
 ```ts "src/main.ts (excerpt)"
 import { connect, disconnect } from "#mesh";
@@ -395,7 +395,7 @@ An action that only another action should call carries a policy like this one. A
 
 ## Raw SQL queries
 
-Some questions a read cannot ask: a recursive walk up a tree, a window function, a database function Mesh has no name for. For those, `#mesh` exports **`query`**, a template tag that runs one read-only SQL statement you write by hand and resolves with its rows (not built yet; [ADR-0087](../architecture/decisions/0087-raw-sql-escape-hatch.md)). It is exported when your data adapter supports raw SQL (it declares the `raw-sql` capability, as `@meshfw/data-sqlite` does); with an adapter that does not, `#mesh` has no `query` and your code does not compile.
+Some questions a read cannot ask: a recursive walk up a tree, a window function, a database function Mesh has no name for. For those, `#mesh` exports **`query`**, a template tag that runs one read-only SQL statement you write by hand and resolves with its rows ([ADR-0087](../architecture/decisions/0087-raw-sql-escape-hatch.md)). It is exported when your data adapter supports raw SQL (it declares the `raw-sql` capability, as `@meshfw/data-sqlite` does; `@meshfw/data-postgres` does not yet); with an adapter that does not, `#mesh` has no `query` and your code does not compile.
 
 ```ts "src/reports.ts"
 import { z } from "zod";

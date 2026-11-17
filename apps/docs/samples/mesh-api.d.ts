@@ -53,7 +53,7 @@ declare module "@meshfw/runtime" {
   }
 
   /** A data adapter's capabilities, a closed list. */
-  export type Capability = "aggregates" | "integer-key-fill" | "joins" | "upserts" | "atomic-expressions" | "gapless-positions" | "conditions";
+  export type Capability = "aggregates" | "integer-key-fill" | "joins" | "upserts" | "atomic-expressions" | "gapless-positions" | "conditions" | "raw-sql";
 
   /** The promises a bus can make, a closed list: `ordered-delivery` (every handler needs it), `replay`, `subscribe`, `dead-letters`, `multi-process`. */
   export type BusCapability = "ordered-delivery" | "replay" | "subscribe" | "dead-letters" | "multi-process";

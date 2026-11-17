@@ -131,7 +131,7 @@ after 1.0, in no fixed order:
   M11 extension host             identities, upsert, state machines, bulk
 ```
 
-Before 1.0, with no milestone assigned and not drawn above: the raw-SQL escape hatch, and two that are built, a `has-many` through a link entity (`through=`) and named checks (section 5, "Before 1.0, milestone not assigned").
+Before 1.0, with no milestone assigned and not drawn above: three that are built, the raw-SQL escape hatch, a `has-many` through a link entity (`through=`) and named checks (section 5, "Before 1.0, milestone not assigned").
 
 **Rules across tracks.** M7 needs M3 for loading and self-reference and M4 for computed fields; it comes before M5 because many of the 57 rules and the relationship policies read a related row (`&task.state`), a loaded has-many (`&children.every(...)`) or a rollup (`&task.maxFence`), and M5's and M8's acceptance tests run them. M6 needs M5's phase structure (it adds the seams to it). M8 needs M5 (policies run in the lifecycle's slots) and M7 (the relationship checks), not M6. The gate needs M5 to M8 and HA. A milestone that adds a data-layer capability implements it in SQLite, the only adapter until M9.
 
@@ -308,7 +308,7 @@ The acceptance tests of this task and of the Jig port below are the lead's desig
 
 ### Before 1.0, milestone not assigned
 
-Three features come before 1.0 and belong to none of the milestones above. No ruling or record assigns any of them a milestone, so none is given here. The `has-many` through a link entity (2026-11-16; [ADR-0070](../decisions/0070-has-many-via.md), amended that day) and named checks are built; the raw-SQL escape hatch is not.
+Three features come before 1.0 and belong to none of the milestones above. No ruling or record assigns any of them a milestone, so none is given here. The `has-many` through a link entity (2026-11-16; [ADR-0070](../decisions/0070-has-many-via.md), amended that day) and named checks are built; so is the raw-SQL escape hatch (2026-11-17, on `@meshfw/data-sqlite`).
 
 | Item | What | Why it is before 1.0 |
 |---|---|---|
@@ -354,7 +354,7 @@ For each item, the evidence that Hyper does without it, and the record that move
 | The bounded write queue and `BusyError`; the restore write for import; the action manifest for generic dispatch of 61 RPC actions; HTTP, SSE and the typed client | [G16](../research/hyper-port-gap-analysis.md#4-summary-features-who-needs-them-and-the-milestone), [G18](../research/hyper-port-gap-analysis.md#4-summary-features-who-needs-them-and-the-milestone), [G14](../research/hyper-port-gap-analysis.md#4-summary-features-who-needs-them-and-the-milestone) | They serve only the engine's v2, which the port does not follow: v0 has no busy error, its export is `not_implemented`, it dispatches a fixed method table, and its subscriptions are notifications on the same socket | M |
 | `.mesh/rules.md`, `mesh explain` beyond the plan | M5, after-v1 table | Not read by any Hyper path | S |
 
-The raw-SQL escape hatch adds work to two of these rows. If it merges first, M9 owes `raw-sql` on Postgres: a savepoint with `SET LOCAL transaction_read_only`, plus closing the session-level side effects the window does not stop (advisory locks, `pg_notify`), or question 6 of [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) back to the operator ([data layer](../in-depth/data-layer.md#raw-queries)). M10 decides whether to add a raw-SQL fragment inside translated expressions ([ADR-0087](../decisions/0087-raw-sql-escape-hatch.md)).
+The raw-SQL escape hatch adds work to two of these rows. The Postgres adapter merged first and does not declare `raw-sql`: declaring it needs a savepoint with `SET LOCAL transaction_read_only`, plus closing the session-level side effects the window does not stop (advisory locks, `pg_notify`), or question 6 of [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) back to the operator ([data layer](../in-depth/data-layer.md#raw-queries)). M10 decides whether to add a raw-SQL fragment inside translated expressions ([ADR-0087](../decisions/0087-raw-sql-escape-hatch.md)).
 
 ### Also after 1.0
 
@@ -479,7 +479,7 @@ The operator ruled the domain concepts study on 2026-10-10 and 2026-10-11 ([rese
 
 ### 2026-11-17 amendment
 
-- **The raw-SQL escape hatch** (section 5, "Before 1.0, milestone not assigned"; section 6, the note under the table of items moved out of the 1.0 line). The lead accepted Option E of [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) on 2026-11-17, pending the operator: a read-only `query` function exported by `#mesh`, with no change to the entity-file language. The row no longer says "like Ash's `fragment`" or that it has no design; the fragment is M10's to decide, and M9 owes `raw-sql` on Postgres if the hatch merges first. It is still not built.
+- **The raw-SQL escape hatch** (section 5, "Before 1.0, milestone not assigned"; section 6, the note under the table of items moved out of the 1.0 line). The lead accepted Option E of [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) on 2026-11-17, pending the operator: a read-only `query` function exported by `#mesh`, with no change to the entity-file language. The row no longer says "like Ash's `fragment`" or that it has no design; the fragment is M10's to decide, and M9 owes `raw-sql` on Postgres if the hatch merges first. It was built later that day on `@meshfw/data-sqlite`; the Postgres adapter, which merged first, does not declare it.
 
 ### 2026-11-14 amendments
 

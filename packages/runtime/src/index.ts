@@ -27,7 +27,7 @@ export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from
 export { dispatchCommand, type ActionResult, type CommandAction } from "./dispatch.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, RawRow, RawStatement, RawValue, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
 export { SQL_FUNCTION_ARITY, allOf, bindCondition, hasHop, orderOf, whereFor } from "./condition.ts";
 export type { Bound, Condition, ConditionLiteral, ConditionNode, DeclaredKey, Hop, LiteralNode, Mark, OrderKey, ParamNode, SqlFunction, TableOf, ValueClass, Where } from "./condition.ts";
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
@@ -49,7 +49,7 @@ export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, Comput
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export { Mesh, type ActionFunction, type Decision, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
-export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, published, readEvents, releaseBinding, settled } from "./entity.ts";
+export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, makeQuery, published, readEvents, releaseBinding, settled } from "./entity.ts";
 export { KEEP_VALUES, loadEvents, publishEvent, rows } from "./events.ts";
 export type { EventClass, EventRecord, EventsConfig, EventsModule, MetadataArguments, MetadataFunction, PublishTarget, ReadEventsPage, ReadEventsQuery } from "./events.ts";
 export { BUS_CAPABILITIES, HANDLER_KIND, busProblem, checkedBus, handler } from "./bus.ts";
@@ -57,4 +57,4 @@ export type { BusCapability, BusCore, BusManifest, BusOptions, EventBus, EventBu
 export { adoptByName, adoptHandler, declaredHandlers, deliverRound, forgetByName, forgetHandler, forgetSubscription, isRetryable, keepByValue, listSubscriptions, markNoDeliver, resumeHandler, startDelivery, subscribe } from "./deliverer.ts";
 export type { Delivery, Forgotten, SubscribeQuery, Subscription, SubscriptionProgress } from "./deliverer.ts";
 export type { Adopted, KeepChange } from "./multi-process.ts";
-export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged } from "./entity.ts";
+export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged, RawQuery } from "./entity.ts";

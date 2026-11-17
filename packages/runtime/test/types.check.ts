@@ -69,3 +69,18 @@ function operations(layer: DataLayer) {
   });
 }
 void operations;
+
+// A raw query (ADR-0087): a value that cannot be bound is a type error; `as(schema)` types the rows.
+import type { RawQuery, RawRow } from "@meshfw/runtime";
+function rawQueries(query: RawQuery, schema: StandardSchemaV1<unknown, { count: number }>) {
+  const rows: Promise<readonly RawRow[]> = query`select ${"a"}, ${1}, ${1n}, ${true}, ${new Date()}, ${null}`;
+  // @ts-expect-error an object is never bound
+  void query`select ${{}}`;
+  // @ts-expect-error undefined is never bound
+  void query`select ${undefined}`;
+  const typed: Promise<readonly { count: number }[]> = query.as(schema)`select count(*) as count from t`;
+  // @ts-expect-error the rows are the schema's output
+  const wrong: Promise<readonly { count: string }[]> = query.as(schema)`select 1`;
+  return [rows, typed, wrong];
+}
+void rawQueries;
