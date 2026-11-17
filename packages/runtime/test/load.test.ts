@@ -491,6 +491,20 @@ describe("a read policy that reads the record admits a caller's load row by row"
     expect(b[0]!.childCount).toBe(2);
   });
 
+  test("a belongs-to or has-one a computed body reads is loaded for the body, and null for the caller where it is not admitted", async () => {
+    const { tx, handle } = data();
+    const base = owned(handle);
+    const id = (value: unknown) => (value as Row | null)?.id ?? null;
+    const withBodies = { ...base, Node: { ...base.Node!, computed: { ...base.Node!.computed,
+      ownerId: { kind: "body", needs: ["owner"], evaluate: (s: { self: { owner: Row | null } }) => id(s.self.owner) } as never,
+      badgeId: { kind: "body", needs: ["badge"], evaluate: (s: { self: { badge: Row | null } }) => id(s.self.badge) } as never,
+    } } } as LoadPlan;
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const a = await loadRows(withBodies, "Node", tx, rows, ["owner", "ownerId", "badge", "badgeId"], { actor: { id: "a" }, policies: true });
+    // Owner 11 and badge 7 are `by: "b"`: the bodies see them, the caller does not.
+    expect(a.map((row) => [id(row.owner), row.ownerId, id(row.badge), row.badgeId])).toEqual([[10, 10, null, 7], [null, 11, 8, 8], [10, 10, null, null]]);
+  });
+
   test("a policy that reads the record beside one that denies the caller outright queries nothing", async () => {
     const { tx, calls, handle } = data();
     const base = owned(handle);
@@ -639,6 +653,24 @@ describe("a has-many through a link entity", () => {
       expect(ids(open[0]!.courses)).toEqual(["c11", "c12", "c13"]);
       const counted = await loadRows(closed, "Student", tx, [{ id: "s1" }], ["courseCount", "courses"], { policies: true });
       expect(counted[0]).toMatchObject({ courseCount: 3, courses: [] });
+    });
+    test("a through a computed body reads is narrowed for the caller by the link entity's condition on each link row", async () => {
+      const { tx, handle } = data();
+      const base = guardedBy(handle, true, true);
+      // `&id !== "e2"`: s1's only enrollment in c11 is excluded; c13 stays, through e1 and e3.
+      const literal: ConditionLiteral<unknown> = {
+        what: "policy :notE2 authorize-if", entity: "Enrollment",
+        tree: { kind: "call", fn: "not", args: [{ kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "param", index: 0, class: "string" }] }] },
+        params: () => ["e2"],
+      };
+      const notE2: PolicySpec = { name: "notE2", when: null, checks: [{ kind: "authorize-if", check: "() => &id !== \"e2\"", record: true,
+        run: (() => { throw new Error("a record check is folded, never run in memory"); }) as never, sql: () => literal as never }] };
+      const linked = { ...base, Enrollment: { ...base.Enrollment!, reads: [notE2] } } as LoadPlan;
+      const loaded = await loadRows(linked, "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courseCount", "courses"], { policies: true });
+      expect(loaded.map((row) => [row.courseCount, ids(row.courses)])).toEqual([[3, ["c12", "c13"]], [1, ["c12"]]]);
+      // Without the body, the same condition is loaded with the query.
+      const plain = await loadRows(linked, "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courses"], { policies: true });
+      expect(plain.map((row) => ids(row.courses))).toEqual([["c12", "c13"], ["c12"]]);
     });
     test("an exit that was not resolved is an error for a denied caller, with no query", async () => {
       const { tx, calls, handle } = data();
