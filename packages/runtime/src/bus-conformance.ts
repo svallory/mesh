@@ -1,4 +1,4 @@
-import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind } from "./bus.ts";
+import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind, type KindHandler, type Registration } from "./bus.ts";
 import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
@@ -445,23 +445,90 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         manifest: Object.freeze({ adapter: "raw", capabilities: ["ordered-delivery", "subscribe"] as BusCapability[] }),
         create: (core: BusCore) => ({ start: async () => {}, stop: async () => {}, deliver: () => body(core) }),
       });
-      const before = world.bind({ handlers: { process: { b: world.recorder("b", [Beta]) } } }, { bus: rawBus });
+      const before = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [Beta]) } } }, { bus: rawBus });
       await before.deliver();
       await world.publish(before, [Alpha, 1], [Beta, 2]);
-      const listed: boolean[] = [];
+      const listed: Record<string, boolean[]> = { a: [], b: [] };
       body = async (core) => {
-        const handler = core.handlers[0]!;
-        // The rows as the data layer stores them: row 2 still names conformance.Beta.
-        for (const row of (await world.layer.readOutbox!(0, 10)).rows) {
-          const takes = core.lists(handler, row);
-          listed.push(takes);
-          if (takes) await core.runHandler(handler, row);
+        for (const handler of core.handlers) {
+          // The rows as the data layer stores them: row 2 still names conformance.Beta.
+          for (const row of (await world.layer.readOutbox!(0, 10)).rows) {
+            const takes = core.lists(handler, row);
+            listed[handler.name]!.push(takes);
+            if (takes) await core.runHandler(handler, row);
+          }
         }
       };
-      const after = world.bind({ handlers: { process: { b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES, bus: rawBus });
+      const after = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES, bus: rawBus });
       await after.deliver();
-      assert(JSON.stringify(listed) === "[false,true]", `core.lists answered ${JSON.stringify(listed)}`);
+      assert(JSON.stringify(listed.b) === "[false,true]", `core.lists answered ${JSON.stringify(listed.b)} for b`);
+      // a lists only Alpha: unmapped, row 2 would name no declared event, so core.lists would take it as undeclared (a
+      // stop) while runHandler, which reads it as the moved event, would refuse it as not listed.
+      assert(JSON.stringify(listed.a) === "[true,false]", `core.lists answered ${JSON.stringify(listed.a)} for a, which lists only Alpha`);
+      assert(JSON.stringify(positions(world, "a")) === "[1]", `a got ${JSON.stringify(positions(world, "a"))}`);
       assert(JSON.stringify(positions(world, "b")) === "[2]" && world.seen.get("b")![0]!.name === "conformance.moved.Beta", "runHandler ran the row core.lists took, as the moved event");
+    });
+
+    // Delivery from several processes: a handler's stored union may name an event by its former FQN (an earlier
+    // registration wrote it). It is read as the event it now is, and a registration writes it back under the new name.
+    if (declares.has("multi-process")) add("the rename map: a stored union naming a former FQN is read as the moved event and written back under its new name", async (world) => {
+      const before = world.bind({ handlers: { process: { b: world.recorder("b", [Beta]) } } });
+      await before.deliver();
+      assert(JSON.stringify((await world.state()).handlers.find((row) => row.name === "b")!.events) === "[\"conformance.Beta\"]", "the first registration stores the former FQN");
+      await world.publish(before, [Beta, 1], [Alpha, 2]);
+      const after = world.bind({ handlers: { process: { b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES });
+      await after.deliver();
+      await world.publish(after, [MovedBeta, 3]);
+      await after.deliver();
+      assert(JSON.stringify(positions(world, "b")) === "[1,3]", `b got ${JSON.stringify(positions(world, "b"))}`);
+      const events = (await world.state()).handlers.find((row) => row.name === "b")!.events;
+      assert(JSON.stringify(events) === "[\"conformance.moved.Beta\"]", `the union was to be written back as the moved event alone, got ${JSON.stringify(events)}`);
+    });
+
+    add("the rename map: runHandler past an unhandled row stored under a former FQN of a listed event is refused, and the row stays", async (world) => {
+      let caught: unknown;
+      let target = 0;
+      // The world's manifest: in delivery from several processes the multi fence is the one checked.
+      const bus: EventBus = Object.freeze({
+        manifest: world.bus.manifest,
+        create: (core: BusCore) => ({
+          start: async () => {}, stop: async () => {},
+          deliver: async () => {
+            const handler = core.handlers.find((each) => each.name === "b");
+            if (handler === undefined || target === 0) return;
+            const row = (await core.rows(0, 10)).rows.find((each) => each.position === target)!;
+            caught = await rejection(() => core.runHandler(handler, row));
+          },
+        }),
+      });
+      const before = world.bind({ handlers: { process: { b: world.recorder("b", [Beta]) } } });
+      await before.deliver();
+      const [old] = await world.publish(before, [Beta, 1]);
+      const after = world.bind({ handlers: { process: { b: world.recorder("b", [MovedBeta]) } } }, { domain: MOVED_BETA, renamed: RENAMES, bus });
+      await after.deliver();
+      [target] = await world.publish(after, [MovedBeta, 2]) as [number];
+      await after.deliver();
+      assert(caught instanceof FrameworkError && caught.message.includes(`while the row at ${old}, which it lists, is not handled`),
+        `runHandler past the row stored as conformance.Beta was to be refused as skipping a listed row, got ${String(caught)}`);
+      assert(positions(world, "b").length === 0, "the handler ran");
+      assert((await world.outbox()).some((row) => row.position === old), "the unhandled row was deleted");
+    });
+
+    add("the rename map: a contributed kind's registration.firstRow reads a row stored under a former FQN as the event it now is", async (world) => {
+      const publisher = world.bind({});
+      const [, old] = await world.publish(publisher, [Alpha, 1], [Beta, 2]);
+      const found: (number | null)[] = [];
+      const kind: HandlerKind = Object.freeze({
+        name: "conformance", owner: "@meshfw/runtime/testing", check() {}, adopt: async () => {}, stored: () => "conformance",
+        start: async (handler: KindHandler, registration: Registration) => {
+          // Listed: the row stored as conformance.Beta is a conformance.moved.Beta. Not listed: it is declared, not a stop.
+          found.push(await registration.firstRow(0, registration.highest + 1, handler.events), await registration.firstRow(0, registration.highest + 1, []));
+          return registration.highest;
+        },
+      });
+      const binding = world.bind({ handlers: { conformance: { model: { ...world.recorder("model", [MovedBeta]), [HANDLER_KIND]: kind } } } }, { domain: MOVED_BETA, renamed: RENAMES });
+      await binding.deliver();
+      assert(JSON.stringify(found) === JSON.stringify([old, null]), `firstRow answered ${JSON.stringify(found)}, was to be [${old}, null]`);
     });
 
     // ---- the cursor model, through fake buses ----
