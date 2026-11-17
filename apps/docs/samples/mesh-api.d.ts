@@ -40,10 +40,12 @@ declare module "@meshfw/runtime" {
 
   /** What the events module (`src/events.ts`) exports: the handlers, the metadata function and the handlers' context. */
   export interface EventsModule {
-    /** The handlers, by kind, each under its name: the name is unique across both kinds and keys its progress row. */
+    /** The handlers, by kind, each under its name: the name is unique across every kind and keys its progress row. */
     handlers?: {
       process?: Record<string, Handler>;
       listen?: Record<string, Handler>;
+      /** A kind an extension contributes, under its name: every handler there carries that kind. */
+      readonly [kind: string]: Record<string, Handler> | undefined;
     };
     metadata?: MetadataFunction<never>;
     /** The context handlers run with; default `{ system: true }`. */
@@ -91,7 +93,8 @@ declare module "@meshfw/runtime" {
   /** A handler as core registered it for this claim: what a bus feeds. */
   export interface RegisteredHandler {
     readonly name: string;
-    readonly kind: "process" | "listen";
+    /** `"process"`, `"listen"`, or the name of a kind an extension contributes. */
+    readonly kind: string;
     /** The sorted FQNs it lists. */
     readonly events: readonly string[];
     readonly onFailure: "stop" | "skip";
@@ -182,6 +185,54 @@ declare module "@meshfw/runtime" {
     readonly onFailure?: OnFailure;
     /** The handler's former name, whose progress row it takes over at registration. */
     readonly renamedFrom?: string;
+  }
+
+  /** The key under which a handler made by an extension carries its kind (`handler[HANDLER_KIND]`), set by that extension's helper, never by hand. */
+  export const HANDLER_KIND: unique symbol;
+
+  /** A handler kind an extension contributes: its handlers run in the handler transaction and may neither publish nor dispatch. */
+  export interface HandlerKind {
+    /** The key it is listed under in `handlers`: one lowercase word, never `process` or `listen`. */
+    readonly name: string;
+    /** The package that contributes it, for messages. */
+    readonly owner: string;
+    /** At start, before core's option checks and before anything is claimed. */
+    check(handler: KindHandler, bus: BusManifest): void;
+    /** In the registration transaction, for a handler with no progress row: the position it starts after. */
+    start(handler: KindHandler, registration: Registration): Promise<number>;
+    /** In the registration transaction, for a handler whose row exists; throws to fail the start. */
+    adopt(handler: KindHandler, row: HandlerProgressRow, added: readonly string[], registration: Registration): Promise<void>;
+    /** The progress row's stored kind: `name`, or `name:` and one lowercase word. */
+    stored(handler: KindHandler, row: HandlerProgressRow | undefined, added: readonly string[]): string;
+  }
+
+  /** A handler of a contributed kind, as core hands it to its kind. */
+  export interface KindHandler {
+    readonly name: string;
+    /** The sorted FQNs it lists. */
+    readonly events: readonly string[];
+    readonly handler: Handler;
+  }
+
+  /** What a kind reads in the registration transaction. */
+  export interface Registration {
+    readonly deletedThrough: number;
+    /** True once any outbox row has been deleted on this database. */
+    readonly deletedAny: boolean;
+    readonly highest: number;
+    readonly keep: "until-delivered" | "all";
+    /** The first kept row in (after, before) whose name is in `names` or matches no declared event, or null. */
+    firstRow(after: number, before: number, names: readonly string[]): Promise<number | null>;
+  }
+
+  /** One row of `mesh_handler_progress`: a handler's low-water position, as last registered. */
+  export interface HandlerProgressRow {
+    readonly name: string;
+    /** `"process"`, `"listen"`, or what a contributed kind's `stored` returned. */
+    readonly kind: string;
+    readonly position: number;
+    readonly events: readonly string[];
+    readonly generation: number;
   }
 
   /** What `startDelivery()` resolves with. */

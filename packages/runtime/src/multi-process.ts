@@ -4,7 +4,7 @@ import type {
   MultiProcessOperations, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow,
 } from "./data-layer.ts";
 import {
-  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, operations, timing,
+  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, operations, registrationOf, timing,
   type ClaimStrategy, type DatabaseState, type DeclaredHandler, type Deliverer, type Forgotten,
 } from "./deliverer.ts";
 import {
@@ -21,6 +21,11 @@ import {
  * for it since the last adoption; a holder never passes a row of an event in U(H) its own list lacks, and yields the
  * handler instead (`MESH_HANDLER_LOST`, reason `"pending"`), so a build that lists it takes the handler over.
  */
+
+/** The events this build and the live process rows `others` declare, sorted: what a contributed kind's `firstRow` counts as declared. */
+function knownDeclared(own: readonly string[], others: readonly DeliveryProcessRow[]): readonly string[] {
+  return [...new Set([...own, ...others.flatMap((row) => row.declared)])].sort();
+}
 
 /** True when `bus` declares `multi-process`: the binding delivers in multi mode (rule M1). */
 export function isMultiProcess(bus: EventBus | undefined): boolean {
@@ -156,6 +161,7 @@ export class MultiClaim implements ClaimStrategy {
       await ops.writeProcess({ runId: RUN_ID, pid: PID, startedAt: STARTED_AT, keep, handlers, declared: this.deliverer.declared });
       const renames = new Map<string, string>();
       const unions = new Map<string, readonly string[]>();
+      const registration = registrationOf(ops, state, keep === "all" ? "all" : state.keep ?? keep, knownDeclared(this.deliverer.declared, others));
       for (const entry of declared) {
         const name = entry.registered.name;
         const own = await ops.lockHandlerProgress(name);
@@ -169,7 +175,7 @@ export class MultiClaim implements ClaimStrategy {
         const progress = new Map<string, HandlerProgressRow>();
         if (own) progress.set(name, own);
         if (former !== undefined && formerRow) progress.set(former, formerRow);
-        const start = handlerStart(entry, progress, state.highest);
+        const start = await handlerStart(entry, progress, registration);
         logs.push(...start.logs);
         if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
         // The union only grows here; a row taken over by renamedFrom starts from this build's list, since no live build lists the old one.
@@ -353,7 +359,8 @@ export class MultiClaim implements ClaimStrategy {
       const progress = new Map<string, HandlerProgressRow>();
       if (own) progress.set(name, own);
       if (formerRow) progress.set(former, formerRow);
-      const start = handlerStart(entry, progress, state.highest);
+      const registration = registrationOf(ops, state, this.deliverer.keep === "all" ? "all" : state.keep ?? this.deliverer.keep, knownDeclared(this.deliverer.declared, others));
+      const start = await handlerStart(entry, progress, registration);
       if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
       const events = own ? union(own.events, start.row.events) : start.row.events;
       await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });

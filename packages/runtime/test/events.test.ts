@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
-  subscribe, Mesh,
+  subscribe, Mesh, HANDLER_KIND, EventsConfigError, type HandlerKind,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { notifyPublished, onPublished } from "../src/events.ts";
@@ -239,6 +239,55 @@ describe("loadEvents", () => {
     expect((await rejection(() => loadEvents({ load: "./src/events.ts" as never }))).message).toContain("events.load must be a function");
     expect((await rejection(() => loadEvents({ load: async () => null as never }))).message).toContain("must resolve with the events module, and resolved with null");
     expect((await rejection(() => loadEvents({ load: async () => ({ metadata: { a: 1 } }) as never }))).message).toContain("exports metadata as a plain object");
+  });
+});
+
+describe("loadEvents and the kinds of handlers (ADR-0093)", () => {
+  const kind = (name: string, owner = "@meshfw/test-kind"): HandlerKind => ({ name, owner, check() {}, start: async (_h, at) => at.highest, adopt: async () => {}, stored: () => name });
+  const MODEL = kind("model");
+  const plain = () => Mesh.handler({ events: [InvoicePaid], run: () => undefined });
+  const carrying = (k: unknown) => ({ ...plain(), [HANDLER_KIND]: k });
+  const load = (handlers: object) => loadEvents({ bus: testBus(), load: async () => ({ handlers }) as never });
+  const message = async (handlers: object) => {
+    const error = await rejection(() => load(handlers));
+    expect(error).toBeInstanceOf(FrameworkError);
+    return error.message;
+  };
+
+  test("a contributed kind's handlers load under its own key, beside process and listen, empty core groups included", async () => {
+    const handlers = { process: {}, listen: {}, model: { totals: carrying(MODEL), counts: carrying(MODEL) } };
+    expect((await load(handlers)).handlers).toBe(handlers as never);
+  });
+
+  test("a handler with no kind under a key that is not a core kind is refused, naming the key and the handler", async () => {
+    expect(await message({ projects: { totals: plain() } })).toBe('The events module\'s handlers has the kind "projects", and its handler "totals" is not one an extension made for that kind: the kinds are process, listen and those an extension\'s handlers carry, such as project from @meshfw/event-sourcing');
+    expect(await message({ model: { totals: carrying(MODEL), other: plain() } })).toContain('its handler "other" is not one an extension made');
+  });
+
+  test("an empty group, or an undefined one, under a key no handler's kind names is refused, the contributed kind's own key included", async () => {
+    for (const handlers of [{ proces: {} }, { proces: undefined }, { model: {} }, { process: {}, model: {} }])
+      expect(await message(handlers)).toBe('The events module\'s handlers has the kind ' + JSON.stringify(Object.keys(handlers).at(-1)) + ', with no handler under it and none of that kind anywhere in the module: the kinds are process, listen and those an extension\'s handlers carry. Check the spelling, or remove the empty group');
+  });
+
+  test("a handler listed under another kind's key is refused, naming where it belongs", async () => {
+    expect(await message({ process: { totals: carrying(MODEL) } })).toBe("The events module lists the model handler \"totals\" under handlers.process: list it under handlers.model");
+    expect(await message({ listen: { totals: carrying(MODEL) } })).toContain("under handlers.listen: list it under handlers.model");
+    expect(await message({ other: { totals: carrying(MODEL) } })).toContain("under handlers.other: list it under handlers.model");
+  });
+
+  test("a kind named like a core kind, or not one lowercase word, is refused naming the handler, the name and the owner", async () => {
+    expect(await message({ listen: { totals: carrying(kind("listen", "@meshfw/x")) } })).toBe('The handler "totals" carries a kind named "listen" from @meshfw/x: an extension\'s kind cannot take the name of a core kind, and its name is one lowercase word');
+    for (const name of ["Model", "read-model", "model2", ""]) expect(await message({ [name]: { totals: carrying(kind(name)) } })).toContain(`carries a kind named ${JSON.stringify(name)}`);
+  });
+
+  test("a kind that is not a handler kind object is refused", async () => {
+    for (const bad of [null, "model", { name: "model", owner: "x" }, { ...MODEL, owner: 1 }])
+      expect(await message({ model: { totals: carrying(bad) } })).toContain('The handler "totals" carries ');
+  });
+
+  test("handlers of a contributed kind count as handlers for the bus check", async () => {
+    const error = await rejection(() => loadEvents({ load: async () => ({ handlers: { model: { totals: carrying(MODEL) } } }) as never }));
+    expect(error).toBeInstanceOf(EventsConfigError);
   });
 });
 

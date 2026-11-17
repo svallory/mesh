@@ -84,7 +84,7 @@ export function deliveryOperations(client: () => Database, run: <T>(statement: (
       ).run(runId, generation).changes === 1),
     readHandlerProgress: () => exec(() =>
       Object.freeze((db().query(`SELECT name, kind, position, events, generation FROM ${HANDLER_PROGRESS_TABLE} ORDER BY name`).all() as {
-        name: string; kind: "process" | "listen"; position: number; events: string; generation: number;
+        name: string; kind: string; position: number; events: string; generation: number;
       }[]).map((row) => Object.freeze({ ...row, events: Object.freeze(JSON.parse(row.events) as string[]) }) satisfies HandlerProgressRow))),
     writeHandlerProgress: (row) => exec(() => {
       db().query(
@@ -119,7 +119,7 @@ export function deliveryOperations(client: () => Database, run: <T>(statement: (
   };
 }
 
-type LeaseColumns = { name: string; kind: "process" | "listen"; position: number; events: string; generation: number; run_id: string | null };
+type LeaseColumns = { name: string; kind: string; position: number; events: string; generation: number; run_id: string | null };
 const leaseOf = (row: LeaseColumns): HandlerLeaseRow => Object.freeze({
   name: row.name, kind: row.kind, position: row.position, events: Object.freeze(JSON.parse(row.events) as string[]), generation: row.generation, runId: row.run_id,
 });

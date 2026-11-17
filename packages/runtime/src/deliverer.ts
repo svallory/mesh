@@ -1,4 +1,4 @@
-import type { BusCore, EventBus, EventBusInstance, Handler, LiveSubscription, RegisteredHandler } from "./bus.ts";
+import type { BusCore, EventBus, EventBusInstance, Handler, HandlerKind, KindHandler, LiveSubscription, Registration, RegisteredHandler } from "./bus.ts";
 import { checkedBus } from "./bus.ts";
 import type {
   DataLayer, DataOperations, DelivererClaim, DeliveryOperations, DeliveryState, HandlerProgressRow, Key, OutboxPage, OutboxRow,
@@ -11,7 +11,7 @@ import {
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
-  PerDatabase, causedIn, describe, loadEvents, onPublished, recordOf, rows, sameKey, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
+  PerDatabase, causedIn, describe, kindOf, loadEvents, onPublished, recordOf, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
 import { MultiClaim, ackOwned, adoptOwned, declarerOf, forgetOwned, isMultiProcess, keepOwned, multiOperations, openOwned, type Adopted, type KeepChange } from "./multi-process.ts";
@@ -61,6 +61,8 @@ export interface DeclaredHandler {
   readonly registered: RegisteredHandler;
   readonly handler: Handler;
   readonly renamedFrom: string | undefined;
+  /** The kind an extension contributes, for a handler that carries one (`[HANDLER_KIND]`); undefined for `process` and `listen`. */
+  readonly kind?: HandlerKind;
 }
 
 /** What core keeps per database in this process. */
@@ -150,18 +152,20 @@ function sortedUnique(names: readonly string[]): string[] {
 /**
  * Check the events module's handlers against the bus's manifest and against each other, before anything is claimed
  * (spec, "Options and their checks"): every handler needs `ordered-delivery`; `onFailure: "skip"` needs
- * `dead-letters`; names are unique across both kinds; a `renamedFrom` must not name a handler the module still
+ * `dead-letters`; names are unique across every kind; a `renamedFrom` must not name a handler the module still
  * registers, nor be named by two handlers. Shapes are checked too: `run` a function, `events` a non-empty list of the
- * domain's event classes.
+ * domain's event classes. A handler of a kind an extension contributes is checked by its kind (`check`) after its shape
+ * and before core's option checks, so the kind's own message wins (ADR-0093).
  */
 export function declaredHandlers(module: EventsModule, bus: EventBus, events: ReadonlyMap<string, EventClass>): DeclaredHandler[] {
   const capabilities = new Set<string>(bus.manifest.capabilities);
   const out: DeclaredHandler[] = [];
   const seen = new Map<string, string>();
-  for (const kind of ["process", "listen"] as const) {
+  const keys = ["process", "listen", ...Object.keys(module.handlers ?? {}).filter((key) => key !== "process" && key !== "listen")];
+  for (const kind of keys) {
     for (const [name, handler] of Object.entries(module.handlers?.[kind] ?? {})) {
       const where = `The ${kind} handler ${JSON.stringify(name)}`;
-      if (seen.has(name)) throw new HandlerOptionError(name, `${where} has the name of a ${seen.get(name)} handler: a handler's name is unique across both kinds, since it keys the handler's progress row`);
+      if (seen.has(name)) throw new HandlerOptionError(name, `${where} has the name of a ${seen.get(name)} handler: a handler's name is unique across every kind, since it keys the handler's progress row`);
       seen.set(name, kind);
       if (typeof handler !== "object" || handler === null) throw new FrameworkError(`${where} is ${describe(handler)}: it must be a handler, Mesh.handler({ events, run })`);
       if (typeof handler.run !== "function") throw new FrameworkError(`${where} has no run function: a handler is Mesh.handler({ events: [...], run: (event, { context }) => ... })`);
@@ -176,6 +180,13 @@ export function declaredHandlers(module: EventsModule, bus: EventBus, events: Re
           throw new FrameworkError(`${where} lists the event ${declaration.fqn}, which is not one of this binding's domain: import it from #mesh/domain/<module> of the same project`);
         fqns.push(declaration.fqn);
       }
+      const contributed = kindOf(name, handler);
+      if (contributed !== undefined && contributed.name !== kind)
+        throw new FrameworkError(`The events module lists the ${contributed.name} handler ${JSON.stringify(name)} under handlers.${kind}: list it under handlers.${contributed.name}`);
+      if (contributed === undefined && kind !== "process" && kind !== "listen")
+        throw new FrameworkError(`The events module's handlers has the kind ${JSON.stringify(kind)}, and its handler ${JSON.stringify(name)} is not one an extension made for that kind: the kinds are process, listen and those an extension's handlers carry, such as project from @meshfw/event-sourcing`);
+      const sorted = Object.freeze(sortedUnique(fqns));
+      contributed?.check(Object.freeze({ name, events: sorted, handler }), bus.manifest);
       if (!capabilities.has("ordered-delivery"))
         throw new HandlerOptionError(name, `${where} needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the bus ${bus.manifest.adapter} does not declare it`);
       const onFailure: string = handler.onFailure ?? "stop";
@@ -190,7 +201,7 @@ export function declaredHandlers(module: EventsModule, bus: EventBus, events: Re
       const renamedFrom = handler.renamedFrom;
       if (renamedFrom !== undefined && (typeof renamedFrom !== "string" || renamedFrom.trim() === ""))
         throw new HandlerOptionError(name, `${where} has renamedFrom ${describe(renamedFrom)}: it must be the handler's former name`);
-      out.push({ registered: Object.freeze({ name, kind, events: Object.freeze(sortedUnique(fqns)), onFailure }), handler, renamedFrom });
+      out.push({ registered: Object.freeze({ name, kind, events: sorted, onFailure }), handler, renamedFrom, ...(contributed ? { kind: contributed } : {}) });
     }
   }
   const formers = new Map<string, string>();
@@ -217,15 +228,33 @@ export interface HandlerStart {
 }
 
 /**
+ * What a claim strategy reads in its registration transaction, as a contributed kind sees it (`Registration`), from the
+ * state it read: `firstRow` is the data adapter's `firstOutboxRow` over the events `declared` counts as declared.
+ */
+export function registrationOf(
+  ops: DeliveryOperations, state: Pick<DeliveryState, "deletedThrough" | "highest">, keep: "until-delivered" | "all", declared: readonly string[],
+): Registration {
+  return Object.freeze({
+    deletedThrough: state.deletedThrough,
+    deletedAny: state.deletedThrough > 0,
+    highest: state.highest,
+    keep,
+    firstRow: (after: number, before: number, names: readonly string[]) => ops.firstOutboxRow(after, before, names, declared),
+  });
+}
+
+/**
  * The spec's Registration table for one handler, shared by every claim strategy so a change to it lands once: a known
  * handler keeps its position and takes the list it registers now (an added event is logged with the position it is
  * handled from); a handler with no row takes over the row of its `renamedFrom`, when that has one; any other starts at
- * the highest position ever assigned (`highest`).
+ * the highest position ever assigned (`registration.highest`). A handler of a contributed kind (ADR-0093) asks its kind
+ * instead: `start` gives a new row's position, `adopt` may refuse a known row (which fails the whole registration), and
+ * `stored` names the row's stored kind. Runs inside the registration transaction, so a refusal writes nothing.
  */
-export function handlerStart(
-  declared: Pick<DeclaredHandler, "registered" | "renamedFrom">, progress: ReadonlyMap<string, HandlerProgressRow>, highest: number,
-): HandlerStart {
-  const { registered, renamedFrom } = declared;
+export async function handlerStart(
+  declared: Pick<DeclaredHandler, "registered" | "renamedFrom" | "handler" | "kind">, progress: ReadonlyMap<string, HandlerProgressRow>, registration: Registration,
+): Promise<HandlerStart> {
+  const { registered, renamedFrom, kind } = declared;
   const logs: string[] = [];
   let found = progress.get(registered.name);
   let former: string | undefined;
@@ -236,13 +265,28 @@ export function handlerStart(
       logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} takes over the progress of ${JSON.stringify(renamedFrom)} (renamedFrom), at position ${found.position}`);
     }
   }
-  const row = { name: registered.name, kind: registered.kind, position: found ? found.position : highest, events: registered.events };
-  if (found) {
-    const known = found.events;
-    const added = registered.events.filter((name) => !known.includes(name));
-    if (added.length > 0)
-      logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} now lists ${added.join(", ")}, handled from position ${found.position} on`);
+  const added = found ? registered.events.filter((name) => !found.events.includes(name)) : [];
+  const handler: KindHandler | undefined = kind && Object.freeze({ name: registered.name, events: registered.events, handler: declared.handler });
+  let position = found ? found.position : registration.highest;
+  if (kind && handler) {
+    if (found) await kind.adopt(handler, found, Object.freeze([...added]), registration);
+    else {
+      const start: unknown = await kind.start(handler, registration);
+      if (typeof start !== "number" || !Number.isSafeInteger(start) || start < registration.deletedThrough || start > registration.highest)
+        throw new FrameworkError(`The ${kind.name} kind of ${kind.owner} started the handler ${JSON.stringify(registered.name)} at ${typeof start === "number" ? String(start) : describe(start)}: a start is a position from the deleted-through position, ${registration.deletedThrough}, to the highest, ${registration.highest}`);
+      position = start;
+    }
   }
+  let stored: string = registered.kind;
+  if (kind && handler) {
+    const named: unknown = kind.stored(handler, found, Object.freeze([...added]));
+    if (storedKindProblem(kind, named))
+      throw new FrameworkError(`The ${kind.name} kind of ${kind.owner} stored the kind ${typeof named === "string" ? JSON.stringify(named) : describe(named)} for the handler ${JSON.stringify(registered.name)}: a stored kind is ${JSON.stringify(kind.name)}, or ${JSON.stringify(`${kind.name}:`)} followed by one lowercase word`);
+    stored = named as string;
+  }
+  const row = { name: registered.name, kind: stored, position, events: registered.events };
+  if (found && added.length > 0)
+    logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} now lists ${added.join(", ")}, handled from position ${found.position} on`);
   return { row, former, logs };
 }
 
@@ -470,7 +514,8 @@ export class Deliverer {
     const record = eventClass ? recordOf(row, eventClass) : undefined;
     const label = `the ${handler.kind} handler ${handler.name}`;
     const run = (context: ActionContext) => (entry.handler as Handler).run(record!, { context });
-    if (handler.kind === "process") {
+    // A contributed kind (ADR-0093) runs as a `process` handler does: its body in the handler transaction.
+    if (handler.kind === "process" || entry.kind !== undefined) {
       await handlerScope(this.binding, label, row.id, true, async () => {
         const progress = await this.layer.transaction(async (tx) => {
           const found = await this.strategy.fenceHandler(operations(tx), handler, row);
@@ -640,8 +685,9 @@ class SingleClaim implements ClaimStrategy {
       const generation = state.generation + 1;
       await ops.writeClaim({ runId: RUN_ID, generation, pid: PID, startedAt: STARTED_AT });
       const progress = new Map((await ops.readHandlerProgress()).map((row) => [row.name, row]));
+      const registration = registrationOf(ops, state, this.deliverer.keep, this.deliverer.declared);
       for (const entry of declared) {
-        const start = handlerStart(entry, progress, state.highest);
+        const start = await handlerStart(entry, progress, registration);
         if (start.former !== undefined) {
           await ops.deleteHandlerProgress(start.former);
           progress.delete(start.former);

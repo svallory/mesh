@@ -52,8 +52,8 @@ export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change,
 export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, published, readEvents, releaseBinding, settled } from "./entity.ts";
 export { KEEP_VALUES, loadEvents, publishEvent, rows } from "./events.ts";
 export type { EventClass, EventRecord, EventsConfig, EventsModule, MetadataArguments, MetadataFunction, PublishTarget, ReadEventsPage, ReadEventsQuery } from "./events.ts";
-export { BUS_CAPABILITIES, busProblem, checkedBus, handler } from "./bus.ts";
-export type { BusCapability, BusCore, BusManifest, BusOptions, EventBus, EventBusCapabilities, EventBusInstance, Handler, HandlerTools, ListedEvent, LiveSubscription, OnFailure, RegisteredHandler } from "./bus.ts";
+export { BUS_CAPABILITIES, HANDLER_KIND, busProblem, checkedBus, handler } from "./bus.ts";
+export type { BusCapability, BusCore, BusManifest, BusOptions, EventBus, EventBusCapabilities, EventBusInstance, Handler, HandlerKind, HandlerTools, KindHandler, ListedEvent, LiveSubscription, OnFailure, Registration, RegisteredHandler } from "./bus.ts";
 export { adoptByName, adoptHandler, declaredHandlers, deliverRound, forgetByName, forgetHandler, forgetSubscription, isRetryable, keepByValue, listSubscriptions, markNoDeliver, resumeHandler, startDelivery, subscribe } from "./deliverer.ts";
 export type { Delivery, Forgotten, SubscribeQuery, Subscription, SubscriptionProgress } from "./deliverer.ts";
 export type { Adopted, KeepChange } from "./multi-process.ts";

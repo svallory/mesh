@@ -261,9 +261,10 @@ export interface DeliveryState {
 
 /** One row of `mesh_handler_progress`: a handler's low-water position, as last registered. */
 export interface HandlerProgressRow {
-  /** The handler's name, unique across both kinds: the row's key. */
+  /** The handler's name, unique across every kind: the row's key. */
   readonly name: string;
-  readonly kind: "process" | "listen";
+  /** `"process"`, `"listen"`, or what a contributed kind's `stored` returned (`"project"`, `"project:now"`): stored as it is. */
+  readonly kind: string;
   /** The low-water position: every row the handler lists at or below it is handled. */
   readonly position: number;
   /** The sorted FQNs the handler lists, as last registered. */

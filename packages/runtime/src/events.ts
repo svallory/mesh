@@ -1,6 +1,6 @@
 import type { DataLayer, DataOperations, Key, OutboxAppend, OutboxPage, OutboxRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import type { BusCapability, EventBus, Handler } from "./bus.ts";
+import { HANDLER_KIND, type BusCapability, type EventBus, type Handler, type HandlerKind } from "./bus.ts";
 import type { Capability } from "./capabilities.ts";
 import { CursorAheadError, EventUndeclaredError, EventsConfigError, EventsDeletedError, FrameworkError } from "./errors.ts";
 import type { Clock } from "./expr.ts";
@@ -56,10 +56,12 @@ export type MetadataFunction<E extends object = object> = (args: MetadataArgumen
 
 /** The events module (`src/events.ts`), which `events.load` loads at run time and the build never imports. */
 export interface EventsModule {
-  /** The handlers, by kind, each under its name: the name is unique across both kinds and keys its progress row. */
+  /** The handlers, by kind, each under its name: the name is unique across every kind and keys its progress row. */
   handlers?: {
     process?: Record<string, Handler>;
     listen?: Record<string, Handler>;
+    /** A contributed kind's handlers, under the kind's name (ADR-0093): each carries the kind (`[HANDLER_KIND]`). */
+    readonly [kind: string]: Record<string, Handler> | undefined;
   };
   metadata?: MetadataFunction<never>;
   /** The context handlers run with; default `{ system: true }`. It can read the original person from the event's `metadata`. */
@@ -190,12 +192,7 @@ export function loadEvents(config: EventsConfig | undefined): Promise<EventsModu
       if (handlers !== undefined) {
         if (typeof handlers !== "object" || handlers === null || Array.isArray(handlers))
           throw new FrameworkError(`The events module exports handlers as ${describe(handlers)}: it must be an object { process, listen }, each a record of handlers by name`);
-        for (const [kind, group] of Object.entries(handlers)) {
-          if (kind !== "process" && kind !== "listen")
-            throw new FrameworkError(`The events module's handlers has the kind ${JSON.stringify(kind)}: the kinds are process and listen`);
-          if (group !== undefined && (typeof group !== "object" || group === null || Array.isArray(group)))
-            throw new FrameworkError(`The events module's handlers.${kind} is ${describe(group)}: it must be a record of handlers by name`);
-        }
+        checkKinds(handlers as Record<string, unknown>);
         const count = Object.values(handlers as Record<string, object | undefined>).reduce((sum, group) => sum + Object.keys(group ?? {}).length, 0);
         if (count > 0 && config.bus === undefined)
           throw new EventsConfigError("The events module exports handlers, and mesh.config.ts configures no events.bus: nothing would deliver to them. Set events: { bus: localBus() }, or remove the handlers");
@@ -206,6 +203,53 @@ export function loadEvents(config: EventsConfig | undefined): Promise<EventsModu
     loading.catch(() => { if (modules.get(config) === loading) modules.delete(config); });
   }
   return loading;
+}
+
+/** The kinds core runs itself; every other key of `handlers` names a kind an extension contributes. */
+const CORE_KINDS: ReadonlySet<string> = new Set(["process", "listen"]);
+/** A contributed kind's name, and the word after `name:` in what its `stored` returns. */
+const KIND_WORD = /^[a-z]+$/;
+
+/** The kind a handler carries (`[HANDLER_KIND]`), checked (D3); undefined when it carries none. */
+export function kindOf(name: string, handler: unknown): HandlerKind | undefined {
+  if (typeof handler !== "object" || handler === null) return undefined;
+  const kind = (handler as { [HANDLER_KIND]?: unknown })[HANDLER_KIND];
+  if (kind === undefined) return undefined;
+  const { name: kindName, owner } = (kind ?? {}) as Partial<HandlerKind>;
+  const functions = ["check", "start", "adopt", "stored"] as const;
+  if (typeof kind !== "object" || kind === null || typeof kindName !== "string" || typeof owner !== "string" || functions.some((key) => typeof (kind as Record<string, unknown>)[key] !== "function"))
+    throw new FrameworkError(`The handler ${JSON.stringify(name)} carries ${describe(kind)} as its kind: a handler kind is an object { name, owner, check, start, adopt, stored }, made by the extension that contributes it`);
+  if (CORE_KINDS.has(kindName) || !KIND_WORD.test(kindName))
+    throw new FrameworkError(`The handler ${JSON.stringify(name)} carries a kind named ${JSON.stringify(kindName)} from ${owner}: an extension's kind cannot take the name of a core kind, and its name is one lowercase word`);
+  return kind as HandlerKind;
+}
+
+/**
+ * The keys of the events module's `handlers` (ADR-0093): `process` and `listen`, and the name of each kind an extension
+ * contributes, under which every handler carries that kind. A handler under a key that is not its kind's, an empty group
+ * under a key no kind names, and a handler with no kind under such a key are `FrameworkError`s.
+ */
+function checkKinds(handlers: Record<string, unknown>): void {
+  for (const [key, group] of Object.entries(handlers)) {
+    if (group !== undefined && (typeof group !== "object" || group === null || Array.isArray(group)))
+      throw new FrameworkError(`The events module's handlers.${key} is ${describe(group)}: it must be a record of handlers by name`);
+    for (const [name, handler] of Object.entries(group ?? {})) {
+      const kind = kindOf(name, handler);
+      if (kind !== undefined && kind.name !== key)
+        throw new FrameworkError(`The events module lists the ${kind.name} handler ${JSON.stringify(name)} under handlers.${key}: list it under handlers.${kind.name}`);
+      if (kind === undefined && !CORE_KINDS.has(key))
+        throw new FrameworkError(`The events module's handlers has the kind ${JSON.stringify(key)}, and its handler ${JSON.stringify(name)} is not one an extension made for that kind: the kinds are process, listen and those an extension's handlers carry, such as project from @meshfw/event-sourcing`);
+    }
+  }
+  for (const [key, group] of Object.entries(handlers))
+    if (!CORE_KINDS.has(key) && Object.keys(group ?? {}).length === 0)
+      throw new FrameworkError(`The events module's handlers has the kind ${JSON.stringify(key)}, with no handler under it and none of that kind anywhere in the module: the kinds are process, listen and those an extension's handlers carry. Check the spelling, or remove the empty group`);
+}
+
+/** Whether `stored`, what `kind.stored` returned, is `kind.name` or `kind.name:<one lowercase word>`. */
+export function storedKindProblem(kind: HandlerKind, stored: unknown): boolean {
+  if (stored === kind.name) return false;
+  return typeof stored !== "string" || !stored.startsWith(`${kind.name}:`) || !KIND_WORD.test(stored.slice(kind.name.length + 1));
 }
 
 /** Where a `publish` step is: the publishing entity and action, the record's key and the step's source line. */
