@@ -64,6 +64,7 @@ const tsconfig = {
       "#mesh": ["../../samples/mesh-api.d.ts"],
       "#mesh/domain": ["../../samples/mesh-api.d.ts"],
       "#mesh/domain/*": ["../../samples/mesh-api.d.ts"],
+      "#mesh/surfaces/*": ["../../samples/mesh-api.d.ts"],
       "@meshfw/runtime": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-sqlite": ["../../samples/mesh-api.d.ts"],
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],

@@ -125,6 +125,8 @@ The entry points, in `package.json`:
 }
 ```
 
+A project with surfaces adds `"#mesh/surfaces/*": "./.mesh/surfaces/*/index.ts"`: each surface's generated manifest, `#mesh/surfaces/<name>` ([Surfaces](./surfaces.md#the-generated-manifest)).
+
 Your code imports a module's entities from that module's specifier, and what belongs to the whole project from `#mesh`:
 
 ```ts "src/main.ts (excerpt)"

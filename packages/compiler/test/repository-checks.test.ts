@@ -528,6 +528,17 @@ test("Docs MX samples: the architecture file is a complete fence, parsed as auth
   });
 });
 
+test("Docs MX samples: a surface file is a complete fence, parsed as authored", () => {
+  temporary((dir) => {
+    const surface = (line: string) => `\`\`\`mx "src/surfaces/public/public.mesh.mx"\nimport { Todo } from "../../domain/todo/todo.mesh.mx"\n\nsurface :public\n  expose :todos entity=Todo ${line}\n    action :read\n\`\`\`\n`;
+    writeFileSync(join(dir, "surfaces.md"), surface('label="Todos" fields=[:id, :title]'));
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 0, errors: [] });
+    expect(checkDocsSyntaxV4(dir)).toMatchObject({ checked: 1, errors: [] });
+    writeFileSync(join(dir, "surfaces.md"), surface('fields="title"'));
+    expect(checkDocsSamples(dir).errors.join("\n")).toContain("fields must be a list of atoms");
+  });
+});
+
 test("Docs MX samples: a fence uses a concept another fence of the Docs declares, and not one no fence declares", () => {
   temporary((dir) => {
     const money = '```mx "concepts/Money.mesh.mx"\nconcept :Money\n  integer :amount min=0\n```\n';
