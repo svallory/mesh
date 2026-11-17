@@ -68,6 +68,18 @@ describe("a concept member is no column a query reads", () => {
     ]]);
   });
 
+  test("a read policy's forbid-if reading inside it is plain, so MESH_EXPR_NOT_SQL", () => {
+    const source = invoice("  actions auto=[:read, :create]\n  policies\n    policy :mine types=[:read]\n      forbid-if=() => &total.amount > 0\n      authorize-if=() => true\n    policy :writes types=[:create]\n      authorize-if=() => true\n");
+    expect(one({ [`${D}billing/invoice.mesh.mx`]: source }).diagnostics.map((d) => d.code)).toEqual(["MESH_EXPR_PLAIN", "MESH_EXPR_NOT_SQL"]);
+  });
+
+  test("`on:load=&total` gives what it gives for a `json` member", () => {
+    const loading = (head: string) => `entity :A\n  attributes\n    uuid :id primary-key\n    ${head} :total\n  actions auto=[:read] on:load=&total\n`;
+    const concept = codes(one({ [`${D}a.mesh.mx`]: loading("Money") }));
+    expect(concept).toEqual(codes(one({ [`${D}a.mesh.mx`]: loading("json") })));
+    expect(concept.map((line) => line.split(" ")[1])).toEqual(["MESH_UNKNOWN_ACTION", "MESH_ON_LOAD"]);
+  });
+
   test.each(["sum", "avg", "min", "max"])("a %s rollup of it is MESH_ROLLUP_TYPE, naming the concept", (fn) => {
     const line = "import { Invoice } from \"./invoice.mesh.mx\"\nentity :Line\n  attributes\n    uuid :id primary-key\n    Money :price\n  relationships\n    belongs-to :invoice entity=Invoice\n  actions auto=[:read]\n";
     const source = `import { Line } from "./line.mesh.mx"\n${invoice(`  relationships\n    has-many :lines entity=Line\n  computed\n    ${fn} :biggest of=&lines.price\n  actions auto=[:read]\n`)}`;
@@ -188,6 +200,7 @@ describe("an expression that reads inside a concept member runs as plain TypeScr
     ["a named check of a `checks` section", invoice("  checks\n    check :positive that=() => &total.amount > 0 code=\"p\" message=\"p\"\n  actions auto=[:read]\n    update :change\n      validate\n        check &positive\n")],
     ["a `when` line in `validate`", invoice("  actions auto=[:read]\n    update :change\n      validate\n        when=() => &total.amount > 0\n          check :ok that=() => &n > 0 code=\"o\" message=\"o\"\n")],
     ["a write policy", invoice("  actions auto=[:read, :update]\n  policies\n    policy :big types=[:update]\n      authorize-if=() => &total.amount > 0\n    policy :reads types=[:read]\n      authorize-if=() => true\n")],
+    ["a write policy's forbid-if", invoice("  actions auto=[:read, :update]\n  policies\n    policy :big types=[:update]\n      forbid-if=() => &total.amount > 0\n      authorize-if=() => true\n    policy :reads types=[:read]\n      authorize-if=() => true\n")],
   ])("in %s: demoted, with the MESH_EXPR_PLAIN warning naming the concept", (_, source) => {
     expect(plain(one({ [`${D}billing/invoice.mesh.mx`]: source }))).toEqual([PLAIN]);
   });
@@ -229,7 +242,7 @@ describe("a command field of a concept is answered by an input of the same conce
     const result = run("Price :total", "total");
     expect(result.diagnostics.map((d) => [d.code, d.message])).toEqual([[
       "MESH_COMMAND_INPUT",
-      "Command billing.Charge has the field `total` of type `concept Price`, which does not fit the input of billing.Invoice#charge of type `concept Money`",
+      "Command billing.Charge has the field `total` of the concept Price, which does not fit the input of billing.Invoice#charge of the concept Money",
     ]]);
   });
 
@@ -248,7 +261,7 @@ describe("a command field of a concept is answered by an input of the same conce
     const result = one(files);
     expect(result.diagnostics.map((d) => [d.code, d.message])).toEqual([[
       "MESH_COMMAND_INPUT",
-      "Command billing.Charge has the field `total` of type `concept billing.Money`, which does not fit the input of shop.Invoice#charge of type `concept Money`",
+      "Command billing.Charge has the field `total` of the concept billing.Money, which does not fit the input of shop.Invoice#charge of the concept Money",
     ]]);
   });
 });

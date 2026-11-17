@@ -53,10 +53,13 @@ function accepts(input: InputType, field: Field): boolean {
   return (field.values ?? []).every((atom) => values.has(atom.value));
 }
 
-/** The model's type as the author writes it, for a mismatch message. */
+/**
+ * The model's type for a mismatch message: `of type \`<type as the author writes it>\``, or, for a concept, whose line
+ * head is only its name, `of the concept <FQN>` (the FQN tells a shadowing `billing.Money` from the root `Money`).
+ */
 function describeType(field: InputType): string {
-  if (field.type === "concept") return `concept ${field.concept}${field.nullable ? " nullable" : ""}`;
-  return `${field.type}${field.type === "enum" ? ` values=[${(field.values ?? []).map((atom) => `:${atom.value}`).join(", ")}]` : ""}${field.nullable ? " nullable" : ""}`;
+  if (field.type === "concept") return `of the concept ${field.concept}${field.nullable ? " (nullable)" : ""}`;
+  return `of type \`${field.type}${field.type === "enum" ? ` values=[${(field.values ?? []).map((atom) => `:${atom.value}`).join(", ")}]` : ""}${field.nullable ? " nullable" : ""}\``;
 }
 
 /**
@@ -106,7 +109,7 @@ export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[]
         const value = optional ? { ...field, nullable: false } : field;
         if (input.shape && !accepts(input.shape, value))
           diagnostics.push(error("MESH_COMMAND_INPUT",
-            `Command ${ref.fqn} has the field \`${field.name}\` of type \`${describeType(field)}\`, which does not fit the input of ${entity.fqn}#${action.name} of type \`${describeType(input.shape)}\``,
+            `Command ${ref.fqn} has the field \`${field.name}\` ${describeType(field)}, which does not fit the input of ${entity.fqn}#${action.name} ${describeType(input.shape)}`,
             ref.position, `give the command field \`${field.name}\` the input's scalar kind, a subset of its enum values, and no null unless the input is nullable`));
       }
       const fields = new Set(command.fields.map((field) => field.name));
