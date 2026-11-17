@@ -19,27 +19,29 @@ export function parseJobs(value: string | undefined): number {
   return Number(value);
 }
 
-// Full-package wall seconds from the sequential model-edit baseline, 2026-10-19.
-// Other workspace weights below use test-file counts as estimates (not timings).
-// Unknown packages retain their original order; the coverage test catches new workspaces.
+// Each package's whole `test` script, run sequentially with its slow files included: wall seconds measured on
+// forge at main b5e58ba for the test-speed design (2026-11-17); data-drizzle, model and create-meshfw are their
+// junit `time` totals. Weights only order already-selected work; they never select or skip tests.
+// Unknown packages weigh 0 and keep their original order; the coverage test catches new workspaces.
 export const PACKAGE_WEIGHTS: Readonly<Record<string, number>> = {
-  "packages/compiler": 44.97,
-  "packages/cli": 38.40,
-  "packages/data-sqlite": 19.99,
-  "examples/hyper": 15.80,
-  "packages/bus-local": 11.99,
-  "examples/blog": 4.28,
+  "packages/compiler": 43.71,
+  "packages/cli": 40.70,
+  "packages/data-sqlite": 26.50,
+  "examples/hyper": 17.60,
+  "packages/bus-local": 9.70,
+  "packages/jsonrpc": 5.50,
+  "apps/docs": 5.30,
+  "examples/blog": 3.70,
+  "packages/runtime": 0.30,
+  "packages/data-drizzle": 0.04,
   "packages/model": 0.02,
-  // Estimated from test-file counts, not seconds; no extra full-suite benchmark.
-  "packages/runtime": 16,
-  "apps/docs": 12,
-  "packages/jsonrpc": 3,
-  "packages/data-drizzle": 2,
-  "packages/create-meshfw": 1,
+  "packages/create-meshfw": 0.01,
 };
-// The sequential selection peaked at 0.94 GiB (cgroup memory.peak). Two
-// simultaneous packages leave ample headroom under Forge's 4 GiB command cap.
-export const DEFAULT_JOBS = 2;
+// Measured on forge on 2026-11-17 (each run under a 4 GiB cgroup scope, cgroup memory.peak): a model or a compiler
+// edit at four jobs peaked at 2.14 GiB at most (two jobs: 1.31 GiB), under the 3 GiB this budget allows inside
+// Forge's 4 GiB command cap, and the median wall fell from 73 s to 59 s for both edits; `--all` peaked at
+// 2.12 GiB. bus-local's worker runs in its own 1 GiB scope, outside these figures. `--jobs` overrides per run.
+export const DEFAULT_JOBS = 4;
 
 export function orderedTasks(tasks: readonly TestTask[], jobs: number): TestTask[] {
   if (jobs === 1) return [...tasks];

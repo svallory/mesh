@@ -21,7 +21,7 @@ function controlled() {
 
 describe("package pool", () => {
   test("jobs is a positive safe integer, with a conservative default", () => {
-    expect(DEFAULT_JOBS).toBe(2);
+    expect(DEFAULT_JOBS).toBe(4);
     expect(parseJobs("1")).toBe(1);
     expect(parseJobs("8")).toBe(8);
     for (const value of [undefined, "", "0", "-1", "1.5", "2x", "Infinity", "NaN", "9007199254740992"]) {
@@ -35,6 +35,19 @@ describe("package pool", () => {
       "packages/compiler", "packages/cli", "packages/model", "unknown-a", "unknown-b",
     ]);
     expect(tasks.map((t) => t.id)).toEqual(["unknown-a", "packages/model", "packages/cli", "unknown-b", "packages/compiler"]);
+  });
+
+  test("orders a core-edit selection by the measured package walls", () => {
+    // What a one-line edit in packages/model/src/index.ts selects, in the selector's (alphabetical) order.
+    const selection = ["examples/blog", "examples/hyper", "packages/bus-local", "packages/cli",
+      "packages/compiler", "packages/data-sqlite", "packages/model"].map(task);
+    expect(orderedTasks(selection, DEFAULT_JOBS).map((t) => t.id)).toEqual([
+      "packages/compiler", "packages/cli", "packages/data-sqlite", "examples/hyper",
+      "packages/bus-local", "examples/blog", "packages/model",
+    ]);
+    // Measured, not estimated: runtime's whole suite is a fraction of a second, far below the docs site's.
+    expect(PACKAGE_WEIGHTS["packages/runtime"]).toBeLessThan(PACKAGE_WEIGHTS["apps/docs"]!);
+    expect(PACKAGE_WEIGHTS["packages/jsonrpc"]).toBeGreaterThan(PACKAGE_WEIGHTS["examples/blog"]!);
   });
 
   test("bounds active work and immediately fills a freed slot", async () => {
@@ -112,7 +125,7 @@ describe("package pool", () => {
     await expect(runPool([task("no")], 0, execute)).rejects.toThrow("positive whole number");
   });
 
-  test("every workspace has a scheduling weight, including test-count estimates", async () => {
+  test("every workspace has a measured scheduling weight", async () => {
     const root = join(import.meta.dir, "../..");
     const pkg = await Bun.file(join(root, "package.json")).json();
     for (const pattern of pkg.workspaces as string[]) {
