@@ -10,6 +10,8 @@ import { ACTION_TYPES, ATTRIBUTE_TYPES as REGISTRY } from "@meshfw/model";
 export { ACTION_TYPES } from "@meshfw/model";
 export const ATTRIBUTE_TYPES = REGISTRY.map((t) => t.name);
 export const ROLLUPS = ["count", "sum", "avg", "min", "max"] as const;
+/** The relationship kinds. Each once took its entity as the line's value (`belongs-to=:List :list`, syntax v3). */
+export const RELATIONSHIP_KINDS = ["belongs-to", "has-many", "has-one"] as const;
 
 /** Layer-1 vocabulary only: no transforms, evaluation, or source rewriting. */
 const closed = (def: CustomTag): CustomTag => ({
@@ -200,7 +202,7 @@ const contracts: ContractMap = {
   }),
   relationships: closed({
     parents: ["entity"],
-    children: children("belongs-to", "has-many", "has-one"),
+    children: children(...RELATIONSHIP_KINDS),
   }),
   computed: closed({
     parents: ["entity"],
@@ -370,7 +372,7 @@ for (const type of ATTRIBUTE_TYPES)
       }
     },
   });
-for (const kind of ["belongs-to", "has-many", "has-one"])
+for (const kind of RELATIONSHIP_KINDS)
   contracts[kind] = closed({
     parents: ["relationships"],
     attributes: {
