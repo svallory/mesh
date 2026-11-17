@@ -1,0 +1,14 @@
+{
+  "$comment": "CI runs one job per group (.github/workflows/verify.yml). Every workspace package is in exactly one group; \"root\" holds the repository's own steps (type check and tests of scripts/). The grouping balances the step times of CI run 43805256584 (notes/architecture/test-speed-design.md, section 3.1).",
+  "groups": {
+    "compiler": { "packages": ["packages/compiler"] },
+    "cli": { "packages": ["packages/cli"] },
+    "data": { "packages": ["packages/data-sqlite", "packages/bus-local", "packages/jsonrpc"] },
+    "hyper": { "packages": ["examples/hyper"] },
+    "rest": {
+      "root": true,
+      "packages": ["apps/docs", "examples/blog", "packages/runtime", "packages/model",
+                   "packages/data-drizzle", "packages/create-meshfw"]
+    }
+  }
+}

@@ -1,5 +1,8 @@
 # Runs `bun run verify`, the one command that runs every check in the repository
-# (tests, type checks, the docs build and link check, the blog generated-tree guard).
+# (tests, type checks, the docs build and link check, the blog generated-tree guard),
+# as one job per group of workspace packages (scripts/verify-groups.json), side by side,
+# plus one job named `verify` that passes only when every group passed. That job is the
+# required check on `main`, so its name stays `verify`.
 # ADR-0031 recorded why this file did not exist: the `@mxlang` packages came from a
 # `link:` checkout a hosted runner cannot have. They are published on the registry the
 # root `bunfig.toml` scopes `@mxlang` to, so an install on a runner is an ordinary one.
@@ -21,9 +24,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  group:
+    name: verify (${{ matrix.group }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    strategy:
+      # Like verify.ts itself: one run lists every broken group.
+      fail-fast: false
+      matrix:
+        # Exactly the group names of scripts/verify-groups.json (scripts/verify/plan.test.ts
+        # checks it); verify.ts --group refuses to run when a package is in no group.
+        group: [compiler, cli, data, hyper, rest]
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,5 +58,21 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Verify
-        run: bun run verify
+      - name: Verify ${{ matrix.group }}
+        run: bun run verify -- --group ${{ matrix.group }}
+
+  verify:
+    # The required check's name; branch protection is not touched.
+    name: verify
+    needs: group
+    # Runs (and fails) when a group failed, instead of being skipped, which GitHub would
+    # report as a skipped required check; unlike always(), a run cancelled by a newer push
+    # gets no red verify.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # needs.group.result is success only when every matrix job succeeded; failure,
+      # cancelled and skipped all fail here.
+      - name: Every group passed
+        run: test "${{ needs.group.result }}" = "success"
