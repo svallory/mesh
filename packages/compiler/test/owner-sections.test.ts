@@ -1,7 +1,7 @@
 // An owner's `events` and `commands` sections with listing lines, and the owner check (`MESH_PUBLISH`'s fourth case):
 // `notes/architecture/aggregates-design.md`, PR 1. A listing line is an imported event or command, by its identifier or as
 // a member of a namespace import, alone on its line; MX claims it through a wildcard child (`listing()`), which works only
-// with `bindingsCallTags: false` on Mesh's dialect. Inline declarations are `owner-sections-inline.test.ts`; aggregate files come later.
+// with `bindingsCallTags: false` on Mesh's dialect. Inline declarations are `owner-sections-inline.test.ts`; aggregate files are `aggregates.test.ts`.
 import { describe, expect, test } from "bun:test";
 import type { Diagnostic, Entity, Expression, Step } from "@meshfw/model";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";

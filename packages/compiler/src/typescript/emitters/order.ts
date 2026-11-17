@@ -20,9 +20,13 @@ export function orderedEntities(document: ModelDocument): Entity[] {
   return [...document.entities].sort((a, b) => compareText(a.file, b.file));
 }
 
-/** The same document with its entities ordered; nothing else is touched. */
+/** The same document with its entities, and its aggregates when it has any, ordered by file; nothing else is touched. */
 export function orderedDocument(document: ModelDocument): ModelDocument {
-  return { ...document, entities: orderedEntities(document) };
+  return {
+    ...document,
+    entities: orderedEntities(document),
+    ...(document.aggregates ? { aggregates: [...document.aggregates].sort((a, b) => compareText(a.file, b.file)) } : {}),
+  };
 }
 
 /**

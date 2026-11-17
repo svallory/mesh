@@ -68,7 +68,7 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. A part line of an aggregate's `entities` section is the same kind of wildcard child, whose head is an imported entity (`Line`): its row is `entities.reference.prop`, tested in an aggregate file whose root is Sample. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
 The `optional` rows are command field lines, tested in a command file with an answering update; `optional` is refused on event fields, attributes, arguments and computed fields ([Events: Answering a command](../../docs/events.md#answering-a-command)).
 
@@ -79,6 +79,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `actions` | `actions auto=[:read]` | `actions` | on main |
 | `actions.auto` | `actions auto=[:read]` | `actions.auto` | on main |
 | `actions.on:load` | `actions on:load=&custom` | `actions.on:load` | on main |
+| `aggregate` | `aggregate :Sales` | `aggregate` | on main |
+| `aggregate.name` | `aggregate :Sales` | `aggregate.name` | on main |
 | `always` | `always types=[:update]` | `always` | on main |
 | `always.types` | `always types=[:update]` | `always.types` | on main |
 | `always.actions` | `always actions=[&custom]` | `always.actions` | on main |
@@ -150,6 +152,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `destroy.name` | `destroy :work` | `destroy.name` | on main |
 | `destroy.on` | `destroy on=Paid` | `destroy.on` | on main |
 | `do` | `do` | `do` | on main |
+| `entities` | `entities` | `entities` | on main |
+| `entities` part line | `Line prop=:owner` | `entities.reference.prop` | on main |
 | `entity` | `entity :Sample table="samples"` | `entity` | on main |
 | `entity.name` | `entity :Sample table="samples"` | `entity.name` | on main |
 | `entity.table` | `entity :Sample table="samples"` | `entity.table` | on main |
@@ -226,6 +230,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `read.name` | `read :work` | `read.name` | on main |
 | `read.filter` | `read :work filter=() => true` | `read.filter` | on main |
 | `relationships` | `relationships` | `relationships` | on main |
+| `root` | `root entity=Sample` | `root` | on main |
+| `root.entity` | `root entity=Sample` | `root.entity` | on main |
 | `run` | `run({ self }) { audit(self) }` | `run` | on main |
 | `run.after` | `run [after=:write] ({ self }) { audit(self) }` | `run.after` | on main |
 | `run.value` | `run({ self }) { audit(self) }` | `run.value` | on main |

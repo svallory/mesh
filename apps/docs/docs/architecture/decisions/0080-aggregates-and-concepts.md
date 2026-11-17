@@ -5,6 +5,8 @@ description: "Decision record 0080: the `aggregate` file with `root` and `entiti
 
 # 0080. An aggregate is a file; a concept is a value object; a repository is a pattern
 
+> **Amendment, 2026-11-17 (aggregate files built).** The aggregate file is built (rulings D10 and D35 in the lead's decision log; design `notes/architecture/aggregates-design.md`). Mesh's dialect sets MX's `bindingsCallTags: false`, so an imported name is a plain tag name, and the `entities` section claims each part line through a wildcard child whose head is a reference (`Dependency`, `talk.Comment`) and whose only option is `prop=`. The aggregate's name is kept as written, since nothing is generated from it, and binds nothing: an import of it is `MESH_UNKNOWN_IMPORT`. A part's link to the root is the `belongs-to` that `prop=` names, else its only `belongs-to` to the root; none, several with no `prop=`, a `prop=` that names no `belongs-to` to the root, and the root listed as a part are `MESH_AGGREGATE_PART`, a part listed twice `MESH_DUPLICATE_MEMBER`, two aggregates of one FQN `MESH_DUPLICATE_ENTITY`, and a helper or `meshfw` import `MESH_UNKNOWN_IMPORT`. An aggregate's `events` and `commands` sections are an entity's; the actions of its root and of its parts may publish the events it owns. The model records it as `ModelDocument.aggregates` (`model.json`, present only when a project declares one); no TypeScript is generated. The warnings about an entity in two aggregates and an action that calls another aggregate's action belong to the architecture file, not built.
+
 ## Status
 
 Accepted. No row is open. DOM-31 is the operator's ruling; the warning note attached to it is a lead reading, for operator review.
@@ -53,9 +55,9 @@ A file puts the boundary in one place and lets a reader see a whole aggregate. I
 
 - No existing record is superseded. [ADR-0057](./0057-one-domain-modules-as-folders.md) is unchanged: an aggregate file sits in its module folder.
 - The concept tag has its own file under a `concepts` folder in the tag-discovery design ([ADR-0085](./0085-tag-discovery-for-dialect-tags.md)).
-- Aggregates and concepts are not built. No row dates them. RDM-01 applies: not before the port unless the port needs them, and as many planned constructs as possible before 1.0.
+- Aggregate files are built (amendment above); concepts are not built. No row dates them. RDM-01 applies: not before the port unless the port needs them, and as many planned constructs as possible before 1.0.
 
 ## Action items
 
-- [ ] Syntax detail for `entities` (the MX side), when built.
+- [x] Syntax detail for `entities` (the MX side), done 2026-11-17: see the amendment above.
 - [x] Syntax of `concept` fields, done 2026-10-17: a concept file's root line is `concept :Name`, and its fields are field lines written as an event's (a kind, a name, options), for example `concepts/Money.mesh.mx`.

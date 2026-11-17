@@ -250,14 +250,15 @@ export const DOCS_SYNTAX = "syntax v4";
 
 /**
  * A complete v4 file of the domain: comments and imports may come first, then `entity :Name`, or `event :Name` or
- * `command :Name` for an event or a command, which are files of their own (spec, Events and commands).
+ * `command :Name` for an event or a command, which are files of their own (spec, Events and commands), or
+ * `aggregate :Name` for an aggregate file.
  */
 export function isV4EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^(?:entity|event|command)\s+:\w+/.test(text);
+    return /^(?:entity|event|command|aggregate)\s+:\w+/.test(text);
   }
   return false;
 }
@@ -446,7 +447,7 @@ export function checkDocsSyntaxV4(dir: string) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
-      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\` or \`command :Name\`)`);
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\` or \`aggregate :Name\`)`);
       continue;
     }
     checked++;
@@ -481,7 +482,7 @@ export function checkDocsSamples(dir: string) {
     }
     const root = block.find((text) => text.trim() !== "")?.trimStart() ?? "";
     // An entity file may open with its imports, so an `import` line heads a complete block too.
-    if (!/^(entity\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
+    if (!/^(entity\b|aggregate\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
     if (/^resource\b/.test(root)) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: use entity :Name, not resource`);
     const diagnostics = parseEntitySource(`${block.join("\n")}\n`, join(dir, name)).diagnostics;
     parsed++;

@@ -20,6 +20,8 @@ import {
   type AttributeType,
   type Action,
   type Check,
+  type Aggregate,
+  type AggregatePart,
   type CommandRef,
   type DeclarationRef,
   type ValidateItem,
@@ -42,12 +44,13 @@ import {
 } from "@meshfw/model";
 import { RELATIONSHIP_KINDS } from "./contracts.ts";
 import { MESH_DIALECT } from "./dialect.ts";
-import { hasMeshExtension } from "./extensions.ts";
+import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, offsetAt, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
-import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope } from "./references.ts";
+import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope, type WrittenReference } from "./references.ts";
 import { literalFits } from "./literal-types.ts";
+import { nearestName } from "./nearest-name.ts";
 import {
   resolveRollups,
   unknownMember,
@@ -57,6 +60,7 @@ import { resolveRelationships } from "./relationships.ts";
 import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
 import { checkCommands } from "../model/commands.ts";
 import { checkPublishSteps } from "../model/publish-steps.ts";
+import { aggregatesOf, resolveAggregates } from "../model/aggregates.ts";
 import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import {
@@ -105,16 +109,20 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-type DeclarationKind = "entity" | "event" | "command";
+type DeclarationKind = "entity" | "event" | "command" | "aggregate";
 /**
  * What a file of the project declares: its root line's kind, and every declaration by the name an import of it binds (the
- * root's, as Mesh converts it: `entity :todo` declares `Todo`).
+ * root's, as Mesh converts it: `entity :todo` declares `Todo`), the root's first, then each inline event and command of
+ * its owner sections. An aggregate file's entry for the aggregate itself is `{ kind: "aggregate", name }`, its name as
+ * written: recorded so a message can name it, never a name an import may bind (an aggregate is no value).
  */
 interface DeclaredFile {
   kind: DeclarationKind;
   declares: { kind: DeclarationKind; name: string }[];
 }
-const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command"]);
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate"]);
+/** The declarations an import of the file may bind: all but an aggregate's own name. */
+const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate");
 /**
  * What a reference position takes, for the declarations of `kind`: `entity=` an entity, a `publish` function's `new` an
  * event, `on=` a command, a listing line of an owner's `events` section an event. A path that no file of the project
@@ -123,14 +131,14 @@ const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "comman
  * "Errors"), and in a listing `MESH_UNKNOWN_EVENT`.
  */
 const referenceKind = (
-  kind: DeclarationKind,
+  kind: Exclude<DeclarationKind, "aggregate">,
   declared: (from: string) => DeclaredFile | undefined,
   code = kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 ): ReferenceKind => ({
   noun: kind,
   declares: (from) => hasMeshExtension(from) && (declared(from)?.declares.some((d) => d.kind === kind) ?? true),
   names: (from) => declared(from)?.declares.filter((d) => d.kind === kind).map((d) => d.name),
-  kindOf: (from, name) => declared(from)?.declares.find((d) => d.name === name)?.kind,
+  kindOf: (from, name) => importable(declared(from))?.find((d) => d.name === name)?.kind,
   code,
 });
 /** The package an entity file imports `Mesh` from. */
@@ -487,6 +495,188 @@ interface LineSource {
   scope: ExpressionScope;
 }
 
+/**
+ * An owner's `events` and `commands` sections, an entity's or an aggregate's (`notes/spec/events-and-commands.md`, "Where a
+ * declaration lives"): each line declares an event or a command inline (`event :InvoiceVoided` with its fields), or lists
+ * one an import of the file names, `InvoicePaid` or `notices.InvoiceOverdue`, resolved as `entity=` is. An inline
+ * declaration means what the same declaration in a file of its own means (the same fields, class and FQN); the file names
+ * it without an import, and it joins `inline`. `ownNames` holds the names an inline class name may not take (an entity's own
+ * name; an aggregate's name binds nothing, so it takes none). Returns the sections' refs, each only when it has a line.
+ */
+function ownerSections(
+  section: (name: string) => Tag | undefined,
+  { file, self, owner, ownNames, source, diagnostics, module, events, commands, inline, declaredNames }: {
+    file: string;
+    self: string;
+    owner: string;
+    ownNames: readonly (readonly [string, string])[];
+    source: string;
+    diagnostics: Diagnostic[];
+    module: string;
+    events: { scope: ReferenceScope; kind: ReferenceKind };
+    commands: { scope: ReferenceScope; kind: ReferenceKind };
+    inline: { events: EventDeclaration[]; commands: CommandDeclaration[] };
+    declaredNames: Map<CommandRef | DeclarationRef, string>;
+  },
+): { events?: DeclarationRef[]; commands?: DeclarationRef[] } {
+  const { at, pos, fail } = attributeReaders(source, file, diagnostics);
+  const result: { events?: DeclarationRef[]; commands?: DeclarationRef[] } = {};
+  // Each inline class name, to what first took it: a second declaration of one name in the file gives it two meanings.
+  // The inline lines of both sections are built in written order, whichever section the file writes first, so a clash
+  // is reported at the later line and the earlier declaration is the one kept (R9b).
+  const classNames = new Map<string, string>(ownNames);
+  const inlineLines = (["events", "commands"] as const)
+    .flatMap((name) => tags(section(name)?.children ?? []).filter((line) => line.name === (name === "events" ? "event" : "command")))
+    .sort((a, b) => pos(a).offset - pos(b).offset);
+  const built = new Map<(typeof inlineLines)[number], ReturnType<typeof buildDeclarationBody> | undefined>();
+  for (const line of inlineLines) {
+    const noun = line.name as "event" | "command";
+    const declaration = buildDeclarationBody(line, source, file, diagnostics, module);
+    const className = classNameOf(declaration.name);
+    const taken = classNames.get(className);
+    if (taken !== undefined) {
+      fail("MESH_DUPLICATE_ENTITY", `Duplicate name ${className} in ${file}: the ${taken} ${className} and the ${noun} ${className} would be one class name ${declaration.fqn}`, line, "rename one");
+      built.set(line, undefined);
+      continue;
+    }
+    classNames.set(className, noun);
+    built.set(line, declaration);
+  }
+  for (const name of ["events", "commands"] as const) {
+    const noun = name === "events" ? "event" : "command";
+    const { kind, scope } = name === "events" ? events : commands;
+    const listed: DeclarationRef[] = [];
+    const seen = new Set<string>();
+    for (const line of tags(section(name)?.children ?? [])) {
+      if (line.name === noun) {
+        const declaration = built.get(line);
+        if (!declaration) continue;
+        const className = classNameOf(declaration.name);
+        const key = `${resolve("/", file)}#${className}`;
+        if (seen.has(key)) {
+          fail("MESH_DUPLICATE_MEMBER", `${className} is listed twice in the ${name} section of ${owner}`, line, "remove one");
+          continue;
+        }
+        seen.add(key);
+        (noun === "event" ? inline.events : inline.commands).push(declaration);
+        const ref: DeclarationRef = { identifier: className, from: self, fqn: "", position: pos(line) };
+        declaredNames.set(ref, className);
+        listed.push(ref);
+        continue;
+      }
+      // MX lowers a parameter on a wildcard line, and a wildcard entry takes no `analyze` hook: the contracts' wrapper is not reached.
+      if (line.params.length || line.var) {
+        fail("MESH_SYNTAX", `\`${line.name}\`: tag parameters and variable bindings are not entity declarations`, line);
+        continue;
+      }
+      const written = lineHeadReference(line);
+      if (!written) {
+        fail(kind.code, `${line.name} is not an imported ${noun}: a listing is an imported identifier (\`${noun === "event" ? "InvoicePaid" : "PayInvoice"}\`) or a member of a namespace import (\`${noun === "event" ? "notices.InvoiceOverdue" : "billing.PayInvoice"}\`)`, line);
+        continue;
+      }
+      const resolved = resolveReference(written, scope, kind);
+      if (!resolved.ok) {
+        if ("code" in resolved) fail(resolved.code, resolved.message, at(resolved.offset), resolved.fix);
+        continue;
+      }
+      // One declaration listed twice, under one name or two (an alias, a namespace member), or listed where the section
+      // declares it: the later line says nothing.
+      const key = `${resolve("/", dirname(file), resolved.from)}#${resolved.declared}`;
+      if (seen.has(key)) {
+        fail("MESH_DUPLICATE_MEMBER", `${referenceText(written)} is listed twice in the ${name} section of ${owner}`, line, "remove one");
+        continue;
+      }
+      seen.add(key);
+      const ref: DeclarationRef = { identifier: referenceText(written), from: resolved.from, fqn: "", position: pos(line) };
+      declaredNames.set(ref, resolved.declared);
+      listed.push(ref);
+    }
+    if (listed.length) result[name] = listed;
+  }
+  return result;
+}
+
+/** The events and commands a file declares inline, in its owner sections: what it declares besides its root. */
+const inlineDeclarationsOf = (declaredFile: (from: string) => DeclaredFile | undefined, self: string) =>
+  (declaredFile(self)?.declares ?? []).filter((declaration) => declaration.kind === "event" || declaration.kind === "command");
+
+/**
+ * The imports of an entity or an aggregate file (`readImports`), as the model records them, and the names they bind. Each
+ * name goes to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
+ * nothing: no name set holds it, and a reference through the name reports nothing more (`duplicates`). A name the file's
+ * own declaration takes (`ownKind`: its entity, its inline events and commands) bound again by an import is the same error.
+ * A named import of an aggregate's name binds nothing either and goes to `duplicates`: the import check reports it.
+ */
+function fileImports(
+  irImports: readonly IrImport[],
+  file: string,
+  ownKind: ReadonlyMap<string, DeclarationKind>,
+  importDetails: Map<Import, ParsedImport>,
+  declaredFile: (from: string) => DeclaredFile | undefined,
+  at: (offset: number) => SourcePosition,
+  fail: (code: string, message: string, at: SourcePosition, fix?: string) => void,
+) {
+  const parsed = readImports(irImports);
+  for (const problem of parsed.problems)
+    fail(problem.code, problem.message, at(problem.offset), problem.fix);
+  const imports = parsed.imports.map(
+    (i): Import => {
+      const renames = !i.namespace && i.bindings.some((binding) => binding.imported !== binding.local);
+      const value: Import = {
+        identifiers: i.names,
+        ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
+        from: i.from,
+        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
+        ...(i.namespace ? { namespace: true as const } : {}),
+        position: at(i.offset),
+      };
+      importDetails.set(value, i);
+      return value;
+    },
+  );
+  const importNames = new Map<string, Import>();
+  const duplicates = new Set<string>();
+  const bindings: { entry: Import; index: number; name: string }[] = [];
+  for (const entry of imports)
+    for (const [index, name] of entry.identifiers.entries()) {
+      // A name the file's own declaration takes, bound again by an import, is an error at the import's binding, which binds
+      // nothing: the name stays the declaration's (`notes/spec/imports-and-scope.md`). `Mesh` under the entity's name is
+      // reported by the entity's builder, as it always was. An import of the file itself under the declared name binds that
+      // very declaration.
+      const own = ownKind.get(name);
+      const itself = !entry.namespace && resolve("/", dirname(file), entry.from) === resolve("/", file) && (entry.imported?.[index] ?? name) === name;
+      if (own && !itself && !(entry.mesh && own === "entity")) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+        fail(
+          "MESH_DUPLICATE_IMPORT",
+          `Duplicate import identifier ${name}: the file declares the ${own} ${name} too`,
+          localOffset === undefined ? entry.position : at(localOffset),
+        );
+        continue;
+      }
+      // A named import of the aggregate its file declares binds nothing too: the import check reports it
+      // (`MESH_UNKNOWN_IMPORT`, R24a), and a use of the name reports nothing more, as for any name its file does not declare.
+      const target = entry.namespace || entry.helper || entry.mesh ? undefined : declaredFile(entry.from);
+      if (target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
+        duplicates.add(name);
+        continue;
+      }
+      if (importNames.has(name)) {
+        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
+        fail(
+          "MESH_DUPLICATE_IMPORT",
+          `Duplicate import identifier ${name}`,
+          localOffset === undefined ? entry.position : at(localOffset),
+        );
+        duplicates.add(name);
+        continue;
+      }
+      importNames.set(name, entry);
+      bindings.push({ entry, index, name });
+    }
+  return { imports, importNames, duplicates, bindings };
+}
+
 function buildEntity(
   root: Tag,
   irImports: readonly IrImport[],
@@ -538,66 +728,16 @@ function buildEntity(
     if (!/^[A-Za-z0-9_-]+$/.test(segment))
       fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
   }
-  const imports = readImports(irImports);
-  for (const problem of imports.problems)
-    fail(problem.code, problem.message, at(problem.offset), problem.fix);
-  entity.imports = imports.imports.map(
-    (i): Import => {
-      const renames = !i.namespace && i.bindings.some((binding) => binding.imported !== binding.local);
-      const value: Import = {
-        identifiers: i.names,
-        ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
-        from: i.from,
-        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
-        ...(i.namespace ? { namespace: true as const } : {}),
-        position: at(i.offset),
-      };
-      importDetails.set(value, i);
-      return value;
-    },
-  );
-  // Each name to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
-  // nothing: no name set below holds it, and a reference through the name reports nothing more (`duplicates`).
-  const importNames = new Map<string, Import>();
-  const duplicates = new Set<string>();
-  const bindings: { entry: Import; index: number; name: string }[] = [];
   // The file's own declarations, which it names without an import: its entity, and each event and command declared inline
   // in its owner sections (`notes/spec/events-and-commands.md`, "Names"), read from what the file declares so that a
   // function written above the section sees them.
   const self = `./${basename(file)}`;
-  const inlineDeclared = (declaredFile(self)?.declares ?? []).filter((declaration) => declaration.kind !== "entity");
+  const inlineDeclared = inlineDeclarationsOf(declaredFile, self);
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>([...inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse(), [entity.name, "entity"]]);
-  for (const entry of entity.imports)
-    for (const [index, name] of entry.identifiers.entries()) {
-      // A name the file's own declaration takes, bound again by an import, is an error at the import's binding, which binds
-      // nothing: the name stays the declaration's (`notes/spec/imports-and-scope.md`). `Mesh` under the entity's name is
-      // reported below, as it always was. An import of the file itself under the declared name binds that very declaration.
-      const own = ownKind.get(name);
-      const itself = !entry.namespace && resolve("/", dirname(file), entry.from) === resolve("/", file) && (entry.imported?.[index] ?? name) === name;
-      if (own && !itself && !(entry.mesh && own === "entity")) {
-        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-        fail(
-          "MESH_DUPLICATE_IMPORT",
-          `Duplicate import identifier ${name}: the file declares the ${own} ${name} too`,
-          localOffset === undefined ? entry.position : at(localOffset),
-        );
-        continue;
-      }
-      if (importNames.has(name)) {
-        const localOffset = importDetails.get(entry)?.bindings[index]?.localOffset;
-        fail(
-          "MESH_DUPLICATE_IMPORT",
-          `Duplicate import identifier ${name}`,
-          localOffset === undefined ? entry.position : at(localOffset),
-        );
-        duplicates.add(name);
-        continue;
-      }
-      importNames.set(name, entry);
-      bindings.push({ entry, index, name });
-    }
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
+  entity.imports = imports;
   const pending: {
     ref: MemberRef;
     scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter" | "check";
@@ -661,8 +801,8 @@ function buildEntity(
   const memberKind: ReferenceKind = {
     noun: "entity, event or command",
     declares: (from) => hasMeshExtension(from) && declaredFile(from) !== undefined,
-    names: (from) => declaredFile(from)?.declares.map(({ name }) => name),
-    kindOf: (from, name) => declaredFile(from)?.declares.find((declaration) => declaration.name === name)?.kind,
+    names: (from) => importable(declaredFile(from))?.map(({ name }) => name),
+    kindOf: (from, name) => importable(declaredFile(from))?.find((declaration) => declaration.name === name)?.kind,
     code: "MESH_UNKNOWN_ENTITY",
   };
   // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
@@ -679,7 +819,7 @@ function buildEntity(
     at,
     scope: {
       helpers: helperImports,
-      imported: new Set([...importNames.keys(), ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
+      imported: new Set([...importNames.keys(), ...duplicates, ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
       entities,
       namespaces,
       events,
@@ -1159,83 +1299,11 @@ function buildEntity(
       const line = src.sections.find((t) => t.name === kind);
       if (line) sourceReaders.get(src)![kind](line);
     }
-  // The owner sections (`notes/spec/events-and-commands.md`, "Where a declaration lives"): each line declares an event or a
-  // command inline (`event :InvoiceVoided` with its fields), or lists one an import of the file names, `InvoicePaid` or
-  // `notices.InvoiceOverdue`, resolved as `entity=` is. An inline declaration means what the same declaration in a file of
-  // its own means (the same fields, class and FQN); the file names it without an import.
-  // Each inline class name, to what first took it: a second declaration of one name in the file gives it two meanings.
-  // The inline lines of both sections are built in written order, whichever section the file writes first, so a clash
-  // is reported at the later line and the earlier declaration is the one kept (R9b).
-  const classNames = new Map<string, string>([[entity.name, "entity"]]);
-  const inlineLines = (["events", "commands"] as const)
-    .flatMap((name) => tags(section(name)?.children ?? []).filter((line) => line.name === (name === "events" ? "event" : "command")))
-    .sort((a, b) => pos(a).offset - pos(b).offset);
-  const built = new Map<(typeof inlineLines)[number], ReturnType<typeof buildDeclarationBody> | undefined>();
-  for (const line of inlineLines) {
-    const noun = line.name as "event" | "command";
-    const declaration = buildDeclarationBody(line, source, file, diagnostics, module);
-    const className = classNameOf(declaration.name);
-    const taken = classNames.get(className);
-    if (taken !== undefined) {
-      fail("MESH_DUPLICATE_ENTITY", `Duplicate name ${className} in ${file}: the ${taken} ${className} and the ${noun} ${className} would be one class name ${declaration.fqn}`, line, "rename one");
-      built.set(line, undefined);
-      continue;
-    }
-    classNames.set(className, noun);
-    built.set(line, declaration);
-  }
-  for (const name of ["events", "commands"] as const) {
-    const noun = name === "events" ? "event" : "command";
-    const kind = name === "events" ? listedEventKind : commandKind;
-    const scope = name === "events" ? eventReferences : commandReferences;
-    const listed: DeclarationRef[] = [];
-    const seen = new Set<string>();
-    for (const line of tags(section(name)?.children ?? [])) {
-      if (line.name === noun) {
-        const declaration = built.get(line);
-        if (!declaration) continue;
-        const className = classNameOf(declaration.name);
-        const key = `${resolve("/", file)}#${className}`;
-        if (seen.has(key)) {
-          fail("MESH_DUPLICATE_MEMBER", `${className} is listed twice in the ${name} section of ${entity.fqn}`, line, "remove one");
-          continue;
-        }
-        seen.add(key);
-        (noun === "event" ? inline.events : inline.commands).push(declaration);
-        const ref: DeclarationRef = { identifier: className, from: self, fqn: "", position: pos(line) };
-        declaredNames.set(ref, className);
-        listed.push(ref);
-        continue;
-      }
-      // MX lowers a parameter on a wildcard line, and a wildcard entry takes no `analyze` hook: the contracts' wrapper is not reached.
-      if (line.params.length || line.var) {
-        fail("MESH_SYNTAX", `\`${line.name}\`: tag parameters and variable bindings are not entity declarations`, line);
-        continue;
-      }
-      const written = lineHeadReference(line);
-      if (!written) {
-        fail(kind.code, `${line.name} is not an imported ${noun}: a listing is an imported identifier (\`${noun === "event" ? "InvoicePaid" : "PayInvoice"}\`) or a member of a namespace import (\`${noun === "event" ? "notices.InvoiceOverdue" : "billing.PayInvoice"}\`)`, line);
-        continue;
-      }
-      const resolved = resolveReference(written, scope, kind);
-      if (!resolved.ok) {
-        if ("code" in resolved) fail(resolved.code, resolved.message, at(resolved.offset), resolved.fix);
-        continue;
-      }
-      // One declaration listed twice, under one name or two (an alias, a namespace member), or listed where the section
-      // declares it: the later line says nothing.
-      const key = `${resolve("/", dirname(file), resolved.from)}#${resolved.declared}`;
-      if (seen.has(key)) {
-        fail("MESH_DUPLICATE_MEMBER", `${referenceText(written)} is listed twice in the ${name} section of ${entity.fqn}`, line, "remove one");
-        continue;
-      }
-      seen.add(key);
-      const ref: DeclarationRef = { identifier: referenceText(written), from: resolved.from, fqn: "", position: pos(line) };
-      declaredNames.set(ref, resolved.declared);
-      listed.push(ref);
-    }
-    if (listed.length) entity[name] = listed;
-  }
+  Object.assign(entity, ownerSections(section, {
+    file, self, owner: entity.fqn, ownNames: [[entity.name, "entity"]], source, diagnostics, module,
+    events: { scope: eventReferences, kind: listedEventKind }, commands: { scope: commandReferences, kind: commandKind },
+    inline, declaredNames,
+  }));
   const members = [
     ...entity.attributes,
     ...entity.relationships,
@@ -1364,6 +1432,96 @@ function buildEntity(
       );
     }
   return entity;
+}
+
+/**
+ * An aggregate file (`notes/spec/other-file-kinds.md`, "Aggregate files"; ADR-0080): `aggregate :Name`, its `root
+ * entity=Name` line, the part lines of its `entities` section (`Dependency prop=:dependent`) and its own `events` and
+ * `commands` sections, read as an entity's are (`ownerSections`). The root and each part are references to an entity,
+ * resolved as `entity=` is; which `belongs-to` ties a part to the root is the model's to find, once every entity is built
+ * (`model/aggregates.ts`). The name is kept as written, since nothing is generated from an aggregate, and it binds
+ * nothing: an inline declaration may share it, and another file cannot import it.
+ */
+function buildAggregate(
+  root: Tag,
+  irImports: readonly IrImport[],
+  source: string,
+  file: string,
+  diagnostics: Diagnostic[],
+  importDetails: Map<Import, ParsedImport>,
+  folder: string,
+  declaredFile: (from: string) => DeclaredFile | undefined,
+  declaredNames: Map<CommandRef | DeclarationRef, string>,
+  inline: { events: EventDeclaration[]; commands: CommandDeclaration[] },
+  propPositions: Map<AggregatePart, SourcePosition>,
+): Aggregate {
+  const { at, pos, fail } = attributeReaders(source, file, diagnostics);
+  const sections = tags(root.children);
+  const section = (name: string) => sections.find((t) => t.name === name);
+  const name = declaredName(root);
+  const { module, bareUnderscore } = moduleOfFolder(folder);
+  if (bareUnderscore)
+    fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
+  for (const segment of module ? module.split("/") : []) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment))
+      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
+  }
+  const fqn = [...module.split("/").filter(Boolean), name].join(".");
+  const self = `./${basename(file)}`;
+  const inlineDeclared = inlineDeclarationsOf(declaredFile, self);
+  const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
+  const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
+  const ownKind = new Map<string, DeclarationKind>(inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse());
+  const { imports, importNames, duplicates } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
+  // An aggregate file has no function, so a helper or `Mesh` is nothing it could use: it imports Mesh files only.
+  const refused = imports.filter((entry) => entry.helper || entry.mesh);
+  for (const entry of refused)
+    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: it has no function to call ${entry.mesh ? "`Mesh`" : "a helper"} in`, entry.position, "remove the import");
+  const aggregate: Aggregate = {
+    name,
+    fqn,
+    file,
+    module,
+    imports: imports.filter((entry) => !refused.includes(entry)),
+    root: { entity: { identifier: "", from: "" }, position: pos(root) },
+    parts: [],
+    position: pos(root),
+  };
+  // The root and the parts are entities of other files: the aggregate declares none of its own.
+  const references: ReferenceScope = { imports: importNames, duplicates, own: [], self };
+  const entityKind = referenceKind("entity", declaredFile);
+  const entityRef = (written: WrittenReference | undefined) => {
+    const target = written ? resolveReference(written, references, entityKind) : undefined;
+    if (target && !target.ok && "code" in target) fail(target.code, target.message, at(target.offset), target.fix);
+    return { identifier: written ? referenceText(written) : "", from: target?.ok ? target.from : "" };
+  };
+  // MX requires the line and refuses a second one, and the `root` contract refuses a value that is no bare reference.
+  const rootTag = section("root");
+  if (rootTag) aggregate.root = { entity: entityRef(writtenReference(nodeOf(attr(rootTag, "entity")))), position: pos(rootTag) };
+  for (const line of tags(section("entities")?.children ?? [])) {
+    // MX lowers a parameter on a wildcard line, and a wildcard entry takes no `analyze` hook: the contracts' wrapper is not reached.
+    if (line.params.length || line.var) {
+      fail("MESH_SYNTAX", `\`${line.name}\`: tag parameters and variable bindings are not entity declarations`, line);
+      continue;
+    }
+    const written = lineHeadReference(line);
+    if (!written) {
+      fail("MESH_ENTITY_REFERENCE", `${line.name} is not an entity reference: a part is an imported entity's identifier (\`Comment\`) or a member of a namespace import (\`talk.Comment\`)`, line);
+      continue;
+    }
+    const propAttr = attr(line, "prop");
+    const prop = atomOf(propAttr)?.name;
+    const part: AggregatePart = { entity: entityRef(written), ...(prop !== undefined ? { prop } : {}), position: pos(line) };
+    if (prop !== undefined && propAttr) propPositions.set(part, at(attrOffset(propAttr)));
+    aggregate.parts.push(part);
+  }
+  Object.assign(aggregate, ownerSections(section, {
+    file, self, owner: fqn, ownNames: [], source, diagnostics, module,
+    events: { scope: { imports: importNames, duplicates, own: ownEvents, self }, kind: referenceKind("event", declaredFile, "MESH_UNKNOWN_EVENT") },
+    commands: { scope: { imports: importNames, duplicates, own: ownCommands, self }, kind: referenceKind("command", declaredFile) },
+    inline, declaredNames,
+  }));
+  return aggregate;
 }
 
 /**
@@ -1576,6 +1734,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
   // The name in its declaring file each `on=` and each listing line resolved to: an alias or a namespace member names it
   // otherwise, so the FQN pass reads it here, never from the reference as written.
   const declaredNames = new Map<CommandRef | DeclarationRef, string>();
+  // Where each part line's `prop=` is written, for the link errors `resolveAggregates` reports.
+  const propPositions = new Map<AggregatePart, SourcePosition>();
+  const aggregates: Aggregate[] = [];
   if (foreignAbsolute(project.root))
     return {
       document: null,
@@ -1631,8 +1792,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
     if (!parsed.ir) continue;
     parsedFiles.push({ input, path, ir: parsed.ir });
     // The root line decides what the file declares (`notes/spec/file-kinds.md`): its kind, and the names of the roots of that kind,
-    // each as Mesh converts it (`entity :todo` declares `Todo`): the name an import of the file takes. Then each event and
-    // command an entity's owner sections declare inline, in written order, by class name: an import takes those too.
+    // each as Mesh converts it (`entity :todo` declares `Todo`): the name an import of the file takes. An aggregate's name is
+    // kept as written and binds nothing. Then each event and command an entity's or an aggregate's owner sections declare
+    // inline, in written order, by class name: an import takes those too.
     const roots = tags(parsed.ir.body);
     const kind = DECLARING_ROOTS.has(roots[0]?.name ?? "") ? roots[0]!.name as DeclarationKind : "entity";
     const named = (tag: Tag) => atomOf(attr(tag, "name"))?.name ?? [];
@@ -1640,8 +1802,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
     declaredByPath.set(resolve(rootPath, path.file), {
       kind,
       declares: [
-        ...ofKind.flatMap(named).map((name) => ({ kind, name: classNameOf(name) })),
-        ...(kind === "entity" ? ofKind : []).flatMap((root) =>
+        ...ofKind.flatMap(named).map((name) => ({ kind, name: kind === "aggregate" ? name : classNameOf(name) })),
+        ...(kind === "entity" || kind === "aggregate" ? ofKind : []).flatMap((root) =>
           tags(root.children).filter((section) => section.name === "events" || section.name === "commands").flatMap((section) =>
             tags(section.children).filter((line) => line.name === (section.name === "events" ? "event" : "command"))
               .flatMap((line) => [named(line)].flat().map((name) => ({ kind: line.name as DeclarationKind, name: classNameOf(name) }))))),
@@ -1656,7 +1818,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       diagnostics.push(
         error(
           "MESH_DUPLICATE_ENTITY",
-          `${roots[0]?.name === "event" ? "An event" : roots[0]?.name === "command" ? "A command" : "An entity"} file must contain exactly one ${roots[0]?.name ?? "entity"}`,
+          `${roots[0]?.name === "event" ? "An event" : roots[0]?.name === "command" ? "A command" : roots[0]?.name === "aggregate" ? "An aggregate" : "An entity"} file must contain exactly one ${roots[0]?.name ?? "entity"}`,
           positionAt(input.source, file, roots[1]?.nameSpan.sourceStart ?? 0),
         ),
       );
@@ -1665,6 +1827,11 @@ export function buildModel(project: ProjectDescription): BuildResult {
         if (root.name === "event" || root.name === "command") {
           const declaration = buildDeclaration(root, ir.imports, input.source, file, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute))));
           (root.name === "event" ? events : commands).push(declaration);
+          continue;
+        }
+        if (root.name === "aggregate") {
+          aggregates.push(buildAggregate(root, ir.imports, input.source, file, diagnostics, importDetails,
+            normalizePath(relative(domainRoot, dirname(path.absolute))), declared, declaredNames, { events, commands }, propPositions));
           continue;
         }
         document.entities.push(
@@ -1704,27 +1871,36 @@ export function buildModel(project: ProjectDescription): BuildResult {
       else first.set(declaration.fqn, declaration.file);
     }
   }
+  // Two aggregates of one FQN would be one name wherever Mesh prints one (ruling D35, OD6). An aggregate and an entity are
+  // not compared: nothing is generated from an aggregate.
+  const firstAggregate = new Map<string, string>();
+  for (const aggregate of aggregates) {
+    if (firstAggregate.has(aggregate.fqn))
+      diagnostics.push(error("MESH_DUPLICATE_ENTITY", `Duplicate aggregate ${aggregate.fqn}; first declared in ${firstAggregate.get(aggregate.fqn)}`, aggregate.position));
+    else firstAggregate.set(aggregate.fqn, aggregate.file);
+  }
   if (events.length) document.events = events;
   if (commands.length) document.commands = commands;
+  if (aggregates.length) document.aggregates = aggregates;
   // The declaration a reference resolved to, now that every event and command is built: `from` is the import's path from the
   // entity's file, and the name is the one the declaring file gives it.
-  const declarationAt = (entity: Entity, ref: CommandRef | DeclarationRef, list: readonly EventDeclaration[]) => {
+  const declarationAt = (owner: { file: string }, ref: CommandRef | DeclarationRef, list: readonly EventDeclaration[]) => {
     const declared = declaredNames.get(ref);
     if (!ref.from || declared === undefined) return undefined;
-    const target = resolve(rootPath, dirname(entity.file), ref.from);
+    const target = resolve(rootPath, dirname(owner.file), ref.from);
     return list.find((candidate) => resolve(rootPath, candidate.file) === target && classNameOf(candidate.name) === declared);
   };
   // The FQN of the command each `on=` resolved to, and of each event and command an owner section lists.
-  for (const entity of document.entities) {
+  for (const entity of document.entities)
     for (const action of entity.actions) {
       const answered = action.command && declarationAt(entity, action.command, commands);
       if (answered) action.command!.fqn = answered.fqn;
     }
-    for (const [refs, list] of [[entity.events, events], [entity.commands, commands]] as const)
-      for (const ref of refs ?? []) ref.fqn = declarationAt(entity, ref, list)?.fqn ?? "";
-  }
+  for (const owner of [...document.entities, ...aggregates])
+    for (const [refs, list] of [[owner.events, events], [owner.commands, commands]] as const)
+      for (const ref of refs ?? []) ref.fqn = declarationAt(owner, ref, list)?.fqn ?? "";
   // The files whose root was built: a file that failed to build says nothing about what an import of it may name.
-  const builtFiles = new Set([...document.entities, ...events, ...commands].map(({ file }) => resolve(rootPath, file)));
+  const builtFiles = new Set([...document.entities, ...events, ...commands, ...aggregates].map(({ file }) => resolve(rootPath, file)));
   const identities = new Map<string, string>();
   for (const entity of document.entities) {
     if (identities.has(entity.fqn))
@@ -1736,18 +1912,27 @@ export function buildModel(project: ProjectDescription): BuildResult {
         ),
       );
     else identities.set(entity.fqn, entity.file);
+  }
+  // The imports of every file that takes them: an entity file's and an aggregate file's.
+  for (const entity of [...document.entities, ...aggregates]) {
     for (const imported of entity.imports) {
       if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       // What the imported file declares, for a named import to check its name against: an entity, event or command file's
       // root, and each event and command an entity file's owner sections declare inline.
-      const declares = builtFiles.has(target) ? declaredByPath.get(target)?.declares : undefined;
-      if (hasMeshExtension(imported.from) && declares?.length) {
+      const declared = builtFiles.has(target) ? declaredByPath.get(target) : undefined;
+      if (hasMeshExtension(imported.from) && declared?.declares.length) {
+        // An aggregate's own name is no value and binds nothing: only what the file declares besides it is importable.
+        const importableNames = [...new Set(importable(declared)!.map(({ name }) => `\`${name}\``))];
+        const aggregate = declared.declares.find(({ kind }) => kind === "aggregate");
         // A namespace import names the file, not what it declares: its references are checked where they are written.
         for (const binding of imported.namespace ? [] : importDetails.get(imported)?.bindings ?? []) {
-          if (!declares.some(({ name }) => name === binding.imported)) {
+          if (!importable(declared)!.some(({ name }) => name === binding.imported)) {
             const source = project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === entity.file)!.source;
-            diagnostics.push(error("MESH_UNKNOWN_IMPORT", `\`${binding.imported}\` is not what ${imported.from} declares; it declares ${[...new Set(declares.map(({ name }) => `\`${name}\``))].join(", ")}`, positionAt(source, entity.file, binding.offset)));
+            diagnostics.push(error("MESH_UNKNOWN_IMPORT", aggregate?.name === binding.imported
+              ? `\`${binding.imported}\` is the aggregate ${imported.from} declares, and an aggregate is no value: import the events or commands it declares${importableNames.length ? ` (${importableNames.join(", ")})` : ", and it declares none"}`
+              : `\`${binding.imported}\` is not what ${imported.from} declares; it declares ${importableNames.length ? importableNames.join(", ") : `the aggregate \`${aggregate?.name}\` only, which is no value`}`,
+              positionAt(source, entity.file, binding.offset)));
           }
         }
       }
@@ -1782,6 +1967,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     }
   }
   resolveRelationships(document, inversePositions, throughPositions, diagnostics);
+  resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });
   computeNeeds(document, diagnostics);
@@ -1795,6 +1981,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       const file = resolve(rootPath, dirname(entity.file), target.from);
       return events.find((event) => resolve(rootPath, event.file) === file && classNameOf(event.name) === target.declared)?.fqn;
     },
+    membership: aggregatesOf(document),
     complete: parsedFiles.length === project.files.length,
   });
   // A file that did not parse may hold the action that answers a command: with one missing, "unanswered" is not known.

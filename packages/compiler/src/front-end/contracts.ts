@@ -188,6 +188,29 @@ const memberLine = (attributes: Record<string, CustomTagAttribute>) => ({
   children: {},
 });
 
+/**
+ * The options that hold a reference to an entity (`entity=List`, `entity=billing.Invoice`): each must be the reference,
+ * written bare. `entity` is required, and every other option is checked only when written. One hook for the relationship
+ * kinds and an aggregate's `root`, so each says the same thing about the same mistake.
+ */
+function entityReference(options: readonly string[]): NonNullable<CustomTag["analyze"]> {
+  return (calls, ctx) => {
+    for (const call of calls) {
+      for (const option of options) {
+        const a = get(call, option);
+        if (!a && option !== "entity") continue;
+        if (!isReference(a))
+          ctx.fail(`${option} must be an imported identifier (\`List\`) or a member of a namespace import (\`billing.Invoice\`)`, { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
+        // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
+        // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
+        // error above alone, which says what to write.
+        else if (isWrapped(a))
+          ctx.fail(`${option} must be the reference alone, with no parentheses, \`!\`, \`as\`, \`satisfies\` or \`<T>\` around it (\`${option}=List\`, \`${option}=billing.Invoice\`)`, { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
+      }
+    }
+  };
+}
+
 const contracts: ContractMap = {
   entity: closed({
     parents: ["#root"],
@@ -208,12 +231,31 @@ const contracts: ContractMap = {
   // (`InvoicePaid`, `notices.InvoiceOverdue`), side by side. The owner check reads them: an event that owners list or
   // declare is published only by its owners' actions.
   events: closed({
-    parents: ["entity"],
+    parents: ["entity", "aggregate"],
     children: { ...children("event"), "*": listing() },
   }),
   commands: closed({
-    parents: ["entity"],
+    parents: ["entity", "aggregate"],
     children: { ...children("command"), "*": listing() },
+  }),
+  // An aggregate file (`notes/spec/other-file-kinds.md`, "Aggregate files"; ADR-0080): its root entity, its parts and the
+  // events and commands it owns. No option but the name; nothing is generated from it.
+  aggregate: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: { root: { required: true }, entities: {}, events: {}, commands: {} },
+  }),
+  // `root entity=Task`: the aggregate's root entity, a reference written bare as `belongs-to`'s `entity=` is.
+  root: closed({
+    parents: ["aggregate"],
+    attributes: { entity: { type: "expression", required: true } },
+    analyze: entityReference(["entity"]),
+  }),
+  // One part per line, its head the part entity's reference (`Dependency`, `talk.Comment`); `prop=:name` picks the part's
+  // `belongs-to` to the root when it has more than one.
+  entities: closed({
+    parents: ["aggregate"],
+    children: { "*": listing({ prop: atom() }) },
   }),
   // An event and a command are files of their own (M6), or declared inline in an owner's section: the line declares one,
   // and its children are field lines, written as attribute lines are (`uuid :invoiceId`). The field kinds are the
@@ -416,22 +458,8 @@ for (const kind of RELATIONSHIP_KINDS)
       // The other entity's belongs-to this follows (ADR-0070); with `through`, the link entity's.
       ...(kind === "has-many" ? { inverse: atom(), through: { type: "expression" as const } } : {}),
     },
-    analyze(calls, ctx) {
-      for (const call of calls) {
-        // `through=` is a reference like `entity=`, checked the same way; it is optional, so only a written one is checked.
-        for (const option of kind === "has-many" ? ["entity", "through"] : ["entity"]) {
-          const a = get(call, option);
-          if (!a && option !== "entity") continue;
-          if (!isReference(a))
-            ctx.fail(`${option} must be an imported identifier (\`List\`) or a member of a namespace import (\`billing.Invoice\`)`, { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
-          // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
-          // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
-          // error above alone, which says what to write.
-          else if (isWrapped(a))
-            ctx.fail(`${option} must be the reference alone, with no parentheses, \`!\`, \`as\`, \`satisfies\` or \`<T>\` around it (\`${option}=List\`, \`${option}=billing.Invoice\`)`, { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
-        }
-      }
-    },
+    // `through=` is a reference like `entity=`, checked the same way.
+    analyze: entityReference(kind === "has-many" ? ["entity", "through"] : ["entity"]),
   });
 /**
  * `on=` answers a command (`notes/spec/events-and-commands.md`, "Answering a command"): the command's imported identifier

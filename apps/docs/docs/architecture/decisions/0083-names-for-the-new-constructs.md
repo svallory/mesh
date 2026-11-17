@@ -60,4 +60,4 @@ The [vocabulary mapping](../roadmap/vocabulary-mapping.md) needs the clash table
 
 ## Action items
 
-- [ ] Add the aggregate, concept and service rows to the vocabulary mapping when built.
+- [ ] Add the aggregate, concept and service rows to the vocabulary mapping when built. The aggregate rows (`aggregate`, `root`, `entities`) were added 2026-11-17; the concept and service rows wait for those constructs.

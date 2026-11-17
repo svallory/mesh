@@ -48,7 +48,7 @@ export interface ConvertContext {
    * for an alias that is in `entities` and in `events` or `commands`: a file that declares an entity and inline declarations.
    */
   memberReference?: (written: WrittenReference) => Resolution;
-  /** The names two imports bind: `MESH_DUPLICATE_IMPORT` reports them, so a use of one reports nothing more. */
+  /** The names an import binds to nothing (two imports bind them, `MESH_DUPLICATE_IMPORT`, or one names its file's aggregate, `MESH_UNKNOWN_IMPORT`): a use of one reports nothing more. */
   duplicates?: ReadonlySet<string>;
   /** The names the file imports `Mesh` under, from "meshfw": `Mesh`, or its alias. */
   mesh?: ReadonlySet<string>;
@@ -528,11 +528,14 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         const memberName = !parent?.computed && member?.type === "Identifier" ? member.name
           : parent?.computed && member?.type === "StringLiteral" ? String(member.value) : undefined;
         // The callee of a `new` a `publish` returns is checkPublished's to report, as an event.
-        if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object" && !ctx.exemptFree?.has(n)
+        // The alias of a file that declares no entity (an event, a command or an aggregate file) is read the same way: its
+        // members are what the file declares, so `t.TaskAggregate` or `t.Nope` is the namespace member's unknown code (R24a).
+        const merged = ctx.events?.has(n.name!) || ctx.commands?.has(n.name!);
+        const lookup = entities.has(n.name!) ? (merged && ctx.memberReference ? ctx.memberReference : ctx.reference) : merged ? ctx.memberReference : undefined;
+        if (lookup && ctx.namespaces?.has(n.name!) && key === "object" && !ctx.exemptFree?.has(n)
           && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && memberName !== undefined) {
           // An alias whose file also declares events or commands: `billing.InvoiceVoided` is a member as `billing.Invoice` is.
-          const merged = ctx.events?.has(n.name!) || ctx.commands?.has(n.name!);
-          const resolved = (merged && ctx.memberReference ? ctx.memberReference : ctx.reference)({ qualifier: { name: n.name!, offset: start(n) }, name: memberName, offset: start(member!) });
+          const resolved = lookup({ qualifier: { name: n.name!, offset: start(n) }, name: memberName, offset: start(member!) });
           if (!resolved.ok && "code" in resolved)
             ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
         }
