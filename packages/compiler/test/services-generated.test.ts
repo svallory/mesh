@@ -202,4 +202,37 @@ describe("the generated service type-checks", () => {
     expect(result.code).not.toBe(0);
     expect(result.output.split("\n").filter(Boolean)).toEqual([expect.stringMatching(/^\.mesh\/domain\/work\/work\.service\.ts\(\d+,\d+\): error TS18048: 'actor' is possibly 'undefined'\.$/)]);
   }, 60_000);
+
+  // Design section 8's edge cases: a service in the domain root module, and operations named like a reserved word or an
+  // `Object.prototype` member. Such a key once took its contextual type from Object, so the policy kinds widened to string.
+  test("a service in the domain root module with operations `toString`, `constructor` and `delete`: the root barrel exports it, and each method has its body's result", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-services-root-"));
+    disposers.push(() => rm(root, { recursive: true, force: true }));
+    const body = (name: string, result: string) => `  operation :${name}\n    uses entity=Task actions=[:read]\n    run() {\n      return ${result}\n    }\n`;
+    const sources: Files = {
+      "src/domain/task.mesh.mx": TASK,
+      "src/domain/ops.mesh.mx": `import { Task } from "./task.mesh.mx"\n\nservice :Ops\n${body("toString", "1")}${body("constructor", '"made"')}${body("delete", "true")}${OPEN}`,
+    };
+    for (const [file, source] of Object.entries(sources)) await Bun.write(join(root, file), source);
+    const config = configOf(root, ".mesh");
+    const files = await generateFiles({ document: documentOf(root, sources), config });
+    await writeGeneratedFiles(files, config);
+    await writeFile(join(root, ".mesh/schema.ts"), "export const tables: any = {};\n");
+    await writeFile(join(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    expect(files.find((file) => file.path === ".mesh/domain/index.ts")!.contents).toContain('export { Ops } from "./ops.service";');
+    await writeFile(join(root, "use.ts"), [
+      'import { Ops } from "./.mesh/domain/index";',
+      "export async function use() {",
+      "  const n: number = await Ops.toString({});",
+      "  const s: string = await Ops.constructor({});",
+      "  const b: boolean = await Ops.delete({});",
+      "  // @ts-expect-error the result is the body's",
+      "  const wrong: string = await Ops.toString({});",
+      "  return [n, s, b, wrong];",
+      "}",
+      "",
+    ].join("\n"));
+    const generated = files.filter((file) => file.path.endsWith(".ts")).map((file) => join(root, file.path));
+    expect(await checkTypes(root, [...generated, join(root, "mesh.config.ts"), join(root, "use.ts")])).toEqual({ code: 0, output: "" });
+  }, 60_000);
 });

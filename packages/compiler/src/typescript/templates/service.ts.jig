@@ -9,6 +9,7 @@ import {
   @end
   type ActionContext as $ActionContext,
   type ContextArgument as $ContextArgument,
+  type OperationSpec as $OperationSpec,
   type Scope as $Scope,
   @if(usesSharedInput)
   type SharedInput as $SharedInput,
@@ -47,6 +48,8 @@ const $expressions = {
   @end
 } as const;
 
+// Each entry is checked as an `OperationSpec` of its own: an operation named like an `Object.prototype` member
+// (`toString`) takes its contextual type from Object, not from the table's type, so its policy kinds would widen to string.
 const {{ valueLocal }} = $service({{ fqnLiteral }}, {
   @each(operation in operations)
   {{ operation.key }}: {
@@ -54,7 +57,7 @@ const {{ valueLocal }} = $service({{ fqnLiteral }}, {
     policies: {{ operation.policies }},
     uses: {{ operation.uses }},
     body: {{ operation.body }},
-  },
+  } satisfies $OperationSpec,
   @end
 }, (call) => ({
   @each(operation in operations)

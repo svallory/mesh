@@ -9,6 +9,7 @@ import {
   Mesh,
   type ActionContext as $ActionContext,
   type ContextArgument as $ContextArgument,
+  type OperationSpec as $OperationSpec,
   type Scope as $Scope,
   type SharedInput as $SharedInput,
 } from "@meshfw/runtime";
@@ -113,6 +114,8 @@ const $expressions = {
   },
 } as const;
 
+// Each entry is checked as an `OperationSpec` of its own: an operation named like an `Object.prototype` member
+// (`toString`) takes its contextual type from Object, not from the table's type, so its policy kinds would widen to string.
 const $work$Work$service = $service(
   "work.Work",
   {
@@ -146,7 +149,7 @@ const $work$Work$service = $service(
       ],
       uses: { "work.Task": ["reassign"], "work.Claim": ["read", "end"] },
       body: $expressions["handOver.run"],
-    },
+    } satisfies $OperationSpec,
     notify: {
       schema: $work$Work$notifyWorkInputSchema,
       policies: [
@@ -177,7 +180,7 @@ const $work$Work$service = $service(
       ],
       uses: { "work.Task": ["read"], "work.Notification": ["send"] },
       body: $expressions["notify.run"],
-    },
+    } satisfies $OperationSpec,
     cancelRun: {
       schema: $work$Work$cancelRunWorkInputSchema,
       policies: [
@@ -196,7 +199,7 @@ const $work$Work$service = $service(
       ],
       uses: { "execution.Run": ["cancel"], "work.Task": ["read"] },
       body: $expressions["cancelRun.run"],
-    },
+    } satisfies $OperationSpec,
     finish: {
       schema: $work$Work$finishWorkInputSchema,
       policies: [
@@ -215,7 +218,7 @@ const $work$Work$service = $service(
       ],
       uses: { "work.Task": ["complete", "read"], "work.Claim": ["read"] },
       body: $expressions["finish.run"],
-    },
+    } satisfies $OperationSpec,
   },
   (call) => ({
     handOver(
