@@ -52,7 +52,7 @@ export interface ReferenceScope {
    */
   own?: readonly { name: string; from: string }[];
   /**
-   * The file's own path (`./invoice.mesh.mx`): a name the file declares as another kind than the position's is reported
+   * The file's own path, as its import specifiers spell it: a name the file declares as another kind than the position's is reported
    * as what it is (`InvoiceVoided is not an imported command: the file declares InvoiceVoided as an event`).
    */
   self?: string;
