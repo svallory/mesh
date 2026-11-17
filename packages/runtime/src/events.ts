@@ -97,10 +97,22 @@ const publishedOf = new WeakMap<DataOperations, EventRecord[]>();
 /** The id of the event whose handler a transaction runs for, by its data operations: what its publishes carry as `causedBy`. */
 const causes = new WeakMap<DataOperations, string>();
 
-/** Forget what `tx` published, and the event it ran for: called by `outermost` when the transaction opens and once it has settled. */
+/**
+ * The quiet call chain a transaction runs in, by its data operations: the handler of a contributed kind (ADR-0093) at
+ * the chain's root, whose chain may not publish until the handler call settles.
+ */
+const quiets = new WeakMap<DataOperations, { readonly label: string; readonly kind: HandlerKind }>();
+
+/** Forget what `tx` published, the event it ran for and its quiet chain: called by `outermost` when the transaction opens and once it has settled. */
 export function forgetPublished(tx: DataOperations): void {
   publishedOf.delete(tx);
   causes.delete(tx);
+  quiets.delete(tx);
+}
+
+/** Record that `tx` runs in the quiet call chain of `label`, a handler of `kind`: a publish in it is refused. */
+export function quietIn(tx: DataOperations, label: string, kind: HandlerKind): void {
+  if (!quiets.has(tx)) quiets.set(tx, { label, kind });
 }
 
 /** Record that `tx` runs for the handler of the event `eventId`, unless it already runs for one. */
@@ -272,6 +284,9 @@ export interface PublishTarget {
 export async function publishEvent(
   tx: DataOperations, events: EventsConfig | undefined, target: PublishTarget, value: unknown, context: unknown, clock: Clock,
 ): Promise<EventRecord> {
+  const quiet = quiets.get(tx);
+  if (quiet !== undefined)
+    throw new FrameworkError(`The publish step of ${target.entity}#${target.action} (${target.at}) ran inside ${quiet.label}, or in an action it or a seam started while it ran, and a ${quiet.kind.name} handler may not publish: a handler of a kind ${quiet.kind.owner} contributes is run again over history to rebuild what it writes, and a rebuild must never re-raise events. Publish from the action the event records, or from a process handler`);
   const declaration = eventDeclaration(value);
   if (!declaration)
     throw new FrameworkError(`The publish step of ${target.entity}#${target.action} (${target.at}) must return an instance of a declared event, such as new InvoicePaid({ ... }), and returned ${describe(value)}. A publish that should sometimes raise nothing is written inside a when=`);

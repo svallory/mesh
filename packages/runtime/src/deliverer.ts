@@ -525,7 +525,7 @@ export class Deliverer {
         if (!progress || !record) return;
         await run(this.#context(record));
         await this.layer.transaction((tx) => this.strategy.writeProgress(operations(tx), progress, row.position));
-      });
+      }, entry.kind);
       return;
     }
     const progress = await this.layer.transaction((tx) => this.strategy.fenceHandler(operations(tx), handler, row));

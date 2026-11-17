@@ -264,3 +264,180 @@ describe("running a handler of a contributed kind", () => {
     } finally { await layer.close(); }
   });
 });
+
+describe("a contributed kind's call chain is quiet until the handler call settles", () => {
+  const D5 = (action: string, at: string) => `The publish step of billing.Invoice#${action} (domain/billing/invoice.mesh.mx:${at}) ran inside the model handler totals, or in an action it or a seam started while it ran, and a model handler may not publish: a handler of a kind @meshfw/test-kind contributes is run again over history to rebuild what it writes, and a rebuild must never re-raise events. Publish from the action the event records, or from a process handler`;
+  const D6 = "dispatch(billing.RefundInvoice) was called inside the model handler totals, or in code it or a seam started while it ran, and a model handler may not dispatch: a handler of a kind @meshfw/test-kind contributes is run again over history to rebuild what it writes, and a rebuild must never re-issue commands. Dispatch from a process handler";
+  /** Run `totals` over one paid invoice under deliver() with an explicit retry schedule; resolves with the stop's error. */
+  async function stopOf(layer: Layer, body: (event: EventRecord<{ invoiceId: string }>, tools: { context: object }) => Promise<unknown>, options: { seams?: object } = {}) {
+    let calls = 0;
+    const totals = recorder([], async (event, tools) => { calls++; await body(event, tools); });
+    const error = await rejection(bind(layer, { model: { totals } }, { bus: localBus({ retryDelays: [10, 10] }), ...options }).deliver());
+    expect(error).toBeInstanceOf(HandlerStoppedError);
+    const cause = (error as HandlerStoppedError).stopped[0]!.cause as Error & { retryable?: boolean };
+    return { cause, calls };
+  }
+
+  test("a publish from the body's own call, or from an action two calls deep, is refused, rolls the handler transaction back and stops the handler at once", async () => {
+    for (const [name, call, action, at] of [
+      ["direct", (id: string, context: object) => Invoice.pay({ id }, context), "pay", "15:17"],
+      ["nested", (id: string, context: object) => Invoice.settle({ id }, context), "pay", "15:17"],
+    ] as const) {
+      const layer = await database();
+      try {
+        await paid(layer, 1);
+        const before = await outboxNames(layer);
+        const { cause, calls } = await stopOf(layer, async (_event, { context }) => {
+          await PaidInvoice.record({ invoiceId: "00000000-0000-4000-8000-000000000001" }, context);
+          const other = await Invoice.open({}, context);
+          await call(other.id, context);
+        });
+        expect([name, cause]).toEqual([name, expect.any(FrameworkError)]);
+        expect(cause.message).toBe(D5(action, at));
+        expect(cause.retryable).toBe(false);
+        expect(calls).toBe(1);
+        expect(await outboxNames(layer)).toEqual(before);
+        expect(await readModel(layer)).toEqual([]);
+        expect((await state(layer)).handlers[0]!.position).toBe(0);
+      } finally { await layer.close(); }
+    }
+  });
+
+  test("a dispatch from the body is refused before the answering action runs", async () => {
+    const layer = await database();
+    try {
+      const [id] = await paid(layer, 1);
+      let refunded = 0;
+      const { cause, calls } = await stopOf(layer, async (_event, { context }) => {
+        const pending = app.dispatch(new RefundInvoice({ id: id! }), context).then(() => { refunded++; });
+        await pending;
+      });
+      expect(cause).toBeInstanceOf(FrameworkError);
+      expect(cause.message).toBe(D6);
+      expect(cause.retryable).toBe(false);
+      expect({ calls, refunded }).toEqual({ calls: 1, refunded: 0 });
+      expect(await outboxNames(layer)).toEqual(["1:billing.InvoicePaid"]);
+    } finally { await layer.close(); }
+  });
+
+  test("entity writes that publish nothing run, a publish under a when= that is false included", async () => {
+    const layer = await database();
+    try {
+      await paid(layer, 2);
+      const totals = recorder([], async (event, { context }) => {
+        await PaidInvoice.record({ invoiceId: event.payload.invoiceId }, context);
+        const unpaid = await Invoice.open({}, context);
+        await Invoice.refund({ id: unpaid.id }, context);
+      });
+      await bind(layer, { model: { totals } }).deliver();
+      expect((await readModel(layer)).length).toBe(2);
+      expect(await outboxNames(layer)).toEqual(["1:billing.InvoicePaid", "2:billing.InvoicePaid"]);
+    } finally { await layer.close(); }
+  });
+
+  test("an afterCommit seam that reacts to the read-model write is refused its publish and its dispatch; the handler's own work commits", async () => {
+    const layer = await database();
+    try {
+      const [id] = await paid(layer, 1);
+      const seen: string[] = [];
+      const seams = {
+        afterCommit: async ({ changes }: { changes: readonly { entity: string }[] }) => {
+          if (!changes.some((change) => change.entity === "billing.PaidInvoice")) return;
+          const other = await Invoice.open({}, {}).catch((error: Error) => { seen.push(`open: ${error.message}`); return undefined; });
+          if (other) await Invoice.pay({ id: other.id }, {}).then(() => seen.push("pay ran"), (error: Error) => seen.push(`pay: ${error.message}`));
+          try { await app.dispatch(new RefundInvoice({ id: id! }), {}); seen.push("dispatch ran"); } catch (error) { seen.push(`dispatch: ${(error as Error).message}`); }
+        },
+      };
+      const totals = recorder([], async (event, { context }) => { await PaidInvoice.record({ invoiceId: event.payload.invoiceId }, context); });
+      await bind(layer, { model: { totals } }, { seams }).deliver();
+      expect(seen).toEqual([`pay: ${D5("pay", "15:17")}`, `dispatch: ${D6}`]);
+      expect(await outboxNames(layer)).toEqual(["1:billing.InvoicePaid"]);
+      expect((await readModel(layer)).length).toBe(1);
+      expect((await state(layer)).handlers[0]!.position).toBe(1);
+    } finally { await layer.close(); }
+  });
+
+  test("a write a policy refuses stops the handler at once, and resumeHandler sends it on once the cause is fixed", async () => {
+    const layer = await database();
+    try {
+      await paid(layer, 1);
+      let context: object = {};
+      const totals = recorder([], async (event) => { await PaidInvoice.record({ invoiceId: event.payload.invoiceId }, context); });
+      const stops: HandlerStoppedError[] = [];
+      const binding = bind(layer, { model: { totals } }, { bus: localBus({ retryDelays: [10, 10], pollInterval: 10, onStopped: (error) => { stops.push(error); } }) });
+      const delivery = await binding.startDelivery();
+      try {
+        const end = Date.now() + 3000;
+        while (stops.length === 0 && Date.now() < end) await new Promise((done) => setTimeout(done, 5));
+        expect((stops[0]!.stopped[0]!.cause as { code?: string }).code).toBe("forbidden");
+        context = SYSTEM;
+        const { resumeHandler } = await import("@meshfw/runtime");
+        await resumeHandler(binding as never, "totals");
+        while ((await readModel(layer)).length === 0 && Date.now() < end) await new Promise((done) => setTimeout(done, 5));
+        expect((await readModel(layer)).length).toBe(1);
+        expect(stops.length).toBe(1);
+      } finally { await delivery.stop(); }
+    } finally { await layer.close(); }
+  });
+
+  test("a call started after the handler call settled (a timer) begins a new chain, which may publish and dispatch", async () => {
+    const layer = await database();
+    try {
+      const [id] = await paid(layer, 1);
+      let later: Promise<unknown> | undefined;
+      // The timer fires outside the handler transaction, which has ended by then, so it runs its calls in a `run` of
+      // the binding; the chain the body began has settled, so they begin a new one.
+      const totals = recorder([], async () => {
+        later = new Promise((done, fail) => setTimeout(() => {
+          binding.run(async () => {
+            const other = await Invoice.open({}, {});
+            await Invoice.pay({ id: other.id }, {});
+            await app.dispatch(new RefundInvoice({ id: id! }), {});
+          }).then(done, fail);
+        }, 20));
+      });
+      const binding: Binding = bind(layer, { model: { totals } });
+      await binding.deliver();
+      await binding.run(async () => { await later; });
+      expect(await outboxNames(layer)).toEqual(["1:billing.InvoicePaid", "2:billing.InvoicePaid", "3:billing.RefundIssued"]);
+    } finally { await layer.close(); }
+  });
+
+  test("process handlers are unchanged: they publish with causedBy and dispatch, their afterCommit seams publish, and a dispatch after a quiet round runs", async () => {
+    const layer = await database();
+    try {
+      let id: string | undefined;
+      const seen: string[] = [];
+      const seams = {
+        afterCommit: async ({ changes }: { changes: readonly { entity: string; action: string }[] }) => {
+          if (!changes.some((change) => change.entity === "billing.PaidInvoice")) return;
+          const other = await Invoice.open({}, {});
+          await Invoice.pay({ id: other.id }, {});
+          seen.push("seam published");
+        },
+      };
+      const handlers = {
+        model: { totals: recorder([]) },
+        process: {
+          refund: Mesh.handler({ events: [InvoicePaid], run: async (event, { context }) => {
+            if ((event.payload as { invoiceId: string }).invoiceId !== id) return;
+            await PaidInvoice.record({ invoiceId: id! }, context);
+            await app.dispatch(new RefundInvoice({ id: id! }), context);
+          } }),
+        },
+      };
+      const binding = bind(layer, handlers, { seams });
+      // a process handler starts from now: register it before the invoice is paid
+      await binding.deliver();
+      [id] = await paid(layer, 1);
+      await binding.deliver();
+      expect(seen).toEqual(["seam published"]);
+      const rows = (await layer.readOutbox!(0, 100)).rows;
+      expect(rows.map((row) => row.name)).toEqual(["billing.InvoicePaid", "billing.RefundIssued", "billing.InvoicePaid"]);
+      expect(rows[1]!.causedBy).toBe(rows[0]!.id);
+      // after a round of the quiet handler, a dispatch from a top-level transaction is not refused
+      await binding.transaction(async () => { await app.dispatch(new RefundInvoice({ id: id! }), {}); });
+      expect((await layer.readOutbox!(0, 100)).rows.at(-1)!.name).toBe("billing.RefundIssued");
+    } finally { await layer.close(); }
+  });
+});

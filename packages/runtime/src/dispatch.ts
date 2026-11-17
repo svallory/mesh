@@ -27,8 +27,22 @@ export function dispatchCommand(table: Readonly<Record<string, CommandAction>>, 
   const answer = Object.hasOwn(table, declaration.fqn) ? table[declaration.fqn] : undefined;
   if (answer === undefined)
     return Promise.reject(new FrameworkError(`dispatch: no action answers the command ${declaration.fqn}. The \`.mesh/\` folder is out of date, or no action's \`on=\` names the command: run \`mesh build\``));
-  return answer.run(command as never, context);
+  // The generated `run` calls the entity value synchronously, and the entity value calls `dispatch` in `entity.ts`
+  // synchronously, so the marker is up exactly while that call starts: there a quiet call chain (a handler of a kind an
+  // extension contributes, ADR-0093) refuses it before the action runs anything.
+  const outer = dispatching.command;
+  dispatching.n++;
+  dispatching.command = declaration.fqn;
+  try {
+    return answer.run(command as never, context);
+  } finally {
+    dispatching.n--;
+    dispatching.command = outer;
+  }
 }
+
+/** Raised by `dispatchCommand` around the synchronous start of the answering action, with the command's FQN. */
+export const dispatching: { n: number; command: string | undefined } = { n: 0, command: undefined };
 
 /**
  * What an action's call resolves with, as the generated `DispatchResult` reads it from the entity value's method
