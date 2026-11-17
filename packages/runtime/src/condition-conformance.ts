@@ -274,6 +274,11 @@ export function dataLayerConditionConformance(makeLayer: () => Promise<Condition
           // Children, then their parent: two children of p1 reach p1 itself, which counts once.
           ["two paths to one row count it once", call("eq", rollup("count", [h.children, h.toParent], "id", "integer"), val(1, "integer")), ["p1", "p2", "p3"]],
           ["and add it once", call("eq", rollup("sum", [h.children, h.toParent], "n", "integer"), val(1, "integer")), ["p1"]],
+          // A route of two hops whose second is a through hop, one with a filter, and one whose through hop comes first
+          // (its IN subquery then sits inside the join of the route).
+          ["a through hop after a belongs-to", call("eq", rollup("sum", [h.toParent, h.linked], "qty", "integer"), val(1, "integer")), ["p2"]],
+          ["a filter on a route of two hops", call("eq", rollup("count", [h.toParent, h.children], "id", "integer", call("gt", col("qty", "integer"), val(2, "integer"))), val(1, "integer")), ["p2", "p3"]],
+          ["a through hop first in a route of two hops", call("eq", rollup("count", [h.linked, h.toParent], "id", "integer"), val(1, "integer")), ["p1", "p2"]],
           ["the filter keeps the rows of the last table it makes true", call("eq", rollup("count", [h.children], "id", "integer", call("gt", col("qty", "integer"), val(2, "integer"))), val(1, "integer")), ["p1", "p2"]],
           ["a filter that is unknown for a row leaves it out", call("eq", rollup("count", [h.children], "id", "integer", call("gt", col("qty", "integer"), val(0, "integer"))), val(2, "integer")), ["p2"]],
           // Inside a hop: the parent's number of children (p1 has 2, p2 has 2).
