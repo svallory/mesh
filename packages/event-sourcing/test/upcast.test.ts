@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { localBus } from "@meshfw/bus-local";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
 import { FrameworkError, HandlerStoppedError, Mesh, retryFailed, subscribe, type DataLayer, type DataOperations, type DeliveryOperations, type EventRecord, type OutboxRow } from "@meshfw/runtime";
-import { project } from "../src/index.ts";
+import { project, upcaster, upcasters } from "../src/index.ts";
 import "./capabilities.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -27,6 +27,7 @@ let app: { bind(layer: DataLayer, options: object): Binding; tables: Record<stri
 let Invoice: { open(input: object, context: object): Promise<{ id: string }>; pay(input: { id: string }, context: object): Promise<unknown> };
 let PaidInvoice: { record(input: Paid, context: object): Promise<unknown>; read(input: object, context: object): Promise<Paid[]> };
 let InvoicePaid: new (fields: Paid) => Paid;
+let InvoiceVoided: new (fields: Paid) => Paid;
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "mesh-event-sourcing-upcast-"));
@@ -43,7 +44,7 @@ beforeAll(async () => {
   const built = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), "build"], { cwd: root });
   expect({ code: built.exitCode, stderr: built.stderr.toString() }).toEqual({ code: 0, stderr: "0 errors, 0 warnings\n" });
   app = await import(join(root, ".mesh/index.ts"));
-  ({ Invoice, PaidInvoice, InvoicePaid } = await import(join(root, ".mesh/domain/billing/index.ts")));
+  ({ Invoice, PaidInvoice, InvoicePaid, InvoiceVoided } = await import(join(root, ".mesh/domain/billing/index.ts")));
 }, 30_000);
 afterAll(async () => {
   await rm(root, { recursive: true, force: true });
@@ -150,6 +151,29 @@ describe("the events module's upcast, at every reader of stored rows", () => {
     await layer.close();
   });
 
+  test("subscribe loads the events module after its argument checks; a load that rejects fails it and leaves no subscription behind", async () => {
+    const layer = await database();
+    await appendOld(layer);
+    let loaded = 0;
+    let fail = true;
+    const binding = bind(layer, async () => { loaded++; if (fail) throw new Error("x"); return { upcast: byHand() }; });
+    // A refused argument never reaches the load.
+    expect((await rejection(subscribe(binding as never, { name: "", after: 0 }, () => {}))) as Error).toBeInstanceOf(FrameworkError);
+    expect(loaded).toBe(0);
+    const error = (await rejection(subscribe(binding as never, { name: "feed", after: 0 }, () => {}))) as Error;
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toBe("events.load() rejected: x");
+    expect(loaded).toBe(1);
+    fail = false;
+    const received: unknown[] = [];
+    const subscription = await subscribe(binding as never, { name: "feed", after: 0 }, (event) => { received.push(event.payload); });
+    await binding.deliver();
+    expect(received).toHaveLength(1);
+    expect((received[0] as Paid).invoiceId).toBe(OLD_ID);
+    await subscription.close();
+    await layer.close();
+  });
+
   test("retryFailed replays a set-aside old row in today's shape", async () => {
     const layer = await database();
     await payOne(layer);
@@ -167,6 +191,104 @@ describe("the events module's upcast, at every reader of stored rows", () => {
     expect(handed).toHaveLength(1);
     expect(handed[0]).toBeInstanceOf(InvoicePaid);
     expect((handed[0] as Paid).invoiceId).toBe(OLD_ID);
+    await layer.close();
+  });
+});
+
+/** A stored row of `name` at `position` holding `payload`, as `upcast` receives one. */
+const row = (payload: object, name = "billing.InvoicePaid", position = 14): OutboxRow => Object.freeze({
+  position, id: "0190f0a0-0000-7000-8000-0000000000ff", name, entity: "billing.Invoice", action: "pay", key: { id: OLD_ID },
+  causedBy: null, metadata: {}, occurredAt: new Date("2026-09-01T00:00:00.000Z"), payload,
+});
+const thrown = (run: () => unknown): Error => {
+  try { run(); } catch (error) { return error as Error; }
+  throw new Error("expected a throw");
+};
+
+describe("upcaster() and upcasters()", () => {
+  // InvoicePaid's three shapes: v1 `{ invoice }`, v2 `{ invoiceRef }`, v3 (today) `{ invoiceId }`.
+  const v1ToV2 = (payload: Readonly<Record<string, unknown>>) => ("invoice" in payload ? { invoiceRef: payload.invoice } : payload);
+  const v2ToV3 = (payload: Readonly<Record<string, unknown>>) => ("invoiceRef" in payload ? { invoiceId: payload.invoiceRef } : payload);
+
+  test("the steps of an event run in order over every stored shape; today's shape and other events pass through", () => {
+    const upcast = upcasters(upcaster(InvoicePaid, v1ToV2, v2ToV3));
+    expect(upcast(row({ invoice: "a" }))).toEqual({ invoiceId: "a" });
+    expect(upcast(row({ invoiceRef: "b" }))).toEqual({ invoiceId: "b" });
+    const today = { invoiceId: "c" };
+    expect(upcast(row(today))).toBe(today);
+    const voided = { invoice: "d" };
+    expect(upcast(row(voided, "billing.InvoiceVoided"))).toBe(voided);
+    expect(Object.isFrozen(upcast)).toBe(true);
+  });
+
+  test("each step gets the stored row beside the payload", () => {
+    const seen: [number, string][] = [];
+    const upcast = upcasters(upcaster(InvoicePaid, (payload, stored) => { seen.push([stored.position, stored.name]); return payload; }));
+    upcast(row({ invoiceId: "a" }, "billing.InvoicePaid", 7));
+    expect(seen).toEqual([[7, "billing.InvoicePaid"]]);
+  });
+
+  test("upcasters with no upcaster passes every row through", () => {
+    const payload = { invoice: "a" };
+    expect(upcasters()(row(payload))).toBe(payload);
+  });
+
+  test("a step that returns no object, or a promise, is a FrameworkError naming the event, the step and the row", () => {
+    for (const [value, what] of [[7, "a number"], [null, "null"], [undefined, "undefined"], [["a"], "an array"], [Promise.resolve({}), "a promise"]] as const) {
+      const upcast = upcasters(upcaster(InvoicePaid, v1ToV2, () => value as never));
+      const error = thrown(() => upcast(row({ invoice: "a" })));
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect(error.message).toBe(`upcaster(billing.InvoicePaid): step 2 returned ${what} for the row at position 14: each step returns the payload, an object`);
+    }
+  });
+
+  test("an async step that rejects is refused as a promise and leaves no unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const listen = (reason: unknown) => { unhandled.push(reason); };
+    process.on("unhandledRejection", listen);
+    try {
+      const upcast = upcasters(upcaster(InvoicePaid, v1ToV2, (async () => { throw new Error("boom"); }) as never));
+      expect(thrown(() => upcast(row({ invoice: "a" }))).message).toBe("upcaster(billing.InvoicePaid): step 2 returned a promise for the row at position 14: each step returns the payload, an object");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } finally {
+      process.off("unhandledRejection", listen);
+    }
+    expect(unhandled).toEqual([]);
+  });
+
+  test("upcasters refuses one event listed twice, and anything upcaster() did not make", () => {
+    const error = thrown(() => upcasters(upcaster(InvoicePaid, v1ToV2), upcaster(InvoiceVoided, v1ToV2), upcaster(InvoicePaid, v2ToV3)));
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toBe("upcasters lists billing.InvoicePaid twice: give each event one upcaster, its steps in order");
+    for (const [bad, what] of [[{ event: "billing.InvoicePaid", steps: [v1ToV2] }, "a plain object"], [v1ToV2, "a function"], [undefined, "undefined"]] as const)
+      expect(thrown(() => upcasters(bad as never)).message).toBe(`upcasters takes what upcaster(event, ...steps) returns, and was given ${what} as its upcaster 1`);
+  });
+
+  test("upcaster refuses a value that is no generated event class, and a step that is no function", () => {
+    class Plain {}
+    for (const [bad, what] of [[Plain, "a function"], ["billing.InvoicePaid", "a string"], [undefined, "undefined"]] as const)
+      expect(thrown(() => upcaster(bad as never, v1ToV2)).message).toBe(`upcaster takes an event's class, as mesh build generates it (upcaster(InvoicePaid, ...steps)), and was given ${what}`);
+    const error = thrown(() => upcaster(InvoicePaid, v1ToV2, "v2ToV3" as never));
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toBe("upcaster(billing.InvoicePaid): step 2 is a string: each step is a function (payload, stored) => payload");
+  });
+
+  test("exported as the events module's upcast, it brings a handler old rows in today's shape; a step's refusal stops the handler naming it", async () => {
+    const layer = await database();
+    await appendOld(layer);
+    const handed: string[] = [];
+    await bind(layer, {
+      upcast: upcasters(upcaster(InvoicePaid, v1ToV2, v2ToV3)),
+      handlers: { project: { ids: project({ events: [InvoicePaid], run: (event) => { handed.push(event.payload.invoiceId); } }) } },
+    }).deliver();
+    expect(handed).toEqual([OLD_ID]);
+    const broken = await rejection(bind(layer, {
+      upcast: upcasters(upcaster(InvoicePaid, () => 1 as never)),
+      handlers: { project: { other: project({ events: [InvoicePaid], run: () => undefined }) } },
+    }).deliver());
+    expect(broken).toBeInstanceOf(HandlerStoppedError);
+    const cause = (broken as HandlerStoppedError).stopped[0]!.cause as Error;
+    expect(cause.message).toBe("The events module's upcast threw on the billing.InvoicePaid at position 1: upcaster(billing.InvoicePaid): step 1 returned a number for the row at position 1: each step returns the payload, an object");
     await layer.close();
   });
 });

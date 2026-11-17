@@ -872,7 +872,7 @@ declare module "meshfw" {
 
 declare module "@meshfw/event-sourcing" {
   import { MeshError } from "@meshfw/runtime";
-  import type { EventBusCapabilities, EventRecord, Handler, HandlerKind, HandlerTools, ListedEvent } from "@meshfw/runtime";
+  import type { EventBusCapabilities, EventRecord, Handler, HandlerKind, HandlerTools, ListedEvent, OutboxRow } from "@meshfw/runtime";
 
   /** `from`, as `project()` takes it: optional ("beginning" by default) on a bus that declares `replay`; required, and only "now", on one that does not. */
   export type FromOption = "replay" extends keyof EventBusCapabilities
@@ -907,6 +907,22 @@ declare module "@meshfw/event-sourcing" {
     run(event: EventRecord<InstanceType<C[number]>>, tools: HandlerTools): void | Promise<void>;
     readonly renamedFrom?: string;
   } & FromOption): ProjectHandler<InstanceType<C[number]>>;
+
+  /** One upcasting step: the next shape (or today's) from the payload it is given; returns `payload` itself when nothing applies. */
+  export type UpcastStep = (payload: Readonly<Record<string, unknown>>, stored: OutboxRow) => Record<string, unknown>;
+
+  /** The steps of one event, applied in order to every stored row of that event. Made by `upcaster()` only. */
+  export interface Upcaster {
+    /** The event's FQN, `billing.InvoicePaid`. */
+    readonly event: string;
+    readonly steps: readonly UpcastStep[];
+  }
+
+  /** The upcasting steps of one event: `upcaster(InvoicePaid, v1ToV2, v2ToV3)`. */
+  export function upcaster(event: ListedEvent, ...steps: UpcastStep[]): Upcaster;
+
+  /** The events module's `upcast`: one upcaster per event; rows of other events pass through unchanged. */
+  export function upcasters(...list: Upcaster[]): (stored: OutboxRow) => unknown;
 }
 
 // The generated entry points, as ADR-0086 lays them out: `#mesh` holds the framework's names only, and each
