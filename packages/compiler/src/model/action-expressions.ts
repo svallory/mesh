@@ -1,4 +1,4 @@
-import { isCheckGroup, type Check, type CheckGroup, type Entity, type Expression, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, isExpression, type Check, type CheckGroup, type Entity, type Expression, type Step, type ValidateItem } from "@meshfw/model";
 
 /** Where an action's function sits: a part of a check, or a kind of step. */
 export type ActionExpressionKind = "that" | "check-when" | "details" | "message" | "validate-when" | "step-when" | "set" | "run" | "publish";
@@ -17,8 +17,8 @@ function stepExpressions(steps: readonly Step[], into: ActionExpression[]): void
   for (const step of steps) {
     if (step.kind === "set") {
       for (const { member, value } of step.assignments)
-        if (typeof value === "object" && value !== null && "source" in value && "params" in value)
-          into.push({ expression: value as Expression, kind: "set", what: `set &${member.name}` });
+        if (isExpression(value))
+          into.push({ expression: value, kind: "set", what: `set &${member.name}` });
     } else if (step.kind === "when") {
       into.push({ expression: step.condition, kind: "step-when", what: "when" });
       stepExpressions(step.steps, into);

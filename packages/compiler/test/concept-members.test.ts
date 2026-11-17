@@ -109,6 +109,9 @@ describe("`set &total=<literal>` takes an object literal of exactly the concept'
       ["an atom not among the enum's values", "status", "{ state: :gone, fee: null }"],
       ["a string for an enum field", "status", '{ state: "open", fee: null }'],
       ["a nested concept with a missing field", "status", '{ state: :open, fee: { currency: "EUR" } }'],
+      ["an object for an enum field, shaped as its atom reads", "status", '{ state: { value: "open" }, fee: null }'],
+      ["an atom for a nested concept", "status", "{ state: :open, fee: :none }"],
+      ["an atom for the member", "total", ":total"],
     ])("%s is MESH_SET_VALUE at the member", (_, member, value) => {
       const diagnostics = result(place, value, member).diagnostics;
       expect(diagnostics.map((d) => d.code)).toEqual(["MESH_SET_VALUE"]);
@@ -121,6 +124,51 @@ describe("`set &total=<literal>` takes an object literal of exactly the concept'
     const source = `entity :Tag\n  attributes\n    uuid :id primary-key\n    One :label\n  actions auto=[:read]\n    update :rename\n      do\n        set\n          &label={ value: "x" }\n`;
     expect(said(one({ [`${D}tag.mesh.mx`]: source }))).toEqual([]);
     expect(codes(one({ [`${D}tag.mesh.mx`]: source.replace('{ value: "x" }', '"x"') }))).toEqual(["tag.mesh.mx:9 MESH_SET_VALUE"]);
+    // The atom `:x` reads as `{ value: "x" }` too, but it is an atom, not an object literal.
+    expect(codes(one({ [`${D}tag.mesh.mx`]: source.replace('{ value: "x" }', ":x") }))).toEqual(["tag.mesh.mx:9 MESH_SET_VALUE"]);
+  });
+
+  describe("a json field of the concept takes no atom, as a `json` member does", () => {
+    const BOXES = {
+      [`${D}concepts/Box.mesh.mx`]: "concept :Box\n  json :notes\n  integer :n\n",
+      [`${D}concepts/Crate.mesh.mx`]: "concept :Crate\n  Box :box\n",
+    };
+    const set = (member: string, value: string) => one({
+      ...BOXES,
+      [`${D}store.mesh.mx`]: `entity :Store\n  attributes\n    uuid :id primary-key\n    Box :box\n    Crate :crate\n  actions auto=[:read]\n    update :u\n      do\n        set\n          &${member}=${value}\n`,
+    });
+    test.each([
+      ["box", '{ notes: { a: ["x", 1] }, n: 1 }'],
+      ["box", '{ notes: "x", n: 1 }'],
+      ["crate", '{ box: { notes: { value: "x" }, n: 1 } }'],
+    ])("`&%s=%s` builds", (member, value) => {
+      expect(said(set(member, value))).toEqual([]);
+    });
+    test.each([
+      ["box", "{ notes: :x, n: 1 }", "notes"],
+      ["box", "{ notes: { a: [:x] }, n: 1 }", "notes"],
+      ["crate", "{ box: { notes: :x, n: 1 } }", "box.notes"],
+    ])("`&%s=%s` is MESH_SET_VALUE in the json member's words", (member, value, path) => {
+      expect(said(set(member, value))).toEqual([`store.mesh.mx:10:10 MESH_SET_VALUE \`&${member}=\` is json at \`${path}\`, and an atom is not JSON: write a string`]);
+    });
+  });
+
+  describe("a literal is never read as a function, whatever its concept's fields are named", () => {
+    const REF = { [`${D}concepts/Ref.mesh.mx`]: "concept :Ref\n  string :source\n  integer :line\n", [`${D}concepts/Q.mesh.mx`]: "concept :Q\n  string :source\n  json :params\n  json :position\n" };
+    const set = (member: string, value: string) => one({
+      ...REF,
+      [`${D}doc.mesh.mx`]: `entity :Doc\n  attributes\n    uuid :id primary-key\n    Ref :origin\n    Q :q\n    json :blob\n  actions auto=[:read]\n    update :u\n      do\n        set\n          &${member}=${value}\n`,
+    });
+    test("a field named `source` is checked as a field", () => {
+      expect(said(set("origin", '{ source: "a.ts", line: 3 }'))).toEqual([]);
+      expect(codes(set("origin", "{ source: 1, line: 3 }"))).toEqual(["doc.mesh.mx:11 MESH_SET_VALUE"]);
+      expect(said(set("q", '{ source: "a", params: 2, position: null }'))).toEqual([]);
+    });
+    test("a literal with the keys of a function is MESH_SET_VALUE, on a concept and on a json member", () => {
+      const message = (member: string) => `doc.mesh.mx:11:10 MESH_SET_VALUE \`&${member}=\` is a literal with the keys of a function (\`source\`, \`params\`, \`position\`): write it as a function`;
+      expect(said(set("q", '{ source: "a", params: [], position: { line: 1 } }'))).toEqual([message("q")]);
+      expect(said(set("blob", '{ source: "a", params: [], position: {} }'))).toEqual([message("blob")]);
+    });
   });
 
   test("the concept may be in a file built after the entity's", () => {

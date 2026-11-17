@@ -148,3 +148,14 @@ describe("a concept member in the generated tree", () => {
     expect(checked).toEqual({ code: 0, output: "" });
   }, 60_000);
 });
+
+test("a set literal of a concept with a field named `source` is printed as a literal, not read as a function", async () => {
+  const document = documentOf({
+    [`${D}concepts/Ref.mesh.mx`]: "concept :Ref\n  string :source\n  integer :line\n",
+    [`${D}doc.mesh.mx`]: "entity :Doc\n  attributes\n    uuid :id primary-key\n    Ref :origin\n  actions auto=[:read]\n    update :u\n      do\n        set\n          &origin={ source: \"a.ts\", line: 3 }\n",
+  });
+  const files = await generateFiles({ document, config: configOf("/project", ".mesh") });
+  const actions = files.find((file) => file.path === ".mesh/domain/doc.actions.ts")!.contents.replace(/\s+/g, " ");
+  expect(actions).toContain('$record.origin = { source: "a.ts", line: 3 };');
+  expect(explainAction(document.entities[0]!, "u", document)!.map((line) => line.trim().replace(/^steps\s+/, ""))).toContain('set &origin = {"source":"a.ts","line":3}');
+});

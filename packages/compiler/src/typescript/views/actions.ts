@@ -1,5 +1,5 @@
 import { dirname, relative } from "node:path";
-import { isCheckGroup, type Action, type Always, type Atom, type Attribute, type Check, type Entity, type Expression, type Literal, type ModelDocument, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, isExpression, type Action, type Always, type Atom, type Attribute, type Check, type Entity, type Expression, type Literal, type ModelDocument, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
 import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-expressions.ts";
 import { filledKey } from "../../model/new-instance.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
@@ -237,10 +237,6 @@ function readCap(entity: Entity): string {
  */
 function given(name: string): string {
   return `$Object.hasOwn(parsed, ${JSON.stringify(name)}) && ${read("parsed", name)} !== undefined`;
-}
-
-function isExpression(value: Literal | Atom | Expression): value is Expression {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && "source" in value && "params" in value;
 }
 
 function isAtom(value: Literal | Atom): value is Atom {

@@ -127,11 +127,24 @@ export function attrOffset(a: Attr): number {
   }
   return a.nameSpan.sourceStart;
 }
+/**
+ * The atom values `readLiteral` and `valueOf` built. An atom reads as `{ value: "x" }`, the same object an author's
+ * `{ value: "x" }` literal reads as; this set tells them apart while the build runs (`isAtomLiteral`), for the checks that
+ * run on the model's literal after the IR is gone (a concept member's `set` literal, `checkConceptLiterals`).
+ */
+const ATOM_LITERALS = new WeakSet<object>();
+const atomLiteral = (name: string): Atom => {
+  const atom = { value: name };
+  ATOM_LITERALS.add(atom);
+  return atom;
+};
+/** True when `value` is an atom the author wrote (`:x`), not an object literal of the same shape. */
+export const isAtomLiteral = (value: unknown): boolean => typeof value === "object" && value !== null && ATOM_LITERALS.has(value);
 /** A literal value; `atoms` names the string literals that are atoms (`atomForwards` of the attribute that holds `n`). */
 export function readLiteral(n: SyntaxNode | null | undefined, atoms: AtomForwards = NO_ATOMS): Literal | Atom {
   if (!n) throw new Error("Use a literal value here");
   if (n.type === "StringLiteral")
-    return atoms.has(n) ? { value: String(n.value) } : String(n.value);
+    return atoms.has(n) ? atomLiteral(String(n.value)) : String(n.value);
   if (n.type === "NumericLiteral" || n.type === "BooleanLiteral")
     return n.value as number | boolean;
   if (n.type === "NullLiteral") return null;
@@ -162,7 +175,7 @@ export function readLiteral(n: SyntaxNode | null | undefined, atoms: AtomForward
 export function valueOf(a: Attr | undefined): Literal | Atom {
   if (!a) throw new Error("This option needs a value");
   const atom = atomOf(a);
-  if (atom) return { value: atom.name };
+  if (atom) return atomLiteral(atom.name);
   const text = plainString(a);
   if (text) return text.value;
   if (a.kind === "boolean") return true;

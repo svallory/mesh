@@ -1,4 +1,4 @@
-import { isCheckGroup, type Action, type Atom, type Check, type Literal, type Entity, type ModelDocument, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, isExpression, type Action, type Atom, type Check, type Literal, type Entity, type ModelDocument, type Step, type ValidateItem } from "@meshfw/model";
 import { policyConditions, sqlPositions } from "../model/sql-required.ts";
 import { checksOf, isEmptyGroup } from "../model/action-expressions.ts";
 import { policiesCovering, policyExpressions, readsRecord } from "../model/policies.ts";
@@ -33,7 +33,7 @@ function stepLines(steps: readonly Step[], depth: number, into: string[], after 
   for (const step of steps) {
     if (step.kind === "set")
       for (const { member, value } of step.assignments)
-        into.push(`${pad}set &${member.name} = ${typeof value === "object" && value !== null && "source" in value ? squash((value as { source: string }).source) : literal(member.name, value)}`);
+        into.push(`${pad}set &${member.name} = ${isExpression(value) ? squash(value.source) : literal(member.name, value)}`);
     else if (step.kind === "when") {
       into.push(`${pad}when ${squash(step.condition.source)}${after ? " (as it held before the write)" : ""}`);
       stepLines(step.steps, depth + 1, into, after, literal);

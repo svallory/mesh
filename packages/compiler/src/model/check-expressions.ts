@@ -15,7 +15,7 @@ import type {
   TypeClass,
   ValidateItem,
 } from "@meshfw/model";
-import { isCheckGroup } from "@meshfw/model";
+import { isCheckGroup, isExpression } from "@meshfw/model";
 import { checksOf } from "./action-expressions.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 import { alwaysCovers, policyCovers } from "./policies.ts";
@@ -521,7 +521,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     for (const step of list) {
       if (step.kind === "set") {
         for (const { member, value } of step.assignments) {
-          if (typeof value === "object" && value !== null && "source" in value) {
+          if (isExpression(value)) {
             const t = visit(value as Expression, scope, false);
             const attr = entity.attributes.find((a) => a.name === member.name);
             const relation = attr ? undefined : entity.relationships.find((r) => r.name === member.name && r.kind === "belongs-to");

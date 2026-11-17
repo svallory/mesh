@@ -78,6 +78,18 @@ export interface Expression {
   needs?: string[];
 }
 
+/**
+ * Tells a `set` line's function from its literal (`Step` `set` assignments hold either). An Expression has a `source`
+ * string, a `params` list and a `position` object; the builder refuses a literal of that shape (`MESH_SET_VALUE`), so no
+ * literal answers true here, whatever its concept's or json value's keys. Every reader of a set value uses this one test.
+ */
+export function isExpression(value: Literal | Atom | Expression): value is Expression {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Partial<Record<"source" | "params" | "position", unknown>>;
+  return typeof candidate.source === "string" && Array.isArray(candidate.params)
+    && typeof candidate.position === "object" && candidate.position !== null && !Array.isArray(candidate.position);
+}
+
 export interface Attribute {
   name: string;
   /** An attribute type, or `concept` for a concept use (`Money :total`), which stores one JSON value (ADR-0092). */

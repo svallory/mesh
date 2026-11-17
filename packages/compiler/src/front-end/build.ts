@@ -44,6 +44,7 @@ import {
   type Rollup,
   type SourcePosition,
   type Step,
+  isExpression,
 } from "@meshfw/model";
 import { RELATIONSHIP_KINDS, SYNTAX_MESSAGES } from "./contracts.ts";
 import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-file.ts";
@@ -56,7 +57,7 @@ import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf
 import { checkExpressions } from "../model/index.ts";
 import { error, offsetAt, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope, type WrittenReference } from "./references.ts";
-import { literalFits } from "./literal-types.ts";
+import { holdsAtom, literalFits } from "./literal-types.ts";
 import { nearestName } from "./nearest-name.ts";
 import {
   resolveRollups,
@@ -80,6 +81,7 @@ import {
   containsAtom,
   declaredName,
   expression,
+  isAtomLiteral,
   isMemberLine,
   nodeOf,
   readAt,
@@ -1068,6 +1070,7 @@ function buildEntity(
                 fail("MESH_MEMBER_LINE_OPTIONS", `\`&${member.ref.name}\` under \`set\` needs a value: \`&${member.ref.name}=…\``, line);
                 return [];
               }
+              let shapedLikeFunction = false;
               const value = readAt(line, at, () => {
                 const n = nodeOf(member.value);
                 if (n && ["ArrowFunctionExpression", "FunctionExpression"].includes(n.type)) return expr(member.value);
@@ -1080,6 +1083,13 @@ function buildEntity(
                 // A concept literal is checked once every concept is built (`checkConceptLiterals`): its concept may be in a later file.
                 if (field && field.type !== "concept" && (!literalFits(literal, field) || (n?.type === "ObjectExpression" && field.type !== "json")))
                   fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` needs a literal that fits ${field.type}${field.type === "enum" ? ` (${field.values?.map((atom) => `:${atom.value}`).join(", ")})` : ""}`, member.ref.position);
+                // `isExpression` tells a set line's function from its literal by shape; a literal of that shape (a concept or
+                // json value with `source`, `params` and `position` keys) would be read as a function, so it is refused and
+                // the assignment is dropped from the model.
+                if (isExpression(literal)) {
+                  shapedLikeFunction = true;
+                  fail("MESH_SET_VALUE", `\`&${member.ref.name}=\` is a literal with the keys of a function (\`source\`, \`params\`, \`position\`): write it as a function`, member.ref.position);
+                }
                 // A belongs-to stores its target's key: a literal is that key (or null on a nullable one). Its type is checked at the call, by the key column.
                 const relation = field ? undefined : entity.relationships.find((r) => r.name === member.ref.name);
                 if (relation && (literal === null ? !relation.nullable : typeof literal !== "string" && typeof literal !== "number"))
@@ -1087,6 +1097,7 @@ function buildEntity(
                 return literal;
               });
               if (value.diagnostic) { diagnostics.push(value.diagnostic); return []; }
+              if (shapedLikeFunction) return [];
               return [{ member: member.ref, value: value.value }];
             }),
             position,
@@ -1786,7 +1797,6 @@ function checkConceptLiterals(entities: readonly Entity[], concepts: readonly Co
   const byFqn = new Map<string, ConceptDeclaration>();
   for (const concept of concepts) if (!byFqn.has(concept.fqn)) byFqn.set(concept.fqn, concept);
   const resolveConcept = (fqn: string) => byFqn.get(fqn);
-  const isFunction = (value: object) => !Array.isArray(value) && "source" in value && "params" in value;
   for (const entity of entities) {
     const visit = (steps: readonly Step[]) => {
       for (const step of steps) {
@@ -1794,8 +1804,13 @@ function checkConceptLiterals(entities: readonly Entity[], concepts: readonly Co
         if (step.kind !== "set") continue;
         for (const { member, value } of step.assignments) {
           const field = entity.attributes.find((attribute) => attribute.name === member.name);
-          if (field?.type !== "concept" || (typeof value === "object" && value !== null && isFunction(value))) continue;
-          if (literalFits(value as Literal | Atom, field, resolveConcept)) continue;
+          if (field?.type !== "concept" || isExpression(value)) continue;
+          const json = jsonAtomPath(value, field, resolveConcept);
+          if (json !== undefined) {
+            diagnostics.push(error("MESH_SET_VALUE", `\`&${member.name}=\` is json at \`${json}\`, and an atom is not JSON: write a string`, member.position));
+            continue;
+          }
+          if (literalFits(value, field, resolveConcept, isAtomLiteral)) continue;
           const concept = resolveConcept(field.concept!);
           diagnostics.push(error("MESH_SET_VALUE",
             `\`&${member.name}=\` needs an object literal with exactly the fields of ${field.concept}${concept ? ` (${concept.fields.map((each) => each.name).join(", ")})` : ""}${field.nullable ? ", null" : ""}, or a function`,
@@ -1806,6 +1821,26 @@ function checkConceptLiterals(entities: readonly Entity[], concepts: readonly Co
     for (const action of entity.actions) visit(action.do);
     for (const block of entity.always) visit(block.do);
   }
+}
+
+/**
+ * The dotted path of the first `json` field of a concept literal (nested concepts included) that holds an atom the author
+ * wrote, as `set &meta=:x` on a `json` member is refused; `undefined` when there is none, or the literal is not an object.
+ */
+function jsonAtomPath(value: Literal | Atom, field: Pick<Attribute, "type" | "concept">, resolve: (fqn: string) => ConceptDeclaration | undefined, prefix = ""): string | undefined {
+  const concept = field.concept === undefined ? undefined : resolve(field.concept);
+  if (!concept || typeof value !== "object" || value === null || Array.isArray(value) || isAtomLiteral(value)) return undefined;
+  for (const each of concept.fields) {
+    if (!Object.hasOwn(value, each.name)) continue;
+    const inner = (value as Record<string, Literal | Atom>)[each.name]!;
+    const path = `${prefix}${each.name}`;
+    if (each.type === "json" && holdsAtom(inner, isAtomLiteral)) return path;
+    if (each.type === "concept") {
+      const found = jsonAtomPath(inner, each, resolve, `${path}.`);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
 }
 
 /**
