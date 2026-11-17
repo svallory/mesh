@@ -289,6 +289,14 @@ declare module "@meshfw/runtime" {
     readonly changed: boolean;
   }
 
+  /** What `retryFailed(name)` resolves with. */
+  export interface RetryFailedResult {
+    /** How many set-aside events were handled and removed. */
+    readonly handled: number;
+    /** The first one that failed again, which stays with every later one; null when none failed. */
+    readonly failed: StoppedHandler | null;
+  }
+
   /** What the project's `metadata` function returns for each event; a project declares its fields by augmenting this interface. */
   export interface EventMetadata {}
 
@@ -733,7 +741,7 @@ declare module "@meshfw/bus-local" {
     readonly processes?: "one" | "many";
   }
 
-  /** The first event bus: delivers in the deliverer's process, on any data adapter. Declares `ordered-delivery`, `replay` and `subscribe`, and `multi-process` with `processes: "many"`. */
+  /** The first event bus: delivers in the deliverer's process, on any data adapter. Declares `ordered-delivery`, `replay`, `subscribe` and `dead-letters`, and `multi-process` with `processes: "many"`. */
   export function localBus(options?: LocalBusOptions): EventBus;
 }
 
@@ -1093,11 +1101,12 @@ declare module "@meshfw/runtime" {
     "ordered-delivery": true;
     replay: true;
     subscribe: true;
+    "dead-letters": true;
   }
 }
 
 declare module "#mesh" {
-  import type { ActionContext, Adopted, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
+  import type { ActionContext, Adopted, RetryFailedResult, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
   import type { Invoice, InvoicePaid, PayInvoice } from "#mesh/domain/billing";
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
@@ -1125,7 +1134,7 @@ declare module "#mesh" {
   export type DomainEvent = InvoicePaid;
   export type EventRecord<E extends DomainEvent = DomainEvent> = $EventRecord<E>;
   export type MetadataFunction = $MetadataFunction<DomainEvent>;
-  export type { Delivery, EventMetadata, ReadEventsPage, ReadEventsQuery, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
+  export type { Delivery, EventMetadata, ReadEventsPage, ReadEventsQuery, RetryFailedResult, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
   /** The events the running transaction has published so far, in order; outside a transaction it throws. */
   export function published(): readonly EventRecord[];
   /** Every command class an action answers with `on=`: what `dispatch` takes. A command no action answers is not in it. */
@@ -1164,6 +1173,12 @@ declare module "#mesh" {
   export function forgetSubscription(name: string): Promise<void>;
   /** Resume a handler the running bus stopped at a failing event, from its progress row; where delivery is started, else a `FrameworkError`. */
   export function resumeHandler(name: string): Promise<void>;
+  /**
+   * Replay the events the handler `name` set aside (`onFailure: "skip"`), in position order, removing each it handles; stops
+   * at the first that fails again and resolves with it as `failed`. Where delivery runs, else a `FrameworkError`. Exported
+   * only when the configured bus declares `dead-letters`.
+   */
+  export function retryFailed(name: string): Promise<RetryFailedResult>;
 
   /** The emitted schema's tables, for `createSchema(db, tables)`, keyed by table name as stored (`table=` included). */
   export const tables: { readonly lists: object; readonly todos: object };

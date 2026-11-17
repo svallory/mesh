@@ -58,6 +58,8 @@ export interface IndexEvents {
   readonly subscribe: boolean;
   /** True when the configured bus declares `multi-process`: `adoptHandler` is exported. */
   readonly multiProcess: boolean;
+  /** True when the configured bus declares `dead-letters`: `retryFailed` and the type `RetryFailedResult` are exported. */
+  readonly deadLetters: boolean;
   /**
    * The bus's capabilities as quoted string literals, in its manifest's order: each becomes a `true` member of
    * `EventBusCapabilities` (`declare module "@meshfw/runtime"`), so a handler option the bus cannot honour is a type error.
@@ -114,6 +116,7 @@ export function indexView(input: EmitInput): IndexView {
   return { modules, commands, rawSql, events: {
     ...view, globals: globalsImport("index", view, commands ? ["Object", "Promise"] : ["Object"])!,
     replay: capabilities.includes("replay"), subscribe: capabilities.includes("subscribe"), multiProcess: capabilities.includes("multi-process"),
+    deadLetters: capabilities.includes("dead-letters"),
     busCapabilities: capabilities.map((capability) => JSON.stringify(capability)),
   } };
 }

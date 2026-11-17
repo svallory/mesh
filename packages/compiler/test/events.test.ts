@@ -630,6 +630,45 @@ entity :Invoice
     expect(checked).toEqual({ code: 0, output: "" });
   }, 30_000);
 
+  test("a bus that declares dead-letters: #mesh exports retryFailed and the type RetryFailedResult, onFailure \"skip\" type-checks; without it neither file names them", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
+    roots.push(root);
+    const dead = { manifest: { adapter: "fake", capabilities: ["ordered-delivery", "replay", "subscribe", "dead-letters"] as const }, create: () => { throw new Error("never started"); } };
+    const one = { manifest: { adapter: "fake", capabilities: ["ordered-delivery", "replay", "subscribe"] as const }, create: () => { throw new Error("never started"); } };
+    const config = { ...configOf(root), events: { bus: dead } };
+    const generated = await generateFiles({ document: full().document!, config });
+    const without = await generateFiles({ document: full().document!, config: { ...configOf(root), events: { bus: one } } });
+    const index = text(generated, "generated/index.ts");
+    const binding = text(generated, "generated/binding.ts");
+    expect(index).toContain('export { retryFailed } from "./binding";\nexport type { RetryFailedResult } from "@meshfw/runtime";');
+    expect(index).toContain('    "dead-letters": true;');
+    expect(binding).toContain("  resumeHandler as $resumeHandler,\n  retryFailed as $retryFailed,");
+    expect(binding).toContain("  type RetryFailedResult as $RetryFailedResult,");
+    expect(binding).toContain('export function retryFailed(name: string): $Promise<$RetryFailedResult> {\n  return $retryFailed($deliveryBinding("retryFailed"), name);\n}');
+    // the flag adds those lines and the capability, and nothing else
+    const plain = { index: text(without, "generated/index.ts"), binding: text(without, "generated/binding.ts") };
+    for (const file of [plain.index, plain.binding]) expect(file).not.toContain("retryFailed");
+    expect(index.replace(/\n.*retryFailed.*|\n.*RetryFailedResult.*|\n {4}"dead-letters": true;/g, "")).toBe(plain.index);
+    expect(binding.replace(/\n\n\/\*\*\n \* Replay the events the handler[\s\S]*?\n}\n/, "\n").replace(/\n {2}(retryFailed as \$retryFailed|type RetryFailedResult as \$RetryFailedResult),/g, "")).toBe(plain.binding);
+    await writeGeneratedFiles(generated, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { invoice: {} };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    await writeFile(resolve(root, "retry.ts"), [
+      'import { handler } from "@meshfw/runtime";',
+      'import { eventClasses, retryFailed, type RetryFailedResult } from "./generated/index";',
+      'const InvoicePaid = eventClasses["billing.InvoicePaid"];',
+      "// the bus declares dead-letters, so onFailure \"skip\" is a handler option",
+      'export const skips = handler({ events: [InvoicePaid], onFailure: "skip", run: () => {} });',
+      'export const result: Promise<RetryFailedResult> = retryFailed("receipts");',
+      "export const failedAt = result.then((each) => [each.handled, each.failed?.position ?? null]);",
+      "// @ts-expect-error retryFailed takes a handler's name",
+      "export const bad = retryFailed(3);",
+      "",
+    ].join("\n"));
+    const checked = await checkTypes(root, [...generated.map((file) => resolve(root, file.path)), resolve(root, "mesh.config.ts"), resolve(root, "retry.ts")]);
+    expect(checked).toEqual({ code: 0, output: "" });
+  }, 30_000);
+
   test("a publish function that returns what is not a DomainEvent fails the project's type check, at the generated line", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);

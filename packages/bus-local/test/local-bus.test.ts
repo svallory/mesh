@@ -8,8 +8,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  FrameworkError, HandlerLostError, HandlerStoppedError, resumeHandler, subscribe, SubscriptionOverflowError,
-  type BusCore, type DataLayer, type DeliveryOperations, type EventBus, type TableHandle,
+  DatabaseBusyError, DelivererLostError, EventUndeclaredError, FrameworkError, HandlerLostError, HandlerStoppedError, resumeHandler, retryFailed, subscribe, SubscriptionOverflowError,
+  type BusCore, type FailureOperations, type DataLayer, type DeliveryOperations, type EventBus, type TableHandle,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
@@ -111,8 +111,8 @@ const publish = (binding: Binding) => binding.run(() => Invoice.open({}, { syste
 const outbox = async (layer: DataLayer) => (await layer.readOutbox!(0, 100)).rows.map((row) => row.position);
 
 describe("localBus(options)", () => {
-  test("its manifest names the adapter and its three capabilities; dead-letters is not one", () => {
-    expect(localBus().manifest).toEqual({ adapter: "local", capabilities: ["ordered-delivery", "replay", "subscribe"] });
+  test("its manifest names the adapter and its four capabilities, dead-letters included", () => {
+    expect(localBus().manifest).toEqual({ adapter: "local", capabilities: ["ordered-delivery", "replay", "subscribe", "dead-letters"] });
     expect(Object.isFrozen(localBus())).toBe(true);
     expect(Object.isFrozen(localBus().manifest.capabilities)).toBe(true);
   });
@@ -160,7 +160,7 @@ describe("localBus(options)", () => {
     expect(localBus({}).manifest).toBe(one);
     expect(localBus({ processes: undefined } as never).manifest).toBe(one);
     const many = localBus({ processes: "many" }).manifest;
-    expect(many).toEqual({ adapter: "local", capabilities: ["ordered-delivery", "replay", "subscribe", "multi-process"] });
+    expect(many).toEqual({ adapter: "local", capabilities: ["ordered-delivery", "replay", "subscribe", "dead-letters", "multi-process"] });
     expect(localBus({ processes: "many", pollInterval: 5 }).manifest).toBe(many);
     expect(Object.isFrozen(many) && Object.isFrozen(many.capabilities)).toBe(true);
     for (const [value, shown] of [[3, "3"], ["several", '"several"'], [null, "null"], [true, "true"], ["Many", '"Many"']] as const) {
@@ -851,5 +851,142 @@ describe("localBus and handlers another process holds (MESH_HANDLER_LOST)", () =
     expect(reports).toEqual([]);
     await instance.stop();
     expect(counting.live.size).toBe(0);
+  });
+});
+
+describe("localBus and dead letters (onFailure: \"skip\")", () => {
+  const skipper = (seen: number[], broken: Set<number>, retryable?: boolean): Handler & { onFailure: "skip" } => ({
+    ...recorder(seen, (event) => { if (broken.has(event.position)) throw Object.assign(new Error(`down at ${event.position}`), retryable === undefined ? {} : { retryable }); }),
+    onFailure: "skip",
+  });
+  const failures = (layer: DataLayer) => layer.transaction((tx) => (tx as unknown as FailureOperations).readFailures("h", null, 100));
+
+  test("started: a skip handler whose retries run out has the event set aside, reports no stop, and handles the next row", async () => {
+    const reports: unknown[] = [];
+    const seen: number[] = [];
+    const counting = countingTimers();
+    const bus = createLocalBus({ pollInterval: 20, retryDelays: [5, 5] }, { timers: counting.timers, report: (error) => { reports.push(error); } });
+    const { layer, binding } = await open(bus, { process: { h: skipper(seen, new Set([1])) } });
+    const warn = console.warn;
+    const warned: string[] = [];
+    console.warn = (...args: unknown[]) => { warned.push(args.map(String).join(" ")); };
+    const delivery = await binding.startDelivery();
+    try {
+      await sleep(30);
+      await publish(binding);
+      await publish(binding);
+      await until(() => seen.includes(2), "the row after the set-aside one is handled");
+      // the first try and both retries on the handler's own timer, then the set-aside
+      expect(seen).toEqual([1, 1, 1, 2]);
+      expect(counting.timeouts()).toBe(2);
+      expect(reports).toEqual([]);
+      expect((await failures(layer)).map((row) => [row.position, row.error.message])).toEqual([[1, "down at 1"]]);
+      expect(warned.filter((line) => line.includes("set aside"))).toHaveLength(1);
+    } finally {
+      console.warn = warn;
+      await delivery.stop();
+      await layer.close();
+    }
+  });
+
+  test("deliver(): a skip handler's set-aside event is in no HandlerStoppedError, and retryFailed replays it once fixed", async () => {
+    const seen: number[] = [];
+    const broken = new Set([1]);
+    const { layer, binding } = await open(localBus(), { listen: { h: skipper(seen, broken, false) } });
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await binding.deliver();
+      await publish(binding);
+      await publish(binding);
+      await binding.deliver();
+      expect(seen).toEqual([1, 2]);
+      expect((await failures(layer)).map((row) => row.position)).toEqual([1]);
+      broken.clear();
+      expect(await retryFailed(binding as never, "h")).toEqual({ handled: 1, failed: null });
+      expect(seen).toEqual([1, 2, 1]);
+      expect(await failures(layer)).toEqual([]);
+    } finally {
+      console.warn = warn;
+      await layer.close();
+    }
+  });
+
+  /** A core with one skip handler that always fails with retryable: false, whose setAside does `setAside`. */
+  function skipCore(setAside: () => Promise<void>, passes: { n: number }, wake: { listener?: () => void }) {
+    const ran: number[] = [];
+    const core = fakeCore({
+      handlers: [{ name: "h", onFailure: "skip" }],
+      position: async () => 0,
+      rows: async (after: number) => ({ rows: after === 0 ? [{ position: 1, name: "x.E" }] : [], deletedThrough: 0, highest: 1, settled: 1 }),
+      lists: () => true,
+      runHandler: async (_handler: unknown, row: { position: number }) => { ran.push(row.position); throw Object.assign(new Error("down"), { retryable: false }); },
+      isRetryable: (error: { retryable?: boolean }) => error.retryable !== false,
+      setAside,
+      deletionPass: async () => { passes.n++; },
+      onPublished: (listener: () => void) => { wake.listener = listener; return () => { wake.listener = undefined; }; },
+    });
+    return { core, ran };
+  }
+
+  test("started: a set-aside that meets a busy database or a lost claim ends the round, is no stop and reports nothing; the next round tries again", async () => {
+    for (const refusal of [new DatabaseBusyError("db", 0), new DelivererLostError("db", "test")]) {
+      const reports: unknown[] = [];
+      const passes = { n: 0 };
+      const wake: { listener?: () => void } = {};
+      let calls = 0;
+      const { core, ran } = skipCore(async () => { calls++; throw refusal; }, passes, wake);
+      const instance = createLocalBus({ pollInterval: 60_000 }, { report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+      await instance.start();
+      await until(() => calls === 1, "the first set-aside");
+      await sleep(20);
+      // the round ended at the set-aside: no deletion pass, nothing reported
+      expect(passes.n).toBe(0);
+      expect(reports).toEqual([]);
+      wake.listener!();
+      await until(() => calls === 2, "the next round sets aside again");
+      expect(ran).toEqual([1, 1]);
+      await instance.stop();
+    }
+  });
+
+  test("started: a set-aside refused for another reason stops the handler, reported once with the refusal as its cause", async () => {
+    const reports: unknown[] = [];
+    const passes = { n: 0 };
+    const refused = new FrameworkError("core.setAside refused it");
+    const { core } = skipCore(async () => { throw refused; }, passes, {});
+    const instance = createLocalBus({ pollInterval: 60_000 }, { report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+    await instance.start();
+    await until(() => reports.length === 1, "the stop is reported");
+    expect((reports[0] as HandlerStoppedError).stopped).toMatchObject([{ handler: "h", position: 1, cause: refused }]);
+    await instance.stop();
+  });
+
+  test("deliver(): a refused set-aside is the stop, with the refusal as its cause; a busy one rejects the round", async () => {
+    const refused = new FrameworkError("core.setAside refused it");
+    const { core } = skipCore(async () => { throw refused; }, { n: 0 }, {});
+    const retrying = fakeCore({ ...Object.fromEntries(["handlers", "position", "rows", "lists", "isRetryable", "setAside", "deletionPass", "onPublished", "onClaimLost", "subscriptions"].map((key) => [key, (core as unknown as Record<string, unknown>)[key]])),
+      retry: async () => ({ handler: "h", position: 1, event: "x.E", cause: new Error("down") }) });
+    const error = await rejection(createLocalBus(undefined).create(retrying, { keep: "until-delivered" }).deliver());
+    expect((error as HandlerStoppedError).stopped).toMatchObject([{ handler: "h", position: 1, cause: refused }]);
+    const busy = new DatabaseBusyError("db", 0);
+    const { core: busyCore } = skipCore(async () => { throw busy; }, { n: 0 }, {});
+    const busyRetrying = fakeCore({ ...Object.fromEntries(["handlers", "position", "rows", "lists", "isRetryable", "setAside", "deletionPass", "onPublished", "onClaimLost", "subscriptions"].map((key) => [key, (busyCore as unknown as Record<string, unknown>)[key]])),
+      retry: async () => ({ handler: "h", position: 1, event: "x.E", cause: new Error("down") }) });
+    expect(await rejection(createLocalBus(undefined).create(busyRetrying, { keep: "until-delivered" }).deliver())).toBe(busy);
+  });
+
+  test("a skip handler's stop at a row no declared event matches is never set aside: it stops and is reported", async () => {
+    let calls = 0;
+    const undeclared = new EventUndeclaredError("x.Gone", 1);
+    const core = fakeCore({
+      handlers: [{ name: "h", onFailure: "skip" }], position: async () => 0,
+      rows: async (after: number) => ({ rows: after === 0 ? [{ position: 1, name: "x.Gone" }] : [], deletedThrough: 0, highest: 1, settled: 1 }),
+      lists: () => true, setAside: async () => { calls++; },
+      retry: async () => ({ handler: "h", position: 1, event: "x.Gone", cause: undeclared }),
+    });
+    const error = await rejection(createLocalBus(undefined).create(core, { keep: "until-delivered" }).deliver());
+    expect((error as HandlerStoppedError).stopped).toMatchObject([{ handler: "h", position: 1, cause: undeclared }]);
+    expect(calls).toBe(0);
   });
 });

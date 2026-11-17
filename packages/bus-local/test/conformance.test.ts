@@ -35,11 +35,13 @@ for (const kind of ["memory", "file"] as const) {
       frame: () => new AsyncLocalStorage(),
       bus: ({ retryDelays, pollMs }) => localBus({ retryDelays, pollInterval: pollMs }),
     });
-    test("every check runs under both keep values, the subscribe group included", () => {
+    test("every check runs under both keep values, the subscribe and dead-letters groups included", () => {
       const names = Object.keys(checks);
       expect(names.filter((name) => name.startsWith("[keep: until-delivered]")).length).toBe(names.length / 2);
       expect(names.some((name) => name.includes("subscribe:"))).toBe(true);
       expect(names.some((name) => name.includes("replay:"))).toBe(true);
+      // localBus declares dead-letters: core's set-aside path and retryFailed run through it.
+      expect(names.filter((name) => name.includes("dead letters:")).length).toBeGreaterThan(20);
     });
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
