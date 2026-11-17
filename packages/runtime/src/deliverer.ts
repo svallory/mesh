@@ -593,7 +593,7 @@ export class Deliverer {
     };
     for (const row of handlers) {
       if (!this.strategy.isOrphan(row, state) || !due(`handler:${row.name}`)) continue;
-      console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is not registered by this deliverer, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
+      console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is ${this.strategy instanceof MultiClaim ? "registered by no live process" : "not registered by this deliverer"}, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
     }
     if (this.keep !== "until-delivered") return;
     for (const row of subscriptions) {

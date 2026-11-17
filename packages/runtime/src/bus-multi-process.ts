@@ -488,6 +488,27 @@ export function multiProcessChecks(
     assert(lease.position === p2 && lease.runId === null, `the round took its own lease again and handled the event, got ${JSON.stringify(lease)}`);
   });
 
+  add("two takes of one free lease that overlap take it once: the generation rises by one and the handler stays held", { timing: { renewMs: 10_000, lapseMs: 30_000 } }, async (ctx) => {
+    let core: BusCore | undefined;
+    const inert: EventBus = Object.freeze({
+      manifest: ctx.bus.manifest,
+      create: (handed: BusCore) => { core = handed; return { start: async () => {}, stop: async () => {}, deliver: async () => {} }; },
+    });
+    // Another live process holds h at registration, so this one does not take it.
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha", "multi.Beta", "multi.Echo"]);
+    await ctx.layer.transaction((tx) => ops(tx).writeHandlerLease({ name: "h", kind: "process", position: 0, events: ["multi.Alpha"], generation: 3, runId: OTHER }));
+    const binding = ctx.scenario("old-list", { bus: inert });
+    await ctx.start(binding);
+    assert(!core!.handlers.some((each) => each.name === "h"), "h is held by the other process");
+    await ctx.layer.transaction((tx) => ops(tx).deleteProcess(OTHER));
+    await Promise.all([resumeHandler(binding, "h"), resumeHandler(binding, "h")]);
+    const lease = (await ctx.lease("h"))!;
+    assert(lease.runId === (await ownRunId(ctx)) && lease.generation === 4, `h was taken once, at generation 4, got ${JSON.stringify(lease)}`);
+    const handler = core!.handlers.find((each) => each.name === "h");
+    assert(handler !== undefined, "h is held");
+    assert(await core!.position(handler) === 0, "position of a held handler is not MESH_HANDLER_LOST");
+  });
+
   add("a handler the bus stopped after a failure keeps its lease while its process lives, so no other process takes it", { timing: IN_PROCESS }, async (ctx) => {
     const failing: EventsModule = { handlers: { process: { h: { events: [Alpha], run: () => { throw new FrameworkError("not retryable"); } } } } };
     const binding = ctx.bind(FULL, failing);
@@ -539,6 +560,24 @@ export function multiProcessChecks(
     const forgotten = await forgetByName(ctx.layer, "ghost", { multiProcess: true });
     assert(forgotten.kind === "handler" && forgotten.position === 0, JSON.stringify(forgotten));
     assert((await forgetByName(ctx.layer, "feed", { multiProcess: true })).kind === "subscription", "a crashed process's subscription row is dropped");
+  });
+
+  add("a subscription that ends at a row only another live build declares names that process, before any deletion pass", { timing: { renewMs: 10_000, lapseMs: 30_000 } }, async (ctx) => {
+    let core: BusCore | undefined;
+    // A bus that never delivers, so no deletion pass runs and the check alone feeds the subscription.
+    const inert: EventBus = Object.freeze({
+      manifest: ctx.bus.manifest,
+      create: (handed: BusCore) => { core = handed; return { start: async () => {}, stop: async () => {}, deliver: async () => {} }; },
+    });
+    await ctx.writeFake(OTHER, {}, ["multi.Alpha", "multi.Beta", "multi.Echo", "multi.Gone"]);
+    const binding = ctx.scenario("empty", { bus: inert });
+    await ctx.start(binding);
+    const subscription = await subscribe(binding, { name: "feed", after: 0 }, () => {});
+    const [g1] = await ctx.publish(ctx.bind(WITH_GONE, {}), [Gone, 1]);
+    const live = core!.subscriptions().find((each) => each.name === "feed")!;
+    await live.feed(await core!.rows(0, 10));
+    const ended = await subscription.done;
+    assert(ended instanceof EventUndeclaredError && ended.position === g1 && ended.message.includes("(pid 4242 on host elsewhere) can open this subscription"), `the end names the declaring process, got ${String(ended)}`);
   });
 
   add("subscribe: a name open under another live process row is refused naming it; one open under a lapsed row reopens; the row records its owner", { timing: { renewMs: 30, lapseMs: 200 } }, async (ctx) => {

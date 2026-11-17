@@ -97,6 +97,10 @@ export class MultiClaim implements ClaimStrategy {
   #known: ReadonlySet<string> = new Set();
   /** The live process rows the last deletion batch read, for its orphan report. */
   #passProcesses: readonly DeliveryProcessRow[] = [];
+  /** Handlers whose take transaction is running, so overlapping take loops never take one lease twice. */
+  readonly #taking = new Set<string>();
+  /** The live process rows of the last read that refreshed `#known`: at registration, each tick, a fence, a pass. */
+  #liveRows: readonly DeliveryProcessRow[] = [];
   #passKnown: ReadonlySet<string> = new Set();
   /** `renamedFrom` moves that wait until no live process registers the former name: new name to former (rule R7). */
   readonly #renames = new Map<string, string>();
@@ -106,7 +110,9 @@ export class MultiClaim implements ClaimStrategy {
 
   constructor(readonly deliverer: Deliverer) {}
 
+  /** The known declared set of the live process rows just read; the rows are kept for the declarer hint (rule S4). */
   #knownOf(rows: readonly DeliveryProcessRow[]): ReadonlySet<string> {
+    this.#liveRows = rows;
     return new Set([...this.deliverer.declared, ...rows.flatMap((row) => row.declared)]);
   }
 
@@ -204,8 +210,11 @@ export class MultiClaim implements ClaimStrategy {
     for (const name of this.#registered.keys()) {
       if (only !== undefined && name !== only) continue;
       if (!this.#active()) return;
-      if (this.#held.has(name) || this.#renames.has(name)) continue;
+      // A take of this handler already running (register's, a tick's, resumeHandler's) is not repeated: two would both
+      // raise the generation, and the first one's held generation would no longer match the row.
+      if (this.#held.has(name) || this.#renames.has(name) || this.#taking.has(name)) continue;
       let taken: number | undefined;
+      this.#taking.add(name);
       try {
         taken = await this.deliverer.layer.transaction(async (tx) => {
           const ops = multiOperations(tx);
@@ -227,14 +236,16 @@ export class MultiClaim implements ClaimStrategy {
           await ops.writeHandlerLease({ ...row, runId: RUN_ID, generation });
           return generation;
         });
+        if (taken !== undefined && this.#active()) {
+          this.#held.set(name, taken);
+          this.#handlers = undefined;
+        }
       } catch (error) {
         // A lock wait ends this round of takes; the next tick tries again.
         if (error instanceof DatabaseBusyError) return;
         throw error;
-      }
-      if (taken !== undefined && this.#active()) {
-        this.#held.set(name, taken);
-        this.#handlers = undefined;
+      } finally {
+        this.#taking.delete(name);
       }
     }
   }
@@ -566,7 +577,7 @@ export class MultiClaim implements ClaimStrategy {
   /** A live process row whose build declares `event`, for a subscription's message (rule S4). */
   declarer(event: string): string | undefined {
     if (!this.#known.has(event)) return undefined;
-    const row = this.#passProcesses.find((each) => each.runId !== RUN_ID && each.declared.includes(event));
+    const row = this.#liveRows.find((each) => each.runId !== RUN_ID && each.declared.includes(event));
     return row ? who(row) : "another live process";
   }
 }

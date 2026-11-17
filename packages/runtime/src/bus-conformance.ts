@@ -669,6 +669,9 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       try { for (let i = 0; i < 3; i++) await after.deliver(); } finally { console.warn = warn; }
       const reports = lines.filter((line) => line.includes('"gone"'));
       assert(reports.length === 1 && reports[0]!.includes("mesh events forget gone"), `reports: ${JSON.stringify(lines)}`);
+      // In delivery from several processes a row is an orphan only when no live process registers it (rule K5).
+      const why = declares.has("multi-process") ? "is registered by no live process" : "is not registered by this deliverer";
+      assert(reports[0]!.includes(why), `the report says the handler ${why}: ${reports[0]}`);
     });
 
     // ---- replay ----
