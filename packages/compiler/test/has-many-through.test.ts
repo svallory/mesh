@@ -428,29 +428,18 @@ describe("rollups and bodies", () => {
     expect(result.diagnostics[1]!.message).toBe("count :blockerCount reads has-many :blockers, which cannot be loaded: app.Dependency has 2 belongs-to back to app.Task (:dependent, :prerequisite) and has-many :blockers does not say which it follows");
   });
 
-  test("a rollup over a link whose read policy reads the record is refused until rollups take a row condition", () => {
-    const result = school({
-      student: computed("count :courseCount of=&courses"),
-      enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :own types=[:read]\n      authorize-if=({ actor }) => &student.id === actor.id\n"),
-    });
-    expect(result.diagnostics.map(brief)).toEqual([expect.objectContaining({
-      code: "MESH_NOT_IMPLEMENTED",
-      message: "count :courseCount reaches app.Enrollment, whose read policy :own reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now",
-      at: "app/student.mesh.mx:9:4",
-    })]);
-  });
-
-  test("a rollup over a through whose far entity alone has a read policy that reads the record is refused, naming it", () => {
-    const result = school({
-      student: computed("count :courseCount of=&courses"),
-      enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :open types=[:read]\n      authorize-if=({ actor }) => actor.id !== null\n"),
-      course: course("  policies\n    policy :credited types=[:read]\n      authorize-if=() => &credits > 0\n"),
-    });
-    expect(result.diagnostics.map(brief)).toEqual([expect.objectContaining({
-      code: "MESH_NOT_IMPLEMENTED",
-      message: "count :courseCount reaches app.Course, whose read policy :credited reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now",
-      at: "app/student.mesh.mx:9:4",
-    })]);
+  test("a rollup over a link or a far entity whose read policy reads the record builds: the load folds each condition into its table", () => {
+    for (const [enrollmentPolicies, coursePolicies] of [
+      ["  actions auto=[:read]\n  policies\n    policy :own types=[:read]\n      authorize-if=({ actor }) => &student.id === actor.id\n", undefined],
+      ["  actions auto=[:read]\n  policies\n    policy :open types=[:read]\n      authorize-if=({ actor }) => actor.id !== null\n", "  policies\n    policy :credited types=[:read]\n      authorize-if=() => &credits > 0\n"],
+    ] as const) {
+      const result = school({
+        student: computed("count :courseCount of=&courses\n    sum :credits of=&courses.credits"),
+        enrollment: enrollment(undefined, enrollmentPolicies),
+        ...(coursePolicies ? { course: course(coursePolicies) } : {}),
+      });
+      expect(result.diagnostics.map(brief)).toEqual([]);
+    }
   });
 
   test("a body reads the list of far records, and needs the relationship alone", () => {

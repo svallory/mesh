@@ -1,7 +1,7 @@
 import { and, eq, getTableColumns, inArray, is, sql, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
 import { FrameworkError, MeshError, ROLLUP_ANCHORS, uuidv7, type CapabilityManifest, type Condition, type DataOperations, type Filter, type Key, type Query, type RollupQuery, type RollupRow, type Row, type TableHandle } from "@meshfw/runtime";
 import { columnOf, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
-import { hopLink, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
+import { conditionSql, hopLink, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 
 export { columnOf, filterCondition, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
 export { classOfNode, conditionSql, hopLink, orderSql, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
@@ -194,6 +194,10 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       if (!(["count", "sum", "avg", "min", "max"] as readonly string[]).includes(query.fn)) throw new FrameworkError(`Unknown rollup function "${String(query.fn)}"; use count, sum, avg, min or max`);
       if (!Array.isArray(query.anchors)) throw new FrameworkError("A rollup's anchors must be a list");
       if (query.anchors.length > ROLLUP_ANCHORS) throw new FrameworkError(`A rollup takes at most ${ROLLUP_ANCHORS} anchors, and this one has ${query.anchors.length}: ask in chunks`);
+      // A row condition (a read policy folded into a caller's load) on the start or on a hop runs only where conditions do.
+      const narrowed = query.where !== undefined || (Array.isArray(query.hops) && query.hops.some((step) => step?.where !== undefined || step?.linkWhere !== undefined));
+      if (narrowed && !declared("conditions")) throw new FrameworkError(`A rollup with a where runs a condition as SQL, and the ${capabilities?.adapter ?? "Drizzle"} data layer does not declare the conditions capability`);
+      const where = (root: Table, condition: Condition | undefined) => (condition === undefined ? sql`` : sql` and (${conditionSql(root, condition, conditions)})`);
       const table = commands.table(query.table);
       const anchor = columnOf(table, query.anchor);
       let value: Column;
@@ -201,10 +205,11 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       if (query.hops === undefined) {
         value = columnOf(table, query.value);
         if (query.anchors.length === 0) return [];
-        statement = sql`select ${anchor} as "anchor", ${rollupValue(query.fn, sql`${value}`, value, commands.dialect)} as "value" from ${table} where ${inArray(anchor, query.anchors as never[])} group by ${anchor}`;
+        statement = sql`select ${anchor} as "anchor", ${rollupValue(query.fn, sql`${value}`, value, commands.dialect)} as "value" from ${table} where ${inArray(anchor, query.anchors as never[])}${where(table, query.where)} group by ${anchor}`;
       } else {
         // A joined route: the owner table is `h0`, each hop's table `h1`, `h2`, ... (a link table `hl1`, ...), joined by
-        // the hop printer of conditions. The distinct derived table keeps each last row once per anchor (R12), however
+        // the hop printer of conditions, each hop's `where` in its `on` and its `linkWhere` in the link's subquery (their
+        // own subqueries alias `t1`, `l1`, ..., which no route alias takes). The distinct derived table keeps each last row once per anchor (R12), however
         // many paths reach it; an inner join drops a hop that matches nothing.
         if (!declared("joins")) throw new FrameworkError(`A rollup with hops crosses relationships, which runs as a join, and the ${capabilities?.adapter ?? "Drizzle"} data layer does not declare the joins capability`);
         if (!Array.isArray(query.hops) || query.hops.length === 0) throw new FrameworkError("A rollup's hops must be a non-empty list of { hop }; a rollup over one table has none");
@@ -219,7 +224,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
           const n = index + 1;
           last = commands.table(hop.table);
           const far = commands.dialect.alias(last, `h${n}`);
-          joins.push(sql` inner join ${last} as ${sql.identifier(`h${n}`)} on ${hopLink(hop, aliases[index]!, far, `hl${n}`, conditions)}`);
+          joins.push(sql` inner join ${last} as ${sql.identifier(`h${n}`)} on ${hopLink(hop, aliases[index]!, far, `hl${n}`, conditions, step.linkWhere)}${where(far, step.where)}`);
           aliases.push(far);
         });
         const reached = aliases[aliases.length - 1]!;
@@ -228,7 +233,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
         value = columnOf(last, query.value);
         const v = columnOf(reached, query.value);
         if (query.anchors.length === 0) return [];
-        statement = sql`select "anchor", ${rollupValue(query.fn, sql`"v"`, value, commands.dialect)} as "value" from (select distinct ${from} as "anchor", ${key} as "k", ${v} as "v" from ${table} as ${sql.identifier("h0")}${sql.join(joins)} where ${inArray(from, query.anchors as never[])}) as "reached" group by "anchor"`;
+        statement = sql`select "anchor", ${rollupValue(query.fn, sql`"v"`, value, commands.dialect)} as "value" from (select distinct ${from} as "anchor", ${key} as "k", ${v} as "v" from ${table} as ${sql.identifier("h0")}${sql.join(joins)} where ${inArray(from, query.anchors as never[])}${where(aliases[0]!, query.where)}) as "reached" group by "anchor"`;
       }
       const numeric = query.fn === "count" || query.fn === "sum" || query.fn === "avg";
       return (await commands.rows(statement)).map((row) => ({

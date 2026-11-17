@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { FrameworkError, bindCondition, type Condition, type DataLayer, type DataOperations } from "@meshfw/runtime";
+import { FrameworkError, bindCondition, type Condition, type DataLayer, type DataOperations, type RollupQuery } from "@meshfw/runtime";
 import { dataLayerConditionConformance, expressionTablesThroughLayer, type ConditionFixture } from "@meshfw/runtime/testing";
 import { capabilities, createSchema, sqlite } from "../src/index.ts";
 
@@ -146,6 +146,15 @@ describe("the suites catch adapters that break the contract", () => {
       count: (table, attribute, filter, where) => tx.count(table, attribute, filter, where?.kind === "some" ? undefined : where),
       max: (table, attribute, filter, where) => tx.max(table, attribute, filter, where?.kind === "some" ? undefined : where),
     })), "max and count honour a where that crosses a relationship"));
+  test("a layer whose rollup drops where", () =>
+    fails(broken((tx) => ({ rollup: (query) => tx.rollup({ ...query, where: undefined }) })), "rollup honours where on a one-table route"));
+  for (const [what, drop] of [
+    ["the start's where", (query: RollupQuery) => ({ ...query, where: undefined })],
+    ["a hop's where", (query: RollupQuery) => ({ ...query, hops: query.hops?.map(({ hop, linkWhere }) => ({ hop, linkWhere })) })],
+    ["a hop's linkWhere", (query: RollupQuery) => ({ ...query, hops: query.hops?.map(({ hop, where }) => ({ hop, where })) })],
+  ] as const)
+    test(`a layer whose rollup with hops drops ${what}`, () =>
+      fails(broken((tx) => ({ rollup: (query) => tx.rollup(drop(query)) })), "rollup with hops honours the where of its start, of each hop and of a link"));
   test("a manifest without conditions fails its own check", async () => {
     const check = dataLayerConditionConformance(make, { ...capabilities, capabilities: capabilities.capabilities.filter((name) => name !== "conditions") })["the manifest declares conditions"];
     expect(check).toBeDefined();
@@ -194,6 +203,8 @@ describe("the suites catch adapters that break the contract", () => {
       "a through hop counts a far row once and skips a link with no exit",
       "an order key may cross a relationship",
       "max and count honour a where that crosses a relationship",
+      "rollup honours where on a one-table route",
+      "rollup with hops honours the where of its start, of each hop and of a link",
     ]);
     expect(Object.keys(dataLayerConditionConformance(make, capabilities)).sort()).toEqual([...proven].sort());
   });

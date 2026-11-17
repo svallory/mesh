@@ -113,11 +113,20 @@ export interface RollupQuery {
   readonly hops?: readonly RollupHop[] | undefined;
   /** With `hops`: the primary key of the last hop's table, which tells its rows apart. */
   readonly key?: string | undefined;
+  /**
+   * The rows of `table` that count (a one-table route) or that a joined route starts from, as `Query.where`: a row it
+   * does not make true is left out. Requires `conditions` (and `joins` for a condition with a hop); absent, every row.
+   */
+  readonly where?: Condition | undefined;
 }
 
 /** One hop of a rollup's joined route: a relationship, as a condition's `Hop` states it. */
 export interface RollupHop {
   readonly hop: Hop;
+  /** The rows of the hop's table that the route reaches, as `RollupQuery.where`; absent, every row it leads to. */
+  readonly where?: Condition | undefined;
+  /** A hop through a link entity: the link rows it may follow, as `where`; absent, every link row. */
+  readonly linkWhere?: Condition | undefined;
 }
 
 /**

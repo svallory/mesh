@@ -52,18 +52,20 @@ function memory(tables: Record<string, Row[]>) {
       const values = rowsOf(table).filter((row) => matches(row, filter) && holds(row, where)).map((row) => row[attribute]).filter((v): v is number => v != null);
       return values.length ? Math.max(...values) : null;
     },
-    rollup: async ({ fn, table, anchor, anchors, value, hops, key: last }: { fn: string; table: unknown; anchor: string; anchors: unknown[]; value: string; hops?: { hop: Hop<unknown> }[]; key?: string }) => {
-      const route = hops ? ` via ${hops.map(({ hop }) => `${hop.through ? `${(hop.through.table as { name: string }).name}>` : ""}${(hop.table as { name: string }).name}`).join(".")}` : "";
-      calls.push(`rollup ${fn} ${(table as { name: string }).name}.${value} by ${anchor}${route} [${anchors.join(",")}]`);
+    rollup: async ({ fn, table, anchor, anchors, value, hops, key: last, where }: { fn: string; table: unknown; anchor: string; anchors: unknown[]; value: string; hops?: { hop: Hop<unknown>; where?: unknown; linkWhere?: unknown }[]; key?: string; where?: unknown }) => {
+      // `where`, `[where]` after a hop's table and `[link where]` after its link name each row condition the call carries.
+      const narrowed = (condition: unknown, label: string) => (condition === undefined ? "" : `[${label}]`);
+      const route = hops ? ` via ${hops.map(({ hop, where: at, linkWhere }) => `${hop.through ? `${(hop.through.table as { name: string }).name}${narrowed(linkWhere, "where")}>` : ""}${(hop.table as { name: string }).name}${narrowed(at, "where")}`).join(".")}` : "";
+      calls.push(`rollup ${fn} ${(table as { name: string }).name}.${value} by ${anchor}${route}${describeWhere(where)} [${anchors.join(",")}]`);
       if (anchors.length > 500) throw new Error("this test double takes at most 500 anchors, as the contract says");
       // A joined route: each hop from the rows the one before reached; the last rows once each, by their key.
-      const follow = (from: Row[], { hop }: { hop: Hop<unknown> }) => from.flatMap((row) => {
-        if (!hop.through) return rowsOf(hop.table).filter((far) => far[hop.column] != null && far[hop.column] === row[hop.outer]);
-        const exits = rowsOf(hop.through.table).filter((link) => link[hop.through!.entry] === row[hop.outer] && link[hop.through!.exit] != null).map((link) => link[hop.through!.exit]);
-        return rowsOf(hop.table).filter((far) => exits.includes(far[hop.column]));
+      const follow = (from: Row[], { hop, where: at, linkWhere }: { hop: Hop<unknown>; where?: unknown; linkWhere?: unknown }) => from.flatMap((row) => {
+        if (!hop.through) return rowsOf(hop.table).filter((far) => far[hop.column] != null && far[hop.column] === row[hop.outer] && holds(far, at));
+        const exits = rowsOf(hop.through.table).filter((link) => link[hop.through!.entry] === row[hop.outer] && link[hop.through!.exit] != null && holds(link, linkWhere)).map((link) => link[hop.through!.exit]);
+        return rowsOf(hop.table).filter((far) => exits.includes(far[hop.column]) && holds(far, at));
       });
       return anchors.flatMap((key) => {
-        const start = rowsOf(table).filter((row) => row[anchor] === key);
+        const start = rowsOf(table).filter((row) => row[anchor] === key && holds(row, where));
         const reached = hops ? [...new Map(hops.reduce(follow, start).map((row) => [row[last!], row])).values()] : start;
         if (reached.length === 0) return [];
         const values = reached.map((row) => row[value]).filter((v): v is number => v != null);
@@ -621,15 +623,14 @@ describe("a batched rollup under the read policies of what it reaches", () => {
     expect((await loadRows(policed(handle, adminOnly), "Node", tx, rows, ["ownerRank"], { actor: { id: "admin" }, policies: true }))[0]!.ownerRank).toBe(7);
     expect((await loadRows(policed(handle, adminOnly), "Node", tx, rows, ["ownerRank"]))[0]!.ownerRank).toBe(7);
   });
-  test("a target whose read policy reads the record is refused before anything is asked, which the build refuses first", async () => {
-    const { tx, calls, handle } = data();
+  test("a target whose read policy reads the record narrows the batched rollup; a privileged load is not narrowed", async () => {
+    const { tx, calls, handle } = memory({ nodes: [{ id: 1, parentId: null, ownerId: 10, by: "a" }, { id: 2, parentId: 1, ownerId: 10, by: "b", size: 4 }, { id: 3, parentId: 1, ownerId: 10, by: "a", size: 6 }], owners: [{ id: 10, rank: 7, by: "a" }] });
     const rows = [{ id: 1, parentId: null, ownerId: 10 }];
-    await expect(loadRows(policed(handle, byRecord), "Node", tx, rows, ["ownerRank"], { actor: { id: "a" }, policies: true }))
-      .rejects.toThrow("max :ownerRank of=&owner.rank on Node reaches Owner, whose read policy reads the record; a rollup restricted row by row arrives with M10's SQL rollups");
-    await expect(loadRows(policed(handle, open, byRecord), "Node", tx, rows, ["sizeSum"], { actor: { id: "a" }, policies: true })).rejects.toThrow("sum :sizeSum of=&children.size on Node reaches Node");
-    expect(calls).toEqual([]);
+    expect((await loadRows(policed(handle, byRecord, byRecord), "Node", tx, rows, ["ownerRank", "sizeSum"], { actor: { id: "a" }, policies: true }))[0]).toMatchObject({ ownerRank: 7, sizeSum: 6 });
+    expect(calls).toEqual(["rollup max owners.rank by id where [10]", "rollup sum nodes.size by parentId where [1]"]);
+    expect((await loadRows(policed(handle, byRecord, byRecord), "Node", tx, rows, ["ownerRank", "sizeSum"], { actor: { id: "b" }, policies: true }))[0]).toMatchObject({ ownerRank: null, sizeSum: 4 });
     // Through privileged no policy runs, so nothing restricts it.
-    expect((await loadRows(policed(handle, open, byRecord), "Node", tx, rows, ["sizeSum"]))[0]!.sizeSum).toBe(4);
+    expect((await loadRows(policed(handle, open, byRecord), "Node", tx, rows, ["sizeSum"]))[0]!.sizeSum).toBe(10);
   });
 });
 
@@ -742,6 +743,75 @@ describe("a read policy that reads the record admits a caller's load row by row"
     const base = owned(handle);
     const free = { ...base, Owner: { ...base.Owner!, reads: [open] } } as LoadPlan;
     await loadRows(free, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer: {} });
+  });
+
+  test("a batched rollup over a joined route carries each entity's condition: the start, every hop", async () => {
+    const { tx, calls, handle } = memory({
+      nodes: [{ id: 1, parentId: null, ownerId: 10, by: "a", size: 1 }, { id: 2, parentId: 1, ownerId: 11, by: "a", rank: 5, size: 4 }, { id: 3, parentId: 1, ownerId: 10, by: "b", rank: 9, size: 6 }],
+      owners: [{ id: 10, by: "a" }, { id: 11, by: "b" }],
+    });
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    calls.length = 0;
+    const a = await loadRows(owned(handle), "Node", tx, rows, ["siblingRank", "ownerSize", "deep"], { actor: { id: "a" }, policies: true });
+    // siblingRank starts at the parent (a belongs-to) and goes to its children; ownerSize at the owner and goes to its nodes.
+    expect(a.map((row) => [row.siblingRank, row.ownerSize, row.deep])).toEqual([[null, 1, 0], [5, null, 0], [5, 1, 0]]);
+    expect(calls).toEqual([
+      "rollup sum nodes.rank by id via nodes[where] where [1]",
+      "rollup sum owners.size by id via nodes[where] where [10,11]",
+      "rollup count nodes.id by id via nodes[where].nodes[where] [1,2,3]",
+    ]);
+    // Node 1 is a's: for b the route's start is not admitted, so the siblings are never reached; owner 11 is b's, and its
+    // only node is a's.
+    const b = await loadRows(owned(handle), "Node", tx, rows, ["siblingRank", "ownerSize"], { actor: { id: "b" }, policies: true });
+    expect(b.map((row) => [row.siblingRank, row.ownerSize])).toEqual([[null, null], [null, null], [null, null]]);
+  });
+
+  test("a rollup admitted row by row never counts the related rows a computed body loaded for itself", async () => {
+    const { tx, calls, handle } = memory({ nodes: [{ id: 1, parentId: null, ownerId: 10, by: "a" }, { id: 2, parentId: 1, ownerId: 10, by: "a", rank: 5 }, { id: 3, parentId: 1, ownerId: 10, by: "b", rank: 9 }], owners: [{ id: 10, by: "a" }] });
+    const rows = [{ id: 1, parentId: null, ownerId: 10 }];
+    // childCount loads every child for its body; the caller's min and count are queried with the condition instead.
+    const b = await loadRows(owned(handle), "Node", tx, rows, ["childCount", "rankMin", "kids"], { actor: { id: "b" }, policies: true });
+    expect(b[0]).toMatchObject({ childCount: 2, rankMin: 9, kids: 1 });
+    expect(calls).toContain("rollup min nodes.rank by parentId where [1]");
+    // With no row condition the loaded children answer the min, with no query of its own.
+    const base = owned(handle);
+    const free = { ...base, Node: { ...base.Node!, reads: [open] } } as LoadPlan;
+    calls.length = 0;
+    expect((await loadRows(free, "Node", tx, rows, ["childCount", "rankMin"], { actor: { id: "b" }, policies: true }))[0]).toMatchObject({ childCount: 2, rankMin: 5 });
+    expect(calls.filter((call) => call.startsWith("rollup"))).toEqual([]);
+  });
+
+  test("on a route of required belongs-to a row the condition excludes is null, and a key that names no row is still the error", async () => {
+    const { tx, calls, handle } = memory({ nodes: [], owners: [{ id: 10, by: "b", rank: 7 }] });
+    const rows = [{ id: 1, parentId: null, ownerId: 10 }, { id: 2, parentId: null, ownerId: 99 }];
+    await expect(loadRows(owned(handle), "Node", tx, rows, ["ownerRank"], { actor: { id: "a" }, policies: true }))
+      .rejects.toThrow("`max :ownerRank of=&owner.rank` on Node 2 reaches no Owner row: a key on its path points at a row that does not exist");
+    // The excluded anchors are asked once more with no condition, to tell an excluded row from a dangling key.
+    expect(calls).toEqual(["rollup max owners.rank by id where [10,99]", "rollup max owners.rank by id [10,99]"]);
+    expect((await loadRows(owned(handle), "Node", tx, rows.slice(0, 1), ["ownerRank"], { actor: { id: "a" }, policies: true }))[0]!.ownerRank).toBeNull();
+    expect((await loadRows(owned(handle), "Node", tx, rows.slice(0, 1), ["ownerRank"], { actor: { id: "b" }, policies: true }))[0]!.ownerRank).toBe(7);
+    // A count over an excluded required belongs-to is 0, as over no row at all, never null.
+    expect((await loadRows(owned(handle), "Node", tx, rows.slice(0, 1), ["ownerRank", "ownerCount"], { actor: { id: "a" }, policies: true }))[0])
+      .toMatchObject({ ownerRank: null, ownerCount: 0 });
+  });
+
+  test("on a joined route of required belongs-to a row the condition hides partway is null, and a dangling key on a hop is still the error", async () => {
+    const { tx, calls, handle } = memory({
+      nodes: [],
+      owners: [{ id: 10, by: "a", bossId: 100 }, { id: 11, by: "b", bossId: 101 }, { id: 12, by: "a", bossId: 999 }, { id: 13, by: "a", bossId: 102 }],
+      bosses: [{ id: 100, by: "a", rank: 3 }, { id: 101, by: "a", rank: 4 }, { id: 102, by: "b", rank: 5 }],
+    });
+    const base = owned(handle);
+    const policed = { ...base, Boss: { ...base.Boss!, reads: [mine("by")] } } as LoadPlan;
+    // Node 1 reaches its owner and boss; node 2's owner is b's; node 3's owner is a's, its boss b's: both hidden, so null.
+    const rows = [{ id: 1, parentId: null, ownerId: 10 }, { id: 2, parentId: null, ownerId: 11 }, { id: 3, parentId: null, ownerId: 13 }];
+    const a = await loadRows(policed, "Node", tx, rows, ["bossRank"], { actor: { id: "a" }, policies: true });
+    expect(a.map((row) => row.bossRank)).toEqual([3, null, null]);
+    // The excluded anchors are asked once more with no condition at the start nor on any hop.
+    expect(calls).toEqual(["rollup max owners.rank by id via bosses[where] where [10,11,13]", "rollup max owners.rank by id via bosses [11,13]"]);
+    // Owner 12 is a's, and its boss 999 does not exist: the error, as a privileged load gives it.
+    await expect(loadRows(policed, "Node", tx, [{ id: 4, parentId: null, ownerId: 12 }], ["bossRank"], { actor: { id: "a" }, policies: true }))
+      .rejects.toThrow("`max :bossRank of=&owner.boss.rank` on Node 4 reaches no Boss row: a key on its path points at a row that does not exist");
   });
 
   test("a check that reads the record with no condition to fold is a framework error", async () => {
@@ -948,7 +1018,7 @@ describe("a has-many through a link entity", () => {
         expect([link, far, loaded[0]!.courseRollup, calls.length]).toEqual([link, far, link && far ? 3 : 0, link && far ? 1 : 0]);
       }
     });
-    test("a link whose read policy reads the record is refused before any query: the batched rollup takes no row condition yet", async () => {
+    test("a link whose read policy reads the record narrows the link rows the rollup follows", async () => {
       const { tx, calls, handle } = data();
       const base = school(handle);
       const literal: ConditionLiteral<unknown> = { what: "policy :mine authorize-if", entity: "Enrollment", tree: { kind: "value", value: true, class: "boolean" }, params: () => [] };
@@ -956,11 +1026,13 @@ describe("a has-many through a link entity", () => {
         run: (() => { throw new Error("folded, never run"); }) as never, sql: () => ({ ...literal, tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "value", value: "e1", class: "string" }] } }) as never }] };
       const open: PolicySpec = { name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
       const policed = { ...base, Enrollment: { ...base.Enrollment!, reads: [record] }, Course: { ...base.Course!, reads: [open] } } as LoadPlan;
-      await expect(loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true }))
-        .rejects.toThrow("count :courseRollup of=&courses on Student reaches Enrollment, whose read policy reads the record");
-      expect(calls).toEqual([]);
+      // Only e1 (s1 to c13) is admitted: the other enrollments of s1 lead nowhere for this caller.
+      const loaded = await loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true });
+      expect(loaded[0]!.courseRollup).toBe(1);
+      expect(calls).toEqual(["rollup count students.id by id via enrollments[where]>courses [s1]"]);
+      expect((await loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"]))[0]!.courseRollup).toBe(3);
     });
-    test("a far entity whose read policy reads the record is refused too, behind an open link, before any query", async () => {
+    test("a far entity whose read policy reads the record narrows the far rows, behind an open link", async () => {
       const { tx, calls, handle } = data();
       const base = school(handle);
       const literal: ConditionLiteral<unknown> = { what: "policy :credited authorize-if", entity: "Course",
@@ -969,9 +1041,9 @@ describe("a has-many through a link entity", () => {
         run: (() => { throw new Error("folded, never run"); }) as never, sql: () => literal as never }] };
       const open: PolicySpec = { name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
       const policed = { ...base, Enrollment: { ...base.Enrollment!, reads: [open] }, Course: { ...base.Course!, reads: [record] } } as LoadPlan;
-      await expect(loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true }))
-        .rejects.toThrow("count :courseRollup of=&courses on Student reaches Course, whose read policy reads the record");
-      expect(calls).toEqual([]);
+      const loaded = await loadRows(policed, "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courseRollup"], { policies: true });
+      expect(loaded.map((row) => row.courseRollup)).toEqual([1, 0]);
+      expect(calls).toEqual(["rollup count students.id by id via enrollments>courses[where] [s1,s2]"]);
     });
   });
 

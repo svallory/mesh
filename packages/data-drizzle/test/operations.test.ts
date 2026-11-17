@@ -334,3 +334,26 @@ test("rollup with hops is refused without joins, and for an empty list of hops, 
   expect(await operations.rollup({ ...query, anchors: [] })).toEqual([]);
   expect(statements).toEqual([]);
 });
+
+// A read policy folded into a caller's load narrows a rollup's rows: the start's where beside the anchors, each hop's in
+// its join, a link's inside the link subquery, every one against the alias of its own table.
+test("rollup prints each where against its own table, and needs conditions for one", async () => {
+  const is = (name: string, value: string) => ({ kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name, class: "string" }, { kind: "value", value, class: "string" }] }) as const;
+  const { operations, statements } = joined(defineCapabilities("test", ["aggregates", "joins", "conditions"]));
+  await operations.rollup({ fn: "sum", table: students, anchor: "id", anchors: ["s1"], value: "credits", key: "id", where: is("id", "s1"),
+    hops: [{ ...courseHop, where: is("code", "c"), linkWhere: is("id", "e") }] });
+  expect(statements[0]).toEqual({
+    sql: 'select "anchor", sum("v") as "value" from (select distinct "h0"."id" as "anchor", "h1"."id" as "k", "h1"."credits" as "v" from "students" as "h0"'
+      + ' inner join "courses" as "h1" on "h1"."id" in (select "hl1"."courseId" from "enrollments" as "hl1" where "hl1"."studentId" = "h0"."id" and "hl1"."courseId" is not null and (("hl1"."id" = ?)))'
+      + ' and (("h1"."code" = ?)) where "h0"."id" in (?) and (("h0"."id" = ?))) as "reached" group by "anchor"',
+    params: ["e", "c", "s1", "s1"],
+  });
+  const one = { fn: "count", table: students, anchor: "id", anchors: ["s1"], value: "id" } as const;
+  await operations.rollup({ ...one, where: is("id", "s1") });
+  expect(statements[1]!.sql).toBe('select "students"."id" as "anchor", count("students"."id") as "value" from "students" where "students"."id" in (?) and (("students"."id" = ?)) group by "students"."id"');
+  const plain = joined(defineCapabilities("test", ["aggregates", "joins"])).operations;
+  const refused = "A rollup with a where runs a condition as SQL, and the test data layer does not declare the conditions capability";
+  await expect(plain.rollup({ ...one, where: is("id", "s1") })).rejects.toThrow(refused);
+  await expect(plain.rollup({ ...one, key: "id", hops: [{ ...courseHop, where: is("code", "c") }] })).rejects.toThrow(refused);
+  await expect(plain.rollup({ ...one, key: "id", hops: [{ ...courseHop, linkWhere: is("id", "e") }] })).rejects.toThrow(refused);
+});

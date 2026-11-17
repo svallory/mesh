@@ -9,6 +9,8 @@ description: "Decision record 0096: how a rollup reaches the database: the data 
 
 Accepted (lead ruling D33, pending operator review). Amends [ADR-0013](./0013-data-layer-contract-and-capabilities.md) (a new operation, and what `joins` covers) and [ADR-0070](./0070-has-many-via.md) (decision log D14(5): a rollup over a `through=` relationship builds). Builds on [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md), whose `Hop` and hop printer it reuses. The design is `notes/architecture/m10-rollups-design.md`, outside this site.
 
+> **Amendment, 2026-11-17 (rollups under row-level read policies).** Decision 7's build refusal is gone: a read policy that reads the record narrows a caller's rollup over any route. The data layer's `rollup` takes row conditions: `RollupQuery.where` on the rows of `table` (a one-table route's target, or the target a route that starts at a `belongs-to` starts from), and on each `RollupHop` a `where` on the hop's table and, for a link entity, a `linkWhere` on the link rows it follows; each needs `conditions` (and `joins` for a condition that crosses a relationship). The loader hands each entity of the route that admits the caller row by row its condition on its own table, so the rollup aggregates only what the caller may read of every table its path crosses; it never works such a rollup out from rows already loaded (a computed body's copy of them ran no policy), and on a route of required `belongs-to` it asks the anchors the answer left out once more without the conditions, so a row the policies exclude gives `null` (or `0`) while a key that names no row stays an error.
+
 ## Date
 
 2026-11-17
