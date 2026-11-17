@@ -1,9 +1,8 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { Database } from "bun:sqlite";
 import { count, getTableName, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
-import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
+import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
 import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { resolve } from "node:path";
 import { sqliteDialect } from "./dialect.ts";
@@ -70,27 +69,12 @@ function entityTable(handle: TableHandle): SQLiteTable {
   return table;
 }
 
-/** The running transaction: `operations` is set once BEGIN succeeded, and `active` ends with the outer call. */
-interface Token { active: boolean; operations?: DataOperations; failed?: { cause: unknown } }
-
-/**
- * Where a call runs: the outer transaction's callback, or one call joined to it. Each frame queues the calls joined
- * from it, so calls joined to one transaction run one at a time. A call joined from inside another queues on that
- * call's frame, not on the one it waits in, so it never waits for itself.
- */
-interface Frame { readonly token: Token; tail: Promise<void> }
-
-/** What a call that joins a transaction a joined call already failed gets instead of running. */
-function refusal(failed: { cause: unknown }): FrameworkError {
-  return new FrameworkError("A call joined a transaction that an earlier joined call failed, so it was refused before it ran: the transaction rolls back", { cause: failed.cause });
-}
-
 interface State {
   /**
    * Runs `run` alone on the connection, opening it first. The open's switch to WAL waits for a lock, within the one
    * deadline of the call, which `run` receives; schema preparation does not use it and fails at once on a lock.
    */
-  exclusive<T>(run: (db: BunSQLiteDatabase, token: Token, deadline: Deadline) => Promise<T>, options?: WaitOptions): Promise<T>;
+  exclusive<T>(run: (db: BunSQLiteDatabase, deadline: Deadline) => Promise<T>, options?: WaitOptions): Promise<T>;
   /** `layer.transaction` with an internal option: how long to wait for the write lock. */
   transaction<T>(run: (tx: DataOperations) => Promise<T>, options?: WaitOptions): Promise<T>;
 }
@@ -118,9 +102,6 @@ export interface Tuning {
 export interface WaitOptions {
   readonly waitMs?: number;
 }
-
-/** One clock for everything a call waits for: the WAL switch of an open and then `BEGIN IMMEDIATE` share it. */
-interface Deadline { readonly started: number; readonly at: number }
 
 /**
  * True when the error is SQLite saying another connection holds a lock, or wraps one that does (Drizzle wraps what
@@ -187,10 +168,6 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
     "this data layer is unusable: a rollback failed, so its connection may still be inside a transaction. Close it; the next transaction opens a new connection, which for a file database can find the file locked until the old connection is garbage-collected.",
     { cause: unusable },
   );
-  let running = 0;
-  let queued = 0;
-  let tail: Promise<void> = Promise.resolve();
-  const context = new AsyncLocalStorage<Frame>();
   /** Opens the connection; a file database is put in WAL mode, which is a write, so it waits for a lock like BEGIN does. */
   const open = async (deadline: Deadline) => {
     let opened: Database | undefined;
@@ -209,56 +186,79 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       throw cause instanceof FrameworkError || cause instanceof DatabaseBusyError ? cause : connectionError("open a connection", configured.file, cause);
     }
   };
-  const state: State = {
-    exclusive(run, waitOptions) {
-      const fatal = healthError();
-      if (fatal) return Promise.reject(fatal);
-      if (context.getStore()?.token.active) throw new FrameworkError("nested transactions are not supported");
-      queued++;
-      const work = tail.then(async () => {
-        queued--;
-        running++;
-        const token: Token = { active: true };
-        // One clock for the open's WAL switch and BEGIN IMMEDIATE, from when this call reaches the front of the queue.
-        const started = performance.now();
-        const deadline: Deadline = { started, at: started + (waitOptions?.waitMs ?? defaultWaitMs) };
-        try {
-          const fatal = healthError();
-          if (fatal) throw fatal;
-          if (!db) await open(deadline);
-          try { return await context.run({ token, tail: Promise.resolve() }, () => run(db!, token, deadline)); }
-          catch (cause) { throw reportBusy(cause, configured.file); }
-        } finally { token.active = false; running--; }
-      });
-      // Consume the queue link's rejection, not the caller's result. A failed
-      // transaction releases the next one without changing the error it receives.
-      tail = work.then(() => undefined, () => undefined);
-      return work;
+  /** A statement of a running transaction: a lock it meets is reported as `MESH_DATABASE_BUSY` where it happens, not retried. */
+  function busy<T>(statement: () => T): T {
+    try { return statement(); } catch (cause) { throw reportBusy(cause, configured.file); }
+  }
+  // One connection, opened on first use and kept until close(); a failed statement leaves the transaction usable, so
+  // this driver never records one through `failed`.
+  const queue = serialTransactions<BunSQLiteDatabase>({
+    health: healthError,
+    async acquire(deadline) {
+      if (!db) await open(deadline);
+      return db!;
     },
-    transaction: (run, waitOptions) => transactionWith(run, waitOptions),
+    release() {},
+    async begin(database, deadline) {
+      await retryWhileBusy(configured.file, deadline, () => database.run(sql.raw("BEGIN IMMEDIATE")));
+    },
+    operations: (database, guard) => ({ ...drizzleOperations({
+      dialect: sqliteDialect,
+      table: entityTable,
+      insert: (table, row) => busy(() => database.insert(table).values(row).returning().get()!),
+      select: (table, options) => busy(() => {
+        let query = database.select().from(table).$dynamic();
+        if (options?.where) query = query.where(options.where);
+        if (options?.orderBy?.length) query = query.orderBy(...options.orderBy);
+        // SQLite has no OFFSET without LIMIT; Drizzle drops a negative limit, so use the largest safe integer.
+        if (options?.limit !== undefined || options?.offset !== undefined) query = query.limit(options.limit ?? Number.MAX_SAFE_INTEGER);
+        if (options?.offset !== undefined) query = query.offset(options.offset);
+        return query.all();
+      }),
+      aggregate: (table, kind, column, where) => busy(() => {
+        const query = database.select({ value: kind === "max" ? max(column) : count(column) }).from(table).$dynamic();
+        return (where ? query.where(where) : query).get()?.value ?? null;
+      }),
+      update: (table, condition, changes) => busy(() => database.update(table).set(changes).where(condition).returning().all()),
+      delete: (table, condition) => busy(() => database.delete(table).where(condition).returning().all()),
+    }, guard),
+      appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
+      deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
+      ...deliveryOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
+    }),
+    async commit(database) {
+      database.run(sql.raw("COMMIT"));
+    },
+    async rollback(database, cause) {
+      try { database.run(sql.raw("ROLLBACK")); }
+      catch (rollback) {
+        unusable = { transaction: cause, rollback };
+        throw new FrameworkError("Transaction failed and ROLLBACK failed", { cause: unusable });
+      }
+    },
+    report: (cause, stage) => stage === "begin" ? connectionError("run BEGIN IMMEDIATE", configured.file, cause) : reportBusy(cause, configured.file),
+  }, defaultWaitMs);
+  const state: State = {
+    exclusive: (run, waitOptions) => queue.exclusive(run, waitOptions),
+    transaction: (run, waitOptions) => queue.transaction(run, waitOptions),
   };
   const layer: SQLiteLayer = {
     kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: configured,
     // Every layer object over one file names it alike, so core keeps one deliverer and one subscription registry per
     // file; a `:memory:` database is private to its layer object, so each gets a name of its own.
     database: configured.file === ":memory:" ? `:memory: #${++memoryLayers}` : resolve(configured.file),
-    transaction(run, options?: TransactionOptions) { return transactionWith(run, options?.waitMs === undefined ? undefined : { waitMs: options.waitMs }); },
+    transaction(run, options?: TransactionOptions) { return queue.transaction(run, options?.waitMs === undefined ? undefined : { waitMs: options.waitMs }); },
     readOutbox(after, limit) {
       // A statement sent on this connection while a transaction is open would see that transaction's uncommitted rows;
       // inside one, the read is refused rather than queued behind the transaction that is waiting for it.
-      if (context.getStore()?.token.active) {
+      if (queue.insideTransaction()) {
         return Promise.reject(new FrameworkError("The outbox cannot be read inside a transaction: the read sees committed rows only, and a transaction's own events come from published() (from #mesh)"));
       }
-      return state.exclusive(async (database) => busy(() => readOutbox(connection!, after, limit)));
+      return queue.exclusive(async () => busy(() => readOutbox(connection!, after, limit)));
     },
-    refuseIfFailed() {
-      // The same test as the join in `transaction`: true exactly when a call made here would join.
-      const token = context.getStore()?.token;
-      if (!token?.active || !token.operations) return false;
-      if (token.failed) throw refusal(token.failed);
-      return true;
-    },
+    refuseIfFailed: () => queue.refuseIfFailed(),
     async close() {
+      const { running, queued } = queue.counts();
       if (running || queued) throw new FrameworkError(`Cannot close SQLite data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
       connection?.close();
       // Drop both references. Drizzle holds prepared statements, and a live
@@ -271,83 +271,6 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       unusable = undefined;
     },
   };
-  /** A statement of a running transaction: a lock it meets is reported as `MESH_DATABASE_BUSY` where it happens, not retried. */
-  function busy<T>(statement: () => T): T {
-    try { return statement(); } catch (cause) { throw reportBusy(cause, configured.file); }
-  }
-  function transactionWith<T>(run: (tx: DataOperations) => Promise<T>, waitOptions: WaitOptions | undefined): Promise<T> {
-    const frame = context.getStore();
-    if (frame?.token.active && frame.token.operations) {
-      // Joined calls run one at a time: this call waits for the ones joined before it from the same frame, so two
-      // read-then-write calls on one row cannot both read before either writes. It runs in a frame of its own.
-      // Rollback-only: a joined call that fails poisons the whole transaction, even if the
-      // outer callback catches the error, so a half-done inner call can never commit.
-      // Fail fast: once a joined call failed, a call that joins afterwards is refused before its callback runs, at
-      // once or, if it was queued before the failure, when its turn comes.
-      const { token } = frame;
-      if (token.failed) return Promise.reject(refusal(token.failed));
-      const operations = frame.token.operations;
-      const work = frame.tail.then(() => {
-        if (!token.active) throw new FrameworkError("A call joined a transaction that ended before the call's turn came: await every call joined to a transaction before its callback returns");
-        if (token.failed) throw refusal(token.failed);
-        // Inside then, so a callback that throws before returning a promise is caught too.
-        return context.run({ token, tail: Promise.resolve() }, () => run(operations));
-      }).catch((cause: unknown) => { token.failed ??= { cause }; throw cause; });
-      frame.tail = work.then(() => undefined, () => undefined);
-      return work;
-    }
-    return state.exclusive(async (database, token, deadline) => {
-      // The queue is held while this waits, so a write begins only after the one before it has committed.
-      try { await retryWhileBusy(configured.file, deadline, () => database.run(sql.raw("BEGIN IMMEDIATE"))); }
-      catch (cause) { throw connectionError("run BEGIN IMMEDIATE", configured.file, cause); }
-      let active = true;
-      const guard = () => { if (!active) throw new FrameworkError("Transaction operations are no longer active"); };
-      const operations: DataOperations = { ...drizzleOperations({
-        dialect: sqliteDialect,
-        table: entityTable,
-        insert: (table, row) => busy(() => database.insert(table).values(row).returning().get()!),
-        select: (table, options) => busy(() => {
-          let query = database.select().from(table).$dynamic();
-          if (options?.where) query = query.where(options.where);
-          if (options?.orderBy?.length) query = query.orderBy(...options.orderBy);
-          // SQLite has no OFFSET without LIMIT; Drizzle drops a negative limit, so use the largest safe integer.
-          if (options?.limit !== undefined || options?.offset !== undefined) query = query.limit(options.limit ?? Number.MAX_SAFE_INTEGER);
-          if (options?.offset !== undefined) query = query.offset(options.offset);
-          return query.all();
-        }),
-        aggregate: (table, kind, column, where) => busy(() => {
-          const query = database.select({ value: kind === "max" ? max(column) : count(column) }).from(table).$dynamic();
-          return (where ? query.where(where) : query).get()?.value ?? null;
-        }),
-        update: (table, condition, changes) => busy(() => database.update(table).set(changes).where(condition).returning().all()),
-        delete: (table, condition) => busy(() => database.delete(table).where(condition).returning().all()),
-      }, guard),
-        appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
-        deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
-        ...deliveryOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
-      };
-      token.operations = operations;
-      try {
-        const result = await run(operations);
-        active = false;
-        token.active = false; // a call from here on starts a new transaction instead of joining
-        if (token.failed) {
-          throw new FrameworkError("A call joined to this transaction failed, so the transaction is rolled back even though its callback caught the error", { cause: token.failed.cause });
-        }
-        busy(() => database.run(sql.raw("COMMIT")));
-        return result;
-      } catch (cause) {
-        active = false;
-        token.active = false;
-        try { database.run(sql.raw("ROLLBACK")); }
-        catch (rollback) {
-          unusable = { transaction: cause, rollback };
-          throw new FrameworkError("Transaction failed and ROLLBACK failed", { cause: unusable });
-        }
-        throw cause;
-      } finally { active = false; }
-    }, waitOptions);
-  }
   states.set(layer, state);
   return Object.freeze(layer);
 }
