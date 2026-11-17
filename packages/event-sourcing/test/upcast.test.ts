@@ -174,6 +174,35 @@ describe("the events module's upcast, at every reader of stored rows", () => {
     await layer.close();
   });
 
+  test("a live subscription whose upcast throws ends with the FrameworkError, the round goes on, and a reopen resumes from the acknowledged position", async () => {
+    const layer = await database();
+    await appendOld(layer);
+    let fail = true;
+    const handled: unknown[] = [];
+    const binding = bind(layer, {
+      upcast: (stored) => { if (fail) throw new Error("x"); return byHand()(stored); },
+      handlers: { process: { log: Mesh.handler({ events: [InvoicePaid], run: (event: EventRecord<Paid>) => { handled.push(event.payload); } }) } },
+    });
+    const received: unknown[] = [];
+    const subscription = await subscribe(binding as never, { name: "feed", after: 0 }, (event) => { received.push(event.payload); });
+    await binding.deliver();
+    const ended = (await subscription.done) as Error;
+    expect(ended).toBeInstanceOf(FrameworkError);
+    expect(ended.message).toBe("The events module's upcast threw on the billing.InvoicePaid at position 1: x");
+    expect(received).toEqual([]);
+    // The round went on: a row published after it reaches the process handler (which starts from now) once upcast works.
+    fail = false;
+    const current = await payOne(layer);
+    await binding.deliver();
+    expect(handled.map((payload) => (payload as Paid).invoiceId)).toEqual([current]);
+    // Nothing was acknowledged, so the reopened subscription is handed the old row again, now in today's shape.
+    const reopened = await subscribe(binding as never, { name: "feed", after: 0 }, (event) => { received.push(event.payload); });
+    await binding.deliver();
+    expect(received.map((payload) => (payload as Paid).invoiceId)).toEqual([OLD_ID, current]);
+    await reopened.close();
+    await layer.close();
+  });
+
   test("retryFailed replays a set-aside old row in today's shape", async () => {
     const layer = await database();
     await payOne(layer);
@@ -207,15 +236,15 @@ const thrown = (run: () => unknown): Error => {
 
 describe("upcaster() and upcasters()", () => {
   // InvoicePaid's three shapes: v1 `{ invoice }`, v2 `{ invoiceRef }`, v3 (today) `{ invoiceId }`.
-  const v1ToV2 = (payload: Readonly<Record<string, unknown>>) => ("invoice" in payload ? { invoiceRef: payload.invoice } : payload);
-  const v2ToV3 = (payload: Readonly<Record<string, unknown>>) => ("invoiceRef" in payload ? { invoiceId: payload.invoiceRef } : payload);
+  // Written as the user page's sample is: each step keeps every field it does not rename.
+  const v1ToV2 = ({ invoice, ...rest }: Readonly<Record<string, unknown>>) => (invoice === undefined ? rest : { ...rest, invoiceRef: invoice });
+  const v2ToV3 = ({ invoiceRef, ...rest }: Readonly<Record<string, unknown>>) => (invoiceRef === undefined ? rest : { ...rest, invoiceId: invoiceRef });
 
-  test("the steps of an event run in order over every stored shape; today's shape and other events pass through", () => {
+  test("the steps of an event run in order over every stored shape, keeping the fields they do not rename; today's shape and other events pass through", () => {
     const upcast = upcasters(upcaster(InvoicePaid, v1ToV2, v2ToV3));
-    expect(upcast(row({ invoice: "a" }))).toEqual({ invoiceId: "a" });
-    expect(upcast(row({ invoiceRef: "b" }))).toEqual({ invoiceId: "b" });
-    const today = { invoiceId: "c" };
-    expect(upcast(row(today))).toBe(today);
+    expect(upcast(row({ invoice: "a", amount: "12.50", paidAt: "2026-09-01T00:00:00.000Z" }))).toEqual({ invoiceId: "a", amount: "12.50", paidAt: "2026-09-01T00:00:00.000Z" });
+    expect(upcast(row({ invoiceRef: "b", amount: "3" }))).toEqual({ invoiceId: "b", amount: "3" });
+    expect(upcast(row({ invoiceId: "c", amount: "4" }))).toEqual({ invoiceId: "c", amount: "4" });
     const voided = { invoice: "d" };
     expect(upcast(row(voided, "billing.InvoiceVoided"))).toBe(voided);
     expect(Object.isFrozen(upcast)).toBe(true);
