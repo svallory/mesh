@@ -27,6 +27,19 @@ function gate(): { wait: Promise<void>; open: () => void } {
   return { wait, open };
 }
 const settle = <T>(promise: Promise<T>) => promise.then((value) => ({ value }), (error: unknown) => ({ error }));
+/**
+ * Waits until some backend of this database waits on a lock: the transaction the test just started has reached
+ * the statement that queues behind the holder, so releasing the holder now orders the two as the test means.
+ */
+async function lockWaiter(admin: { unsafe(query: string): Promise<Array<{ n: number }>> }): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    const [row] = await admin.unsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock'`);
+    if (row!.n > 0) return;
+    if (Date.now() > deadline) throw new Error("no transaction came to wait on the lock within 20 s");
+    await Bun.sleep(5);
+  }
+}
 const pending = async (promise: Promise<unknown>, ms: number) => {
   let done = false;
   void promise.then(() => { done = true; }, () => { done = true; });
@@ -75,7 +88,7 @@ describeServer("the claim's row lock", () => {
     const one = first.transaction(async (tx) => { await ops(tx).readDeliveryState(); created.open(); await release.wait; });
     await created.wait;
     const two = settle(second.transaction((tx) => ops(tx).readDeliveryState()));
-    await Bun.sleep(100);
+    await lockWaiter(database.admin);
     release.open();
     await one;
     const outcome = await two;
@@ -94,7 +107,8 @@ describeServer("the claim's row lock", () => {
     const handler = handlerLayer.transaction(async (tx) => { await ops(tx).readDeliveryState(); locked.open(); await release.wait; });
     await locked.wait;
     const taking = takeover(other);
-    expect(await pending(taking.done, 300)).toBe(true);
+    await lockWaiter(database.admin);
+    expect(await pending(taking.done, 100)).toBe(true);
     release.open();
     await handler;
     expect(await taking.done).toBe(1);
@@ -107,7 +121,8 @@ describeServer("the claim's row lock", () => {
     const taking = takeover(other, release.wait);
     await taking.claimed;
     const waited = settle(handlerLayer.transaction(async (tx) => (await ops(tx).readDeliveryState()).generation));
-    expect(await pending(waited, 300)).toBe(true);
+    await lockWaiter(database.admin);
+    expect(await pending(waited, 100)).toBe(true);
     release.open();
     await taking.done;
     const outcome = await waited;
@@ -148,11 +163,12 @@ describeServer("the claim's row lock", () => {
       // The takeover waits on the row the first handler transaction holds, then holds it until released.
       const releaseTakeover = gate();
       const taking = takeover(other, releaseTakeover.wait);
-      expect(await pending(taking.claimed, 300)).toBe(true);
+      await lockWaiter(database.admin);
+      expect(await pending(taking.claimed, 100)).toBe(true);
       releaseFirst.open();
       await taking.claimed;
       // The round goes on to event 2, whose handler transaction waits behind the takeover; then the takeover commits.
-      await Bun.sleep(200);
+      await lockWaiter(database.admin);
       releaseTakeover.open();
       await taking.done;
       const first = await round;
@@ -187,7 +203,13 @@ describeServer("the claim's row lock", () => {
       expect(line).toStartWith("READY ");
       setDeliveryTiming({ lapseMs: 1000 });
       const binding = bindDomain({}, layer, { events: { bus: testBus(), load: async () => ({}) } }, new AsyncLocalStorage());
-      const taken = await binding.deliver().then(() => undefined, (error: unknown) => error);
+      // The worker renews every 50 ms, so this claim transaction can meet a renewal on the state row and fail with a
+      // retryable serialization failure (40001) before it reads the claim: retried, as the deliverer's caller would.
+      let taken: unknown;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        taken = await binding.deliver().then(() => undefined, (error: unknown) => error);
+        if (!(taken instanceof DatabaseBusyError && taken.reason === "serialization")) break;
+      }
       expect(taken).toBeInstanceOf(DelivererTakenError);
       expect((taken as DelivererTakenError).holder).toMatchObject({ thisProcess: false, pid: worker.pid, host: hostname() });
       expect((taken as DelivererTakenError).retryable).toBe(true);
