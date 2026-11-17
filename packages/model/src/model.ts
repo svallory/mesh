@@ -89,6 +89,10 @@ export interface Attribute {
   min?: number;
   max?: number;
   match?: RegExpLiteral;
+  /** `message="..."` on the line: what a broken `min`, `max` or `match` reports instead of Mesh's standard message. Absent unless written. */
+  ruleMessage?: string;
+  /** `code="..."` on the line: the issue's code instead of Mesh's standard one (`too_short`, ...). Absent unless written. */
+  ruleCode?: string;
   on?: "create" | "update";
   position: SourcePosition;
 }
@@ -282,7 +286,7 @@ export interface Entity {
  * One field of an event or a command: an attribute line without what concerns storage or creation, so it has no
  * `primaryKey`, `unique`, `default` or `on`.
  */
-export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "position"> & {
+export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "ruleMessage" | "ruleCode" | "position"> & {
   /** Command fields only: the caller may omit the field without admitting null. Absent unless enabled on a non-nullable field. */
   optional?: true;
 };

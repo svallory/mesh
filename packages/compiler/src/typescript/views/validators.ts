@@ -163,15 +163,19 @@ interface LineRule {
 /**
  * The line rules (`min`, `max`, `match`) of a field with Mesh's standard code and message for each: a string's bounds
  * count characters (`too_short`, `too_long`, "must be at least 1 character"), a number's bound its value (`too_small`,
- * `too_big`, "must be at least 0"), a pattern is `no_match`, "must match /p/f". Always min, max, match, in that order.
+ * `too_big`, "must be at least 0"), a pattern is `no_match`, "must match /p/f", unless the line's `message=` or `code=`
+ * gives its own (`ruleMessage`, `ruleCode`). Always min, max, match, in that order.
  */
 function lineRules(field: FieldShape): { min?: LineRule; max?: LineRule; match?: LineRule } {
   const text = field.type === "string";
   const bound = (n: number) => (text ? `${n} character${n === 1 ? "" : "s"}` : `${n}`);
+  // `message=` and `code=` on the line replace the standard values for every rule of the line; one left out keeps them.
+  const rule = (zod: LineRule["zod"], code: string, message: string): LineRule =>
+    ({ zod, code: field.ruleCode ?? code, message: field.ruleMessage ?? message });
   return {
-    ...(field.min !== undefined ? { min: { zod: "too_small", code: text ? "too_short" : "too_small", message: `must be at least ${bound(field.min)}` } } : {}),
-    ...(field.max !== undefined ? { max: { zod: "too_big", code: text ? "too_long" : "too_big", message: `must be at most ${bound(field.max)}` } } : {}),
-    ...(field.match ? { match: { zod: "regex", code: "no_match", message: `must match /${field.match.pattern}/${field.match.flags}` } } : {}),
+    ...(field.min !== undefined ? { min: rule("too_small", text ? "too_short" : "too_small", `must be at least ${bound(field.min)}`) } : {}),
+    ...(field.max !== undefined ? { max: rule("too_big", text ? "too_long" : "too_big", `must be at most ${bound(field.max)}`) } : {}),
+    ...(field.match ? { match: rule("regex", "no_match", `must match /${field.match.pattern}/${field.match.flags}`) } : {}),
   };
 }
 

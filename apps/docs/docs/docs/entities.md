@@ -224,6 +224,7 @@ entity :Post
 | `unique` | The database refuses a second row with that value |
 | `min=`, `max=` | A string's length bounds or a number's value bounds |
 | `match=` | A regular expression a string must match |
+| `message="..."`, `code="..."` | What a broken `min=`, `max=` or `match=` of the line reports instead of Mesh's standard message and code; only on a line that has one of them |
 | `on=:create`, `on=:update` | On a timestamp: fill on insert, or on insert and every later write; callers cannot set it |
 
 `on=:create` and `on=:update` are unrelated to `on:load` on `actions`, which chooses a read.
@@ -449,7 +450,7 @@ entity :Invoice
         ]
 ```
 
-A line rule carries Mesh's standard code and message, and the issue points at the line that holds the rule: `string :title min=1` reports `too_short` and "must be at least 1 character". A check is where you write your own message.
+A line rule carries Mesh's standard code and message, and the issue points at the line that holds the rule: `string :title min=1` reports `too_short` and "must be at least 1 character". `message="..."` and `code="..."` on the same line replace them for every rule of that line; one you leave out keeps the standard value of whichever rule failed. `string :slug match=/^[a-z-]+$/ message="use lower-case letters and hyphens" code="bad_slug"` reports `bad_slug` and that message, and `integer :quantity min=1 max=99 code="quantity"` reports `quantity` with "must be at least 1" or "must be at most 99". Both are fixed text, never blank (`MESH_TEXT`), and a line with none of `min=`, `max=` and `match=` cannot carry them (`MESH_ATTRIBUTE_RULE`): a check is where a rule of your own, with its own message, goes.
 
 | Rule | Type | Code | Message |
 |:--|:--|:--|:--|

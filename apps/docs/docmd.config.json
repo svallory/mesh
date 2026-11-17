@@ -498,6 +498,10 @@
             {
               "title": "0092. Concepts are found by MX's scan and stored as one JSON value",
               "path": "/architecture/decisions/0092-concepts-are-found-by-mx-and-stored-as-one-json-value/"
+            },
+            {
+              "title": "0093. A line rule's own message and code",
+              "path": "/architecture/decisions/0093-line-rule-message-and-code/"
             }
           ]
         },

@@ -294,7 +294,7 @@ function attributeReaders(
   const applyOptions = (tag: Tag) => {
     const result: Pick<
       Attribute,
-      "nullable" | "default" | "values" | "min" | "max" | "match"
+      "nullable" | "default" | "values" | "min" | "max" | "match" | "ruleMessage" | "ruleCode"
     > = { nullable: opt(tag, "nullable") === true };
     // A json validates only that the value is JSON, and null is JSON (ADR-0069): it always accepts null,
     // so the model says nullable for it, and a `nullable` the author wrote is redundant.
@@ -325,6 +325,11 @@ function attributeReaders(
     const match = nodeOf(attr(tag, "match"));
     if (match)
       result.match = { pattern: match.pattern!, flags: match.flags ?? "" };
+    // Text only: MX refuses any other value, and the contract a blank one (`MESH_TEXT`).
+    const message = opt(tag, "message");
+    if (typeof message === "string") result.ruleMessage = message;
+    const code = opt(tag, "code");
+    if (typeof code === "string") result.ruleCode = code;
     return result;
   };
   const shape = (tag: Tag) => ({
@@ -407,7 +412,24 @@ function attributeReaders(
         );
     }
   };
-  return { at, pos, fail, opt, shape, checkShape };
+  /**
+   * `message=` and `code=` change what a line rule reports, so a line with none of `min`, `max` and `match` cannot carry
+   * them: `MESH_ATTRIBUTE_RULE` at the option's name, once per option.
+   */
+  const checkRuleText = (tag: Tag, field: Pick<Attribute, "min" | "max" | "match">) => {
+    if (field.min !== undefined || field.max !== undefined || field.match) return;
+    for (const key of ["message", "code"] as const) {
+      const option = attr(tag, key);
+      if (option)
+        fail(
+          "MESH_ATTRIBUTE_RULE",
+          `${key} sets what min, max and match report, and this line has none of them`,
+          at("nameSpan" in option && option.nameSpan ? option.nameSpan.sourceStart : attrOffset(option)),
+          `add the rule, or remove ${key}`,
+        );
+    }
+  };
+  return { at, pos, fail, opt, shape, checkShape, checkRuleText };
 }
 
 /**
@@ -420,7 +442,7 @@ function readInputLines(
   holder: Tag,
   { readers, memberLine }: { readers: ReturnType<typeof attributeReaders>; memberLine: (line: Tag) => InputField | undefined },
 ): InputField[] {
-  const { fail, shape, checkShape } = readers;
+  const { fail, shape, checkShape, checkRuleText } = readers;
   const input: InputField[] = [];
   const names = new Set<string>();
   for (const line of tags(tags(holder.children).find((t) => t.name === "input")?.children ?? [])) {
@@ -434,6 +456,7 @@ function readInputLines(
         fail("MESH_ARGUMENT_OPTIONS", "An argument cannot declare primary-key, unique, on, or a body", line);
       field = { kind: "argument", ...shape(line) } satisfies Argument;
       checkShape(field);
+      checkRuleText(line, field);
     }
     const name = field.kind === "member" ? field.ref.name : field.name;
     if (names.has(name)) fail("MESH_DUPLICATE_INPUT", `Duplicate input name ${name}`, line);
@@ -870,7 +893,7 @@ function buildEntity(
   const readersFor = (src: LineSource): SectionReaders => {
     const sourceIndex = sources.indexOf(src);
     const readers = attributeReaders(src.source, file, diagnostics, src.at);
-    const { at, pos, fail, opt, shape, checkShape } = readers;
+    const { at, pos, fail, opt, shape, checkShape, checkRuleText } = readers;
     const { entity: references, event: eventReferences, command: commandReferences } = src.scope.references;
     const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish"): Expression =>
       expression(
@@ -1120,6 +1143,7 @@ function buildEntity(
         if (field.primaryKey && field.nullable)
           fail("MESH_PRIMARY_KEY", "A primary key cannot be nullable", tag);
         checkShape(field);
+        checkRuleText(tag, field);
         entity.attributes.push(field);
       }
     };
@@ -1537,7 +1561,8 @@ function buildAggregate(
 /**
  * An event or a command: a file of its own whose root line declares it and whose children are field lines
  * (`notes/spec/events-and-commands.md`, "Events" and "Commands"). A field line is an attribute line with the options that
- * constrain a value only: `nullable`, `values`, `min`, `max` and `match`, plus `optional` for commands. What concerns storage or creation, `default`,
+ * constrain a value only: `nullable`, `values`, `min`, `max` and `match`, `message` and `code` beside a rule (ADR-0092),
+ * plus `optional` for commands. What concerns storage or creation, `default`,
  * `unique`, `primary-key` and `on`, is `MESH_UNKNOWN_OPTION`, since the declaration is a message that carries what its
  * sender put in it, with no row behind it (and `value`, a computed field's body, is no option of one either). A contract
  * is per tag and the field kinds are the attribute types, so the contract cannot tell a field from an attribute, and the
@@ -1577,7 +1602,7 @@ function buildDeclarationBody(
   diagnostics: Diagnostic[],
   module: string,
 ): EventDeclaration | CommandDeclaration {
-  const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const { at, pos, fail, opt, shape, checkShape, checkRuleText } = attributeReaders(source, file, diagnostics);
   const name = declaredName(root);
   // The name is PascalCase or is made so (`event :invoicePaid` is the class `InvoicePaid`): no warning about the spelling.
   // `invoice_paid` is the class `InvoicePaid` (`notes/spec/names.md`); a name that makes no identifier (`_1`) is an error.
@@ -1596,14 +1621,15 @@ function buildDeclarationBody(
     const field = shape(tag);
     // `default` is refused above; what it holds is not checked against the type as well.
     checkShape({ ...field, default: undefined });
+    checkRuleText(tag, field);
     if (names.has(field.name)) fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${field.name}`, tag);
     // The generated class has a property per field: `__proto__` would set the prototype, and a class cannot have a field named `constructor`.
     if (field.name === PROTOTYPE_SETTING_NAME || field.name === "constructor")
       fail("MESH_ATTRIBUTE_NAME", `:${field.name} cannot be a field name: ${field.name === "constructor" ? "the generated class has its constructor under that name" : "__proto__ sets an object's prototype instead of adding a property"}. Choose another name.`, tag);
     names.add(field.name);
     // `default`, which `shape` reads, is no part of a field.
-    const { name: fieldName, type, nullable, values, min, max, match, position } = field;
-    fields.push({ name: fieldName, type, nullable, ...(root.name === "command" && !nullable && opt(tag, "optional") === true ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
+    const { name: fieldName, type, nullable, values, min, max, match, ruleMessage, ruleCode, position } = field;
+    fields.push({ name: fieldName, type, nullable, ...(root.name === "command" && !nullable && opt(tag, "optional") === true ? { optional: true as const } : {}), ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), ...(ruleMessage !== undefined ? { ruleMessage } : {}), ...(ruleCode !== undefined ? { ruleCode } : {}), position });
   }
   return {
     name,

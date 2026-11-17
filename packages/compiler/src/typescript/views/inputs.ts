@@ -55,6 +55,8 @@ export type FieldShape = Pick<
   | "min"
   | "max"
   | "match"
+  | "ruleMessage"
+  | "ruleCode"
   | "position"
 >;
 /** The names a read's input reserves beside its own arguments; `load` only on an entity that has something to load. */
