@@ -510,6 +510,10 @@
             {
               "title": "0094. Run-time points for event extensions: contributed handler kinds",
               "path": "/architecture/decisions/0094-run-time-points-for-event-extensions/"
+            },
+            {
+              "title": "0096. Rollups run as one grouped query per route",
+              "path": "/architecture/decisions/0096-rollups-run-as-one-grouped-query-per-route/"
             }
           ]
         },

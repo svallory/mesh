@@ -436,7 +436,7 @@ The release adds three diagnostic codes and gives a position to one error that h
 | References: entity targets (`MESH_UNKNOWN_ENTITY`), relationship inverses, rollup paths, and later `on=` | Mesh | `resolveReference` in `src/front-end/references.ts`; `src/front-end/relationships.ts`; `src/front-end/rollups.ts` |
 | Member semantics: an assignment to a member in an expression (`MESH_MEMBER_ASSIGN`), an unknown member (`MESH_UNKNOWN_MEMBER`); MX lowers `&a = 1` to `self.a = 1` without complaint | Mesh | `buildModel`; `src/front-end/rollups.ts`; the back end's views |
 | Expressions: free variables, the translatable subset, the scope roots, `%.now` and `%.today` | Mesh | `src/front-end/expression.ts`; `checkExpressions` in `src/model/check-expressions.ts` |
-| The not-implemented rule ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)) and the model rules: policies, checks, timing | Mesh | `src/model/lifecycle-limits.ts`, `src/model/policies.ts`, `src/front-end/rollups.ts` |
+| The not-implemented rule ([ADR-0018](../decisions/0018-not-implemented-is-a-build-error.md)) and the model rules: policies, checks, timing | Mesh | `src/model/lifecycle-limits.ts`, `src/model/policies.ts` |
 | Generated names and paths (`MESH_EMIT_NAME`, `MESH_EMIT_PATH`) | Mesh | the back end, `src/typescript/` |
 | Only `packages/compiler` mentions `@mxlang` (the docs site's highlighter aside), and inside it only the front end imports it | Mesh | `checkMxImports` (M1 test 8); `test/architecture.test.ts` |
 | No Mesh code imports MX core's syntax modules | Mesh | `test/no-core-syntax-import.test.ts` |
