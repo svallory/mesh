@@ -202,12 +202,94 @@ export function declaredHandlers(module: EventsModule, bus: EventBus, events: Re
   return out.sort((a, b) => (a.registered.name < b.registered.name ? -1 : a.registered.name > b.registered.name ? 1 : 0));
 }
 
+/** What registration writes for one declared handler (`handlerStart`), before the claim strategy sets its generation. */
+export interface HandlerStart {
+  /** The handler's row: its own name, kind and list, at the position it is handled from. */
+  readonly row: Omit<HandlerProgressRow, "generation">;
+  /** The former name whose row this one takes over (`renamedFrom`): the strategy deletes that row. */
+  readonly former: string | undefined;
+  /** What to log once the registration commits. */
+  readonly logs: readonly string[];
+}
+
+/**
+ * The spec's Registration table for one handler, shared by every claim strategy so a change to it lands once: a known
+ * handler keeps its position and takes the list it registers now (an added event is logged with the position it is
+ * handled from); a handler with no row takes over the row of its `renamedFrom`, when that has one; any other starts at
+ * the highest position ever assigned (`highest`).
+ */
+export function handlerStart(
+  declared: Pick<DeclaredHandler, "registered" | "renamedFrom">, progress: ReadonlyMap<string, HandlerProgressRow>, highest: number,
+): HandlerStart {
+  const { registered, renamedFrom } = declared;
+  const logs: string[] = [];
+  let found = progress.get(registered.name);
+  let former: string | undefined;
+  if (!found && renamedFrom !== undefined) {
+    found = progress.get(renamedFrom);
+    if (found) {
+      former = renamedFrom;
+      logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} takes over the progress of ${JSON.stringify(renamedFrom)} (renamedFrom), at position ${found.position}`);
+    }
+  }
+  const row = { name: registered.name, kind: registered.kind, position: found ? found.position : highest, events: registered.events };
+  if (found) {
+    const known = found.events;
+    const added = registered.events.filter((name) => !known.includes(name));
+    if (added.length > 0)
+      logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} now lists ${added.join(", ")}, handled from position ${found.position} on`);
+  }
+  return { row, former, logs };
+}
+
+/**
+ * The part of a deliverer that touches the database claim (`mesh_outbox_state`) and the fencing of every write by it,
+ * behind one interface so delivery from several processes can replace it. `SingleClaim` is the one claim per database
+ * of the spec's "The deliverer".
+ */
+interface ClaimStrategy {
+  /** The generation a subscription row opened in this process is written under. */
+  readonly generation: number;
+  /** Claim and register in one transaction; starts the renewals. Resolves with the deleted-through position it read. */
+  register(declared: readonly DeclaredHandler[]): Promise<number>;
+  /** One renewal; schedules the next while the claim is held. */
+  tick(): Promise<void>;
+  /** Stop renewing and write nothing (the instance was lost, or is releasing). */
+  halt(): void;
+  /** What `core.handlers` returns. */
+  handlers(): readonly RegisteredHandler[];
+  /** What `core.lists` answers. */
+  lists(handler: RegisteredHandler, row: OutboxRow): boolean;
+  /** In the handler transaction: the fence, then the progress row; null when `row` is handled already. */
+  fenceHandler(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<HandlerProgressRow | null>;
+  /** The short transaction that closes a `listen` handler's run: the fence again, then the position moves to `row`. */
+  settleListen(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<void>;
+  /** After `runHandler` rejected with `error`, outside its transaction. */
+  afterReject(handler: RegisteredHandler, error: unknown): Promise<void>;
+  /** In each deletion batch's transaction: the fence; the state the batch computes from. */
+  fenceBatch(ops: DeliveryOperations): Promise<DeliveryState>;
+  /** True for a progress row this instance delivers, which the deletion pass may move. */
+  holds(row: HandlerProgressRow): boolean;
+  /** The deletion pass's move of a handler this instance holds; resolves with the row as it stands. */
+  moveHandler(ops: DeliveryOperations, row: HandlerProgressRow, to: number): Promise<HandlerProgressRow>;
+  /** The deletion pass's move of a subscription; resolves with the row as it stands. */
+  moveSubscription(ops: DeliveryOperations, row: SubscriptionProgressRow, to: number): Promise<SubscriptionProgressRow>;
+  /** Whether a batch deletes rows (the `keep` in force). */
+  deletes(state: DeliveryState): boolean;
+  /** True for a row the orphan report names: a handler no live registration holds, a subscription not open here for the orphan age. */
+  isOrphan(row: HandlerProgressRow | SubscriptionProgressRow, state: DeliveryState): boolean;
+  /** `resumeHandler(name)`: the handler to hand the bus instance, if this instance delivers it. */
+  resume(name: string): Promise<RegisteredHandler | undefined>;
+  /** Release the claim where it is still this instance's; a lock failure is ignored, any other unless `quiet`. */
+  release(quiet: boolean): Promise<void>;
+}
+
 /** How many kept rows lie above `position`: what an orphan holds. */
 const held = (state: DeliveryState, position: number) => Math.max(0, state.highest - Math.max(position, state.deletedThrough));
 
 /**
  * One bus instance and the claims it delivers under: made by `startDelivery()` (one claim, until `stop()`) or kept by a
- * binding's `deliver()` rounds (a claim per round), until the claim is lost.
+ * binding's `deliver()` rounds (a claim per round), until the claim is lost. What touches the claim is its strategy's.
  */
 class Deliverer {
   readonly db: DatabaseState;
@@ -215,8 +297,7 @@ class Deliverer {
   readonly keep: "until-delivered" | "all";
   readonly instance: EventBusInstance;
   readonly core: BusCore;
-  /** The generation of the claim held now, or of the last one. */
-  generation = 0;
+  readonly strategy: ClaimStrategy;
   /** True while this instance holds the claim. */
   holding = false;
   /** When this process last claimed or renewed (`Date.now()`), for this process's own `MESH_DELIVERER_TAKEN`. */
@@ -224,24 +305,24 @@ class Deliverer {
   lost: DelivererLostError | undefined;
   /** The handlers registered for the current claim, by name. */
   #handlers = new Map<string, DeclaredHandler>();
-  #registered: readonly RegisteredHandler[] = Object.freeze([]);
-  readonly #declared: string[];
+  /** The FQNs of every event this build declares, sorted. */
+  readonly declared: readonly string[];
   /** The read head: the highest position a read through `core.rows` returned, from the deleted-through position at each claim. */
   #readHead = 0;
-  #renewal: ReturnType<typeof setTimeout> | undefined;
   readonly #lostListeners = new Set<(error: Error) => void>();
 
   constructor(readonly binding: Binding, readonly layer: DataLayer, readonly events: ReadonlyMap<string, EventClass>, readonly config: EventsConfig, readonly module: EventsModule) {
     this.db = databases.get(layer);
     this.bus = checkedBus(config.bus);
     this.keep = config.keep ?? "until-delivered";
-    this.#declared = [...events.keys()].sort();
+    this.declared = [...events.keys()].sort();
+    this.strategy = new SingleClaim(this);
     const self = this;
     this.core = Object.freeze({
       rows: (after: number, limit: number) => self.read(after, limit),
-      get handlers() { return self.#registered; },
+      get handlers() { return self.strategy.handlers(); },
       position: (handler: RegisteredHandler) => self.position(handler),
-      lists: (handler: RegisteredHandler, row: OutboxRow) => handler.events.includes(row.name) || !self.events.has(row.name),
+      lists: (handler: RegisteredHandler, row: OutboxRow) => self.strategy.lists(handler, row),
       runHandler: (handler: RegisteredHandler, row: OutboxRow) => self.runHandler(handler, row),
       retry: (handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]) => self.retry(handler, row, delays),
       isRetryable,
@@ -254,114 +335,30 @@ class Deliverer {
     this.instance = this.bus.create(this.core, Object.freeze({ keep: this.keep }));
   }
 
+  /** The generation subscription rows opened in this process are written under: the claim's. */
+  get generation(): number {
+    return this.strategy.generation;
+  }
+
   /** The error to throw when the instance cannot go on: the loss, or a call made while no claim is held. */
-  #live(): void {
+  live(): void {
     if (this.lost) throw this.lost;
     if (!this.holding) throw new FrameworkError("The bus called into core while its instance holds no claim: a bus calls core only between start() and stop(), or during deliver()");
   }
 
-  /**
-   * Claim and register, in one transaction (spec, "The claim", "Registration"). Succeeds when the claim is empty or
-   * lapsed, or holds this process's run id while none of its instances holds it; raises the generation by one; writes
-   * every handler's row by the registration table; moves `renamedFrom` rows; and marks this process's open
-   * subscriptions as open under the new generation.
-   */
+  /** Claim and register through the strategy (spec, "The claim", "Registration"); this instance then holds the claim. */
   async claim(declared: readonly DeclaredHandler[]): Promise<void> {
     if (this.db.deliverer !== undefined && this.db.deliverer !== this) throw takenHere(this.db, this.db.deliverer);
     if (this.holding) throw takenHere(this.db, this);
     this.db.deliverer = this;
     try {
-      const logs: string[] = [];
-      const result = await this.layer.transaction(async (tx) => {
-        const ops = operations(tx);
-        const state = await ops.readDeliveryState();
-        const claim = state.claim;
-        if (claim && !lapsed(claim, state.now) && claim.runId !== RUN_ID) throw new DelivererTakenError(holderOf(this.db.name, claim, state.now));
-        const generation = state.generation + 1;
-        await ops.writeClaim({ runId: RUN_ID, generation, pid: PID, startedAt: STARTED_AT });
-        const progress = new Map((await ops.readHandlerProgress()).map((row) => [row.name, row]));
-        for (const { registered, renamedFrom } of declared) {
-          let row = progress.get(registered.name);
-          if (!row && renamedFrom !== undefined) {
-            const former = progress.get(renamedFrom);
-            if (former) {
-              await ops.deleteHandlerProgress(former.name);
-              progress.delete(former.name);
-              row = { ...former, name: registered.name };
-              logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} takes over the progress of ${JSON.stringify(renamedFrom)} (renamedFrom), at position ${former.position}`);
-            }
-          }
-          if (!row) {
-            await ops.writeHandlerProgress({ name: registered.name, kind: registered.kind, position: state.highest, events: registered.events, generation });
-            continue;
-          }
-          const added = registered.events.filter((name) => !row.events.includes(name));
-          if (added.length > 0)
-            logs.push(`Mesh: the handler ${JSON.stringify(registered.name)} now lists ${added.join(", ")}, handled from position ${row.position} on`);
-          await ops.writeHandlerProgress({ name: registered.name, kind: registered.kind, position: row.position, events: registered.events, generation });
-        }
-        if (this.db.subscriptions.size > 0) {
-          for (const row of await ops.readSubscriptionProgress())
-            if (this.db.subscriptions.has(row.name)) await ops.writeSubscriptionProgress({ ...row, open: true, generation });
-        }
-        return { generation, deletedThrough: state.deletedThrough };
-      });
-      for (const line of logs) console.info(line);
-      this.generation = result.generation;
-      this.#readHead = result.deletedThrough;
+      this.#readHead = await this.strategy.register(declared);
       this.#handlers = new Map(declared.map((entry) => [entry.registered.name, entry]));
-      this.#registered = Object.freeze(declared.map((entry) => entry.registered));
       this.holding = true;
       this.renewedAt = Date.now();
-      this.#scheduleRenewal();
     } catch (error) {
       if (this.db.deliverer === this) this.db.deliverer = undefined;
       throw error;
-    }
-  }
-
-  #scheduleRenewal(): void {
-    clearTimeout(this.#renewal);
-    this.#renewal = setTimeout(() => { void this.#renew(); }, timing.renewMs);
-  }
-
-  /**
-   * Renew the claim in one statement matching the run id and the generation; a blocked renewal waits until the lapse.
-   * A `DatabaseBusyError` that is not a lock wait (`reason` other than `"locked"` or `"lock-timeout"`: a serialization
-   * failure, a deadlock, a lost connection) is retried, at once and then every 500 ms, until the renewal succeeds or
-   * the lapse passes; only then is the claim lost, naming the last reason.
-   */
-  async #renew(): Promise<void> {
-    if (!this.holding || this.lost) return;
-    const generation = this.generation;
-    const deadline = this.renewedAt + timing.lapseMs;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const waitMs = Math.max(1, deadline - Date.now());
-        const renewed = await this.layer.transaction((tx) => operations(tx).renewClaim(RUN_ID, generation), { waitMs });
-        if (!this.holding || this.generation !== generation) return;
-        if (!renewed) { this.lose("a renewal of the claim updated no row, so another process has taken it over"); return; }
-        this.renewedAt = Date.now();
-        this.#scheduleRenewal();
-        return;
-      } catch (error) {
-        if (!this.holding || this.generation !== generation) return;
-        if (!(error instanceof DatabaseBusyError)) {
-          this.lose(`a renewal of the claim failed: ${error instanceof Error ? error.message : String(error)}`);
-          return;
-        }
-        if (error.reason === "locked" || error.reason === "lock-timeout") {
-          this.lose("a renewal of the claim stayed blocked by another connection's lock until the claim lapsed");
-          return;
-        }
-        const left = deadline - Date.now();
-        if (left <= 0) {
-          this.lose(`a renewal of the claim kept failing (${error.reason}) until the claim lapsed`);
-          return;
-        }
-        if (attempt > 0) await new Promise<void>((resolve) => { this.#renewal = setTimeout(resolve, Math.min(RENEW_RETRY_MS, left)); });
-        if (!this.holding || this.lost || this.generation !== generation) return;
-      }
     }
   }
 
@@ -369,7 +366,7 @@ class Deliverer {
   lose(reason: string): DelivererLostError {
     if (this.lost) return this.lost;
     const error = this.lost = new DelivererLostError(this.db.name, reason);
-    clearTimeout(this.#renewal);
+    this.strategy.halt();
     this.holding = false;
     if (this.db.deliverer === this) this.db.deliverer = undefined;
     for (const subscription of [...this.db.subscriptions.values()]) subscription.end(error);
@@ -384,31 +381,16 @@ class Deliverer {
    * lock is not reported (this process's next claim takes its own run id over); any other failure is, unless `quiet`.
    */
   async release(quiet: boolean): Promise<void> {
-    clearTimeout(this.#renewal);
+    this.strategy.halt();
     const wasHolding = this.holding;
     this.holding = false;
     if (this.db.deliverer === this) this.db.deliverer = undefined;
     if (!wasHolding || this.lost) return;
-    try {
-      await this.layer.transaction((tx) => operations(tx).releaseClaim(RUN_ID, this.generation));
-    } catch (error) {
-      if (error instanceof DatabaseBusyError || quiet) return;
-      throw error;
-    }
-  }
-
-  /** In the running transaction: go on only while the claim is this instance's; otherwise the instance is lost. */
-  async #checkGeneration(ops: DeliveryOperations): Promise<DeliveryState> {
-    this.#live();
-    const state = await ops.readDeliveryState();
-    if (state.generation !== this.generation || state.claim?.runId !== RUN_ID) {
-      throw this.lose(`another process claimed the database (generation ${state.generation}, this process claimed ${this.generation})`);
-    }
-    return state;
+    await this.strategy.release(quiet);
   }
 
   async read(after: number, limit: number): Promise<OutboxPage> {
-    this.#live();
+    this.live();
     const page = await rows(this.layer, after, limit);
     // A read from `after` means a cursor at `after` exists (a progress row or a subscription's): the bus passed it before.
     const last = page.rows.at(-1)?.position ?? after;
@@ -417,7 +399,7 @@ class Deliverer {
   }
 
   async position(handler: RegisteredHandler): Promise<number> {
-    this.#live();
+    this.live();
     this.#entry(handler);
     const row = await this.layer.transaction(async (tx) => (await operations(tx).readHandlerProgress()).find((each) => each.name === handler.name));
     if (!row) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
@@ -431,21 +413,6 @@ class Deliverer {
     return entry;
   }
 
-  /**
-   * In the running transaction: the generation check, then the handler's progress row; null when the row is at or past
-   * `row` (handled already), else the row. Moving past a listed row the handler has not handled is a `FrameworkError`.
-   */
-  async #progress(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<HandlerProgressRow | null> {
-    await this.#checkGeneration(ops);
-    const progress = (await ops.readHandlerProgress()).find((each) => each.name === handler.name);
-    if (!progress) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
-    if (row.position <= progress.position) return null;
-    const skipped = await ops.firstOutboxRow(progress.position, row.position, handler.events, this.#declared);
-    if (skipped !== null)
-      throw new FrameworkError(`runHandler was asked to handle position ${row.position} for the handler ${JSON.stringify(handler.name)}, whose low-water position is ${progress.position}, while the row at ${skipped}, which it lists, is not handled: a bus hands each handler its rows in order and never skips one`);
-    return progress;
-  }
-
   /** The context the handler runs with: what the events module's `context(event)` returns, else `{ system: true }`. */
   #context(record: EventRecord): ActionContext {
     if (this.module.context === undefined) return { system: true } as ActionContext;
@@ -457,11 +424,20 @@ class Deliverer {
 
   /**
    * Deliver `row` to `handler` (spec, "The handler transaction and progress"): a `process` handler's body runs in the
-   * handler transaction with the generation and progress checks and the progress write; a `listen` handler's body runs
-   * outside any transaction between a check and a short progress write. A body that throws records nothing.
+   * handler transaction with the strategy's fence and the progress write; a `listen` handler's body runs outside any
+   * transaction between a fenced check and a short fenced progress write. A body that throws records nothing.
    */
   async runHandler(handler: RegisteredHandler, row: OutboxRow): Promise<void> {
-    this.#live();
+    try {
+      await this.#run(handler, row);
+    } catch (error) {
+      await this.strategy.afterReject(handler, error);
+      throw error;
+    }
+  }
+
+  async #run(handler: RegisteredHandler, row: OutboxRow): Promise<void> {
+    this.live();
     const entry = this.#entry(handler);
     const eventClass = this.events.get(row.name);
     if (!eventClass) throw new EventUndeclaredError(row.name, row.position);
@@ -473,7 +449,7 @@ class Deliverer {
     if (handler.kind === "process") {
       await handlerScope(this.binding, label, row.id, true, async () => {
         const progress = await this.layer.transaction(async (tx) => {
-          const found = await this.#progress(operations(tx), handler, row);
+          const found = await this.strategy.fenceHandler(operations(tx), handler, row);
           if (found) causedIn(tx, row.id);
           return found;
         });
@@ -483,17 +459,11 @@ class Deliverer {
       });
       return;
     }
-    const progress = await this.layer.transaction((tx) => this.#progress(operations(tx), handler, row));
+    const progress = await this.layer.transaction((tx) => this.strategy.fenceHandler(operations(tx), handler, row));
     if (!progress) return;
     const context = this.#context(record);
     await handlerScope(this.binding, label, row.id, false, () => Promise.resolve(run(context)));
-    await this.layer.transaction(async (tx) => {
-      const ops = operations(tx);
-      await this.#checkGeneration(ops);
-      const current = (await ops.readHandlerProgress()).find((each) => each.name === handler.name);
-      if (!current) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
-      if (current.position < row.position) await ops.writeHandlerProgress({ ...current, position: row.position });
-    });
+    await this.layer.transaction((tx) => this.strategy.settleListen(operations(tx), handler, row));
   }
 
   /**
@@ -519,32 +489,32 @@ class Deliverer {
   }
 
   /**
-   * Core's deletion pass (spec, "The deletion rule"), in batches, each one transaction that checks the generation; moves
-   * this claim's handlers over rows they do not list and every subscription over rows its stored filter drops (never
-   * over an undeclared row); and, under `keep: "until-delivered"`, deletes at or below the lowest of the read head and
-   * every progress and subscription row. Reports orphans.
+   * Core's deletion pass (spec, "The deletion rule"), in batches, each one transaction fenced by the strategy; moves
+   * the handlers this instance holds over rows they do not list and every subscription over rows its stored filter
+   * drops (never over an undeclared row); and, when the strategy deletes, deletes at or below the lowest of the read
+   * head and every progress and subscription row. Reports orphans.
    */
   async deletionPass(): Promise<void> {
-    this.#live();
-    const declared = new Set(this.#declared);
+    this.live();
+    const declared = new Set(this.declared);
     let cursor: number | null | undefined;
     let last: { state: DeliveryState; handlers: readonly HandlerProgressRow[]; subscriptions: readonly SubscriptionProgressRow[] } | undefined;
     for (let guard = 0; guard < 100_000; guard++) {
       if (cursor === undefined) {
-        // Where moving starts: the lowest position among this claim's handlers and the subscriptions; nothing below moves.
+        // Where moving starts: the lowest position among this instance's handlers and the subscriptions; nothing below moves.
         const snapshot = await this.layer.transaction(async (tx) => {
           const ops = operations(tx);
-          const state = await this.#checkGeneration(ops);
+          const state = await this.strategy.fenceBatch(ops);
           return { state, handlers: await ops.readHandlerProgress(), subscriptions: await ops.readSubscriptionProgress() };
         });
-        const movers = [...snapshot.handlers.filter((row) => row.generation === this.generation), ...snapshot.subscriptions].map((row) => row.position);
+        const movers = [...snapshot.handlers.filter((row) => this.strategy.holds(row)), ...snapshot.subscriptions].map((row) => row.position);
         cursor = movers.length === 0 ? null : Math.max(snapshot.state.deletedThrough, Math.min(...movers));
       }
       const page = cursor === null || this.layer.readOutbox === undefined ? null : await this.layer.readOutbox(cursor, timing.batch);
       const from = cursor;
       const outcome = await this.layer.transaction(async (tx) => {
         const ops = operations(tx);
-        const state = await this.#checkGeneration(ops);
+        const state = await this.strategy.fenceBatch(ops);
         const handlers = await ops.readHandlerProgress();
         const subscriptions = await ops.readSubscriptionProgress();
         const end = page === null || from === null ? null : page.rows.length === timing.batch ? page.rows.at(-1)!.position : Math.max(page.settled, page.rows.at(-1)?.position ?? from);
@@ -559,23 +529,19 @@ class Deliverer {
           return Math.max(position, end);
         };
         const handlerRows = await Promise.all(handlers.map(async (row) => {
-          if (row.generation !== this.generation) return row;
+          if (!this.strategy.holds(row)) return row;
           const position = moved(row.position, (outbox) => !row.events.includes(outbox.name));
           if (position === row.position) return row;
-          const next = { ...row, position };
-          await ops.writeHandlerProgress(next);
-          return next;
+          return this.strategy.moveHandler(ops, row, position);
         }));
         const subscriptionRows = await Promise.all(subscriptions.map(async (row) => {
           const position = moved(row.position, (outbox) => !matches(row.filter, outbox));
           if (position === row.position) return row;
-          const next = { ...row, position };
-          await ops.writeSubscriptionProgress(next);
-          return next;
+          return this.strategy.moveSubscription(ops, row, position);
         }));
         let deleted = 0;
         let capped = false;
-        if (this.keep === "until-delivered") {
+        if (this.strategy.deletes(state)) {
           const bound = Math.min(this.#readHead, ...handlerRows.map((row) => row.position), ...subscriptionRows.map((row) => row.position));
           const through = Math.min(bound, state.deletedThrough + timing.batch);
           capped = through < bound;
@@ -601,7 +567,7 @@ class Deliverer {
       return true;
     };
     for (const row of handlers) {
-      if (row.generation === this.generation || !due(`handler:${row.name}`)) continue;
+      if (!this.strategy.isOrphan(row, state) || !due(`handler:${row.name}`)) continue;
       console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is not registered by this deliverer, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
     }
     if (this.keep !== "until-delivered") return;
@@ -610,9 +576,197 @@ class Deliverer {
       if (open) {
         if (!open.lagging(now) || !due(`subscription:${row.name}`)) continue;
         console.warn(`Mesh: the subscription ${JSON.stringify(row.name)} has rows handed to its callback above its acknowledged position, ${row.position}, and has not acknowledged for more than an hour; it holds ${held(state, row.position)} outbox rows. Call ack(position) once a row is processed`);
-      } else if (state.now.getTime() - row.seenAt.getTime() > timing.orphanAgeMs && due(`subscription:${row.name}`)) {
+      } else if (this.strategy.isOrphan(row, state) && due(`subscription:${row.name}`)) {
         console.warn(`Mesh: the subscription ${JSON.stringify(row.name)} has not been open for more than an hour, and its row, acknowledged at position ${row.position}, holds ${held(state, row.position)} outbox rows. If its client is not coming back, drop it with \`mesh events forget ${row.name}\` or forgetSubscription(${JSON.stringify(row.name)})`);
       }
+    }
+  }
+}
+
+/**
+ * Single mode (spec, "The deliverer", "The claim", "The generation check"): one process per database holds the claim in
+ * `mesh_outbox_state` and delivers every handler; every handler, batch and renewal is fenced by the claim's generation.
+ */
+class SingleClaim implements ClaimStrategy {
+  /** The generation of the claim held now, or of the last one. */
+  generation = 0;
+  #registered: readonly RegisteredHandler[] = Object.freeze([]);
+  #renewal: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(readonly deliverer: Deliverer) {}
+
+  /**
+   * Claim and register, in one transaction (spec, "The claim", "Registration"). Succeeds when the claim is empty or
+   * lapsed, or holds this process's run id while none of its instances holds it; raises the generation by one; writes
+   * every handler's row by the registration table (`handlerStart`); moves `renamedFrom` rows; and marks this process's
+   * open subscriptions as open under the new generation.
+   */
+  async register(declared: readonly DeclaredHandler[]): Promise<number> {
+    const { layer, db } = this.deliverer;
+    const logs: string[] = [];
+    const result = await layer.transaction(async (tx) => {
+      const ops = operations(tx);
+      const state = await ops.readDeliveryState();
+      const claim = state.claim;
+      if (claim && !lapsed(claim, state.now) && claim.runId !== RUN_ID) throw new DelivererTakenError(holderOf(db.name, claim, state.now));
+      const generation = state.generation + 1;
+      await ops.writeClaim({ runId: RUN_ID, generation, pid: PID, startedAt: STARTED_AT });
+      const progress = new Map((await ops.readHandlerProgress()).map((row) => [row.name, row]));
+      for (const entry of declared) {
+        const start = handlerStart(entry, progress, state.highest);
+        if (start.former !== undefined) {
+          await ops.deleteHandlerProgress(start.former);
+          progress.delete(start.former);
+        }
+        logs.push(...start.logs);
+        await ops.writeHandlerProgress({ ...start.row, generation });
+      }
+      if (db.subscriptions.size > 0) {
+        for (const row of await ops.readSubscriptionProgress())
+          if (db.subscriptions.has(row.name)) await ops.writeSubscriptionProgress({ ...row, open: true, generation });
+      }
+      return { generation, deletedThrough: state.deletedThrough };
+    });
+    for (const line of logs) console.info(line);
+    this.generation = result.generation;
+    this.#registered = Object.freeze(declared.map((entry) => entry.registered));
+    this.#schedule();
+    return result.deletedThrough;
+  }
+
+  #schedule(): void {
+    clearTimeout(this.#renewal);
+    this.#renewal = setTimeout(() => { void this.tick(); }, timing.renewMs);
+  }
+
+  halt(): void {
+    clearTimeout(this.#renewal);
+  }
+
+  /**
+   * Renew the claim in one statement matching the run id and the generation; a blocked renewal waits until the lapse.
+   * A `DatabaseBusyError` that is not a lock wait (`reason` other than `"locked"` or `"lock-timeout"`: a serialization
+   * failure, a deadlock, a lost connection) is retried, at once and then every 500 ms, until the renewal succeeds or
+   * the lapse passes; only then is the claim lost, naming the last reason.
+   */
+  async tick(): Promise<void> {
+    const deliverer = this.deliverer;
+    if (!deliverer.holding || deliverer.lost) return;
+    const generation = this.generation;
+    const deadline = deliverer.renewedAt + timing.lapseMs;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const waitMs = Math.max(1, deadline - Date.now());
+        const renewed = await deliverer.layer.transaction((tx) => operations(tx).renewClaim(RUN_ID, generation), { waitMs });
+        if (!deliverer.holding || this.generation !== generation) return;
+        if (!renewed) { deliverer.lose("a renewal of the claim updated no row, so another process has taken it over"); return; }
+        deliverer.renewedAt = Date.now();
+        this.#schedule();
+        return;
+      } catch (error) {
+        if (!deliverer.holding || this.generation !== generation) return;
+        if (!(error instanceof DatabaseBusyError)) {
+          deliverer.lose(`a renewal of the claim failed: ${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+        if (error.reason === "locked" || error.reason === "lock-timeout") {
+          deliverer.lose("a renewal of the claim stayed blocked by another connection's lock until the claim lapsed");
+          return;
+        }
+        const left = deadline - Date.now();
+        if (left <= 0) {
+          deliverer.lose(`a renewal of the claim kept failing (${error.reason}) until the claim lapsed`);
+          return;
+        }
+        if (attempt > 0) await new Promise<void>((resolve) => { this.#renewal = setTimeout(resolve, Math.min(RENEW_RETRY_MS, left)); });
+        if (!deliverer.holding || deliverer.lost || this.generation !== generation) return;
+      }
+    }
+  }
+
+  handlers(): readonly RegisteredHandler[] {
+    return this.#registered;
+  }
+
+  lists(handler: RegisteredHandler, row: OutboxRow): boolean {
+    return handler.events.includes(row.name) || !this.deliverer.events.has(row.name);
+  }
+
+  /** In the running transaction: go on only while the claim is this instance's; otherwise the instance is lost. */
+  async #checkGeneration(ops: DeliveryOperations): Promise<DeliveryState> {
+    this.deliverer.live();
+    const state = await ops.readDeliveryState();
+    if (state.generation !== this.generation || state.claim?.runId !== RUN_ID) {
+      throw this.deliverer.lose(`another process claimed the database (generation ${state.generation}, this process claimed ${this.generation})`);
+    }
+    return state;
+  }
+
+  /**
+   * In the running transaction: the generation check, then the handler's progress row; null when the row is at or past
+   * `row` (handled already), else the row. Moving past a listed row the handler has not handled is a `FrameworkError`.
+   */
+  async fenceHandler(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<HandlerProgressRow | null> {
+    await this.#checkGeneration(ops);
+    const progress = (await ops.readHandlerProgress()).find((each) => each.name === handler.name);
+    if (!progress) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
+    if (row.position <= progress.position) return null;
+    const skipped = await ops.firstOutboxRow(progress.position, row.position, handler.events, this.deliverer.declared);
+    if (skipped !== null)
+      throw new FrameworkError(`runHandler was asked to handle position ${row.position} for the handler ${JSON.stringify(handler.name)}, whose low-water position is ${progress.position}, while the row at ${skipped}, which it lists, is not handled: a bus hands each handler its rows in order and never skips one`);
+    return progress;
+  }
+
+  async settleListen(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<void> {
+    await this.#checkGeneration(ops);
+    const current = (await ops.readHandlerProgress()).find((each) => each.name === handler.name);
+    if (!current) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
+    if (current.position < row.position) await ops.writeHandlerProgress({ ...current, position: row.position });
+  }
+
+  afterReject(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  fenceBatch(ops: DeliveryOperations): Promise<DeliveryState> {
+    return this.#checkGeneration(ops);
+  }
+
+  holds(row: HandlerProgressRow): boolean {
+    return row.generation === this.generation;
+  }
+
+  async moveHandler(ops: DeliveryOperations, row: HandlerProgressRow, to: number): Promise<HandlerProgressRow> {
+    const next = { ...row, position: to };
+    await ops.writeHandlerProgress(next);
+    return next;
+  }
+
+  async moveSubscription(ops: DeliveryOperations, row: SubscriptionProgressRow, to: number): Promise<SubscriptionProgressRow> {
+    const next = { ...row, position: to };
+    await ops.writeSubscriptionProgress(next);
+    return next;
+  }
+
+  deletes(): boolean {
+    return this.deliverer.keep === "until-delivered";
+  }
+
+  isOrphan(row: HandlerProgressRow | SubscriptionProgressRow, state: DeliveryState): boolean {
+    if (!("filter" in row)) return row.generation !== this.generation;
+    return !this.deliverer.db.subscriptions.has(row.name) && state.now.getTime() - row.seenAt.getTime() > timing.orphanAgeMs;
+  }
+
+  resume(name: string): Promise<RegisteredHandler | undefined> {
+    return Promise.resolve(this.#registered.find((each) => each.name === name));
+  }
+
+  async release(quiet: boolean): Promise<void> {
+    try {
+      await this.deliverer.layer.transaction((tx) => operations(tx).releaseClaim(RUN_ID, this.generation));
+    } catch (error) {
+      if (error instanceof DatabaseBusyError || quiet) return;
+      throw error;
     }
   }
 }
@@ -1001,7 +1155,7 @@ export async function resumeHandler(binding: Binding, name: string): Promise<voi
   const deliverer = deliveryOf(binding).started;
   if (!deliverer || deliverer.lost)
     throw new FrameworkError(`resumeHandler(${JSON.stringify(name)}) was called on a binding whose delivery is not started in this process: it resumes a handler the running bus stopped. A stopped handler also resumes at the next start (connect() or startDelivery()) and in the next deliver() round`);
-  const handler = deliverer.core.handlers.find((each) => each.name === name);
+  const handler = await deliverer.strategy.resume(name);
   if (!handler)
     throw new FrameworkError(`resumeHandler: no handler named ${JSON.stringify(name)} is registered by this deliverer; it registers ${deliverer.core.handlers.map((each) => JSON.stringify(each.name)).join(", ") || "none"}`);
   if (typeof deliverer.instance.resumeHandler !== "function")
