@@ -68,10 +68,36 @@ const ops = (tx: DataOperations) => tx as DataOperations & DeliveryOperations;
 const deletedThrough = (layer: DataLayer) => layer.transaction(async (tx) => (await ops(tx).readDeliveryState()).deletedThrough);
 const kept = async (layer: DataLayer) => (await layer.readOutbox!(0, 100)).rows.map((row) => row.position);
 
-async function world(keep: Keep, module: EventsModule = { handlers: { process: { h: { events: [Alpha], run: () => {} } } } }) {
+/**
+ * The layer, seen through transactions whose readDeliveryState reports the database's clock `shift` ms ahead of the
+ * process clock, and whose firstOutboxRowSince records the `since` it is asked for.
+ */
+function instrumented(layer: DataLayer, shift: number, since: Date[]): DataLayer {
+  const wrap = (tx: DataOperations) => new Proxy(tx, {
+    get(target, key) {
+      const value = Reflect.get(target, key) as unknown;
+      if (typeof value !== "function") return value;
+      if (key === "readDeliveryState")
+        return async () => { const state = await ops(target).readDeliveryState(); return { ...state, now: new Date(state.now.getTime() + shift) }; };
+      if (key === "firstOutboxRowSince")
+        return async (after: number, through: number, at: Date) => { since.push(at); return (value as (...args: unknown[]) => unknown).call(target, after, through, at); };
+      return (value as (...args: unknown[]) => unknown).bind(target);
+    },
+  });
+  // The layer is frozen, so it is copied, each method bound to it, rather than proxied.
+  const view: Record<string, unknown> = {};
+  for (const key of Object.keys(layer)) {
+    const value = (layer as unknown as Record<string, unknown>)[key];
+    view[key] = typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(layer) : value;
+  }
+  view.transaction = <T>(run: (tx: DataOperations) => Promise<T>) => layer.transaction((tx) => run(wrap(tx)));
+  return view as unknown as DataLayer;
+}
+
+async function world(keep: Keep, module: EventsModule = { handlers: { process: { h: { events: [Alpha], run: () => {} } } } }, view: (layer: DataLayer) => DataLayer = (layer) => layer) {
   const layer = sqlite({ file: ":memory:" });
   await createSchema(layer, tables);
-  const binding = bindDomain(domain, layer, { events: { bus: testBus({ retryDelays: [0, 0] }), keep, load: async () => module } }, new AsyncLocalStorage());
+  const binding = bindDomain(domain, view(layer), { events: { bus: testBus({ retryDelays: [0, 0] }), keep, load: async () => module } }, new AsyncLocalStorage());
   // The first round registers h at the highest position, 0, so it reads every row published after it.
   await binding.deliver();
   return { layer, binding };
@@ -122,6 +148,47 @@ describe("the deletion pass under keep: { days }", () => {
       await binding.deliver();
       expect(await deletedThrough(layer)).toBe(5);
       expect(await kept(layer)).toEqual([6, 7]);
+    } finally { await layer.close(); }
+  });
+
+  test("a young row with more than a batch of passed rows above it ends the pass: it is not capped, so the period is asked a bounded number of times", async () => {
+    const since: Date[] = [];
+    const { layer, binding } = await world({ days: 30 }, undefined, (inner) => instrumented(inner, 0, since));
+    try {
+      await publish(layer, [Alpha, 40 * DAY], [Alpha, 40 * DAY], [Alpha, 0], ...Array.from({ length: 7 }, () => [Alpha, 40 * DAY] as [typeof Alpha, number]));
+      since.length = 0;
+      setDeliveryTiming({ batch: 2 });
+      await binding.deliver();
+      expect(await kept(layer)).toEqual([3, 4, 5, 6, 7, 8, 9, 10]);
+      // The delivery batches ask once each at most; a pass left capped would ask again on every iteration until its guard.
+      expect(since.length).toBeGreaterThan(0);
+      expect(since.length).toBeLessThanOrEqual(10);
+    } finally { await layer.close(); }
+  });
+
+  test("a row's age is measured on the database's clock, not the process clock", async () => {
+    const since: Date[] = [];
+    // The database's clock is 100 days ahead: a row the process stamped a minute ago is 100 days old to it.
+    const { layer, binding } = await world({ days: 30 }, undefined, (inner) => instrumented(inner, 100 * DAY, since));
+    try {
+      await publish(layer, [Alpha, 60_000], [Alpha, 60_000]);
+      const before = Date.now();
+      await binding.deliver();
+      expect(await kept(layer)).toEqual([]);
+      expect(await deletedThrough(layer)).toBe(2);
+      const at = since.at(-1)!.getTime();
+      // SQLite's clock is read in whole milliseconds through julianday, so allow it a second either side.
+      expect(at).toBeGreaterThanOrEqual(before - 1_000 + 100 * DAY - 30 * DAY);
+      expect(at).toBeLessThanOrEqual(Date.now() + 1_000 + 100 * DAY - 30 * DAY);
+    } finally { await layer.close(); }
+  });
+
+  test("the longest legal period keeps every young row", async () => {
+    const { layer, binding } = await world({ days: 100_000_000 });
+    try {
+      await publish(layer, [Alpha, 0], [Alpha, 40 * DAY]);
+      await binding.deliver();
+      expect(await kept(layer)).toEqual([1, 2]);
     } finally { await layer.close(); }
   });
 
