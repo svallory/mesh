@@ -234,7 +234,10 @@ export interface KindHandler {
 /** What a kind reads in the registration transaction. */
 export interface Registration {
   readonly deletedThrough: number;
-  /** True when any outbox row has ever been deleted on this database (`deletedThrough > 0`). */
+  /**
+   * True when any outbox row has ever been deleted on this database: `deletedThrough > 0`, or a non-empty hole record (rows
+   * deleted above a kept one, under a per-event `events.keep`).
+   */
   readonly deletedAny: boolean;
   /** The highest position ever assigned. */
   readonly highest: number;
