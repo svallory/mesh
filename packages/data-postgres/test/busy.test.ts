@@ -66,15 +66,27 @@ describeServer("transient errors on Postgres are DatabaseBusyError with a reason
     const a = await database.freshLayer();
     const b = database.sibling(a);
     const bothRead = { a: gate(), b: gate() };
-    const run = (layer: typeof a, id: string, mine: { open: () => void }, other: { wait: Promise<void> }) => settle(layer.transaction(async (tx) => {
+    const bothInserted = { a: gate(), b: gate() };
+    const inserted = { x: false, y: false };
+    const run = (layer: typeof a, id: "x" | "y", read: [{ open: () => void }, { wait: Promise<void> }], wrote: [{ open: () => void }, { wait: Promise<void> }]) => settle(layer.transaction(async (tx) => {
       const count = (await tx.select(notes)).length;
-      mine.open();
-      await other.wait;
+      read[0].open();
+      await read[1].wait;
       await tx.insert(notes, { id, body: `saw ${count}` });
+      inserted[id] = true;
+      // Neither commits before both inserts ran, so the conflict can only show at COMMIT.
+      wrote[0].open();
+      await wrote[1].wait;
     }));
-    const [one, two] = await Promise.all([run(a, "x", bothRead.a, bothRead.b), run(b, "y", bothRead.b, bothRead.a)]);
+    const [one, two] = await Promise.all([
+      run(a, "x", [bothRead.a, bothRead.b], [bothInserted.a, bothInserted.b]),
+      run(b, "y", [bothRead.b, bothRead.a], [bothInserted.b, bothInserted.a]),
+    ]);
+    // Both inserts resolved, so the DatabaseBusyError came from COMMIT, through the commit stage's report.
+    expect(inserted).toEqual({ x: true, y: true });
     const failures = [one, two].filter((outcome) => "error" in outcome).map((outcome) => (outcome as { error: unknown }).error);
     expect(failures).toHaveLength(1);
+    expect(failures[0]).toBeInstanceOf(DatabaseBusyError);
     expect(failures[0]).toMatchObject({ reason: "serialization", sqlstate: "40001", retryable: true });
   }, 30_000);
 

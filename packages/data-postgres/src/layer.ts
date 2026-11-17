@@ -3,7 +3,7 @@ import { count, getTableColumns, getTableName, is, max, sql, SQL as DrizzleSQL, 
 import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
 import { PgJsonb, PgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
 
@@ -19,8 +19,8 @@ export type PostgresOptions = { readonly url: string | undefined };
 /**
  * What `postgres()` returns: one frozen value that is both the data adapter a project names in `mesh.config.ts` and
  * that adapter's run-time data layer. Building reads the descriptor fields only, so `url` may be undefined while the
- * project builds; nothing connects until the first transaction (or `createSchema`, or `mesh db push`), which throws a
- * `FrameworkError` when `url` is missing.
+ * project builds; nothing connects until the first transaction (or `createSchema`), which throws a `FrameworkError`
+ * when `url` is missing (`mesh db push` exits 1 with the same advice).
  */
 export interface PostgresLayer extends DataAdapter, DataLayer {
   readonly kind: "data-adapter";
@@ -151,7 +151,9 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   const open = (): BunSQL => {
     if (pool) return pool;
     const target = url("postgres");
-    try { pool = new BunSQL(target, { max: 3 }); }
+    // Bun's connect timeout is in seconds and 30 by default; bounded by the layer's lock wait, a connect that never
+    // answers ends soon after the job that asked for it gave up (`reserveWithin`), so close() is not held by it.
+    try { pool = new BunSQL(target, { max: 3, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
     catch (cause) { throw mapPostgresError(cause, label, "connect"); }
     return pool;
   };
@@ -171,10 +173,10 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
 
   const queue = serialTransactions<Connection>({
     health: () => undefined,
-    async acquire(): Promise<Connection> {
+    async acquire(deadline: Deadline): Promise<Connection> {
       const current = open();
       let reserved: ReservedSQL;
-      try { reserved = await current.reserve(); }
+      try { reserved = await reserveWithin(current, deadline); }
       catch (cause) { throw mapPostgresError(cause, label, "connect"); }
       return { reserved, db: drizzle({ client: reserved as unknown as BunSQL }), waitMs: defaultWaitMs, broken: false };
     },
@@ -191,7 +193,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     operations(conn, guard, failed) {
       const run = statement(conn, failed);
       const { db } = conn;
-      return drizzleOperations({
+      return refuseJsonFilters(drizzleOperations({
         dialect: postgresDialect,
         table: entityTable,
         insert: (table, row) => run(async () => (await db.insert(table).values(jsonIn(table, row)).returning(fieldsOf(table)))[0]!),
@@ -216,12 +218,10 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
         }),
         update: (table, condition, changes) => run(async () => await db.update(table).set(jsonIn(table, changes)).where(condition).returning(fieldsOf(table))),
         delete: (table, condition) => run(async () => await db.delete(table).where(condition).returning(fieldsOf(table))),
-      }, guard);
+      }, guard));
     },
     async commit(conn) {
-      const result = await conn.reserved.unsafe("COMMIT");
-      // A COMMIT of a transaction Postgres had aborted resolves with the command tag ROLLBACK instead of failing.
-      if ((result as { command?: string }).command !== "COMMIT") throw abortedError(undefined);
+      checkCommitTag(await conn.reserved.unsafe("COMMIT"));
     },
     async rollback(conn) {
       try { await conn.reserved.unsafe("ROLLBACK"); }
@@ -262,6 +262,65 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
 /** R27's error: a statement failed, so Postgres aborted the transaction, and nothing it wrote was committed. */
 export function abortedError(cause: unknown): FrameworkError {
   return new FrameworkError("A statement of this transaction failed, so Postgres aborted the transaction even though its callback caught the error", cause === undefined ? undefined : { cause });
+}
+
+/**
+ * R27's last line of defence: the result of `COMMIT` must carry the command tag `COMMIT`. A `COMMIT` of a transaction
+ * Postgres had aborted resolves with the tag `ROLLBACK` instead of failing, so anything else throws R27's error.
+ */
+export function checkCommitTag(result: unknown): void {
+  const command = typeof result === "object" && result !== null && "command" in result ? result.command : undefined;
+  if (command !== "COMMIT") throw abortedError(undefined);
+}
+
+/**
+ * The operations, with a filter that compares a `jsonb` column refused before anything runs (`nil` alone is allowed).
+ * A filter's operand goes through Drizzle's `jsonb` encoding, `JSON.stringify`, and Bun.SQL encodes that string as JSON
+ * once more, so `{ eq: "x" }` would compare with the JSON string `"\"x\""` and quietly match the wrong rows. Generated
+ * filters never name a json attribute; a hand-written one gets this error instead of a wrong answer.
+ */
+function refuseJsonFilters(operations: DataOperations): DataOperations {
+  const check = (handle: TableHandle, filter: unknown): void => {
+    if (filter === undefined) return;
+    const columns = getTableColumns(postgresTable(handle));
+    const walk = (node: unknown, depth: number): void => {
+      if (typeof node !== "object" || node === null || Array.isArray(node) || depth > 64) return; // data-drizzle refuses these
+      for (const [key, value] of Object.entries(node)) {
+        if ((key === "and" || key === "or") && Array.isArray(value)) { for (const item of value) walk(item, depth + 1); continue; }
+        const column = columns[key];
+        if (!column || !is(column, PgJsonb) || value === undefined) continue;
+        const operators = typeof value === "object" && value !== null ? Object.keys(value) : [];
+        if (operators.length > 0 && operators.every((operator) => operator === "nil")) continue;
+        throw new FrameworkError(`Filter on "${key}": a json column takes only nil on Postgres, since a filter compares scalars and a jsonb value is not one`);
+      }
+    };
+    walk(filter, 0);
+  };
+  return Object.freeze({
+    ...operations,
+    select: (handle, query) => { try { check(handle, query?.filter); } catch (error) { return Promise.reject(error); } return operations.select(handle, query); },
+    max: (handle: TableHandle, attribute: string, filter?: Filter, where?) => { try { check(handle, filter); } catch (error) { return Promise.reject(error); } return operations.max(handle, attribute, filter, where); },
+    count: (handle: TableHandle, attribute: string, filter?: Filter, where?) => { try { check(handle, filter); } catch (error) { return Promise.reject(error); } return operations.count(handle, attribute, filter, where); },
+  } satisfies DataOperations);
+}
+
+/**
+ * A connection reserved from `pool` before the job's deadline. Bun's own connect timeout is 30 s, longer than any
+ * lock wait, so past the deadline the wait ends with a DatabaseBusyError reason "connection" (`during: "connect"`); a
+ * connection that arrives later goes back to the pool.
+ */
+export async function reserveWithin(pool: Pick<BunSQL, "reserve">, deadline: Deadline): Promise<ReservedSQL> {
+  const remaining = Math.max(1, Math.round(deadline.at - performance.now()));
+  const reserving = pool.reserve();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reserving.then((late) => late.release(), () => undefined);
+      reject(Object.assign(new Error(`no connection within ${remaining} ms`), { code: "ERR_POSTGRES_CONNECTION_TIMEOUT" }));
+    }, remaining);
+  });
+  try { return await Promise.race([reserving, expired]); }
+  finally { clearTimeout(timer); }
 }
 
 /** `max(column)`, a text column compared by code point as everywhere else, decoded as the column decodes. */

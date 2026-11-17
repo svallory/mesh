@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import { FrameworkError } from "@meshfw/runtime";
 import { describeServer, testDatabase } from "./support.ts";
 
 const docs = pgTable("docs", { id: text("id").primaryKey().notNull(), body: jsonb("body") });
@@ -32,5 +33,40 @@ describeServer("json attributes are stored as jsonb values and read back as writ
     const updated = await layer.transaction((tx) => tx.updateByKey(docs, { id }, { body: { replaced: value } }));
     expect(updated!.body).toEqual({ replaced: value });
     expect((await layer.transaction((tx) => tx.select(docs)))[0]!.body).toEqual({ replaced: value });
+  }, 30_000);
+});
+
+describeServer("a filter on a json column", () => {
+  const database = testDatabase({ docs });
+  // Its operand would go through Drizzle's JSON.stringify and then Bun.SQL's own JSON encoding, so `{ eq: "x" }` would
+  // compare with a JSON string and quietly match the wrong rows; it is refused instead, before anything runs.
+  test.each([
+    ["eq", { body: { eq: "x" } }],
+    ["ne", { body: { ne: "x" } }],
+    ["in", { body: { in: ["x"] } }],
+    ["a range", { body: { gt: "a" } }],
+    ["nil beside another operator", { body: { nil: false, eq: "x" } }],
+    ["inside or", { or: [{ id: { eq: "a" } }, { body: { eq: "x" } }] }],
+  ])("%s is refused with a FrameworkError, and the transaction goes on", async (_name, filter) => {
+    const layer = await database.freshLayer();
+    const outcome = await layer.transaction(async (tx) => {
+      await tx.insert(docs, { id: "a", body: "x" });
+      const refused = await tx.select(docs, { filter: filter as never }).catch((cause: unknown) => cause);
+      const counted = await tx.count(docs, "id", filter as never).catch((cause: unknown) => cause);
+      return { refused, counted, rows: (await tx.select(docs)).length };
+    });
+    for (const error of [outcome.refused, outcome.counted]) {
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toBe('Filter on "body": a json column takes only nil on Postgres, since a filter compares scalars and a jsonb value is not one');
+    }
+    expect(outcome.rows).toBe(1);
+  }, 30_000);
+
+  test("nil alone is allowed", async () => {
+    const layer = await database.freshLayer();
+    await layer.transaction(async (tx) => { await tx.insert(docs, { id: "a", body: "x" }); await tx.insert(docs, { id: "b", body: null }); });
+    const rows = await layer.transaction((tx) => tx.select(docs, { filter: { body: { nil: true } } as never }));
+    expect(rows.map((row) => row.id)).toEqual(["b"]);
+    expect(await layer.transaction((tx) => tx.count(docs, "id", { body: { nil: false } } as never))).toBe(1);
   }, 30_000);
 });
