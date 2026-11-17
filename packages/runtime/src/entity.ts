@@ -1,7 +1,7 @@
 import { Answer, answeringLayer, capabilitiesOf, type Decision } from "./answer.ts";
 import type { DataLayer, DataOperations, RawRow, RawStatement, RawValue, Row } from "./data-layer.ts";
 import { failJoined } from "./compose.ts";
-import { FrameworkError } from "./errors.ts";
+import { EventsConfigError, FrameworkError } from "./errors.ts";
 import { pinClock, type Clock } from "./expr.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 import type { BindOptions } from "./lifecycle.ts";
@@ -10,6 +10,7 @@ import { outermost } from "./seams.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { dispatching } from "./dispatch.ts";
 import type { HandlerKind } from "./bus.ts";
+import { NO_RENAMES, renamedMap } from "./stored-names.ts";
 import { causedIn, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
 import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
@@ -159,6 +160,8 @@ interface BindingState {
   readonly entities: Map<string, { readonly value: object; readonly bound: BoundActions; readonly reads: Readonly<Record<string, ReadBody>> }>;
   /** The domain's event classes by FQN: what `readEvents` turns a stored row back into. */
   readonly events: Map<string, EventClass>;
+  /** The checked rename map of `events.renamed` (former FQN to declared FQN), read once at bind; empty without one. */
+  renamed: ReadonlyMap<string, string>;
   /** Calls on this binding that have not settled; `settled` waits for them. */
   inFlight: number;
   readonly idle: (() => void)[];
@@ -521,7 +524,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
 export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding {
   const entities: BindingState["entities"] = new Map();
   const events: BindingState["events"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, inFlight: 0, idle: [], released: false, frame };
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, inFlight: 0, idle: [], released: false, frame };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -554,6 +557,13 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
     throw new FrameworkError(
       `The project declares the event ${[...events.keys()].sort()[0]}, and the data layer has no outbox (no readOutbox): a project that declares an event needs a data adapter with the outbox operations appendEvent, readOutbox and deleteOutboxThrough`,
     );
+  }
+  // The rename map is checked against the domain's events, once: every later read takes the checked map.
+  const renamed = options.events?.renamed;
+  if (renamed !== undefined && events.size > 0) {
+    const checked = renamedMap(renamed, [...events.keys()]);
+    if ("problem" in checked) throw new EventsConfigError(checked.problem);
+    state.renamed = checked.map;
   }
   for (const { value } of entities.values()) frames.set(value, frame);
   const binding: Binding = Object.freeze({
@@ -627,7 +637,7 @@ export async function readEvents(frame: AsyncFrame, connected: Binding | undefin
     throw new FrameworkError("readEvents was called inside a transaction: it reads committed rows only, and a transaction's own events come from published() (from #mesh)");
   const state = store?.state ?? (connected === undefined ? undefined : stateOf(connected));
   if (!state) throw notConnected("readEvents");
-  return counted(state, () => readEventsFrom(state.layer, state.events, query));
+  return counted(state, () => readEventsFrom(state.layer, state.events, query, state.renamed));
 }
 
 /** What `#mesh` exports as `query` (ADR-0087): a template tag running one read-only SQL statement written by hand. */
@@ -769,12 +779,14 @@ export interface BindingParts {
   readonly events: ReadonlyMap<string, EventClass>;
   readonly config: EventsConfig | undefined;
   readonly frame: AsyncFrame;
+  /** The checked rename map (`events.renamed`): a stored former FQN to the declared event it now is. */
+  readonly renamed: ReadonlyMap<string, string>;
 }
 
 /** The parts of `binding` the deliverer reads (`deliverer.ts`); a `FrameworkError` for a value `bind()` did not make. */
 export function bindingParts(binding: Binding): BindingParts {
   const state = stateOf(binding);
-  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame };
+  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame, renamed: state.renamed };
 }
 
 /**

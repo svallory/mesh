@@ -435,6 +435,97 @@ describe("published() and readEvents through a binding", () => {
   });
 });
 
+/** `billing.InvoicePaid` after its declaration moved to `finance` (events.renamed): the same fields, a new FQN. */
+class FinancePaid {
+  readonly #brand = true;
+  static readonly [DECLARATION]: Declaration<FinancePaid> = {
+    kind: "event",
+    fqn: "finance.InvoicePaid",
+    is: (value: unknown): value is FinancePaid => typeof value === "object" && value !== null && #brand in value,
+    dates: ["paidAt"],
+  };
+  readonly invoiceId: string;
+  readonly paidAt: Date;
+  constructor(fields: { invoiceId: string; paidAt: Date }) {
+    if (!(fields.paidAt instanceof Date)) throw new Error("paidAt must be a date");
+    this.invoiceId = fields.invoiceId;
+    this.paidAt = fields.paidAt;
+    Object.freeze(this);
+  }
+}
+
+describe("the rename map (events.renamed) at bind and in readEvents", () => {
+  const moved = { FinancePaid, InvoiceVoided };
+  const renamed = { "billing.InvoicePaid": "finance.InvoicePaid" };
+  /** Rows 1 and 3 stored as billing.InvoicePaid by the build before the move, row 2 a voided, row 4 the moved event. */
+  const setup = async (events?: EventsConfig) => {
+    const memory = memoryLayer();
+    const publish = (event: object) => memory.layer.transaction((tx) => publishEvent(tx, undefined, target, event, {}, clock));
+    await publish(paid("a"));
+    await publish(new InvoiceVoided({ invoiceId: "b" }));
+    await publish(paid("c"));
+    await publish(new FinancePaid({ invoiceId: "d", paidAt: new Date("2026-10-02T00:00:00.000Z") }));
+    const frame = new AsyncLocalStorage<unknown>();
+    const binding = bindDomain(moved, memory.layer, events === undefined ? {} : { events }, frame);
+    const read = (query = {}) => binding.run(() => readEvents(frame, undefined, query));
+    return { ...memory, binding, read };
+  };
+
+  test("readEvents from 0 reads old and new rows as the declared event, instances of its class; the stored rows keep their names", async () => {
+    const { read, state } = await setup({ renamed });
+    const page = await read();
+    expect(page.events.map((record) => [record.position, record.name])).toEqual([
+      [1, "finance.InvoicePaid"], [2, "billing.InvoiceVoided"], [3, "finance.InvoicePaid"], [4, "finance.InvoicePaid"],
+    ]);
+    expect(page.events[0]!.payload).toBeInstanceOf(FinancePaid);
+    expect((page.events[0]!.payload as FinancePaid).paidAt).toEqual(new Date("2026-10-01T00:00:00.000Z"));
+    expect(Object.isFrozen(page.events[0])).toBe(true);
+    expect(state.rows.map((row) => row.name)).toEqual(["billing.InvoicePaid", "billing.InvoiceVoided", "billing.InvoicePaid", "finance.InvoicePaid"]);
+  });
+
+  test("names lists the new FQN and takes the old rows; the old FQN is refused, saying what it was renamed to; a shortened name is refused", async () => {
+    const { read } = await setup({ renamed });
+    expect((await read({ names: ["finance.InvoicePaid"] })).events.map((record) => record.position)).toEqual([1, 3, 4]);
+    const old = await rejection(() => read({ names: ["billing.InvoicePaid"] }));
+    expect(old.message).toContain("readEvents: names lists \"billing.InvoicePaid\", which is not a declared event; it was renamed to finance.InvoicePaid (events.renamed)");
+    expect((await rejection(() => read({ names: ["InvoicePaid"] }))).message).toContain("readEvents: names lists \"InvoicePaid\", which is not a declared event; the project declares");
+  });
+
+  test("a shortened value and an empty map work; without the map the old row is still MESH_EVENT_UNDECLARED", async () => {
+    expect((await (await setup({ renamed: { "billing.InvoicePaid": "InvoicePaid" } })).read()).events).toHaveLength(4);
+    const empty = await rejection(async () => (await setup({ renamed: {} })).read());
+    expect(empty).toBeInstanceOf(EventUndeclaredError);
+    const none = await rejection(async () => (await setup()).read());
+    expect([(none as EventUndeclaredError).eventName, (none as EventUndeclaredError).position]).toEqual(["billing.InvoicePaid", 1]);
+  });
+
+  test("an old payload the new class refuses is the FrameworkError naming the position and the new name", async () => {
+    const { read, state } = await setup({ renamed });
+    state.rows[0] = { ...state.rows[0]!, payload: { invoiceId: "a" } };
+    const error = await rejection(() => read());
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toContain("The outbox row at position 1 holds a finance.InvoicePaid that its class no longer accepts");
+  });
+
+  test("bind refuses a bad map with MESH_EVENTS_CONFIG; a domain with no event is not checked", () => {
+    const layer = memoryLayer().layer;
+    const bindWith = (map: unknown, domain: object = moved) => () => bindDomain(domain, layer, { events: { renamed: map as Record<string, string> } }, new AsyncLocalStorage());
+    for (const [map, message] of [
+      [{ "finance.InvoicePaid": "billing.InvoiceVoided" }, "`events.renamed` maps \"finance.InvoicePaid\", which is a declared event"],
+      [{ "billing.InvoicePaid": "finance.InvoicePayed" }, "which is no declared event; the project declares billing.InvoiceVoided, finance.InvoicePaid"],
+      [{ "billing.InvoicePaid": 1 }, "to a number"],
+      [[], "`events.renamed` must be an object"],
+    ] as const) {
+      let thrown: unknown;
+      try { bindWith(map)(); } catch (error) { thrown = error; }
+      expect(thrown).toBeInstanceOf(EventsConfigError);
+      expect((thrown as EventsConfigError).code).toBe("MESH_EVENTS_CONFIG");
+      expect((thrown as Error).message).toContain(message);
+    }
+    expect(bindWith({ "billing.InvoicePaid": "finance.InvoicePayed" }, { notAClass: 1 })).not.toThrow();
+  });
+});
+
 describe("onPublished", () => {
   test("on a layer with onAppended, a listener is registered there too, and the unsubscribe removes both", async () => {
     const { layer, state } = memoryLayer({ appended: true });
