@@ -1,6 +1,6 @@
 ---
 title: "0052. Actions are always named; `auto` generates plain actions; `on:load` picks the read Mesh uses"
-description: "Decision record 0052: action declarations, `auto` in place of `defaults`, `on:load`, and the `arguments` section. Status: Accepted, amended by ADR-0067, ADR-0072."
+description: "Decision record 0052: action declarations, `auto` in place of `defaults`, `on:load`, and the `arguments` section. Status: Accepted, amended by ADR-0067, ADR-0072 and on 2026-11-17 (`max-limit=`)."
 ---
 
 # 0052. Actions are always named; `auto` generates plain actions; `on:load` picks the read Mesh uses
@@ -12,6 +12,8 @@ description: "Decision record 0052: action declarations, `auto` in place of `def
 Accepted. Amended by [ADR-0067](./0067-members-imports-input-static-files.md): one `input` section replaces `accept` and `arguments`; `on:load` takes a member reference.
 
 Amended by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) (2026-10-10): `on:load` comes after Mesh 1.0; a relationship load uses the entity's auto read.
+
+Amended 2026-11-17 (lead, ruling D38, awaiting the operator's review): the `actions` line takes `max-limit=N`, a cap on the caller's `limit`. See the amendment below.
 
 ## Date
 
@@ -77,6 +79,20 @@ The operator's principle is one way to write each thing and few rules. Option A 
 - M7 (relationships) reads `on:load` when it emits relationship loads.
 - [ADR-0050](./0050-entity-file-syntax.md)'s name-uniqueness check covers action names within `actions`, auto ones included.
 - Two entities exporting the same function name stay a build error naming both ([rulings of 2026-10-04](./rulings-2026-10-04.md), "Rulings before M2", lead decisions).
+
+## Amendment — 2026-11-17: `max-limit=` caps a caller's read
+
+**Status: Accepted by the lead (ruling D38, 2026-11-17), awaiting the operator's review.** Source: the reviewed design `notes/architecture/small-language-design.md`, rules L1 to L6 and open decisions OD12 to OD17, each ruled as the design recommends.
+
+A read takes its paging in the caller's input (`limit`, `offset`); a read with no `limit` returned every row, which the [rulings of 2026-10-04](./rulings-2026-10-04.md) ("Where does paging go?") answered with "a cap declared on the entity is planned, not v1". This amendment builds that cap:
+
+- **Where (OD12).** `max-limit=N` on the `actions` line, beside `auto=` and `on:load=`, the other entity-wide settings of its actions: `actions auto=[:read] max-limit=100`. `max` is already Mesh's word for an upper bound (`string :title max=80`). N is a whole number of at least 1; anything else is `MESH_OPTION_VALUE`, and so is `max-limit=` on an entity with no read, auto or written (OD16), since it would cap nothing.
+- **Above the cap (OD13).** A caller read whose `limit` is above N fails with `InvalidInputError`, one issue: path `["limit"]`, code `too_big`, message `must be at most N`, and the position of `max-limit` as its source. It is refused, not clamped: a caller who asked for 200 rows and silently got 100 could not tell, and relaxing a refusal to a clamp later breaks nobody, while the reverse would. The check runs after the input's own cast (input that fails its shape reports only that) and before the read's policies, so a caller the policies deny gets the error too, as with any invalid input.
+- **No `limit` (OD14).** A caller read with no `limit` reads at most N rows, as `readEvents` does (its `limit` defaults to 100). Domain code that reads through the entity value (a step, a helper, a composed action calling `Todo.read({})`) is a caller read and is capped too; code that must see every row passes a `limit` and pages, or reads through `Mesh.privileged`.
+- **Not capped (OD15, OD17).** A `Mesh.privileged` read, a computed field's own reads and a relationship load: none goes through the read action. When loads come to use the `on:load` read, they call its body with input they have cast, as a privileged read does, so the cap does not come with them.
+- `offset` is not capped: the cap bounds the rows returned, not the rows skipped.
+
+The generated read passes the cap to `castInput` (`ReadCap` in `@meshfw/runtime`) in its pre-check, and `mesh explain` names it in the read's strategy.
 
 ## Action items
 

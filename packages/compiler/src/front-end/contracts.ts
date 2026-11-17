@@ -344,6 +344,8 @@ const contracts: ContractMap = {
     attributes: {
       auto: atomList({ values: [...ACTION_TYPES] }),
       "on:load": member(),
+      // The largest `limit` a caller read of this entity takes, and what it reads when the caller gives none.
+      "max-limit": number(),
     },
     children: children(...ACTION_TYPES, "always"),
   }),

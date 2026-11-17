@@ -44,7 +44,7 @@ export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
 export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";
 export { castInput, checkUnchanged, failJoined, noteWrite, writeCount } from "./compose.ts";
-export type { CastOutput } from "./compose.ts";
+export type { CastOutput, ReadCap } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export { Mesh, type ActionFunction, type Decision, type MeshFunctions } from "./mesh.ts";

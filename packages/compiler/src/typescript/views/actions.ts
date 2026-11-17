@@ -226,6 +226,14 @@ function read(object: string, name: string): string {
  * reads as the inherited method; only an own member is the caller's. An own `undefined` is a member left out, as the
  * input type says (`title?: string | undefined`), and the validator keeps it.
  */
+/** The fourth argument of a caller read's `$castInput` for the entity's `max-limit=` (`ReadCap` in `@meshfw/runtime`), or nothing. */
+function readCap(entity: Entity): string {
+  const cap = entity.maxLimit;
+  if (!cap) return "";
+  const { file, line, column } = cap.position;
+  return `, { max: ${cap.max}, source: { file: ${JSON.stringify(file)}, line: ${line}, column: ${column + 1} } }`;
+}
+
 function given(name: string): string {
   return `$Object.hasOwn(parsed, ${JSON.stringify(name)}) && ${read("parsed", name)} !== undefined`;
 }
@@ -438,8 +446,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         "const $actor = $context.actor;",
         // the instant of the transaction the read joins, else its own, pinned on its first read.
         "const $clock = frame.clock(options.clock);",
-        // The checks see the input as the action does, cast; an invalid input is reported as one, denied or not.
-        `const $parsed = await $castInput(layer, ${validator}, input);`,
+        // The checks see the input as the action does, cast; an invalid input is reported as one, denied or not. With
+        // `max-limit=`, the cast also refuses a larger `limit` and fills in the cap when none is given: before the
+        // policies, so a denied caller gets that error too; the body reads `$parsed`, so the `limit` reaches the query.
+        `const $parsed = await $castInput(layer, ${validator}, input${readCap(entity)});`,
         ...(folded
           ? [
             // A policy that reads the record is a condition on each row (M10): the checks that do not run first, and the

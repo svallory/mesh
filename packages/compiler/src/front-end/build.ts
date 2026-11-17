@@ -1261,6 +1261,14 @@ function buildEntity(
       }
       const onLoad = attr(actionSection, "on:load");
       if (onLoad) entity.onLoad = checkRef(readMember(onLoad, at), "actions");
+      const cap = attr(actionSection, "max-limit");
+      if (cap) {
+        const max = valueOf(cap);
+        const where = optionAt(cap);
+        if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
+          fail("MESH_OPTION_VALUE", "max-limit must be a whole number of at least 1", where);
+        else entity.maxLimit = { max, position: where };
+      }
       for (const tag of tags(actionSection.children)) {
         if (tag.name === "always") {
           entity.always.push({
@@ -1463,6 +1471,14 @@ function buildEntity(
       "MESH_ON_LOAD",
       "on:load must name a read action",
       entity.onLoad.position,
+    );
+  // Auto or written: an entity whose actions include no read has no caller read to cap. The check is local, since
+  // `hasRead` lives in `typescript/views/inputs.ts`, which the front end may not import (ADR-0076).
+  if (entity.maxLimit && !entity.auto.includes("read") && !entity.actions.some((action) => action.kind === "read"))
+    fail(
+      "MESH_OPTION_VALUE",
+      "max-limit caps the limit of this entity's reads, and it has none: add :read to auto= or write a read line, or remove max-limit",
+      entity.maxLimit.position,
     );
   for (const relation of entity.relationships)
     if (relation.keyColumn && names.has(relation.keyColumn)) {
