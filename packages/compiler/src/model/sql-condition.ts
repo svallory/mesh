@@ -386,7 +386,9 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
     // A filter that reads this rollup again, directly or through another entity, breaks R18 and is reported at the filter
     // (MESH_ROLLUP_FILTER); lowering stops here rather than unfold it forever.
     const key = `${entity.fqn}.${field.name}`;
-    if (!filter.tree || options.reported?.(filter) || scope.inlining.includes(key) || scope.inlining.length >= MAX_INLINE) return reported();
+    if (!filter.tree || options.reported?.(filter) || scope.inlining.includes(key)) return reported();
+    // Past the inline limit nothing has reported the filter, so the read is refused here, as inline() refuses a body.
+    if (scope.inlining.length >= MAX_INLINE) return refuse({ kind: "self-reaching", position, field: field.name });
     try {
       const where = lower(filter.tree, { rows: new Map([[filter.param, { depth: 0, entity: current }]]), from: entity, action: undefined, outer: undefined, inlining: [...scope.inlining, key], keyed: 0 }, "boolean");
       return { ...rolled, where };

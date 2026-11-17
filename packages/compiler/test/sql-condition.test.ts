@@ -150,6 +150,7 @@ describe("a rollup read where SQL is required (m10-rollups, R22)", () => {
     count :nTags of=&tags
     count :siblings of=&customer.invoices
     count :bigLines of=&lines filter=(l) => l.qty > 1 + 1 && l.invoiceId !== null
+    boolean :busy() { return &nLines > 2 }
 `;
   const rollup = (fn: string, hops: unknown[], value: string, cls: string, extra: Record<string, unknown> = {}) => ({ kind: "rollup", fn, depth: 0, hops, value, class: cls, ...extra });
   // [filter, tree, the parameters as printed, the crossings' paths]
@@ -158,6 +159,8 @@ describe("a rollup read where SQL is required (m10-rollups, R22)", () => {
     // The rollup's type is its class: a sum of integers is integer, an average float (a literal it meets takes it).
     ["() => &qtyTotal > 2", call("gt", rollup("sum", [LINES], "qty", "integer"), val(2, "integer")), [], ["&qtyTotal"]],
     ["() => &qtyAvg > 2", call("gt", rollup("avg", [LINES], "qty", "float"), val(2, "float")), [], ["&qtyAvg"]],
+    // Inside an inlined translated body: the rollup is of the body's own record, the crossing at the read.
+    ["() => &busy", call("gt", rollup("count", [LINES], "id", "integer"), val(2, "integer")), [], ["&busy"]],
     ["() => &qtyTotal === null", call("isNull", rollup("sum", [LINES], "qty", "integer")), [], ["&qtyTotal"]],
     // A belongs-to then a has-many, and a through hop: one hop each.
     ["() => &firstDue < %.today", call("lt", rollup("min", [CUSTOMER, INVOICES], "dueOn", "date"), param(0, "date")), ["$.today($s)"], ["&firstDue"]],
