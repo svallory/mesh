@@ -184,7 +184,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     // reaches no row has no group, so it is left out; the driver's values are decoded here, as the columns decode.
     rollup: (query: RollupQuery) => execute(async (): Promise<RollupRow[]> => {
       if (!declared("aggregates")) throw new FrameworkError(`rollup needs the aggregates capability, and the ${capabilities?.adapter ?? "Drizzle"} data layer does not declare it`);
-      if (!commands.rows) throw new FrameworkError("rollup is not available: this Drizzle dialect has no rows command to run its grouped statement");
+      if (!commands.rows) throw new FrameworkError(`rollup is not available: the ${capabilities?.adapter ?? "Drizzle"} dialect has no rows command to run its grouped statement`);
       if (!(["count", "sum", "avg", "min", "max"] as readonly string[]).includes(query.fn)) throw new FrameworkError(`Unknown rollup function "${String(query.fn)}"; use count, sum, avg, min or max`);
       if (!Array.isArray(query.anchors)) throw new FrameworkError("A rollup's anchors must be a list");
       if (query.anchors.length > ROLLUP_ANCHORS) throw new FrameworkError(`A rollup takes at most ${ROLLUP_ANCHORS} anchors, and this one has ${query.anchors.length}: ask in chunks`);

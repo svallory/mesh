@@ -255,7 +255,7 @@ test("rollup is refused without the aggregates capability, without a rows comman
   const rows = () => [];
   await expect(drizzleOperations({ ...commands, rows }, () => {}).rollup(query)).rejects.toThrow("rollup needs the aggregates capability");
   await expect(drizzleOperations({ ...commands, rows }, () => {}, defineCapabilities("test", ["joins"])).rollup(query)).rejects.toThrow('the test data layer does not declare it');
-  await expect(drizzleOperations(commands, () => {}, defineCapabilities("test", ["aggregates"])).rollup(query)).rejects.toThrow("this Drizzle dialect has no rows command");
+  await expect(drizzleOperations(commands, () => {}, defineCapabilities("test", ["aggregates"])).rollup(query)).rejects.toThrow("rollup is not available: the test dialect has no rows command");
   const operations = drizzleOperations({ ...commands, rows }, () => {}, defineCapabilities("test", ["aggregates"]));
   for (const name of ["nope", "toString"]) {
     await expect(operations.rollup({ ...query, anchor: name })).rejects.toThrow(`Unknown column "${name}"`);
