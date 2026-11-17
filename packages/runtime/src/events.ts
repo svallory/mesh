@@ -111,8 +111,16 @@ export interface KeepProblem {
 }
 
 /**
+ * The longest keep period, in days. The deletion pass measures a period back from the database's clock
+ * (`now - days`), and a Date holds 100,000,000 days either side of 1970: a longer period would start before the
+ * earliest Date, an Invalid Date that SQLite compares as no row (every passed row deleted) and Postgres refuses to
+ * format (every pass failed).
+ */
+export const MAX_KEEP_DAYS = 100_000_000;
+
+/**
  * The problem with an `events.keep` value, or null when it is one of `KEEP_VALUES` or `{ days }` with a whole number
- * of days, 1 or more, on a bus that delivers from one process. Shared by the build's check of `mesh.config.ts` and
+ * of days from 1 to `MAX_KEEP_DAYS`, on a bus that delivers from one process. Shared by the build's check of `mesh.config.ts` and
  * `bind`'s check of its `events` option. A period is refused on a bus that declares `multi-process`: the keep recorded
  * for several processes is one of the two strings, and a process without the period would delete the rows it keeps.
  */
@@ -123,8 +131,8 @@ export function keepProblem(keep: unknown, bus?: unknown): KeepProblem | null {
     if (extra !== undefined)
       return { message: `\`events.keep\` { days } takes no other field, and has ${JSON.stringify(extra)}`, fix: "Remove the field, as in keep: { days: 30 }" };
     const days = (keep as { days: unknown }).days;
-    if (!(typeof days === "number" && Number.isSafeInteger(days) && days >= 1))
-      return { message: `\`events.keep.days\` must be a whole number of days, 1 or more, and is ${describeValue(days)}`, fix: "Set days to a whole number, such as 30" };
+    if (!(typeof days === "number" && Number.isSafeInteger(days) && days >= 1 && days <= MAX_KEEP_DAYS))
+      return { message: `\`events.keep.days\` must be a whole number of days, from 1 to ${MAX_KEEP_DAYS}, and is ${describeValue(days)}`, fix: "Set days to a whole number, such as 30" };
     const manifest = (bus as { manifest?: { adapter?: unknown; capabilities?: unknown } } | null | undefined)?.manifest;
     if (Array.isArray(manifest?.capabilities) && manifest.capabilities.includes("multi-process"))
       return {

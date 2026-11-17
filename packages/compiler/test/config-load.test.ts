@@ -166,13 +166,14 @@ describe("the events key", () => {
     expect(await codes("{ keep: { hours: 1 } }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("{\"hours\":1}"), fix }]);
   });
 
-  test("a keep period is kept on the resolved config; days must be a whole number, 1 or more, with no other field", async () => {
+  test("a keep period is kept on the resolved config; days must be a whole number from 1 to 100000000, with no other field", async () => {
     const loaded = await loadConfig(await withEvents("{ keep: { days: 1 } }"));
     expect(loaded.diagnostics).toEqual([]);
     expect(loaded.config!.events!.keep).toEqual({ days: 1 });
     expect((await loadConfig(await withEvents("{ keep: { days: 30 } }"))).diagnostics).toEqual([]);
-    const days = (shown: string) => [{ code: "MESH_EVENTS_CONFIG", message: `\`events.keep.days\` must be a whole number of days, 1 or more, and is ${shown}`, fix: "Set days to a whole number, such as 30" }];
-    for (const [value, shown] of [["0", "0"], ["0.5", "0.5"], ["-3", "-3"], ["\"30\"", "\"30\""], ["null", "null"], ["undefined", "undefined"]] as [string, string][])
+    expect((await loadConfig(await withEvents("{ keep: { days: 100_000_000 } }"))).diagnostics).toEqual([]);
+    const days = (shown: string) => [{ code: "MESH_EVENTS_CONFIG", message: `\`events.keep.days\` must be a whole number of days, from 1 to 100000000, and is ${shown}`, fix: "Set days to a whole number, such as 30" }];
+    for (const [value, shown] of [["0", "0"], ["0.5", "0.5"], ["-3", "-3"], ["\"30\"", "\"30\""], ["null", "null"], ["undefined", "undefined"], ["100_000_001", "100000001"]] as [string, string][])
       expect(await codes(`{ keep: { days: ${value} } }`), value).toEqual(days(shown));
     expect(await codes("{ keep: { days: 30, hours: 2 } }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.keep` { days } takes no other field, and has \"hours\"", fix: "Remove the field, as in keep: { days: 30 }" }]);
   });
