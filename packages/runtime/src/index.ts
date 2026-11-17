@@ -60,4 +60,6 @@ export type { BusCapability, BusCore, BusManifest, BusOptions, EventBus, EventBu
 export { adoptByName, adoptHandler, declaredHandlers, deliverRound, forgetByName, forgetHandler, forgetSubscription, isRetryable, keepByValue, listSubscriptions, markNoDeliver, resumeHandler, startDelivery, subscribe } from "./deliverer.ts";
 export type { Delivery, Forgotten, SubscribeQuery, Subscription, SubscriptionProgress } from "./deliverer.ts";
 export type { Adopted, KeepChange } from "./multi-process.ts";
+export { OPERATIONS, SERVICE, isServiceValue, service } from "./service.ts";
+export type { OperationCall, OperationScope, OperationSpec, ServiceValue } from "./service.ts";
 export type { ActionFrame, AsyncFrame, Binding, EntityBind, EntityCall, EntityReadsBind, EntityValue, Privileged, RawQuery } from "./entity.ts";

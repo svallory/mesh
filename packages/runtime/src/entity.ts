@@ -1,8 +1,10 @@
 import { Answer, answeringLayer, capabilitiesOf, type Decision } from "./answer.ts";
 import type { DataLayer, DataOperations, RawRow, RawStatement, RawValue, Row } from "./data-layer.ts";
-import { failJoined } from "./compose.ts";
+import { castInput, failJoined } from "./compose.ts";
 import { EventsConfigError, FrameworkError } from "./errors.ts";
-import { pinClock, type Clock } from "./expr.ts";
+import { pinClock, scope as scopeOf, type Clock } from "./expr.ts";
+import { authorizer } from "./policy.ts";
+import type { OperationSpec } from "./service.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
 import type { BindOptions } from "./lifecycle.ts";
 import { evaluatingNow, readOnlyRecord } from "./load.ts";
@@ -42,6 +44,11 @@ export const ENTITY: unique symbol = Symbol("mesh.entity");
 export const BIND: unique symbol = Symbol("mesh.bind");
 /** On an entity value, its actions file's `bind<Entity>Reads(layer, options, frame)`, or null when the entity has no read action. */
 export const BIND_READS: unique symbol = Symbol("mesh.bindReads");
+
+/** On a service value, its FQN (`work.Work`): the mark by which `bindDomain` tells a service value from any other export. */
+export const SERVICE: unique symbol = Symbol("mesh.service");
+/** On a service value, the spec of each of its operations, by name (`OperationSpec` in `service.ts`). */
+export const OPERATIONS: unique symbol = Symbol("mesh.operations");
 
 /** An action function as a binding holds it: the input, then the context, both `never` so every generated method fits. */
 type BoundAction = (input: never, ...context: never[]) => Promise<unknown>;
@@ -162,6 +169,8 @@ interface BindingState {
   readonly events: Map<string, EventClass>;
   /** The checked rename map of `events.renamed` (former FQN to declared FQN), read once at bind; empty without one. */
   renamed: ReadonlyMap<string, string>;
+  /** The domain's service values by FQN: a service has no data, so nothing of it is bound to the layer. */
+  readonly services: Map<string, object>;
   /** Calls on this binding that have not settled; `settled` waits for them. */
   inFlight: number;
   readonly idle: (() => void)[];
@@ -187,6 +196,28 @@ interface FrameStore {
   readonly mark?: string;
   /** Where the action call this belongs to stands in its chain of nested calls: carried by every store made inside it. */
   readonly calls?: CallChain;
+  /**
+   * Set while an operation's body runs (and in the `run` and `transaction` scopes a helper of it opens): the operation's
+   * label and its `uses` lines, entity FQN to action names. An entity call, a `privileged` read or a policy question made
+   * in such a store that the lines do not list is refused, and so is a call of an operation. No store an entity call makes
+   * carries it, so what an action does in its own work is the action's, not the operation's.
+   */
+  readonly operation?: OperationFrame;
+  /**
+   * R17: the label of the operation or action whose transaction this store's work runs in. Set for an action's work
+   * (`within`, and so its steps, checks, `afterWrite` seam and nested calls), for the policies an operation checks inside
+   * its transaction and its body, and for the store of an entity call made under any of those (so a nested action's
+   * policies, checked before it joins, are covered too); `run` and `transaction` carry it, so a helper that opens one
+   * is held to it. An operation called in such a store is refused. A top-level call's store has none: its
+   * `beforeTransaction` and `afterCommit` seams, and an operation's own `before` policies, run outside any transaction.
+   */
+  readonly enclosing?: string;
+}
+
+/** What an operation's body runs under: see `FrameStore.operation`. */
+interface OperationFrame {
+  readonly label: string;
+  readonly uses: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /**
@@ -368,6 +399,9 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   const frame = frames.get(value);
   const caller = inScope(frame);
   const { state, entry } = bindingFor(value, `${fqn}#${action}`, caller);
+  // Inside an operation's body, only what its `uses` lines list: refused before the call casts anything, and failing the
+  // running transaction, so a helper that catches the refusal cannot commit.
+  if (caller?.operation && !caller.operation.uses.get(fqn)?.has(action)) return failNested(state.layer, unlisted(caller.operation, `${fqn}#${action}`, fqn, action));
   // In a store a question made (`Mesh.checkPolicies`), no write action starts, on any binding of the project: it
   // is refused here, before it casts its input or runs anything of its own. A read runs on the binding's probe, on the
   // question's layer over the binding's own, so it reads what it would read and what it rejects with fails no running
@@ -388,7 +422,8 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   } catch (error) {
     return failNested(state.layer, error);
   }
-  const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}) }, question);
+  const enclosing = caller?.enclosing ?? caller?.operation?.label;
+  const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}), ...(enclosing !== undefined ? { enclosing } : {}) }, question);
   const outcome = await settle(() => counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer)));
   calls.settled = true;
   // The root rejects with the cap's error itself when its own error came from the cap: the error is the cap's, or the
@@ -449,6 +484,12 @@ function marked(what: string, mark: string): FrameworkError {
   return new FrameworkError(`${what} was called while ${mark} is evaluated: a computed field and a read policy read the record and what it loads, and call no action, make no privileged read and ask no action's policies. Load what it needs instead, or do it in a step or a check`);
 }
 
+/** The refusal of `what`, a call, read or question about `fqn#action` that the `uses` lines of `operation` do not list. */
+function unlisted(operation: OperationFrame, what: string, fqn: string, action: string): FrameworkError {
+  const name = fqn.slice(fqn.lastIndexOf(".") + 1);
+  return new FrameworkError(`${operation.label} called ${what}, which its \`uses\` lines do not list: add :${action} to \`uses entity=${name} actions=[...]\``);
+}
+
 /**
  * The `privileged` reads of one entity value, one per read action (`names`), made once, by the first binding that binds
  * it. Each call looks up the caller's frame and the binding as an entity call does, and runs that binding's read body.
@@ -464,6 +505,7 @@ function privilegedHandle(value: object, fqn: string, names: readonly string[]):
       if (mark !== undefined) throw marked(label, mark);
       return (async () => {
         const { state, entry } = bindingFor(value, label, caller);
+        if (caller?.operation && !caller.operation.uses.get(fqn)?.has(name)) return failNested(state.layer, unlisted(caller.operation, label, fqn, name));
         const probe = probeOf(caller, state);
         const body = (probe ? probeEntry(probe, value) : entry).reads[name];
         if (!body) throw new FrameworkError(`${label} is not a read of ${fqn} on the binding in scope`);
@@ -499,7 +541,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
       // publishes are refused (ADR-0094).
       const quiet = store.calls?.root.quiet;
       if (quiet !== undefined && !store.calls!.settled) quietIn(tx, store.calls!.root.label, quiet);
-      return frame.run(kept({ state, scope: store.scope, tx, clock, label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
+      return frame.run(kept({ state, scope: store.scope, tx, clock, label, enclosing: label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
     },
     plain<T>(fn: () => Promise<T>): Promise<T> {
       const store = inScope(frame);
@@ -524,7 +566,8 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
 export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding {
   const entities: BindingState["entities"] = new Map();
   const events: BindingState["events"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, inFlight: 0, idle: [], released: false, frame };
+  const services: BindingState["services"] = new Map();
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, services, inFlight: 0, idle: [], released: false, frame };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -540,6 +583,15 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
         const reads = (value[BIND_READS]?.(layer, options, handle) ?? {}) as Readonly<Record<string, ReadBody>>;
         entities.set(fqn, { value, bound, reads });
         if (!handles.has(value)) handles.set(value, privilegedHandle(value, fqn, Object.keys(reads)));
+      } else if (isServiceValue(value)) {
+        const fqn = value[SERVICE];
+        const seen = services.get(fqn);
+        if (seen === value) continue;
+        if (seen) throw new FrameworkError(`Two service values in the domain have the FQN ${fqn}`);
+        const before = frames.get(value);
+        if (before !== undefined && before !== frame)
+          throw new FrameworkError(`${fqn} was bound before with another async frame: a project's service values are bound only through its own bind()`);
+        services.set(fqn, value);
       } else if (isEventClass(value)) {
         const fqn = value[DECLARATION].fqn;
         const seen = events.get(fqn);
@@ -566,35 +618,21 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
     state.renamed = checked.map;
   }
   for (const { value } of entities.values()) frames.set(value, frame);
+  for (const value of services.values()) frames.set(value, frame);
   const binding: Binding = Object.freeze({
     run<T>(fn: () => Promise<T>): Promise<T> {
       // Inside a question (a policy's helper calls it), the scope belongs to the question: a write is refused, and a read
       // runs on the binding's probe, so it reads what the call would read.
       const outer = inScope(frame);
-      return scoped(frame, kept({ state, scope: live(state, frame), ...(outer?.calls ? { calls: outer.calls } : {}) }, questionOf(outer)), fn);
+      return scoped(frame, kept({ state, scope: live(state, frame), ...carried(outer) }, questionOf(outer)), fn);
     },
     transaction<T>(fn: () => Promise<T>): Promise<T> {
       // The application's `transaction` is an outermost transaction like any action's: `afterCommit` runs once
       // when it commits, with every change made inside it. One that joins a running transaction leaves that to the outer one.
       // It has one instant: the binding's clock, read once, which every action and read made inside it reads; one
       // that joins a running transaction of this binding reads that transaction's.
-      const scope = live(state, frame);
       const outer = inScope(frame);
-      const clock = outer?.state === state && outer.tx !== undefined && outer.clock !== undefined ? outer.clock : pinClock(options.clock);
-      // Inside a question (`Mesh.checkPolicies`: a policy's helper calls it), no seam runs and no write action starts, and
-      // it runs on the binding's probe: where it joins a running transaction, what `fn` rejects with (a refused write the
-      // helper catches) does not fail it.
-      const question = questionOf(outer);
-      const on = question ? probeFor(question, state).layer : layer;
-      const body = (tx: DataOperations) => frame.run(kept({ state, scope, tx, clock, ...(outer?.calls ? { calls: outer.calls } : {}) }, question), () => fn());
-      return counted(state, async () => {
-        try {
-          if (!on.refuseIfFailed()) return await outermost(on, question ? undefined : options.seams, body);
-          return await on.transaction(body);
-        } finally {
-          scope.live = false;
-        }
-      });
+      return transactionIn(state, outer, joinedClock(state, outer) ?? pinClock(options.clock), fn);
     },
     deliver(): Promise<void> {
       return deliverRound(binding);
@@ -606,6 +644,119 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
   state.binding = binding;
   states.set(binding, state);
   return binding;
+}
+
+/**
+ * What a `run` or `transaction` scope opened inside `outer` keeps of it: the call chain, the operation whose `uses`
+ * lines still hold there (a helper of the body that calls `transaction(fn)` is held to them), and the operation or
+ * action whose transaction it runs in (R17: a helper of a step that opens `run(fn)` may not call an operation either).
+ */
+function carried(outer: FrameStore | undefined): { calls?: CallChain; operation?: OperationFrame; enclosing?: string } {
+  return {
+    ...(outer?.calls ? { calls: outer.calls } : {}),
+    ...(outer?.operation ? { operation: outer.operation } : {}),
+    ...(outer?.enclosing !== undefined ? { enclosing: outer.enclosing } : {}),
+  };
+}
+
+/** The instant of the transaction of `state` that `caller` runs in, if it runs in one: what a call or transaction joining it reads. */
+function joinedClock(state: BindingState, caller: FrameStore | undefined): Clock | undefined {
+  return caller?.state === state && caller.tx !== undefined ? caller.clock : undefined;
+}
+
+/**
+ * The application's `transaction(fn)` and an operation's transaction: open a transaction on the binding's layer, or join
+ * the running one, and call `fn` inside it in a store of its own (the transaction, `clock`, what `outer` carries), with
+ * this binding in scope. One that opens the transaction is outermost for the seams: no `beforeTransaction`, `afterCommit`
+ * once with every change. Inside a question (`Mesh.checkPolicies`: a policy's helper calls it), no seam runs and no write
+ * action starts, and it runs on the binding's probe: where it joins a running transaction, what `fn` rejects with (a
+ * refused write the helper catches) does not fail it.
+ */
+function transactionIn<T>(state: BindingState, outer: FrameStore | undefined, clock: Clock, fn: () => Promise<T>): Promise<T> {
+  const frame = state.frame;
+  const scope = live(state, frame);
+  const question = questionOf(outer);
+  const on = question ? probeFor(question, state).layer : state.layer;
+  const body = (tx: DataOperations) => frame.run(kept({ state, scope, tx, clock, ...carried(outer) }, question), () => fn());
+  return counted(state, async () => {
+    try {
+      if (!on.refuseIfFailed()) return await outermost(on, question ? undefined : state.options.seams, body);
+      return await on.transaction(body);
+    } finally {
+      scope.live = false;
+    }
+  });
+}
+
+/** True for a service value made by `service` (`service.ts`). */
+export function isServiceValue(value: unknown): value is { readonly [SERVICE]: string; readonly [OPERATIONS]: Readonly<Record<string, OperationSpec>> } {
+  return typeof value === "object" && value !== null && typeof (value as { [SERVICE]?: unknown })[SERVICE] === "string";
+}
+
+/**
+ * One call of a service value's operation (`Work.handOver(input, context)`), in lifecycle order: enter (on the binding in
+ * scope, else the connected one, counted in flight; refused while a computed field or read policy is evaluated, inside a
+ * `Mesh.checkPolicies` question, and inside another operation's body or an action's transaction), cast, the service's
+ * policies that read only `actor`, `context` and `input` before any transaction, then one transaction (joining a running
+ * one of the binding) that runs the other policy checks and then the body, held to the operation's `uses` lines. The
+ * pre-check, the checks inside and the body read one instant: the joined transaction's, else one pinned here. No
+ * `beforeTransaction` runs, as for the application's `transaction(fn)`, and `afterCommit` runs once when this call
+ * opened the transaction.
+ */
+export function runOperation(value: object, fqn: string, name: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
+  const label = `${fqn}#${name}`;
+  // Refused by throwing, as an entity call is under a mark.
+  const caller = inScope(frames.get(value));
+  const mark = caller?.mark ?? evaluatingNow();
+  if (mark !== undefined) throw marked(label, mark);
+  return operationCall(value, fqn, name, label, input, context);
+}
+
+/** Where R17 lets an operation be called, as its refusal says. */
+const R17 = "an operation is called from application code, a handler, or a seam that runs outside a transaction (beforeTransaction, afterCommit), not from inside another operation or an action's transaction (its steps, checks, policies, afterWrite seam or a helper of them)";
+
+async function operationCall(value: object, fqn: string, name: string, label: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
+  const frame = frames.get(value);
+  const caller = inScope(frame);
+  const question = questionOf(caller);
+  if (question) throw refusedWrite(question, label);
+  const state = caller?.state ?? connected.get(value);
+  if (!state) throw notConnected(label);
+  if (state.services.get(fqn) !== value)
+    throw new FrameworkError(`${label} was called inside run() or transaction() of a binding that does not bind it: that binding was made by another project's bind()`);
+  // R17: an inner operation would carry its own `uses` lines and widen the outer one's, and an action's work is its own.
+  // `enclosing` follows the work into helpers (`run`, `transaction`) and into the policies of the calls it makes.
+  const inside = caller?.operation?.label ?? caller?.enclosing ?? caller?.label;
+  if (inside !== undefined)
+    return failNested(state.layer, new FrameworkError(`${label} was called inside ${inside}: ${R17}`));
+  const spec = Object.hasOwn((value as { [OPERATIONS]: object })[OPERATIONS], name) ? (value as { [OPERATIONS]: Readonly<Record<string, OperationSpec>> })[OPERATIONS][name] : undefined;
+  if (!spec) throw new FrameworkError(`${label} is not an operation of ${fqn}: rebuild the project with mesh build`);
+  let calls: CallChain;
+  try {
+    calls = nested(caller?.calls, label);
+  } catch (error) {
+    return failNested(state.layer, error);
+  }
+  const clock = joinedClock(state, caller) ?? pinClock(state.options.clock);
+  const uses: ReadonlyMap<string, ReadonlySet<string>> = new Map(Object.entries(spec.uses).map(([entity, actions]) => [entity, new Set(actions)]));
+  const operation: OperationFrame = { label, uses };
+  const store = kept({ state, scope: { live: true }, calls, clock }, undefined);
+  const outcome = await settle(() => counted(state, () => scoped(frame!, store, async () => {
+    const parsed = await castInput(state.layer, spec.schema, input);
+    const given = (context[0] ?? {}) as { actor?: unknown };
+    const roots = () => scopeOf({ input: parsed, actor: given.actor, context: given }, { clock });
+    const policies = authorizer(fqn, name, spec.policies);
+    await policies.before(state.layer, roots());
+    return transactionIn(state, store, clock, async () => {
+      // The policies first, in the transaction's store: what they read (a helper's privileged read) is theirs, not the body's.
+      const current = inScope(frame)!;
+      await frame!.run(kept({ ...current, enclosing: label }, undefined), () => policies.inside(roots()));
+      return frame!.run(kept({ ...current, enclosing: label, operation }, undefined), async () => spec.body(roots() as never));
+    });
+  })));
+  calls.settled = true;
+  if (!outcome.ok && calls.depth === 1 && calls.root.tooDeep && (outcome.error === calls.root.tooDeep || (outcome.error as { cause?: unknown } | null)?.cause === calls.root.tooDeep)) throw calls.root.tooDeep;
+  return unwrap(outcome);
 }
 
 /** True for an event class `mesh build` generated: a function carrying an event's declaration. */
@@ -830,6 +981,7 @@ export function connectBinding(binding: Binding): void {
   const state = stateOf(binding);
   state.released = false;
   for (const { value } of state.entities.values()) connected.set(value, state);
+  for (const value of state.services.values()) connected.set(value, state);
 }
 
 /**
@@ -840,6 +992,7 @@ export function releaseBinding(binding: Binding): void {
   const state = stateOf(binding);
   state.released = true;
   for (const { value } of state.entities.values()) if (connected.get(value) === state) connected.delete(value);
+  for (const value of state.services.values()) if (connected.get(value) === state) connected.delete(value);
 }
 
 /** Resolves once every call made on `binding` (entity calls, `privileged` reads and `transaction`) has settled, however long they take. */
@@ -1156,6 +1309,8 @@ async function answer({ value, fqn, name }: { value: object; fqn: string; name: 
   const frame = frames.get(value);
   const caller = inScope(frame);
   const { state } = bindingFor(value, where, caller);
+  // An operation asks only about what it may call: asking runs the action's policies, which read what they read.
+  if (caller?.operation && !caller.operation.uses.get(fqn)?.has(name)) return failNested(state.layer, unlisted(caller.operation, where, fqn, name));
   // Asked inside another question (a policy's helper asks), it reads through that question's layers.
   const outer = questionOf(caller);
   let depth = 0;
