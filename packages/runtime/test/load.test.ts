@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK, FrameworkError, guarded, loadInto, loadRows, rejectComputedQuery, unloadFrom, scope, type Condition, type ConditionLiteral, type DataOperations, type Hop, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
+import { CHUNK, FrameworkError, guarded, loadInto, loadRows, unloadFrom, scope, type Condition, type ConditionLiteral, type DataOperations, type Hop, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
 import { and, eq, not, or } from "../src/expr.ts";
 
 /**
@@ -490,49 +490,6 @@ describe("the message of a guard for a field that was not loaded", () => {
     const before = guarded(plan(handle), "Node", { id: 1, parentId: null, ownerId: 7 }, "before") as { children: unknown };
     expect(message(() => before.children)).toStartWith("`before` holds the stored columns of Node only, so Node#children is not on it");
     expect(message(() => before.children)).not.toContain("so Mesh loads what it reads");
-  });
-});
-
-describe("rejectComputedQuery", () => {
-  const names = ["total", "depth"];
-  const refused = (what: string, name: string) => `A ${what} by Doc#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;
-  test("a filter or sort that names a computed field fails, naming M10", () => {
-    expect(() => rejectComputedQuery("Doc", names, { filter: { total: { gt: 1 } } })).toThrow(refused("filter", "total"));
-    expect(() => rejectComputedQuery("Doc", names, { sort: ["title", "-depth"] })).toThrow(refused("sort", "depth"));
-    expect(() => rejectComputedQuery("Doc", names, { filter: { and: [{ title: { eq: "a" } }, { or: [{ total: { eq: 1 } }] }] } })).toThrow(refused("filter", "total"));
-    expect(() => rejectComputedQuery("Doc", names, { filter: { total: { eq: 1 } } })).toThrow(FrameworkError);
-  });
-  test("an attribute, no query, or a name that only resembles one passes", () => {
-    expect(() => rejectComputedQuery("Doc", names, {})).not.toThrow();
-    expect(() => rejectComputedQuery("Doc", names, { filter: { title: { eq: "total" } }, sort: ["title", "-title"] })).not.toThrow();
-    expect(() => rejectComputedQuery("Doc", names, { filter: { totals: { eq: 1 } }, sort: ["-totals"] })).not.toThrow();
-    expect(() => rejectComputedQuery("Doc", names, { filter: { and: [] }, sort: [] })).not.toThrow();
-    expect(() => rejectComputedQuery("Doc", [], { filter: { total: { eq: 1 } } })).not.toThrow();
-  });
-  // a filter literal leaves out a computed field named like a member of the Object interface only by giving it as
-  // undefined, which the generated filter type allows; the data layer has no column for it, so it must not see it.
-  test("a computed field given as undefined is left out of the filter it returns, at any depth; a stored column stays", () => {
-    const odd = ["toString", "valueOf"];
-    const clean = (filter: unknown) => rejectComputedQuery<unknown>("Doc", odd, { filter });
-    expect(clean({ toString: undefined, valueOf: undefined, label: { eq: "a" } })).toEqual({ label: { eq: "a" } });
-    const cleaned = clean({ or: [{ toString: undefined, label: { eq: "a" } }, { and: [{ valueOf: undefined }, { label: { eq: "b" } }] }] });
-    expect(cleaned).toEqual({ or: [{ label: { eq: "a" } }, { and: [{}, { label: { eq: "b" } }] }] });
-    expect(Object.keys((cleaned as { or: object[] }).or[0]!)).toEqual(["label"]);
-    expect(clean({ toString: undefined })).toEqual({});
-    // A stored column given as undefined is the data layer's to leave out (`Filter`).
-    const stored = { label: undefined, toString: undefined };
-    expect(Object.keys(clean(stored) as object)).toEqual(["label"]);
-    // Nothing to take out: the caller's filter itself, never a copy, and never changed.
-    const plain = { and: [{ label: { eq: "a" } }], label: undefined };
-    expect(clean(plain)).toBe(plain);
-    expect(rejectComputedQuery("Doc", odd, {})).toBeUndefined();
-    const given = { or: [{ toString: undefined }] };
-    clean(given);
-    expect(given).toEqual({ or: [{ toString: undefined }] });
-    expect(Object.keys(given.or[0]!)).toEqual(["toString"]);
-    // A comparison of a computed field is still the SQL evaluator's, beside or under an undefined one.
-    expect(() => clean({ toString: undefined, valueOf: { eq: "v" } })).toThrow(refused("filter", "valueOf"));
-    expect(() => clean({ or: [{ toString: undefined }, { toString: { eq: "t" } }] })).toThrow(refused("filter", "toString"));
   });
 });
 

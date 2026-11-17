@@ -476,3 +476,56 @@ export const $expressions = {
     >,
   ) => $.isSystem($s.context),
 } as const;
+
+/**
+ * The functions above that must run as SQL, as condition literals (M10): the tree the data adapter prints, and the
+ * parameters, computed in memory with the forms above and bound before the query.
+ */
+export const $conditions = {
+  // computed :lapsed, for a caller's filter and sort (src/domain/work/claim.mesh.mx:26:5)
+  "computed.lapsed": {
+    what: "computed :lapsed of work.Claim",
+    entity: "work.Claim",
+    tree: {
+      args: [
+        {
+          args: [
+            {
+              class: "string",
+              depth: 0,
+              kind: "column",
+              name: "state",
+            },
+            {
+              class: "string",
+              kind: "value",
+              value: "active",
+            },
+          ],
+          fn: "eq",
+          kind: "call",
+        },
+        {
+          args: [
+            {
+              class: "date",
+              depth: 0,
+              kind: "column",
+              name: "expiresAt",
+            },
+            {
+              class: "date",
+              index: 0,
+              kind: "param",
+            },
+          ],
+          fn: "lte",
+          kind: "call",
+        },
+      ],
+      fn: "and",
+      kind: "call",
+    },
+    params: ($s: $work$Claim$Scope<unknown>) => [$.now($s)],
+  },
+} as const;

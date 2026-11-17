@@ -256,6 +256,8 @@ await disconnect();
 
 A filter is a value, not a string, so a field that does not exist is a type error rather than a query that quietly returns nothing. The entity's own filter, the caller's filter and the policies are all combined before the query leaves the process.
 
+A filter and a sort may name a computed field whose body translates to SQL, as a stored attribute: `Task.read({ filter: { derivedState: { eq: "ready" } }, sort: ["-blocked"] })` inlines each body into the query, so the rows are the ones its loaded value would pick, with the same operators and the same null rules. A computed field Mesh runs in memory, and a rollup, cannot be named there: the read fails with a `FrameworkError` before any query (`A filter by work.Task#maxFence is not available: maxFence is a rollup, which a caller's filter and sort cannot name; a read's own filter= and sort can`). A rollup you load counts only the records your read policies admit, while a rollup in a query counts all of them, so the two would not agree; a read's own `filter=` and `sort` in the entity file may use one, since there the entity's author decides.
+
 ## Loading relationships and computed fields
 
 Anything derived is computed only when you name it in `load`:
@@ -281,8 +283,8 @@ What you load runs the read policies of the entity it reaches, with your context
 Three things meet in `load`, and they are not one thing:
 
 - A **relationship** runs in the query, as a join or a second query.
-- A **rollup** (`count`, `sum`) always runs in SQL, so a read's own `filter` and `sort` and a read policy can use it (`filter=() => &todoCount > 0`); a caller's `filter` and `sort` cannot yet.
-- A **computed field with a body** runs in SQL when its expression can be translated, and in memory when it cannot. `label` concatenates a string, so it is computed after the rows load, one extra pass. `mesh explain` says which one a field is.
+- A **rollup** (`count`, `sum`) always runs in SQL, so a read's own `filter` and `sort` and a read policy can use it (`filter=() => &todoCount > 0`); a caller's `filter` and `sort` cannot, since what a caller loads of it counts only the records its read policies admit.
+- A **computed field with a body** runs in SQL when its expression can be translated, and in memory when it cannot. `label` concatenates a string, so it is computed after the rows load, one extra pass. Only a translated one can be named in a caller's `filter` and `sort`. `mesh explain` says which one a field is.
 
 ## Errors
 

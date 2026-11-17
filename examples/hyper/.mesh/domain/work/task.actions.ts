@@ -7,7 +7,9 @@ import {
   InvalidInputError as $InvalidInputError,
   NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
+  allOf as $allOf,
   authorizer as $authorizer,
+  callerQuery as $callerQuery,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -20,13 +22,13 @@ import {
   publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
-  rejectComputedQuery,
   rescope as $rescope,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
+  whereFor as $whereFor,
   writeCount as $writeCount,
   type ActionContext as $ActionContext,
   type ActionFrame as $ActionFrame,
@@ -36,11 +38,15 @@ import {
   type DeepReadonly as $DeepReadonly,
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
+  type CallerComputed as $CallerComputed,
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
   type Row as $Row,
+  type TableHandle as $TableHandle,
+  type TableOf as $TableOf,
+  type ValueClass as $ValueClass,
 } from "@meshfw/runtime";
 import type {
   Task as $Record,
@@ -77,6 +83,7 @@ import {
 } from "./task.validators";
 import { tables } from "../../schema";
 import {
+  $conditions,
   $expressions,
   type $work$Task$Scope as $Scope,
   type $work$Task$StoredScope as $StoredScope,
@@ -90,6 +97,42 @@ import {
   type $Pick,
   type $Promise,
 } from "../../$globals";
+
+/** The table of each entity the conditions of this file's reads reach, by FQN. */
+const $tableOf: $TableOf = (fqn) =>
+  (
+    ({
+      "work.Assignment": tables.assignments,
+      "work.Claim": tables.claims,
+      "work.Dependency": tables.dependencies,
+      "work.Submission": tables.submissions,
+      "work.Task": tables.tasks,
+    }) as { readonly [fqn: string]: $TableHandle }
+  )[fqn]!;
+/** How each column a caller may filter and sort by is stored, for the order and the conditions a read hands the data layer. */
+const $sortClasses: { readonly [name: string]: $ValueClass } = {
+  id: "string",
+  title: "string",
+  intent: "string",
+  priority: "integer",
+  state: "string",
+  version: "integer",
+  createdAt: "date",
+  reopenedAt: "date",
+  parentId: "string",
+  creatorId: "string",
+} as const;
+/** What a caller's filter and sort may do with each computed field: translate its condition literal, read when a read runs, or refuse it. */
+const $callerComputed: { readonly [name: string]: $CallerComputed } = {
+  childrenSettled: { class: "boolean", literal: () => $conditions["computed.childrenSettled"] },
+  claimed: { class: "boolean", literal: () => $conditions["computed.claimed"] },
+  lapsedClaim: { class: "boolean", literal: () => $conditions["computed.lapsedClaim"] },
+  inReview: { class: "boolean", literal: () => $conditions["computed.inReview"] },
+  assigned: { class: "boolean", literal: () => $conditions["computed.assigned"] },
+  blocked: { class: "boolean", literal: () => $conditions["computed.blocked"] },
+  maxFence: "rollup",
+  derivedState: { class: "string", literal: () => $conditions["computed.derivedState"] },
+} as const;
 
 /**
  * The reads of this entity without their policies: what `Mesh.privileged(Task)` runs. The read actions
@@ -112,30 +155,35 @@ export function bindTaskReads(
       // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readTaskInputSchema, input));
       return layer.transaction(async (tx) => {
-        const $filter = rejectComputedQuery(
-          "work.Task",
-          [
-            "childrenSettled",
-            "claimed",
-            "lapsedClaim",
-            "inReview",
-            "assigned",
-            "blocked",
-            "maxFence",
-            "derivedState",
-          ],
-          parsed,
+        const $context = (context ?? {}) as unknown as { [key: string]: unknown };
+        const $clock = clock ?? $pinClock(options.clock);
+        const $s = $scope(
+          {
+            input: $readOnlyRecord(parsed as never, "work.Task#read"),
+            actor: $context.actor,
+            context: $context,
+          },
+          { clock: $clock },
         );
+        const $caller = $callerQuery("work.Task", $callerComputed, parsed, {
+          tableOf: $tableOf,
+          scope: $s as never,
+          classes: $sortClasses,
+          layer,
+        });
+        const $where = $allOf([$caller.where]);
+        if ($where === false)
+          return [] as unknown as L extends unknown ? TaskTxWith<TaskLoadNames<L>>[] : never;
         const $rows = (await tx.select(tables.tasks, {
-          filter: $filter,
-          sort: parsed.sort,
+          filter: $caller.filter,
+          where: $whereFor(layer, $where),
+          sort: $caller.sort,
+          order: $caller.order,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Task[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown ? TaskTxWith<TaskLoadNames<L>>[] : never;
-        const $context = (context ?? {}) as unknown as { [key: string]: unknown };
-        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "work.Task", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,

@@ -757,3 +757,454 @@ export const $expressions = {
   "policy.internal.authorize-if.0": ($s: $work$Task$CheckScope<$work$Task$TouchTaskInput>) =>
     $.isSystem($s.context),
 } as const;
+
+/**
+ * The functions above that must run as SQL, as condition literals (M10): the tree the data adapter prints, and the
+ * parameters, computed in memory with the forms above and bound before the query.
+ */
+export const $conditions = {
+  // computed :childrenSettled, for a caller's filter and sort (src/domain/work/task.mesh.mx:40:5)
+  "computed.childrenSettled": {
+    what: "computed :childrenSettled of work.Task",
+    entity: "work.Task",
+    tree: {
+      hop: {
+        column: "parentId",
+        key: "id",
+        outer: "id",
+        table: "work.Task",
+      },
+      kind: "every",
+      where: {
+        args: [
+          {
+            class: "string",
+            depth: 1,
+            kind: "column",
+            name: "state",
+          },
+          {
+            class: "string",
+            kind: "value",
+            value: "open",
+          },
+        ],
+        fn: "ne",
+        kind: "call",
+      },
+    },
+    params: (_$s: $work$Task$Scope<unknown>) => [],
+  },
+  // computed :claimed, for a caller's filter and sort (src/domain/work/task.mesh.mx:41:5)
+  "computed.claimed": {
+    what: "computed :claimed of work.Task",
+    entity: "work.Task",
+    tree: {
+      hop: {
+        column: "taskId",
+        key: "id",
+        outer: "id",
+        table: "work.Claim",
+      },
+      kind: "some",
+      where: {
+        args: [
+          {
+            args: [
+              {
+                class: "string",
+                depth: 1,
+                kind: "column",
+                name: "state",
+              },
+              {
+                class: "string",
+                kind: "value",
+                value: "active",
+              },
+            ],
+            fn: "eq",
+            kind: "call",
+          },
+          {
+            args: [
+              {
+                class: "date",
+                depth: 1,
+                kind: "column",
+                name: "expiresAt",
+              },
+              {
+                class: "date",
+                index: 0,
+                kind: "param",
+              },
+            ],
+            fn: "gt",
+            kind: "call",
+          },
+        ],
+        fn: "and",
+        kind: "call",
+      },
+    },
+    params: ($s: $work$Task$Scope<unknown>) => [$.now($s)],
+  },
+  // computed :lapsedClaim, for a caller's filter and sort (src/domain/work/task.mesh.mx:42:5)
+  "computed.lapsedClaim": {
+    what: "computed :lapsedClaim of work.Task",
+    entity: "work.Task",
+    tree: {
+      hop: {
+        column: "taskId",
+        key: "id",
+        outer: "id",
+        table: "work.Claim",
+      },
+      kind: "some",
+      where: {
+        args: [
+          {
+            args: [
+              {
+                class: "string",
+                depth: 1,
+                kind: "column",
+                name: "state",
+              },
+              {
+                class: "string",
+                kind: "value",
+                value: "active",
+              },
+            ],
+            fn: "eq",
+            kind: "call",
+          },
+          {
+            args: [
+              {
+                class: "date",
+                depth: 1,
+                kind: "column",
+                name: "expiresAt",
+              },
+              {
+                class: "date",
+                index: 0,
+                kind: "param",
+              },
+            ],
+            fn: "lte",
+            kind: "call",
+          },
+        ],
+        fn: "and",
+        kind: "call",
+      },
+    },
+    params: ($s: $work$Task$Scope<unknown>) => [$.now($s)],
+  },
+  // computed :inReview, for a caller's filter and sort (src/domain/work/task.mesh.mx:43:5)
+  "computed.inReview": {
+    what: "computed :inReview of work.Task",
+    entity: "work.Task",
+    tree: {
+      hop: {
+        column: "taskId",
+        key: "id",
+        outer: "id",
+        table: "work.Submission",
+      },
+      kind: "some",
+      where: {
+        args: [
+          {
+            class: "string",
+            depth: 1,
+            kind: "column",
+            name: "state",
+          },
+          {
+            class: "string",
+            kind: "value",
+            value: "pending",
+          },
+        ],
+        fn: "eq",
+        kind: "call",
+      },
+    },
+    params: (_$s: $work$Task$Scope<unknown>) => [],
+  },
+  // computed :assigned, for a caller's filter and sort (src/domain/work/task.mesh.mx:44:5)
+  "computed.assigned": {
+    what: "computed :assigned of work.Task",
+    entity: "work.Task",
+    tree: {
+      hop: {
+        column: "taskId",
+        key: "id",
+        outer: "id",
+        table: "work.Assignment",
+      },
+      kind: "some",
+      where: {
+        args: [
+          {
+            class: "date",
+            depth: 1,
+            kind: "column",
+            name: "endedAt",
+          },
+        ],
+        fn: "isNull",
+        kind: "call",
+      },
+    },
+    params: (_$s: $work$Task$Scope<unknown>) => [],
+  },
+  // computed :blocked, for a caller's filter and sort (src/domain/work/task.mesh.mx:45:5)
+  "computed.blocked": {
+    what: "computed :blocked of work.Task",
+    entity: "work.Task",
+    tree: {
+      hop: {
+        column: "id",
+        key: "id",
+        outer: "id",
+        table: "work.Task",
+        through: {
+          entry: "dependentId",
+          exit: "prerequisiteId",
+          table: "work.Dependency",
+        },
+      },
+      kind: "some",
+      where: {
+        args: [
+          {
+            class: "string",
+            depth: 1,
+            kind: "column",
+            name: "state",
+          },
+          {
+            class: "string",
+            kind: "value",
+            value: "done",
+          },
+        ],
+        fn: "ne",
+        kind: "call",
+      },
+    },
+    params: (_$s: $work$Task$Scope<unknown>) => [],
+  },
+  // computed :derivedState, for a caller's filter and sort (src/domain/work/task.mesh.mx:47:5)
+  "computed.derivedState": {
+    what: "computed :derivedState of work.Task",
+    entity: "work.Task",
+    tree: {
+      args: [
+        {
+          args: [
+            {
+              class: "string",
+              depth: 0,
+              kind: "column",
+              name: "state",
+            },
+            {
+              class: "string",
+              kind: "value",
+              value: "done",
+            },
+          ],
+          fn: "eq",
+          kind: "call",
+        },
+        {
+          class: "string",
+          kind: "value",
+          value: "done",
+        },
+        {
+          args: [
+            {
+              args: [
+                {
+                  class: "string",
+                  depth: 0,
+                  kind: "column",
+                  name: "state",
+                },
+                {
+                  class: "string",
+                  kind: "value",
+                  value: "canceled",
+                },
+              ],
+              fn: "eq",
+              kind: "call",
+            },
+            {
+              class: "string",
+              kind: "value",
+              value: "canceled",
+            },
+            {
+              args: [
+                {
+                  hop: {
+                    column: "taskId",
+                    key: "id",
+                    outer: "id",
+                    table: "work.Submission",
+                  },
+                  kind: "some",
+                  where: {
+                    args: [
+                      {
+                        class: "string",
+                        depth: 1,
+                        kind: "column",
+                        name: "state",
+                      },
+                      {
+                        class: "string",
+                        kind: "value",
+                        value: "pending",
+                      },
+                    ],
+                    fn: "eq",
+                    kind: "call",
+                  },
+                },
+                {
+                  class: "string",
+                  kind: "value",
+                  value: "in-review",
+                },
+                {
+                  args: [
+                    {
+                      hop: {
+                        column: "taskId",
+                        key: "id",
+                        outer: "id",
+                        table: "work.Claim",
+                      },
+                      kind: "some",
+                      where: {
+                        args: [
+                          {
+                            args: [
+                              {
+                                class: "string",
+                                depth: 1,
+                                kind: "column",
+                                name: "state",
+                              },
+                              {
+                                class: "string",
+                                kind: "value",
+                                value: "active",
+                              },
+                            ],
+                            fn: "eq",
+                            kind: "call",
+                          },
+                          {
+                            args: [
+                              {
+                                class: "date",
+                                depth: 1,
+                                kind: "column",
+                                name: "expiresAt",
+                              },
+                              {
+                                class: "date",
+                                index: 0,
+                                kind: "param",
+                              },
+                            ],
+                            fn: "gt",
+                            kind: "call",
+                          },
+                        ],
+                        fn: "and",
+                        kind: "call",
+                      },
+                    },
+                    {
+                      class: "string",
+                      kind: "value",
+                      value: "claimed",
+                    },
+                    {
+                      args: [
+                        {
+                          hop: {
+                            column: "id",
+                            key: "id",
+                            outer: "id",
+                            table: "work.Task",
+                            through: {
+                              entry: "dependentId",
+                              exit: "prerequisiteId",
+                              table: "work.Dependency",
+                            },
+                          },
+                          kind: "some",
+                          where: {
+                            args: [
+                              {
+                                class: "string",
+                                depth: 1,
+                                kind: "column",
+                                name: "state",
+                              },
+                              {
+                                class: "string",
+                                kind: "value",
+                                value: "done",
+                              },
+                            ],
+                            fn: "ne",
+                            kind: "call",
+                          },
+                        },
+                        {
+                          class: "string",
+                          kind: "value",
+                          value: "blocked",
+                        },
+                        {
+                          class: "string",
+                          kind: "value",
+                          value: "ready",
+                        },
+                      ],
+                      fn: "cond",
+                      kind: "call",
+                    },
+                  ],
+                  fn: "cond",
+                  kind: "call",
+                },
+              ],
+              fn: "cond",
+              kind: "call",
+            },
+          ],
+          fn: "cond",
+          kind: "call",
+        },
+      ],
+      fn: "cond",
+      kind: "call",
+    },
+    params: ($s: $work$Task$Scope<unknown>) => [$.now($s)],
+  },
+} as const;

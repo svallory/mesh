@@ -282,13 +282,13 @@ describe("members named like members of Object.prototype or of a function", () =
         const [plain] = await names.Loads.read({ filter: { id: { eq: alone.id } } }, anyone);
         expect(Object.keys(plain).sort()).toEqual(["constructorId", "id", "label"]);
         // A computed field given as undefined, as the filter type has a caller write it, is left out: the data layer, which
-        // has no column for it, never sees it. Compared, it is still the SQL evaluator's (M10).
+        // has no column for it, never sees it. Compared, it is refused: its body runs in memory.
         const unset = { toString: undefined, valueOf: undefined };
         expect(await names.Loads.read({ filter: { ...unset, label: { eq: "alone" } } }, anyone)).toEqual([alone]);
         expect(await names.Loads.read({ filter: { or: [{ ...unset, label: { eq: "alone" } }, { ...unset, id: { eq: linked.id } }] }, sort: ["label"] }, anyone))
           .toEqual([alone, linked]);
         expect(await names.Loads.read({ filter: { and: [unset, { label: { eq: "linked" } }] } }, anyone)).toEqual([linked]);
-        await expect(names.Loads.read({ filter: { ...unset, valueOf: { eq: "ALONE:none" } } }, anyone)).rejects.toThrow("arrives in M10");
+        await expect(names.Loads.read({ filter: { ...unset, valueOf: { eq: "ALONE:none" } } }, anyone)).rejects.toThrow("A filter by names.Loads#valueOf is not available: valueOf is a computed field Mesh runs in memory");
       });
     } finally {
       await layer.close();

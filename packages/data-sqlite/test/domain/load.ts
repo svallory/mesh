@@ -424,22 +424,25 @@ export function loadSuite(adapter: DomainAdapter): void {
       } finally { await db.close(); }
     });
 
-    test("filtering or sorting a read by a rollup fails with the not-implemented error that names M10", async () => {
+    test("a caller's filter or sort by a rollup is refused; one by a computed field that reads a rollup runs as SQL", async () => {
       const db = await fresh();
       try {
         const authors = callsOf(app.bind(db), domain);
         await authors.createAuthor?.({});
         await run(db, async (tx) => { await seed(tx); });
         const refused = (what: "filter" | "sort", name: string) =>
-          `A ${what} by Author#${name} is not available yet: ${name} is a computed field or rollup, and filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10`;
+          `A ${what} by Author#${name} is not available: ${name} is a rollup, which a caller's filter and sort cannot name; a read's own filter= and sort can`;
         await expect(authors.readAuthor({ filter: { postCount: { gt: 1 } } })).rejects.toThrow(refused("filter", "postCount"));
         await expect(authors.readAuthor({ sort: ["-lastPostedAt"] })).rejects.toThrow(refused("sort", "lastPostedAt"));
         await expect(authors.readAuthor({ filter: { and: [{ name: { eq: "Ada" } }, { or: [{ topScore: { eq: 9 } }] }] } })).rejects.toThrow(refused("filter", "topScore"));
-        await expect(authors.readAuthor({ filter: { prolific: { eq: true } } })).rejects.toThrow(refused("filter", "prolific"));
+        // prolific (`&postCount > 1`) translates: the rollup is a subquery, with the values a load gives (true, false, false).
+        expect((await authors.readAuthor({ filter: { prolific: { eq: true } } })).map((a: Row) => a.name)).toEqual(["Ada"]);
+        expect((await authors.readAuthor({ sort: ["-prolific", "-name"] })).map((a: Row) => a.name)).toEqual(["Ada", "Cy", "Bo"]);
         // An attribute still filters and sorts.
         expect((await authors.readAuthor({ filter: { name: { eq: "Bo" } }, sort: ["-name"] })).map((a: Row) => a.name)).toEqual(["Bo"]);
       } finally { await db.close(); }
     });
+
   });
 
   describe("computed fields with a body", () => {

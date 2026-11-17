@@ -10,6 +10,7 @@ import {
   type SourcePosition,
 } from "@meshfw/model";
 import { inputOptional } from "../../model/input-optional.ts";
+import { lowerComputed, type Lowered } from "../../model/sql-condition.ts";
 import { emitError } from "../emit-error.ts";
 import { pathSegment } from "../emitters/order.ts";
 import { globalAlias } from "./globals.ts";
@@ -83,9 +84,9 @@ export interface QueryColumn {
 /**
  * What a caller's filter and sort can name: the entity's attributes of a queryable type (not
  * `json`), the key column of each `belongs-to`, and its computed fields of a queryable type. A
- * computed field is named so that using one is the not-implemented error that names M10 and not an
- * "unrecognized key" (filtering and sorting by one is evaluated in SQL, which arrives then). A
- * relationship itself is not a column.
+ * computed field that translates runs as SQL (`callerComputed`); one Mesh runs in memory and a rollup
+ * are named too, so that using one is the run-time error that says so and not an "unrecognized key".
+ * A relationship itself is not a column.
  */
 export function queryColumns(entity: Entity): QueryColumn[] {
   const columns: QueryColumn[] = entity.attributes
@@ -102,6 +103,22 @@ export function computedColumns(entity: Entity): QueryColumn[] {
   return entity.computed
     .filter((field) => attributeTypeInfo(field.type).queryable && (field.type !== "enum" || (field.values?.length ?? 0) > 0))
     .map((field) => ({ name: field.name, type: field.type, nullable: field.nullable ?? false, ...(field.values ? { values: field.values } : {}) }));
+}
+/**
+ * What a caller's filter and sort may do with each computed field they name (`computedColumns`, in that order): a
+ * translated field (one whose body lowers to SQL) is translated (`callerQuery` in `@meshfw/runtime`), and a rollup or a
+ * field Mesh runs in memory is refused at run time.
+ */
+export type CallerField =
+  | { readonly column: QueryColumn; readonly kind: "rollup" | "plain" }
+  | { readonly column: QueryColumn; readonly kind: "translated"; readonly lowered: Lowered };
+export function callerComputed(document: ModelDocument, entity: Entity): CallerField[] {
+  return computedColumns(entity).map((column): CallerField => {
+    const computed = entity.computed.find((field) => field.name === column.name)!;
+    if (computed.rollup) return { column, kind: "rollup" };
+    const lowered = lowerComputed(document, entity, computed);
+    return lowered.ok ? { column, kind: "translated", lowered: lowered.lowered } : { column, kind: "plain" };
+  });
 }
 export const filterTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Filter`;
 export const sortTypeName = (entity: Entity) => `${typeName(entity.name, entity.position)}Sort`;

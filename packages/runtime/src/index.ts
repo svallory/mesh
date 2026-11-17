@@ -43,7 +43,7 @@ export { checkScope, runCheck } from "./lifecycle.ts";
 export { authorizer, type Authorizer, type PolicyCheckSpec, type PolicySpec } from "./policy.ts";
 export type { BindOptions, CheckSpec, SharedInput } from "./lifecycle.ts";
 export type { Clock, Scope } from "./expr.ts";
-export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, rejectComputedQuery, CHUNK } from "./load.ts";
+export { loadRows, loadInto, unloadFrom, guarded, readOnlyRecord, cloneValue, type DeepReadonly, type Writable, CHUNK } from "./load.ts";
 export { castInput, checkUnchanged, failJoined, noteWrite, writeCount } from "./compose.ts";
 export type { CastOutput, ReadCap } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";

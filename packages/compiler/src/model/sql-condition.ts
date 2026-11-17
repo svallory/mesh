@@ -671,3 +671,12 @@ export function lowerSortKey(document: ModelDocument, entity: Entity, key: SortK
   const node: ExprNode = { kind: "member", object: { kind: "var", name: "self", position: key.member.position }, name: key.member.name, optional: false, position: key.member.position };
   return lowerer(document, entity, options).all(node, rootScope(document, entity, undefined, {}), undefined);
 }
+
+/**
+ * A computed field as a caller's `filter` and `sort` read it (O6 (a)): its body lowered as it is inlined where a declared
+ * filter or sort reads `&<name>`. A rollup lowers too (a `rollup` node), and the caller decides whether to use it.
+ */
+export function lowerComputed(document: ModelDocument, entity: Entity, computed: Computed): LowerResult {
+  const node: ExprNode = { kind: "member", object: { kind: "var", name: "self", position: computed.position }, name: computed.name, optional: false, position: computed.position };
+  return lowerer(document, entity, {}).all(node, rootScope(document, entity, undefined, {}), undefined);
+}
