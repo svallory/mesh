@@ -13,7 +13,7 @@ import { DECLARATION, type Declaration } from "./declarations.ts";
 import { dispatching } from "./dispatch.ts";
 import type { HandlerKind } from "./bus.ts";
 import { NO_RENAMES, renamedMap } from "./stored-names.ts";
-import { causedIn, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { causedIn, keepProblem, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
 import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
 /**
@@ -609,6 +609,12 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
     throw new FrameworkError(
       `The project declares the event ${[...events.keys()].sort()[0]}, and the data layer has no outbox (no readOutbox): a project that declares an event needs a data adapter with the outbox operations appendEvent, readOutbox and deleteOutboxThrough`,
     );
+  }
+  // `keep` is checked as the build checks it, so a binding given its config directly cannot start with a bad rule.
+  const keep = options.events?.keep;
+  if (keep !== undefined) {
+    const problem = keepProblem(keep, options.events?.bus);
+    if (problem) throw new EventsConfigError(problem.message);
   }
   // The rename map is checked against the domain's events, once: every later read takes the checked map.
   const renamed = options.events?.renamed;

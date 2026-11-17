@@ -1,5 +1,5 @@
 import type { CapabilityManifest } from "./capabilities.ts";
-import type { DataLayer, DataOperations, FailureOperations, FailureRow, OutboxAppend, OutboxPage } from "./data-layer.ts";
+import type { DataLayer, DataOperations, FailureOperations, FailureRow, OutboxAppend, OutboxPage, RetentionOperations } from "./data-layer.ts";
 import { FrameworkError, MeshError } from "./errors.ts";
 
 /** A fresh layer whose database has the outbox tables and no outbox row. Each check closes it. */
@@ -270,10 +270,17 @@ function failures(tx: DataOperations): FailureOperations {
   return tx as DataOperations & FailureOperations;
 }
 
+/** The retention operation of a transaction, asserted present. */
+function retention(tx: DataOperations): RetentionOperations {
+  assert(typeof tx.firstOutboxRowSince === "function", "the transaction's operations have no firstOutboxRowSince (RetentionOperations)");
+  return tx as DataOperations & RetentionOperations;
+}
+
 /**
  * The retention checks a data adapter runs beside `outboxConformance` (spec, Events and commands, "Retention", "Handler
- * failures"): today the four dead-letter operations on `mesh_outbox_failures` (`FailureOperations`), all present
- * together; each check owns and closes its layer, as `outboxConformance`'s do. `makeLayer` gives a fresh database with
+ * failures"): the four dead-letter operations on `mesh_outbox_failures` (`FailureOperations`), all present together,
+ * and the keep period's `firstOutboxRowSince` (`RetentionOperations`); each check owns and closes its layer, as
+ * `outboxConformance`'s do. `makeLayer` gives a fresh database with
  * core's tables for a project that declares an event.
  */
 export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): Record<string, () => Promise<void>> {
@@ -351,6 +358,28 @@ export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): R
       assert((await read(layer, "kept", null, 10)).length === 1, "another handler's row was touched");
       await layer.transaction((tx) => failures(tx).renameFailures("nobody", "after"));
       assert((await read(layer, "after", null, 10)).length === 2, "renaming a handler with no rows changes nothing");
+    }),
+    "keep periods: firstOutboxRowSince gives the first row above after and at or below through stamped after since, and a row stamped exactly since is not after it": withLayer(async (layer) => {
+      const base = 1_760_000_000_000;
+      // Rows 1 to 5, each one second younger than the one before: since = row 3's instant makes rows 4 and 5 the young ones.
+      const positions = await layer.transaction(async (tx) => {
+        const out: number[] = [];
+        for (let n = 1; n <= 5; n++) out.push(await tx.appendEvent!(outboxRow(n, { occurredAt: new Date(base + n * 1000) })));
+        return out;
+      });
+      const [p1, p2, p3, p4, p5] = positions as [number, number, number, number, number];
+      const first = (after: number, through: number, since: number) => layer.transaction((tx) => retention(tx).firstOutboxRowSince(after, through, new Date(since)));
+      const since = base + 3000;
+      assert((await first(0, p5, since)) === p4, "row 3 is stamped exactly since, so row 4 is the first after it");
+      assert((await first(0, p3, since)) === null, "no row at or below row 3 is after since");
+      assert((await first(0, p4, since)) === p4, "through is inclusive");
+      assert((await first(p4, p5, since)) === p5, "after is exclusive");
+      assert((await first(p5, p5, since)) === null, "an empty range gives null");
+      assert((await first(0, p5, base + 2999)) === p3, "a since one millisecond before row 3's instant makes row 3 the first after it");
+      assert((await first(0, p5, base)) === p1, "every row is after a since older than all of them");
+      assert((await first(0, p5, base + 10_000)) === null, "no row is after a since younger than all of them");
+      await layer.transaction((tx) => tx.deleteOutboxThrough!(p2));
+      assert((await first(0, p5, base)) === p3, "a deleted row is not found");
     }),
     "dead letters: a failure row outlives the deletion of its outbox row": withLayer(async (layer) => {
       const row = outboxRow(1);

@@ -204,6 +204,8 @@ export interface DataOperations {
   readFailures?: FailureOperations["readFailures"];
   deleteFailure?: FailureOperations["deleteFailure"];
   renameFailures?: FailureOperations["renameFailures"];
+  /** Keep periods; see `RetentionOperations`. Mandatory only for a project whose `events.keep` is `{ days }`. */
+  firstOutboxRowSince?: RetentionOperations["firstOutboxRowSince"];
   /** Delivery from several processes; see `MultiProcessOperations`. Mandatory only when the bus declares `multi-process`. */
   lockDeliveryState?: MultiProcessOperations["lockDeliveryState"];
   readDeliveryStateUnlocked?: MultiProcessOperations["readDeliveryStateUnlocked"];
@@ -450,6 +452,20 @@ export interface FailureOperations {
   deleteFailure(failure: number): Promise<boolean>;
   /** Re-key every failure row of the handler `from` to `to` (a `renamedFrom` take-over). */
   renameFailures(from: string, to: string): Promise<void>;
+}
+
+/**
+ * The operations a retention rule beyond the two string values of `events.keep` needs (spec, Events and commands,
+ * "Retention"), each in the running transaction, beside `DeliveryOperations`. Only core calls them. Mandatory for a data
+ * adapter of a project whose `events.keep` is a period (`{ days }`): core checks them at the start of delivery then, and
+ * calls none of them otherwise.
+ */
+export interface RetentionOperations {
+  /**
+   * The position of the first outbox row above `after` and at or below `through` whose `occurredAt` is after `since`
+   * (a row too young for a period to delete), or null. A row stamped exactly `since` is not after it.
+   */
+  firstOutboxRowSince(after: number, through: number, since: Date): Promise<number | null>;
 }
 
 /** One row of `mesh_delivery_process`: a process that delivers in multi mode (the bus declares `multi-process`). */

@@ -2,7 +2,7 @@ import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFile, stat, realpath, lstat } from "node:fs/promises";
 import type { Diagnostic } from "@meshfw/model";
-import { BUS_CAPABILITIES, busProblem, CAPABILITIES, FrameworkError, KEEP_VALUES, renamedShapeProblems, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
+import { BUS_CAPABILITIES, busProblem, CAPABILITIES, FrameworkError, keepProblem, renamedShapeProblems, validateCapabilityManifest, type DataAdapter, type EventsConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "@meshfw/runtime";
 import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
@@ -300,7 +300,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
 
 /**
  * The checks of the `events` key (spec, Events and commands, "Configuration and the events module"), each a
- * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values, whose `load` is a function, whose `bus` is an event
+ * `MESH_EVENTS_CONFIG`: an object whose `keep` is one of its values or a period of whole days (`keepProblem`, which refuses a period on a bus that delivers from several processes), whose `load` is a function, whose `bus` is an event
  * bus, whose `requires` lists capabilities, and whose `renamed` is an object of non-empty former FQNs to non-empty event
  * names (`renamedShapeProblems`; `eventsDiagnostics` checks it against the declared events).
  */
@@ -312,8 +312,8 @@ function checkEvents(events: unknown, at: (field: string) => Diagnostic["positio
   }
   for (const [key, value] of Object.entries(events)) {
     if (key === "keep") {
-      if (!(KEEP_VALUES as readonly unknown[]).includes(value))
-        fail("keep", `\`events.keep\` must be ${KEEP_VALUES.map((keep) => JSON.stringify(keep)).join(" or ")}, and is ${JSON.stringify(value) ?? String(value)}`, "Set keep: \"until-delivered\" (the default: a row is deleted once delivered) or keep: \"all\" (every row is kept)");
+      const problem = keepProblem(value, events.bus);
+      if (problem) fail("keep", problem.message, problem.fix);
     } else if (key === "load") {
       if (typeof value !== "function")
         fail("load", "`events.load` must be a function that imports the events module", "Set load: () => import(\"./src/events.ts\")");

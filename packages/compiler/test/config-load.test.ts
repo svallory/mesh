@@ -158,10 +158,38 @@ describe("the events key", () => {
   });
 
   test("a keep that is not one of its values", async () => {
-    const fix = "Set keep: \"until-delivered\" (the default: a row is deleted once delivered) or keep: \"all\" (every row is kept)";
-    expect(await codes("{ keep: \"forever\" }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\" or \"all\", and is \"forever\"", fix }]);
-    expect(await codes("{ keep: undefined }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\" or \"all\", and is undefined", fix }]);
-    expect(await codes("{ keep: 30 }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\" or \"all\", and is 30", fix }]);
+    const fix = "Set keep: \"until-delivered\" (the default: a row is deleted once delivered), keep: \"all\" (every row is kept) or keep: { days: 30 } (a delivered row is kept 30 days)";
+    const message = (shown: string) => `\`events.keep\` must be "until-delivered", "all" or { days }, and is ${shown}`;
+    expect(await codes("{ keep: \"forever\" }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("\"forever\""), fix }]);
+    expect(await codes("{ keep: undefined }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("undefined"), fix }]);
+    expect(await codes("{ keep: 30 }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("30"), fix }]);
+    expect(await codes("{ keep: { hours: 1 } }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: message("{\"hours\":1}"), fix }]);
+  });
+
+  test("a keep period is kept on the resolved config; days must be a whole number from 1 to 100000, with no other field", async () => {
+    const loaded = await loadConfig(await withEvents("{ keep: { days: 1 } }"));
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.config!.events!.keep).toEqual({ days: 1 });
+    expect((await loadConfig(await withEvents("{ keep: { days: 30 } }"))).diagnostics).toEqual([]);
+    expect((await loadConfig(await withEvents("{ keep: { days: 100_000 } }"))).diagnostics).toEqual([]);
+    const days = (shown: string) => [{ code: "MESH_EVENTS_CONFIG", message: `\`events.keep.days\` must be a whole number of days, from 1 to 100000, and is ${shown}`, fix: "Set days to a whole number, such as 30" }];
+    for (const [value, shown] of [["0", "0"], ["0.5", "0.5"], ["-3", "-3"], ["\"30\"", "\"30\""], ["null", "null"], ["undefined", "undefined"], ["100_001", "100001"]] as [string, string][])
+      expect(await codes(`{ keep: { days: ${value} } }`), value).toEqual(days(shown));
+    expect(await codes("{ keep: { days: 30, hours: 2 } }")).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "`events.keep` { days } takes no other field, and has \"hours\"", fix: "Remove the field, as in keep: { days: 30 }" }]);
+  });
+
+  test("a keep period on a bus that delivers from several processes is refused at the keep key; the strings are not", async () => {
+    const multi = bus('["ordered-delivery", "multi-process"]');
+    expect(await codes(`{ bus: ${multi}, keep: "all" }`)).toEqual([]);
+    expect(await codes(`{ bus: ${bus('["ordered-delivery"]')}, keep: { days: 7 } }`)).toEqual([]);
+    const root = await project("", {}, `{\n  domain: "src/domain",\n  output: ".mesh",\n  data: ${JSON.stringify(data)},\n  events: {\n    bus: ${multi},\n    keep: { days: 7 },\n  },\n}`);
+    const source = await readFile(resolve(root, "mesh.config.ts"), "utf8");
+    const line = source.split("\n").findIndex((text) => text.trimStart().startsWith("keep:")) + 1;
+    expect(brief(await loadConfig(root))).toEqual([{
+      code: "MESH_EVENTS_CONFIG", line, column: 4,
+      message: "`events.keep` is { days: 7 }, and the bus fake delivers from several processes (multi-process), whose recorded keep is \"until-delivered\" or \"all\": a process without the period would delete the rows this one keeps",
+      fix: "Set keep: \"until-delivered\" or keep: \"all\", or deliver from one process",
+    }]);
   });
 
   test("a load that is not a function", async () => {
@@ -240,7 +268,7 @@ describe("the events key", () => {
       { code: "MESH_EVENTS_CONFIG", message: "`events.requires` lists \"replay\" twice", fix: "Remove the second one" },
       { code: "MESH_EVENTS_CONFIG", message: expect.stringContaining("`events.requires` lists 3, which is no capability"), fix: "Remove it, or correct the name" },
       { code: "MESH_EVENTS_CONFIG", message: "Unknown field \"retain\" in configuration field `events`; its fields are bus, load, keep, requires and renamed", fix: "Remove the unknown field" },
-      { code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\" or \"all\", and is \"no\"", fix: expect.any(String) },
+      { code: "MESH_EVENTS_CONFIG", message: "`events.keep` must be \"until-delivered\", \"all\" or { days }, and is \"no\"", fix: expect.any(String) },
     ]);
   });
 });

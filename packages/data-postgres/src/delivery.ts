@@ -2,7 +2,8 @@ import { hostname } from "node:os";
 import {
   DELIVERY_PROCESS_TABLE, FAILURES_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
   type DelivererClaim, type DeliveryOperations, type DeliveryProcessRow, type DeliveryState, type FailureOperations, type FailureRow, type HandlerLeaseRow,
-  type HandlerProgressRow, type LockedDeliveryState, type MultiProcessOperations, type SubscriptionFilter, type SubscriptionOwnerRow, type SubscriptionProgressRow,
+  type HandlerProgressRow, type LockedDeliveryState, type MultiProcessOperations, type RetentionOperations, type SubscriptionFilter, type SubscriptionOwnerRow,
+  type SubscriptionProgressRow,
 } from "@meshfw/runtime";
 import { int8, int8OrNull } from "./int8.ts";
 import { sqlstateOf, type Query } from "./outbox.ts";
@@ -68,7 +69,7 @@ async function lockedState(query: Query, sequence: () => Promise<string>, extra 
 }
 
 /** The delivery operations over `query` (the running transaction's statements); `sequence` resolves the outbox's sequence. */
-export function deliveryOperations(query: Query, sequence: () => Promise<string>): DeliveryOperations {
+export function deliveryOperations(query: Query, sequence: () => Promise<string>): DeliveryOperations & RetentionOperations {
   const exec = <T>(statement: () => Promise<T>) => withTables(statement);
   return {
     readDeliveryState: () => exec(async () => stateOf(await lockedState(query, sequence))),
@@ -130,6 +131,13 @@ export function deliveryOperations(query: Query, sequence: () => Promise<string>
            AND (name IN (SELECT jsonb_array_elements_text($3::text::jsonb)) OR name NOT IN (SELECT jsonb_array_elements_text($4::text::jsonb)))
          ORDER BY position LIMIT 1`,
         [after, before, JSON.stringify(listed), JSON.stringify(declared)],
+      );
+      return row === undefined ? null : int8(row.position, "mesh_outbox.position");
+    }),
+    firstOutboxRowSince: (after, through, since) => exec(async () => {
+      const [row] = await query(
+        `SELECT position FROM ${OUTBOX_TABLE} WHERE position > $1 AND position <= $2 AND occurred_at > $3::text::timestamptz ORDER BY position LIMIT 1`,
+        [after, through, iso(since)],
       );
       return row === undefined ? null : int8(row.position, "mesh_outbox.position");
     }),
