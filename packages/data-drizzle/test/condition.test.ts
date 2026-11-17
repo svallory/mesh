@@ -101,6 +101,9 @@ describe("conditionSql", () => {
     // The filter is a condition of its own over the last table, true only.
     expect(q(rollup("count", [toChildren], "id", call("gt", col("total", 0, "integer"), val(2, "integer"))))).toMatchObject({
       sql: '(select count("t1"."id") from "invoices" as "t1" where "t1"."parentId" = "invoices"."id" and (("t1"."total" > ?)) is true)', params: [2] });
+    // A hop inside the filter takes its own alias (`t1w1`), never the rollup's `t1` again, and links from `t1`.
+    expect(q(rollup("count", [toChildren], "id", call("eq", { kind: "one", hop: toCustomer, value: col("name", 1) }, val("a", "string")))).sql).toBe(
+      '(select count("t1"."id") from "invoices" as "t1" where "t1"."parentId" = "invoices"."id" and (((select "t1w1"."db_name" from "customers" as "t1w1" where "t1w1"."id" = "t1"."customerId" order by "t1w1"."id" limit 1) = ?)) is true)');
     // Of a row a hop reaches, and of the outer row inside a quantifier: each starts at its own row, at the next free depth.
     expect(q({ kind: "one", hop: toParent, value: rollup("count", [toChildren], "id", undefined, 1) }).sql).toBe(
       '(select (select count("t2"."id") from "invoices" as "t2" where "t2"."parentId" = "t1"."id") from "invoices" as "t1" where "t1"."id" = "invoices"."parentId" order by "t1"."id" limit 1)');
