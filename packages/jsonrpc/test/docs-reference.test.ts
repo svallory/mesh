@@ -2,10 +2,10 @@
 // This test holds that block to the package: the same exported names, and the same types where a reader writes code
 // against them. The one difference allowed is the `params` schema type, which the Docs spell structurally
 // (`ParamsSchema`) because their `@meshfw/runtime` block does not declare `StandardSchemaV1`; every real Standard
-// Schema validator must still fit it.
+// Schema validator must still fit it. The check runs in a scratch folder beside the tests, so the block's
+// `@meshfw/runtime` import (for `surfaceMethods`) resolves to the real runtime.
 import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -22,7 +22,7 @@ function compile(files: string[], cwd: string) {
 
 const probe = `import type * as Docs from "jsonrpc-reference";
 import type * as Actual from ${JSON.stringify(actual)};
-import type { StandardSchemaV1 } from ${JSON.stringify(join(repo, "packages/runtime/src/index.ts"))};
+import type { ActionContext, StandardSchemaV1 } from ${JSON.stringify(join(repo, "packages/runtime/src/index.ts"))};
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
 type C = { actor: string };
@@ -49,6 +49,9 @@ type TableRun = Assert<Equal<Parameters<Docs.MethodTable<C>[string]["run"]>, Par
 type TableRunSent = Assert<Equal<Parameters<Actual.MethodTable<C>[string]["run"]>[0], Sent>>;
 type ServeParameters = Assert<Equal<Parameters<typeof Docs.serve<C, T>>[0]["context"], Parameters<typeof Actual.serve<C, T>>[0]["context"]>>;
 type ServeResult = Assert<Equal<Awaited<ReturnType<typeof Docs.serve<C, T>>>, Awaited<ReturnType<typeof Actual.serve<C, T>>>>>;
+type SurfaceMethodsParameters = Assert<Equal<Parameters<typeof Docs.surfaceMethods<ActionContext & C>>, Parameters<typeof Actual.surfaceMethods<ActionContext & C>>>>;
+type SurfaceMethodsRun = Assert<Equal<Parameters<ReturnType<typeof Docs.surfaceMethods>[string]["run"]>, Parameters<ReturnType<typeof Actual.surfaceMethods>[string]["run"]>>>;
+type SurfaceMethodsOptionsParity = Assert<Equal<Docs.SurfaceMethodsOptions, Actual.SurfaceMethodsOptions>>;
 type RpcErrorArguments = Assert<Equal<ConstructorParameters<typeof Docs.RpcError>, ConstructorParameters<typeof Actual.RpcError>>>;
 type RpcErrorMembers = Assert<Equal<Pick<Docs.RpcError, "code" | "data" | "message">, Pick<Actual.RpcError, "code" | "data" | "message">>>;
 declare const schema: StandardSchemaV1<unknown, P>;
@@ -66,7 +69,7 @@ actualServe({ socket: "s", context, methods: { a: { params: schema, run: (params
 `;
 
 test("the Docs' declarations of @meshfw/jsonrpc match the package", async () => {
-  const root = await mkdtemp(join(tmpdir(), "jsonrpc-reference-"));
+  const root = await mkdtemp(join(import.meta.dir, ".scratch-docs-"));
   try {
     const reference = await readFile(join(repo, "apps/docs/samples/mesh-api.d.ts"), "utf8");
     const start = reference.indexOf('declare module "@meshfw/jsonrpc" {');
