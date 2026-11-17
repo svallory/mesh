@@ -363,8 +363,9 @@ describe("callerQuery", () => {
     expect(run({ sort: ["-label"] })).toThrow(plain("sort"));
     expect(run({ filter: { and: [{ title: { eq: "a" } }, { or: [{ lineCount: { gt: 1 } }] }] } })).toThrow(rollup("filter"));
     expect(run({ sort: ["title", "lineCount"] })).toThrow(rollup("sort"));
-    // Without the SQL half (an entity with no translated field), a translated name cannot be: it is refused too.
-    expect(run({ filter: { doubled: { eq: 1 } } }, false)).toThrow("A filter by billing.Invoice#doubled is not available: doubled is a computed field Mesh runs in memory");
+    // Without the SQL half a translated field cannot be read; the build always passes it, so this is a framework fault.
+    expect(run({ filter: { doubled: { eq: 1 } } }, false)).toThrow("callerQuery needs the read's SQL options to translate billing.Invoice#doubled");
+    expect(run({ sort: ["doubled"] }, false)).toThrow("callerQuery needs the read's SQL options to translate billing.Invoice#doubled");
     // A name that only resembles one, or an inherited member of Object, is not a computed field.
     expect(run({ filter: { labels: { eq: "a" } }, sort: ["-labels"] }, false)).not.toThrow();
     expect(run({ sort: ["valueOf"] }, false)).not.toThrow();

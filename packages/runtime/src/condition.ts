@@ -457,7 +457,9 @@ export function callerQuery<F, S>(
     if (field === "rollup") {
       throw new FrameworkError(`A ${what} by ${entity}#${name} is not available: ${name} is a rollup, which a caller's filter and sort cannot name; a read's own filter= and sort can`);
     }
-    if (field === "plain" || !sql) throw new FrameworkError(`A ${what} by ${entity}#${name} is not available: ${name} is a computed field Mesh runs in memory`);
+    if (field === "plain") throw new FrameworkError(`A ${what} by ${entity}#${name} is not available: ${name} is a computed field Mesh runs in memory`);
+    // The build passes the read's SQL options whenever a field translates, so this is a framework fault, not the caller's.
+    if (!sql) throw new FrameworkError(`callerQuery needs the read's SQL options to translate ${entity}#${name}`);
   };
   let translated = false;
   const clean = (filter: unknown): unknown => {
