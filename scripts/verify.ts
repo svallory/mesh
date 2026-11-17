@@ -4,9 +4,10 @@
 //
 // `--group <name>` runs only that group's steps (scripts/verify-groups.json; CI runs one
 // job per group). It refuses to run when the groups file and the workspace disagree, so a
-// package in no group fails every group job instead of running nowhere.
+// package in no group fails every group job instead of running nowhere. A groups file that cannot be read or has
+// the wrong shape also fails --group; without --group it is only reported, and every step runs.
 import { join } from "node:path";
-import { GROUPS_FILE, checkGroups, parseVerifyArgs, planAll, planGroup, readWorkspace, type VerifyGroups } from "./verify/plan.ts";
+import { checkGroups, parseVerifyArgs, planAll, planGroup, readGroups, readWorkspace } from "./verify/plan.ts";
 
 const root = join(import.meta.dir, "..");
 
@@ -16,14 +17,14 @@ if ("error" in args) {
   process.exit(2);
 }
 
-const groups: VerifyGroups = await Bun.file(join(root, GROUPS_FILE)).json();
-if (args.group !== undefined && !Object.hasOwn(groups.groups, args.group)) {
-  console.error(`verify: unknown group ${args.group}; groups: ${Object.keys(groups.groups).join(", ")}`);
+const { dirs, manifests } = await readWorkspace(root);
+const loaded = await readGroups(root);
+if (args.group !== undefined && "groups" in loaded && !Object.hasOwn(loaded.groups.groups, args.group)) {
+  console.error(`verify: unknown group ${args.group}; groups: ${Object.keys(loaded.groups.groups).join(", ")}`);
   process.exit(2);
 }
 
-const { dirs, manifests } = await readWorkspace(root);
-const problems = checkGroups(dirs, groups);
+const problems = "groups" in loaded ? checkGroups(dirs, loaded.groups) : loaded.problems;
 if (args.group !== undefined && problems.length > 0) {
   for (const problem of problems) console.error(problem);
   process.exit(1);
@@ -32,7 +33,8 @@ if (args.group !== undefined && problems.length > 0) {
 for (const problem of problems) console.error(`${problem} (warning: CI runs groups)`);
 
 const all = planAll(dirs, manifests);
-const steps = args.group === undefined ? all : planGroup(all, groups, args.group);
+// `loaded` has groups here: with --group, a problem has already exited.
+const steps = args.group === undefined || !("groups" in loaded) ? all : planGroup(all, loaded.groups, args.group);
 
 const failed: string[] = [];
 let ran = 0;

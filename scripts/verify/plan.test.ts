@@ -7,6 +7,7 @@ import {
   ROOT_STEPS,
   STEPS,
   checkGroups,
+  checkGroupsShape,
   parseVerifyArgs,
   planAll,
   planGroup,
@@ -161,6 +162,40 @@ describe("checkGroups", () => {
   });
 });
 
+describe("checkGroupsShape", () => {
+  test("a valid file, extra top-level keys and all, has no problems", () => {
+    expect(checkGroupsShape({ $comment: "x", ...valid })).toEqual([]);
+  });
+
+  test("no groups object", () => {
+    const problem = 'verify: scripts/verify-groups.json must have "groups", an object of groups';
+    expect(checkGroupsShape({})).toEqual([problem]);
+    expect(checkGroupsShape({ groups: [] })).toEqual([problem]);
+    expect(checkGroupsShape({ groups: null })).toEqual([problem]);
+    expect(checkGroupsShape(null)).toEqual([problem]);
+    expect(checkGroupsShape([])).toEqual([problem]);
+  });
+
+  test("a group that is not an object", () => {
+    expect(checkGroupsShape({ groups: { x: "packages/core" } })).toEqual([
+      "verify: group x in scripts/verify-groups.json must be an object",
+    ]);
+  });
+
+  test("a group with no packages list, or one holding a non-string", () => {
+    const problem = 'verify: group x in scripts/verify-groups.json must have "packages", a list of directories';
+    expect(checkGroupsShape({ groups: { x: { root: true } } })).toEqual([problem]);
+    expect(checkGroupsShape({ groups: { x: { packages: "packages/core" } } })).toEqual([problem]);
+    expect(checkGroupsShape({ groups: { x: { packages: ["packages/core", 3] } } })).toEqual([problem]);
+  });
+
+  test("a root that is not true or false", () => {
+    expect(checkGroupsShape({ groups: { x: { packages: [], root: "yes" } } })).toEqual([
+      'verify: group x in scripts/verify-groups.json has "root" "yes"; use true or false',
+    ]);
+  });
+});
+
 describe("parseVerifyArgs", () => {
   test("no arguments runs everything", () => {
     expect(parseVerifyArgs([])).toEqual({ group: undefined });
@@ -255,6 +290,25 @@ describe("verify.ts", () => {
     await Bun.write(join(at, GROUPS_FILE), groupsFile);
     return at;
   }
+
+  test("--group refuses a groups file of the wrong shape, and one that is not JSON, without a stack trace", async () => {
+    for (const [file, line] of [
+      [JSON.stringify({ groups: { all: { root: true } } }), 'verify: group all in scripts/verify-groups.json must have "packages", a list of directories\n'],
+      [JSON.stringify({ $comment: "no groups" }), 'verify: scripts/verify-groups.json must have "groups", an object of groups\n'],
+      ["{ not json", "verify: cannot read scripts/verify-groups.json: "],
+    ] as const) {
+      const at = await fixture(file);
+      try {
+        const { code, stdout, stderr } = await run(at, ["--group", "all"]);
+        expect(code).toBe(1);
+        expect(stderr.startsWith(line)).toBe(true);
+        expect(stderr.split("\n").filter(Boolean)).toHaveLength(1);
+        expect(stdout).not.toContain("===");
+      } finally {
+        await rm(at, { recursive: true, force: true });
+      }
+    }
+  });
 
   test("--group refuses to run any step when a package is in no group", async () => {
     const at = await fixture(JSON.stringify({ groups: { all: { root: true, packages: ["packages/a"] } } }));

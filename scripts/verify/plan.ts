@@ -73,6 +73,44 @@ function list(names: string[]): string {
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Problems with the groups file's shape, before it is read as `VerifyGroups`: `groups` must be an object, each
+ *  group an object with `packages`, a list of strings, and `root`, when present, true or false. Other top-level
+ *  keys (`$comment`) are allowed. Empty when the shape is valid. */
+export function checkGroupsShape(file: unknown): string[] {
+  if (!isObject(file) || !isObject(file.groups)) return [`verify: ${GROUPS_FILE} must have "groups", an object of groups`];
+  const problems: string[] = [];
+  for (const [name, group] of Object.entries(file.groups)) {
+    if (!isObject(group)) {
+      problems.push(`verify: group ${name} in ${GROUPS_FILE} must be an object`);
+      continue;
+    }
+    if (!Array.isArray(group.packages) || !group.packages.every((dir) => typeof dir === "string")) {
+      problems.push(`verify: group ${name} in ${GROUPS_FILE} must have "packages", a list of directories`);
+    }
+    if (group.root !== undefined && typeof group.root !== "boolean") {
+      problems.push(`verify: group ${name} in ${GROUPS_FILE} has "root" ${JSON.stringify(group.root)}; use true or false`);
+    }
+  }
+  return problems;
+}
+
+/** The groups file of the repository at `root`, or the problems that stop it being read: not readable, not JSON,
+ *  or the wrong shape (`checkGroupsShape`). */
+export async function readGroups(root: string): Promise<{ groups: VerifyGroups } | { problems: string[] }> {
+  let file: unknown;
+  try {
+    file = await Bun.file(join(root, GROUPS_FILE)).json();
+  } catch (error) {
+    return { problems: [`verify: cannot read ${GROUPS_FILE}: ${error instanceof Error ? error.message : String(error)}`] };
+  }
+  const problems = checkGroupsShape(file);
+  return problems.length > 0 ? { problems } : { groups: file as VerifyGroups };
+}
+
 /** Problems with the groups file against the workspace: a package in no group, in several groups, a group naming
  *  a directory that is not a workspace package, zero or several groups with `root: true`. Empty when valid. */
 export function checkGroups(dirs: string[], groups: VerifyGroups): string[] {
