@@ -94,6 +94,11 @@ describe("the contract", () => {
     expect(on("[pay.PaymentRecorded, (InvoicePaid)]")).toEqual([[25, 41, "MESH_UNKNOWN_EVENT", WRAPPED]]);
     expect(on("[InvoicePaid as any, pay.PaymentRecorded]")).toEqual([[25, 19, "MESH_UNKNOWN_EVENT", WRAPPED]]);
     expect(on("[InvoicePaid satisfies unknown]")).toEqual([[25, 19, "MESH_UNKNOWN_EVENT", WRAPPED]]);
+    // Around the whole list too, at the value as written.
+    expect(on("([InvoicePaid])")).toEqual([[25, 18, "MESH_UNKNOWN_EVENT", WRAPPED]]);
+    expect(on("[InvoicePaid] as any")).toEqual([[25, 18, "MESH_UNKNOWN_EVENT", WRAPPED]]);
+    expect(on("[InvoicePaid] satisfies unknown")).toEqual([[25, 18, "MESH_UNKNOWN_EVENT", WRAPPED]]);
+    expect(on("[InvoicePaid]!")).toEqual([[25, 18, "MESH_UNKNOWN_EVENT", WRAPPED]]);
     // Whitespace and comments around an item, and inside a namespace member, are no wrapper.
     expect(on("[ InvoicePaid ,pay. PaymentRecorded /* x */ ]")).toEqual([]);
   });

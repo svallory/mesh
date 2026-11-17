@@ -681,6 +681,12 @@ function handles(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
       else if (isWrapped(a)) ctx.fail(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
       continue;
     }
+    // A wrapper around the whole list (`([A])`, `[A] as any`) is MX's to strip, as around one reference: the written value
+    // (`valueSpan`) then differs from the lowered one.
+    if (isWrapped(a)) {
+      ctx.fail(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
+      continue;
+    }
     const items = (n.elements ?? []) as (Item | null)[];
     if (items.length === 0) {
       ctx.fail("on must list at least one event: `on=[InvoicePaid]`", { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
