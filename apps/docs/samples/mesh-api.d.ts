@@ -1021,6 +1021,14 @@ declare module "#mesh/domain/todo" {
       read<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
       pending<const L extends readonly (keyof TodoLoadable)[] = readonly []>(input: Omit<ReadTodoInput, "load"> & TodoLoadArg<L>, context?: ActionContext): Promise<TodoWith<TodoLoadNames<L>>[]>;
   }>;
+
+  /** The input type of the Services page's operation `retire` of `service :Lists` (`src/domain/todo/lists.mesh.mx`). */
+  export type RetireListsInput = { list: string };
+
+  /** The service value `Lists`: one method per operation, each resolving with what its body returns. */
+  export const Lists: {
+    retire(input: RetireListsInput, context: ActionContext): Promise<{ removed: number }>;
+  };
 }
 
 declare module "#mesh/domain/billing" {

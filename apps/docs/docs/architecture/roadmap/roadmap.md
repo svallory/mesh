@@ -378,7 +378,7 @@ The raw-SQL escape hatch adds work to two of these rows. The Postgres adapter me
 | Event sourcing, first slice | `project` handlers of `@meshfw/event-sourcing` (a read model built from history, `from`, the history rule) over core's contributed-kind point, and upcasting (`upcaster()`/`upcasters()` over core's `upcast` point) ([ADR-0094](../decisions/0094-run-time-points-for-event-extensions.md)), in TypeScript. Built on 2026-11-17 ([Event sourcing](../../docs/event-sourcing.md)) | Built; nothing in the port needs it ([ADR-0081](../decisions/0081-event-sourcing-and-cqrs-are-extensions.md), amendment of 2026-11-17) |
 | Event store, `apply`, `@meshfw/cqrs` | An event store with stream versions and `apply` on event-sourced aggregates; declared read models (a `projection` file kind) and rebuild tooling | The choice of store (the operator's guidance points to a dedicated one, not the outbox), aggregates, and the extension host (M11) for vocabulary |
 
-Not planned at all, with reasons: reusable step files (dropped: reuse is a TypeScript helper or a `mixin` included with `use`, and named checks are an entity-level `checks` section, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)); a policy solver (Ruling 6 defers it); `bypass` policies (they fail open, [ADR-0055](../decisions/0055-policies-are-core.md)); embedded entities, manual and generic actions (deferrable per Synthesis section 8, gap 4); audit trail, event log, state machine, soft delete, encryption, rate limits as Mesh features (the port builds its own event log on domain events); GraphQL, an admin interface (it would be a reader of a surface, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md); Synthesis section 8, "Do not build yet"); a second authoring syntax (MX is core, [ADR-0043](../decisions/0043-mx-is-core.md)); `mesh watch`; Node, Deno and edge runtimes ([ADR-0025](../decisions/0025-bun-only.md)).
+Not planned at all, with reasons: reusable step files (dropped: reuse is a TypeScript helper or a `mixin` included with `use`, and named checks are an entity-level `checks` section, [ADR-0082](../decisions/0082-named-checks-and-mixins.md)); a policy solver (Ruling 6 defers it); `bypass` policies (they fail open, [ADR-0055](../decisions/0055-policies-are-core.md)); embedded entities, manual and generic actions on an entity (deferrable per Synthesis section 8, gap 4; a service's operation is the one generic action, [ADR-0097](../decisions/0097-the-service-construct.md)); audit trail, event log, state machine, soft delete, encryption, rate limits as Mesh features (the port builds its own event log on domain events); GraphQL, an admin interface (it would be a reader of a surface, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md); Synthesis section 8, "Do not build yet"); a second authoring syntax (MX is core, [ADR-0043](../decisions/0043-mx-is-core.md)); `mesh watch`; Node, Deno and edge runtimes ([ADR-0025](../decisions/0025-bun-only.md)).
 
 ## 7. Build or reuse
 
@@ -465,6 +465,10 @@ Each gap code is defined in section 4 of the [gap analysis](../research/hyper-po
 11. **Overridden templates fork** ([ADR-0061](../decisions/0061-generators-are-jig-templates.md)). A project that overrides a template stops receiving fixes to it, and the view types become a public contract.
 
 ## 10. Changelog
+
+### 2026-11-17 amendment (services)
+
+[ADR-0097](../decisions/0097-the-service-construct.md) (proposed, lead ruling D42) builds the service construct, brought forward from after 1.0 by lead ruling D28: a `service :Name` file of operations with their `uses` lines, generated as a service value beside the module's entities. Section 6's "manual and generic actions" now reads "on an entity": a service operation is a generic action placed in a service.
 
 ### 2026-10-11 amendments (domain concepts)
 

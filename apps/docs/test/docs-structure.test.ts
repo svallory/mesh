@@ -18,6 +18,7 @@ test("Docs navigation follows the structural review with a nested first-project 
     { title: "Using your domain", path: "/docs/using-your-domain/" },
     { title: "Events", path: "/docs/events/" },
     { title: "Event sourcing", path: "/docs/event-sourcing/" },
+    { title: "Services", path: "/docs/services/" },
     { title: "Surfaces", path: "/docs/surfaces/" },
     { title: "Testing", path: "/docs/testing/" },
     { title: "Configuration", path: "/docs/configuration/" },
@@ -29,7 +30,7 @@ test("Docs navigation follows the structural review with a nested first-project 
 
 test("user pages retain one release note and only the approved local-binary exception", () => {
   const names = readdirSync(docs).filter((name) => name.endsWith(".md"));
-  expect(names).toHaveLength(14);
+  expect(names).toHaveLength(15);
   for (const name of names) {
     const text = readFileSync(join(docs, name), "utf8");
     expect(text.match(/Mesh is not released yet\. These pages describe what Mesh will be\./g)).toHaveLength(1);

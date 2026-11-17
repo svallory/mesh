@@ -34,6 +34,8 @@ It copies the generator templates into your project:
   index.ts.jig
   load.ts.jig
   module.ts.jig
+  service-inputs.ts.jig
+  service.ts.jig
   surface.ts.jig
   types.ts.jig
   validators.ts.jig
@@ -89,6 +91,8 @@ The build now uses your `actions.ts.jig` and Mesh's own for the rest, and a Mesh
 The keyword is `import type` when the functions take only types from a module (a `Money` type that a function names in an annotation and never calls). A project that sets `verbatimModuleSyntax` keeps a plain `import` of such a module as written, and `tsc` refuses it with TS1484. An override written before the view had a `keyword` field prints `import` every time, so a project with that setting fails type checking at the line, and the fix is to replace the literal `import` in each import line with the `keyword` field.
 
 ## Concepts in the views
+
+A project that declares a [service](./services.md) renders two more templates once per service: `service.ts.jig` with a `ServiceView` (the value's `name` and `valueLocal`, its `entries`, one printed function per body and policy function, and its `operations`, each with its `schema`, printed `policies` and `uses`, and `body`) and `service-inputs.ts.jig` with a `ServiceInputsView` (one entry per operation in `inputs`: its `typeName`, `constName`, `members` and `fields`, as the types and validators views print an action's input). `ModuleView.services` lists the services a module's barrel exports.
 
 A project that declares a concept gets one more template, `concept.ts.jig`, rendered once per concept with a `ConceptView`: its `name` and `schema`, its `fields` (each a `key`, a printed `type` and a printed `zod` expression), `json` and `globals` as the validators view has them, and `typeImports`, one entry per concept a field holds (`type` as `Money as $Money$concept`, `schema` as `moneySchema as $Money$schema`, and `fromLiteral`). The views that print a concept member list the concepts they need the same way: `ValidatorsView.concepts` (the schemas) and `DeclarationView.concepts` (the types and schemas) for `validators.ts.jig` and `declaration.ts.jig`, and the types view adds each concept to its `imports`. `ModuleView.concepts` lists the concepts a module's barrel exports. An override of one of these templates written before concepts must print those imports, or its file fails type checking at the first concept member.
 

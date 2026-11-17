@@ -7,7 +7,7 @@ description: "Decision record 0097: the shape of a domain service (a `service :N
 
 ## Status
 
-Proposed (lead ruling D42, pending operator review). Built in parts: the run-time half (service values, `runOperation`, the `uses` check and the nesting refusal) and the file kind, read and checked into the model, are on `main`; the generated service values come with the next pull request, and until then a project that declares a service fails every command that generates files, `mesh build`, `mesh inspect`, `mesh explain` and the data adapter's commands, with `MESH_NOT_IMPLEMENTED`. The port of Hyper's cross-aggregate commands to a service waits for the operator (lead ruling D49), since it changes the example the 1.0 gate rests on.
+Proposed (lead ruling D42, pending operator review). Built: the run-time half (service values, `runOperation`, the `uses` check and the nesting refusal), the file kind, read and checked into the model, and the generated service values (`<service>.service.ts` and `<service>.inputs.ts`, exported by the module barrel) are on `main`. The port of Hyper's cross-aggregate commands to a service waits for the operator (lead ruling D49), since it changes the example the 1.0 gate rests on.
 
 Decides DOM-09 of [ADR-0078](./0078-services-and-where-effects-go.md), whose 2026-10-17 amendment left the shape "decided after 1.0, and enforcing `uses` comes with it"; the operator's order of 2026-11-17 to build every unblocked bead (lead ruling D28) brought it forward.
 
@@ -51,13 +51,13 @@ Every refusal here can be lifted later without breaking a project (an `output`, 
 ## Consequences
 
 - [ADR-0078](./0078-services-and-where-effects-go.md)'s DOM-09 is decided here, and its Decision item 5 ("`tsc` enforces them") is replaced by item 3 above: `tsc` enforces nothing about `uses`.
-- The roadmap's "manual and generic actions: not planned at all" no longer holds for service operations; it still holds for an entity.
+- The roadmap's "manual and generic actions: not planned at all" no longer holds for service operations; it still holds for an entity ([roadmap](../roadmap/roadmap.md), section 6).
 - `service`, `operation` and `uses` are reserved tags; `call` stays unknown.
 
 ## Action items
 
 - [x] The run-time half: service values, `runOperation`, the `uses` check, the nesting refusal.
-- [x] The file kind: contracts, the checks above, `ModelDocument.services`, the `MESH_NOT_IMPLEMENTED` stopgap.
-- [ ] The generated service values (`<name>.service.ts`, the barrel exports), the user page and the in-depth pages.
+- [x] The file kind: contracts, the checks above, `ModelDocument.services`, and a `MESH_NOT_IMPLEMENTED` stopgap in `generateFiles` while nothing was generated (removed with the generated values).
+- [x] The generated service values: `<service>.service.ts` (the value, its operations' bodies, policies and `uses` lines) and `<service>.inputs.ts` (each operation's input type and schema, a file of its own so that the service file's helpers keep any name), the barrel exports and their name claims, the [Services](../../docs/services.md) page and the in-depth pages.
 - [ ] The architecture file switches the one-entity warning (the rule's check, with the cross-aggregate rule).
 - [ ] Operator: accept the construct, and decide the port of Hyper's work commands to a `Work` service (lead ruling D49).
