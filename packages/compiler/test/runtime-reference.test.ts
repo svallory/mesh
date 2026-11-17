@@ -28,7 +28,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     expect(names).toEqual([
       "EventsConfig", "EventsModule", "EventBusCapabilities", "BusManifest", "EventBus", "BusOptions", "EventBusInstance", "RegisteredHandler", "OutboxRow",
       "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "HandlerKind", "KindHandler", "Registration", "HandlerProgressRow", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress", "Adopted",
-      "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
+      "RetryFailedResult", "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
       "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
       "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError", "HandlerLostError",
       "SubscriptionOverflowError", "StoppedHandler", "HandlerStoppedError", "SurfaceAction", "SurfaceExposure", "Surface",
@@ -60,6 +60,7 @@ type KindHandlerParity = Assert<Same<Docs.KindHandler, Actual.KindHandler>>;
 type HandlerProgressRowParity = Assert<Equal<Docs.HandlerProgressRow, Actual.HandlerProgressRow>>;
 type SubscriptionParity = Assert<Equal<Docs.Subscription, Actual.Subscription>>;
 type SubscriptionProgressParity = Assert<Equal<Docs.SubscriptionProgress, Actual.SubscriptionProgress>>;
+type RetryFailedResultParity = Assert<Same<Docs.RetryFailedResult, Actual.RetryFailedResult>>;
 type ReadEventsPageParity = Assert<Equal<Docs.ReadEventsPage, Actual.ReadEventsPage>>;
 type SubscribeQueryParity = Assert<Same<Docs.SubscribeQuery, Actual.SubscribeQuery>>;
 type BindingDeliveryParity = Assert<Same<Pick<Docs.Binding, "deliver" | "startDelivery">, Pick<Actual.Binding, "deliver" | "startDelivery">>>;

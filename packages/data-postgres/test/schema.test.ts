@@ -81,13 +81,16 @@ describe("schemaView", () => {
     expect(Object.keys(POSTGRES_COLUMNS).sort()).toEqual(ATTRIBUTE_TYPES.map((type) => type.name).sort());
   });
 
-  test("a project that declares an event gets core's tables, the outbox position as an identity column", () => {
+  test("a project that declares an event gets core's tables, the outbox position and the failure id as identity columns", () => {
     const view = schemaView(input({
       "billing/invoice.mesh.mx": 'entity :Invoice\n  attributes\n    uuid :id primary-key\n', "billing/invoice-paid.mesh.mx": "event :InvoicePaid\n  string :note\n",
     }));
     const outbox = view.tables.find((table) => table.entity === "mesh_outbox")!;
     expect(outbox.columns[0]).toEqual(col("position", "bigint", '{ mode: "number" }', true, { primaryKey: true, identity: true }));
-    expect(view.tables.filter((table) => table.entity !== "Invoice").every((table) => table.columns.every((column) => column.identity === (column === outbox.columns[0])))).toBe(true);
+    const failures = view.tables.find((table) => table.entity === "mesh_outbox_failures")!;
+    expect(failures.columns[0]).toEqual(col("failure", "bigint", '{ mode: "number" }', true, { primaryKey: true, identity: true }));
+    const keys = [outbox.columns[0], failures.columns[0]];
+    expect(view.tables.filter((table) => table.entity !== "Invoice").every((table) => table.columns.every((column) => column.identity === keys.includes(column)))).toBe(true);
   });
 
   test("no defaults reach the schema", () => {

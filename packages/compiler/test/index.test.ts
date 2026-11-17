@@ -44,7 +44,7 @@ function documentOf(files: Record<string, string> = { "notes/note.mesh.mx": note
 describe("binding, module and index views", () => {
   test("the binding view names the config and the root barrel, which `bind` walks; it lists no entity or action", () => {
     expect(bindingView({ document: documentOf(), config: configOf("/project", ".mesh") }))
-      .toEqual({ configFromLiteral: '"../mesh.config"', domainFromLiteral: '"./domain/index"', events: false, replay: false, subscribe: false, multiProcess: false, rawSql: false });
+      .toEqual({ configFromLiteral: '"../mesh.config"', domainFromLiteral: '"./domain/index"', events: false, replay: false, subscribe: false, multiProcess: false, rawSql: false, deadLetters: false });
   });
 
   test("the config import is relative to a nested output folder", () => {

@@ -1,7 +1,7 @@
 import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind, type KindHandler, type Registration } from "./bus.ts";
-import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
+import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
+import { forgetSubscription, listSubscriptions, markNoDeliver, retryFailed, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, ForbiddenError, FrameworkError,
@@ -34,7 +34,9 @@ const PAGE = 100;
 
 /**
  * A bus that does what every bus must and nothing more: a round feeds each handler from its own cursor, in position
- * order, through core's retry path, then each subscription from its own cursor, then runs the deletion pass. After
+ * order, through core's retry path (a handler with `onFailure: "skip"` has a stop set aside through `core.setAside`
+ * instead, which only a bus that declares `dead-letters` is handed), then each subscription from its own cursor, then
+ * runs the deletion pass. After
  * `start()` a round runs at once, after each commit that published in this process, and every `pollMs`. A handler this
  * process no longer holds (`MESH_HANDLER_LOST`, delivery from several processes) ends for the round and is not reported;
  * the other handlers go on. It declares `multi-process` when `capabilities` lists it.
@@ -64,7 +66,18 @@ export function testBus(options: TestBusOptions = {}): EventBus {
               for (const row of page.rows) {
                 if (core.lists(handler, row)) {
                   const stop = await core.retry(handler, row, retryDelays);
-                  if (stop) { stopped.push(stop); break handled; }
+                  if (stop) {
+                    // dead-letters: a skip handler's failed event is set aside and the handler goes on; a row no
+                    // declared event matches is never set aside, and a set-aside that fails stops the handler there.
+                    const set = handler.onFailure === "skip" && !(stop.cause instanceof EventUndeclaredError)
+                      && await core.setAside(handler, row, stop.cause).then(() => true, (error: unknown) => {
+                        if (error instanceof DatabaseBusyError || error instanceof DelivererLostError || error instanceof HandlerLostError) throw error;
+                        stopped.push({ ...stop, cause: error });
+                        return null;
+                      });
+                    if (set === null) break handled;
+                    if (!set) { stopped.push(stop); break handled; }
+                  }
                 }
                 cursor = row.position;
               }
@@ -802,15 +815,18 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       assert((await world.state()).state.generation === state.generation, "a refused start claimed");
     });
 
-    add("a handler with onFailure: \"skip\" is MESH_HANDLER_OPTION, on a bus with or without dead-letters, until dead-letter handling is built", async (world) => {
-      for (const capabilities of [["ordered-delivery"], ["ordered-delivery", "dead-letters"]] as BusCapability[][]) {
-        const bus = testBus({ capabilities });
-        const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } }, { bus });
-        const error = await rejection(() => binding.deliver());
-        assert(error instanceof HandlerOptionError && error.code === "MESH_HANDLER_OPTION", `with ${capabilities.join(", ")}: got ${String(error)}`);
-        assert(capabilities.length === 1 || error.message.includes("dead-letter handling is not built yet"), `with dead-letters: ${error.message}`);
-      }
+    add("a handler with onFailure: \"skip\" is MESH_HANDLER_OPTION on a bus without dead-letters, before any claim, and is registered on one that declares it", async (world) => {
+      const skip = () => world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } }, { bus: testBus({ capabilities: ["ordered-delivery"] }) });
+      const error = await rejection(() => skip().deliver());
+      assert(error instanceof HandlerOptionError && error.code === "MESH_HANDLER_OPTION" && error.message.includes("needs the bus's dead-letters"), `without dead-letters: got ${String(error)}`);
       assert((await world.state()).handlers.length === 0, "a refused handler was registered");
+      // The legal neighbours: onFailure "stop", or left out, on the same bus.
+      for (const onFailure of ["stop", undefined] as const)
+        await world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], onFailure ? { onFailure } : {}) } } }, { bus: testBus({ capabilities: ["ordered-delivery"] }) }).deliver();
+      const accepted = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } }, { bus: testBus({ capabilities: ["ordered-delivery", "dead-letters"] }) });
+      await accepted.deliver();
+      const { handlers } = await world.state();
+      assert(handlers.length === 1 && handlers[0]!.name === "h", `with dead-letters the handler was to be registered, rows ${JSON.stringify(handlers)}`);
     });
 
     add("an orphaned handler row is reported once in a run of deliver() rounds", async (world) => {
@@ -828,6 +844,334 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       const why = declares.has("multi-process") ? "is registered by no live process" : "is not registered by this deliverer";
       assert(reports[0]!.includes(why), `the report says the handler ${why}: ${reports[0]}`);
     });
+
+    // ---- dead-letters ----
+
+    if (declares.has("dead-letters")) {
+      const failures = (world: World, handler: string) => world.layer.transaction((tx) => (tx as DataOperations & FailureOperations).readFailures(handler, null, 1000));
+      const warnings = async <T>(run: () => Promise<T>): Promise<{ result: T; lines: string[] }> => {
+        const warn = console.warn;
+        const lines: string[] = [];
+        console.warn = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
+        try { return { result: await run(), lines }; } finally { console.warn = warn; }
+      };
+      /** A handler that records each event and throws for the positions in `broken` (`retryable` as given). */
+      const breaking = (world: World, name: string, broken: Set<number>, extra: Partial<Handler<object>> = {}, retryable?: boolean) => world.recorder(name, [Alpha], {
+        onFailure: "skip" as never, ...extra,
+        run: (event) => { if (broken.has(event.position)) throw Object.assign(new Error(`down at ${event.position}`), retryable === undefined ? {} : { retryable }); },
+      });
+
+      for (const kind of ["process", "listen"] as const) {
+        add(`dead letters: a ${kind} skip handler whose retries are used up has the event set aside whole, its progress moved past it, one warning, and handles the next row`, async (world) => {
+          const broken = new Set<number>();
+          const binding = world.bind({ handlers: { [kind]: { h: breaking(world, "h", broken) } } });
+          await binding.deliver();
+          const [p1, p2, p3] = await world.publish(binding, [Alpha, 1], [Alpha, 2], [Alpha, 3]);
+          broken.add(p2!);
+          const { lines } = await warnings(() => binding.deliver());
+          // One try and the schedule's two retries, then the set-aside; the rows on either side are handled once.
+          assert(JSON.stringify(positions(world, "h")) === JSON.stringify([p1, p2, p2, p2, p3]), `got ${JSON.stringify(positions(world, "h"))}`);
+          const rows = await failures(world, "h");
+          assert(rows.length === 1, `one event was to be set aside, got ${rows.length}`);
+          const [row] = rows as [FailureRow];
+          const stored = (await world.outbox()).find((each) => each.position === p2) ?? row;
+          assert(row.position === p2 && row.handler === "h" && row.name === "conformance.Alpha" && row.entity === "conformance.Thing" && (row.payload as Fields).n === 2
+            && row.id === stored.id && JSON.stringify(row.key) === JSON.stringify({ id: "k2" }), `the failure row is ${JSON.stringify(row)}`);
+          assert(row.error.code === null && row.error.message === `down at ${p2}`, `its error is ${JSON.stringify(row.error)}`);
+          const set = lines.filter((line) => line.includes("set aside"));
+          assert(set.length === 1 && set[0]!.includes('"h"') && set[0]!.includes(`position ${p2}`) && set[0]!.includes("conformance.Alpha") && set[0]!.includes(`down at ${p2}`)
+            && set[0]!.includes('retryFailed("h")'), `one warning naming the handler, position, event, error and retryFailed, got ${JSON.stringify(lines)}`);
+          const { handlers } = await world.state();
+          assert(handlers.find((each) => each.name === "h")!.position === p3, "the handler's progress was to be past every row");
+          // DL6: the failure row outlives its outbox row.
+          if (world.keep === "until-delivered") assert((await world.outbox()).length === 0, "every row was passed and was to be deleted");
+          await binding.deliver();
+          assert((await failures(world, "h")).length === 1 && positions(world, "h").length === 5, "a second round set aside or handled again");
+        });
+      }
+
+      add("dead letters: an error with retryable: false is set aside at once, with its code, and no retry", async (world) => {
+        const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], {
+          onFailure: "skip" as never,
+          run: () => { throw new ForbiddenError({ entity: "conformance.Thing", action: "make", policies: [], reason: "failed", breakdown: [] } as never); },
+        }) } } });
+        await binding.deliver();
+        const [p] = await world.publish(binding, [Alpha, 1]);
+        await warnings(() => binding.deliver());
+        assert(positions(world, "h").length === 1, `a non-retryable error was retried: ${JSON.stringify(positions(world, "h"))}`);
+        const rows = await failures(world, "h");
+        const code = new ForbiddenError({ entity: "conformance.Thing", action: "make", policies: [], reason: "failed", breakdown: [] } as never).code;
+        assert(rows.length === 1 && rows[0]!.position === p && rows[0]!.error.code === code, `got ${JSON.stringify(rows.map((row) => [row.position, row.error]))}`);
+      });
+
+      add("dead letters: a process skip handler that published and then threw has none of its events in the outbox after the set-aside", async (world) => {
+        const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], {
+          onFailure: "skip" as never,
+          run: async () => {
+            await world.layer.transaction((tx) => publishEvent(tx, undefined, { entity: "conformance.Thing", action: "echo", key: { id: "e" }, at: "conformance" }, new Echo({ n: 9 }), {}, CLOCK));
+            throw Object.assign(new Error("after the publish"), { retryable: false });
+          },
+        }) }, listen: { watch: world.recorder("watch", [Echo]) } } });
+        await binding.deliver();
+        await world.publish(binding, [Alpha, 1]);
+        await warnings(() => binding.deliver());
+        await binding.deliver();
+        assert((await failures(world, "h")).length === 1, "the event was to be set aside");
+        assert(!(await world.outbox()).some((row) => row.name === "conformance.Echo") && positions(world, "watch").length === 0, "an event the failed body published was committed");
+      });
+
+      add("dead letters: a row no declared event matches stops a skip handler and is never set aside", async (world) => {
+        const before = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha]) } } });
+        await before.deliver();
+        const [beta] = await world.publish(before, [Beta, 1]);
+        const after = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } }, { domain: WITHOUT_BETA });
+        const error = await deliverRejects(after);
+        assert(error.stopped.length === 1 && error.stopped[0]!.cause instanceof EventUndeclaredError && error.stopped[0]!.position === beta, `got ${JSON.stringify(error.stopped.map((stop) => [stop.position, String(stop.cause)]))}`);
+        assert((await failures(world, "h")).length === 0, "an undeclared row was set aside");
+        assert((await world.outbox()).some((row) => row.position === beta), "the undeclared row was deleted");
+      });
+
+      add("dead letters: the set-aside and the progress commit together: a progress write that fails leaves no failure row, and the next round sets it aside", async (world) => {
+        let armed = true;
+        const wrap = (tx: DataOperations): DataOperations => {
+          let wrote = false;
+          const fail = (name: string) => async (...args: unknown[]) => {
+            if (armed && wrote) { armed = false; throw new Error("the progress write failed"); }
+            return (tx as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[name]!(...args);
+          };
+          // The operations object may be frozen: the stubs sit on an object whose prototype it is.
+          return Object.create(tx, {
+            writeFailure: { value: async (row: unknown) => { const done = await (tx as DataOperations & FailureOperations).writeFailure(row as never); wrote = true; return done; } },
+            writeHandlerProgress: { value: fail("writeHandlerProgress") },
+            writeHandlerLease: { value: fail("writeHandlerLease") },
+          }) as DataOperations;
+        };
+        const layer: DataLayer = {
+          database: world.layer.database,
+          readOutbox: (after, limit) => world.layer.readOutbox!(after, limit),
+          refuseIfFailed: () => world.layer.refuseIfFailed(),
+          close: () => Promise.resolve(),
+          transaction: (run, options) => world.layer.transaction((tx) => run(wrap(tx)), options),
+        };
+        const config: EventsConfig = { bus: world.bus, keep: world.keep, load: async () => ({ handlers: { process: { h: breaking(world, "h", new Set([1]), {}, false) } } }) };
+        const binding = bindDomain(FULL, layer, { events: config }, world.frame);
+        await binding.deliver();
+        const [p] = await world.publish(binding, [Alpha, 1]);
+        const error = await deliverRejects(binding);
+        assert(error.stopped.length === 1 && String((error.stopped[0]!.cause as Error)?.message).includes("the progress write failed"), `the failed set-aside was to stop the handler, got ${JSON.stringify(error.stopped.map((stop) => String(stop.cause)))}`);
+        assert((await failures(world, "h")).length === 0, "the failure row committed without its progress");
+        assert((await world.state()).handlers.find((row) => row.name === "h")!.position < p!, "the progress moved without its failure row");
+        await warnings(() => binding.deliver());
+        assert((await failures(world, "h")).length === 1 && (await world.state()).handlers.find((row) => row.name === "h")!.position === p, "the next round was to set the event aside");
+      });
+
+      for (const kind of ["process", "listen"] as const) add(`dead letters: retryFailed replays a ${kind} handler's set-aside events in position order, removes each it handles, and stops at the first that fails again, keeping it and the later ones`, async (world) => {
+        const broken = new Set<number>();
+        const binding = world.bind({ handlers: { [kind]: { h: breaking(world, "h", broken, {}, false) } } });
+        await binding.deliver();
+        const published = await world.publish(binding, [Alpha, 1], [Alpha, 2], [Alpha, 3], [Alpha, 4]);
+        for (const p of published) broken.add(p);
+        await warnings(() => binding.deliver());
+        assert((await failures(world, "h")).length === 4, "four events were to be set aside");
+        world.seen.clear();
+        // The first two now pass, the third still fails: the call stops there.
+        broken.delete(published[0]!);
+        broken.delete(published[1]!);
+        const result = await retryFailed(binding, "h");
+        assert(result.handled === 2 && result.failed !== null && result.failed.position === published[2] && result.failed.handler === "h" && result.failed.event === "conformance.Alpha"
+          && (result.failed.cause as Error).message === `down at ${published[2]}`, `got ${JSON.stringify({ handled: result.handled, failed: result.failed && { ...result.failed, cause: String(result.failed.cause) } })}`);
+        assert(JSON.stringify(positions(world, "h")) === JSON.stringify(published.slice(0, 3)), `the handler ran on ${JSON.stringify(positions(world, "h"))}, in order, and not on the fourth`);
+        assert(JSON.stringify((await failures(world, "h")).map((row) => row.position)) === JSON.stringify(published.slice(2)), "the handled rows were to be removed, the failed one and the later kept");
+        broken.clear();
+        const rest = await retryFailed(binding, "h");
+        assert(rest.handled === 2 && rest.failed === null && (await failures(world, "h")).length === 0, `the second call was to handle the rest, got ${JSON.stringify(rest)}`);
+        const empty = await retryFailed(binding, "h");
+        assert(empty.handled === 0 && empty.failed === null, "a call with nothing set aside resolves with nothing handled");
+      });
+
+      add("dead letters: two bindings of one process that start delivery together with a skip handler: one claims, the other is MESH_DELIVERER_TAKEN", async (world) => {
+        const module = () => ({ handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } });
+        const first = world.bind(module());
+        const second = world.bind(module());
+        // The start checks the layer's failure operations in a transaction before it claims: the in-process guard
+        // must hold across that await.
+        const settled = await Promise.allSettled([start(world, first), start(world, second)]);
+        const taken = settled.filter((each) => each.status === "rejected");
+        assert(settled.filter((each) => each.status === "fulfilled").length === 1 && taken.length === 1
+          && taken[0]!.reason instanceof DelivererTakenError && taken[0]!.reason.holder.thisProcess, `got ${JSON.stringify(settled.map((each) => each.status === "fulfilled" ? "started" : String(each.reason)))}`);
+      });
+
+      if (!declares.has("multi-process")) for (const kind of ["process", "listen"] as const) add(`dead letters: a ${kind} handler replayed by retryFailed whose claim moves to another process while its body runs: the call rejects with MESH_DELIVERER_LOST and keeps the event it had not removed`, async (world) => {
+        const fails = new Set<number>();
+        let moved = false;
+        const binding = world.bind({ handlers: { [kind]: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never, run: async (event) => {
+          if (fails.has(event.position)) throw Object.assign(new Error("down"), { retryable: false });
+          if (moved) return;
+          moved = true;
+          await world.layer.transaction(async (tx) => {
+            const { generation } = await ops(tx).readDeliveryState();
+            await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000dd", generation: generation + 1, host: "elsewhere", pid: 4242, startedAt: new Date() });
+          });
+        } }) } } });
+        await binding.deliver();
+        const published = await world.publish(binding, [Alpha, 1], [Alpha, 2]);
+        for (const p of published) fails.add(p);
+        await warnings(() => binding.deliver());
+        assert((await failures(world, "h")).length === 2, "both events were to be set aside");
+        fails.clear();
+        const lost = await rejection(() => retryFailed(binding, "h"));
+        assert(lost instanceof DelivererLostError, `retryFailed was to reject with MESH_DELIVERER_LOST, got ${String(lost)}`);
+        // A process body commits with the removal it shares a transaction with, and the next event's fence fails; a
+        // listen body runs outside, and the transaction that would remove its row is the one fenced.
+        const kept = (await failures(world, "h")).map((row) => row.position);
+        const expected = kind === "process" ? published.slice(1) : published;
+        assert(JSON.stringify(kept) === JSON.stringify(expected), `the rows kept were ${JSON.stringify(kept)}, expected ${JSON.stringify(expected)}`);
+        assert(positions(world, "h").filter((p) => published.includes(p)).length === 2 + 1, `the handler ran after the claim moved: ${JSON.stringify(positions(world, "h"))}`);
+      });
+
+      add("dead letters: a listen handler replayed by retryFailed runs outside any transaction, and its row is removed after", async (world) => {
+        const broken = new Set<number>([1]);
+        let joined: boolean | undefined;
+        const binding = world.bind({ handlers: { listen: { mail: breaking(world, "mail", broken, { }, false) } } });
+        await binding.deliver();
+        await world.publish(binding, [Alpha, 1]);
+        await warnings(() => binding.deliver());
+        broken.clear();
+        const replaying = world.bind({ handlers: { listen: { mail: world.recorder("mail", [Alpha], { onFailure: "skip" as never, run: () => { joined = world.layer.refuseIfFailed(); } }) } } });
+        const result = await retryFailed(replaying, "mail");
+        assert(result.handled === 1 && joined === false && (await failures(world, "mail")).length === 0, `got ${JSON.stringify(result)}, joined ${String(joined)}`);
+      });
+
+      add("dead letters: a set-aside event the handler no longer lists, or that no declared event matches, ends retryFailed as failed and is kept", async (world) => {
+        const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha, Beta], { onFailure: "skip" as never, run: () => { throw Object.assign(new Error("down"), { retryable: false }); } }) } } });
+        await binding.deliver();
+        const [a, b] = await world.publish(binding, [Alpha, 1], [Beta, 2]);
+        await warnings(() => binding.deliver());
+        assert((await failures(world, "h")).length === 2, "both events were to be set aside");
+        // The handler now lists Beta only: the Alpha row, first in order, is not run.
+        const narrowed = world.bind({ handlers: { process: { h: world.recorder("h", [Beta], { onFailure: "skip" as never }) } } });
+        world.seen.clear();
+        const unlisted = await retryFailed(narrowed, "h");
+        assert(unlisted.handled === 0 && unlisted.failed?.position === a && unlisted.failed!.cause instanceof FrameworkError
+          && (unlisted.failed!.cause as Error).message.includes("no longer lists") && (unlisted.failed!.cause as Error).message.includes("conformance.Alpha"), `got ${JSON.stringify(unlisted.failed && String(unlisted.failed.cause))}`);
+        assert(positions(world, "h").length === 0 && (await failures(world, "h")).length === 2, "an unlisted set-aside event was run or removed");
+        // A build that no longer declares Alpha.
+        const moved = world.bind({ handlers: { process: { h: world.recorder("h", [Beta], { onFailure: "skip" as never }) } } }, { domain: { Beta, Never, Echo } });
+        const undeclared = await retryFailed(moved, "h");
+        assert(undeclared.failed?.position === a && undeclared.failed!.cause instanceof EventUndeclaredError, `got ${JSON.stringify(undeclared.failed && String(undeclared.failed.cause))}`);
+        assert((await failures(world, "h")).length === 2, "an undeclared set-aside event was removed");
+        void b;
+      });
+
+      add("dead letters: retryFailed is refused on a binding with { deliver: false }, one with no bus, for an unknown handler, and while another process holds the claim", async (world) => {
+        const module = { handlers: { process: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never }) } } };
+        const quiet = world.bind(module);
+        markNoDeliver(quiet);
+        const noBus = bindDomain(FULL, world.layer, { events: { keep: world.keep, load: async () => module } }, world.frame);
+        for (const binding of [quiet, noBus]) {
+          const error = await rejection(() => retryFailed(binding, "h"));
+          assert(error instanceof FrameworkError && error.message.startsWith("retryFailed was called in a process that does not deliver"), `got ${String(error)}`);
+        }
+        const unknown = await rejection(() => retryFailed(world.bind(module), "nobody"));
+        assert(unknown instanceof FrameworkError && unknown.message.includes('no handler named "nobody"') && unknown.message.includes("its handlers are h"), `got ${String(unknown)}`);
+        const { state } = await world.state();
+        await world.layer.transaction((tx) => ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-00000000f00d", generation: state.generation + 1, host: "elsewhere", pid: 4242, startedAt: null }));
+        const taken = await rejection(() => retryFailed(world.bind(module), "h"));
+        assert(taken instanceof DelivererTakenError && taken.holder.pid === 4242, `got ${String(taken)}`);
+      });
+
+      for (const started of [false, true]) {
+        add(`dead letters: a second retryFailed for the same handler while one runs in this process is refused${started ? ", with delivery started; one for another handler is not" : "; one for another handler is MESH_DELIVERER_TAKEN, since the first holds the claim it took for the call"}`, async (world) => {
+          let release!: () => void;
+          const gate = new Promise<void>((resolve) => { release = resolve; });
+          let blocking = false;
+          const fails = new Set<number>([1]);
+          const binding = world.bind({ handlers: { process: {
+            h: world.recorder("h", [Alpha], { onFailure: "skip" as never, run: async (event) => { if (fails.has(event.position)) throw Object.assign(new Error("down"), { retryable: false }); if (blocking) await gate; } }),
+            other: world.recorder("other", [Alpha], { onFailure: "skip" as never, run: (event) => { if (fails.has(event.position)) throw Object.assign(new Error("down"), { retryable: false }); } }),
+          } } });
+          await binding.deliver();
+          await world.publish(binding, [Alpha, 1]);
+          await warnings(() => binding.deliver());
+          if (started) await start(world, binding);
+          fails.clear();
+          blocking = true;
+          const first = retryFailed(binding, "h");
+          await until(() => (world.seen.get("h") ?? []).length >= 2, "the first retryFailed runs its handler");
+          const second = await rejection(() => retryFailed(binding, "h"));
+          assert(second instanceof FrameworkError && second.message === 'retryFailed("h") is already running in this process: two runs would handle one set-aside event twice', `got ${String(second)}`);
+          // With delivery started, another handler's call is not refused; it waits for the layer's transaction the first
+          // one's body holds. Without, the first call holds this process's place for the claim it took.
+          const other = started ? retryFailed(binding, "other") : undefined;
+          if (!started) {
+            const taken = await rejection(() => retryFailed(binding, "other"));
+            assert(taken instanceof DelivererTakenError && taken.holder.thisProcess, `another handler's retryFailed without started delivery gave ${String(taken)}`);
+          }
+          release();
+          const result = await first;
+          if (other) {
+            const handled = await other;
+            assert(handled.handled === 1, `another handler's retryFailed was to run under the started claim, got ${JSON.stringify(handled)}`);
+          }
+          assert(result.handled === 1 && result.failed === null, `got ${JSON.stringify(result)}`);
+          // The guard is released: a later call runs.
+          assert((await retryFailed(binding, "h")).handled === 0, "a later call was refused");
+        });
+      }
+
+      add("dead letters: a renamedFrom take-over moves the handler's set-aside events, and retryFailed under the new name replays them", async (world) => {
+        const before = world.bind({ handlers: { process: { old: world.recorder("old", [Alpha], { onFailure: "skip" as never, run: () => { throw Object.assign(new Error("down"), { retryable: false }); } }) } } });
+        await before.deliver();
+        const [p] = await world.publish(before, [Alpha, 1]);
+        await warnings(() => before.deliver());
+        assert((await failures(world, "old")).length === 1, "the event was to be set aside under the old name");
+        const after = world.bind({ handlers: { listen: { renamed: world.recorder("renamed", [Alpha], { onFailure: "skip" as never, renamedFrom: "old" }) } } });
+        const info = console.info;
+        console.info = () => {};
+        try { await after.deliver(); } finally { console.info = info; }
+        assert((await failures(world, "old")).length === 0 && (await failures(world, "renamed")).length === 1, "the failure row was to move with the progress row");
+        const result = await retryFailed(after, "renamed");
+        assert(result.handled === 1 && JSON.stringify(positions(world, "renamed")) === JSON.stringify([p]), `got ${JSON.stringify(result)}`);
+      });
+
+      add("dead letters: a set-aside event stored under a former FQN is read through the rename map when retryFailed replays it", async (world) => {
+        const before = world.bind({ handlers: { process: { h: world.recorder("h", [Beta], { onFailure: "skip" as never, run: () => { throw Object.assign(new Error("down"), { retryable: false }); } }) } } });
+        await before.deliver();
+        await world.publish(before, [Beta, 1]);
+        await warnings(() => before.deliver());
+        const after = world.bind({ handlers: { process: { h: world.recorder("h", [MovedBeta as typeof Alpha], { onFailure: "skip" as never }) } } }, { domain: MOVED_BETA, renamed: RENAMES });
+        world.seen.clear();
+        const result = await retryFailed(after, "h");
+        const seen = world.seen.get("h") ?? [];
+        assert(result.handled === 1 && seen.length === 1 && seen[0]!.name === "conformance.moved.Beta" && seen[0]!.payload instanceof MovedBeta, `got ${JSON.stringify(result)} and ${JSON.stringify(seen.map((event) => event.name))}`);
+      });
+
+      add("dead letters: core.setAside refuses a stop handler, a busy or lost error handed as the failure, and an undeclared row, writing nothing", async (world) => {
+        let core: BusCore | undefined;
+        const watching: EventBus = Object.freeze({ manifest: world.bus.manifest, create(given: BusCore, options: Parameters<EventBus["create"]>[1]) { core = given; return world.bus.create(given, options); } });
+        const binding = world.bind({ handlers: { process: { skip: world.recorder("skip", [Alpha], { onFailure: "skip" as never }), stop: world.recorder("stop", [Alpha]) } } }, { bus: watching });
+        const [p, b] = await world.publish(binding, [Alpha, 1], [Beta, 2]);
+        await start(world, binding);
+        const row = (await core!.rows(0, 10)).rows.find((each) => each.position === p)!;
+        const betaRow = (await core!.rows(0, 10)).rows.find((each) => each.position === b)!;
+        const skip = core!.handlers.find((handler) => handler.name === "skip")!;
+        const stop = core!.handlers.find((handler) => handler.name === "stop")!;
+        const refusals = [
+          [() => core!.setAside(stop, row, new Error("x")), 'whose onFailure is "stop"'],
+          [() => core!.setAside(skip, row, new DatabaseBusyError("db", 0)), "MESH_DATABASE_BUSY as the failure"],
+          [() => core!.setAside(skip, row, new DelivererLostError("db", "test")), "MESH_DELIVERER_LOST as the failure"],
+          [() => core!.setAside(skip, row, new HandlerLostError("skip", "taken", 0, "test")), "MESH_HANDLER_LOST as the failure"],
+          [() => core!.setAside(skip, betaRow, new Error("x")), "which does not list it"],
+        ] as const;
+        for (const [run, text] of refusals) {
+          const error = await rejection(run);
+          assert(error instanceof FrameworkError && error.message.includes(text), `expected a FrameworkError with ${JSON.stringify(text)}, got ${String(error)}`);
+        }
+        const undeclared = await rejection(() => core!.setAside(skip, { ...row, name: "conformance.Gone" }, new Error("x")));
+        assert(undeclared instanceof EventUndeclaredError, `an undeclared row was to be MESH_EVENT_UNDECLARED, got ${String(undeclared)}`);
+        assert((await failures(world, "skip")).length === 0 && (await failures(world, "stop")).length === 0, "a refused set-aside wrote a failure row");
+      });
+    }
 
     // ---- replay ----
 

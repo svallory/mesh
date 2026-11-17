@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { hostname } from "node:os";
 import {
-  DELIVERY_PROCESS_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
-  type DelivererClaim, type DeliveryOperations, type DeliveryProcessRow, type DeliveryState, type HandlerLeaseRow, type HandlerProgressRow,
+  DELIVERY_PROCESS_TABLE, FAILURES_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
+  type DelivererClaim, type DeliveryOperations, type FailureOperations, type FailureRow, type DeliveryProcessRow, type DeliveryState, type HandlerLeaseRow, type HandlerProgressRow,
   type LockedDeliveryState, type MultiProcessOperations, type SubscriptionFilter, type SubscriptionOwnerRow, type SubscriptionProgressRow,
 } from "@meshfw/runtime";
 
@@ -19,7 +19,7 @@ const NOW_MS = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)";
 function missingTable(cause: unknown): unknown {
   const message = cause instanceof Error ? cause.message : "";
   return /no such (table|column)/.test(message) && /mesh_(outbox|handler_progress|subscription_progress)|run_id|generation|renewed_at/.test(message)
-    ? new FrameworkError("The deliverer's tables (mesh_outbox_state with the claim, mesh_handler_progress, mesh_subscription_progress) do not exist in this database: prepare the schema with `mesh db push` (or createSchema in a test) after building a project that declares an event", { cause })
+    ? new FrameworkError("The deliverer's tables (mesh_outbox_state with the claim, mesh_handler_progress, mesh_subscription_progress, mesh_outbox_failures) do not exist in this database: prepare the schema with `mesh db push` (or createSchema in a test) after building a project that declares an event", { cause })
     : cause;
 }
 
@@ -116,6 +116,46 @@ export function deliveryOperations(client: () => Database, run: <T>(statement: (
       ).get(after, before, JSON.stringify(listed), JSON.stringify(declared)) as { position: number } | null;
       return row?.position ?? null;
     }),
+  };
+}
+
+type FailureColumns = {
+  failure: number; handler: string; position: number; id: string; name: string; entity: string; action: string; key: string; caused_by: string | null;
+  metadata: string; occurred_at: number; payload: string; error: string; failed_at: number;
+};
+
+function failureOf(row: FailureColumns): FailureRow {
+  const error = JSON.parse(row.error) as { code: string | null; message: string };
+  return Object.freeze({
+    failure: row.failure, handler: row.handler, position: row.position, id: row.id, name: row.name, entity: row.entity, action: row.action,
+    key: JSON.parse(row.key), causedBy: row.caused_by, metadata: JSON.parse(row.metadata), occurredAt: new Date(row.occurred_at),
+    payload: JSON.parse(row.payload), error: Object.freeze({ code: error.code, message: error.message }), failedAt: new Date(row.failed_at),
+  });
+}
+
+/**
+ * The dead-letter operations on SQLite (`FailureOperations`): `mesh_outbox_failures`, whose `failure` key is
+ * `AUTOINCREMENT`, with JSON and timestamps stored as the outbox stores them. Only a project with a handler whose
+ * `onFailure` is `"skip"` calls them.
+ */
+export function failureOperations(client: () => Database, run: <T>(statement: () => T) => T): FailureOperations {
+  const db = () => client();
+  const exec = <T>(statement: () => T) => Promise.resolve().then(() => run(() => withTables(statement)));
+  return {
+    writeFailure: (row) => exec(() => {
+      db().query(
+        `INSERT INTO ${FAILURES_TABLE} (handler, position, id, name, entity, action, key, caused_by, metadata, occurred_at, payload, error, failed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${NOW_MS})`,
+      ).run(row.handler, row.position, row.id, row.name, row.entity, row.action, JSON.stringify(row.key), row.causedBy, JSON.stringify(row.metadata ?? {}),
+        row.occurredAt.getTime(), JSON.stringify(row.payload), JSON.stringify({ code: row.error.code, message: row.error.message }));
+    }),
+    readFailures: (handler, after, limit) => exec(() =>
+      Object.freeze((db().query(
+        `SELECT * FROM ${FAILURES_TABLE} WHERE handler = ? AND (? IS NULL OR position > ? OR (position = ? AND failure > ?))
+         ORDER BY position, failure LIMIT ?`,
+      ).all(handler, after?.position ?? null, after?.position ?? 0, after?.position ?? 0, after?.failure ?? 0, limit) as FailureColumns[]).map(failureOf))),
+    deleteFailure: (failure) => exec(() => db().query(`DELETE FROM ${FAILURES_TABLE} WHERE failure = ?`).run(failure).changes === 1),
+    renameFailures: (from, to) => exec(() => { db().query(`UPDATE ${FAILURES_TABLE} SET handler = ? WHERE handler = ?`).run(to, from); }),
   };
 }
 

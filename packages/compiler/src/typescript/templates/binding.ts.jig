@@ -43,11 +43,17 @@ import {
   readEvents as $readEvents,
 @end
   resumeHandler as $resumeHandler,
+@if(deadLetters)
+  retryFailed as $retryFailed,
+@end
 @if(subscribe)
   subscribe as $subscribe,
 @end
 @if(multiProcess)
   type Adopted as $Adopted,
+@end
+@if(deadLetters)
+  type RetryFailedResult as $RetryFailedResult,
 @end
   type Delivery as $Delivery,
   type EventRecord as $EventRecord,
@@ -305,6 +311,17 @@ export function adoptHandler(name: string, options?: { readonly drop?: readonly 
 export function resumeHandler(name: string): $Promise<void> {
   return $resumeHandler($deliveryBinding("resumeHandler"), name);
 }
+@if(deadLetters)
+
+/**
+ * Replay the events the handler `name` set aside (`onFailure: "skip"`): it runs once on each, in position order, and each
+ * one it handles is removed from `mesh_outbox_failures`; the call stops at the first that fails again and resolves with
+ * it as `failed`, kept with every later one. Called where delivery runs; elsewhere a `FrameworkError`.
+ */
+export function retryFailed(name: string): $Promise<$RetryFailedResult> {
+  return $retryFailed($deliveryBinding("retryFailed"), name);
+}
+@end
 
 /**
  * Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer.

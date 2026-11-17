@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import {
-  FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
-  type DelivererClaim, type DeliveryOperations, type DeliveryState, type HandlerProgressRow, type SubscriptionFilter, type SubscriptionProgressRow,
+  FAILURES_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
+  type DelivererClaim, type DeliveryOperations, type DeliveryState, type FailureOperations, type FailureRow, type HandlerProgressRow, type SubscriptionFilter, type SubscriptionProgressRow,
 } from "@meshfw/runtime";
 import { int8, int8OrNull } from "./int8.ts";
 import { sqlstateOf, type Query } from "./outbox.ts";
@@ -20,7 +20,7 @@ import { sqlstateOf, type Query } from "./outbox.ts";
  * and the next transaction, with a fresh snapshot, sees the new generation.
  */
 
-const DELIVERY_MISSING = "The deliverer's tables (mesh_outbox_state with the claim, mesh_handler_progress, mesh_subscription_progress) do not exist in this database: prepare the schema with `mesh db push` (or createSchema in a test) after building a project that declares an event";
+const DELIVERY_MISSING = "The deliverer's tables (mesh_outbox_state with the claim, mesh_handler_progress, mesh_subscription_progress, mesh_outbox_failures) do not exist in this database: prepare the schema with `mesh db push` (or createSchema in a test) after building a project that declares an event";
 
 async function withTables<T>(statement: () => Promise<T>): Promise<T> {
   try { return await statement(); }
@@ -123,5 +123,55 @@ export function deliveryOperations(query: Query, sequence: () => Promise<string>
       );
       return row === undefined ? null : int8(row.position, "mesh_outbox.position");
     }),
+  };
+}
+
+function failureOf(row: Record<string, unknown>): FailureRow {
+  const error = JSON.parse(row.error as string) as { code: string | null; message: string };
+  return Object.freeze({
+    failure: int8(row.failure, "mesh_outbox_failures.failure"),
+    handler: row.handler as string,
+    position: int8(row.position, "mesh_outbox_failures.position"),
+    id: row.id as string,
+    name: row.name as string,
+    entity: row.entity as string,
+    action: row.action as string,
+    key: JSON.parse(row.key as string),
+    causedBy: (row.caused_by as string | null) ?? null,
+    metadata: JSON.parse(row.metadata as string),
+    occurredAt: date(row.occurred_at)!,
+    payload: JSON.parse(row.payload as string),
+    error: Object.freeze({ code: error.code, message: error.message }),
+    failedAt: date(row.failed_at)!,
+  });
+}
+
+const FAILURE_COLUMNS = `failure, handler, position, id, name, entity, action, key::text AS key, caused_by, metadata::text AS metadata, occurred_at,
+  payload::text AS payload, error::text AS error, failed_at`;
+
+/**
+ * The dead-letter operations on Postgres (`FailureOperations`): `mesh_outbox_failures`, whose `failure` key is an
+ * identity column, JSON written as text cast to `jsonb` and read from `::text`, `failed_at` from `clock_timestamp()`.
+ * Only a project with a handler whose `onFailure` is `"skip"` calls them.
+ */
+export function failureOperations(query: Query): FailureOperations {
+  const exec = <T>(statement: () => Promise<T>) => withTables(statement);
+  return {
+    writeFailure: (row) => exec(async () => {
+      await query(
+        `INSERT INTO ${FAILURES_TABLE} (handler, position, id, name, entity, action, key, caused_by, metadata, occurred_at, payload, error, failed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::text::jsonb, $8, $9::text::jsonb, $10::text::timestamptz, $11::text::jsonb, $12::text::jsonb, clock_timestamp())`,
+        [row.handler, row.position, row.id, row.name, row.entity, row.action, JSON.stringify(row.key), row.causedBy, JSON.stringify(row.metadata ?? {}),
+          row.occurredAt.toISOString(), JSON.stringify(row.payload), JSON.stringify({ code: row.error.code, message: row.error.message })],
+      );
+    }),
+    readFailures: (handler, after, limit) => exec(async () => Object.freeze((after === null
+      ? await query(`SELECT ${FAILURE_COLUMNS} FROM ${FAILURES_TABLE} WHERE handler = $1 ORDER BY position, failure LIMIT $2`, [handler, limit])
+      : await query(
+        `SELECT ${FAILURE_COLUMNS} FROM ${FAILURES_TABLE} WHERE handler = $1 AND (position, failure) > ($2::bigint, $3::bigint) ORDER BY position, failure LIMIT $4`,
+        [handler, after.position, after.failure, limit],
+      )).map(failureOf))),
+    deleteFailure: (failure) => exec(async () => (await query(`DELETE FROM ${FAILURES_TABLE} WHERE failure = $1`, [failure])).count === 1),
+    renameFailures: (from, to) => exec(async () => { await query(`UPDATE ${FAILURES_TABLE} SET handler = $1 WHERE handler = $2`, [to, from]); }),
   };
 }

@@ -50,7 +50,7 @@ beforeAll(async () => {
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 test("the schema holds core's delivery tables after the outbox's", () => {
-  expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+  expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
 });
 
 for (const kind of ["memory", "file"] as const) {
@@ -66,12 +66,14 @@ for (const kind of ["memory", "file"] as const) {
         return layer;
       },
       frame: () => new AsyncLocalStorage(),
-      bus: ({ retryDelays, pollMs }) => testBus({ retryDelays, pollMs }),
+      // testBus declares dead-letters only when asked: the suite's dead-letters group runs on core's set-aside path.
+      bus: ({ retryDelays, pollMs }) => testBus({ capabilities: ["ordered-delivery", "replay", "subscribe", "dead-letters"], retryDelays, pollMs }),
     });
-    test("every check runs under both keep values", () => {
+    test("every check runs under both keep values, the dead-letters group included", () => {
       const names = Object.keys(checks);
       expect(names.filter((name) => name.startsWith("[keep: until-delivered]")).length).toBe(names.length / 2);
       expect(names.some((name) => name.includes("subscribe:"))).toBe(true);
+      expect(names.filter((name) => name.includes("dead letters:")).length).toBeGreaterThan(20);
     });
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });

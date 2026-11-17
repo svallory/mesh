@@ -3,7 +3,7 @@
 // sequence, which a rolled-back append leaves a gap in.
 import { afterAll, expect, test } from "bun:test";
 import { FrameworkError } from "@meshfw/runtime";
-import { outboxConformance, outboxRow } from "@meshfw/runtime/testing";
+import { outboxConformance, outboxRow, retentionConformance } from "@meshfw/runtime/testing";
 import { capabilities } from "../src/index.ts";
 import { type PostgresLayer } from "../src/layer.ts";
 import { eventTables } from "./event-tables.ts";
@@ -13,9 +13,10 @@ const { tables, schema, remove } = await eventTables();
 afterAll(remove);
 
 test("a project that declares an event gets core's tables after its entities', the position an identity column", () => {
-  expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+  expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
   expect(schema).toMatch(/position: bigint\("position", \{ mode: "number" \}\)\s*\.notNull\(\)\s*\.primaryKey\(\)\s*\.generatedAlwaysAsIdentity\(\)/);
-  expect(schema.match(/generatedAlwaysAsIdentity/g)).toHaveLength(1);
+  expect(schema).toMatch(/failure: bigint\("failure", \{ mode: "number" \}\)\s*\.notNull\(\)\s*\.primaryKey\(\)\s*\.generatedAlwaysAsIdentity\(\)/);
+  expect(schema.match(/generatedAlwaysAsIdentity/g)).toHaveLength(2);
 });
 
 describeServer("outbox conformance, Postgres", () => {
@@ -28,6 +29,7 @@ describeServer("outbox conformance, Postgres", () => {
     expect(Object.keys(checks).some((name) => name.startsWith("gapless-positions"))).toBe(false);
   });
   for (const [name, check] of Object.entries(checks)) test(name, check, 60_000);
+  for (const [name, check] of Object.entries(retentionConformance(() => database.freshLayer()))) test(`retention: ${name}`, check, 60_000);
 
   test("a rolled-back append leaves a gap in the positions, and highest keeps it", async () => {
     const layer = await database.freshLayer();

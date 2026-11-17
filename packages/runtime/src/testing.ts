@@ -4,7 +4,7 @@ import type { CapabilityManifest } from "./capabilities.ts";
 import { FrameworkError } from "./errors.ts";
 
 export type { DataLayerFixtureV1 } from "./conformance-v1.ts";
-export { outboxConformance, outboxRow, type OutboxConformanceOptions, type OutboxFixture } from "./outbox-conformance.ts";
+export { outboxConformance, outboxRow, retentionConformance, type OutboxConformanceOptions, type OutboxFixture } from "./outbox-conformance.ts";
 export { busConformance, testBus, type BusConformanceFixture, type TestBusOptions } from "./bus-conformance.ts";
 export { setDeliveryTiming, type DeliveryTiming } from "./deliverer.ts";
 export { rawSqlConformance, type RawSqlFixture } from "./raw-sql-conformance.ts";

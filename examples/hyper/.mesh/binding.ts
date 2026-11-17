@@ -31,7 +31,9 @@ import {
   published as $published,
   readEvents as $readEvents,
   resumeHandler as $resumeHandler,
+  retryFailed as $retryFailed,
   subscribe as $subscribe,
+  type RetryFailedResult as $RetryFailedResult,
   type Delivery as $Delivery,
   type EventRecord as $EventRecord,
   type EventsConfig as $EventsConfig,
@@ -251,6 +253,15 @@ export function forgetHandler(name: string): $Promise<void> {
  */
 export function resumeHandler(name: string): $Promise<void> {
   return $resumeHandler($deliveryBinding("resumeHandler"), name);
+}
+
+/**
+ * Replay the events the handler `name` set aside (`onFailure: "skip"`): it runs once on each, in position order, and each
+ * one it handles is removed from `mesh_outbox_failures`; the call stops at the first that fails again and resolves with
+ * it as `failed`, kept with every later one. Called where delivery runs; elsewhere a `FrameworkError`.
+ */
+export function retryFailed(name: string): $Promise<$RetryFailedResult> {
+  return $retryFailed($deliveryBinding("retryFailed"), name);
 }
 
 /**

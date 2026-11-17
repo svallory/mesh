@@ -332,7 +332,7 @@ describe("the outbox", () => {
   afterEach(() => { probe.hooks.made = undefined; probe.hooks.step = undefined; });
 
   test("the schema creates the outbox and its state table, both empty", async () => {
-    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
     const { layer } = await open();
     try {
       expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 0, highest: 0, settled: 0 });
@@ -1138,4 +1138,52 @@ describe("mesh events adopt and mesh events keep", () => {
     expect(help).toContain("events adopt <handler> [--drop <event>]...");
     expect(help).toContain("events keep <until-delivered|all>");
   }, 30_000);
+});
+
+describe("dead letters through #mesh", () => {
+  const DEAD_LETTERS = ["ordered-delivery", "replay", "subscribe", "dead-letters"] as const;
+  const CONFIG_DEAD_LETTERS = CONFIG
+    .replace("testBus(): import", "testBus(options?: { capabilities?: readonly string[] }): import")
+    .replace("events: { bus: testBus() }", `events: { bus: testBus({ capabilities: ${JSON.stringify(DEAD_LETTERS)} }) }`);
+
+  test("a skip handler sets a failing event aside, and the generated retryFailed replays it once the cause is fixed", async () => {
+    const dir = await project();
+    await writeFile(join(dir, "mesh.config.ts"), CONFIG_DEAD_LETTERS);
+    expect(await mesh(dir, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    const generated = await import(join(dir, ".mesh/index.ts"));
+    const billing = (await import(join(dir, ".mesh/domain/index.ts"))).billing;
+    const paid = billing.InvoicePaid;
+    const data = await import(Bun.resolveSync("@meshfw/data-sqlite", dir));
+    expect(typeof generated.retryFailed).toBe("function");
+    let broken = true;
+    const seen: number[] = [];
+    const module = { handlers: { process: { receipts: Mesh.handler({
+      events: [paid], onFailure: "skip",
+      run: (event: { position: number }) => { seen.push(event.position); if (broken) throw Object.assign(new Error("the mail server is down"), { retryable: false }); },
+    } as never) } } };
+    const layer = data.sqlite({ file: ":memory:" });
+    await data.createSchema(layer, generated.tables);
+    const binding = generated.bind(layer, { events: { bus: testBus({ capabilities: [...DEAD_LETTERS] }), load: async () => module } }) as {
+      run<T>(fn: () => Promise<T>): Promise<T>; transaction<T>(fn: () => Promise<T>): Promise<T>; deliver(): Promise<void>;
+    };
+    const failures = (): Promise<{ position: number }[]> => layer.transaction((tx: { readFailures(handler: string, after: null, limit: number): Promise<{ position: number }[]> }) => tx.readFailures("receipts", null, 10));
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await binding.deliver();
+      const id = "00000000-0000-4000-8000-000000000001";
+      await layer.transaction(async (tx: { insert(table: unknown, row: unknown): Promise<unknown> }) => { await tx.insert(generated.tables.invoice, { id, paid: false, total: 10, title: "untitled" }); });
+      await binding.run(() => billing.Invoice.pay({ id }, {}));
+      await binding.deliver();
+      expect(seen).toEqual([1]);
+      expect((await failures()).map((row) => row.position)).toEqual([1]);
+      broken = false;
+      expect(await binding.run(() => generated.retryFailed("receipts") as Promise<unknown>)).toEqual({ handled: 1, failed: null });
+      expect(seen).toEqual([1, 1]);
+      expect(await failures()).toEqual([]);
+    } finally {
+      console.warn = warn;
+      await layer.close();
+    }
+  }, 60_000);
 });

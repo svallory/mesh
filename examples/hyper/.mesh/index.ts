@@ -108,6 +108,9 @@ export type { ReadEventsPage, ReadEventsQuery } from "@meshfw/runtime";
 /** `subscribe(query, callback)`, a live subscription: the bus declares subscribe. */
 export { subscribe } from "./binding";
 export type { SubscribeQuery, Subscription } from "@meshfw/runtime";
+/** `retryFailed(name)`, which replays a handler's set-aside events: the bus declares dead-letters. */
+export { retryFailed } from "./binding";
+export type { RetryFailedResult } from "@meshfw/runtime";
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   "identity.CollaboratorRegistered": $identity$CollaboratorRegistered$class,
@@ -148,5 +151,6 @@ declare module "@meshfw/runtime" {
     "ordered-delivery": true;
     replay: true;
     subscribe: true;
+    "dead-letters": true;
   }
 }

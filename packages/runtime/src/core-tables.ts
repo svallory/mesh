@@ -47,6 +47,12 @@ export const HANDLER_PROGRESS_TABLE = "mesh_handler_progress";
 /** One row per named subscription: its acknowledged position, filter, `seen_at`, `open` flag and generation. */
 export const SUBSCRIPTION_PROGRESS_TABLE = "mesh_subscription_progress";
 /**
+ * One row per event a handler with `onFailure: "skip"` set aside (dead letters): the outbox row copied whole, the
+ * handler's name, the error and when, keyed by `failure`, an id never reused. It outlives the outbox row, under every
+ * `keep`; only core writes it, and `retryFailed(name)` replays and removes its rows.
+ */
+export const FAILURES_TABLE = "mesh_outbox_failures";
+/**
  * Multi mode only (the bus declares `multi-process`): one row per process that delivers, keyed by its run id and renewed
  * by the database's clock, with its `keep`, its handlers and their lists, and the events its build declares.
  */
@@ -94,6 +100,22 @@ export const CORE_TABLES: readonly CoreTable[] = Object.freeze([
     column("seen_at", "timestamp"),
     column("open", "integer"),
     column("generation", "integer"),
+  ]),
+  table(FAILURES_TABLE, [
+    column("failure", "integer", { primaryKey: true, neverReuse: true }),
+    column("handler", "string"),
+    column("position", "integer"),
+    column("id", "uuid"),
+    column("name", "string"),
+    column("entity", "string"),
+    column("action", "string"),
+    column("key", "json"),
+    column("caused_by", "uuid", { nullable: true }),
+    column("metadata", "json"),
+    column("occurred_at", "timestamp"),
+    column("payload", "json"),
+    column("error", "json"),
+    column("failed_at", "timestamp"),
   ]),
 ]);
 

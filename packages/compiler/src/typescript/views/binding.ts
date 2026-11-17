@@ -33,6 +33,11 @@ export interface BindingView {
    */
   readonly multiProcess: boolean;
   /**
+   * True when the project declares an event and the configured bus declares `dead-letters`: the file then exports
+   * `retryFailed`, which replays a handler's set-aside events.
+   */
+  readonly deadLetters: boolean;
+  /**
    * True when the data adapter's manifest declares `raw-sql` (ADR-0087): the file then exports `query`, one read-only SQL
    * statement written by hand; false leaves the file as it was.
    */
@@ -59,6 +64,7 @@ export function bindingView(input: EmitInput): BindingView {
     replay: events && capabilities.includes("replay"),
     subscribe: events && capabilities.includes("subscribe"),
     multiProcess: events && capabilities.includes("multi-process"),
+    deadLetters: events && capabilities.includes("dead-letters"),
     rawSql: declaresRawSql(input),
   };
 }

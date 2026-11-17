@@ -1,5 +1,5 @@
 import {
-  DatabaseBusyError, DelivererLostError, FrameworkError, HandlerLostError, HandlerStoppedError,
+  DatabaseBusyError, DelivererLostError, EventUndeclaredError, FrameworkError, HandlerLostError, HandlerStoppedError,
   type BusCore, type BusManifest, type EventBus, type EventBusInstance, type LiveSubscription, type OutboxRow, type RegisteredHandler, type StoppedHandler,
 } from "@meshfw/runtime";
 
@@ -8,7 +8,9 @@ import {
  * cursor, in position order, one event at a time, then each live subscription from its own cursor, then runs core's
  * deletion pass. After `start()` a round runs at once, after each outermost commit that published in this process, and
  * every `pollInterval`; a failing handler is retried on its own timer, outside the round, so its back-off delays no
- * other reader. A `deliver()` round retries inline, through core's retry path. The claim and its renewal are core's.
+ * other reader. A `deliver()` round retries inline, through core's retry path. A handler with `onFailure: "skip"` whose
+ * retries are used up has the event set aside through `core.setAside` and goes on (the bus declares `dead-letters`).
+ * The claim and its renewal are core's.
  */
 
 /** What `localBus` takes. */
@@ -56,9 +58,14 @@ const OPTION_NAMES = new Set(["pollInterval", "retryDelays", "maxQueue", "onStop
 /** The rows one read asks for. */
 const PAGE = 100;
 
-const MANIFEST: BusManifest = Object.freeze({ adapter: "local", capabilities: Object.freeze(["ordered-delivery", "replay", "subscribe"] as const) });
+const MANIFEST: BusManifest = Object.freeze({ adapter: "local", capabilities: Object.freeze(["ordered-delivery", "replay", "subscribe", "dead-letters"] as const) });
 /** The manifest of `localBus({ processes: "many" })`: delivery from several processes on one database. */
-const MANY_MANIFEST: BusManifest = Object.freeze({ adapter: "local", capabilities: Object.freeze(["ordered-delivery", "replay", "subscribe", "multi-process"] as const) });
+const MANY_MANIFEST: BusManifest = Object.freeze({ adapter: "local", capabilities: Object.freeze(["ordered-delivery", "replay", "subscribe", "dead-letters", "multi-process"] as const) });
+
+/** True when `handler`'s failure at a row is set aside rather than reported: `onFailure: "skip"`, and a row some event matches. */
+const setsAside = (handler: RegisteredHandler, cause: unknown): boolean => handler.onFailure === "skip" && !(cause instanceof EventUndeclaredError);
+/** An error that ends the round, the instance or this handler's turn, never a failure of the event. */
+const ends = (error: unknown): boolean => error instanceof DatabaseBusyError || error instanceof DelivererLostError || error instanceof HandlerLostError;
 
 const SYSTEM_TIMERS: LocalBusTimers = Object.freeze({
   setTimeout: (run: () => void, ms: number) => setTimeout(run, ms),
@@ -224,8 +231,21 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
       const tries = lane.backoff?.position === row.position ? lane.backoff.tries : 0;
       if (!core.isRetryable(error) || tries >= settings.startedDelays.length) {
         lane.backoff = undefined;
+        // dead-letters: a skip handler's event is set aside through core, and the feed goes on with the next row.
+        let cause = error;
+        if (setsAside(handler, error)) {
+          try {
+            await core.setAside(handler, row, error);
+            return true;
+          } catch (refused) {
+            if (lost) throw lost;
+            if (refused instanceof HandlerLostError) return false;
+            if (refused instanceof DatabaseBusyError || refused instanceof DelivererLostError) throw refused;
+            cause = refused;
+          }
+        }
         lane.stopped = true;
-        const stop: StoppedHandler = { handler: handler.name, position: row.position, event: row.name, cause: error };
+        const stop: StoppedHandler = { handler: handler.name, position: row.position, event: row.name, cause };
         report(new HandlerStoppedError([stop]));
         return false;
       }
@@ -281,7 +301,15 @@ function instance(core: BusCore, settings: InstanceSettings): EventBusInstance {
             if (!(await tryStarted(handler, lane, row))) return null;
           } else {
             const stop = await core.retry(handler, row, settings.deliverDelays);
-            if (stop) return stop;
+            if (stop) {
+              if (!setsAside(handler, stop.cause)) return stop;
+              // dead-letters: set aside instead of stopping; a refused set-aside is the stop, with the refusal as its cause.
+              const refused = await core.setAside(handler, row, stop.cause).then(() => undefined, (error: unknown) => error);
+              if (refused !== undefined) {
+                if (ends(refused)) throw refused;
+                return { ...stop, cause: refused };
+              }
+            }
           }
         }
         cursor = row.position;

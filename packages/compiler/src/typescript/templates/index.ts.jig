@@ -58,6 +58,11 @@ export type { SubscribeQuery, Subscription } from "@meshfw/runtime";
 export { adoptHandler } from "./binding";
 export type { Adopted } from "@meshfw/runtime";
 @end
+@if(events.deadLetters)
+/** `retryFailed(name)`, which replays a handler's set-aside events: the bus declares dead-letters. */
+export { retryFailed } from "./binding";
+export type { RetryFailedResult } from "@meshfw/runtime";
+@end
 /** Every event class of the project by its FQN, which turns a stored row back into an instance: `new eventClasses["billing.InvoicePaid"](payload)`. */
 export const eventClasses = $Object.freeze({
   @each(entry in events.table)

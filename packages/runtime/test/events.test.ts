@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
-  OUTBOX_STATE_TABLE, OUTBOX_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
+  OUTBOX_STATE_TABLE, OUTBOX_TABLE, FAILURES_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
   subscribe, Mesh, HANDLER_KIND, EventsConfigError, type HandlerKind,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
@@ -579,13 +579,13 @@ describe("onPublished", () => {
 });
 
 describe("core's tables", () => {
-  test("the outbox, its state table and the two progress tables, declared once, needed only when the project declares an event", () => {
-    expect(CORE_TABLES.map((table) => table.name)).toEqual([OUTBOX_TABLE, OUTBOX_STATE_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE]);
-    expect([...CORE_TABLE_NAMES]).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+  test("the outbox, its state table, the two progress tables and the failures table, declared once, needed only when the project declares an event", () => {
+    expect(CORE_TABLES.map((table) => table.name)).toEqual([OUTBOX_TABLE, OUTBOX_STATE_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, FAILURES_TABLE]);
+    expect([...CORE_TABLE_NAMES]).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
     expect(coreTablesFor({})).toEqual([]);
     expect(coreTablesFor({ events: [] })).toEqual([]);
-    expect(coreTablesFor({ events: [{}] }).map((table) => table.name)).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
-    const [outbox, state, handlers, subscriptions] = CORE_TABLES;
+    expect(coreTablesFor({ events: [{}] }).map((table) => table.name)).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
+    const [outbox, state, handlers, subscriptions, failures] = CORE_TABLES;
     expect(outbox!.columns.map(({ name, type, nullable, primaryKey, neverReuse }) => [name, type, nullable, primaryKey, neverReuse])).toEqual([
       ["position", "integer", false, true, true],
       ["id", "uuid", false, false, false],
@@ -614,6 +614,15 @@ describe("core's tables", () => {
     expect(subscriptions!.columns.map(({ name, type, primaryKey }) => [name, type, primaryKey])).toEqual([
       ["name", "string", true], ["position", "integer", false], ["filter", "json", false], ["seen_at", "timestamp", false], ["open", "integer", false],
       ["generation", "integer", false],
+    ]);
+    // A set-aside event: the outbox row copied whole beside the handler, the error and when, under an id never reused.
+    expect(failures!.needs).toBe("events");
+    expect(failures!.columns.map(({ name, type, nullable, primaryKey, neverReuse }) => [name, type, nullable, primaryKey, neverReuse])).toEqual([
+      ["failure", "integer", false, true, true],
+      ["handler", "string", false, false, false],
+      ...outbox!.columns.map(({ name, type, nullable }) => [name, type, nullable, false, false]),
+      ["error", "json", false, false, false],
+      ["failed_at", "timestamp", false, false, false],
     ]);
     expect(Object.isFrozen(CORE_TABLES) && Object.isFrozen(outbox) && Object.isFrozen(outbox!.columns) && Object.isFrozen(outbox!.columns[0])).toBe(true);
   });

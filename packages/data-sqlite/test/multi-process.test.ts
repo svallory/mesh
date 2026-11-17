@@ -17,8 +17,8 @@ beforeAll(async () => { ({ single, multi, remove } = await buildSchemas()); });
 afterAll(async () => { await remove(); });
 
 test("the multi schema holds the process table after core's other tables, and the single one does not", () => {
-  expect(Object.keys(multi)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_delivery_process"]);
-  expect(Object.keys(single)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+  expect(Object.keys(multi)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures", "mesh_delivery_process"]);
+  expect(Object.keys(single)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
 });
 
 for (const kind of ["memory", "file"] as const) {

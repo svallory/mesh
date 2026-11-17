@@ -1,7 +1,7 @@
 import type { BusCore, EventBus, Handler } from "./bus.ts";
-import type { DataLayer, DataOperations, DeliveryOperations, HandlerLeaseRow, MultiProcessOperations, OutboxRow } from "./data-layer.ts";
+import type { DataLayer, DataOperations, DeliveryOperations, FailureOperations, HandlerLeaseRow, MultiProcessOperations, OutboxRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
-import { PID, adoptByName, forgetByName, keepByValue, resumeHandler, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
+import { PID, adoptByName, forgetByName, keepByValue, resumeHandler, retryFailed, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
 import { DelivererLostError, DelivererTakenError, EventUndeclaredError, FrameworkError, HandlerLostError, HandlerStoppedError } from "./errors.ts";
 import { publishEvent, type EventRecord, type EventsModule } from "./events.ts";
@@ -63,7 +63,7 @@ const WITH_GONE = Object.freeze({ Alpha, Beta, Echo, Gone });
 
 const CLOCK = () => new Date();
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-type Ops = DataOperations & DeliveryOperations & MultiProcessOperations;
+type Ops = DataOperations & DeliveryOperations & MultiProcessOperations & FailureOperations;
 const ops = (tx: DataOperations) => tx as Ops;
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -370,6 +370,60 @@ export function multiProcessChecks(
     assert(!(await ctx.echoed()).has(p!), "nothing was handled");
     const lease = await ctx.lease("h");
     assert(lease?.runId === OTHER && lease.position < p!, "the other process's lease and position are untouched");
+  });
+
+  if (bus().manifest.capabilities.includes("dead-letters")) add("dead letters: retryFailed for a handler whose lease another live process holds is MESH_HANDLER_LOST, replays nothing and keeps the row; once this process holds it, it replays", { timing: IN_PROCESS }, async (ctx) => {
+    const publisher = ctx.bind(FULL, {});
+    const [p] = await ctx.publish(publisher, [Alpha, 1]);
+    const row = (await ctx.layer.readOutbox!(p! - 1, 1)).rows[0]!;
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha", "multi.Beta", "multi.Echo"]);
+    await ctx.layer.transaction(async (tx) => {
+      await ops(tx).writeHandlerLease({ name: "h", kind: "process", position: p!, events: ["multi.Alpha"], generation: 1, runId: OTHER });
+      await ops(tx).writeFailure({ ...row, handler: "h", error: { code: null, message: "down" } });
+    });
+    const binding = ctx.scenario("old-list");
+    const lost = await rejection(() => retryFailed(binding, "h"));
+    assert(lost instanceof HandlerLostError && lost.handler === "h" && lost.message.includes("does not hold the handler's lease"), `got ${String(lost)}`);
+    assert(!ctx.seen.has("h"), "the handler ran in a process that does not hold it");
+    assert((await ctx.layer.transaction((tx) => ops(tx).readFailures("h", null, 10))).length === 1, "the set-aside event was removed");
+    assert((await ctx.lease("h"))?.runId === OTHER, "the other process's lease was taken or cleared");
+    // The other process is gone (its row deleted): the call takes the free lease for itself and replays the event.
+    await ctx.layer.transaction((tx) => ops(tx).deleteProcess(OTHER));
+    const result = await retryFailed(binding, "h");
+    assert(result.handled === 1 && result.failed === null && JSON.stringify(ctx.seen.get("h")) === JSON.stringify([p]), `got ${JSON.stringify(result)} and ${JSON.stringify(ctx.seen.get("h"))}`);
+    assert((await ctx.lease("h"))?.runId === null, "the call releases the lease it took");
+  });
+
+  if (bus().manifest.capabilities.includes("dead-letters")) for (const kind of ["process", "listen"] as const) add(`dead letters: a ${kind} handler replayed by retryFailed whose lease another process takes while its body runs: the call rejects with MESH_HANDLER_LOST naming the event, and keeps the event it had not removed`, { timing: IN_PROCESS }, async (ctx) => {
+    const publisher = ctx.bind(FULL, {});
+    const published = await ctx.publish(publisher, [Alpha, 1], [Alpha, 2]);
+    const rows = (await ctx.layer.readOutbox!(published[0]! - 1, 2)).rows;
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha", "multi.Beta", "multi.Echo"]);
+    await ctx.layer.transaction(async (tx) => {
+      await ops(tx).writeHandlerLease({ name: "h", kind, position: published[1]!, events: ["multi.Alpha"], generation: 1, runId: null });
+      for (const row of rows) await ops(tx).writeFailure({ ...row, handler: "h", error: { code: null, message: "down" } });
+    });
+    let moved = false;
+    const ran: number[] = [];
+    const binding = ctx.bind(FULL, { handlers: { [kind]: { h: { events: [Alpha], onFailure: "skip" as never, run: async (event: EventRecord<object>) => {
+      ran.push(event.position);
+      if (moved) return;
+      moved = true;
+      await ctx.layer.transaction(async (tx) => {
+        const lease = (await ops(tx).lockHandlerProgress("h"))!;
+        await ops(tx).writeHandlerLease({ ...lease, runId: OTHER, generation: lease.generation + 1 });
+      });
+    } } } } });
+    const lost = await rejection(() => retryFailed(binding, "h"));
+    // A process body commits with the removal it shares a transaction with, and the next event's fence fails; a listen
+    // body runs outside, and the transaction that would remove its row is the one fenced.
+    const at = kind === "process" ? published[1] : published[0];
+    assert(lost instanceof HandlerLostError && lost.handler === "h" && lost.reason === "taken" && lost.position === at, `got ${String(lost)}${lost instanceof HandlerLostError ? ` at ${lost.position}` : ""}`);
+    const kept = (await ctx.layer.transaction((tx) => ops(tx).readFailures("h", null, 10))).map((row) => row.position);
+    const expected = kind === "process" ? published.slice(1) : published;
+    assert(JSON.stringify(kept) === JSON.stringify(expected), `the rows kept were ${JSON.stringify(kept)}, expected ${JSON.stringify(expected)}`);
+    assert(JSON.stringify(ran) === JSON.stringify(published.slice(0, 1)), `the handler ran after its lease moved: ${JSON.stringify(ran)}`);
+    assert((await ctx.lease("h"))?.runId === OTHER, "the other process's lease was cleared or taken back");
   });
 
   add("a row of an event in the handler's union and not in its list yields the handler: no row is passed, the lease is cleared, and it is not taken again until resumeHandler", { timing: IN_PROCESS }, async (ctx) => {
