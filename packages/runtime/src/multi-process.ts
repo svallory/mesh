@@ -104,6 +104,8 @@ export class MultiClaim implements ClaimStrategy {
   #passKnown: ReadonlySet<string> = new Set();
   /** `renamedFrom` moves that wait until no live process registers the former name: new name to former (rule R7). */
   readonly #renames = new Map<string, string>();
+  /** Handlers live processes register and none holds, by when a deletion pass of this instance first saw them so (rule K6). */
+  readonly #unheld = new Map<string, number>();
   #handlers: readonly RegisteredHandler[] | undefined;
   #renewal: ReturnType<typeof setTimeout> | undefined;
   #halted = true;
@@ -535,6 +537,49 @@ export class MultiClaim implements ClaimStrategy {
   }
 
   /**
+   * The reports of a deletion pass beside the orphans, each with the key the orphan rule's "first time, then hourly"
+   * counts it under (rules K6, K7): a handler live processes register and none has held for longer than the lapse time,
+   * seen from this process, naming its pending events and `mesh events adopt`; and a recorded `keep: "all"` while this
+   * process runs with `"until-delivered"`, naming `mesh events keep until-delivered`.
+   */
+  reports(state: DeliveryState, handlers: readonly HandlerProgressRow[], database: string): readonly { readonly key: string; readonly message: string }[] {
+    const reports: { key: string; message: string }[] = [];
+    const now = Date.now();
+    const rows = this.#passProcesses;
+    for (const row of handlers) {
+      const registrants = rows.filter((each) => Object.hasOwn(each.handlers, row.name));
+      const holder = (row as HandlerLeaseRow).runId;
+      if (registrants.length === 0 || (holder !== null && rows.some((each) => each.runId === holder))) {
+        this.#unheld.delete(row.name);
+        continue;
+      }
+      const since = this.#unheld.get(row.name);
+      if (since === undefined) { this.#unheld.set(row.name, now); continue; }
+      if (now - since <= timing.lapseMs) continue;
+      const pending = row.events.filter((event) => !registrants.some((each) => each.handlers[row.name]!.includes(event)));
+      const count = registrants.length === 1 ? "1 live process" : `${registrants.length} live processes`;
+      reports.push({
+        key: `waiting:${row.name}`,
+        message: pending.length > 0
+          ? `Mesh: the handler ${JSON.stringify(row.name)} is registered by ${count} and held by none: it waits at position ${row.position}, where ${pending.join(" and ")} ${pending.length === 1 ? "is" : "are"} listed by a build no live process runs. Drop ${pending.length === 1 ? "it" : "them"} with \`mesh events adopt ${row.name}${pending.map((event) => ` --drop ${event}`).join("")}\`, or start a process whose build lists ${pending.length === 1 ? "it" : "them"}`
+          : `Mesh: the handler ${JSON.stringify(row.name)} is registered by ${count} and held by none: it waits at position ${row.position}, and a live process lists every event of its union. A process that yielded it takes it again once its union changes, at resumeHandler(${JSON.stringify(row.name)}) or at a restart; \`mesh events adopt ${row.name}\` lists its union`,
+      });
+    }
+    for (const name of [...this.#unheld.keys()]) if (!handlers.some((row) => row.name === name)) this.#unheld.delete(name);
+    if (this.deliverer.keep === "until-delivered" && (state as LockedDeliveryState).keep === "all") {
+      const keepers = rows.filter((each) => each.keep === "all");
+      reports.push({
+        key: "keep",
+        message: `Mesh: the recorded keep of ${database} is "all", so no process deletes delivered rows, while this process runs with keep: "until-delivered". `
+          + (keepers.length === 0
+            ? "No live process runs with \"all\"; run `mesh events keep until-delivered` to delete again"
+            : `The live ${keepers.length === 1 ? "process" : "processes"} ${keepers.map(who).join(", ")} ${keepers.length === 1 ? "runs" : "run"} with "all"; stop ${keepers.length === 1 ? "it" : "them"}, or change ${keepers.length === 1 ? "its" : "their"} configuration, then run \`mesh events keep until-delivered\``),
+      });
+    }
+    return reports;
+  }
+
+  /**
    * `resumeHandler` (rule R6): a handler this process holds goes to the bus as in single mode; any other registered one
    * loses its yield mark and is taken if rule L2 allows, else at a later tick once its lease frees.
    */
@@ -668,5 +713,77 @@ export async function forgetOwned(layer: DataLayer, name: string, kind: "handler
     if (kind === "handler") throw new FrameworkError(`${what}: no handler named ${JSON.stringify(name)} has a progress row`);
     if (kind === "subscription") throw new FrameworkError(`${what}: no subscription named ${JSON.stringify(name)} has a row`);
     throw new FrameworkError(`No handler and no subscription named ${JSON.stringify(name)} has a row in this database`);
+  });
+}
+
+// ---- adopting a handler's union, and the recorded keep ----------------------------------------------------------
+
+/** What `mesh events adopt` (and `adoptHandler`) did to a handler's registered union (rule R5). */
+export interface Adopted {
+  readonly handler: string;
+  /** The registered union after the call, sorted. */
+  readonly union: readonly string[];
+  /** The events dropped from it, as named. */
+  readonly dropped: readonly string[];
+  /** Every event kept, with the live process that lists it (`pid 4242 on host api-1`), or null when none does. */
+  readonly kept: readonly { readonly event: string; readonly listedBy: string | null }[];
+  /** False when the union is unchanged. */
+  readonly changed: boolean;
+}
+
+/**
+ * Shrink a handler's registered union (rule R5), in one transaction that locks `mesh_outbox_state`, then the handler's
+ * progress row: it keeps every event a live process lists for the handler, and every other event unless it is named in
+ * `drop`. A handler no live process registers, and a `drop` of an event that a live process lists or that the union
+ * lacks, are refused. `what` names the caller in messages (`mesh events adopt`, `adoptHandler`).
+ */
+export async function adoptOwned(layer: DataLayer, name: string, drop: readonly string[], what: string): Promise<Adopted> {
+  const prefix = what === "mesh events adopt" ? "" : `${what}: `;
+  const cap = (text: string) => prefix === "" ? text[0]!.toUpperCase() + text.slice(1) : prefix + text;
+  return layer.transaction(async (tx) => {
+    const ops = multiOperations(tx);
+    const state = await ops.lockDeliveryState();
+    const registrants = live(await ops.readProcesses(), state.now).filter((row) => Object.hasOwn(row.handlers, name));
+    if (registrants.length === 0)
+      throw new FrameworkError(cap(`no live process registers the handler ${JSON.stringify(name)}, so there is no list to adopt: if it was removed, drop its progress with \`mesh events forget ${name}\``));
+    const row = await ops.lockHandlerProgress(name);
+    if (!row) throw new FrameworkError(cap(`the handler ${JSON.stringify(name)} has no progress row: it was forgotten while registered; restart a process that registers it`));
+    const listedBy = (event: string) => registrants.find((each) => each.handlers[name]!.includes(event));
+    for (const event of drop) {
+      if (!row.events.includes(event))
+        throw new FrameworkError(prefix + (`${event} is not in the registered union of ${JSON.stringify(name)} (${row.events.join(", ") || "none"}), so there is nothing to drop`));
+      const lister = listedBy(event);
+      if (lister) throw new FrameworkError(prefix + (`${event} is listed for ${JSON.stringify(name)} by a live process (${who(lister)}), so it is not dropped: stop that process first`));
+    }
+    const dropped = [...new Set(drop)].sort();
+    const union = Object.freeze(row.events.filter((event) => !dropped.includes(event)).sort());
+    const kept = union.map((event) => { const lister = listedBy(event); return Object.freeze({ event, listedBy: lister ? who(lister) : null }); });
+    if (dropped.length > 0) await ops.writeHandlerLease({ ...row, events: union });
+    return Object.freeze({ handler: name, union, dropped: Object.freeze(dropped), kept: Object.freeze(kept), changed: dropped.length > 0 });
+  });
+}
+
+/** What `mesh events keep` (rule K4) found and left. */
+export interface KeepChange {
+  /** The recorded keep before the call; null before the first multi-mode start. */
+  readonly before: "until-delivered" | "all" | null;
+  readonly after: "until-delivered" | "all";
+}
+
+/**
+ * Set the recorded `keep` (rule K4), in one transaction that locks `mesh_outbox_state`. Setting it back to
+ * `"until-delivered"` is refused while a live process row was registered with `keep: "all"`, naming it.
+ */
+export async function keepOwned(layer: DataLayer, keep: "until-delivered" | "all"): Promise<KeepChange> {
+  return layer.transaction(async (tx) => {
+    const ops = multiOperations(tx);
+    const state = await ops.lockDeliveryState();
+    if (keep === "until-delivered") {
+      const keeper = live(await ops.readProcesses(), state.now).find((row) => row.keep === "all");
+      if (keeper)
+        throw new FrameworkError(`The process ${who(keeper)} delivers with keep: "all", so the recorded keep stays "all": stop it, or change its configuration, first`);
+    }
+    if (state.keep !== keep) await ops.writeKeep(keep);
+    return Object.freeze({ before: state.keep, after: keep });
   });
 }

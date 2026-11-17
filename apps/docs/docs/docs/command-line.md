@@ -28,6 +28,8 @@ mesh <command> [options]
 | `mesh migrate generate [--allow <change>]` | Writes a SQL migration into `migrations/` |
 | `mesh migrate apply` | Applies the migrations that have not been applied |
 | `mesh events forget <name>` | Drops the progress row of a handler, or the row of a subscription, that no longer runs, so it stops holding outbox rows; see [events forget](#events-forget) |
+| `mesh events adopt <handler> [--drop <event>]...` | With a bus that declares `multi-process`: drops the named events from a handler's registered union, so a handler that waits at an event no running build lists goes on; see [events adopt](#events-adopt) |
+| `mesh events keep <until-delivered\|all>` | With a bus that declares `multi-process`: sets the `keep` recorded for every delivering process; see [events keep](#events-keep) |
 | `mesh export generators` | Copies the built-in templates into the project; see [Customising generated code](./customising-generated-code.md) |
 | `mesh --help` | Lists the available commands, including those added by enabled adapters and extensions |
 
@@ -151,6 +153,30 @@ mesh events forget receipt
 A handler that was removed, or renamed without `renamedFrom`, leaves its progress row behind, and a subscription whose client never comes back leaves its row too; under `keep: "until-delivered"` each holds every outbox row above its position for ever. The deliverer logs such a row (see [Events](./events.md#orphan-rows)); this command drops it, from any process, and prints `forgot the handler receipt, which was at position 41`. It opens the data layer the configuration names and claims nothing.
 
 It refuses a handler the running deliverer registered and a subscription that is open under the running deliverer's claim, so a typo cannot drop live progress; a subscription left open by a process that crashed, whose claim has since lapsed or been taken over, may be forgotten. A name held by both a handler and a subscription is refused, naming both. A name that matches no row is an error, exit `1`; a missing or extra argument is a usage error, exit `2`.
+
+## events adopt
+
+```bash
+mesh events adopt notify --drop billing.InvoiceVoided
+```
+
+With a bus that declares `multi-process`, several builds may deliver one database during a deploy, and each handler keeps a **registered union**: every event any build has listed for it since the last adoption (see [Events](./events.md#deploys-that-change-a-handlers-events)). A deploy that removes an event from a handler leaves the event in the union, and the handler waits at its next row until the event is dropped. This command drops it. It keeps every event a live process lists for the handler, and drops only the events named with `--drop`; it prints each event it drops, each it keeps with the reason, and the union it leaves:
+
+```text
+dropped billing.InvoiceVoided
+kept billing.InvoicePaid: listed by pid 4242 on host api-1
+adopted the handler notify: its registered union is now billing.InvoicePaid
+```
+
+Without `--drop` it changes nothing: it lists the union, saying for each event which live process lists it, or `listed by no live process; name it with --drop to drop it`, prints `Nothing changed` and exits `1`. It refuses, with exit `1`, a handler no live process registers, a `--drop` of an event a live process lists (stop that process first) and one the union lacks. Dropping an event that no live process lists is your decision: a stopped build that lists it, started again, finds that rows of it were passed. In a project whose bus does not declare `multi-process` it exits `1`; a missing name or a `--drop` with no event is a usage error, exit `2`.
+
+## events keep
+
+```bash
+mesh events keep until-delivered
+```
+
+With a bus that declares `multi-process`, the `keep` in force is recorded in the database and moves only towards `"all"`: a process configured with `keep: "all"` records it, and then no process deletes. This command sets it, `until-delivered` or `all`, and prints what it was: `the recorded keep was "all", now "until-delivered"`. It refuses `until-delivered`, with exit `1`, while a live process runs with `keep: "all"`, naming it. In a project whose bus does not declare `multi-process` it exits `1`; any other value is a usage error, exit `2`.
 
 ## Next
 

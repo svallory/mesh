@@ -21,6 +21,11 @@ Commands:
   events forget <name>
                       Drop the progress row of a removed handler, or the row
                       of a subscription that is not coming back
+  events adopt <handler> [--drop <event>]...
+                      Shrink a handler's registered union when it is delivered
+                      from several processes: drop the events named
+  events keep <until-delivered|all>
+                      Set the keep recorded for several processes
 
 The data adapter can add its own commands; they are listed below
 when mesh.config.ts names one.

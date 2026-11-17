@@ -22,6 +22,9 @@ import {
   type DataLayer as $DataLayer,
   type Seams as $Seams,
 @if(events)
+@if(multiProcess)
+  adoptHandler as $adoptHandler,
+@end
   forgetHandler as $forgetHandler,
   forgetSubscription as $forgetSubscription,
   listSubscriptions as $listSubscriptions,
@@ -34,6 +37,9 @@ import {
   resumeHandler as $resumeHandler,
 @if(subscribe)
   subscribe as $subscribe,
+@end
+@if(multiProcess)
+  type Adopted as $Adopted,
 @end
   type Delivery as $Delivery,
   type EventRecord as $EventRecord,
@@ -259,6 +265,17 @@ export function subscribe(query: $SubscribeQuery, callback: (event: $EventRecord
 export function forgetHandler(name: string): $Promise<void> {
   return $forgetHandler($deliveryBinding("forgetHandler"), name);
 }
+@if(multiProcess)
+
+/**
+ * Shrink the registered union of a handler delivered from several processes: every event a live process lists for it is
+ * kept, and of the others only those named in `drop` are dropped. Refused (`FrameworkError`) for a handler no live
+ * process registers and for a `drop` of an event a live process lists. The same as `mesh events adopt`.
+ */
+export function adoptHandler(name: string, options?: { readonly drop?: readonly string[] }): $Promise<$Adopted> {
+  return $adoptHandler($deliveryBinding("adoptHandler"), name, options);
+}
+@end
 
 /**
  * Resume a handler the running bus stopped at a failing event: it is fed again from its progress row in the next round.

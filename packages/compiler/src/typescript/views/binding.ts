@@ -27,6 +27,11 @@ export interface BindingView {
   readonly replay: boolean;
   /** True when the project declares an event and the configured bus declares `subscribe`: the file then exports `subscribe`. */
   readonly subscribe: boolean;
+  /**
+   * True when the project declares an event and the configured bus declares `multi-process` (delivery from several
+   * processes): the file then exports `adoptHandler`.
+   */
+  readonly multiProcess: boolean;
 }
 
 /** A module specifier relative to the output folder, quoted: `"./domain/blog/post.actions"`. */
@@ -44,5 +49,6 @@ export function bindingView(input: EmitInput): BindingView {
     events,
     replay: events && capabilities.includes("replay"),
     subscribe: events && capabilities.includes("subscribe"),
+    multiProcess: events && capabilities.includes("multi-process"),
   };
 }

@@ -14,7 +14,7 @@ import {
   PerDatabase, causedIn, describe, loadEvents, onPublished, recordOf, rows, sameKey, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
-import { MultiClaim, ackOwned, declarerOf, forgetOwned, isMultiProcess, multiOperations, openOwned } from "./multi-process.ts";
+import { MultiClaim, ackOwned, adoptOwned, declarerOf, forgetOwned, isMultiProcess, keepOwned, multiOperations, openOwned, type Adopted, type KeepChange } from "./multi-process.ts";
 
 /**
  * Core's deliverer (spec, Events and commands, "The deliverer", "Handlers", "Retention", "`subscribe`"): the claim in
@@ -595,6 +595,9 @@ export class Deliverer {
       if (!this.strategy.isOrphan(row, state) || !due(`handler:${row.name}`)) continue;
       console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is ${this.strategy instanceof MultiClaim ? "registered by no live process" : "not registered by this deliverer"}, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
     }
+    // Delivery from several processes: a handler held by none for the lapse time, and a recorded keep "all" (rules K6, K7).
+    if (this.strategy instanceof MultiClaim)
+      for (const report of this.strategy.reports(state, handlers, this.db.name)) if (due(report.key)) console.warn(report.message);
     if (this.keep !== "until-delivered") return;
     for (const row of subscriptions) {
       const open = this.db.subscriptions.get(row.name);
@@ -1276,4 +1279,52 @@ export async function forgetByName(layer: DataLayer, name: string, options?: { r
     }
     throw new FrameworkError(`No handler and no subscription named ${JSON.stringify(name)} has a row in this database`);
   });
+}
+
+// ---- adopting and the recorded keep (delivery from several processes) ---------------------------------------
+
+/** The `drop` option of `adoptByName` and `adoptHandler`, checked: a list of event names. */
+function dropList(what: string, options: { readonly drop?: readonly string[] } | undefined): readonly string[] {
+  const drop: unknown = options?.drop ?? [];
+  if (!Array.isArray(drop) || drop.some((event) => typeof event !== "string" || event === ""))
+    throw new FrameworkError(`${what}: drop is a list of event names, such as ["billing.InvoiceVoided"], and is ${describe(drop)}`);
+  return drop as readonly string[];
+}
+
+/**
+ * `mesh events adopt <handler> [--drop <event>]...` (design rule R5), outside the delivering processes: shrinks the
+ * handler's registered union, keeping every event a live process lists for it and dropping only the events named in
+ * `drop`; refused when no live process registers it, and for a `drop` of an event a live process lists or the union
+ * lacks. Only in a project whose bus declares `multi-process`, which `multiProcess` says (from the configuration, never
+ * probed from the schema); in single mode there is no union to adopt.
+ */
+export async function adoptByName(layer: DataLayer, name: string, options?: { readonly drop?: readonly string[]; readonly multiProcess?: boolean }): Promise<Adopted> {
+  if (typeof name !== "string" || name === "") throw new FrameworkError("mesh events adopt takes a handler's name");
+  const drop = dropList("mesh events adopt", options);
+  if (options?.multiProcess !== true)
+    throw new FrameworkError("mesh events adopt applies to a project whose bus declares multi-process: in single mode a handler's events are the list its one deliverer registered");
+  return adoptOwned(layer, name, drop, "mesh events adopt");
+}
+
+/** `adoptHandler(name, { drop })` of `#mesh`, in a project whose bus declares `multi-process`: `adoptByName` on the binding's layer. */
+export async function adoptHandler(binding: Binding, name: string, options?: { readonly drop?: readonly string[] }): Promise<Adopted> {
+  const { layer, config } = bindingParts(binding);
+  if (typeof name !== "string" || name === "") throw new FrameworkError(`adoptHandler takes a handler's name, and was given ${describe(name)}`);
+  const drop = dropList("adoptHandler", options);
+  if (!isMultiProcess(config?.bus))
+    throw new FrameworkError("adoptHandler applies to a project whose bus declares multi-process: in single mode a handler's events are the list its one deliverer registered");
+  return adoptOwned(layer, name, drop, "adoptHandler");
+}
+
+/**
+ * `mesh events keep <until-delivered|all>` (design rule K4): sets the `keep` recorded in `mesh_outbox_state`, which
+ * every delivering process of a multi-process project obeys; `"until-delivered"` is refused while a live process runs
+ * with `keep: "all"`. Only with `multiProcess`, as for `adoptByName`.
+ */
+export async function keepByValue(layer: DataLayer, keep: "until-delivered" | "all", options?: { readonly multiProcess?: boolean }): Promise<KeepChange> {
+  if (keep !== "until-delivered" && keep !== "all")
+    throw new FrameworkError(`mesh events keep takes "until-delivered" or "all", and was given ${describe(keep)}`);
+  if (options?.multiProcess !== true)
+    throw new FrameworkError("mesh events keep applies to a project whose bus declares multi-process: in single mode the deliverer's own keep is the one in force");
+  return keepOwned(layer, keep);
 }

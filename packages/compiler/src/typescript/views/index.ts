@@ -52,6 +52,8 @@ export interface IndexEvents {
   readonly replay: boolean;
   /** True when the configured bus declares `subscribe`: `subscribe` is exported. */
   readonly subscribe: boolean;
+  /** True when the configured bus declares `multi-process`: `adoptHandler` is exported. */
+  readonly multiProcess: boolean;
   /**
    * The bus's capabilities as quoted string literals, in its manifest's order: each becomes a `true` member of
    * `EventBusCapabilities` (`declare module "@meshfw/runtime"`), so a handler option the bus cannot honour is a type error.
@@ -106,7 +108,7 @@ export function indexView(input: EmitInput): IndexView {
   const capabilities: readonly string[] = input.config.events?.bus?.manifest.capabilities ?? [];
   return { modules, commands, events: {
     ...view, globals: globalsImport("index", view, commands ? ["Object", "Promise"] : ["Object"])!,
-    replay: capabilities.includes("replay"), subscribe: capabilities.includes("subscribe"),
+    replay: capabilities.includes("replay"), subscribe: capabilities.includes("subscribe"), multiProcess: capabilities.includes("multi-process"),
     busCapabilities: capabilities.map((capability) => JSON.stringify(capability)),
   } };
 }

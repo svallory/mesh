@@ -58,6 +58,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0089](./0089-postgres-adapter.md) decides how the Postgres adapter (M9) runs: transactions one at a time per layer at `SERIALIZABLE`, transient errors as `MESH_DATABASE_BUSY` with a `reason`, a failed statement failing the call, and SQLite's sort order.
 
+[Record 0091](./0091-delivery-from-several-processes.md) decides how events are delivered from several processes on one database (M9): a lease per handler on its progress row, a registered union that only `mesh events adopt` shrinks, and a row per delivering process. It amends 0079.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -128,7 +130,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0076](./0076-compiler-front-end-and-back-end-are-separate.md) | The compiler's front end and its TypeScript back end are separate folders | Accepted | operator |
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
 | [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct) | operator |
-| [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted | operator |
+| [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted, amended 2026-11-17: one process delivers per database in single mode; several in multi mode (0091) | operator |
 | [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted | operator; one lead note on DOM-31, for operator review |
 | [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |
 | [0082](./0082-named-checks-and-mixins.md) | Named checks in a `checks` section; `mixin` files with `use`; step files dropped | Accepted | operator; lead reading for DOM-33 |
@@ -140,6 +142,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) | Translated conditions cross the data layer as bound condition trees | Accepted (lead ruling D32, pending operator review) | lead, delegated |
 | [0089](./0089-postgres-adapter.md) | Postgres adapter: serializable transactions, transient errors and SQLite's order | Accepted (lead ruling D30, pending operator review) | lead, delegated |
 | [0090](./0090-line-rules-report-meshs-codes.md) | Line rules report Mesh's codes and positions, carried by a generated wrapper over Zod's own checks | Accepted (lead ruling D38, pending operator review) | lead, delegated |
+| [0091](./0091-delivery-from-several-processes.md) | Delivery from several processes: a lease per handler, the union shrunk only by `mesh events adopt`, process rows | Accepted (lead ruling D31, pending operator review) | lead, delegated |
 
 ## Superseded records
 
