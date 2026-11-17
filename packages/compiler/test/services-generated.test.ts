@@ -81,9 +81,10 @@ describe("the services generator", () => {
   test("the barrel exports the value from the service file and the input types from the inputs file; a service-only folder gets a barrel and its parent a namespace", async () => {
     const generated = await generate(await fixtureFiles());
     const barrel = (path: string) => generated.find((file) => file.path === path)!.contents;
+    expect(barrel(".mesh/domain/work/index.ts")).toContain('from the Mesh files of module "work"');
     expect(barrel(".mesh/domain/work/index.ts")).toContain('export { Work } from "./work.service";\nexport type {\n  HandOverWorkInput,\n  NotifyWorkInput,\n  CancelRunWorkInput,\n  FinishWorkInput,\n} from "./work.inputs";');
     expect(barrel(".mesh/domain/orchestration/index.ts")).toContain('export { Billing } from "./billing.service";\nexport type { CloseBillingInput } from "./billing.inputs";');
-    expect(barrel(".mesh/domain/orchestration/index.ts")).toContain('from the entity files of module "orchestration"');
+    expect(barrel(".mesh/domain/orchestration/index.ts")).toContain('from the Mesh files of module "orchestration"');
     expect(barrel(".mesh/domain/index.ts")).toContain('export * as orchestration from "./orchestration/index";');
     expect(barrel(".mesh/index.ts")).toContain('//   "#mesh/domain/orchestration"');
   });

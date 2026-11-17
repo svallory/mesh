@@ -1027,7 +1027,7 @@ declare module "#mesh/domain/todo" {
 
   /** The service value `Lists`: one method per operation, each resolving with what its body returns. */
   export const Lists: {
-    retire(input: RetireListsInput, context: ActionContext): Promise<{ removed: number }>;
+    retire(input: RetireListsInput, context?: ActionContext): Promise<{ removed: number }>;
   };
 }
 
