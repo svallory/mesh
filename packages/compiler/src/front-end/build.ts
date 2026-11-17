@@ -391,6 +391,68 @@ function attributeReaders(source: string, file: string, diagnostics: Diagnostic[
   return { at, pos, fail, opt, shape, checkShape };
 }
 
+/**
+ * The lines of a holder's `input` block, in written order. An argument line (`string :title`) is read as an attribute line
+ * is, and refused the options only a stored attribute takes; a member line (`&title`) goes to `memberLine`, which gives the
+ * field or `undefined` when the line is refused, since what a member line may name depends on what holds the block. Two
+ * fields of one name are `MESH_DUPLICATE_INPUT`, whichever kind each is.
+ */
+function readInputLines(
+  holder: Tag,
+  { readers, memberLine }: { readers: ReturnType<typeof attributeReaders>; memberLine: (line: Tag) => InputField | undefined },
+): InputField[] {
+  const { fail, shape, checkShape } = readers;
+  const input: InputField[] = [];
+  const names = new Set<string>();
+  for (const line of tags(tags(holder.children).find((t) => t.name === "input")?.children ?? [])) {
+    let field: InputField;
+    if (line.name === "member") {
+      const member = memberLine(line);
+      if (!member) continue;
+      field = member;
+    } else {
+      if (["primary-key", "unique", "on", "value"].some((key) => attr(line, key)))
+        fail("MESH_ARGUMENT_OPTIONS", "An argument cannot declare primary-key, unique, on, or a body", line);
+      field = { kind: "argument", ...shape(line) } satisfies Argument;
+      checkShape(field);
+    }
+    const name = field.kind === "member" ? field.ref.name : field.name;
+    if (names.has(name)) fail("MESH_DUPLICATE_INPUT", `Duplicate input name ${name}`, line);
+    names.add(name);
+    input.push(field);
+  }
+  return input;
+}
+
+/**
+ * A `policy` line: its name, its scope (`types=`, `actions=`), its `authorize-if` and `forbid-if` functions (written as an
+ * option or as child lines, in that order) and its `when`. `scope` reads the scope options, so the `actions=` references
+ * it returns are still unresolved: what holds the policy resolves them against its own actions.
+ */
+function readPolicyLine(
+  tag: Tag,
+  { expr, scope, pos }: {
+    expr: (a: Attr | undefined) => Expression;
+    scope: (tag: Tag) => Pick<Policy, "types" | "actions">;
+    pos: (tag: Tag) => SourcePosition;
+  },
+): Policy {
+  const expressions = (key: string) => [
+    ...(attr(tag, key) ? [expr(attr(tag, key))] : []),
+    ...tags(tag.children)
+      .filter((t) => t.name === key)
+      .map((t) => expr(attr(t, "value"))),
+  ];
+  return {
+    name: declaredName(tag),
+    ...scope(tag),
+    authorizeIf: expressions("authorize-if"),
+    forbidIf: expressions("forbid-if"),
+    ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}),
+    position: pos(tag),
+  } satisfies Policy;
+}
+
 function buildEntity(
   root: Tag,
   irImports: readonly IrImport[],
@@ -406,7 +468,8 @@ function buildEntity(
   declaredNames: Map<CommandRef | DeclarationRef, string>,
   inline: { events: EventDeclaration[]; commands: CommandDeclaration[] },
 ): Entity {
-  const { at, pos, fail, opt, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  const readers = attributeReaders(source, file, diagnostics);
+  const { at, pos, fail, opt, shape, checkShape } = readers;
   const sections = tags(root.children);
   const section = (name: string) => sections.find((t) => t.name === name);
   // The name is written in any casing and converted as an event's or a command's is (`notes/spec/names.md`): `entity :todo`
@@ -964,44 +1027,21 @@ function buildEntity(
         ? { identifier: referenceText(written), from: answered?.ok ? answered.from : "", fqn: "", position: at(attrOffset(onAttr)) }
         : undefined;
       if (command && answered?.ok) declaredNames.set(command, answered.declared);
-      const input: InputField[] = [];
-      const names = new Set<string>();
-      for (const line of tags(
-        tags(tag.children).find((t) => t.name === "input")?.children ?? [],
-      )) {
-        let field: InputField;
-        if (line.name === "member") {
-          if (!isMemberLine(line)) { authoredMember(line); continue; }
+      const input = readInputLines(tag, {
+        readers,
+        memberLine: (line) => {
+          if (!isMemberLine(line)) { authoredMember(line); return undefined; }
           const read = readAt(line, at, () => readMemberLine(line, at));
-          if (read.diagnostic) { diagnostics.push(read.diagnostic); continue; }
-          const member = read.value;
+          if (read.diagnostic) { diagnostics.push(read.diagnostic); return undefined; }
           if (kind === "read")
             fail(
               "MESH_READ_INPUT_MEMBER",
               "A read input may declare arguments only",
               line,
             );
-          field = { kind: "member", ref: checkRef(member.ref, "input") };
-        } else {
-          if (
-            ["primary-key", "unique", "on", "value"].some((key) =>
-              attr(line, key),
-            )
-          )
-            fail(
-              "MESH_ARGUMENT_OPTIONS",
-              "An argument cannot declare primary-key, unique, on, or a body",
-              line,
-            );
-          field = { kind: "argument", ...shape(line) } satisfies Argument;
-          checkShape(field);
-        }
-        const name = field.kind === "member" ? field.ref.name : field.name;
-        if (names.has(name))
-          fail("MESH_DUPLICATE_INPUT", `Duplicate input name ${name}`, line);
-        names.add(name);
-        input.push(field);
-      }
+          return { kind: "member", ref: checkRef(read.value.ref, "input") };
+        },
+      });
       const filterTag = tags(tag.children).find((t) => t.name === "filter");
       const filter =
         attr(tag, "filter") ?? (filterTag && attr(filterTag, "value"));
@@ -1029,22 +1069,8 @@ function buildEntity(
       if (writtenName !== undefined) authorNamed.add(action);
     }
   }
-  for (const tag of tags(section("policies")?.children ?? [])) {
-    const expressions = (key: string) => [
-      ...(attr(tag, key) ? [expr(attr(tag, key))] : []),
-      ...tags(tag.children)
-        .filter((t) => t.name === key)
-        .map((t) => expr(attr(t, "value"))),
-    ];
-    entity.policies.push({
-      name: declaredName(tag),
-      ...scope(tag),
-      authorizeIf: expressions("authorize-if"),
-      forbidIf: expressions("forbid-if"),
-      ...(attr(tag, "when") ? { when: expr(attr(tag, "when")) } : {}),
-      position: pos(tag),
-    } satisfies Policy);
-  }
+  for (const tag of tags(section("policies")?.children ?? []))
+    entity.policies.push(readPolicyLine(tag, { expr: (a) => expr(a), scope, pos }));
   // The owner sections (`notes/spec/events-and-commands.md`, "Where a declaration lives"): each line declares an event or a
   // command inline (`event :InvoiceVoided` with its fields), or lists one an import of the file names, `InvoicePaid` or
   // `notices.InvoiceOverdue`, resolved as `entity=` is. An inline declaration means what the same declaration in a file of
