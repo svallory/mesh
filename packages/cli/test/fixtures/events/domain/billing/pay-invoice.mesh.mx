@@ -1,4 +1,4 @@
 command :PayInvoice
   uuid :id
   datetime :paidAt nullable
-  string :title optional
+  string :title optional min=1 message="give the invoice a title" code="title_blank"

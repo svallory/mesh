@@ -62,6 +62,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md) builds concept files on the discovery of 0085: `concepts` folders that MX scans, a hook that turns each file into a contract, the scan passed to `lowerSource` by the compiler (a deviation from 0085's chosen option), open field parents, and a type and a schema generated per concept. It amends 0080 and 0085.
 
+[Record 0093](./0093-line-rule-message-and-code.md) decides how a line rule gets a message and a code of its own: `message="..."` and `code="..."` on its line, text only, for every rule of the line, on attribute, argument, event-field and command-field lines alike. It amends 0090.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -146,6 +148,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0090](./0090-line-rules-report-meshs-codes.md) | Line rules report Mesh's codes and positions, carried by a generated wrapper over Zod's own checks | Accepted (lead ruling D38, pending operator review) | lead, delegated |
 | [0091](./0091-delivery-from-several-processes.md) | Delivery from several processes: a lease per handler, the union shrunk only by `mesh events adopt`, process rows | Accepted (lead ruling D31, pending operator review) | lead, delegated |
 | [0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md) | Concepts are found by MX's scan, generated as a type and a schema, and stored as one JSON value | Accepted (lead ruling D36, pending operator review) | lead, delegated |
+| [0093](./0093-line-rule-message-and-code.md) | `message=` and `code=` on a line rule's line replace its standard message and code, for every rule of the line | Accepted (lead ruling D38, pending operator review) | lead, delegated |
 
 ## Superseded records
 

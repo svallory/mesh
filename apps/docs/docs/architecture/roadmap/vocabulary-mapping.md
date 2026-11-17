@@ -146,6 +146,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `decimal.default` | `decimal :field default=1.5` | `decimal.default` | on main |
 | `decimal.min` | `decimal :field min=0` | `decimal.min` | on main |
 | `decimal.max` | `decimal :field max=100` | `decimal.max` | on main |
+| `decimal.message` | `decimal :field min=0 message="the field's own text"` | `decimal.message` | on main |
+| `decimal.code` | `decimal :field min=0 code="field_rule"` | `decimal.code` | on main |
 | `decimal.unique` | `decimal :field unique` | `decimal.unique` | on main |
 | `decimal.value` | `decimal :field() { return 1.5 }` | `decimal.value` | on main |
 | `desc` | `desc &title` | `desc` | on main |
@@ -180,6 +182,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `float.default` | `float :field default=0.5` | `float.default` | on main |
 | `float.min` | `float :field min=0` | `float.min` | on main |
 | `float.max` | `float :field max=100` | `float.max` | on main |
+| `float.message` | `float :field min=0 message="the field's own text"` | `float.message` | on main |
+| `float.code` | `float :field min=0 code="field_rule"` | `float.code` | on main |
 | `float.unique` | `float :field unique` | `float.unique` | on main |
 | `float.value` | `float :field() { return 0.5 }` | `float.value` | on main |
 | `forbid-if` | `forbid-if=() => false` | `forbid-if` | on main |
@@ -201,6 +205,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `integer.default` | `integer :field default=0` | `integer.default` | on main |
 | `integer.min` | `integer :field min=0` | `integer.min` | on main |
 | `integer.max` | `integer :field max=100` | `integer.max` | on main |
+| `integer.message` | `integer :field min=0 message="the field's own text"` | `integer.message` | on main |
+| `integer.code` | `integer :field min=0 code="field_rule"` | `integer.code` | on main |
 | `integer.primary-key` | `integer :field primary-key` | `integer.primary-key` | on main |
 | `integer.unique` | `integer :field unique` | `integer.unique` | on main |
 | `integer.value` | `integer :field() { return 0 }` | `integer.value` | on main |
@@ -248,6 +254,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `string.min` | `string :field min=0` | `string.min` | on main |
 | `string.max` | `string :field max=100` | `string.max` | on main |
 | `string.match` | `string :field match=/^hello$/` | `string.match` | on main |
+| `string.message` | `string :field match=/^[a-z]+$/ message="the field's own text"` | `string.message` | on main |
+| `string.code` | `string :field match=/^[a-z]+$/ code="field_rule"` | `string.code` | on main |
 | `string.primary-key` | `string :field primary-key` | `string.primary-key` | on main |
 | `string.unique` | `string :field unique` | `string.unique` | on main |
 | `string.value` | `string :field() { return "hello" }` | `string.value` | on main |

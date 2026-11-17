@@ -55,7 +55,7 @@ entity :Invoice
         publish=() => new refunds.RefundIssued({ invoiceId: &id, cents: 2 })
     create on=OpenInvoice
       input
-        string :note nullable
+        string :note nullable max=20 code="note_too_long"
       do
         publish=() => new InvoiceOpened({ invoiceId: &id })
     destroy on=VoidInvoice

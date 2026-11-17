@@ -736,6 +736,29 @@ describe("the outbox", () => {
     expect(() => new billing.PayInvoice({ id: ID, title: null })).toThrow(InvalidInputError);
   });
 
+  test("a command field's message= and code= replace the standard ones, with the command's suffix", () => {
+    try { new billing.PayInvoice({ id: ID, title: "" }); throw new Error("expected the constructor to throw"); } catch (cause) {
+      expect(cause).toBeInstanceOf(InvalidInputError);
+      expect((cause as InvalidInputError).issues).toEqual([{
+        path: ["title"], message: "give the invoice a title (command billing.PayInvoice)", code: "title_blank",
+        source: { file: "domain/billing/pay-invoice.mesh.mx", line: 4, column: 3 }, label: null, details: null,
+      }]);
+    }
+  });
+
+  test("an argument's code= replaces the standard code and keeps the standard message", async () => {
+    const { layer, binding } = await open();
+    try {
+      const cause = await failure(binding.run(() => billing.Invoice.openInvoice({ note: "x".repeat(21) }, {})));
+      expect(cause).toBeInstanceOf(InvalidInputError);
+      expect((cause as InvalidInputError).issues).toEqual([{
+        path: ["note"], message: "must be at most 20 characters", code: "note_too_long",
+        source: { file: "domain/billing/invoice.mesh.mx", line: 58, column: 9 }, label: null, details: null,
+      }]);
+      expect(await binding.run(() => billing.Invoice.openInvoice({ note: "x".repeat(20) }, {}))).toMatchObject({ paid: false });
+    } finally { await layer.close(); }
+  });
+
   test("optional together with nullable accepts null and preserves undefined", () => {
     expect(new billing.OpenInvoice({}).note).toBeUndefined();
     expect(new billing.OpenInvoice({ note: undefined }).note).toBeUndefined();

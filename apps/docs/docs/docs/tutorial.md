@@ -209,7 +209,7 @@ not_found
 invalid_input too_short must be at least 1 character
 ```
 
-An empty title is refused at run time by `string :title min=1`, with Mesh's own code and message — a line rule has nowhere to write a custom one — and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
+An empty title is refused at run time by `string :title min=1`, with Mesh's own code and message (`message="..."` and `code="..."` on the same line would replace them), and the issue points at that line in the `.mesh.mx` file. A `check` of your own fails the same way and carries the label and code you gave it.
 
 Four things to notice:
 

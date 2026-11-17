@@ -184,6 +184,9 @@ const options = (type: string) => ({
   ...(type === "enum" ? { values: valueAtom() } : {}),
   ...(["string", "integer", "float", "decimal"].includes(type) ? { min: number(), max: number() } : {}),
   ...(type === "string" ? { match: { type: "expression" as const } } : {}),
+  // What a broken `min`, `max` or `match` of this line reports instead of Mesh's standard message and code: text only.
+  // The builder refuses either on a line with none of the three (`checkRuleText` in `build.ts`).
+  ...(["string", "integer", "float", "decimal"].includes(type) ? { message: text(), code: text() } : {}),
 });
 const steps = children("set", "when", "load", "run", "publish");
 const body = { validate: {}, do: {} };
