@@ -64,6 +64,22 @@ describe("MESH_EXPR_NOT_SQL", () => {
     ]);
   });
 
+  test("a filtered rollup reached at the inline limit is refused at the read, as a computed body there is", () => {
+    // A chain of `links` translated bodies ending at a filtered rollup: at 32 (MAX_INLINE) the rollup is not lowered,
+    // and the build says so at the read instead of passing a filter the generator cannot print.
+    const chain = (links: number) => {
+      const lines = Array.from({ length: links }, (_, i) => `    boolean :c${i}() { return ${i === links - 1 ? "&big > 0" : `&c${i + 1}`} }\n`);
+      const source = invoice([], "    read :deep filter=() => &c0\n", `    count :big of=&lines filter=(l) => l.qty > 2\n${lines.join("")}`);
+      return { built: fixture.build(source), source };
+    };
+    expect(errors(chain(31).built.diagnostics)).toEqual([]);
+    const { built, source } = chain(32);
+    expect(errors(built.diagnostics).map(brief)).toEqual([
+      { code: "MESH_EXPR_NOT_SQL", message: "the filter of read :deep of billing.Invoice must run as SQL, and computed :big reaches itself again through a relationship, which a query cannot unfold",
+        at: `billing/invoice.mesh.mx:${source.indexOf("&c0\n")}`, fix: "store the value in an attribute, or write the condition over a fixed number of steps" },
+    ]);
+  });
+
   test("one function with two problems reports both; one that holds an error gets no second", () => {
     const both = build(['() => &customer.label === "a" && &customer.meta !== null']);
     expect(errors(both.diagnostics).map((d) => d.code)).toEqual(["MESH_EXPR_NOT_SQL", "MESH_FILTER_TYPE"]);
