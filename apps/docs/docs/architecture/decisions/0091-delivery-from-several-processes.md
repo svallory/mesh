@@ -47,4 +47,4 @@ M6 built delivery for one process per database: that process holds the database'
 - One new table and three new columns, present only in a project whose bus declares `multi-process`; every other project's schema and generated code are byte for byte unchanged.
 - `MESH_HANDLER_LOST` joins the bus contract: a bus ends that handler for the round and reports nothing.
 - Two commands, `mesh events adopt` and `mesh events keep`, and two log lines under the orphan rule (a handler held by none for the lapse time; a recorded `keep: "all"` while a process runs with `"until-delivered"`).
-- Postgres gets the same operations from its own adapter, with `FOR UPDATE` row locks, in a later pull request of the unit.
+- Postgres has the same operations in its own adapter, with `FOR UPDATE` row locks and one conditional `UPDATE` for each of the deletion pass's moves; at `SERIALIZABLE` a lock wait does not renew the waiter's snapshot, so a waiter that would work from a state the other changed fails with `40001` (a retryable `DatabaseBusyError`) instead.

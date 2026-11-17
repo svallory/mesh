@@ -1,7 +1,8 @@
 import { hostname } from "node:os";
 import {
-  FAILURES_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
-  type DelivererClaim, type DeliveryOperations, type DeliveryState, type FailureOperations, type FailureRow, type HandlerProgressRow, type SubscriptionFilter, type SubscriptionProgressRow,
+  DELIVERY_PROCESS_TABLE, FAILURES_TABLE, FrameworkError, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE,
+  type DelivererClaim, type DeliveryOperations, type DeliveryProcessRow, type DeliveryState, type FailureOperations, type FailureRow, type HandlerLeaseRow,
+  type HandlerProgressRow, type LockedDeliveryState, type MultiProcessOperations, type SubscriptionFilter, type SubscriptionOwnerRow, type SubscriptionProgressRow,
 } from "@meshfw/runtime";
 import { int8, int8OrNull } from "./int8.ts";
 import { sqlstateOf, type Query } from "./outbox.ts";
@@ -22,11 +23,14 @@ import { sqlstateOf, type Query } from "./outbox.ts";
 
 const DELIVERY_MISSING = "The deliverer's tables (mesh_outbox_state with the claim, mesh_handler_progress, mesh_subscription_progress, mesh_outbox_failures) do not exist in this database: prepare the schema with `mesh db push` (or createSchema in a test) after building a project that declares an event";
 
-async function withTables<T>(statement: () => Promise<T>): Promise<T> {
+const MULTI_MISSING = "The tables for delivery from several processes (mesh_delivery_process, and the keep and run_id columns) do not exist in this database: prepare the schema with `mesh db push` after setting localBus({ processes: \"many\" }) (or createSchema in a test, with a schema built for a bus that declares multi-process)";
+
+/** A statement whose table or column is missing (`42P01`, `42703`) is the `FrameworkError` `missing`. */
+async function withTables<T>(statement: () => Promise<T>, missing = DELIVERY_MISSING): Promise<T> {
   try { return await statement(); }
   catch (cause) {
     const state = sqlstateOf(cause);
-    if (state === "42P01" || state === "42703") throw new FrameworkError(DELIVERY_MISSING, { cause });
+    if (state === "42P01" || state === "42703") throw new FrameworkError(missing, { cause });
     throw cause;
   }
 }
@@ -48,20 +52,23 @@ function stateOf(row: Record<string, unknown>): DeliveryState {
   });
 }
 
+/** `mesh_outbox_state` under its row lock (created first), with the highest position, the database's clock and `extra` columns. */
+async function lockedState(query: Query, sequence: () => Promise<string>, extra = ""): Promise<Record<string, unknown>> {
+  const seq = await sequence();
+  await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through) VALUES (1, 0) ON CONFLICT (id) DO NOTHING`);
+  const [row] = await query(
+    `SELECT deleted_through, COALESCE(generation, 0) AS generation, run_id, renewed_at, host, pid, started_at, clock_timestamp() AS now,
+            (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${seq}) AS highest${extra}
+     FROM ${OUTBOX_STATE_TABLE} WHERE id = 1 FOR UPDATE`,
+  );
+  return row!;
+}
+
 /** The delivery operations over `query` (the running transaction's statements); `sequence` resolves the outbox's sequence. */
 export function deliveryOperations(query: Query, sequence: () => Promise<string>): DeliveryOperations {
   const exec = <T>(statement: () => Promise<T>) => withTables(statement);
   return {
-    readDeliveryState: () => exec(async () => {
-      const seq = await sequence();
-      await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through) VALUES (1, 0) ON CONFLICT (id) DO NOTHING`);
-      const [row] = await query(
-        `SELECT deleted_through, COALESCE(generation, 0) AS generation, run_id, renewed_at, host, pid, started_at, clock_timestamp() AS now,
-                (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${seq}) AS highest
-         FROM ${OUTBOX_STATE_TABLE} WHERE id = 1 FOR UPDATE`,
-      );
-      return stateOf(row!);
-    }),
+    readDeliveryState: () => exec(async () => stateOf(await lockedState(query, sequence))),
     writeClaim: (claim) => exec(async () => {
       await query(
         `INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, run_id, generation, renewed_at, host, pid, started_at)
@@ -173,5 +180,112 @@ export function failureOperations(query: Query): FailureOperations {
       )).map(failureOf))),
     deleteFailure: (failure) => exec(async () => (await query(`DELETE FROM ${FAILURES_TABLE} WHERE failure = $1`, [failure])).count === 1),
     renameFailures: (from, to) => exec(async () => { await query(`UPDATE ${FAILURES_TABLE} SET handler = $1 WHERE handler = $2`, [to, from]); }),
+  };
+}
+
+const leaseOf = (row: Record<string, unknown>): HandlerLeaseRow => Object.freeze({
+  name: row.name as string,
+  kind: row.kind as "process" | "listen",
+  position: int8(row.position, "mesh_handler_progress.position"),
+  events: Object.freeze(JSON.parse(row.events as string) as string[]),
+  generation: int8(row.generation, "mesh_handler_progress.generation"),
+  runId: (row.run_id as string | null) ?? null,
+});
+const LEASE_COLUMNS = "name, kind, position, events::text AS events, generation, run_id";
+
+/**
+ * The delivery operations of multi mode on Postgres (`MultiProcessOperations`): the process rows, the leases on the
+ * progress rows, the subscription owners and the recorded `keep`, each in the running transaction. `lockDeliveryState`
+ * and `lockHandlerProgress` take `FOR UPDATE` on their row, so a takeover, a handler transaction and a deletion batch
+ * of other connections wait for each other; at `SERIALIZABLE` the side that waited fails with `40001` when the other
+ * changed the row (a `DatabaseBusyError`, reason `serialization`) and never reads the row as it was. The pass's
+ * `moveHandler` and `moveSubscription` are one conditional `UPDATE` each. Only a project whose bus declares
+ * `multi-process` calls them; on a schema without the table and columns each fails with a `FrameworkError` naming
+ * `mesh db push`.
+ */
+export function multiProcessOperations(query: Query, sequence: () => Promise<string>): MultiProcessOperations {
+  const exec = <T>(statement: () => Promise<T>) => withTables(statement, MULTI_MISSING);
+  return {
+    lockDeliveryState: () => exec(async () => {
+      const row = await lockedState(query, sequence, ", keep");
+      return Object.freeze({ ...stateOf(row), keep: (row.keep as "until-delivered" | "all" | null) ?? null }) satisfies LockedDeliveryState;
+    }),
+    writeKeep: (keep) => exec(async () => {
+      await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, keep) VALUES (1, 0, $1) ON CONFLICT (id) DO UPDATE SET keep = excluded.keep`, [keep]);
+    }),
+    lockHandlerProgress: (name) => exec(async () => {
+      const [row] = await query(`SELECT ${LEASE_COLUMNS} FROM ${HANDLER_PROGRESS_TABLE} WHERE name = $1 FOR UPDATE`, [name]);
+      return row === undefined ? undefined : leaseOf(row);
+    }),
+    readHandlerLeases: () => exec(async () =>
+      Object.freeze((await query(`SELECT ${LEASE_COLUMNS} FROM ${HANDLER_PROGRESS_TABLE} ORDER BY name COLLATE "C"`)).map(leaseOf))),
+    writeHandlerLease: (row) => exec(async () => {
+      await query(
+        `INSERT INTO ${HANDLER_PROGRESS_TABLE} (name, kind, position, events, generation, run_id) VALUES ($1, $2, $3, $4::text::jsonb, $5, $6)
+         ON CONFLICT (name) DO UPDATE SET kind = excluded.kind, position = excluded.position, events = excluded.events,
+           generation = excluded.generation, run_id = excluded.run_id`,
+        [row.name, row.kind, row.position, JSON.stringify(row.events), row.generation, row.runId],
+      );
+    }),
+    moveHandler: (name, from, to, runId, generation) => exec(async () =>
+      (await query(`UPDATE ${HANDLER_PROGRESS_TABLE} SET position = $1 WHERE name = $2 AND position = $3 AND run_id = $4 AND generation = $5`,
+        [to, name, from, runId, generation])).count === 1),
+    moveSubscription: (name, from, to) => exec(async () =>
+      (await query(`UPDATE ${SUBSCRIPTION_PROGRESS_TABLE} SET position = $1 WHERE name = $2 AND position = $3`, [to, name, from])).count === 1),
+    readProcesses: () => exec(async () =>
+      Object.freeze((await query(
+        `SELECT run_id, renewed_at, host, pid, started_at, keep, handlers::text AS handlers, declared::text AS declared
+         FROM ${DELIVERY_PROCESS_TABLE} ORDER BY run_id COLLATE "C"`,
+      )).map((row) => {
+        const handlers = JSON.parse(row.handlers as string) as Record<string, string[]>;
+        for (const name of Object.keys(handlers)) Object.freeze(handlers[name]);
+        return Object.freeze({
+          runId: row.run_id as string,
+          renewedAt: date(row.renewed_at)!,
+          host: (row.host as string | null) ?? null,
+          pid: int8OrNull(row.pid, "mesh_delivery_process.pid"),
+          startedAt: date(row.started_at),
+          keep: row.keep as "until-delivered" | "all",
+          handlers: Object.freeze(handlers),
+          declared: Object.freeze(JSON.parse(row.declared as string) as string[]),
+        }) satisfies DeliveryProcessRow;
+      }))),
+    writeProcess: (row) => exec(async () => {
+      await query(
+        `INSERT INTO ${DELIVERY_PROCESS_TABLE} (run_id, renewed_at, host, pid, started_at, keep, handlers, declared)
+         VALUES ($1, clock_timestamp(), $2, $3, $4::text::timestamptz, $5, $6::text::jsonb, $7::text::jsonb)
+         ON CONFLICT (run_id) DO UPDATE SET renewed_at = excluded.renewed_at, host = excluded.host, pid = excluded.pid,
+           started_at = excluded.started_at, keep = excluded.keep, handlers = excluded.handlers, declared = excluded.declared`,
+        [row.runId, row.host === undefined ? hostname() : row.host, row.pid, iso(row.startedAt), row.keep, JSON.stringify(row.handlers), JSON.stringify(row.declared)],
+      );
+    }),
+    renewProcess: (runId, lapseMs) => exec(async () =>
+      (await query(
+        `UPDATE ${DELIVERY_PROCESS_TABLE} SET renewed_at = clock_timestamp()
+         WHERE run_id = $1 AND clock_timestamp() - renewed_at < $2::text::float8 * interval '1 millisecond'`,
+        [runId, String(lapseMs)],
+      )).count === 1),
+    deleteProcess: (runId) => exec(async () => (await query(`DELETE FROM ${DELIVERY_PROCESS_TABLE} WHERE run_id = $1`, [runId])).count === 1),
+    readSubscriptionOwners: () => exec(async () =>
+      Object.freeze((await query(
+        `SELECT name, position, filter::text AS filter, seen_at, open, generation, run_id FROM ${SUBSCRIPTION_PROGRESS_TABLE} ORDER BY name COLLATE "C"`,
+      )).map((row) => Object.freeze({
+        name: row.name as string,
+        position: int8(row.position, "mesh_subscription_progress.position"),
+        filter: Object.freeze(JSON.parse(row.filter as string) as SubscriptionFilter),
+        seenAt: date(row.seen_at)!,
+        open: int8(row.open, "mesh_subscription_progress.open") !== 0,
+        generation: int8(row.generation, "mesh_subscription_progress.generation"),
+        runId: (row.run_id as string | null) ?? null,
+      }) satisfies SubscriptionOwnerRow))),
+    writeSubscriptionOwner: (row) => exec(async () => {
+      await query(
+        `INSERT INTO ${SUBSCRIPTION_PROGRESS_TABLE} (name, position, filter, seen_at, open, generation, run_id)
+         VALUES ($1, $2, $3::text::jsonb, COALESCE($4::text::timestamptz, clock_timestamp()), $5, $6, $7)
+         ON CONFLICT (name) DO UPDATE SET position = excluded.position, filter = excluded.filter, seen_at = excluded.seen_at,
+           open = excluded.open, generation = excluded.generation, run_id = excluded.run_id`,
+        [row.name, row.position, JSON.stringify(row.filter), iso(row.seenAt), row.open ? 1 : 0, row.generation, row.runId],
+      );
+    }),
   };
 }
