@@ -1680,10 +1680,11 @@ function buildAggregate(
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>(inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse());
   const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
-  // An aggregate file has no function, so a helper or `Mesh` is nothing it could use: it imports Mesh files only.
+  // An aggregate file imports Mesh files only: its handler bodies, its only functions, call actions of the entities it
+  // imports, and a helper or `Mesh` stays out until a ruling admits one (handlers PR 1, deviation 7).
   const refused = imports.filter((entry) => entry.helper || entry.mesh);
   for (const entry of refused)
-    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: it has no function to call ${entry.mesh ? "`Mesh`" : "a helper"} in`, entry.position, "remove the import");
+    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: its handlers call actions of the entities it imports, not ${entry.mesh ? "`Mesh`" : "a helper"}`, entry.position, "remove the import");
   const aggregate: Aggregate = {
     name,
     fqn,
@@ -1757,6 +1758,7 @@ function buildAggregate(
           if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
         },
         handlerBody: true,
+        noHelpers: true,
       }),
     });
     if (read.length) aggregate.handlers = read;

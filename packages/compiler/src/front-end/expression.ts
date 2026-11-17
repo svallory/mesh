@@ -79,6 +79,11 @@ export interface ConvertContext {
    */
   handlerBody?: boolean;
   /**
+   * The file may import no helper and no `Mesh` (an aggregate file, whose only functions are handler bodies): the
+   * free-variable message and fix say what such a body can read instead of telling it to import one.
+   */
+  noHelpers?: boolean;
+  /**
    * Identifiers a `publish` function names as the callee of a `new` it returns: `checkPublished` reports a name that is no
    * event as `MESH_PUBLISH` with the suggestion `entity=` gives, so neither the free-variable error nor a namespace
    * member's `MESH_UNKNOWN_ENTITY` reports it too.
@@ -247,8 +252,12 @@ function meshReads(n: N, parent: N | undefined, key: string | undefined, ctx: Co
     return name === undefined ? [] : [{ local: n.name!, name, at }];
   });
 }
-const FREE_VARIABLE = (name: string) =>
-  `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, its own entity and the imported ones, the transaction's ${TRANSACTION_LIST}, and Mesh's functions through \`Mesh\`, imported from "meshfw"`;
+const FREE_VARIABLE = (name: string, ctx: Pick<ConvertContext, "handlerBody" | "noHelpers">) =>
+  ctx.noHelpers
+    ? `\`${name}\` is not defined here: a handler in an aggregate file may use its \`event\` and \`context\`, its own locals and the entities the file imports`
+    : ctx.handlerBody
+      ? `\`${name}\` is not defined here: a handler may use its \`event\` and \`context\`, its own locals, imported helpers, its own entity and the imported ones, and Mesh's functions through \`Mesh\`, imported from "meshfw"`
+      : `\`${name}\` is not defined here: a function in an entity file may use its parameters, \`&members\`, imported helpers, its own entity and the imported ones, the transaction's ${TRANSACTION_LIST}, and Mesh's functions through \`Mesh\`, imported from "meshfw"`;
 /**
  * What fixes an unknown name: a Mesh function written bare is a member of `Mesh`, which the file may not import yet. The
  * fix names the file's `Mesh` import where it can be read: an alias that a binding hides at the reference (`shadowed`), or
@@ -257,7 +266,12 @@ const FREE_VARIABLE = (name: string) =>
  */
 function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
   // A bare `now` or `today` is the transaction's.
-  if (TRANSACTION_MEMBERS.has(name)) return `write \`%.${name}\`, ${TRANSACTION_MEMBERS.get(name)!.what}, with no \`()\``;
+  if (TRANSACTION_MEMBERS.has(name)) return ctx.handlerBody ? "read when the event happened as `event.occurredAt`" : `write \`%.${name}\`, ${TRANSACTION_MEMBERS.get(name)!.what}, with no \`()\``;
+  // An aggregate file imports no helper and no `Mesh`: what its handler needs from one, an action of an entity does.
+  if (ctx.noHelpers)
+    return MESH_FUNCTIONS.has(name) || name === "Mesh"
+      ? "an aggregate file cannot import `Mesh`: call an action of an entity that does the check"
+      : "read it from `event` or `context`, or call an action of an imported entity";
   const locals = [...(ctx.mesh ?? [])];
   const local = locals.find((candidate) => isMeshImport(candidate, ctx, shadowed));
   const hidden = local === undefined ? locals.find((candidate) => !rootNames(ctx).has(candidate)) : undefined;
@@ -496,7 +510,9 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
       if (!property && !objectKey && !label && scopeRoots.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
-      if (!property && !objectKey && !label && ctx.handlerBody && NOT_HANDLER_ROOTS.has(n.name!) && !scope.has(n.name!) && n.start !== undefined)
+      // An import of that name is no root there: in a handler body `input` is the import (`import { x as input }`).
+      if (!property && !objectKey && !label && ctx.handlerBody && NOT_HANDLER_ROOTS.has(n.name!) && !scope.has(n.name!) && n.start !== undefined
+        && !ctx.imported.has(n.name!) && !entities.has(n.name!))
         handlerScope(ctx, n.name!, start(n));
       // The file's `Mesh` import, where no binding of the function hides it: the expressions file imports `Mesh` under
       // that name, as it imports a helper, and a member it reads is one of Mesh's functions.
@@ -580,7 +596,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         ctx.report({
           severity: "error",
           code: "MESH_EXPR_FREE_VARIABLE",
-          message: FREE_VARIABLE(n.name!),
+          message: FREE_VARIABLE(n.name!, ctx),
           position: ctx.at(start(n)),
           fix: freeVariableFix(n.name!, ctx, (name) => scope.has(name), ownArguments(n.name!, parent, key, ctx)),
         });
@@ -640,7 +656,21 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
   walk(fn.body, fn, "body", own);
   for (const p of fn.params ?? []) walk(p, fn, "params", own);
   // A handler body destructures its roots from its one parameter: a key naming another function's root is out of its scope.
-  const param = (fn.params as N[] | undefined)?.[0];
+  const params = (fn.params as N[] | undefined) ?? [];
+  const param = params[0];
+  // Its one parameter is `{ event, context }` (ruling D44 Q9): a second parameter, or a first that is no object pattern
+  // (`(event, { context })`, `(args) => args.self`), would bind a name to the wrong value and hide the scope check.
+  if (ctx.handlerBody) {
+    const wrong = params.length > 1 ? params[1] : param && param.type !== "ObjectPattern" ? param : undefined;
+    if (wrong)
+      ctx.report({
+        severity: "error",
+        code: "MESH_HANDLER_SCOPE",
+        message: "a handler takes one parameter, an object it destructures: `({ event, context })`",
+        position: ctx.at(start(wrong)),
+        fix: "destructure `{ event, context }` from the one parameter",
+      });
+  }
   if (ctx.handlerBody && param?.type === "ObjectPattern")
     for (const property of (param.properties ?? []) as N[]) {
       const key = property.type === "ObjectProperty" && !property.computed ? property.key as N | undefined : undefined;
@@ -795,7 +825,7 @@ function convert(n: N, env: Env, ctx: ConvertContext, inArgs = false): ExprNode 
         ctx.report({
           severity: "error",
           code: "MESH_EXPR_FREE_VARIABLE",
-          message: FREE_VARIABLE(name),
+          message: FREE_VARIABLE(name, ctx),
           position: ctx.at(start(n)),
           fix: freeVariableFix(name, ctx, (local) => env.roots.has(local) || env.locals.has(local)),
         });

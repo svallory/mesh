@@ -228,8 +228,8 @@ describe("what a root or a part line may name", () => {
 
   test("an aggregate file takes no helper and no Mesh import (OD7), and names only the import", () => {
     expect(errors(build({ ...QUIET, "work/task-aggregate.mesh.mx": aggregate({ imports: 'import { Task } from "./task.mesh.mx"\nimport { isStaff } from "./helpers"\nimport { Mesh } from "meshfw"\n', parts: "" }) }))).toEqual([
-      at(2, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: it has no function to call a helper in", "remove the import"),
-      at(3, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: it has no function to call `Mesh` in", "remove the import"),
+      at(2, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: its handlers call actions of the entities it imports, not a helper", "remove the import"),
+      at(3, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: its handlers call actions of the entities it imports, not `Mesh`", "remove the import"),
     ]);
   });
 

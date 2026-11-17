@@ -60,6 +60,12 @@ describe("the contract", () => {
     expect(parse("    project :a [on=InvoicePaid] ({ event }) {}\n")).toEqual([[25, 4, "MESH_UNKNOWN_TAG", "`project` is not a known tag in the `mesh` dialect"]]);
     const misplaced = INVOICE.replace("  policies\n", "    listen :a [on=InvoicePaid] ({ event }) {}\n  policies\n");
     expect(parseEntitySource(misplaced, `${ROOT}billing/invoice.mesh.mx`).diagnostics.map((d) => d.code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
+    const lower = (source: string) => parseEntitySource(source, `${ROOT}billing/x.mesh.mx`).diagnostics.map((d) => [d.line, d.column, d.code, d.message]);
+    // A line at the top level (rule H4), a section under an event or a command root, and the section twice in an aggregate.
+    expect(lower(`${INVOICE}listen :x [on=InvoicePaid] ({ event }) {}\n`)).toEqual([[32, 0, "MESH_PARENT_NOT_ALLOWED", "`listen` must be inside `handlers`; found at the top level"]]);
+    expect(lower("event :E\n  uuid :id\n  handlers\n    listen :x [on=E] ({ event }) {}\n")).toEqual([[3, 2, "MESH_PARENT_NOT_ALLOWED", "`handlers` must be inside `entity`, `aggregate`; found inside `event`"]]);
+    expect(lower("command :C\n  uuid :id\n  handlers\n")).toEqual([[3, 2, "MESH_PARENT_NOT_ALLOWED", "`handlers` must be inside `entity`, `aggregate`; found inside `command`"]]);
+    expect(lower(`${FIXTURES["billing/billing.mesh.mx"]!}  handlers\n`)).toEqual([[13, 2, "MESH_REPEATED_CHILD", "`aggregate`: `handlers` may not be repeated"]]);
   });
   test("the name, `on=` and the body are required, each MX's message", () => {
     expect(parse("    listen [on=InvoicePaid] ({ event }) {}\n")).toEqual([[25, 4, "MESH_MISSING_OPTION", "`listen`: missing required option `name`"]]);
@@ -172,6 +178,10 @@ describe("names", () => {
     expect(errors(build({ "billing/invoice.mesh.mx": withHandlers("    listen :a [on=InvoicePaid renamed-from=:old] ({ event }) {}\n    listen :b [on=InvoicePaid renamed-from=:old] ({ event }) {}\n") }))).toEqual([
       ["billing/invoice.mesh.mx", 26, 43, "error", "MESH_OPTION_VALUE", ":a and :b both have renamed-from=:old: one progress row cannot move to two names", "keep renamed-from on one of them"],
     ]);
+    // A handler renamed from itself names a line the section still declares.
+    expect(errors(build({ "billing/invoice.mesh.mx": withHandlers("    listen :a [on=InvoicePaid renamed-from=:a] ({ event }) {}\n") }))).toEqual([
+      ["billing/invoice.mesh.mx", 25, 43, "error", "MESH_OPTION_VALUE", "renamed-from=:a names a handler this section still declares: a running handler's progress is never taken over", "remove renamed-from, or rename :a"],
+    ]);
     // A former name nothing declares, and a handler renamed from its own entity's other kind of member, are legal.
     expect(build({ "billing/invoice.mesh.mx": withHandlers("    listen :a [on=InvoicePaid renamed-from=:gone] ({ event }) {}\n    process :b [on=InvoicePaid renamed-from=:markReceiptSent] ({ event }) {}\n") }).diagnostics).toEqual([]);
   });
@@ -252,6 +262,49 @@ describe("the body's scope", () => {
     expect(scope("({ event }) => sendReceipt")).toEqual([]);
     expect(scope("({ event }) => Invoice")).toEqual([]);
   });
+  test("its one parameter is an object it destructures (D44 Q9), at the parameter that is not", () => {
+    const shape = (column: number) => ["billing/invoice.mesh.mx", 25, column, "error", "MESH_HANDLER_SCOPE", "a handler takes one parameter, an object it destructures: `({ event, context })`", "destructure `{ event, context }` from the one parameter"];
+    expect(brief(build({ "billing/invoice.mesh.mx": withHandlers("    listen :a [on=InvoicePaid] (event, { context }) { return event.payload }\n") }).diagnostics)).toEqual([shape(39)]);
+    expect(brief(build({ "billing/invoice.mesh.mx": withHandlers("    listen :a [on=InvoicePaid] (args) { return args.self }\n") }).diagnostics)).toEqual([shape(32)]);
+  });
+  test("an import named like another function's root (`input`) is the import in a body, where no root shadows it", () => {
+    const source = withHandlers("    listen :a [on=InvoicePaid] async ({ event }) { await input({ idempotencyKey: event.id, invoiceId: \"i\" }) }\n")
+      .replace('import { sendReceipt } from "./mailer"', 'import { sendReceipt as input } from "./mailer"');
+    const result = build({ "billing/invoice.mesh.mx": source });
+    expect(result.diagnostics).toEqual([]);
+    expect(entityOf(result, "Invoice").handlers![0]!.run.plain).toMatchObject({ why: "handler", roots: [], helpers: ["input"] });
+  });
+  test("an import named `context` is the root in a body, as in every other function: no helper is bound", () => {
+    const source = withHandlers("    listen :a [on=InvoicePaid] ({ event }) { return context }\n")
+      .replace('import { sendReceipt } from "./mailer"', 'import { sendReceipt as context } from "./mailer"');
+    const result = build({ "billing/invoice.mesh.mx": source });
+    expect(result.diagnostics).toEqual([]);
+    const invoice = entityOf(result, "Invoice");
+    expect(invoice.handlers![0]!.run.plain).toMatchObject({ why: "handler", roots: ["context"] });
+    expect(invoice.handlers![0]!.run.plain).not.toHaveProperty("helpers");
+    expect(invoice.policies[0]!.authorizeIf[0]!.plain).not.toHaveProperty("helpers");
+  });
+  test("an event imported as `event` is constructed in a policy, a warning, and is the root in a body, none", () => {
+    const source = withHandlers("    listen :a [on=InvoicePaid] ({ event }) { return new event({ invoiceId: \"x\" }) }\n", `import { PaymentRecorded as event } from "./payment-recorded.mesh.mx"\n${INVOICE}`)
+      .replace("authorize-if=({ context }) => Mesh.isSystem(context)", "authorize-if=({ context }) => { new event({ invoiceId: \"x\" }); return Mesh.isSystem(context) }");
+    expect(brief(build({ "billing/invoice.mesh.mx": source }).diagnostics).map((d) => [d[1], d[3], d[4]])).toEqual([[21, "warning", "MESH_EVENT_NOT_PUBLISHED"]]);
+  });
+  test("`event` is the root in a body wherever the file imports something under that name, and `input` is not", () => {
+    const withImport = (line: string, source = INVOICE) => withHandlers(line, source);
+    // An event imported as `event`: `new event(...)` in a body constructs the root's class, no event of the file.
+    const constructed = build({ "billing/invoice.mesh.mx": withImport("    listen :a [on=InvoicePaid] () { return new event({ invoiceId: \"x\" }) }\n", `import { PaymentRecorded as event } from "./payment-recorded.mesh.mx"\n${INVOICE}`) });
+    expect(constructed.diagnostics).toEqual([]);
+    // An entity imported as `event` is no entity in a body: `Mesh.privileged(event)` names none.
+    expect(brief(build({ "billing/invoice.mesh.mx": withImport("    listen :a [on=InvoicePaid] () { return Mesh.privileged(event) }\n", `import { Ledger as event } from "./ledger.mesh.mx"\n${INVOICE}`) }).diagnostics).map((d) => [d[1], d[2], d[4]])).toEqual([[26, 59, "MESH_PRIVILEGED_ENTITY"]]);
+    // `Mesh` imported as `input` is `Mesh` in a body; imported as `event` it cannot be read there, and the fix says so.
+    const meshAs = (alias: string) => INVOICE.replace('import { Mesh } from "meshfw"', `import { Mesh as ${alias} } from "meshfw"`).replace("Mesh.isSystem(context)", "true");
+    const asInput = build({ "billing/invoice.mesh.mx": withImport("    listen :a [on=InvoicePaid] ({ context }) { return input.isSystem(context) }\n", meshAs("input")) });
+    expect(asInput.diagnostics).toEqual([]);
+    expect(entityOf(asInput, "Invoice").handlers![0]!.run.plain).toMatchObject({ mesh: ["input"], isSystem: true });
+    expect(brief(build({ "billing/invoice.mesh.mx": withImport("    listen :a [on=InvoicePaid] ({ context }) { return isSystem(context) }\n", meshAs("event")) }).diagnostics).map((d) => [d[4], d[6]])).toEqual([
+      ["MESH_EXPR_FREE_VARIABLE", "write `Mesh.isSystem(context)` and import `Mesh` under a name that is not a scope name: `import { Mesh } from \"meshfw\"`"],
+    ]);
+  });
   test("a root shadows an import of the same name inside the body, which stays the import outside it", () => {
     const source = body("() => event.id").replace('import { sendReceipt } from "./mailer"', 'import { sendReceipt as event } from "./mailer"')
       .replace("authorize-if=({ context }) => Mesh.isSystem(context)", "authorize-if=async ({ context }) => { await event({ idempotencyKey: \"k\", invoiceId: \"i\" }); return Mesh.isSystem(context) }");
@@ -263,7 +316,10 @@ describe("the body's scope", () => {
     expect(invoice.policies[0]!.authorizeIf[0]!.plain?.helpers).toEqual(["event"]);
   });
   test("every other name rule of a function applies: a free variable, `tx`, `Mesh.privileged` of no entity, an event constructed", () => {
-    expect(scope("({ event }) => nope").map((d) => d[4])).toEqual(["MESH_EXPR_FREE_VARIABLE"]);
+    expect(scope("({ event }) => nope")).toEqual([
+      ["billing/invoice.mesh.mx", 25, 47, "error", "MESH_EXPR_FREE_VARIABLE", "`nope` is not defined here: a handler may use its `event` and `context`, its own locals, imported helpers, its own entity and the imported ones, and Mesh's functions through `Mesh`, imported from \"meshfw\"", "import it from a helper module, or pass it in through `context`"],
+    ]);
+    expect(scope("({ event }) => now").map((d) => [d[4], d[6]])).toEqual([["MESH_EXPR_FREE_VARIABLE", "read when the event happened as `event.occurredAt`"]]);
     expect(scope("({ event, tx }) => event").map((d) => d[4])).toEqual(["MESH_REMOVED_SCOPE_NAME"]);
     expect(scope("({ event }) => Mesh.privileged(event)").map((d) => d[4])).toEqual(["MESH_PRIVILEGED_ENTITY"]);
     expect(scope("({ event }) => new InvoicePaid({ invoiceId: event.payload.invoiceId })").map((d) => [d[3], d[4]])).toEqual([["warning", "MESH_EVENT_NOT_PUBLISHED"]]);
@@ -271,6 +327,14 @@ describe("the body's scope", () => {
   test("an aggregate's body has the same scope", () => {
     const aggregate = FIXTURES["billing/billing.mesh.mx"]!.replace("return Invoice.markReceiptSent", "return &id && self && Invoice.markReceiptSent");
     expect(build({ "billing/billing.mesh.mx": aggregate }).diagnostics.map((d) => [d.position.line, d.code])).toEqual([[11, "MESH_HANDLER_SCOPE"], [11, "MESH_HANDLER_SCOPE"]]);
+  });
+  test("an aggregate's body has no helper and no `Mesh`, since its file imports neither, and is told what it can read", () => {
+    const aggregate = FIXTURES["billing/billing.mesh.mx"]!.replace("return Invoice.markReceiptSent", "return Mesh.isSystem(context) && Nope && Invoice.markReceiptSent");
+    const message = (name: string) => `\`${name}\` is not defined here: a handler in an aggregate file may use its \`event\` and \`context\`, its own locals and the entities the file imports`;
+    expect(brief(build({ "billing/billing.mesh.mx": aggregate }).diagnostics)).toEqual([
+      ["billing/billing.mesh.mx", 11, 13, "error", "MESH_EXPR_FREE_VARIABLE", message("Mesh"), "an aggregate file cannot import `Mesh`: call an action of an entity that does the check"],
+      ["billing/billing.mesh.mx", 11, 39, "error", "MESH_EXPR_FREE_VARIABLE", message("Nope"), "read it from `event` or `context`, or call an action of an imported entity"],
+    ]);
   });
 });
 
