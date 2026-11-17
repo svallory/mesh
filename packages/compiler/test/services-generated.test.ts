@@ -75,7 +75,10 @@ describe("the services generator", () => {
     const billing = generated.find((file) => file.path === ".mesh/domain/orchestration/billing.service.ts")!.contents;
     expect(billing).toContain('import { Billing, type CloseBillingInput, z } from "../../../src/domain/orchestration/notes.ts";');
     expect(billing).toContain("export { $orchestration$Billing$service as Billing };");
-    expect(billing).not.toMatch(/^(const|let|type|function|class) [^$]/m);
+    expect(billing).not.toMatch(/^(declare namespace|const|let|type|function|class) [^$]/m);
+    const work = generated.find((file) => file.path === ".mesh/domain/work/work.service.ts")!.contents;
+    // The one exception: the namespace the service file imports as `w` is declared so that `w.Notification` resolves in a type.
+    expect([...work.matchAll(/^(?:declare namespace|const|let|type|function|class) ([^$\s]\S*)/gm)].map((m) => m[1])).toEqual(["w"]);
   });
 
   test("the barrel exports the value from the service file and the input types from the inputs file; a service-only folder gets a barrel and its parent a namespace", async () => {

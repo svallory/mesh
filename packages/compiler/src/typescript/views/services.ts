@@ -19,7 +19,8 @@ import { fieldSchema, ruleTable, type SchemaField } from "./validators.ts";
  * `<service>.inputs.ts`, each operation's input type and the Zod schema that casts it (`service-inputs.ts.jig`). The
  * inputs are a file of their own because the service file imports the service file's helpers under the names the
  * service file gives them, and a helper may have any name that does not start with `$` (`z`, `Work`): so that file
- * declares nothing at module level without a `$`, and exports the value under its name with `export { $local as Work }`.
+ * declares nothing at module level without a `$` except a `declare namespace <alias>` for a namespace import the service
+ * file itself makes (the alias cannot also name a helper of that file), and exports the value under its name with `export { $local as Work }`.
  * Neither path is one an entity's files use (`<entity>.types.ts`, `.validators.ts`, `.actions.ts`, ...).
  */
 
@@ -64,7 +65,8 @@ export interface ServiceInputsView {
   readonly json: boolean;
   /** True when a schema has a line rule: the file declares the `$ruled` helper. */
   readonly lineRules: boolean;
-  /** Each concept a field holds, sorted by FQN: its type and schema under their locals. */
+  /** Each concept a field holds, sorted by FQN: its type and schema under their locals. Always empty for now: the contract
+   * refuses a concept field under an operation's `input` (`MESH_TAG_NOT_ALLOWED`). */
   readonly concepts: readonly ConceptImport[];
   /** The globals the file names (`$Date`, `$RegExp`), from `$globals.ts`; null when it names none. */
   readonly globals: GlobalsImport | null;
