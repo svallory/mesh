@@ -192,6 +192,19 @@ export function joinedRollupsSuite(adapter: DomainAdapter): void {
     } finally { await db.close(); }
   });
 
+  test("two different products with one price both count (each reached row once, not each distinct value)", async () => {
+    const db = await seeded();
+    try {
+      await db.transaction(async (tx) => {
+        // p4 costs 10, as p1 does: i1 now reaches p1, p2 and p4 (10 + 5 + 10).
+        await tx.insert(app.tables.products, { id: id(34), price: 10 });
+        await tx.insert(app.tables.lines, { id: id(25), amount: 5, invoiceId: id(11), productId: id(34) });
+        const loaded = await app.loadInvoiceFields(tx, await invoicesOf(tx), ["catalogValue", "productCount"]);
+        expect(loaded.map((r: Row) => [r.title, r.catalogValue, r.productCount])).toEqual([["i1", 25, 3], ["i2", 5, 1], ["i3", null, 0]]);
+      });
+    } finally { await db.close(); }
+  });
+
   test("through a link entity each course counts once, a link with no course or a gone one adds nothing, and min is a date", async () => {
     const db = await seeded();
     try {

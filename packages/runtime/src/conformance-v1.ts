@@ -409,6 +409,12 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
         assert(await failure(layer, (tx) => tx.rollup({ ...query("count", "id", [parent], ["a2"]), key: name })) instanceof FrameworkError, `a rollup keyed on the column ${name} must be a FrameworkError`);
       }
       assert(await failure(layer, (tx) => tx.rollup(query("count", "id", [], ["a2"]))) instanceof FrameworkError, "a rollup with an empty list of hops must be a FrameworkError");
+      // Two different rows with one value both count (R12: each reached row once, not each distinct value). a7 gives p1
+      // a sixth child whose rank, 5, is a4's: a3's parent's children now rank 1, null, 5, 2, 20 and 5.
+      await run((tx) => tx.insert(taskTable, { id: "a7", parentId: "p1", createdAt: day(8), title: "Golf", rank: 5 }));
+      same(await byAnchor(query("count", "rank", [parent, children], ["a3"])), { a3: 5 }, "two rows with one value count twice over a joined route");
+      same(await byAnchor(query("sum", "rank", [parent, children], ["a3"])), { a3: 33 }, "two rows with one value are both summed over a joined route");
+      same(await byAnchor(query("avg", "rank", [parent, children], ["a3"])), { a3: 33 / 5 }, "two rows with one value both weigh in an average over a joined route");
     })],
     ["reads on an empty table return nothing and aggregates are null or 0", withFixture(async ({ layer, uuidTable }) => {
       await layer.transaction(async (tx) => {
