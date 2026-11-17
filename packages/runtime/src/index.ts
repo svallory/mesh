@@ -33,7 +33,7 @@ export type { Bound, Condition, ConditionLiteral, ConditionNode, DeclaredKey, Ho
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
 export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";
-export { CORE_TABLES, CORE_TABLE_NAMES, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor } from "./core-tables.ts";
+export { CORE_TABLES, CORE_TABLE_NAMES, DELIVERY_PROCESS_TABLE, HANDLER_PROGRESS_TABLE, MULTI_PROCESS_CORE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor } from "./core-tables.ts";
 export type { CoreColumn, CoreColumnType, CoreTable } from "./core-tables.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";
