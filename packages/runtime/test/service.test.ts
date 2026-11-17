@@ -197,6 +197,20 @@ describe("the uses check", () => {
     expect(rows(state, "tasks")).toEqual([]);
   });
 
+  test("an unlisted call is refused before its input is cast: the refusal is the uses check's, not InvalidInputError", async () => {
+    const { binding } = world();
+    hooks.bodies["work.Work#handOver"] = ({ context }) => Task.destroy({}, context);
+    expect(await rejection(() => binding.run(() => Work.handOver({ task: "t" }, actor)))).toEqual(new FrameworkError(unlisted("work.Task#destroy", "destroy", "Task")));
+  });
+
+  test("a Mesh.privileged read of an entity the uses lines list without :read is refused", async () => {
+    const Writer = service("work.Writer", { go: { schema: schemaOf(), policies: [{ name: "open", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: () => true }] }], uses: { "work.Task": ["create"] }, body: () => Mesh.privileged(Task).read({}) } },
+      (call) => ({ go: (input: object, context?: object) => call("go", input, [context]) }));
+    const binding = bindDomain({ ...domain, Writer }, memoryLayer().layer, {}, frame);
+    expect(await rejection(() => binding.run(() => Writer.go({}, actor)))).toEqual(new FrameworkError(
+      "work.Writer#go called Mesh.privileged(work.Task).read, which its `uses` lines do not list: add :read to `uses entity=Task actions=[...]`"));
+  });
+
   test("Mesh.privileged reads are held to the uses lines: a listed one runs, an unlisted one is refused and rolls back", async () => {
     const { binding, state } = world();
     hooks.bodies["work.Work#handOver"] = async () => (await Mesh.privileged(Claim).read({})).length;
@@ -428,6 +442,26 @@ describe("one instant, the call chain and the refusals at entry", () => {
     const { binding, state } = world();
     hooks.steps["work.Task#create"] = ({ context }) => Task.create({ title: "again" }, context as object);
     hooks.bodies["work.Work#handOver"] = ({ context }) => Task.create({ title: "x" }, context);
+    const error = await rejection(() => binding.run(() => Work.handOver({ task: "t" }, actor)));
+    expect(error.message).toStartWith("work.Task#create was called more than 1000 nested calls deep, in a chain that began with work.Work#handOver");
+    expect(rows(state, "tasks")).toEqual([]);
+  });
+
+  test("a call made after the operation settled starts a new call chain", async () => {
+    const { binding } = world();
+    hooks.steps["work.Task#create"] = ({ context }) => Task.create({ title: "again" }, context as object);
+    let later: Promise<unknown> | undefined;
+    hooks.bodies["work.Work#handOver"] = ({ context }) => {
+      later = new Promise((resolve) => setTimeout(() => resolve(binding.transaction(() => Task.create({ title: "loop" }, context)).catch((error) => error)), 5));
+    };
+    await binding.run(() => Work.handOver({ task: "t" }, actor));
+    expect(((await later) as Error).message).toStartWith("work.Task#create was called more than 1000 nested calls deep, in a chain that began with work.Task#create");
+  });
+
+  test("an operation whose body caught the cap's error rejects with the cap's error, not the rollback that wraps it", async () => {
+    const { binding, state } = world();
+    hooks.steps["work.Task#create"] = ({ context }) => Task.create({ title: "again" }, context as object);
+    hooks.bodies["work.Work#handOver"] = ({ context }) => Task.create({ title: "x" }, context).catch(() => "caught");
     const error = await rejection(() => binding.run(() => Work.handOver({ task: "t" }, actor)));
     expect(error.message).toStartWith("work.Task#create was called more than 1000 nested calls deep, in a chain that began with work.Work#handOver");
     expect(rows(state, "tasks")).toEqual([]);
