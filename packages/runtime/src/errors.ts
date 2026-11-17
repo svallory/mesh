@@ -154,6 +154,12 @@ export class PolicyGuardDenial extends Error {
 /** How deep `guardDenialOf` follows an error's `cause`s. */
 const GUARD_CAUSE_DEPTH = 8;
 
+/** A guard's results that are not one per check: the data adapter decoded its own guard wrongly. Internal to the runtime. */
+export function guardCountMismatch(results: number, checks: number, cause: unknown): FrameworkError {
+  const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return new FrameworkError(`A policy guard reported ${count(results, "result")} for ${count(checks, "check")}: the data adapter decoded its own guard wrongly`, { cause });
+}
+
 /**
  * Read a policy guard's marker from a failed statement: `mesh:forbidden:<nonce>:<results>:<key>`, one letter per check
  * (`t` true, `f` false, `n` unknown). Walks `error` and its `cause`s (8 deep) and reads only the errors `raised`
@@ -172,7 +178,7 @@ export function guardDenialOf(error: unknown, expected: { readonly checks: numbe
     if (found) {
       const letters = found[1]!;
       if (letters.length !== expected.checks)
-        throw new FrameworkError(`A policy guard reported ${letters.length} results for ${expected.checks} checks: the data adapter decoded its own guard wrongly`, { cause: error });
+        throw guardCountMismatch(letters.length, expected.checks, error);
       return new PolicyGuardDenial([...letters].map((letter) => (letter === "t" ? true : letter === "f" ? false : null)), { cause: error });
     }
     current = typeof current === "object" ? (current as { cause?: unknown }).cause : undefined;

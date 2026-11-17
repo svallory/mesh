@@ -168,13 +168,15 @@ describe("statement: a denial is the same ForbiddenError the in-memory path give
   test("a denial with a result per check other than the guard's is a FrameworkError", async () => {
     const error = await guardedWith([policy("owner", [row("authorize-if", "owner", true)])], [false, false]);
     expect(error).toBeInstanceOf(FrameworkError);
-    expect((error as Error).message).toBe("A policy guard reported 2 results for 1 checks: the data adapter decoded its own guard wrongly");
+    expect((error as Error).message).toBe("A policy guard reported 2 results for 1 check: the data adapter decoded its own guard wrongly");
   });
 
   test("a denial with no guard built first is a FrameworkError", async () => {
     const auth = authorizer("blog.Post", "destroy", [policy("owner", [row("authorize-if", "owner", true)])]);
     await auth.before(layer, {});
-    await expect(auth.statement(() => Promise.reject(new PolicyGuardDenial([false])))).rejects.toThrow(FrameworkError);
+    const error = await auth.statement(() => Promise.reject(new PolicyGuardDenial([false]))).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect((error as Error).message).toBe("blog.Post#destroy: a guarded write reported a policy denial before guard() built its guard; the generated actions are out of date, rebuild the project");
   });
 
   test("any other error passes through unchanged", async () => {

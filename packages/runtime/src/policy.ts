@@ -3,7 +3,7 @@ import { failJoined } from "./compose.ts";
 import { bindCondition, type Bound, type Condition, type ConditionLiteral, type Mark, type TableOf, type Where } from "./condition.ts";
 import type { DataLayer, WriteGuard } from "./data-layer.ts";
 import type { ActionFrame } from "./entity.ts";
-import { ForbiddenError, FrameworkError, PolicyGuardDenial, type PolicyCheck } from "./errors.ts";
+import { ForbiddenError, FrameworkError, PolicyGuardDenial, guardCountMismatch, type PolicyCheck } from "./errors.ts";
 
 /**
  * The policy evaluator the generated actions call (M8, ADR-0055). Policies combine without order: a policy passes
@@ -328,8 +328,9 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       } catch (error) {
         if (!(error instanceof PolicyGuardDenial)) throw error;
         const specs = guardedSpecs;
-        if (specs === undefined || error.results.length !== specs.length)
-          throw new FrameworkError(`A policy guard reported ${error.results.length} results for ${specs?.length ?? 0} checks: the data adapter decoded its own guard wrongly`, { cause: error });
+        if (specs === undefined)
+          throw new FrameworkError(`${entity}#${action}: a guarded write reported a policy denial before guard() built its guard; the generated actions are out of date, rebuild the project`, { cause: error });
+        if (error.results.length !== specs.length) throw guardCountMismatch(error.results.length, specs.length, error);
         specs.forEach((spec, i) => results.set(spec, outcome(error.results[i])));
         const denied = decide();
         if (denied === undefined)
