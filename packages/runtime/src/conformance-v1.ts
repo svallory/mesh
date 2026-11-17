@@ -343,6 +343,25 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       await layer.transaction((tx) => tx.insert(uuidTable, { label: "fine" }));
       assert((await layer.transaction((tx) => tx.select(uuidTable))).length === 1, "a later transaction must commit");
     })],
+    ["a statement the database refuses and the callback catches never lets the transaction resolve as if it wrote nothing", withFixture(async ({ layer, uuidTable }) => {
+      // SQLite leaves the transaction usable and commits the rest; a server dialect aborts it and must then reject.
+      const first = "00000000-0000-4000-8000-0000000000a1";
+      const second = "00000000-0000-4000-8000-0000000000a2";
+      let refused: unknown;
+      const outcome = await failure(layer, async (tx) => {
+        await tx.insert(uuidTable, { id: first, label: "first" });
+        try { await tx.insert(uuidTable, { id: first, label: "duplicate key" }); } catch (cause) { refused = cause; }
+        await tx.insert(uuidTable, { id: second, label: "second" }).catch(() => undefined);
+      });
+      assert(refused !== undefined, "inserting a duplicate primary key must reject");
+      const stored = (await layer.transaction((tx) => tx.select(uuidTable))).map((row) => String(row.id)).sort();
+      if (outcome === undefined) {
+        assert(JSON.stringify(stored) === JSON.stringify([first, second]), `a transaction that resolved must have committed everything outside the refused statement, got ${stored.join(",") || "nothing"}`);
+      } else {
+        assert(outcome instanceof Error, `a transaction that rejected must reject with an error, got ${describe(outcome)}`);
+        assert(stored.length === 0, `a transaction that rejected must have committed nothing, got ${stored.join(",")}`);
+      }
+    })],
     ["a joined callback that throws synchronously rejects the commit too", withFixture(async ({ layer, uuidTable }) => {
       let caught: unknown;
       try {
