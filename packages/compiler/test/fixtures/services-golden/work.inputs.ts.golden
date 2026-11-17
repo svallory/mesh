@@ -3,6 +3,8 @@
 // The input type of each operation of the service, and the Zod schema that casts it.
 
 import { z } from "zod";
+import { jsonValue as $jsonValue } from "@meshfw/runtime";
+import { $Date } from "../../$globals";
 
 type Keys<T> = T extends { [key: string]: never } ? never : keyof T;
 
@@ -83,11 +85,15 @@ export type HandOverWorkInputShape = Assert<
 
 export type NotifyWorkInput = {
   text: string;
+  meta?: unknown | undefined;
+  on?: $Date | null | undefined;
 };
 
 export const notifyWorkInputSchema = $ruled(
   z.strictObject({
     text: z.string().min(1, "must be at least 1 character"),
+    meta: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
+    on: z.date().nullable().optional(),
   }),
   {
     text: {

@@ -61,7 +61,7 @@ const $expressions = {
       return Task.reassign({ id: input.task, assignee: input.to }, context);
     })($s);
   },
-  // operation :notify run, plain (run-step) (src/domain/work/work.mesh.mx:26:8)
+  // operation :notify run, plain (run-step) (src/domain/work/work.mesh.mx:28:8)
   "notify.run": ($s: $work$Work$ServiceScope<$work$Work$NotifyWorkInput>) => {
     const w: { readonly Notification: typeof $work$Notification$value } = {
       Notification: $work$Notification$value,
@@ -71,7 +71,7 @@ const $expressions = {
       return sent;
     })($s);
   },
-  // operation :cancelRun run, plain (run-step) (src/domain/work/work.mesh.mx:35:8)
+  // operation :cancelRun run, plain (run-step) (src/domain/work/work.mesh.mx:37:8)
   "cancelRun.run": ($s: $work$Work$ServiceScope<$work$Work$CancelRunWorkInput>) => {
     const { input, context } = $s;
     const execution: { readonly Run: typeof $execution$Run$value } = { Run: $execution$Run$value };
@@ -79,7 +79,7 @@ const $expressions = {
       return execution.Run.cancel({ id: input.run }, context);
     })();
   },
-  // operation :finish run, plain (run-step) (src/domain/work/work.mesh.mx:43:8)
+  // operation :finish run, plain (run-step) (src/domain/work/work.mesh.mx:45:8)
   "finish.run": ($s: $work$Work$ServiceScope<$work$Work$FinishWorkInput>) => {
     const { input, actor, context } = $s;
     const $now = () => $.now($s);
@@ -91,7 +91,7 @@ const $expressions = {
       return { done, text, by: actor.id };
     })();
   },
-  // policy :members authorize-if, plain (service) (src/domain/work/work.mesh.mx:49:63)
+  // policy :members authorize-if, plain (service) (src/domain/work/work.mesh.mx:51:63)
   "policy.members.authorize-if.0": (
     $s: $work$Work$ServiceScope<
       $SharedInput<$work$Work$HandOverWorkInput | $work$Work$NotifyWorkInput>
@@ -99,7 +99,7 @@ const $expressions = {
   ) => {
     return (({ actor }) => actor != null)($s);
   },
-  // policy :everyone authorize-if, plain (service) (src/domain/work/work.mesh.mx:51:20)
+  // policy :everyone authorize-if, plain (service) (src/domain/work/work.mesh.mx:53:20)
   "policy.everyone.authorize-if.0": (
     _$s: $work$Work$ServiceScope<
       $SharedInput<

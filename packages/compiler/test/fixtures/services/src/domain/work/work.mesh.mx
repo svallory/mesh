@@ -23,6 +23,8 @@ service :Work
     uses entity=w.Notification actions=[:send]
     input
       string :text min=1
+      json :meta nullable
+      date :on nullable
     run({ input, context }) {
       const sent: w.Notification = await w.Notification.send({ text: input.text }, context)
       return sent
