@@ -127,7 +127,8 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
   for (const key of Object.keys(config)) if (!keys.has(key)) fail(key, `Unknown configuration field "${key}"`, key === "resources" ? "`resources` was renamed `domain`" : "Remove the unknown field");
   const domain = config.domain;
   if (!nonEmpty(domain) && !(Array.isArray(domain) && domain.length > 0 && domain.every(nonEmpty))) fail("domain", "Configuration field `domain` must be a non-empty relative folder, glob or list of relative file paths");
-  const hasSurfaces = Object.hasOwn(config, "surfaces");
+  // Absent or `undefined` (as `surfaces: process.env.SURFACES` may give) means no surfaces, as for `ignore`.
+  const hasSurfaces = config.surfaces !== undefined;
   if (hasSurfaces) {
     if (!nonEmpty(config.surfaces)) fail("surfaces", "Configuration field `surfaces` must be a non-empty relative folder");
     else if (!confinedGlob(normalizePath(config.surfaces)) || /[*?{\[]/.test(config.surfaces)) fail("surfaces", "Configuration field `surfaces` must be a relative folder inside the project");
@@ -347,26 +348,26 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   catch (cause) {
     return { document: null, diagnostics: [error("MESH_CONFIG_ROOT", `Cannot resolve project root (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", "mesh.config.ts", 0), "Use an existing project directory")] };
   }
-  // A surface file is read exactly as an entity file is.
-  const read = async (list: readonly string[], into: { file: string; source: string }[]) => {
+  // A surface file is read exactly as an entity file is; only the wording names what it is.
+  const read = async (list: readonly string[], into: { file: string; source: string }[], noun: "Entity" | "Surface", restore: string) => {
     for (const file of list) {
       const path = resolveEntityFile(config.root, file);
       if (!path) {
-        diagnostics.push(error("MESH_ENTITY_PATH", "Entity file path must resolve inside the project", positionAt("", "mesh.config.ts", 0), "Use an entity file path inside the project"));
+        diagnostics.push(error("MESH_ENTITY_PATH", `${noun} file path must resolve inside the project`, positionAt("", "mesh.config.ts", 0), `Use a${noun === "Entity" ? "n entity" : " surface"} file path inside the project`));
         continue;
       }
       try {
         if (!inside(canonicalRoot, await realpath(path.absolute))) {
-          diagnostics.push(error("MESH_ENTITY_PATH", `Entity file "${path.file}" resolves outside the project`, positionAt("", path.file, 0), "Use an entity file path inside the project"));
+          diagnostics.push(error("MESH_ENTITY_PATH", `${noun} file "${path.file}" resolves outside the project`, positionAt("", path.file, 0), `Use a${noun === "Entity" ? "n entity" : " surface"} file path inside the project`));
           continue;
         }
         into.push({ file: path.absolute, source: await readFile(path.absolute, "utf8") });
-      } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read entity file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), "Restore the entity file or fix the domain list")); }
+      } catch (cause) { diagnostics.push(error("MESH_ENTITY_READ", `Cannot read ${noun.toLowerCase()} file "${path.file}" (${errorCode(cause) ?? "UNKNOWN"})`, positionAt("", path.file, 0), restore)); }
     }
   };
-  await read(config.entityFiles, files);
+  await read(config.entityFiles, files, "Entity", "Restore the entity file or fix the domain list");
   const surfaceFiles: { file: string; source: string }[] = [];
-  if (config.surfacesRoot !== undefined) await read(config.surfaceFiles ?? [], surfaceFiles);
+  if (config.surfacesRoot !== undefined) await read(config.surfaceFiles ?? [], surfaceFiles, "Surface", "Restore the surface file or fix the surfaces folder");
   const result = buildModel({
     root: config.root, domainRoot: config.domainRoot, files,
     ...(config.surfacesRoot !== undefined ? { surfaces: { root: config.surfacesRoot, files: surfaceFiles } } : {}),

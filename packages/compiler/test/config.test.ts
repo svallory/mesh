@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { defineConfig, loadConfig, loadProject } from "../src/index.ts";
@@ -238,10 +238,57 @@ test("surfaces: a domain folder inside the surfaces folder overlaps", async () =
   expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: "Configuration field `surfaces` overlaps `domain`: src/domain/blog/list.mesh.mx is read by both" }]);
 });
 test("surfaces: a list domain whose common parent holds the surfaces folder does not overlap", async () => {
-  const root = await withSurface(surfacesConfig("src/surfaces", { domain: ["src/domain/blog/todo.mesh.mx"] }), "src/surfaces/admin/admin.mesh.mx");
+  // The design's case: `domain: ["src/a.mesh.mx"]` makes the domain root `src`, which holds `src/surfaces`; the overlap
+  // is checked by file, and the one listed file is not under the surfaces folder.
+  const root = await project(surfacesConfig("src/surfaces", { domain: ["src/a.mesh.mx"] }));
+  await writeFile(resolve(root, "src/a.mesh.mx"), keyed);
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { Todo } from "../../a.mesh.mx"\nsurface :admin\n  expose :todos entity=Todo fields=:all\n');
   const loaded = await loadConfig(root);
   expect(loaded.diagnostics).toEqual([]);
-  expect(loaded.config!.surfaceFiles).toHaveLength(1);
+  expect(loaded.config!.domainRoot).toBe(resolve(root, "src"));
+  expect(loaded.config!.surfaceFiles).toEqual([resolve(root, "src/surfaces/admin/admin.mesh.mx")]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics).toEqual([]);
+  expect(built.document!.surfaces).toMatchObject([{ name: "admin", file: "src/surfaces/admin/admin.mesh.mx", expose: [{ entity: "Todo", fields: "all" }] }]);
+});
+test("surfaces: a surfaces folder that is a link to a folder outside the project is MESH_CONFIG", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  const outside = await mkdtemp(resolve(tmpdir(), "mesh-outside-"));
+  roots.push(outside);
+  await symlink(outside, resolve(root, "src/surfaces"));
+  const result = await loadConfig(root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: "Configuration field `surfaces` resolves outside the project", position: { file: "mesh.config.ts" } }]);
+});
+test("surfaces: a surface file that is a link to a file outside the project is MESH_CONFIG", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  const outside = await mkdtemp(resolve(tmpdir(), "mesh-outside-"));
+  roots.push(outside);
+  await writeFile(resolve(outside, "admin.mesh.mx"), ADMIN_SURFACE);
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await symlink(resolve(outside, "admin.mesh.mx"), resolve(root, "src/surfaces/admin/admin.mesh.mx"));
+  const result = await loadConfig(root);
+  expect(result.config).toBeNull();
+  expect(result.diagnostics).toMatchObject([{ code: "MESH_CONFIG", message: 'Surface file "src/surfaces/admin/admin.mesh.mx" resolves outside the project', position: { file: "mesh.config.ts" } }]);
+});
+test("surfaces: undefined is treated as absent, as `ignore` is", async () => {
+  const root = await project('export default { domain: "src/domain", surfaces: undefined, output: ".mesh", data: ' + adapter + " }");
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  expect(Object.hasOwn(loaded.config!, "surfacesRoot")).toBe(false);
+  expect(Object.hasOwn(loaded.config!, "surfaceFiles")).toBe(false);
+});
+test("surfaces: a surface file that cannot be read is named a surface file, with the surfaces fix", async () => {
+  const root = await withSurface(surfacesConfig("src/surfaces"));
+  const loaded = await loadConfig(root);
+  await rm(resolve(root, "src/surfaces/admin/admin.mesh.mx"));
+  const built = await loadProject(loaded.config!);
+  expect(built.document).toBeNull();
+  expect(built.diagnostics).toMatchObject([{
+    code: "MESH_ENTITY_READ", message: 'Cannot read surface file "src/surfaces/admin/admin.mesh.mx" (ENOENT)',
+    position: { file: "src/surfaces/admin/admin.mesh.mx", line: 1, column: 0 }, fix: "Restore the surface file or fix the surfaces folder",
+  }]);
 });
 test("surfaces: an ignore pattern that matches only a surface file is used and excludes it", async () => {
   const root = await withSurface(surfacesConfig("src/surfaces", { ignore: "src/surfaces/admin/**" }));
