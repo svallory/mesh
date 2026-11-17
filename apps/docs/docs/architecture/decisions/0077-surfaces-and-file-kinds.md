@@ -85,5 +85,5 @@ A separate file per audience keeps exposure in one reviewable place, and it keep
 ## Action items
 
 - [ ] Before the gate: `@meshfw/jsonrpc` with a hand-written method table (roadmap, HA).
-- [ ] After 1.0: the surface contract, view and manifest emitter in core; the first adapter that reads it.
-- [ ] When built: user-docs pages for surfaces, and the edits to Project structure and Using your domain named above.
+- [x] After 1.0: the surface contract, view and manifest emitter in core; the first adapter that reads it (`surfaceMethods` in `@meshfw/jsonrpc`, [ADR-0095](./0095-surface-files-are-read-from-their-own-folder.md)).
+- [x] When built: user-docs pages for surfaces, and the edits to Project structure and Using your domain named above ([Surfaces](../../docs/surfaces.md), [Project structure](../../docs/project-structure.md), [Using your domain](../../docs/using-your-domain.md#over-a-unix-socket)).

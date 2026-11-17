@@ -664,6 +664,18 @@ Each request goes through the same steps:
 
 The type of each entry's `params` reaches its `run` when the table is written inside `serve`'s options, as in the example. A table built apart and typed `MethodTable<Context>` takes any entry, and every `run` in it receives `Readonly<Record<string, unknown>>`.
 
+A [surface](./surfaces.md) gives you the table instead of writing it: `surfaceMethods(surface)` makes one method per action line of the surface's manifest, named `<exposed name>.<action>`, each calling the action with the request's `params` as its input and your context, and returning only the fields the surface lets leave ([Serving a surface](./surfaces.md#serving-a-surface)).
+
+```ts "src/public-rpc.ts"
+import { serve, surfaceMethods } from "@meshfw/jsonrpc";
+import { connect } from "#mesh";
+import { surface } from "#mesh/surfaces/public";
+import { alice } from "./context";
+
+await connect();
+await serve({ socket: "/run/todo/public.sock", methods: surfaceMethods(surface), context: () => ({ actor: alice }) });
+```
+
 The package answers these itself:
 
 | Code | When |

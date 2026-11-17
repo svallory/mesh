@@ -746,6 +746,8 @@ declare module "@meshfw/bus-local" {
 }
 
 declare module "@meshfw/jsonrpc" {
+  import type { ActionContext, Surface } from "@meshfw/runtime";
+
   /** Any Standard Schema validator (zod, valibot, ArkType...); `run` receives its output. */
   export interface ParamsSchema<P> {
     readonly "~standard": {
@@ -822,6 +824,18 @@ declare module "@meshfw/jsonrpc" {
 
   /** Resolves once the socket accepts connections; rejects with `FrameworkError` on a bad option or an unusable path. */
   export function serve<C, T extends Record<string, unknown>>(options: ServeOptions<C, T>): Promise<Server>;
+
+  export interface SurfaceMethodsOptions {
+    /** The method name of one action line; `<exposed>.<action>` unless set. */
+    name?: (exposed: string, action: string) => string;
+  }
+
+  /**
+   * A method table from a surface's manifest: one method per action line, `<exposed name>.<action>` unless `name` says
+   * otherwise, passing `params` as the action's input and the call's context as its context. No `params` schema: the
+   * action validates. Throws `FrameworkError` when two actions get one name or a name starts with `rpc.`.
+   */
+  export function surfaceMethods<C extends ActionContext = ActionContext>(surface: Surface, options?: SurfaceMethodsOptions): MethodTable<C>;
 
   export interface ErrorObject {
     code: number;

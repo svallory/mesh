@@ -1,8 +1,8 @@
 // Compile-time checks of how a method table is typed. This file is never run: `bun run typecheck` (part of
 // `bun run verify`) compiles it, and an `@ts-expect-error` line fails the check when its error goes away.
-import type { StandardSchemaV1 } from "@meshfw/runtime";
+import type { ActionContext, StandardSchemaV1, Surface } from "@meshfw/runtime";
 import { z } from "zod";
-import { serve, type Call, type Method, type MethodTable } from "../src/index.ts";
+import { serve, surfaceMethods, type Call, type Method, type MethodTable } from "../src/index.ts";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
@@ -83,4 +83,16 @@ export function noSchemaTypes() {
   type DefaultParams = Assert<Equal<DefaultRun[0], Readonly<Record<string, unknown>>>>;
   type TableEntry = Assert<Equal<Parameters<MethodTable<Context>[string]["run"]>[0], Readonly<Record<string, unknown>>>>;
   type SchemaRun = Assert<Equal<Parameters<Method<Context, { id: string }>["run"]>[0], { id: string }>>;
+}
+
+export function surfaceTable(surface: Surface) {
+  // A surface's table serves as is, beside hand-written entries, with the context the factory builds.
+  const methods = surfaceMethods<ActionContext>(surface);
+  type Entry = Assert<Equal<typeof methods, MethodTable<ActionContext>>>;
+  serve({ socket, context: (): ActionContext => ({}), methods: { ...methods, ping: { run: () => "pong" } } });
+  surfaceMethods(surface, { name: (exposed, action) => `${exposed}/${action}` });
+  // @ts-expect-error `name` returns a method name
+  surfaceMethods(surface, { name: () => 1 });
+  // @ts-expect-error the context must be an action context
+  surfaceMethods<{ tenant: number }>(surface);
 }
