@@ -1,7 +1,7 @@
 /**
  * Since M8a an action no policy covers is forbidden. These fixtures test the data layer and the action lifecycle, not the
  * policies, so each entity file that declares no `policies` gets one that lets every caller run every action
- * (`policies.test.ts` tests the policies themselves).
+ * (`domain/policies.ts` tests the policies themselves).
  */
 export function withOpenPolicy(source: string): string {
   if (!/^entity :/m.test(source) || /^ {2}policies$/m.test(source)) return source;
