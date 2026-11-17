@@ -44,6 +44,10 @@
  *
  * The syntax table sets `tagShorthands: false` (MX 0.1.0-alpha.28, `syntax/mesh.ts`): a line head has no `#id` or
  * `.class` shorthand, a `.` continues the tag name, and `#x`, `.x` or a `#` inside a head is `MESH_NO_TAG_SHORTHAND`.
+ *
+ * `bindingsCallTags: false` (MX 0.1.0-alpha.36, `@unstable`) reads a tag whose name an import binds as a plain tag name,
+ * never as a component call, so a section that lists references by line head (an owner's `events` and `commands`) claims
+ * `InvoicePaid` through its wildcard child. Under any other parent such a head is `MESH_UNKNOWN_TAG`, as it was (ruling D10).
  */
 import type { Dialect, MessageVocabulary, UnknownTag, UnknownTagExplanation } from "@mxlang/core";
 import { MESH_SYNTAX } from "./syntax/mesh.ts";
@@ -109,6 +113,9 @@ export const MESH_DIALECT: Dialect = deepFreeze({
   diagnosticCodes: MX_TO_MESH_CODES,
   // MX's words in its messages: `option`, `Mesh file`, tags spelled as written. `@unstable` in MX (alpha.29).
   messageVocabulary: MESH_MESSAGE_VOCABULARY,
+  // An imported name is a line head in the sections that list references (`events`, `commands`): read it as a tag name a
+  // wildcard child claims, never as a component call. `Dialect.bindingsCallTags` is `@unstable` in MX (alpha.36). Ruling D10.
+  bindingsCallTags: false,
   ...MESH_SYNTAX,
   explainUnknownTag,
 });

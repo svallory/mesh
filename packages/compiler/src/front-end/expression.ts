@@ -8,6 +8,7 @@ import type {
   SourceEdit,
   SourcePosition,
 } from "@meshfw/model";
+import type { PublishTarget } from "../model/publish-steps.ts";
 import type { At, AtomForwards, MemberForwards, SyntaxNode } from "./tree.ts";
 import { writtenReference, type Resolution, type WrittenReference } from "./references.ts";
 
@@ -957,6 +958,10 @@ export function asynchronyOfFunction(fn: SyntaxNode): Asynchrony | undefined {
   return own((fn as N).body) ? "await" : undefined;
 }
 
+/** Each `new` a `publish` function returns that names an event, for the owner check (`model/publish-steps.ts`). */
+const publishTargets = new WeakMap<object, readonly PublishTarget[]>();
+export const publishTargetsOf = (expression: object): readonly PublishTarget[] => publishTargets.get(expression) ?? [];
+export const rememberPublishTargets = (expression: object, targets: readonly PublishTarget[]): void => { publishTargets.set(expression, targets); };
 /**
  * The scope names a function reaches through a parameter that binds the scope whole: a rest element (`{ ...rest }`) or a
  * plain parameter (`(s) => ...`). Each read of a member of it (`rest.before`, `rest["before"]`) names that member; any
@@ -972,6 +977,7 @@ export const rememberScopeReach = (expression: object, reach: ScopeReach): void 
  * changes the object it types, so each block needs its own. The side tables above are keyed by the object, so the copy
  * gets their entries; a new table keyed by an expression must be copied here too.
  */
+export type { PublishTarget };
 export function copyExpression<T extends object>(expression: T): T {
   const copy = structuredClone(expression);
   const demotion = demotions.get(expression);
@@ -984,6 +990,8 @@ export function copyExpression<T extends object>(expression: T): T {
   if (asynchrony) asynchronous.set(copy, asynchrony);
   const reach = scopeReaches.get(expression);
   if (reach) scopeReaches.set(copy, reach);
+  const targets = publishTargets.get(expression);
+  if (targets) publishTargets.set(copy, targets);
   return copy;
 }
 export function scopeReachOfFunction(fn: SyntaxNode): ScopeReach | undefined {
@@ -1072,11 +1080,12 @@ function returnedNews(fn: N): N[] {
 }
 /**
  * `MESH_PUBLISH` for a `new` a `publish` function returns that names no event the file imports: a command, an entity, a
- * helper, a local, anything but a declared event. (The fourth case of the spec, an event the action's owner does not list,
- * is vacuous until owner sections exist, which wait for aggregates.) A name no scope binds and no import gives is a free
- * variable, which is reported already.
+ * helper, a local, anything but a declared event. A name no scope binds and no import gives is a free variable, which is
+ * reported already. Returns each `new` that names an event, for the fourth case of the spec, an event that owners list and
+ * the action's owner does not, which needs every entity built (`model/publish-steps.ts`).
  */
-function checkPublished(fn: N, ctx: ConvertContext): void {
+function checkPublished(fn: N, ctx: ConvertContext): PublishTarget[] {
+  const targets: PublishTarget[] = [];
   const bound = bindings(fn);
   for (const made of returnedNews(fn)) {
     const callee = unwrapped(made.callee as N);
@@ -1117,17 +1126,21 @@ function checkPublished(fn: N, ctx: ConvertContext): void {
     }
     if (resolved && !resolved.ok && "code" in resolved)
       ctx.report({ severity: "error", code: resolved.code, message: resolved.message, position: ctx.at(resolved.offset), fix: resolved.fix ?? null });
+    if (resolved?.ok)
+      targets.push({ from: resolved.from, declared: resolved.declared, identifier: referenceTextOf(written), position: ctx.at(start(callee as N)) });
   }
+  return targets;
 }
 
-export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] } {
+export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; publishTargets?: PublishTarget[] } {
   const f = fn as N;
   const called = new Set<string>();
   const names: Names = { entities: new Set(), events: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
   if (ctx.publishStep) ctx = { ...ctx, exemptFree: new Set(returnedNews(f).map((made) => rootIdentifier(unwrapped(made.callee as N)))) };
   const free = freeVariables(f, ctx, called, names);
   removedScopeNames(f, ctx);
-  if (ctx.publishStep) checkPublished(f, ctx);
+  // A publish step is always plain code, so only a plain result carries what it publishes.
+  const published = ctx.publishStep ? checkPublished(f, ctx) : [];
   // `%.now` and `%.today` in code Mesh does not translate read the same instant as a translated expression, and
   // `Mesh.isSystem(context)` is the same function: the expressions file imports `Mesh` under each name the file gives it
   // that a function reads. The demotion keeps them for a tree the checker demotes. The record `&name` reads and
@@ -1170,7 +1183,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     }
     return { parts, rest };
   };
-  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[] } => {
+  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; publishTargets?: PublishTarget[] } => {
     // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
     const object = e.why === "unsupported-parameter" ? undefined : objectParts();
     return {
@@ -1178,6 +1191,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       // A function that names `privileged` is always plain (`uses-privileged`), so only a plain one carries the calls.
       ...(names.privileged ? { privilegedCalls: names.privileged } : {}),
       ...(names.asks ? { askCalls: names.asks } : {}),
+      ...(published.length ? { publishTargets: published } : {}),
     };
   };
   // A helper module hands values out through functions, so one of its names read as a value is an error in every

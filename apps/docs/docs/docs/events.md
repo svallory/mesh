@@ -32,6 +32,34 @@ A field takes the options that constrain a value: `nullable`, `values` on an `en
 
 A **command** is declared the same way, with `command :Name`, and is a request's fields: what a caller asks an action to do. It generates a class too, which is not a `DomainEvent`. An action answers a command with `on=` ([Answering a command](#answering-a-command)), and application code runs one with `dispatch` ([Running a command](#running-a-command)).
 
+## Declaring events where they belong
+
+An entity names the events it **owns** in an `events` section: one line per event, the identifier its file imports, or a member of a namespace import (`notices.InvoiceOverdue`). A `commands` section lists the commands it owns the same way. Each section is written at most once under the entity line:
+
+```mx "src/domain/billing/invoice.mesh.mx"
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import * as notices from "./notices/invoice-overdue.mesh.mx"
+import { PayInvoice } from "./pay-invoice.mesh.mx"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+  actions auto=[:read]
+    update on=PayInvoice
+  policies
+    policy :anyone types=[:read, :update]
+      authorize-if=() => true
+  events
+    InvoicePaid
+    notices.InvoiceOverdue
+  commands
+    PayInvoice
+```
+
+A listing line is the reference alone: an option or a line under it is an error, and so is a name that is no event the file imports (`MESH_UNKNOWN_EVENT`, with the nearest name) or, in `commands`, no command (`MESH_UNKNOWN_COMMAND`). One event listed twice in a section is `MESH_DUPLICATE_MEMBER`. An empty section means nothing. Two entities may list the same event.
+
+Owning an event decides who may raise it: once some entity lists an event, only the actions of the entities that list it may `publish` it ([Raising an event](#raising-an-event)). An event no entity lists may be published by any action. Owning a command restricts nothing: any entity's action may answer it with `on=`. Mesh generates the same code with or without these sections; they are recorded in `model.json`.
+
 ## Raising an event
 
 An action raises an event with a `publish` step in its `do`. The step's function returns the event, a `new` of an event class the file imports:
@@ -57,7 +85,7 @@ entity :Invoice
 
 A `publish` runs after the action's row is written, inside the transaction, in written order among the `run [after=:write]` steps, and reads `self` as the stored record: a create's new key, a destroy's deleted row. Inside a `when=`, it runs only if the condition held before the write, so a `publish` that should sometimes raise nothing is written inside a `when=`.
 
-The function must return an instance of a declared event. Anything else fails the action with a `FrameworkError` naming the entity, the action and the step's line, and rolls it back: `null`, `undefined`, a plain object shaped like the event, a command, or any other value. A constructor that rejects its fields throws its `InvalidInputError`, which rolls the action back the same way. The build catches what it can see first: a `publish` that constructs something other than an imported event is the build error `MESH_PUBLISH`, and a `new InvoicePaid(...)` outside a `publish` step, which raises nothing, is a warning.
+The function must return an instance of a declared event. Anything else fails the action with a `FrameworkError` naming the entity, the action and the step's line, and rolls it back: `null`, `undefined`, a plain object shaped like the event, a command, or any other value. A constructor that rejects its fields throws its `InvalidInputError`, which rolls the action back the same way. The build catches what it can see first: a `publish` that constructs something other than an imported event is the build error `MESH_PUBLISH`, and a `new InvoicePaid(...)` outside a `publish` step, which raises nothing, is a warning. A `publish` of an event that owners list, from an action of an entity that is not one of them, is `MESH_PUBLISH` too, at the event's name ([Declaring events where they belong](#declaring-events-where-they-belong)). The build checks only a `new` it can see, so a function that returns a helper's result is not checked, and it skips this check while a file of the project fails to parse, since that file may list the owner.
 
 ## Answering a command
 

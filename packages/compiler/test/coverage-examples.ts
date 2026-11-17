@@ -23,7 +23,7 @@ export function coverageProject(tag: string, option: string | undefined, example
   // `check &valid` uses a check the entity's `checks` section declares.
   const named = tag === "check" && option === "member" ? [node("checks", [node('check :valid that=() => true code="invalid" message="Invalid input"')])] : [];
   const root = node("entity :Sample", [attributes, relationships, ...named, actions]);
-  const chain = option === "member" && contracts[tag]!.children?.["*"] ? [tag, "member"] : [tag];
+  const chain = (option === "member" || option === "reference") && contracts[tag]!.children?.["*"] ? [tag, option] : [tag];
   let parent = ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number]) && option === "value" ? "computed" : contracts[tag]!.parents![0]!;
   while (parent !== "#root") {
     chain.unshift(parent);
@@ -43,13 +43,15 @@ export function coverageProject(tag: string, option: string | undefined, example
   }
   if (option === "primary-key") attributes.children.shift();
   const render = (entry: Node, indent = ""): string => indent + entry.line + "\n" + entry.children.map((child) => render(child, indent + "  ")).join("");
-  // A `publish` raises an event the file imports: the project has one, `Paid`.
+  // A `publish` raises an event the file imports: the project has one, `Paid`. An owner section's listing line lists one.
   const answers = option === "on" && ["create", "update", "destroy"].includes(tag);
-  const paid = tag === "publish" || answers ? 'import { Paid } from "./paid.mesh.mx"\n' : "";
+  const listed = option === "reference" && (tag === "events" || tag === "commands");
+  const paid = tag === "publish" || answers || listed ? 'import { Paid } from "./paid.mesh.mx"\n' : "";
   // `through=` names a link entity with a belongs-to to each side: the project has one, `Tie`.
   const tie = tag === "has-many" && option === "through";
   return { root: "/project", files: [
-    ...(tag === "publish" ? [{ file: "docs/paid.mesh.mx", source: "event :Paid\n  uuid :id\n" }] : []),
+    ...(tag === "publish" || (listed && tag === "events") ? [{ file: "docs/paid.mesh.mx", source: "event :Paid\n  uuid :id\n" }] : []),
+    ...(listed && tag === "commands" ? [{ file: "docs/paid.mesh.mx", source: "command :Paid\n  uuid :id\n" }] : []),
     // `on=` answers a command: its fields are the action's inputs, and a create has none, nor the key an update and a destroy select by.
     ...(answers ? [{ file: "docs/paid.mesh.mx", source: `command :Paid\n${tag === "create" ? "" : "  uuid :id\n"}` }] : []),
     ...(tie ? [{ file: "docs/tie.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nimport { Line } from "./line.mesh.mx"\nentity :Tie\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :sample entity=Sample\n    belongs-to :line entity=Line\n  actions auto=[:read]\n' }] : []),

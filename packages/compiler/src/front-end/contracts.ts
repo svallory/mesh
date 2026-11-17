@@ -51,6 +51,25 @@ const fn = (required = false): CustomTagAttribute => ({
 const named = () => ({ name: atom(true) });
 const children = (...names: readonly string[]) =>
   Object.fromEntries(names.map((name) => [name, { repeatable: true }]));
+/**
+ * The head of a line that is a reference and nothing else (`InvoicePaid`, `notices.InvoiceOverdue`): the builder resolves
+ * it (`front-end/references.ts`, `lineHeadReference`). The pattern admits any dotted identifier path, so a path of three
+ * parts reaches the builder, which says what a reference is, instead of MX's "not a known tag". MX anchors it.
+ */
+export const REFERENCE_HEAD = "[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*";
+/**
+ * A listing line's contract: a wildcard child (`children["*"]`, MX decision 147), so its head is a reference and not a tag
+ * of the vocabulary, with the options given and no child. Inline, so it takes no `analyze` hook (MX refuses one on a
+ * wildcard entry) and the wrapper at the end of this file never reaches it: the builder refuses tag parameters on the line.
+ * Works only with `bindingsCallTags: false` (`dialect.ts`): a name an import binds is otherwise a component call, which
+ * the wildcard may not claim.
+ */
+export const listing = (attributes: Record<string, CustomTagAttribute> = {}) => ({
+  pattern: REFERENCE_HEAD,
+  attributes,
+  attributeTags: {},
+  children: {},
+});
 const get = (call: TagCall, name: string) =>
   call.attrs.find((a) => a.kind !== "spread" && a.name === name);
 interface Node {
@@ -180,7 +199,20 @@ const contracts: ContractMap = {
       checks: {},
       actions: {},
       policies: {},
+      events: {},
+      commands: {},
     },
+  }),
+  // An owner's events and commands (`notes/spec/events-and-commands.md`, "Where a declaration lives"): one listing line per
+  // event or command an import of the file names (`InvoicePaid`, `notices.InvoiceOverdue`). The owner check reads them: an
+  // event that owners list is published only by its owners' actions.
+  events: closed({
+    parents: ["entity"],
+    children: { "*": listing() },
+  }),
+  commands: closed({
+    parents: ["entity"],
+    children: { "*": listing() },
   }),
   // An event and a command are files of their own (M6): the root line declares one, and its children are field lines,
   // written as attribute lines are (`uuid :invoiceId`). The field kinds are the attribute types, whose contracts also

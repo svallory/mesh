@@ -151,8 +151,8 @@ describe("MX's built-in tags are spelled as written, with no MX-syntax example (
     ["a `const` under `entity`", "entity :T\n  const x = 1\n", "MESH_INVALID_CONST", "`const` without a variable name"],
     ["`if` with arguments", "entity :T\n  if(true)\n    attributes\n", "MESH_STRUCTURAL_CONSTRUCT", "Mesh files are static, so they do not evaluate `if`"],
     ["`define`", "entity :T\n  define :x\n", "MESH_NOT_IN_ENTITY_FILE", "`define` is a render-time macro: Mesh files are static, so they cannot expand it; inline the content at each use"],
-    ["`try` under `entity`", "entity :T\n  try\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `try` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`"],
-    ["`return` under `entity`", "entity :T\n  return=1\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `return` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`"],
+    ["`try` under `entity`", "entity :T\n  try\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `try` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`"],
+    ["`return` under `entity`", "entity :T\n  return=1\n", "MESH_TAG_NOT_ALLOWED", "`entity`: `return` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`"],
     ["a `$ statement`", "entity :T\n  $ const x = 1\n", "MESH_UNSUPPORTED_CONSTRUCT", "scriptlets (`$ statement`) are not supported in Mesh; declare a value with `const`"],
   ])("%s", (_label, source, code, message) => {
     expect(diagnostics(source)).toEqual([[code, message]]);

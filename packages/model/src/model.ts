@@ -208,6 +208,20 @@ export interface CommandRef {
   /** Where `on=` is written. */
   position: SourcePosition;
 }
+/** An event or a command an owner's `events` or `commands` section names: a listing line (`InvoicePaid`, `notices.InvoiceOverdue`). */
+export interface DeclarationRef {
+  /** As written: `InvoicePaid`, the alias `Paid`, or `notices.InvoiceOverdue`. Only messages read it. */
+  identifier: string;
+  /** The file that declares it, as an import of the owner's file writes the path. */
+  from: string;
+  /**
+   * The declaration's FQN (`billing.InvoicePaid`), set when the build resolves it. `""` until then, as `CommandRef.fqn` is:
+   * a ref left unresolved always comes with an error, and a build with an error writes no `model.json`.
+   */
+  fqn: string;
+  /** The listing line. */
+  position: SourcePosition;
+}
 export interface Action {
   kind: ActionType;
   name: string;
@@ -255,6 +269,13 @@ export interface Entity {
   actions: Action[];
   always: Always[];
   policies: Policy[];
+  /**
+   * The events this entity owns, in written order: its `events` section's lines. Present only when the section has a line.
+   * An event that owners list is published only by its owners' actions.
+   */
+  events?: DeclarationRef[];
+  /** The commands this entity owns: its `commands` section's lines. Present only when the section has a line. */
+  commands?: DeclarationRef[];
   position: SourcePosition;
 }
 /**

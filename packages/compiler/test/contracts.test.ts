@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { type WildcardChildEntry } from "@mxlang/core";
-import contracts, { ATTRIBUTE_TYPES } from "../src/front-end/contracts.ts";
+import contracts, { ATTRIBUTE_TYPES, REFERENCE_HEAD } from "../src/front-end/contracts.ts";
 import { buildModel } from "../src/front-end/build.ts";
 import { coverageProject } from "./coverage-examples.ts";
 import { fixture, fixtureDir, parse, parseFixture } from "./helpers.ts";
@@ -307,7 +307,7 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
       for (const file of project.files) expect(parse(file.source).diagnostics).toEqual([]);
       // The docs sample for `run` calls `audit`, a helper it does not import: a free variable, by design (M4). The one for
       // `policy.actions` covers named actions only, so the relationship the project adds to it loads nothing (R2-N2).
-      expect(buildModel(project).diagnostics.filter((d) => !(d.code === "MESH_EXPR_FREE_VARIABLE" && example.includes("audit(")) && !(d.code === "MESH_LOAD_NO_POLICY" && cell === "policy.actions") && !(d.code === "MESH_COMMAND_UNANSWERED" && tag === "command") && !(d.code === "MESH_JSON_NULLABLE" && cell === "json.nullable") && !(d.code === "MESH_NOT_IMPLEMENTED" && /^(sum|avg|min)\b/.test(example)))).toEqual([]);
+      expect(buildModel(project).diagnostics.filter((d) => !(d.code === "MESH_EXPR_FREE_VARIABLE" && example.includes("audit(")) && !(d.code === "MESH_LOAD_NO_POLICY" && cell === "policy.actions") && !(d.code === "MESH_COMMAND_UNANSWERED" && (tag === "command" || tag === "commands")) && !(d.code === "MESH_JSON_NULLABLE" && cell === "json.nullable") && !(d.code === "MESH_NOT_IMPLEMENTED" && /^(sum|avg|min)\b/.test(example)))).toEqual([]);
     };
     test(`${cell} example parses and builds`, check);
   }
@@ -318,9 +318,11 @@ describe("vocabulary-mapping section 3 Contract coverage", () => {
         // The lowered `member` line has no named-tag row: list its options
         // beyond the lowered `name`, or the bare line.
         const options = Object.keys(wildcard?.attributes ?? {}).filter((option) => option !== "name");
+        // A listing line's head is a reference, whatever its name: its row is `<section>.reference`.
+        const head = wildcard?.pattern === REFERENCE_HEAD ? "reference" : wildcard?.pattern;
         const inline = !wildcard ? [] : options.length
-          ? options.map((option) => `${tag}.${wildcard.pattern}.${option}`)
-          : [`${tag}.${wildcard.pattern}`];
+          ? options.map((option) => `${tag}.${head}.${option}`)
+          : [`${tag}.${head}`];
         return [tag, ...Object.keys(contract.attributes ?? {}).map((option) => `${tag}.${option}`), ...inline];
       })
       .sort();
