@@ -21,8 +21,8 @@ export type PostgresOptions = { readonly url: string | undefined };
 /**
  * What `postgres()` returns: one frozen value that is both the data adapter a project names in `mesh.config.ts` and
  * that adapter's run-time data layer. Building reads the descriptor fields only, so `url` may be undefined while the
- * project builds; nothing connects until the first transaction (or `createSchema`), which throws a `FrameworkError`
- * when `url` is missing (`mesh db push` exits 1 with the same advice).
+ * project builds; nothing connects until the first transaction, `readOutbox` or `createSchema`, each of which throws a
+ * `FrameworkError` when `url` is missing (`mesh db push` exits 1 with the same advice).
  */
 export interface PostgresLayer extends DataAdapter, DataLayer {
   readonly kind: "data-adapter";
@@ -46,8 +46,10 @@ export interface PostgresLayer extends DataAdapter, DataLayer {
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>, options?: TransactionOptions): Promise<T>;
   /**
-   * The outbox read (the reader rule, `src/outbox.ts`): four statements on a connection of its own, outside the
-   * transaction queue and at `READ COMMITTED`, one read at a time per layer. A page holds only rows at or below its
+   * The outbox read (the reader rule, `src/outbox.ts`): three statements (the sequence sample, the appenders' xids from
+   * `pg_locks`, the row read; one more on the first read, to resolve the sequence) on a connection of its own, outside
+   * the transaction queue, each in its own autocommit transaction at the server's default isolation, one read at a
+   * time per layer. A page holds only rows at or below its
    * `settled` position, below which every transaction that took a position has ended, so a row that commits later is
    * never below a row a read returned. Refused inside a transaction.
    */
