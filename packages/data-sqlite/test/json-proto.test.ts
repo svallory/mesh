@@ -47,7 +47,7 @@ let dir: string;
 let app: any;
 let domain: object;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".jsonproto-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-jsonproto-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },

@@ -365,7 +365,7 @@ describe("what is generated", () => {
   });
 
   test("the generated tree type-checks: an own inline event and command, one imported by name, one through a merged namespace alias", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-inline-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-inline-"));
     roots.push(root);
     const config = configOf(root);
     const result = build({

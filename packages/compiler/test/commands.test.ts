@@ -513,7 +513,7 @@ describe("the generated #mesh", () => {
   async function typeCheck(command: string, entity = invoice(PAY_ACTION), check = "") {
     const result = buildModel(project(entity, {}, command));
     expect(result.diagnostics).toEqual([]);
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-commands-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-commands-"));
     roots.push(root);
     const config = configOf(root);
     const generated = await generateFiles({ document: result.document!, config });

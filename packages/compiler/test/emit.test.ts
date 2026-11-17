@@ -85,7 +85,7 @@ test("model.json round-trips every v4 construct and serialises keys deterministi
 });
 
 test("generated types and validators typecheck with strict exact-optional flags and a consumer", async () => {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-emit-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-emit-"));
   roots.push(root);
   const config = configOf(root);
   const files = await generateFiles({ document: documentOf(), config });
@@ -260,7 +260,7 @@ test("source path line terminators are escaped in headers", async () => {
 });
 
 test("formatter ignores project configuration and serialisation failures never emit partial files", async () => {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-emit-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-emit-"));
   roots.push(root);
   const document = documentOf();
   const config = configOf(root);
@@ -295,7 +295,7 @@ test("relationship input uses the actual target key and never inherits its creat
 });
 
 test("writer produces the exact planned bytes", async () => {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-emit-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-emit-"));
   roots.push(root);
   const config = configOf(root);
   const files = await generateFiles({ document: documentOf(), config });

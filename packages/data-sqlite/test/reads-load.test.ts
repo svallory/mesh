@@ -92,7 +92,7 @@ let dir: string;
 let app: any;
 let domain: object;
 beforeAll(async () => {
-  dir = await generate(".reads-load-", { project, task });
+  dir = await generate(".scratch-reads-load-", { project, task });
   app = await import(join(dir, ".mesh/index.ts"));
   domain = await import(join(dir, ".mesh/domain/index.ts"));
 });
@@ -283,7 +283,7 @@ describe("the generated files", () => {
       '(await Mesh.privileged(Project).read({ filter: { id: { eq: input.project } }, load: ["viewer"] }, context))[0]?.taskCount === 1',
     );
     expect(wrong).not.toBe(task);
-    const broken = await generate(".reads-load-unloaded-", { project, task: wrong });
+    const broken = await generate(".scratch-reads-load-unloaded-", { project, task: wrong });
     try {
       const output = await typeCheck(broken);
       expect(output).toContain("task.expressions.ts");
@@ -293,7 +293,7 @@ describe("the generated files", () => {
   }, 30_000);
 
   test("an entity with nothing to load has no `load`", async () => {
-    const plain = await generate(".reads-load-plain-", { note: 'entity :Note table="notes"\n  attributes\n    uuid :id primary-key\n    string :text\n  actions auto=[:read]\n' });
+    const plain = await generate(".scratch-reads-load-plain-", { note: 'entity :Note table="notes"\n  attributes\n    uuid :id primary-key\n    string :text\n  actions auto=[:read]\n' });
     try {
       await Bun.write(join(plain, "check.ts"), [
         'import { Note } from "./.mesh/domain/index.ts";',
@@ -467,7 +467,7 @@ describe("the clock", () => {
     const source = {
       stamp: 'entity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < %.now }\n  actions auto=[:read]\n',
     };
-    const clockDir = await generate(".reads-load-clock-", source);
+    const clockDir = await generate(".scratch-reads-load-clock-", source);
     try {
       const clock = await import(join(clockDir, ".mesh/index.ts"));
       const clockDomain = await import(join(clockDir, ".mesh/domain/index.ts"));
@@ -489,7 +489,7 @@ describe("the clock", () => {
     const source = {
       stamp: 'import { Mesh } from "meshfw"\nentity :Stamp table="stamps"\n  attributes\n    uuid :id primary-key\n    timestamp :at\n  computed\n    boolean :past() { return &at < %.now }\n    timestamp :seen() { return %.now }\n  actions auto=[:read]\n    create :add\n      input\n        &at\n      validate\n        check :same that=async () => (await Mesh.privileged(Stamp).read({ load: ["seen", "past"] })).every((row) => row.seen.getTime() === %.now.getTime() && row.past === (row.at < %.now)) code="skewed" message="the load and the check read two instants"\n',
     };
-    const clockDir = await generate(".reads-load-instant-", source);
+    const clockDir = await generate(".scratch-reads-load-instant-", source);
     try {
       const clock = await import(join(clockDir, ".mesh/index.ts"));
       const clockDomain = await import(join(clockDir, ".mesh/domain/index.ts"));

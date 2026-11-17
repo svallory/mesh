@@ -115,7 +115,7 @@ let dir: string;
 let app: any;
 let domain: object;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".message-function-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-message-function-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies([{ file: "src/domain/owner.mesh.mx", source: owner }, { file: "src/domain/note.mesh.mx", source: note }]) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);

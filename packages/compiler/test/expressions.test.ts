@@ -431,7 +431,7 @@ describe("type rules", () => {
       expect(codes(computed(body)), body).not.toContain("error:MESH_COMPUTED_ASYNC");
   });
   test("a helper that does not read the record is translated and imported; one given the record is plain", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-helper-"));
     roots.push(root);
     await writeFile(resolve(root, "helpers.ts"), "export const isStaff = (actor: { staff?: boolean }) => actor.staff === true;\nexport const big = (n: number) => n > 100;\n");
     const withHelper = (that: string) => entity(check(that)).replace("import { Task }", 'import { isStaff, big } from "./helpers"\nimport { Task }');
@@ -461,7 +461,7 @@ describe("type rules", () => {
 
 describe("emission (acceptance tests 3, 4 and 6)", () => {
   async function generated(source: string) {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-expr-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-expr-"));
     roots.push(root);
     const built = build(source);
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
@@ -620,7 +620,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   test("a helper imported as now, called bare, is the helper in plain and translated code alike", async () => {
     // PR #65 round 2, F2: plain code bound the clock over the import while translated code called the import. Since
     // A bare `now` is never Mesh's: the clock is the transaction's `%.now`.
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-clock-import-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-clock-import-"));
     roots.push(root);
     await writeFile(resolve(root, "clock.ts"), "export const now = (): Date => new Date(0);\n");
     const source = entity(check("() => &dueAt < now()")).replace("import { Task }", 'import { now } from "./clock"\nimport { Task }')
@@ -645,7 +645,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     expect(expressions["go.check.c.that"](scope({ self: { dueAt: new Date(-5) } }, at))).toBe(true);
   });
   test.each(["now", "today", "isSystem", "privileged", "structuredClone"])("an entity imported as %s is the entity: no bare name is Mesh's, and an import hides a JavaScript global", async (alias) => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-alias-names-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-alias-names-"));
     roots.push(root);
     const source = entity(check("() => true") +
       `      do\n        run async () { const found = await ${alias}.read({}); console.log(found.length) }\n`)
@@ -683,7 +683,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   // a scope root (`self`, `input`, `actor`, `context`, `before`) is like a parameter of every function. Inside one
   // it shadows an import of its name, which stays the import everywhere else in the file.
   test.each(["self", "input", "actor", "context", "before"])("an entity imported as %s is that root inside a function, and the entity outside", async (name) => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-root-alias-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-root-alias-"));
     roots.push(root);
     // Before a scope root was bound like a parameter the function bound both, `const { context } = $s; const context: ... = $Task$value;`, which Bun
     // refuses to load ("context" has already been declared), and a check that read `self` became plain code.
@@ -749,7 +749,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
   }, 30_000);
 
   test("a helper named like a scope root is hidden by the root in every function, and the file does not import it", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-root-helpers-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-root-helpers-"));
     roots.push(root);
     const names = ["self", "input", "actor", "context", "before"];
     await writeFile(resolve(root, "helpers.ts"), names.map((name) => `export const ${name} = (): string => ${JSON.stringify(name)};`).join("\n") + "\n");
@@ -786,7 +786,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // MX strips the types from the node the front end reads, so `PlainReason.helpers` has only the helpers read as values;
     // the back end finds the rest in the printed function (`typeNames`). Before, `const limit: Money` built with no error
     // and tsc failed with TS2304 (cannot find name), since the file did not import `Money`.
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-type-helpers-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-type-helpers-"));
     roots.push(root);
     await writeFile(resolve(root, "money.ts"), "export type Money = number;\nexport interface Shape { n: number }\nexport type Cents = number;\n");
     await writeFile(resolve(root, "helpers.ts"), [
@@ -838,7 +838,7 @@ describe("emission (acceptance tests 3, 4 and 6)", () => {
     // PR #92 round 1, item 2: `import { TaskLoaded } from "./helpers"` built, then tsc failed with TS2300 (duplicate
     // identifier), because the file imported the entity's own types, declared its scopes and exported its functions under
     // bare names. A helper named `structuredClone` is the author's own: no function binds `cloneValue` over it.
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-names-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-helper-names-"));
     roots.push(root);
     const names = ["Task$Record", "TaskLoaded", "GoTaskInput", "TaskScope", "TaskStoredScope", "TaskCheckScope", "expressions", "structuredClone"];
     await writeFile(resolve(root, "helpers.ts"), [
@@ -915,7 +915,7 @@ describe("what a function names only in a type, and aliased imports (PR #94 revi
    * loader for the expressions module.
    */
   async function project(prefix: string, files: Record<string, string>) {
-    const root = await mkdtemp(resolve(import.meta.dir, `../mesh-${prefix}-`));
+    const root = await mkdtemp(resolve(import.meta.dir, `../.scratch-mesh-${prefix}-`));
     roots.push(root);
     for (const [path, text] of Object.entries(files)) if (!path.endsWith(".mesh.mx")) await writeFile(resolve(root, path), text);
     const built = buildModel({ root, files: Object.entries(files).filter(([path]) => path.endsWith(".mesh.mx")).map(([file, source]) => ({ file, source })) });
@@ -1137,7 +1137,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     build(source).diagnostics.filter((d) => d.severity === "error").map((d) => ({ code: d.code, message: d.message, fix: d.fix, offset: d.position.offset }));
   /** Builds `source` as `task.mesh.mx` in a new project, writes the generated tree and returns what the tests read. */
   async function emitted(source: string) {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-namespace-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-namespace-"));
     roots.push(root);
     const built = buildModel({ root, files: [{ file: "task.mesh.mx", source }] });
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
@@ -1515,7 +1515,7 @@ describe("%.now and %.today are the current transaction's instant and date", () 
     // Positions are the authored `%.now`.
     expect(checksOf(go.validate)[0]!.that.tree).toMatchObject({ args: [{}, { args: [{}, { position: { offset: source.indexOf("< %.now\n") + 2 } }] }] });
 
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-transaction-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-transaction-"));
     roots.push(root);
     const config = configOf(root);
     const files = await generateFiles({ document: built.document!, config });
@@ -1984,7 +1984,7 @@ ${actions}`;
 
   describe("the generated scope types", () => {
     async function generated(source: string) {
-      const root = await mkdtemp(resolve(import.meta.dir, "../mesh-act27-"));
+      const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-act27-"));
       roots.push(root);
       const built = buildModel({ root, files: [{ file: "item.mesh.mx", source }] });
       expect(built.diagnostics).toEqual([]);

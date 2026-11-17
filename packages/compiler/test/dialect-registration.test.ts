@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { lowerSource, routeDialect, discoverDialects } from "@mxlang/core";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { MESH_EXTENSIONS } from "../src/front-end/extensions.ts";
@@ -112,6 +112,39 @@ test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS",
   const renamed = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
   expect(renamed.exitCode).toBe(1);
   expect(renamed.stderr.toString()).toContain('mx.dialect.id must be "mesh"');
+}, 30_000);
+
+// Repository scans read `dist/dialect.js` while tests run (the mx rule covers what the CLI ships), so the build never
+// deletes `dist/` and never leaves a half-written file there: it builds into `.scratch-build-XXXXXX/` beside it,
+// finishes the file there and renames it onto `dist/dialect.js`.
+// A failing build (here the bundle mentions MX's package) leaves the previous file in place and removes its scratch dir.
+test("the build replaces dist/dialect.js by a rename: dist/ is never removed, the bytes repeat, no scratch dir is left, a failure keeps the old file", async () => {
+  const copy = join(work, "atomic-cli");
+  mkdirSync(join(copy, "scripts"), { recursive: true });
+  mkdirSync(join(copy, "src"));
+  mkdirSync(join(copy, "dist"));
+  symlinkSync(join(cli, "node_modules"), join(copy, "node_modules"), "dir");
+  for (const file of ["scripts/build-dialect.ts", "src/dialect.ts", "package.json"]) writeFileSync(join(copy, file), await Bun.file(join(cli, file)).text());
+  writeFileSync(join(copy, "dist/dialect.js"), "// stale\n");
+  writeFileSync(join(copy, "dist/probe"), "");
+  const build = () => {
+    const run = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
+    expect(`${run.exitCode} ${run.stderr}`).toBe("0 ");
+    return readFileSync(join(copy, "dist/dialect.js"), "utf8");
+  };
+  const first = build();
+  expect(first).not.toContain("// stale");
+  expect(first).not.toMatch(/^\/\/ \.\.?\//m);
+  expect(build()).toBe(first);
+  expect(first).toBe(readFileSync(join(cli, "dist/dialect.js"), "utf8"));
+  expect(readdirSync(join(copy, "dist")).sort()).toEqual(["dialect.js", "probe"]);
+  expect(readdirSync(copy).filter((name) => name.startsWith(".scratch-"))).toEqual([]);
+  writeFileSync(join(copy, "src/dialect.ts"), 'export const name = "mxlang";\n');
+  const failed = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
+  expect(failed.exitCode).toBe(1);
+  expect(failed.stderr.toString()).toContain("still mentions MX's package");
+  expect(readFileSync(join(copy, "dist/dialect.js"), "utf8")).toBe(first);
+  expect(readdirSync(copy).filter((name) => name.startsWith(".scratch-"))).toEqual([]);
 }, 30_000);
 
 // The manifest closes Mesh files to the project (since MX 0.1.0-alpha.21): `mxConfigTags: false` takes `mx.tags` and

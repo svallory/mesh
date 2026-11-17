@@ -488,7 +488,7 @@ entity :Invoice
   });
 
   test("the generated tree passes the project's own type check, a publish function included", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);
     const config = configOf(root);
     const generated = await generateFiles({ document: full().document!, config });
@@ -500,7 +500,7 @@ entity :Invoice
   }, 30_000);
 
   test("a bus that declares replay and subscribe: #mesh exports readEvents and subscribe, merges the capabilities, and type-checks", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);
     const bus = { manifest: { adapter: "fake", capabilities: ["ordered-delivery", "replay", "subscribe"] as const }, create: () => { throw new Error("never started"); } };
     const config = { ...configOf(root), events: { bus } };
@@ -538,7 +538,7 @@ entity :Invoice
   }, 30_000);
 
   test("a publish function that returns what is not a DomainEvent fails the project's type check, at the generated line", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);
     const config = configOf(root);
     // the build checks a `new` it can see: an object literal passes the build, and TypeScript refuses what it returns
@@ -555,7 +555,7 @@ entity :Invoice
   }, 30_000);
 
   test("a declaration with no field checks its fields and binds nothing, so the tree passes the strict type check", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);
     const config = configOf(root);
     // `event :Ping` and `command :Reset` carry no field: the name is the whole message
@@ -589,7 +589,7 @@ entity :Invoice
   }, 30_000);
 
   test("a date field's constructor parameter takes the read-only date of a scope value, and the instance holds a Date", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-events-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-events-"));
     roots.push(root);
     const config = configOf(root);
     // `&dueAt` and `self.remindAt` are DeepReadonly in a function's scope: a publish hands a stored date to the event as it is

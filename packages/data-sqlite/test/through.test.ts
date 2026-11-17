@@ -94,7 +94,7 @@ let dir: string;
 let app: any;
 let domain: any;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".through-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-through-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   const sources = { student, course, enrollment, task, dependency };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });

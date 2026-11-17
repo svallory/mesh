@@ -147,7 +147,7 @@ let dir: string;
 let app: any;
 let domain: any;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".validate-when-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-validate-when-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   await Bun.write(join(dir, "src/domain/helpers.ts"), helpers);
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ person, invoice }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });

@@ -418,7 +418,7 @@ describe("helper names that collide with generated internals", () => {
   const roots: string[] = [];
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
   async function withHelpers(names: string[]) {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-names-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-helper-names-"));
     roots.push(root);
     await writeFile(resolve(root, "helpers.ts"), names.map((name) => `export const ${name} = (n: number) => n > 1;`).join("\n"));
     const source = `import { ${names.join(", ")} } from "./helpers"\nentity :Task\n  attributes\n    uuid :id primary-key\n    integer :size\n  actions auto=[:read]\n    update :resize\n      validate\n        check :big that=({ input }) => ${names[0]}(input.size) code="small" message="too small"\n`;
@@ -443,7 +443,7 @@ describe("helper names that collide with generated internals", () => {
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   });
   test("an alias is the name that counts: the local binding is what generated code prints", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-helper-names-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-helper-names-"));
     roots.push(root);
     await writeFile(resolve(root, "helpers.ts"), "export const big = (n: number) => n > 1;");
     const source = `import { big as $big } from "./helpers"\nentity :Task\n  attributes\n    uuid :id primary-key\n`;

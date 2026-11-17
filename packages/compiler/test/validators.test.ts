@@ -55,7 +55,7 @@ const source = `entity :Post
     destroy :destroy
 `;
 async function emitted(text = source) {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-validators-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-validators-"));
   roots.push(root);
   const built = buildModel({
     root,

@@ -113,7 +113,7 @@ let app: Generated;
 let domain: object;
 let expressions: Record<string, Record<string, (s: never) => unknown>>;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".load-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-load-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill"] }, options: { file: ":memory:" } },

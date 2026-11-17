@@ -32,7 +32,7 @@ let dir: string;
 let tables: Record<string, TableHandle>;
 let schema: string;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".outbox-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-outbox-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },

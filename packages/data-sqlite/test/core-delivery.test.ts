@@ -33,7 +33,7 @@ const paid = `event :InvoicePaid
 let dir: string;
 let tables: Record<string, TableHandle>;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".core-delivery-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-core-delivery-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },

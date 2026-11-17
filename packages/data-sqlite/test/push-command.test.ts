@@ -14,7 +14,7 @@ afterEach(async () => { for (const dir of dirs.splice(0)) await rm(dir, { recurs
 
 /** A project inside this package (so schema.ts resolves drizzle-orm) with its schema built for `file`. */
 async function project(file: unknown): Promise<ResolvedConfig> {
-  const root = await mkdtemp(join(import.meta.dir, ".emitted-push-"));
+  const root = await mkdtemp(join(import.meta.dir, ".scratch-emitted-push-"));
   dirs.push(root);
   const config: ResolvedConfig = {
     root, configFile: join(root, "mesh.config.ts"), entityFiles: [], domainRoot: join(root, "src/domain"), output: join(root, ".mesh"),

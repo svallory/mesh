@@ -48,7 +48,7 @@ let dir: string;
 let app: any;
 let domain: object;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".new-instance-computed-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-new-instance-computed-"));
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies([{ file: "src/domain/box.mesh.mx", source: box }]) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);

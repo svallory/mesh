@@ -142,7 +142,7 @@ async function typeCheck(message: string) {
           ${message}
         ]
 `;
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-message-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-message-"));
   roots.push(root);
   const result = buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source }] });
   expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);

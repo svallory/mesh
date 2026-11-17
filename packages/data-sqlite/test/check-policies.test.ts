@@ -255,7 +255,7 @@ let app: any;
 let domain: any;
 let helperModule: any;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".check-policies-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-check-policies-"));
   await Bun.write(join(dir, "src/domain/doc-helpers.ts"), helpers);
   await Bun.write(join(dir, "typed.ts"), typed);
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data: SQLITE };

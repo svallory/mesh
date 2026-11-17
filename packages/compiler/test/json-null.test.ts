@@ -84,7 +84,7 @@ describe("a create and a json", () => {
 `;
 
   async function generated() {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-jsonnull-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-jsonnull-"));
     roots.push(root);
     const built = buildModel({ root, files: [{ file: "m/note.mesh.mx", source: note }] });
     expect(built.diagnostics).toEqual([]);

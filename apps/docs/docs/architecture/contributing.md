@@ -107,6 +107,8 @@ An agent, or a contributor checking a change locally, runs `bun run test:affecte
 
 The slow test files — those taking 7 s or more on forge, listed in `scripts/slow-tests.json` — are skipped unless `--slow` is passed or the file itself changed, and the script prints what it skipped. `--dry-run` prints the selection without running anything. A package's own `test` script, `bun run test`, `bun run verify` and CI always run every file; the slow lane never changes what they run.
 
+A test that needs a temporary directory inside the checkout (so that a temporary project resolves `@meshfw/*` through the workspace) names it `.scratch-<name>-XXXXXX`, and every repository scan skips such a directory, so a scan never reads files another test is creating or deleting; a repository check fails any other in-checkout `mkdtemp` prefix under a package's `test/` directory. Anything else goes under `tmpdir()`.
+
 To work against an MX commit that is not published yet — the MX lead's own workflow, and useful when a change to MX has to land in Mesh the same day — run `bun link` inside the MX checkout once, then point the `@mxlang/core` dependency in `packages/compiler/package.json` at `link:@mxlang/core` and run `bun install`. That edit is local and never committed: a committed `link:` entry breaks every machine that has no MX checkout, including the CI runner. Revert it and re-run `bun install` before you commit or push. Never run `bun link @mxlang/...` at the repository root: `bun link <package>` writes a `link:` dependency into the `package.json` of the directory it runs in.
 
 To try the example:

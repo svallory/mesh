@@ -2,4 +2,3 @@ blog.db
 blog.db-journal
 blog.db-wal
 blog.db-shm
-.seams-*

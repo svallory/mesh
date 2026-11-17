@@ -44,7 +44,7 @@ let app: any;
 let domain: object;
 let diagnostics: { severity: string; code: string; position: { line: number; column: number } }[];
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".jsonnull-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-jsonnull-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },
