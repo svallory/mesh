@@ -47,6 +47,7 @@ import {
   type SourcePosition,
   type Step,
   isExpression,
+  type PublishedEvent,
   type Surface,
   type Exposure,
 } from "@meshfw/model";
@@ -1810,7 +1811,7 @@ function buildSurface(
   prototypeName(surface.name, "a surface name", root);
   const references: ReferenceScope = { imports: importNames, duplicates, own: [], self: `./${basename(file)}` };
   const entityKind = referenceKind("entity", declaredFile);
-  const pending: PendingSurface = { surface, exposures: [] };
+  const pending: PendingSurface = { surface, exposures: [], publishes: [] };
   for (const line of tags(root.children)) {
     if (line.name !== "expose") continue;
     const written = writtenReference(nodeOf(attr(line, "entity")));
@@ -1835,6 +1836,43 @@ function buildSurface(
     const entry: PendingExposure = { exposure, fields: listed === "all" ? [] : fieldSpans };
     if (target?.ok) entry.target = resolve(dirname(absolute), target.from);
     pending.exposures.push(entry);
+  }
+  // The `publishes` section (R20, R21): one listing line per event, resolved as an owner's `events` listing is. One file may
+  // declare several events (inline in an owner's sections), so a line is kept by the file its head points to and the name
+  // that file gives the event; `resolveSurfaces` finds the event by both. One event listed twice, under one name or two, is
+  // a duplicate at the later line, which is not kept.
+  const section = tags(root.children).find((line) => line.name === "publishes");
+  if (section) {
+    surface.publishes = [];
+    const listedEventKind = referenceKind("event", declaredFile, "MESH_UNKNOWN_EVENT");
+    const seen = new Set<string>();
+    for (const line of tags(section.children)) {
+      // MX lowers a parameter on a wildcard line, and a wildcard entry takes no `analyze` hook: the contracts' wrapper is not reached.
+      if (line.params.length || line.var) {
+        fail("MESH_SYNTAX", `\`${line.name}\`: tag parameters and variable bindings are not entity declarations`, line);
+        continue;
+      }
+      const written = lineHeadReference(line);
+      if (!written) {
+        fail(listedEventKind.code, `${line.name} is not an imported event: a listing is an imported identifier (\`InvoicePaid\`) or a member of a namespace import (\`notices.InvoiceOverdue\`)`, line);
+        continue;
+      }
+      const resolved = resolveReference(written, references, listedEventKind);
+      if (!resolved.ok) {
+        if ("code" in resolved) fail(resolved.code, resolved.message, at(resolved.offset), resolved.fix);
+        continue;
+      }
+      const target = resolve(dirname(absolute), resolved.from);
+      const key = `${target}#${resolved.declared}`;
+      if (seen.has(key)) {
+        fail("MESH_DUPLICATE_MEMBER", `${referenceText(written)} is listed twice in the publishes section of surface ${surface.name}`, line, "remove one");
+        continue;
+      }
+      seen.add(key);
+      const event: PublishedEvent = { identifier: referenceText(written), fqn: "", position: pos(line) };
+      surface.publishes.push(event);
+      pending.publishes.push({ event, target, declared: resolved.declared });
+    }
   }
   return { surface, imports, pending };
 }

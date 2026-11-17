@@ -138,5 +138,5 @@ export const surface = $defineSurface({
       actions: {},
     },
   },
-  publishes: [],
+  publishes: ["work.TaskCompleted", "other.LabelSet"],
 });

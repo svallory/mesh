@@ -375,11 +375,18 @@ const contracts: ContractMap = {
   }),
   // A surface file (`notes/spec/other-file-kinds.md`, "Surface files"; ADR-0077): one audience's entry point, read from the
   // configured surfaces folder. The root takes only its name; its lines are `expose` lines, each listing the actions of its
-  // entity the audience may call. No line takes a function: a surface declares no behaviour.
+  // entity the audience may call, and at most one `publishes` section. No line takes a function: a surface declares no
+  // behaviour.
   surface: closed({
     parents: ["#root"],
     attributes: named(),
-    children: { expose: { repeatable: true } },
+    children: { expose: { repeatable: true }, publishes: {} },
+  }),
+  // The events the surface sends out: one listing line per event, an imported identifier or a member of a namespace
+  // import (`TaskCompleted`, `billing.InvoicePaid`), never an atom. It raises nothing: the `publish` step does that.
+  publishes: closed({
+    parents: ["surface"],
+    children: { "*": listing() },
   }),
   // `expose :tasks entity=Task label="Tasks" fields=[:title, :state]`: an entity the audience may reach, under the exposed
   // name. `entity=` is a reference written bare, as a relationship's; `fields=` lists what leaves, or `:all`.

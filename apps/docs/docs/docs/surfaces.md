@@ -1,6 +1,6 @@
 ---
 title: "Surfaces"
-description: "Surface files: one entry point per audience, which lists the entities it may reach, the actions it may call and the fields that may leave; the manifest mesh build generates for each, #mesh/surfaces/<name>; the rule that keeps a read from filtering, sorting or loading by a field the surface does not let out; and serving a surface over JSON-RPC with surfaceMethods."
+description: "Surface files: one entry point per audience, which lists the entities it may reach, the actions it may call, the fields that may leave and the events it sends out; the manifest mesh build generates for each, #mesh/surfaces/<name>; the rule that keeps a read from filtering, sorting or loading by a field the surface does not let out; and serving a surface over JSON-RPC with surfaceMethods."
 ---
 
 # Surfaces
@@ -38,6 +38,37 @@ A computed field that `fields=` lists leaves only when it is loaded: a read load
 
 A call through a surface runs the entity's own action with the caller's context. Every policy, check, `always` block and step applies exactly as it does when you call the entity value, and an error the action throws (`ForbiddenError`, an `InvalidInputError` from a check) leaves as it was thrown. An action the line does not list cannot be called through the surface: the manifest has no entry for it.
 
+## What it sends out: `publishes`
+
+A surface lists the events its audience may follow in a `publishes` section, one event per line, written as an [`events` listing](./events.md) is: an imported event, or a member of a namespace import (`billing.InvoicePaid`), never an atom. An event declared inline in an entity's `events` section is imported from that entity's file by its name. The example assumes the Todo entity of [Entities](./entities.md) also declares the event its `complete` action raises: an `events` section holding `event :TodoCompleted` with a `uuid :todoId` field, and `publish=() => new TodoCompleted({ todoId: &id })` in the action ([Declaring events where they belong](./events.md#declaring-events-where-they-belong)). The surface then lists it:
+
+```mx "src/surfaces/public/public.mesh.mx"
+import { Todo, TodoCompleted } from "../../domain/todo/todo.mesh.mx"
+
+surface :public
+  expose :todos entity=Todo label="Todos" fields=[:id, :title, :done]
+    action :read
+    action :complete
+  publishes
+    TodoCompleted
+```
+
+`publishes` raises nothing: an action's `publish` step does that, and an event no surface lists is still published and delivered to your handlers. A line that names no imported event is `MESH_UNKNOWN_EVENT`, which suggests the nearest imported name when there is one; an import of a name its file does not declare is reported at the import (`MESH_UNKNOWN_IMPORT`). One event listed twice, under one name or two, is `MESH_DUPLICATE_MEMBER`. A surface holds at most one `publishes` section. The section names whole events: it does not narrow an event's fields.
+
+The manifest's `publishes` is the list of their fully qualified names, in the order the section writes them (`[]` without a section). Pass it as `names` to `subscribe` from `#mesh` to follow what the surface sends out ([Live subscriptions](./events.md#live-subscriptions)):
+
+```ts "src/feed.ts"
+import { connect, subscribe } from "#mesh";
+import { surface } from "#mesh/surfaces/public";
+
+await connect();
+const feed = await subscribe({ name: "public-feed", names: surface.publishes }, (event) => {
+  console.log(event.position, event.name);
+});
+// ... later
+await feed.close();
+```
+
 ## The generated manifest
 
 `mesh build` writes one file per surface, `.mesh/surfaces/<name>/index.ts`. Map it once in your `package.json`, beside the other specifiers:
@@ -53,7 +84,7 @@ A call through a surface runs the entity's own action with the caller's context.
 }
 ```
 
-The file exports `surface`, the manifest: the surface's `name`, and under `expose` one entry per expose line with the entity's fully qualified name, its `label`, the `fields` that leave (in the entity's declaration order, a `belongs-to` as its key column) and one `run` per listed action. It is plain data and functions, frozen, and an adapter reads it at run time to serve the surface over a transport; it imports the generated code and `@meshfw/runtime`, never the model.
+The file exports `surface`, the manifest: the surface's `name`, and under `expose` one entry per expose line with the entity's fully qualified name, its `label`, the `fields` that leave (in the entity's declaration order, a `belongs-to` as its key column) and one `run` per listed action, and `publishes`. It is plain data and functions, frozen, and an adapter reads it at run time to serve the surface over a transport; it imports the generated code and `@meshfw/runtime`, never the model.
 
 ```ts "src/main.ts"
 import { connect, disconnect } from "#mesh";

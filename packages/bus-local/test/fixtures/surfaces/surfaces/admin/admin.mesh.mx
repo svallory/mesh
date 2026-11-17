@@ -1,0 +1,12 @@
+import { Task, TaskArchived } from "../../domain/work/task.mesh.mx"
+import { TaskCompleted } from "../../domain/work/task-completed.mesh.mx"
+
+surface :admin
+  expose :tasks entity=Task fields=[:id, :state]
+    action :open
+    action :complete
+    action :touch
+    action :archive
+  publishes
+    TaskCompleted
+    TaskArchived

@@ -40,6 +40,7 @@
         "service",
         "operation",
         "uses",
+        "publishes",
         "root",
         "entities",
         "attributes",

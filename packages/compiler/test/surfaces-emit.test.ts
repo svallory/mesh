@@ -70,17 +70,22 @@ const OTHER = `entity :Task table="other_tasks"
     uuid :id primary-key
     string :label nullable
   actions auto=[:read, :create]
+  events
+    event :LabelSet
+      uuid :taskId
 ${open}`;
 const DOMAIN: Files = {
   "src/domain/work/task.mesh.mx": TASK,
   "src/domain/work/step.mesh.mx": STEP,
   "src/domain/people/user.mesh.mx": USER,
   "src/domain/other/task.mesh.mx": OTHER,
+  "src/domain/work/task-completed.mesh.mx": "event :TaskCompleted\n  uuid :taskId\n",
 };
 const ADMIN_FILE = "src/surfaces/admin/admin.mesh.mx";
 const ADMIN = `import { Task } from "../../domain/work/task.mesh.mx"
 import { Step } from "../../domain/work/step.mesh.mx"
 import * as other from "../../domain/other/task.mesh.mx"
+import { TaskCompleted } from "../../domain/work/task-completed.mesh.mx"
 
 surface :admin
   expose :tasks entity=Task label="Tasks" fields=[:summary, :title, :owner, :id]
@@ -92,6 +97,9 @@ surface :admin
     action :read
     action :create
   expose :steps entity=Step
+  publishes
+    TaskCompleted
+    other.LabelSet
 `;
 const documentOf = (surfaces: Files | undefined, domain: Files = DOMAIN) => {
   const built = buildModel({
@@ -122,6 +130,9 @@ describe("the surfaces generator", () => {
     expect(without.some((path) => path.includes("surfaces"))).toBe(false);
   });
 
+  test("publishes holds the listed events' FQNs in written order (an inline event by its own FQN)", async () => {
+    expect(await manifest()).toContain('  publishes: ["work.TaskCompleted", "other.LabelSet"],\n');
+  });
   test("the manifest: golden", async () => {
     const path = resolve(import.meta.dir, "fixtures/surfaces-golden/admin.index.ts.golden");
     const actual = await manifest();
@@ -177,9 +188,10 @@ describe("the generated manifest type-checks", () => {
       "  const label: string | null = made.label;",
       "  // @ts-expect-error steps lists no action",
       "  void surface.expose.steps.actions.read;",
+      "  const names: readonly string[] = surface.publishes;",
       "  // @ts-expect-error the manifest is read-only",
       "  surface.expose.tasks.label = \"x\";",
-      "  return [generic, title, summary, kept, maybe, bare, nothing, label];",
+      "  return [generic, title, summary, kept, maybe, bare, nothing, label, names];",
       "}",
       "",
     ].join("\n"));
@@ -243,6 +255,7 @@ describe("refusals", () => {
     const files = await generate({ [ADMIN_FILE]: "surface :admin\n", "src/surfaces/quiet/quiet.mesh.mx": 'import { Step } from "../../domain/work/step.mesh.mx"\nsurface :quiet\n  expose :steps entity=Step\n' });
     const empty = files.find((file) => file.path === ".mesh/surfaces/admin/index.ts")!.contents;
     expect(empty).toContain("expose: {},");
+    expect(empty).toContain("publishes: [],");
     expect(empty).toContain('import { defineSurface as $defineSurface } from "@meshfw/runtime";');
     expect(empty).not.toContain("$globals");
     const quiet = files.find((file) => file.path === ".mesh/surfaces/quiet/index.ts")!.contents;
