@@ -92,7 +92,7 @@ test("integration snippets are explicitly excerpts rather than claimed type-chec
 test("a page imports entity values from their module, and only the framework's names from #mesh", () => {
   const framework = new Set(["bind", "connect", "disconnect", "transaction", "tables", "Binding", "Privileged",
     "DomainEvent", "eventClasses", "EventRecord", "MetadataFunction", "EventMetadata", "ReadEventsPage", "ReadEventsQuery", "published", "readEvents",
-    "subscribe", "forgetHandler", "forgetSubscription", "listSubscriptions", "resumeHandler", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress", "ConnectOptions", "dispatch", "DomainCommand", "DispatchResult",
+    "subscribe", "forgetHandler", "forgetSubscription", "listSubscriptions", "resumeHandler", "retryFailed", "RetryFailedResult", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress", "ConnectOptions", "dispatch", "DomainCommand", "DispatchResult",
     "query", "RawQuery", "RawRow", "RawValue"]);
   const modules = new Set<string>();
   let seen = 0;

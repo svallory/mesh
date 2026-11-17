@@ -214,7 +214,7 @@ The action runs in the handler's transaction, together with the record that the 
 
 ## The outbox
 
-Each `publish` appends one row to the outbox, `mesh_outbox`, in the action's transaction. When the project declares an event, the data adapter adds the table, with its companion `mesh_outbox_state`, to your entities' tables: both are in `tables` from `#mesh`, so `createSchema(db, tables)` creates them. A row holds:
+Each `publish` appends one row to the outbox, `mesh_outbox`, in the action's transaction. When the project declares an event, the data adapter adds the table, with its companion `mesh_outbox_state` and the delivery tables (the handlers' and subscriptions' progress, and `mesh_outbox_failures`, which keeps the events a handler set aside; see [Setting an event aside](#setting-an-event-aside)), to your entities' tables: they are all in `tables` from `#mesh`, so `createSchema(db, tables)` creates them. A row holds:
 
 | Field | What it is |
 |:--|:--|
@@ -325,7 +325,7 @@ The key under a kind is the handler's name. Names are unique across both kinds, 
 
 | Option | What it does |
 |:--|:--|
-| `onFailure` | `"stop"`, the default: a handler that keeps failing stops at its event (see [Failures and retries](#failures-and-retries)). `"skip"` sets the event aside and goes on; it needs the bus's `dead-letters`, and the type of `onFailure` accepts it only when the bus declares it |
+| `onFailure` | `"stop"`, the default: a handler that keeps failing stops at its event (see [Failures and retries](#failures-and-retries)). `"skip"` sets the event aside, with a record, and goes on (see [Setting an event aside](#setting-an-event-aside)); it needs the bus's `dead-letters`, and the type of `onFailure` accepts it only when the bus declares it |
 | `renamedFrom` | The handler's former name. Mesh cannot tell a rename from a removal and an addition, so a renamed handler says so: when the former name has a progress row and the new name has none, the row moves to the new name at registration, and the handler goes on from where it was |
 
 Without `renamedFrom`, a renamed handler is a new handler that starts from now, and the old name's row stays behind as an orphan (see [Orphan rows](#orphan-rows)).
@@ -415,7 +415,7 @@ The `keep` in force is recorded in `mesh_outbox_state`, and it moves only toward
 
 ## `localBus`
 
-`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter (with `processes: "many"`, on one that has the multi-process delivery operations), for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay` and `subscribe`, and `multi-process` too with `processes: "many"`; it does not declare `dead-letters`, so `onFailure: "skip"` is refused. Its options are all optional:
+`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter (with `processes: "many"`, on one that has the multi-process delivery operations), for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay`, `subscribe` and `dead-letters`, and `multi-process` too with `processes: "many"`. Its options are all optional:
 
 | Option | Default | What it does |
 |:--|:--|:--|
@@ -641,12 +641,26 @@ Inside a transaction `readEvents` throws a `FrameworkError`: a transaction's own
 
 A handler that throws is retried by the bus, then stopped at its event: `binding.deliver()` rejects with `HandlerStoppedError`, whose `stopped` lists `{ handler, position, event, cause }` for each handler that stopped in the round, `cause` being its last error, and a started bus reports it. A stopped handler holds deletion at its position, so the outbox keeps every row from there on. It resumes in the next `deliver()` round, at the next start of delivery, or on `resumeHandler(name)` (see [`localBus`](#localbus)). No failure is dropped without a record.
 
+### Setting an event aside
+
+A handler with `onFailure: "skip"`, on a bus that declares `dead-letters` (`localBus` does), is not stopped when its retries are used up, or at once when its error says `retryable: false`: core copies the event whole into `mesh_outbox_failures`, with the handler's name and the error's `code` and message, and moves the handler's progress past it, in one transaction, then the handler goes on with the next event. The process logs one line with `console.warn` naming the handler, the position, the event and the error. A `process` handler's body runs in the transaction that throws, so nothing it wrote or published before failing is kept. The failure row stays after the outbox row is deleted, under every `keep`: no failure is dropped without a record. A row no declared event matches is never set aside: the handler stops there, as without `"skip"`. `DatabaseBusyError` and a lost claim are never a handler's failure and set nothing aside.
+
+Once the cause is fixed, replay them with `retryFailed(name)` from `#mesh`, exported only when the bus declares `dead-letters`, in the process that delivers:
+
+```ts "scripts/replay.ts (excerpt)"
+import { retryFailed } from "#mesh";
+
+const { handled, failed } = await retryFailed("receipts");
+```
+
+It runs the handler once on each of its set-aside events, in position order, and removes each one it handles (a `process` handler's in the transaction its body runs in). It stops at the first that fails again and resolves with it as `failed` (`{ handler, position, event, cause }`), keeping it and every later one; a set-aside event the handler no longer lists, or that no declared event matches now, ends the call the same way. It uses the started delivery's claim, or claims for the call as `deliver()` does, so it is `DelivererTakenError` while another process delivers, and with a bus that declares `multi-process` it runs only where this process holds the handler (`HandlerLostError` otherwise). A second call for the same handler while one runs in this process is a `FrameworkError`, as is a call in a process connected with `{ deliver: false }`. While it runs, the bus may go on feeding the same handler newer events: a set-aside event is out of order by then anyway. A handler renamed with `renamedFrom` takes its set-aside events with it; `forgetHandler` leaves them, so a handler registered again under the name can still replay them. There is no call that lists or drops them: read `mesh_outbox_failures` with SQL, and delete a row by hand to give up on it.
+
 Whether a retry makes sense is on the error. Every Mesh error carries `retryable`, which says whether the same call may succeed if repeated unchanged: `DatabaseBusyError` is retryable, since another connection held the database's write lock, while a validation, policy, not-found or framework error is not. An error of your own counts as retryable unless it sets `retryable: false`. A handler whose error is not retryable is stopped at once, without the retry schedule: retrying a `ForbiddenError` three times changes nothing and only delays the report. `DatabaseBusyError` in a handler's transaction is never a handler failure: the round ends, and the next one tries again.
 
 | Class | `code` | `retryable` | Thrown when |
 |:--|:--|:--|:--|
 | `EventsConfigError` | `MESH_EVENTS_CONFIG` | `false` | The `events` configuration is not valid (at bind, a bad `renamed`), or the events module exports handlers while no bus is set |
-| `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A handler lists something other than an event class of the project, asks for `onFailure: "skip"` without `dead-letters`, or has a `renamedFrom` that names a registered handler or that two handlers name |
+| `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A handler lists something other than an event class of the project, asks for `onFailure: "skip"` on a bus without `dead-letters`, or has a `renamedFrom` that names a registered handler or that two handlers name |
 | `HandlerHistoryError` | `MESH_HANDLER_HISTORY` | `false` | A project handler (from `@meshfw/event-sourcing`) would build its read model from part of the history; see [Event sourcing](./event-sourcing.md#the-history-rule) |
 | `DelivererTakenError` | `MESH_DELIVERER_TAKEN` | `true` | Another process or binding holds the claim, or a `deliver()` overlapped a round. Names the `holder` and `lapsesAt`. Stop the other process, or connect this one with `{ deliver: false }` |
 | `HandlerLostError` | `MESH_HANDLER_LOST` | `false` | With a bus that declares `multi-process`, this process no longer holds the handler: another process took it over (`reason` `"taken"`), or this process gave it up at an event another build of the handler lists and this one does not (`"pending"`). Names the `handler` and the `position`. A bus ends that handler in this process and reports nothing |
@@ -663,9 +677,9 @@ The full list of Mesh's errors is under [Errors](./using-your-domain.md#errors).
 
 A bus is a descriptor, `{ manifest, create(core, options) }`: `manifest` declares the adapter's name and its capabilities as static data the build reads, and `create` makes one instance per binding that delivers, with `start()`, `stop()` and `deliver()`, and, optionally, `resumeHandler(handler)`, which `resumeHandler(name)` of `#mesh` calls; without it, that call is a `FrameworkError` while the bus runs. A descriptor holds no state and starts nothing, so the build may construct one each time it reads the configuration.
 
-Core hands each instance a `BusCore`, its only way to the outbox and the handlers: `rows(after, limit)`, the one read; the registered `handlers`; `position(handler)`, `lists(handler, row)`, `runHandler(handler, row)` and `retry(handler, row, delays)`; the live `subscriptions()`, each with a cursor and a `feed(page)`; `deletionPass()`; and `onPublished` and `onClaimLost`, two wake-ups (`onPublished` also hears commits of other processes when the data layer reports them, best effort, so a bus keeps its poll). A page from `rows` carries `settled` beside `highest`: every position at or below it is final, and a reader that passes a short page moves its cursor no further than `settled`. Core owns everything that must be right whatever the bus: the claim and its renewal, the handler's transaction and its progress row, and every deletion. A bus delivers to a handler only through `runHandler`, never names a position to delete and never writes core's tables, so a bug in a bus can delay delivery and deletion but never lose an event or delete one early.
+Core hands each instance a `BusCore`, its only way to the outbox and the handlers: `rows(after, limit)`, the one read; the registered `handlers`; `position(handler)`, `lists(handler, row)`, `runHandler(handler, row)` and `retry(handler, row, delays)`; `setAside(handler, row, error)`, which a bus that declares `dead-letters` calls for a `"skip"` handler whose retries are used up, and then goes on; the live `subscriptions()`, each with a cursor and a `feed(page)`; `deletionPass()`; and `onPublished` and `onClaimLost`, two wake-ups (`onPublished` also hears commits of other processes when the data layer reports them, best effort, so a bus keeps its poll). A page from `rows` carries `settled` beside `highest`: every position at or below it is final, and a reader that passes a short page moves its cursor no further than `settled`. Core owns everything that must be right whatever the bus: the claim and its renewal, the handler's transaction and its progress row, and every deletion. A bus delivers to a handler only through `runHandler`, never names a position to delete and never writes core's tables, so a bug in a bus can delay delivery and deletion but never lose an event or delete one early.
 
-`@meshfw/runtime/testing` holds the suite every bus must pass, `busConformance`, and `testBus()`, a small bus for tests that declares `ordered-delivery`, `replay` and `subscribe`.
+`@meshfw/runtime/testing` holds the suite every bus must pass, `busConformance`, and `testBus()`, a small bus for tests that declares `ordered-delivery`, `replay` and `subscribe` (and what its `capabilities` option lists instead, `dead-letters` included).
 
 ## Next
 
