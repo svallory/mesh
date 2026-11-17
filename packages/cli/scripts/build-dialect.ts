@@ -2,8 +2,8 @@
 // `dist/dialect.js`, plain JavaScript with every Mesh import inlined, so Node loads it with no install
 // beside it. Mesh's syntax files import only types from MX's core package, so nothing of MX is inlined.
 // Also keeps `mx.dialect` honest: its `extensions` must be Mesh's one extension list
-// (`MESH_EXTENSIONS`), its `id` must stay `mesh` (the `Atom` node says `dialect: "mesh"`), and
-// the module must be the file this script writes. Any mismatch fails the build.
+// (`MESH_EXTENSIONS`), its `id` must stay `mesh` (the `Atom` node says `dialect: "mesh"`), its `tagDirs` must be
+// `["concepts"]` with `sidecars: false`, and the module must be the file this script writes. Any mismatch fails the build.
 //
 // Tests run repository scans that read `dist/dialect.js` while this build may run (another test builds the CLI), so
 // the file is finished in a `.scratch-build-XXXXXX/` directory beside `dist/` (a name every scan skips) and renamed
@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 const manifest = (await Bun.file(join(root, "package.json")).json()) as {
-  mx?: { dialect?: { id?: string; name?: string; extensions?: string[]; module?: string } };
+  mx?: { dialect?: { id?: string; name?: string; extensions?: string[]; module?: string; tagDirs?: string[]; sidecars?: boolean } };
 };
 const dialect = manifest.mx?.dialect;
 const problems: string[] = [];
@@ -24,6 +24,10 @@ else {
   if (dialect.id !== "mesh") problems.push(`mx.dialect.id must be "mesh", not ${JSON.stringify(dialect.id)}`);
   if (JSON.stringify(dialect.extensions) !== JSON.stringify(MESH_EXTENSIONS))
     problems.push(`mx.dialect.extensions ${JSON.stringify(dialect.extensions)} must equal MESH_EXTENSIONS ${JSON.stringify(MESH_EXTENSIONS)}`);
+  // Concept files live in folders named `concepts` (ADR-0085, ruling D36), and a `.tag.ts` there is never loaded: it would run
+  // project code in every tool.
+  if (JSON.stringify(dialect.tagDirs) !== JSON.stringify(["concepts"])) problems.push(`mx.dialect.tagDirs must be ["concepts"], not ${JSON.stringify(dialect.tagDirs)}`);
+  if (dialect.sidecars !== false) problems.push(`mx.dialect.sidecars must be false, not ${JSON.stringify(dialect.sidecars)}`);
   if (dialect.module !== "./dist/dialect.js") problems.push(`mx.dialect.module must be "./dist/dialect.js", not ${JSON.stringify(dialect.module)}`);
 }
 if (problems.length > 0) {

@@ -10,7 +10,7 @@ import { build, keyed, todo } from "./v4.ts";
 describe("v4 contracts", () => {
   test("one closed contract per v4 tag; the field parents alone list no children", () => {
     // A field parent admits a concept use, whose name no contract can list (ruling D36, OD3): `fieldParent` drops `children`.
-    const fieldParents = ["attributes", "event", "command"];
+    const fieldParents = ["attributes", "event", "command", "concept"];
     for (const [name, contract] of Object.entries(contracts)) {
       expect(contract.attributes).toBeDefined();
       if (fieldParents.includes(name)) expect(contract.children, name).toBeUndefined();

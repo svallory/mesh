@@ -302,6 +302,23 @@ export interface EventDeclaration {
 }
 /** A command declaration: the fields of a request to run a write action (`command :PayInvoice`, a file of its own). */
 export type CommandDeclaration = EventDeclaration;
+/**
+ * A concept (ADR-0080, ADR-0089): a value with no identity, declared in `concepts/<Name>.mesh.mx` (`concept :Money` and
+ * its field lines). Plain data; the generated type and Zod schema come from it.
+ */
+export interface ConceptDeclaration {
+  /** As declared, PascalCase: `Money`. */
+  name: string;
+  /** The module's folders joined by `.`, then the name: `billing.Money`; `Money` at the domain root. */
+  fqn: string;
+  /** Project-relative path of the concept file. */
+  file: string;
+  /** The folder that holds the `concepts` folder, relative to the domain root, `_group` segments dropped. */
+  module: string;
+  /** In written order. No field is a date type (a concept is stored as one JSON value, which keeps no `Date`). */
+  fields: Field[];
+  position: SourcePosition;
+}
 /** One part of an aggregate: a line of its `entities` section (`Dependency prop=:dependent`). */
 export interface AggregatePart {
   /** The part entity, as the line head writes it (`Dependency`, `talk.Comment`). */
@@ -343,6 +360,8 @@ export interface ModelDocument {
   commands?: CommandDeclaration[];
   /** Present only when the project declares an aggregate, so a project with none keeps its `model.json` as it was. */
   aggregates?: Aggregate[];
+  /** Present only when the project declares a concept, so a project with none keeps its `model.json` as it was. */
+  concepts?: ConceptDeclaration[];
   /** Selected adapter identity only; options may contain secrets and never serialize. */
   data?: { name: string };
 }

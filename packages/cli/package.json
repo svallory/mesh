@@ -20,11 +20,15 @@
       ],
       "module": "./dist/dialect.js",
       "mxConfigTags": false,
-      "tagDirs": [],
+      "tagDirs": [
+        "concepts"
+      ],
+      "sidecars": false,
       "reservedTags": [
         "entity",
         "event",
         "command",
+        "concept",
         "aggregate",
         "root",
         "entities",

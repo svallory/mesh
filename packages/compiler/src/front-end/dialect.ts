@@ -55,6 +55,7 @@ import MESH_CONTRACTS from "./contracts.ts";
 import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { deepFreeze } from "./deep-freeze.ts";
 import { formatTag } from "./tag-spelling.ts";
+import { conceptTagFile } from "./concept-file.ts";
 
 export { formatTag };
 
@@ -103,8 +104,12 @@ export const MESH_DIALECT: Dialect = deepFreeze({
   name: "Mesh",
   tagRules: "none",
   // Mesh's vocabulary. `Dialect.contracts` is `@unstable` in MX (alpha.22). Every file of the dialect is checked against it, in the
-  // compiler and in every tool, so `lowerSource` is never given `customTags`.
+  // compiler and in every tool, so `lowerSource` is given no `customTags` but the concepts MX's scan finds (`parseEntitySource`).
   contracts: MESH_CONTRACTS,
+  // A file in a `concepts` folder (the manifest's `tagDirs`) is the contract of a concept use: `concept-file.ts`. MX runs the
+  // hook of the module the manifest names (`meshfw`'s `dist/dialect.js`), so a change here takes effect after its build.
+  // `Dialect.tagFile` is `@unstable` in MX (alpha.36).
+  tagFile: conceptTagFile,
   // How strict Mesh files are: the one place these are stated (a caller's option would override them).
   structural: "reject",
   unknownTags: "reject",

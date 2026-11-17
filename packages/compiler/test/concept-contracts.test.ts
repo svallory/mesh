@@ -19,6 +19,7 @@ describe("the field parents are open (OD3)", () => {
     ["attributes", ENTITY("    &title\n"), "4:4"],
     ["event", "event :E\n  uuid :id\n  &title\n", "3:2"],
     ["command", "command :C\n  uuid :id\n  &title\n", "3:2"],
+    ["concept", "concept :Money\n  integer :amount\n  &title\n", "3:2"],
   ])("a tagless `&title` under %s is MESH_UNKNOWN_TAG once", (_, source, at) => {
     expect(said(source)).toEqual([`${at} MESH_UNKNOWN_TAG \`&title\` is not a known tag in the \`mesh\` dialect`]);
   });
@@ -27,7 +28,9 @@ describe("the field parents are open (OD3)", () => {
     ["`check` under attributes", ENTITY("    check that=() => true\n"), "4:4 MESH_PARENT_NOT_ALLOWED `check` must be inside `validate`, `when`, `checks`; found inside `attributes`"],
     ["`belongs-to` in an event", "event :E\n  belongs-to :x entity=E\n", "2:2 MESH_PARENT_NOT_ALLOWED `belongs-to` must be inside `relationships`; found inside `event`"],
     ["`actions` in a command", "command :C\n  actions\n", "2:2 MESH_PARENT_NOT_ALLOWED `actions` must be inside `entity`; found inside `command`"],
-  ])("%s is MESH_PARENT_NOT_ALLOWED", (_, source, message) => {
+    ["`belongs-to` in a concept", "concept :Money\n  belongs-to :x entity=E\n", "2:2 MESH_PARENT_NOT_ALLOWED `belongs-to` must be inside `relationships`; found inside `concept`"],
+    ["a `concept` line below the top", ENTITY("  concept :Money\n    integer :x\n"), "4:2 MESH_TAG_NOT_ALLOWED `entity`: `concept` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`"],
+  ])("%s is refused by the line's parents or its parent's children", (_, source, message) => {
     expect(said(source)).toEqual([message]);
   });
 
@@ -47,6 +50,8 @@ describe("the field parents are open (OD3)", () => {
     expect(said(ENTITY("    string :title\n    enum :state values=[:a, :b]\n    json :data\n  actions\n    create :open\n      input\n        &title\n"))).toEqual([]);
     expect(said("event :E\n  uuid :id\n  string :note nullable\n")).toEqual([]);
     expect(said("command :C\n  uuid :id\n  integer :n optional\n")).toEqual([]);
+    // A concept file is a root of its own whose field lines are written as an event's.
+    expect(said("concept :Money\n  string :currency match=/^[A-Z]{3}$/\n  integer :amount min=0 max=10\n  enum :kind values=[:a, :b] nullable\n  json :extra\n")).toEqual([]);
   });
 
   test("`input` and `computed` stay closed: a misplaced line there is still MESH_TAG_NOT_ALLOWED", () => {
