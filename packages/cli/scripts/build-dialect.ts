@@ -4,8 +4,13 @@
 // Also keeps `mx.dialect` honest: its `extensions` must be Mesh's one extension list
 // (`MESH_EXTENSIONS`), its `id` must stay `mesh` (the `Atom` node says `dialect: "mesh"`), and
 // the module must be the file this script writes. Any mismatch fails the build.
+//
+// Tests run repository scans that read `dist/dialect.js` while this build may run (another test builds the CLI), so
+// the file is finished in a `.scratch-build-XXXXXX/` directory beside `dist/` (a name every scan skips) and renamed
+// onto `dist/dialect.js`: a rename on one filesystem replaces the file at once, so a reader sees the old file or the
+// new one, never a missing or half-written one. `dist/` is never removed; it holds only `dialect.js`.
 import { MESH_EXTENSIONS } from "@meshfw/compiler/extensions";
-import { rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
@@ -26,27 +31,33 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-await rm(join(root, "dist"), { recursive: true, force: true });
-const result = await Bun.build({
-  entrypoints: [join(root, "src/dialect.ts")],
-  outdir: join(root, "dist"),
-  target: "node",
-  format: "esm",
-  naming: "dialect.js",
-});
-if (!result.success) {
-  console.error(result.logs.map(String).join("\n"));
+const scratch = await mkdtemp(join(root, ".scratch-build-"));
+/** `process.exit` skips `finally`, so a failure removes the scratch directory itself. */
+const fail = async (message: string): Promise<never> => {
+  console.error(message);
+  await rm(scratch, { recursive: true, force: true });
   process.exit(1);
+};
+try {
+  const result = await Bun.build({
+    entrypoints: [join(root, "src/dialect.ts")],
+    outdir: scratch,
+    target: "node",
+    format: "esm",
+    naming: "dialect.js",
+  });
+  if (!result.success) await fail(result.logs.map(String).join("\n"));
+  // The bundler marks each inlined module with a path comment (`// ../../packages/compiler/...`). Drop
+  // them: they are noise. Then check that no mention of MX's package is left in the bundle (nothing of MX
+  // is inlined today, and the repository check keeps MX's package name out of the workspace outside
+  // `packages/compiler`); the check guards against a value import of MX creeping in.
+  const file = join(scratch, "dialect.js");
+  const text = (await Bun.file(file).text()).replace(/^\/\/ \.\.?\/.*\.[cm]?[jt]s\n/gm, "");
+  if (text.includes("mxlang")) await fail("meshfw: dist/dialect.js still mentions MX's package after the path comments were dropped");
+  await Bun.write(file, text);
+  await mkdir(join(root, "dist"), { recursive: true });
+  await rename(file, join(root, "dist/dialect.js"));
+} finally {
+  await rm(scratch, { recursive: true, force: true });
 }
-// The bundler marks each inlined module with a path comment (`// ../../packages/compiler/...`). Drop
-// them: they are noise. Then check that no mention of MX's package is left in the bundle (nothing of MX
-// is inlined today, and the repository check keeps MX's package name out of the workspace outside
-// `packages/compiler`); the check guards against a value import of MX creeping in.
-const file = join(root, "dist/dialect.js");
-const text = (await Bun.file(file).text()).replace(/^\/\/ \.\.?\/.*\.[cm]?[jt]s\n/gm, "");
-if (text.includes("mxlang")) {
-  console.error("meshfw: dist/dialect.js still mentions MX's package after the path comments were dropped");
-  process.exit(1);
-}
-await Bun.write(file, text);
 console.log(`meshfw: wrote dist/dialect.js for extensions ${MESH_EXTENSIONS.join(", ")}`);
