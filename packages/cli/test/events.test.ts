@@ -1010,10 +1010,108 @@ describe("mesh events forget", () => {
 
   test("a usage mistake is exit 2 and touches nothing", async () => {
     const dir = await project();
-    expect(await mesh(dir, "events")).toEqual({ code: 2, stdout: "", stderr: "Missing events command; use mesh events forget <name>\n" });
-    expect(await mesh(dir, "events", "drop", "x")).toEqual({ code: 2, stdout: "", stderr: 'Unknown events command "drop"; use mesh events forget <name>\n' });
+    expect(await mesh(dir, "events")).toEqual({ code: 2, stdout: "", stderr: "Missing events command; use mesh events forget <name>, mesh events adopt <handler> [--drop <event>]... or mesh events keep <until-delivered|all>\n" });
+    expect(await mesh(dir, "events", "drop", "x")).toEqual({ code: 2, stdout: "", stderr: 'Unknown events command "drop"; use mesh events forget <name>, mesh events adopt <handler> [--drop <event>]... or mesh events keep <until-delivered|all>\n' });
     expect(await mesh(dir, "events", "forget")).toEqual({ code: 2, stdout: "", stderr: "Missing name for mesh events forget; use mesh events forget <name>\n" });
     expect(await mesh(dir, "events", "forget", "a", "b")).toEqual({ code: 2, stdout: "", stderr: "Extra argument for mesh events forget; use mesh events forget <name>\n" });
     expect((await mesh(dir, "--help")).stdout).toContain("events forget <name>");
+  }, 30_000);
+});
+
+describe("mesh events adopt and mesh events keep", () => {
+  const CONFIG_FILE = CONFIG.replace('sqlite({ file: ":memory:" })', 'sqlite({ file: "app.db" })');
+  const MULTI_CONFIG = CONFIG_FILE.replace("testBus() } };", 'testBus({ capabilities: ["ordered-delivery", "replay", "subscribe", "multi-process"] }) } };')
+    .replace("testBus(): import", "testBus(options?: object): import");
+  type Ops = Record<string, (...args: unknown[]) => Promise<unknown>>;
+  type FileLayer = { transaction<T>(fn: (tx: Ops) => Promise<T>): Promise<T>; close(): Promise<void> };
+  const LIVE = "00000000-0000-4000-8000-00000000000a";
+  const ADOPT = "mesh events adopt <handler> [--drop <event>]...";
+  const KEEP = "mesh events keep <until-delivered|all>";
+
+  /** A multi-process project on a file database: the handler h, whose union an older build widened with InvoiceVoided. */
+  async function multiProject(): Promise<{ dir: string; layer: () => Promise<FileLayer>; live(keep?: string): Promise<void>; union(): Promise<unknown> }> {
+    const dir = await project();
+    await writeFile(join(dir, "mesh.config.ts"), MULTI_CONFIG);
+    expect(await mesh(dir, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    const app = await import(join(dir, ".mesh/index.ts"));
+    const data = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    const layer = async () => data.sqlite({ file: join(dir, "app.db") }) as FileLayer;
+    const setup = await layer();
+    await data.createSchema(setup, app.tables);
+    await setup.transaction((tx) => tx.writeHandlerLease!({ name: "h", kind: "process", position: 3, events: ["billing.InvoicePaid", "billing.InvoiceVoided"], generation: 2, runId: null }));
+    await setup.close();
+    const run = async <T>(fn: (tx: Ops) => Promise<T>) => { const open = await layer(); try { return await open.transaction(fn); } finally { await open.close(); } };
+    return {
+      dir, layer,
+      // written again before each command that needs it, so it never lapses (15 s) while the commands run
+      live: (keep = "all") => run((tx) => tx.writeProcess!({ runId: LIVE, host: "api-1", pid: 4242, startedAt: null, keep, handlers: { h: ["billing.InvoicePaid"] }, declared: ["billing.InvoicePaid"] })).then(() => undefined),
+      union: () => run(async (tx) => ((await tx.readHandlerLeases!()) as { name: string; events: string[] }[]).find((row) => row.name === "h")?.events),
+    };
+  }
+
+  test("adopt keeps what a live process lists, drops only what --drop names, and exits 1 when nothing changes", async () => {
+    const { dir, live, union } = await multiProject();
+    await live();
+    expect(await mesh(dir, "events", "adopt", "h")).toEqual({
+      code: 1, stderr: "",
+      stdout: "kept billing.InvoicePaid: listed by pid 4242 on host api-1\nkept billing.InvoiceVoided: listed by no live process; name it with --drop to drop it\nNothing changed\n",
+    });
+    await live();
+    const listed = await mesh(dir, "events", "adopt", "h", "--drop", "billing.InvoicePaid");
+    expect(listed.code).toBe(1);
+    expect(listed.stderr).toContain('events adopt failed: billing.InvoicePaid is listed for "h" by a live process (pid 4242 on host api-1), so it is not dropped: stop that process first');
+    const absent = await mesh(dir, "events", "adopt", "h", "--drop", "billing.Nothing");
+    expect(absent.code).toBe(1);
+    expect(absent.stderr).toContain('events adopt failed: billing.Nothing is not in the registered union of "h" (billing.InvoicePaid, billing.InvoiceVoided), so there is nothing to drop');
+    const nobody = await mesh(dir, "events", "adopt", "nobody");
+    expect(nobody.code).toBe(1);
+    expect(nobody.stderr).toContain('events adopt failed: No live process registers the handler "nobody", so there is no list to adopt: if it was removed, drop its progress with `mesh events forget nobody`');
+    expect(await union()).toEqual(["billing.InvoicePaid", "billing.InvoiceVoided"]);
+    await live();
+    expect(await mesh(dir, "events", "adopt", "h", "--drop", "billing.InvoiceVoided")).toEqual({
+      code: 0, stderr: "",
+      stdout: "dropped billing.InvoiceVoided\nkept billing.InvoicePaid: listed by pid 4242 on host api-1\nadopted the handler h: its registered union is now billing.InvoicePaid\n",
+    });
+    expect(await union()).toEqual(["billing.InvoicePaid"]);
+  }, 60_000);
+
+  test("keep sets the recorded keep, and refuses until-delivered while a live process runs with keep: \"all\"", async () => {
+    const { dir, live, layer } = await multiProject();
+    expect(await mesh(dir, "events", "keep", "all")).toEqual({ code: 0, stderr: "", stdout: 'the recorded keep was not set, now "all"\n' });
+    expect(await mesh(dir, "events", "keep", "all")).toEqual({ code: 0, stderr: "", stdout: 'the recorded keep is already "all"\n' });
+    await live("all");
+    const refused = await mesh(dir, "events", "keep", "until-delivered");
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain('events keep failed: The process pid 4242 on host api-1 delivers with keep: "all", so the recorded keep stays "all": stop it, or change its configuration, first');
+    const open = await layer();
+    await open.transaction((tx) => tx.deleteProcess!(LIVE));
+    await open.close();
+    expect(await mesh(dir, "events", "keep", "until-delivered")).toEqual({ code: 0, stderr: "", stdout: 'the recorded keep was "all", now "until-delivered"\n' });
+  }, 60_000);
+
+  test("in a project whose bus does not declare multi-process both exit 1 and touch nothing", async () => {
+    const dir = await project();
+    await writeFile(join(dir, "mesh.config.ts"), CONFIG_FILE);
+    const adopt = await mesh(dir, "events", "adopt", "h");
+    expect(adopt.code).toBe(1);
+    expect(adopt.stderr).toContain('mesh events adopt applies to a project whose bus declares multi-process, such as localBus({ processes: "many" })');
+    const keep = await mesh(dir, "events", "keep", "all");
+    expect(keep.code).toBe(1);
+    expect(keep.stderr).toContain('mesh events keep applies to a project whose bus declares multi-process, such as localBus({ processes: "many" })');
+  }, 30_000);
+
+  test("a usage mistake is exit 2 and touches nothing", async () => {
+    const dir = await project();
+    expect(await mesh(dir, "events", "adopt")).toEqual({ code: 2, stdout: "", stderr: `Missing name for mesh events adopt; use ${ADOPT}\n` });
+    expect(await mesh(dir, "events", "adopt", "--drop", "x")).toEqual({ code: 2, stdout: "", stderr: `Missing name for mesh events adopt; use ${ADOPT}\n` });
+    expect(await mesh(dir, "events", "adopt", "h", "--drop")).toEqual({ code: 2, stdout: "", stderr: `Missing event after --drop; use ${ADOPT}\n` });
+    expect(await mesh(dir, "events", "adopt", "h", "--drop", "--drop")).toEqual({ code: 2, stdout: "", stderr: `Missing event after --drop; use ${ADOPT}\n` });
+    expect(await mesh(dir, "events", "adopt", "h", "x")).toEqual({ code: 2, stdout: "", stderr: `Unknown argument "x" for mesh events adopt; use ${ADOPT}\n` });
+    expect(await mesh(dir, "events", "keep")).toEqual({ code: 2, stdout: "", stderr: `Missing value for mesh events keep; use ${KEEP}\n` });
+    expect(await mesh(dir, "events", "keep", "forever")).toEqual({ code: 2, stdout: "", stderr: `Unknown keep "forever" for mesh events keep; use ${KEEP}\n` });
+    expect(await mesh(dir, "events", "keep", "all", "x")).toEqual({ code: 2, stdout: "", stderr: `Extra argument for mesh events keep; use ${KEEP}\n` });
+    const help = (await mesh(dir, "--help")).stdout;
+    expect(help).toContain("events adopt <handler> [--drop <event>]...");
+    expect(help).toContain("events keep <until-delivered|all>");
   }, 30_000);
 });
