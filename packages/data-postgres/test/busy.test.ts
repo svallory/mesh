@@ -1,8 +1,20 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
+import { SQL } from "bun";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { bigint, pgTable, text } from "drizzle-orm/pg-core";
-import { DatabaseBusyError, FrameworkError } from "@meshfw/runtime";
+import { localBus } from "@meshfw/bus-local";
+import {
+  DECLARATION, DatabaseBusyError, FrameworkError, bindDomain, publishEvent,
+  type DataLayer, type DataOperations, type Declaration, type DeliveryOperations, type EventRecord, type EventsModule, type HandlerStoppedError,
+} from "@meshfw/runtime";
+import { setDeliveryTiming, testBus } from "@meshfw/runtime/testing";
 import { postgres } from "../src/index.ts";
+import type { PostgresLayer } from "../src/layer.ts";
+import { eventTables } from "./event-tables.ts";
 import { databaseUrl, describeServer, serverUrl, testDatabase } from "./support.ts";
+
+const events = await eventTables();
+afterAll(events.remove);
 
 const counters = pgTable("counters", { seq: bigint("seq", { mode: "number" }).primaryKey().notNull(), label: text("label").notNull() });
 const notes = pgTable("notes", { id: text("id").primaryKey().notNull(), body: text("body").notNull() });
@@ -195,4 +207,152 @@ describeServer("connecting", () => {
     await layer.close();
     await layer.close();
   }, 30_000);
+});
+
+class Paid {
+  readonly #brand = true;
+  static readonly [DECLARATION]: Declaration = { kind: "event", fqn: "busy.Paid", is: (value: unknown): value is object => typeof value === "object" && value !== null && #brand in value };
+  readonly n: number;
+  constructor(fields: { n: number }) { this.n = fields.n; Object.freeze(this); }
+}
+const ops = (tx: DataOperations) => tx as DataOperations & DeliveryOperations;
+const nOf = (event: EventRecord<object>) => (event.payload as { n: number }).n;
+
+/** Publish one `Paid` per `n` in one transaction of `binding` over `layer`. */
+function publish(binding: { transaction<T>(run: () => Promise<T>): Promise<T> }, layer: DataLayer, ...ns: number[]) {
+  return binding.transaction(() => layer.transaction(async (tx) => {
+    for (const n of ns) await publishEvent(tx, undefined, { entity: "busy.Thing", action: "make", key: { id: `k${n}` }, at: "busy" }, new Paid({ n }), {}, () => new Date());
+  }));
+}
+
+/** `layer` with every transaction's rejection recorded in `errors`, with whether the transaction renewed the claim. */
+function recording(layer: PostgresLayer, errors: { renewal: boolean; error: unknown }[]): DataLayer {
+  return {
+    database: layer.database,
+    transaction: (run, options) => {
+      let renewal = false;
+      const watched = (tx: DataOperations) => new Proxy(tx, { get: (target, key) => { if (key === "renewClaim") renewal = true; return Reflect.get(target, key); } });
+      return layer.transaction((tx) => run(watched(tx)), options).catch((error: unknown) => { errors.push({ renewal, error }); throw error; });
+    },
+    readOutbox: (after, limit) => layer.readOutbox(after, limit),
+    refuseIfFailed: () => layer.refuseIfFailed(),
+    close: () => layer.close(),
+  };
+}
+
+const schemaOf = (layer: PostgresLayer) => layer.database!.split("#")[1]!;
+
+describeServer("transient errors in delivery on Postgres", () => {
+  const database = testDatabase(events.tables);
+
+  test("a handler transaction that meets 40001 ends the round without counting a try, and the next round handles the event once", async () => {
+    const layer = await database.freshLayer();
+    const runs: number[] = [];
+    const inside = { open: () => {}, wait: Promise.resolve() };
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    inside.wait = new Promise<void>((resolve) => { inside.open = resolve; });
+    const module: EventsModule = { handlers: { process: { h: {
+      events: [Paid],
+      async run(event: EventRecord<object>) {
+        runs.push(nOf(event));
+        if (runs.length === 1) { inside.open(); await held; }
+      },
+    } } } };
+    // Two retries a round: a counted try would run the body again in the same round.
+    const binding = bindDomain({ Paid }, layer, { events: { bus: testBus({ retryDelays: [0, 0], pollMs: 20 }), load: async () => module } }, new AsyncLocalStorage());
+    await binding.deliver();
+    await publish(binding, layer, 1);
+    const round = binding.deliver().then(() => undefined, (error: unknown) => error);
+    await inside.wait;
+    // A concurrent update of the handler's progress row commits after the handler transaction's snapshot, so the
+    // handler's own progress write is a serialization failure.
+    await database.admin.unsafe(`UPDATE "${schemaOf(layer)}".mesh_handler_progress SET position = position WHERE name = 'h'`);
+    release();
+    const error = await round;
+    expect(error).toBeInstanceOf(DatabaseBusyError);
+    expect(error).toMatchObject({ reason: "serialization", sqlstate: "40001", retryable: true });
+    expect(runs).toEqual([1]);
+    await binding.deliver();
+    expect(runs).toEqual([1, 1]);
+    await binding.deliver();
+    expect(runs).toEqual([1, 1]);
+    const [progress] = await layer.transaction((tx) => ops(tx).readHandlerProgress());
+    expect(progress).toMatchObject({ name: "h", position: 1 });
+  }, 60_000);
+
+  test("a terminated read connection is a retryable connection error and the next read reconnects; under localBus such a round ends and the handler is not stopped", async () => {
+    const killer = new SQL(database.url, { max: 1 });
+    // A read connection is one whose last statement was the read of the rows (its LEFT JOIN LATERAL); only the
+    // outbox read sends it, so the transaction connections are left alone.
+    const killReaders = async () => (await killer.unsafe(
+      `SELECT pg_terminate_backend(pid) AS killed FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()
+         AND query LIKE '%LEFT JOIN LATERAL%'`)).length;
+    try {
+      const layer = await database.freshLayer();
+      expect((await layer.readOutbox(0, 10)).rows).toEqual([]);
+      expect(await killReaders()).toBeGreaterThan(0);
+      const lost = await layer.readOutbox(0, 10).then(() => undefined, (error: unknown) => error);
+      expect(lost).toBeInstanceOf(DatabaseBusyError);
+      expect(lost).toMatchObject({ reason: "connection", retryable: true });
+      expect((await layer.readOutbox(0, 10)).rows).toEqual([]);
+
+      const delivering = await database.freshLayer();
+      const seen: number[] = [];
+      const stopped: HandlerStoppedError[] = [];
+      const module: EventsModule = { handlers: { process: { h: { events: [Paid], run(event: EventRecord<object>) { seen.push(nOf(event)); } } } } };
+      const binding = bindDomain({ Paid }, delivering, { events: { bus: localBus({ pollInterval: 50, onStopped: (error) => { stopped.push(error); } }), load: async () => module } }, new AsyncLocalStorage());
+      const errors = console.error;
+      const logged: string[] = [];
+      console.error = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
+      const delivery = await binding.startDelivery();
+      try {
+        await publish(binding, delivering, 1);
+        for (let i = 0; i < 3; i++) { await killReaders(); await Bun.sleep(120); }
+        await publish(binding, delivering, 2);
+        const end = Date.now() + 10_000;
+        while (seen.length < 2 && Date.now() < end) await Bun.sleep(50);
+      } finally {
+        await delivery.stop();
+        console.error = errors;
+      }
+      expect(seen).toEqual([1, 2]);
+      expect(stopped).toEqual([]);
+      expect(logged.filter((line) => line.includes("MESH_HANDLER_STOPPED"))).toEqual([]);
+    } finally { await killer.close(); }
+  }, 60_000);
+
+  test("a claim renewal that meets 40001 is retried and keeps the claim", async () => {
+    const layer = await database.freshLayer();
+    const errors: { renewal: boolean; error: unknown }[] = [];
+    const seen: number[] = [];
+    const module: EventsModule = { handlers: { process: { h: { events: [Paid], run(event: EventRecord<object>) { seen.push(nOf(event)); } } } } };
+    setDeliveryTiming({ renewMs: 100, lapseMs: 5000 });
+    const recorded = recording(layer, errors);
+    const binding = bindDomain({ Paid }, recorded, { events: { bus: testBus({ pollMs: 50 }), load: async () => module } }, new AsyncLocalStorage());
+    const quiet = console.error;
+    console.error = () => {}; // a round's deletion pass may meet the same 40001, which testBus reports
+    const delivery = await binding.startDelivery();
+    const holder = await database.admin.reserve();
+    try {
+      // Another connection updates the state row and holds it past a renewal; the renewal waits on the row, and fails
+      // with 40001 once the update commits, since the row changed after the renewal's snapshot.
+      await holder.unsafe("BEGIN");
+      await holder.unsafe(`UPDATE "${schemaOf(layer)}".mesh_outbox_state SET host = host WHERE id = 1`);
+      await Bun.sleep(300);
+      await holder.unsafe("COMMIT");
+      await Bun.sleep(400);
+      expect(errors.some(({ renewal, error }) => renewal && error instanceof DatabaseBusyError && error.reason === "serialization")).toBe(true);
+      // The claim is still this process's: delivery goes on.
+      await publish(binding, recorded, 1);
+      const end = Date.now() + 5000;
+      while (seen.length < 1 && Date.now() < end) await Bun.sleep(20);
+      expect(seen).toEqual([1]);
+    } finally {
+      holder.release();
+      await delivery.stop();
+      console.error = quiet;
+      setDeliveryTiming(null);
+    }
+  }, 60_000);
 });

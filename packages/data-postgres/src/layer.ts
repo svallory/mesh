@@ -4,6 +4,7 @@ import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
 import { PgJsonb, PgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
 import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { deliveryOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
 import { appendEvent, deleteOutboxThrough, OutboxReader, outboxChannel, outboxLockKey, outboxSequence, type Appender, type Query } from "./outbox.ts";
@@ -243,6 +244,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
         ...entities,
         appendEvent: (row) => appendEvent(appender, row),
         deleteOutboxThrough: async (position) => deleteOutboxThrough(query, await sequence(), position),
+        ...deliveryOperations(query, sequence),
       } satisfies DataOperations);
     },
     async commit(conn) {

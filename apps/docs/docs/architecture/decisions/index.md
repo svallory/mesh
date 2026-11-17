@@ -56,7 +56,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) decides how translated conditions reach the database (M10): a plain-data condition tree, bound in memory and set only by generated code, honoured by adapters that declare the new `conditions` capability. It amends 0010 and 0013.
 
-[Record 0089](./0089-postgres-adapter.md) decides how the Postgres adapter (M9) runs: transactions one at a time per layer at `SERIALIZABLE`, transient errors as `MESH_DATABASE_BUSY` with a `reason`, a failed statement failing the call, and SQLite's sort order.
+[Record 0089](./0089-postgres-adapter.md) decides how the Postgres adapter (M9) runs: transactions one at a time per layer at `SERIALIZABLE`, transient errors as `MESH_DATABASE_BUSY` with a `reason`, a failed statement failing the call, SQLite's sort order, the outbox's reader rule and the claim's row lock.
 
 [Record 0091](./0091-delivery-from-several-processes.md) decides how events are delivered from several processes on one database (M9): a lease per handler on its progress row, a registered union that only `mesh events adopt` shrinks, and a row per delivering process. It amends 0079.
 

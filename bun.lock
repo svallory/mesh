@@ -127,6 +127,7 @@
         "drizzle-orm": "0.45.3",
       },
       "devDependencies": {
+        "@meshfw/bus-local": "workspace:*",
         "@meshfw/compiler": "workspace:*",
         "@meshfw/data-sqlite": "workspace:*",
         "@meshfw/model": "workspace:*",
