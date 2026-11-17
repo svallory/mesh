@@ -303,15 +303,19 @@ describe("a contributed kind's call chain is quiet until the handler call settle
     }
   });
 
-  test("a dispatch from the body is refused before the answering action runs", async () => {
+  test("a dispatch from the body is refused before the answering action runs, as a rejected promise like every dispatch failure", async () => {
     const layer = await database();
     try {
       const [id] = await paid(layer, 1);
       let refunded = 0;
+      let shape = "";
       const { cause, calls } = await stopOf(layer, async (_event, { context }) => {
-        const pending = app.dispatch(new RefundInvoice({ id: id! }), context).then(() => { refunded++; });
-        await pending;
+        let pending: Promise<unknown>;
+        try { pending = app.dispatch(new RefundInvoice({ id: id! }), context); } catch { shape = "thrown"; throw new Error("dispatch threw synchronously"); }
+        shape = pending instanceof Promise ? "promise" : "other";
+        await pending.then(() => { refunded++; });
       });
+      expect(shape).toBe("promise");
       expect(cause).toBeInstanceOf(FrameworkError);
       expect(cause.message).toBe(D6);
       expect(cause.retryable).toBe(false);

@@ -82,7 +82,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; a step never runs twice | Accepted, amended by 0053, 0054, 0072 | operator, lead, roadmap author |
 | [0018](./0018-not-implemented-is-a-build-error.md) | A valid but unimplemented tag is a build error | Accepted | roadmap author |
 | [0019](./0019-v1-scope.md) | v1 is milestones M0 to M9; what comes after (its rationale cites records since superseded) | Accepted, superseded in part by 0072 | operator |
-| [0020](./0020-extension-contributions-through-declared-points.md) | Extensions contribute to each other only through declared points | Accepted, amended by 0072, 0075, 0092 | operator |
+| [0020](./0020-extension-contributions-through-declared-points.md) | Extensions contribute to each other only through declared points | Accepted, amended by 0072, 0075, 0093 | operator |
 | [0021](./0021-composed-contracts-module.md) | Mesh generates one self-contained MX contracts module | Accepted, amended by 0072 | lead |
 | [0022](./0022-policies-simple-tier-as-extension.md) | Policies: a simple tier, solver-ready | Accepted, amended by 0055, 0072, 0074 | operator |
 | [0023](./0023-workflows-and-jobs-deferred.md) | Workflows and jobs come after v1; the adapter interface stays a design document | Accepted, amended 2026-10-11: the outbox is core, in M6 (0079) | operator |

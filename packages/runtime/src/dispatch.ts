@@ -35,6 +35,10 @@ export function dispatchCommand(table: Readonly<Record<string, CommandAction>>, 
   dispatching.command = declaration.fqn;
   try {
     return answer.run(command as never, context);
+  } catch (error) {
+    // The quiet chain's refusal (and any other synchronous throw of the call's start) rejects like every other dispatch
+    // failure: `dispatch` promises a rejection, so `dispatch(cmd, ctx).catch(report)` must reach its `.catch`.
+    return Promise.reject(error);
   } finally {
     dispatching.n--;
     dispatching.command = outer;
