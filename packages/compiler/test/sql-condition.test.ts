@@ -70,7 +70,18 @@ describe("lowerCondition", () => {
     // A ternary's branches take the class of the operand it meets, even when neither branch states one (a helper, `actor.x`).
     ["() => &total < (&paid ? cutoff(5) : 0)", call("lt", col("total", "integer"), call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer"))), ['$.pure(cutoff(5), "cutoff")'], []],
     ["({ actor }) => (&paid ? actor.level : 0) > &total", call("gt", call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer")), col("total", "integer")), ["$s.actor?.level"], []],
-    ["({ actor }) => (&paid ? actor.level : 0) === (&paid ? actor.rank : 1)", call("eq", call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer")), call("cond", col("paid", "boolean"), param(1, "integer"), val(1, "integer"))), ["$s.actor?.level", "$s.actor?.rank"], []],
+    // Only literals state integer next to a value of unknown class: float, which an integer value binds to too.
+    ["({ actor }) => (&paid ? actor.level : 0) === (&paid ? actor.rank : 1)", call("eq", call("cond", col("paid", "boolean"), param(0, "float"), val(0, "float")), call("cond", col("paid", "boolean"), param(1, "float"), val(1, "float"))), ["$s.actor?.level", "$s.actor?.rank"], []],
+    ["({ actor }) => (&paid ? actor.level : 0) > 1", call("gt", call("cond", col("paid", "boolean"), param(0, "float"), val(0, "float")), val(1, "float")), ["$s.actor?.level"], []],
+    ["() => (&paid ? 1 : 0) > 0", call("gt", call("cond", col("paid", "boolean"), val(1, "integer"), val(0, "integer")), val(0, "integer")), [], []],
+    // Two borrowers meet: the class is settled over both, a column's over a literal's.
+    ["({ actor }) => (&rate ?? actor.level) > (&paid ? actor.x : 0)", call("gt", call("coalesce", col("rate", "float"), param(0, "float")), call("cond", col("paid", "boolean"), param(1, "float"), val(0, "float"))), ["$s.actor?.level", "$s.actor?.x"], []],
+    ["({ actor }) => (&paid ? actor.level : 0) === (&paid ? actor.rank : 1.5)", call("eq", call("cond", col("paid", "boolean"), param(0, "float"), val(0, "float")), call("cond", col("paid", "boolean"), param(1, "float"), val(1.5, "float"))), ["$s.actor?.level", "$s.actor?.rank"], []],
+    ["({ actor }) => (&total ?? actor.level) > (&paid ? actor.x : 0)", call("gt", call("coalesce", col("total", "integer"), param(0, "integer")), call("cond", col("paid", "boolean"), param(1, "integer"), val(0, "integer"))), ["$s.actor?.level", "$s.actor?.x"], []],
+    // A ternary under arithmetic: a literal's integer is not a known integer.
+    ["({ actor }) => &rate < (&paid ? actor.level : 0) + 1", call("lt", col("rate", "float"), call("add", call("cond", col("paid", "boolean"), param(0, "float"), val(0, "float")), val(1, "float"))), ["$s.actor?.level"], []],
+    ["() => &total < (&paid ? 2 : 0) + &total", call("lt", col("total", "integer"), call("add", call("cond", col("paid", "boolean"), val(2, "integer"), val(0, "integer")), col("total", "integer"))), [], []],
+    ["({ input }) => (&paid ? input.n : 0) + 1 > &rate", call("gt", call("add", call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer")), val(1, "integer")), col("rate", "float")), ["$s.input?.n"], []],
     ["() => &rate < (&paid ? cutoff(5) : 0)", call("lt", col("rate", "float"), call("cond", col("paid", "boolean"), param(0, "float"), val(0, "float"))), ['$.pure(cutoff(5), "cutoff")'], []],
     ["({ actor }) => (&rate ?? actor.level) > 1", call("gt", call("coalesce", col("rate", "float"), param(0, "float")), val(1, "float")), ["$s.actor?.level"], []],
     // An imported helper, `Mesh.isSystem` and a quantifier over a list of the caller are parameters (R10).

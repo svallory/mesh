@@ -164,6 +164,8 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
   const params: Lowered["params"] = [];
   const imports: Lowered["imports"] = [];
   const crossings: Lowered["crossings"] = [];
+  /** The class the build knows for each parameter's subtree (undefined: `actor.x`, a helper's result, guessed from what it meets). */
+  const stated = new Map<number, ValueClass | undefined>();
   const problems: NotSql[] = [];
   const mode = options.mode ?? "read";
 
@@ -241,6 +243,7 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
         if (imported && !imports.some((i) => i.name === name && i.file === scope.from.file)) imports.push({ name, module: imported.from, file: scope.from.file });
       }
     params.push({ tree: node, from: scope.from.fqn });
+    stated.set(params.length - 1, known);
     return { kind: "param", index: params.length - 1, class: cls };
   };
 
@@ -496,8 +499,26 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
     // their class, so a branch that states none (a helper's result, `actor.x`) is not left to guess.
     const borrows = (arg: ExprNode) => arg.kind === "call" && (arg.fn === "cond" || arg.fn === "coalesce");
     const out: (LiteralNode | undefined)[] = args.map((arg) => (dependent(arg, scope.rows) && !borrows(arg) ? lower(arg, scope, fixed ?? expect) : undefined));
-    const before = classOf(out) ?? expect;
-    args.forEach((arg, i) => { if (dependent(arg, scope.rows) && borrows(arg)) out[i] = lower(arg, scope, fixed ?? before ?? independentClass(args, scope)); });
+    const lent = args.flatMap((arg, i) => (dependent(arg, scope.rows) && borrows(arg) ? [i] : []));
+    if (lent.length) {
+      const first = fixed ?? classOf(out) ?? expect ?? independentClass(args, scope);
+      const mark = { params: params.length, imports: imports.length, crossings: crossings.length };
+      const lend = (cls: ValueClass | undefined) => { for (const i of lent) out[i] = lower(args[i]!, scope, cls); };
+      lend(first);
+      // Two borrowers meet, or a borrower's branches state no class but its literal's: the class is settled over every
+      // operand, a column's or a declared type's over a literal's (the `0` of `x ? actor.y : 0` says nothing of `actor.y`).
+      // An integer that only literals state, next to a value of unknown class, is float: an integer value binds to it too.
+      const strong = [...out.map((node) => (node ? statedClass(node) : undefined)), ...args.filter((arg) => !dependent(arg, scope.rows) && arg.kind !== "literal").map((arg) => staticClass(arg, scope)), expect]
+        .reduce<ValueClass | undefined>((a, b) => joined(a, b), undefined);
+      const weak = joined(classOf(out), independentClass(args, scope));
+      const guessed = lent.some((i) => unstated(out[i]!));
+      const settled = fixed ?? strong ?? (weak === "integer" && guessed ? "float" : weak);
+      if (settled !== first) {
+        params.length = mark.params; imports.length = mark.imports; crossings.length = mark.crossings;
+        for (const key of [...stated.keys()]) if (key >= mark.params) stated.delete(key);
+        lend(settled);
+      }
+    }
     // No record-dependent operand states a class: the record-independent ones may (`cutoff(5) : 0` is an integer).
     const known = classOf(out);
     return args.map((arg, i) => {
@@ -507,6 +528,27 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
       else if (numeric === "arithmetic") cls = known === "integer" && staticClass(arg, scope) === "integer" ? "integer" : "float";
       return independent(arg, scope, cls);
     });
+  };
+
+  /** The class a lowered operand states from a column or a declared type, not from a literal or a guessed parameter. */
+  const statedClass = (node: LiteralNode): ValueClass | undefined => {
+    switch (node.kind) {
+      case "value": return undefined;
+      case "param": return stated.get(node.index);
+      case "call": {
+        if (BOOLEAN_FNS.has(node.fn) || node.fn === "div" || node.fn === "idiv" || node.fn === "length") return classOfLowered(node);
+        const args = node.fn === "cond" ? node.args.slice(1) : node.args;
+        return args.map(statedClass).reduce<ValueClass | undefined>((a, b) => joined(a, b), undefined);
+      }
+      default: return classOfLowered(node);
+    }
+  };
+
+  /** Does a lowered operand hold a parameter whose class the build does not know? */
+  const unstated = (node: LiteralNode): boolean => {
+    if (node.kind === "param") return stated.get(node.index) === undefined;
+    if (node.kind === "call") return node.args.some(unstated);
+    return false;
   };
 
   /** The class the record-independent operands of a call state between them, if any. */

@@ -71,6 +71,7 @@ entity :Invoice table="invoices"
     read :withBigLines filter=() => &lines.some((l) => l.qty > 2)
     read :stalled filter=() => &total > slow(1)
     read :cheapUndated filter=() => &total < (&dueOn === null ? limit(15) : 0)
+    read :underLevel filter=({ actor }) => &total < (&dueOn === null ? actor.level : 0) + 1
     read :allSmallLines filter=() => &lines.every((l) => l.qty < 3)
     read :noHugeBigLine filter=() => &lines.filter((l) => l.qty > 2).every((l) => l.qty > 9)
     read :lateFirst
@@ -97,7 +98,7 @@ async function generate(): Promise<string> {
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
-  await Bun.write(join(dir, "context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string | null };\n  }\n}\nexport {};\n');
+  await Bun.write(join(dir, "context.ts"), 'import "@meshfw/runtime";\ndeclare module "@meshfw/runtime" {\n  interface ActionContext {\n    actor: { id: string | null; level?: number };\n  }\n}\nexport {};\n');
   return dir;
 }
 
@@ -238,6 +239,15 @@ describe("a read's own filter and sort", () => {
     try {
       // `limit(15)` is 30, for the undated invoices only: i3 (20).
       expect(totals(await mesh.cheapUndatedInvoice({}, alice))).toEqual([20]);
+    } finally { await db.close(); }
+  });
+
+  test("a ternary whose branch is the actor's fractional number, under arithmetic, binds as a float", async () => {
+    const { db, mesh } = await seeded();
+    try {
+      // 19.5 + 1 is over i3's 20; a dated invoice compares with 0 + 1. An integer parameter would refuse 19.5.
+      expect(totals(await mesh.underLevelInvoice({}, { actor: { id: id(91), level: 19.5 } }))).toEqual([20]);
+      expect(totals(await mesh.underLevelInvoice({}, { actor: { id: id(91), level: 18.5 } }))).toEqual([]);
     } finally { await db.close(); }
   });
 
