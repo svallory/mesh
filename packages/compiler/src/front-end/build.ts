@@ -1010,7 +1010,7 @@ function buildEntity(
     for (const line of tags(section(name)?.children ?? [])) {
       // MX lowers a parameter on a wildcard line, and a wildcard entry takes no `analyze` hook: the contracts' wrapper is not reached.
       if (line.params.length || line.var) {
-        fail("MESH_SYNTAX", "tag parameters and variable bindings are not entity declarations", line);
+        fail("MESH_SYNTAX", `\`${line.name}\`: tag parameters and variable bindings are not entity declarations`, line);
         continue;
       }
       const written = lineHeadReference(line);

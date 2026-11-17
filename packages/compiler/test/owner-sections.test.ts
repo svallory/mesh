@@ -86,6 +86,9 @@ describe("the dialect and the contracts", () => {
     ["an option on a listing", "  events\n    InvoicePaid prop=:x\n", [[12, 16, "MESH_UNKNOWN_OPTION", "`InvoicePaid` (inline contract): accepts no options"]], ""],
     ["a name after a listing", "  events\n    InvoicePaid :x\n", [[12, 16, "MESH_UNKNOWN_OPTION", "`InvoicePaid` (inline contract): accepts no options"]], ""],
     ["a child under a listing", "  events\n    InvoicePaid\n      uuid :x\n", [[13, 6, "MESH_TAG_NOT_ALLOWED", "`InvoicePaid` (inline contract): `uuid` is not allowed here; allowed children: none"]], ""],
+    ["a value on a listing", "  events\n    InvoicePaid=1\n", [[12, 15, "MESH_UNKNOWN_OPTION", "`InvoicePaid` (inline contract): accepts no options"]], ""],
+    ["whitespace after the dot", "  events\n    notices. InvoiceOverdue\n", [[12, 11, "MESH_INVALID_TAG_NAME", "a tag name cannot have an empty part: a `.` must be followed by a name, as in `billing.InvoiceVoided`, and cannot end the name or follow another `.`"]], ""],
+    ["an entity line under events", "  events\n    entity :X\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`events\`: \`entity\` is not allowed here; names must match \`${REFERENCE_HEAD}\` (\`entity\` is a registered tag, so the wildcard does not apply to it)`]], ""],
     ["whitespace before the dot", "  events\n    notices .InvoiceOverdue\n", [[12, 12, "MESH_INVALID_OPTION", "Invalid option name `.InvoiceOverdue` — this file's dialect has no `.class` shorthand; write `class=` as an option"]], ""],
     ["a section under actions", "", [[11, 4, "MESH_TAG_NOT_ALLOWED", "`actions`: `events` is not allowed here; allowed children: `create`, `read`, `update`, `destroy`, `always`"]], "    events\n"],
   ])("MX refuses %s", (_label, sections, expected, inActions) => {
@@ -126,6 +129,13 @@ describe("listing lines in the model", () => {
     expect(commands).toEqual([{ identifier: "PayInvoice", from: "./pay-invoice.mesh.mx", fqn: "billing.PayInvoice", position: { file: "billing/invoice.mesh.mx", line: 15, column: 4, offset: 432 } }]);
   });
 
+  test("a commands line resolves through a namespace import too", () => {
+    const imports = `${IMPORTS}import * as c from "./pay-invoice.mesh.mx"\n`;
+    const result = build({ "billing/invoice.mesh.mx": invoice("  commands\n    c.PayInvoice\n", { imports }) });
+    expect(errors(result)).toEqual([]);
+    expect(entityOf(result, "Invoice").commands?.map((c) => [c.identifier, c.from, c.fqn])).toEqual([["c.PayInvoice", "./pay-invoice.mesh.mx", "billing.PayInvoice"]]);
+  });
+
   test("an entity with no section, or an empty one, has no events or commands key, so its model.json is what it was", () => {
     for (const sections of ["", "  events\n  commands\n"]) {
       const result = build({ "billing/invoice.mesh.mx": invoice(sections) });
@@ -158,14 +168,18 @@ describe("listing lines in the model", () => {
     expect(twice("  events\n    InvoicePaid\n    InvoicePaid\n")).toEqual([["billing/invoice.mesh.mx", 13, 4, "error", "MESH_DUPLICATE_MEMBER", "InvoicePaid is listed twice in the events section of billing.Invoice", "remove one"]]);
     expect(twice("  events\n    InvoicePaid\n    Paid\n")).toEqual([["billing/invoice.mesh.mx", 13, 4, "error", "MESH_DUPLICATE_MEMBER", "Paid is listed twice in the events section of billing.Invoice", "remove one"]]);
     expect(twice("  commands\n    PayInvoice\n    PayInvoice\n")).toEqual([["billing/invoice.mesh.mx", 13, 4, "error", "MESH_DUPLICATE_MEMBER", "PayInvoice is listed twice in the commands section of billing.Invoice", "remove one"]]);
+    // A named import and a namespace member of one file are one declaration.
+    const both = (sections: string) => errors(build({ "billing/invoice.mesh.mx": invoice(sections, { imports: `${IMPORTS}import * as ev from "./invoice-paid.mesh.mx"\nimport * as c from "./pay-invoice.mesh.mx"\n` }) }));
+    expect(both("  events\n    InvoicePaid\n    ev.InvoicePaid\n")).toEqual([["billing/invoice.mesh.mx", 15, 4, "error", "MESH_DUPLICATE_MEMBER", "ev.InvoicePaid is listed twice in the events section of billing.Invoice", "remove one"]]);
+    expect(both("  commands\n    c.PayInvoice\n    PayInvoice\n")).toEqual([["billing/invoice.mesh.mx", 15, 4, "error", "MESH_DUPLICATE_MEMBER", "PayInvoice is listed twice in the commands section of billing.Invoice", "remove one"]]);
     // Two events, and an event and a command, are no repeat.
     expect(twice("  events\n    InvoicePaid\n    notices.InvoiceOverdue\n  commands\n    PayInvoice\n")).toEqual([]);
   });
 
   test("tag parameters on a listing are MESH_SYNTAX, with the contracts' wording; a variable binding is MX's", () => {
     expect(errors(build({ "billing/invoice.mesh.mx": invoice("  events\n    InvoicePaid|x|\n  commands\n    PayInvoice|y|\n") }))).toEqual([
-      ["billing/invoice.mesh.mx", 12, 4, "error", "MESH_SYNTAX", "tag parameters and variable bindings are not entity declarations", null],
-      ["billing/invoice.mesh.mx", 14, 4, "error", "MESH_SYNTAX", "tag parameters and variable bindings are not entity declarations", null],
+      ["billing/invoice.mesh.mx", 12, 4, "error", "MESH_SYNTAX", "`InvoicePaid`: tag parameters and variable bindings are not entity declarations", null],
+      ["billing/invoice.mesh.mx", 14, 4, "error", "MESH_SYNTAX", "`PayInvoice`: tag parameters and variable bindings are not entity declarations", null],
     ]);
     expect(lowered(invoice("  events\n    InvoicePaid/y\n")).map((d) => d[2])).toEqual(["MESH_SYNTAX"]);
   });
