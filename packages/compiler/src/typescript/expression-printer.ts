@@ -120,8 +120,9 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
     // bound here, not at module level, so the file declares no name an entity file's helper import could also have.
     (plain.structuredClone ? `const structuredClone = ${CLONE_VALUE}; ` : "") +
     // Each entity the function names, bound when the function runs (an import cycle between two entities' files has
-    // finished loading by then) and typed so that what its actions resolve with is read-only.
-    [...(plain.entities ?? []), ...(plain.events ?? []), ...inTypes.values].map((name) => {
+    // finished loading by then) and typed so that what its actions resolve with is read-only. A namespace alias whose file
+    // declares an entity and events is in both lists, and is bound once, to one object of both.
+    [...new Set([...(plain.entities ?? []), ...(plain.events ?? []), ...inTypes.values])].map((name) => {
       const { value, type } = entities(name);
       return `const ${name}: ${type} = ${value}; `;
     }).join("") +

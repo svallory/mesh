@@ -1,7 +1,7 @@
 // An owner's `events` and `commands` sections with listing lines, and the owner check (`MESH_PUBLISH`'s fourth case):
 // `notes/architecture/aggregates-design.md`, PR 1. A listing line is an imported event or command, by its identifier or as
 // a member of a namespace import, alone on its line; MX claims it through a wildcard child (`listing()`), which works only
-// with `bindingsCallTags: false` on Mesh's dialect. Inline declarations and aggregate files come later.
+// with `bindingsCallTags: false` on Mesh's dialect. Inline declarations are `owner-sections-inline.test.ts`; aggregate files come later.
 import { describe, expect, test } from "bun:test";
 import type { Diagnostic, Entity, Expression, Step } from "@meshfw/model";
 import { MESH_DIALECT } from "../src/front-end/dialect.ts";
@@ -81,14 +81,14 @@ describe("the dialect and the contracts", () => {
 
   test.each([
     ["a second section", "  events\n    InvoicePaid\n  events\n    Paid\n", [[13, 2, "MESH_REPEATED_CHILD", "`entity`: `events` may not be repeated"]], ""],
-    ["a declaration line under events", "  events\n    command :X\n      uuid :id\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`events\`: \`command\` is not allowed here; names must match \`${REFERENCE_HEAD}\` (\`command\` is a registered tag, so the wildcard does not apply to it)`]], ""],
-    ["an attribute line under commands", "  commands\n    string :s\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`commands\`: \`string\` is not allowed here; names must match \`${REFERENCE_HEAD}\` (\`string\` is a registered tag, so the wildcard does not apply to it)`]], ""],
+    ["a declaration line under events", "  events\n    command :X\n      uuid :id\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`events\`: \`command\` is not allowed here; allowed children: \`event\`; other names must match \`${REFERENCE_HEAD}\` (\`command\` is a registered tag, so the wildcard does not apply to it)`]], ""],
+    ["an attribute line under commands", "  commands\n    string :s\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`commands\`: \`string\` is not allowed here; allowed children: \`command\`; other names must match \`${REFERENCE_HEAD}\` (\`string\` is a registered tag, so the wildcard does not apply to it)`]], ""],
     ["an option on a listing", "  events\n    InvoicePaid prop=:x\n", [[12, 16, "MESH_UNKNOWN_OPTION", "`InvoicePaid` (inline contract): accepts no options"]], ""],
     ["a name after a listing", "  events\n    InvoicePaid :x\n", [[12, 16, "MESH_UNKNOWN_OPTION", "`InvoicePaid` (inline contract): accepts no options"]], ""],
     ["a child under a listing", "  events\n    InvoicePaid\n      uuid :x\n", [[13, 6, "MESH_TAG_NOT_ALLOWED", "`InvoicePaid` (inline contract): `uuid` is not allowed here; allowed children: none"]], ""],
     ["a value on a listing", "  events\n    InvoicePaid=1\n", [[12, 15, "MESH_UNKNOWN_OPTION", "`InvoicePaid` (inline contract): accepts no options"]], ""],
     ["whitespace after the dot", "  events\n    notices. InvoiceOverdue\n", [[12, 11, "MESH_INVALID_TAG_NAME", "a tag name cannot have an empty part: a `.` must be followed by a name, as in `billing.InvoiceVoided`, and cannot end the name or follow another `.`"]], ""],
-    ["an entity line under events", "  events\n    entity :X\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`events\`: \`entity\` is not allowed here; names must match \`${REFERENCE_HEAD}\` (\`entity\` is a registered tag, so the wildcard does not apply to it)`]], ""],
+    ["an entity line under events", "  events\n    entity :X\n", [[12, 4, "MESH_TAG_NOT_ALLOWED", `\`events\`: \`entity\` is not allowed here; allowed children: \`event\`; other names must match \`${REFERENCE_HEAD}\` (\`entity\` is a registered tag, so the wildcard does not apply to it)`]], ""],
     ["whitespace before the dot", "  events\n    notices .InvoiceOverdue\n", [[12, 12, "MESH_INVALID_OPTION", "Invalid option name `.InvoiceOverdue` — this file's dialect has no `.class` shorthand; write `class=` as an option"]], ""],
     ["a section under actions", "", [[11, 4, "MESH_TAG_NOT_ALLOWED", "`actions`: `events` is not allowed here; allowed children: `create`, `read`, `update`, `destroy`, `always`"]], "    events\n"],
   ])("MX refuses %s", (_label, sections, expected, inActions) => {
@@ -153,7 +153,7 @@ describe("listing lines in the model", () => {
     ["a qualifier that is no import", "  events\n    alerts.InvoiceOverdue\n", [[12, 4, "MESH_UNKNOWN_EVENT", "alerts.InvoiceOverdue is not an imported event: no import of this file is named alerts.", null]]],
     ["a head of three parts", "  events\n    a.b.c\n", [[12, 4, "MESH_UNKNOWN_EVENT", "a.b.c is not an imported event: a listing is an imported identifier (`InvoicePaid`) or a member of a namespace import (`notices.InvoiceOverdue`)", null]]],
     ["an entity", "  events\n    Task\n", [[12, 4, "MESH_UNKNOWN_EVENT", "Task is not an imported event.", null]]],
-    ["the file's own entity", "  events\n    Invoice\n", [[12, 4, "MESH_UNKNOWN_EVENT", "Invoice is not an imported event.", null]]],
+    ["the file's own entity", "  events\n    Invoice\n", [[12, 4, "MESH_UNKNOWN_EVENT", "Invoice is not an imported event: the file declares Invoice as an entity.", null]]],
     ["a command under events", "  events\n    PayInvoice\n", [[12, 4, "MESH_UNKNOWN_EVENT", "PayInvoice is not an imported event.", null]]],
     ["an event under commands", "  commands\n    InvoicePaid\n", [[12, 4, "MESH_UNKNOWN_COMMAND", "InvoicePaid is not an imported command.", null]]],
     ["a namespace alias under commands", "  commands\n    notices.InvoiceOverdue\n", [[12, 4, "MESH_UNKNOWN_COMMAND", "notices.InvoiceOverdue is not an imported command: notices is a namespace import of ./notices/invoice-overdue.mesh.mx, which is not a command file", null]]],

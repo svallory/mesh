@@ -224,7 +224,7 @@ describe("MESH_PUBLISH", () => {
   });
 
   test("a new of an entity, of its own entity or of a global is not an event either", () => {
-    expect(brief(publish("() => new Invoice({})"))[0]!.slice(1)).toEqual([10, 26, "error", "MESH_PUBLISH", "Invoice is not an imported event.", null]);
+    expect(brief(publish("() => new Invoice({})"))[0]!.slice(1)).toEqual([10, 26, "error", "MESH_PUBLISH", "Invoice is not an imported event: the file declares Invoice as an entity.", null]);
     expect(brief(publish("() => new Date()"))[0]!.slice(3, 6)).toEqual(["error", "MESH_PUBLISH", "Date is not an imported event."]);
   });
 

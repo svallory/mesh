@@ -423,7 +423,7 @@ Options such as `auto=`, `on:load=`, `types=` and `actions=` sit on the declarat
 | `on=` | `create`, `update`, `destroy` | no | The command the action answers: an imported identifier (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`). With no name, the action is named after the command (`payInvoice`); with one, the name wins. A `read` takes no `on=` |
 | `filter=` | `read` | no | The condition every row must meet; see [Reads: filter and sort](#reads-filter-and-sort) |
 
-A command is a request's fields, declared in a file of its own; see [Events: Answering a command](./events.md#answering-a-command) for how the action and the command must agree, and `dispatch` for running one.
+A command is a request's fields, declared in a file of its own or in an entity's `commands` section; see [Events: Answering a command](./events.md#answering-a-command) for how the action and the command must agree, and `dispatch` for running one.
 
 ### validate
 

@@ -203,28 +203,30 @@ const contracts: ContractMap = {
       commands: {},
     },
   }),
-  // An owner's events and commands (`notes/spec/events-and-commands.md`, "Where a declaration lives"): one listing line per
-  // event or command an import of the file names (`InvoicePaid`, `notices.InvoiceOverdue`). The owner check reads them: an
-  // event that owners list is published only by its owners' actions.
+  // An owner's events and commands (`notes/spec/events-and-commands.md`, "Where a declaration lives"): inline declarations
+  // (`event :InvoiceVoided` with its field lines) and listing lines of the events or commands an import of the file names
+  // (`InvoicePaid`, `notices.InvoiceOverdue`), side by side. The owner check reads them: an event that owners list or
+  // declare is published only by its owners' actions.
   events: closed({
     parents: ["entity"],
-    children: { "*": listing() },
+    children: { ...children("event"), "*": listing() },
   }),
   commands: closed({
     parents: ["entity"],
-    children: { "*": listing() },
+    children: { ...children("command"), "*": listing() },
   }),
-  // An event and a command are files of their own (M6): the root line declares one, and its children are field lines,
-  // written as attribute lines are (`uuid :invoiceId`). The field kinds are the attribute types, whose contracts also
-  // list these two as parents; `default`, `unique`, `primary-key`, `on` and `value` are not options of a field, which the
-  // builder reports as `MESH_UNKNOWN_OPTION` (a contract is per tag, so it cannot tell a field from an attribute).
+  // An event and a command are files of their own (M6), or declared inline in an owner's section: the line declares one,
+  // and its children are field lines, written as attribute lines are (`uuid :invoiceId`). The field kinds are the
+  // attribute types, whose contracts also list these two as parents; `default`, `unique`, `primary-key`, `on` and `value`
+  // are not options of a field, which the builder reports as `MESH_UNKNOWN_OPTION` (a contract is per tag, so it cannot
+  // tell a field from an attribute).
   event: closed({
-    parents: ["#root"],
+    parents: ["#root", "events"],
     attributes: named(),
     children: children(...ATTRIBUTE_TYPES),
   }),
   command: closed({
-    parents: ["#root"],
+    parents: ["#root", "commands"],
     attributes: named(),
     children: children(...ATTRIBUTE_TYPES),
   }),

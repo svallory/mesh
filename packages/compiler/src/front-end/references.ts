@@ -46,10 +46,16 @@ export interface ReferenceScope {
    */
   duplicates: ReadonlySet<string>;
   /**
-   * The file's own declaration, which the file names without an import (an entity relates to itself), and its path. Absent
-   * for a kind the file's own declaration is not (an entity file declares no event, so `own` is not an event).
+   * The file's own declarations of the position's kind, which the file names without an import, and the file's path: its
+   * entity for an entity position (an entity relates to itself), its inline events for an event position, its inline
+   * commands for a command position. Absent or empty for a kind the file declares none of.
    */
-  own?: { name: string; from: string };
+  own?: readonly { name: string; from: string }[];
+  /**
+   * The file's own path, as its import specifiers spell it: a name the file declares as another kind than the position's is reported
+   * as what it is (`InvoiceVoided is not an imported command: the file declares InvoiceVoided as an event`).
+   */
+  self?: string;
 }
 
 /** What a position references: `entity=` takes an entity, a `publish` function's `new` an event, and `on=` will take a command. */
@@ -105,7 +111,12 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
   };
   if (!qualifier) {
     const imported = scope.imports.get(name);
-    if (!imported) return scope.own && name === scope.own.name ? { ok: true, identifier, from: scope.own.from, declared: scope.own.name } : unknown();
+    if (!imported) {
+      const own = scope.own?.find((declaration) => declaration.name === name);
+      if (own) return { ok: true, identifier, from: own.from, declared: own.name };
+      const found = scope.self === undefined ? undefined : kind.kindOf(scope.self, name);
+      return unknown(found === undefined || found === kind.noun ? "" : `: the file declares ${name} as ${an(found)}`);
+    }
     if (!imported.namespace) {
       if (!kind.declares(imported.from)) return unknown();
       // The binding names a declaration of the file: the position takes it only when that declaration is of its kind.
@@ -155,7 +166,7 @@ const importedNameOf = (imported: Import, local: string): string => imported.imp
  * namespace member of the kind.
  */
 function candidates(scope: ReferenceScope, kind: ReferenceKind): string[] {
-  const names = scope.own ? [scope.own.name] : [];
+  const names = (scope.own ?? []).map((declaration) => declaration.name);
   for (const [local, imported] of scope.imports) {
     if (!kind.declares(imported.from)) continue;
     const members = kind.names(imported.from);
