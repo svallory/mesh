@@ -39,7 +39,7 @@ entity :Customer table="customers"
 `;
 const invoice = `import { Customer } from "./customer.mesh.mx"
 import { Line } from "./line.mesh.mx"
-import { slow } from "./helpers"
+import { slow, limit } from "./helpers"
 entity :Invoice table="invoices"
   attributes
     uuid :id primary-key
@@ -70,6 +70,12 @@ entity :Invoice table="invoices"
         asc &total
     read :withBigLines filter=() => &lines.some((l) => l.qty > 2)
     read :stalled filter=() => &total > slow(1)
+    read :cheapUndated filter=() => &total < (&dueOn === null ? limit(15) : 0)
+    read :allSmallLines filter=() => &lines.every((l) => l.qty < 3)
+    read :noHugeBigLine filter=() => &lines.filter((l) => l.qty > 2).every((l) => l.qty > 9)
+    read :lateFirst
+      sort
+        desc &isLate
 `;
 const line = `import { Invoice } from "./invoice.mesh.mx"
 entity :Line table="lines"
@@ -109,10 +115,15 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")
 const day = (d: number) => new Date(Date.UTC(2026, 0, d));
 const alice = { actor: { id: id(91) } };
 
-/** Two customers: c1 (owner 91) holds i1 (total 50, due Jan 3), i2 (150, Jan 1), i3 (20, no date); c2 (owner 92) holds i4 (300, Jan 9). */
+/**
+ * Three customers: c1 (owner 91) holds i1 (total 50, due Jan 3), i2 (150, Jan 1), i3 (20, no date); c2 (owner 92) holds
+ * i4 (300, Jan 9); c3 (owner 93) holds i5 (100, Jan 9), inserted before i4 so that row order is not key order.
+ */
 async function seed(tx: DataOperations) {
   await tx.insert(app.tables.customers, { id: id(2), ownerId: id(92), name: "bo" });
   await tx.insert(app.tables.customers, { id: id(1), ownerId: id(91), name: "ada" });
+  await tx.insert(app.tables.customers, { id: id(3), ownerId: id(93), name: "cy" });
+  await tx.insert(app.tables.invoices, { id: id(15), total: 100, dueOn: day(9), customerId: id(3) });
   await tx.insert(app.tables.invoices, { id: id(13), total: 20, dueOn: null, customerId: id(1) });
   await tx.insert(app.tables.invoices, { id: id(14), total: 300, dueOn: day(9), customerId: id(2) });
   await tx.insert(app.tables.invoices, { id: id(11), total: 50, dueOn: day(3), customerId: id(1) });
@@ -156,7 +167,7 @@ describe("a read's own filter and sort", () => {
       expect(totals(await mesh.forCustomerInvoice({ customerId: id(1), filter: { total: { gte: 50 } } }, alice))).toEqual([150, 50]);
       expect(totals(await mesh.forCustomerInvoice({ customerId: id(1), sort: ["-total"] }, alice))).toEqual([150, 50, 20]);
       expect(totals(await mesh.forCustomerInvoice({ customerId: id(1), limit: 1, offset: 1 }, alice))).toEqual([150]);
-      expect(await mesh.forCustomerInvoice({ customerId: id(3) }, alice)).toEqual([]);
+      expect(await mesh.forCustomerInvoice({ customerId: id(4) }, alice)).toEqual([]);
     } finally { await db.close(); }
   });
 
@@ -196,8 +207,8 @@ describe("a read's own filter and sort", () => {
   test("a computed sort key orders by its SQL value, nulls as the smallest, then the next key", async () => {
     const { db, mesh } = await seeded();
     try {
-      // desc &isLate: true (i2, i1), false (i4), unknown (i3); then asc &total within each.
-      expect(totals(await mesh.byLateInvoice({}, alice))).toEqual([50, 150, 300, 20]);
+      // desc &isLate: true (i2, i1), false (i4, i5), unknown (i3); then asc &total within each.
+      expect(totals(await mesh.byLateInvoice({}, alice))).toEqual([50, 150, 100, 300, 20]);
     } finally { await db.close(); }
   });
 
@@ -205,7 +216,28 @@ describe("a read's own filter and sort", () => {
     const { db, mesh } = await seeded();
     try {
       expect(totals(await mesh.withBigLinesInvoice({}, alice))).toEqual([300]);
-      expect((await mesh.busyCustomer({}, alice)).map((c: { name: string }) => c.name)).toEqual(["ada", "bo"]);
+      // c3's one invoice totals 100, which is not over 100: it is left out.
+      expect((await mesh.busyCustomer({}, alice)).map((c: { name: string }) => c.name).sort()).toEqual(["ada", "bo"]);
+      // `every` holds over no rows: i2, i3 and i5 have no line; i1's one line has qty 1; i4's has 5.
+      expect(totals(await mesh.allSmallLinesInvoice({}, alice)).sort()).toEqual([20, 50, 100, 150].sort());
+      // `filter(p).every(q)`: only i4 keeps a line (qty 5), and it is not over 9.
+      expect(totals(await mesh.noHugeBigLineInvoice({}, alice)).sort()).toEqual([20, 50, 100, 150].sort());
+    } finally { await db.close(); }
+  });
+
+  test("a declared sort's ties are broken by the primary key", async () => {
+    const { db, mesh } = await seeded();
+    try {
+      // desc &isLate: true (i1, i2 by key), false (i4 before i5 by key, though i5 was inserted first), unknown (i3).
+      expect(totals(await mesh.lateFirstInvoice({}, alice))).toEqual([50, 150, 300, 100, 20]);
+    } finally { await db.close(); }
+  });
+
+  test("a ternary's helper branch takes the class of the column it is compared with", async () => {
+    const { db, mesh } = await seeded();
+    try {
+      // `limit(15)` is 30, for the undated invoices only: i3 (20).
+      expect(totals(await mesh.cheapUndatedInvoice({}, alice))).toEqual([20]);
     } finally { await db.close(); }
   });
 

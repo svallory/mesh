@@ -67,6 +67,12 @@ describe("lowerCondition", () => {
     // A maximal record-independent subtree is one parameter (O2(a)), `??` and `?:` included.
     ["({ input }) => (input.n ?? 0) === (&rate ?? 0)", call("eq", param(0, "float"), call("coalesce", col("rate", "float"), val(0, "float"))), ["$.coalesce($s.input?.n, () => 0)"], []],
     ["({ input }) => (&paid ? input.n : 0) > 1", call("gt", call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer")), val(1, "integer")), ["$s.input?.n"], []],
+    // A ternary's branches take the class of the operand it meets, even when neither branch states one (a helper, `actor.x`).
+    ["() => &total < (&paid ? cutoff(5) : 0)", call("lt", col("total", "integer"), call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer"))), ['$.pure(cutoff(5), "cutoff")'], []],
+    ["({ actor }) => (&paid ? actor.level : 0) > &total", call("gt", call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer")), col("total", "integer")), ["$s.actor?.level"], []],
+    ["({ actor }) => (&paid ? actor.level : 0) === (&paid ? actor.rank : 1)", call("eq", call("cond", col("paid", "boolean"), param(0, "integer"), val(0, "integer")), call("cond", col("paid", "boolean"), param(1, "integer"), val(1, "integer"))), ["$s.actor?.level", "$s.actor?.rank"], []],
+    ["() => &rate < (&paid ? cutoff(5) : 0)", call("lt", col("rate", "float"), call("cond", col("paid", "boolean"), param(0, "float"), val(0, "float"))), ['$.pure(cutoff(5), "cutoff")'], []],
+    ["({ actor }) => (&rate ?? actor.level) > 1", call("gt", call("coalesce", col("rate", "float"), param(0, "float")), val(1, "float")), ["$s.actor?.level"], []],
     // An imported helper, `Mesh.isSystem` and a quantifier over a list of the caller are parameters (R10).
     ["() => &total > cutoff(2)", call("gt", col("total", "integer"), param(0, "integer")), ['$.pure(cutoff(2), "cutoff")'], []],
     ['({ actor }) => actor.roles.some((r) => r === "admin") || &paid', call("or", param(0, "boolean"), col("paid", "boolean")), ['$.some($s.actor?.roles, (l$r: any) => $.eq(l$r, "admin"))'], []],

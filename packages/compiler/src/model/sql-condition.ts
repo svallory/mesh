@@ -475,16 +475,28 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
    * class. `numeric`: an arithmetic operand, whose class is integer only when every side is known to be one.
    */
   const siblings = (args: readonly ExprNode[], scope: Scope, expect: ValueClass | undefined, numeric?: "integer" | "float" | "arithmetic"): LiteralNode[] => {
-    const out: (LiteralNode | undefined)[] = args.map((arg) => (dependent(arg, scope.rows) ? lower(arg, scope, numeric === "integer" || numeric === "float" ? numeric : expect) : undefined));
-    const known = out.map((node) => (node ? classOfLowered(node) : undefined)).reduce<ValueClass | undefined>((a, b) => joined(a, b), undefined);
+    const fixed = numeric === "integer" || numeric === "float" ? numeric : undefined;
+    const classOf = (nodes: readonly (LiteralNode | undefined)[]) => nodes.map((node) => (node ? classOfLowered(node) : undefined)).reduce<ValueClass | undefined>((a, b) => joined(a, b), undefined);
+    // A `?:` or `??` takes its class from what it meets: it is lowered after the other record-dependent operands, with
+    // their class, so a branch that states none (a helper's result, `actor.x`) is not left to guess.
+    const borrows = (arg: ExprNode) => arg.kind === "call" && (arg.fn === "cond" || arg.fn === "coalesce");
+    const out: (LiteralNode | undefined)[] = args.map((arg) => (dependent(arg, scope.rows) && !borrows(arg) ? lower(arg, scope, fixed ?? expect) : undefined));
+    const before = classOf(out) ?? expect;
+    args.forEach((arg, i) => { if (dependent(arg, scope.rows) && borrows(arg)) out[i] = lower(arg, scope, fixed ?? before ?? independentClass(args, scope)); });
+    // No record-dependent operand states a class: the record-independent ones may (`cutoff(5) : 0` is an integer).
+    const known = classOf(out);
     return args.map((arg, i) => {
       if (out[i]) return out[i]!;
-      let cls = known ?? expect;
+      let cls = known ?? expect ?? independentClass(args, scope);
       if (numeric === "integer" || numeric === "float") cls = numeric;
       else if (numeric === "arithmetic") cls = known === "integer" && staticClass(arg, scope) === "integer" ? "integer" : "float";
       return independent(arg, scope, cls);
     });
   };
+
+  /** The class the record-independent operands of a call state between them, if any. */
+  const independentClass = (args: readonly ExprNode[], scope: Scope): ValueClass | undefined =>
+    args.filter((arg) => !dependent(arg, scope.rows)).map((arg) => staticClass(arg, scope)).reduce<ValueClass | undefined>((a, b) => joined(a, b), undefined);
 
   return {
     run(tree: ExprNode, scope: Scope, expect: ValueClass | undefined): LowerResult {
