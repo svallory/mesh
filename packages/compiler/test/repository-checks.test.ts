@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkDocsSyntaxV4, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime, checkScratchPrefixes } from "./repository-checks.ts";
+import { checkDocsSamples, checkDocsSyntaxV4, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime, checkScratchPrefixes, oldSpellingInV4 } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -526,6 +526,21 @@ test("Docs MX samples: the architecture file is a complete fence, parsed as auth
     writeFileSync(join(dir, "architecture.md"), '```mx "src/domain/architecture.mesh.mx"\narchitecture :project\n  use\n```\n');
     expect(checkDocsSamples(dir).errors.join("\n")).toContain("`use` names what it includes");
   });
+});
+
+test("Docs MX samples: a surface file is a complete fence, parsed as authored", () => {
+  temporary((dir) => {
+    const surface = (line: string) => `\`\`\`mx "src/surfaces/public/public.mesh.mx"\nimport { Todo } from "../../domain/todo/todo.mesh.mx"\n\nsurface :public\n  expose :todos entity=Todo ${line}\n    action :read\n\`\`\`\n`;
+    writeFileSync(join(dir, "surfaces.md"), surface('label="Todos" fields=[:id, :title]'));
+    expect(checkDocsSamples(dir)).toMatchObject({ parsed: 1, skipped: 0, errors: [] });
+    expect(checkDocsSyntaxV4(dir)).toMatchObject({ checked: 1, errors: [] });
+    writeFileSync(join(dir, "surfaces.md"), surface('fields="title"'));
+    expect(checkDocsSamples(dir).errors.join("\n")).toContain("fields must be a list of atoms");
+  });
+  // Only an `expose` line is exempt: elsewhere `fields=[:a]` is still the old spelling of a member reference.
+  expect(oldSpellingInV4("import { Todo } from \"./todo.mesh.mx\"\nsurface :public\n  expose :todos entity=Todo fields=[:id, :title]\n")).toBeNull();
+  expect(oldSpellingInV4("entity :Todo\n  identities\n    identity :ab fields=[:a]\n")).toContain("a member reference is `&name`, not an atom");
+  expect(oldSpellingInV4("  expose-like :x fields=[:a]\n")).toContain("a member reference is `&name`, not an atom");
 });
 
 test("Docs MX samples: a fence uses a concept another fence of the Docs declares, and not one no fence declares", () => {

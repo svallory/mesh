@@ -34,6 +34,7 @@ It copies the generator templates into your project:
   index.ts.jig
   load.ts.jig
   module.ts.jig
+  surface.ts.jig
   types.ts.jig
   validators.ts.jig
   schema.ts.jig

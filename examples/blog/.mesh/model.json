@@ -1138,5 +1138,58 @@
       "relationships": [],
       "table": "users"
     }
+  ],
+  "surfaces": [
+    {
+      "expose": [
+        {
+          "actions": [
+            {
+              "name": "read",
+              "position": {
+                "column": 4,
+                "file": "src/surfaces/public/public.mesh.mx",
+                "line": 5,
+                "offset": 165
+              }
+            },
+            {
+              "name": "publish",
+              "position": {
+                "column": 4,
+                "file": "src/surfaces/public/public.mesh.mx",
+                "line": 6,
+                "offset": 182
+              }
+            }
+          ],
+          "entity": "blog.Post",
+          "fields": [
+            "id",
+            "title",
+            "excerpt",
+            "state",
+            "author"
+          ],
+          "identifier": "Post",
+          "label": "Posts",
+          "name": "posts",
+          "position": {
+            "column": 2,
+            "file": "src/surfaces/public/public.mesh.mx",
+            "line": 4,
+            "offset": 73
+          }
+        }
+      ],
+      "file": "src/surfaces/public/public.mesh.mx",
+      "name": "public",
+      "position": {
+        "column": 0,
+        "file": "src/surfaces/public/public.mesh.mx",
+        "line": 3,
+        "offset": 55
+      }
+    }
   ]
 }

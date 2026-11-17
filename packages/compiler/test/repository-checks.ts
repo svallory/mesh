@@ -261,7 +261,7 @@ export function isV4EntityFile(block: string): boolean {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^(?:entity|event|command|aggregate|concept|architecture)\s+:\w+/.test(text);
+    return /^(?:entity|event|command|aggregate|concept|architecture|surface)\s+:\w+/.test(text);
   }
   return false;
 }
@@ -310,7 +310,9 @@ export function oldSpellingInV4(block: string): string | null {
     if (/\b(?:belongs-to|has-many|has-one)\s*=/.test(text) || /\bentity\s*=\s*:/.test(text)) {
       return `line ${index + 1}: a relationship is \`kind :name entity=ImportedName\` (${text})`;
     }
-    if (/^(?:asc|desc)\s+:|^:\w+\s*=|\b(?:load|actions|fields)\s*=\s*\[[^\]]*:\w|\bon:load\s*=\s*:/.test(text)) {
+    // A surface's `expose` line names its fields with atoms (`fields=[:id, :title]`): there they are names, not references.
+    const fields = text.startsWith("expose ") ? "" : "|fields";
+    if (new RegExp(`^(?:asc|desc)\\s+:|^:\\w+\\s*=|\\b(?:load|actions${fields})\\s*=\\s*\\[[^\\]]*:\\w|\\bon:load\\s*=\\s*:`).test(text)) {
       return `line ${index + 1}: a member reference is \`&name\`, not an atom (${text})`;
     }
     // A read's order is a `sort` section with `asc`/`desc` lines (ADR-0066).

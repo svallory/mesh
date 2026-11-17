@@ -31,7 +31,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
       "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
       "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
       "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError", "HandlerLostError",
-      "SubscriptionOverflowError", "StoppedHandler", "HandlerStoppedError",
+      "SubscriptionOverflowError", "StoppedHandler", "HandlerStoppedError", "SurfaceAction", "SurfaceExposure", "Surface",
     ]);
     // Check every documented member. Real errors additionally expose entity/key;
     // that extra API is not promised by the sample's deliberately smaller shape.

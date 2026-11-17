@@ -1,0 +1,6 @@
+import { Post } from "../../domain/blog/post.mesh.mx"
+
+surface :public
+  expose :posts entity=Post label="Posts" fields=[:id, :title, :excerpt, :state, :author]
+    action :read
+    action :publish

@@ -647,6 +647,47 @@ declare module "@meshfw/runtime" {
     override code: "MESH_HANDLER_STOPPED";
     readonly stopped: readonly StoppedHandler[];
   }
+
+  // Surfaces: what a surface's generated manifest (`#mesh/surfaces/<name>`) is made of, and what it calls.
+  /** The properties of `T` named in `F`, through arrays, each keeping its `?`; `void`, `undefined` and `null` stay as they are: what leaves through a surface. */
+  export type Projected<T, F extends string> =
+    [T] extends [void] ? T
+    : T extends null | undefined ? T
+    : T extends readonly (infer E)[] ? Projected<E, F>[]
+    : Readonly<Pick<T, Extract<keyof T, F>>>;
+  /** A read's input with its `filter` and `sort` narrowed to the properties `F` an expose line lets leave. */
+  export type SurfaceReadInput<I extends { filter?: unknown; sort?: unknown }, F extends string> = Omit<I, "filter" | "sort"> & {
+    filter?: unknown;
+    sort?: readonly (F | `-${F}`)[] | undefined;
+  };
+  /** One action a surface lets its audience call: it runs the entity's own action with the caller's context and returns the result projected. */
+  export interface SurfaceAction<I = never, O = unknown> {
+    readonly kind: "create" | "read" | "update" | "destroy";
+    run(input: I, context: ActionContext): Promise<O>;
+  }
+  /** One expose line of a manifest. */
+  export interface SurfaceExposure {
+    /** The exposed entity's FQN, `blog.Post`. */
+    readonly entity: string;
+    /** `label=`, or the exposed name. */
+    readonly label: string;
+    /** The record properties that leave, in declaration order (a belongs-to as its key column, `authorId`). */
+    readonly fields: readonly string[];
+    readonly actions: { readonly [name: string]: SurfaceAction<any, unknown> };
+  }
+  /** A surface's manifest, which a reader (an adapter) reads at run time. */
+  export interface Surface {
+    readonly name: string;
+    readonly expose: { readonly [name: string]: SurfaceExposure };
+    /** The FQNs of the events the surface sends out. */
+    readonly publishes: readonly string[];
+  }
+  /** Copies the properties named in `fields` from a record or each record of an array, frozen. */
+  export function project<T, const F extends string>(value: T, fields: readonly F[]): Projected<T, F>;
+  /** Refuses (`InvalidInputError`, issue code `not_exposed`) a read input that filters or sorts by a field outside `fields`, or loads a name outside `loadable`. */
+  export function checkRead(input: unknown, fields: readonly string[], loadable: readonly string[]): void;
+  /** Freezes a manifest deeply. */
+  export function defineSurface<const S extends Surface>(surface: S): S;
 }
 
 declare module "@meshfw/data-sqlite" {
@@ -1016,6 +1057,31 @@ declare module "#mesh/domain/billing" {
       pay(input: { id: string }, context?: ActionContext): Promise<Invoice>;
       payInvoice(input: { id: string; paidAt?: Date }, context?: ActionContext): Promise<Invoice>;
   }>;
+}
+
+// The manifest of the Surfaces page's example, `src/surfaces/public/public.mesh.mx`: `surface :public` exposing the
+// Todo module's `Todo` as `todos` with `fields=[:id, :title, :done]` and the actions `read` and `complete`.
+declare module "#mesh/surfaces/public" {
+  import type { Projected, Surface, SurfaceAction } from "@meshfw/runtime";
+  import type { Todo } from "#mesh/domain/todo";
+
+  type Fields = "id" | "title" | "done";
+  type Compare<T> = { eq?: T; ne?: T; in?: T[] };
+  type TodosFilter = { and: readonly TodosFilter[] } | { or: readonly TodosFilter[] } | { id?: Compare<string>; title?: Compare<string>; done?: Compare<boolean> };
+  export const surface: Surface & {
+    readonly name: "public";
+    readonly expose: {
+      readonly todos: {
+        readonly entity: "todo.Todo";
+        readonly label: string;
+        readonly fields: readonly Fields[];
+        readonly actions: {
+          readonly read: SurfaceAction<{ filter?: TodosFilter; sort?: readonly (Fields | `-${Fields}`)[]; limit?: number; offset?: number }, Projected<Todo, Fields>[]>;
+          readonly complete: SurfaceAction<{ id: string }, Projected<Todo, Fields>>;
+        };
+      };
+    };
+  };
 }
 
 // What the generated `.mesh/index.ts` merges into the runtime for the pages' bus, `localBus()`: one `true` member per

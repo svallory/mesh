@@ -48,6 +48,7 @@ export { castInput, checkUnchanged, failJoined, noteWrite, writeCount } from "./
 export type { CastOutput, ReadCap } from "./compose.ts";
 export type { LoadPlan, EntityPlan, RelationPlan, BelongsToPlan, HasPlan, ComputedPlan, LoadOptions } from "./load.ts";
 export { recordWrite, runAction, wantsChanges } from "./seams.ts";
+export { checkRead, defineSurface, project, type NarrowedFilter, type NarrowedSort, type Projected, type Surface, type SurfaceAction, type SurfaceActionKind, type SurfaceExposure, type SurfaceReadInput } from "./surface.ts";
 export { Mesh, type ActionFunction, type Decision, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
 export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, makeQuery, published, readEvents, releaseBinding, settled } from "./entity.ts";

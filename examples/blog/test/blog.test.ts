@@ -835,3 +835,42 @@ test("acceptance 8: a relative path into .mesh/, or a #mesh specifier the packag
     ]);
   } finally { rmSync(project, { recursive: true, force: true }); }
 });
+
+// The public surface (src/surfaces/public/public.mesh.mx; surfaces design, PR 2): its generated manifest lets out only
+// the fields the expose line lists, and a read listed there refuses to filter by or load anything else.
+describe("the public surface", () => {
+  test("read and publish return only the listed fields; a listed computed field leaves when loaded, a loaded has-many (here empty) never", async () => {
+    const { surface } = await import("#mesh/surfaces/public");
+    const { db, blog } = await fresh();
+    try {
+      await blog.run(async () => {
+        const author = await User.create({ name: "Alice" }, context);
+        const post = await Post.create({ title: "Hello", body: "the secret body", author: author.id }, context);
+        const posts = surface.expose.posts.actions;
+        const [read] = await posts.read.run({}, context);
+        expect(read).toEqual({ id: post.id, title: "Hello", state: "draft", authorId: author.id });
+        expect(Object.hasOwn(read!, "body")).toBe(false);
+        expect(Object.hasOwn(read!, "excerpt")).toBe(false);
+        const [loaded] = await posts.read.run({ load: ["excerpt"] }, context);
+        expect(loaded).toEqual({ id: post.id, title: "Hello", state: "draft", authorId: author.id, excerpt: "the secret body" });
+        const published = await posts.publish.run({ id: post.id }, as(author));
+        expect(published).toEqual({ id: post.id, title: "Hello", state: "published", authorId: author.id, excerpt: "the secret body" });
+        expect(Object.hasOwn(published, "comments")).toBe(false);
+        expect(Object.hasOwn(published, "body")).toBe(false);
+        // The entity's own policy decides through the surface: only the author publishes.
+        await expect(posts.publish.run({ id: post.id }, context)).rejects.toBeInstanceOf(ForbiddenError);
+        // `create` and `destroy` are Post's actions, but the surface does not list them.
+        expect(Object.keys(posts)).toEqual(["read", "publish"]);
+      });
+    } finally { await db.close(); }
+  });
+
+  test("a read that loads a relationship or filters by an unlisted field is refused", async () => {
+    const { surface } = await import("#mesh/surfaces/public");
+    const posts = surface.expose.posts.actions;
+    // @ts-expect-error `comments` is a relationship: the surface lets only listed computed fields load
+    await expect(posts.read.run({ load: ["comments"] }, context)).rejects.toBeInstanceOf(InvalidInputError);
+    // @ts-expect-error `body` is not listed
+    await expect(posts.read.run({ filter: { body: { eq: "x" } } }, context)).rejects.toBeInstanceOf(InvalidInputError);
+  });
+});

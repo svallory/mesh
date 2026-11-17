@@ -1,13 +1,13 @@
 ---
 title: "0095. Surface files are read from their own folder; `fields=` names attributes, belongs-to and computed fields"
-description: "Decision record 0095: how the build finds and checks surface files (a `surfaces` folder in mesh.config.ts, one folder per surface, `MESH_SURFACE_PATH`), what a surface file may import, what `fields=` may name, which duplicates are refused, and the model node. The manifest a reader takes is decided with its pull request. Status: Proposed (lead ruling D41, pending operator review)."
+description: "Decision record 0095: how the build finds and checks surface files (a `surfaces` folder in mesh.config.ts, one folder per surface, `MESH_SURFACE_PATH`), what a surface file may import, what `fields=` may name, which duplicates are refused, and the model node. The manifest a reader takes (`#mesh/surfaces/<name>`), and the rule that a read listed on a surface filters, sorts and loads only by what it lets leave. Status: Proposed (lead ruling D41, pending operator review)."
 ---
 
 # 0095. Surface files are read from their own folder; `fields=` names attributes, belongs-to and computed fields
 
 ## Status
 
-Proposed (lead ruling D41, pending operator review). Builds the file kind [ADR-0077](./0077-surfaces-and-file-kinds.md) decided, as its action item asks ("the surface contract, view and manifest emitter in core"), in parts. This record holds what the first part builds: where the build finds a surface file, what it checks, and what the model records. The later pull requests of the same unit (the generated manifest and its read-input rule, `publishes`, the JSON-RPC reader) add their decisions to this record.
+Proposed (lead ruling D41, pending operator review). Builds the file kind [ADR-0077](./0077-surfaces-and-file-kinds.md) decided, as its action item asks ("the surface contract, view and manifest emitter in core"), in parts. This record holds what the first two parts build: where the build finds a surface file, what it checks, what the model records (decisions 1 to 7), and the generated manifest with its read-input rule (decisions 8 to 10). The later pull requests of the same unit (`publishes`, the JSON-RPC reader) add their decisions to this record.
 
 ## Date
 
@@ -31,6 +31,10 @@ ADR-0077 makes a surface a file of its own, `surface :name` with `expose` and `a
 6. **The domain never imports a surface (OD6 (a)).** A domain file that imports a surface file is `MESH_UNKNOWN_ENTITY`, the code an import outside the domain already had, with a message that says why. This stays an ordinary build error and is not an architecture rule ([ADR-0084](./0084-architecture-rules-are-core.md)).
 7. **The model.** `ModelDocument.surfaces` (`Surface`, `Exposure`, `ExposedAction` in `@meshfw/model`) is present only when the project declares a surface, so a project without one keeps its `model.json` byte for byte. An exposure records the entity's FQN, the reference as written, the label when written, the fields as written (or `"all"`) and the action names.
 
+8. **One manifest per surface (OD10 (a)).** `mesh build` writes `<output>/surfaces/<name>/index.ts`, which a project maps once as `"#mesh/surfaces/*": "./.mesh/surfaces/*/index.ts"`. It exports `surface`, frozen by `defineSurface` from `@meshfw/runtime`: the surface's name, per expose line the entity's FQN, its label (the exposed name when none is written), the record properties that leave (in the entity's declaration order, a `belongs-to` as its key column, so reordering `fields=` changes nothing generated), one `run(input, context)` per listed action, and `publishes`, empty until the `publishes` section is built. `run` calls the entity value's method with the caller's context, so every policy and check applies, and returns its result through `project`, which keeps only those properties. A reader imports the manifest and `@meshfw/runtime`, never the model (ADR-0077 decision 3). A project without surfaces gets no file. The folder leaves room for a reader's own generated files later, and the fixed export name needs no rule for a surface named like a reserved word.
+9. **A listed read filters, sorts and loads only by what leaves (OD11 (a)).** Before the action runs, `checkRead` refuses a `filter` key at any depth of `and`/`or`, a `sort` key (with or without its `-`) that is not a property the line lets leave, and a `load` name that is not one of its listed computed fields: one `InvalidInputError` with an issue per name, code `not_exposed`, path `["filter", ..., name]`, `["sort", i]` or `["load", i]`. The generated input type is narrowed the same way. Without it, a caller who sees only `id` could recover any other attribute by bisection (`{ "filter": { "body": { "gte": "m" } } }`) and its order by `sort`. A write action's input passes unchanged: `fields=` governs what leaves, the action's own input and policies what it takes.
+10. **The caller loads a listed computed field (OD12 (a)).** A computed field `fields=` lists is in a read's result only when the caller's `load` names it, and a write's when its `load=` step does; through a surface `load` takes only listed computed fields, so loading a relationship whose records would be dropped is refused instead of run.
+
 ## Options considered
 
 1. A convention instead of a key (OD1 (b), a `surfaces` folder beside the domain root): no configuration, but a glob or list `domain` has no single "beside", and it surprises a project that already has a `surfaces` folder for something else.
@@ -38,6 +42,9 @@ ADR-0077 makes a surface a file of its own, `surface :name` with `expose` and `a
 3. Enforce the place but not the folder name (OD2 (b)), or reuse `MESH_TAG_NOT_ALLOWED` and `MESH_MODULE_NAME` (OD2 (c)): the first leaves services, which ADR-0078 puts under `src/surfaces/<name>/services/`, without a reliable owner; the second misdescribes the mistake, since the tag is allowed and the place is not.
 4. `fields=` names attributes only (OD3 (a)), or relationships too, each projected by its entity's expose line (OD3 (c)): the first hides a record's owner id from every client; the second needs a nested projection rule no spec sentence gives.
 5. One entity under two names in one surface (OD4 (b)): the one case with a use, kept out because refusing it can be relaxed later and allowing it cannot be taken back.
+6. The manifest as `<output>/surfaces/<name>.ts` exporting a constant named after the surface (OD10 (b)): `surface :delete` would export `delete`, a reserved word, and need a second name rule.
+7. Let a listed read filter and sort by any field and document the leak (OD11 (b)), or narrow only the types (OD11 (c)): the first makes `fields=` no confidentiality boundary for any entity with a listed read; the second protects nothing on the wire, where an adapter passes the input as it came.
+8. A surface read that loads every listed computed field itself (OD12 (b)), or a refusal of a computed field no listed action can load (OD12 (c)): the first evaluates them all on every read, a query per row for a rollup, and the read's result no longer matches the entity's own; the second refuses the common case, a read that loads.
 
 ## Trade-off analysis
 
@@ -47,11 +54,13 @@ Every choice here is the narrow one, and each can be widened later without break
 
 - A file whose root is `surface` is no longer `MESH_UNKNOWN_TAG`: in a project without the key it is `MESH_SURFACE_PATH`. An `action`, `expose` (and, later, `publishes`) line in an entity file moves from `MESH_UNKNOWN_TAG` to `MESH_TAG_NOT_ALLOWED`, which names the tags allowed there.
 - `surface`, `expose` and `action` are reserved tags.
-- Nothing is generated from a surface yet: the manifest and the rule that keeps a read listed on a surface from filtering, sorting or loading by an unlisted member come with the next pull request.
+- `@meshfw/runtime` exports `project`, `checkRead`, `defineSurface` and the manifest's types (`Surface`, `SurfaceExposure`, `SurfaceAction`, `Projected`, `SurfaceReadInput`). `mesh export generators` writes one more template, `surface.ts.jig`, for every project.
+- A client of a surface cannot filter or sort by a field it may not see, and loads a related entity's records through that entity's own expose line.
+- `mesh build` never deletes generated files: after a surface is removed, its `.mesh/surfaces/<name>/` stays until the developer deletes it, and `mesh build --check` reports it.
 
 ## Action items
 
 - [x] The file kind: the `surfaces` key, the contracts, the checks above and `ModelDocument.surfaces`.
-- [ ] The generated manifest, `project` and `checkRead` in `@meshfw/runtime`, the user page.
+- [x] The generated manifest, `project` and `checkRead` in `@meshfw/runtime`, the user page.
 - [ ] The `publishes` section.
 - [ ] `surfaceMethods` in `@meshfw/jsonrpc`.
