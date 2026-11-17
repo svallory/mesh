@@ -50,8 +50,8 @@ const user = `entity :User table="users"
   actions auto=[:read]
 `;
 const TS = '{ mode: "date", precision: 3, withTimezone: true }';
-const col = (key: string, builder: string, options: string | null, notNull = true, extra: Partial<{ primaryKey: boolean; identity: boolean; unique: boolean }> = {}) =>
-  ({ key, builder, nameLiteral: JSON.stringify(key), options, notNull, primaryKey: false, identity: false, unique: false, ...extra });
+const col = (key: string, builder: string, options: string | null, notNull = true, extra: Partial<{ primaryKey: boolean; identity: boolean; unique: boolean; typeArgument: string }> = {}) =>
+  ({ key, builder, nameLiteral: JSON.stringify(key), options, notNull, primaryKey: false, identity: false, unique: false, typeArgument: null as string | null, ...extra });
 
 describe("schemaView", () => {
   test("one table per entity, sorted by entity name, every attribute type in its Postgres column", () => {
@@ -103,6 +103,54 @@ describe("schemaView", () => {
     const exact: { s: string; i: number; f: number; b: boolean; d: Date; j: unknown; e: "a" | "b" } = {} as Row;
     const back: Row = {} as typeof exact;
     void exact; void back;
+  });
+});
+
+/**
+ * A model with concept members, written out (the build needs concept files on disk, which data-sqlite's domain suite
+ * `concepts.ts` covers end to end, run here by `domain.test.ts`): `Invoice` holds `Money :total`, `Money :refund nullable`
+ * and `billing.Status :status`.
+ */
+const conceptDocument = (): ModelDocument => {
+  const position = { file: "src/domain/billing/invoice.mesh.mx", line: 1, column: 0, offset: 0 };
+  const member = (name: string, concept: string, nullable = false) => ({ name, type: "concept" as const, concept, nullable, primaryKey: false, unique: false, position });
+  return {
+    entities: [{
+      name: "Invoice", fqn: "billing.Invoice", table: "invoices", file: position.file, module: "billing", imports: [],
+      attributes: [{ name: "id", type: "uuid", nullable: false, primaryKey: true, unique: false, position }, member("total", "Money"), member("refund", "Money", true), member("status", "billing.Status")],
+      relationships: [], computed: [], actions: [], auto: ["read"], always: [], policies: [], position,
+    }],
+    concepts: [
+      { name: "Status", fqn: "billing.Status", file: "src/domain/billing/concepts/Status.mesh.mx", module: "billing", fields: [{ name: "state", type: "string", nullable: false, position }], position },
+      { name: "Money", fqn: "Money", file: "src/domain/concepts/Money.mesh.mx", module: "", fields: [{ name: "amount", type: "integer", nullable: false, position }], position },
+    ],
+  };
+};
+
+describe("a concept member's column (ADR-0092)", () => {
+  test("is one jsonb column typed with the concept's type, imported type-only by the compiler's naming rule", () => {
+    const view = schemaView({ document: conceptDocument(), config });
+    expect(view.tables[0]!.columns.slice(1)).toEqual([
+      col("total", "jsonb", null, true, { typeArgument: "$Money$concept" }),
+      col("refund", "jsonb", null, false, { typeArgument: "$Money$concept" }),
+      col("status", "jsonb", null, true, { typeArgument: "$billing$Status$concept" }),
+    ]);
+    expect(view.typeImports).toEqual([
+      { names: "Status as $billing$Status$concept", fromLiteral: '"./domain/billing/status.concept"' },
+      { names: "Money as $Money$concept", fromLiteral: '"./domain/money.concept"' },
+    ]);
+  });
+
+  test("schema.ts prints `.$type<...>()` and the type-only imports; a project with no concept prints neither", async () => {
+    const rendered = (await generateFiles({ document: conceptDocument(), config }, build)).find((generated) => generated.path.endsWith("schema.ts"))!.contents;
+    expect(rendered).toContain('import type { Money as $Money$concept } from "./domain/money.concept";');
+    expect(rendered).toContain('import type { Status as $billing$Status$concept } from "./domain/billing/status.concept";');
+    const flat = rendered.replace(/\s+/g, "");
+    for (const line of ['total: jsonb("total").$type<$Money$concept>().notNull(),', 'refund: jsonb("refund").$type<$Money$concept>(),', 'status: jsonb("status").$type<$billing$Status$concept>().notNull(),'])
+      expect(flat).toContain(line.replace(/\s+/g, ""));
+    const plain = (await generateFiles(input({ "blog/post.mesh.mx": post, "blog/user.mesh.mx": user }), build)).find((generated) => generated.path.endsWith("schema.ts"))!.contents;
+    expect(plain).not.toContain("$type");
+    expect(plain).not.toContain("import type");
   });
 });
 

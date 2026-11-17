@@ -6,6 +6,7 @@
 // Each layer runs in a schema of its own, cloned from the suite's generated tables.
 import { describe } from "bun:test";
 import type { DomainAdapter } from "../../data-sqlite/test/domain/harness.ts";
+import { conceptsSuite } from "../../data-sqlite/test/domain/concepts.ts";
 import { keyTypesSuite } from "../../data-sqlite/test/domain/key-types.ts";
 import { lifecycleSuite } from "../../data-sqlite/test/domain/lifecycle.ts";
 import { loadSuite } from "../../data-sqlite/test/domain/load.ts";
@@ -30,6 +31,7 @@ describeServer("the domain suites on Postgres", () => {
     integerColumn: (name) => `bigint("${name}", { mode: "number" })`,
     layer: (tables) => databases.layerFor(tables),
   };
+  describe("concepts", () => conceptsSuite(postgres));
   describe("key types", () => keyTypesSuite(postgres));
   describe("load", () => loadSuite(postgres));
   describe("reads with load", () => readsLoadSuite(postgres));

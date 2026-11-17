@@ -1,6 +1,6 @@
 import { relative } from "node:path";
-import { EmitError, type EmitInput } from "@meshfw/compiler";
-import { keyTypeOf, type AttributeType, type Entity, type SourcePosition } from "@meshfw/model";
+import { EmitError, conceptTypeImport, type EmitInput } from "@meshfw/compiler";
+import type { Attribute, AttributeType, Entity, ModelDocument, SourcePosition } from "@meshfw/model";
 import { coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
 import { POSTGRES_NAME_BYTES, nameBytes, postgresNameProblem } from "./identifiers.ts";
 
@@ -17,6 +17,12 @@ export interface PostgresSchemaView {
    * tables.
    */
   readonly tables: readonly PostgresTableView[];
+  /**
+   * The concepts a column holds, one type-only import per concept file, sorted by specifier:
+   * `import type { Money as $Money$concept } from "./domain/money.concept";`. Type-only, so loading `schema.ts` (drizzle-kit
+   * does) loads neither zod nor the concept module. Empty when no column holds a concept.
+   */
+  readonly typeImports: readonly { readonly names: string; readonly fromLiteral: string }[];
 }
 
 /** `<key>: _meshPg(<nameLiteral>, { ...columns }),`, one entry of the `tables` map. */
@@ -53,6 +59,11 @@ export interface PostgresColumnView {
   readonly identity: boolean;
   /** True for an attribute declared `unique`; the template prints `.unique()`. */
   readonly unique: boolean;
+  /**
+   * The TypeScript type the column holds, for a concept member (`$Money$concept`, the local `conceptTypeImport` gives),
+   * printed as `.$type<$Money$concept>()` so Drizzle infers the concept's type; `null` for every other column.
+   */
+  readonly typeArgument: string | null;
 }
 
 /**
@@ -85,6 +96,9 @@ function fail(code: string, message: string, position: SourcePosition, fix: stri
   throw new EmitError({ severity: "error", code, message, position, fix });
 }
 
+/** A concept member is one JSON value (ADR-0092), stored as a `json` attribute is (`jsonb`) and typed with the concept's type. */
+const CONCEPT_COLUMN = { builder: "jsonb", options: null } as const;
+
 function column(name: string, type: AttributeType, nullable: boolean, primaryKey: boolean, values: readonly string[], unique = false): PostgresColumnView {
   const { builder, options } = POSTGRES_COLUMNS[type];
   return {
@@ -96,7 +110,13 @@ function column(name: string, type: AttributeType, nullable: boolean, primaryKey
     primaryKey,
     identity: false,
     unique,
+    typeArgument: null,
   };
+}
+
+/** The column of a concept member: `jsonb(name).$type<local>()`. */
+function conceptColumn(attribute: Attribute, local: string): PostgresColumnView {
+  return { ...column(attribute.name, "json", attribute.nullable, false, []), ...CONCEPT_COLUMN, typeArgument: local };
 }
 
 // Core's column types must stay attribute types, so each maps through `POSTGRES_COLUMNS` as an attribute would.
@@ -123,7 +143,7 @@ function checkName(name: string, kind: "table" | "column", position: SourcePosit
   fail("MESH_SCHEMA_IDENTIFIER", problem, position, fix);
 }
 
-function tableView(entity: Entity): PostgresTableView {
+function tableView(entity: Entity, conceptLocalOf: (fqn: string) => string): PostgresTableView {
   checkName(entity.table, "table", entity.position);
   const columns: PostgresColumnView[] = [];
   const owners = new Set<string>();
@@ -146,7 +166,11 @@ function tableView(entity: Entity): PostgresTableView {
     columns.push(view);
   };
   for (const attribute of entity.attributes) {
-    add(attribute.name, attribute.position, column(attribute.name, keyTypeOf(attribute), attribute.nullable, attribute.primaryKey,
+    if (attribute.type === "concept") {
+      add(attribute.name, attribute.position, conceptColumn(attribute, conceptLocalOf(attribute.concept!)));
+      continue;
+    }
+    add(attribute.name, attribute.position, column(attribute.name, attribute.type, attribute.nullable, attribute.primaryKey,
       (attribute.values ?? []).map((atom) => atom.value), attribute.unique));
   }
   for (const relation of entity.relationships) {
@@ -157,13 +181,20 @@ function tableView(entity: Entity): PostgresTableView {
 
 /** The schema view of the whole model. Pure and synchronous; a model it cannot store is an `EmitError`. */
 export function schemaView({ document }: EmitInput): PostgresSchemaView {
+  // Each concept a column holds is imported into `schema.ts` by the compiler's one naming rule (`conceptTypeImport`).
+  const imports = new Map<string, { local: string; specifier: string; name: string }>();
+  const conceptLocalOf = (fqn: string): string => {
+    const found = conceptTypeImport(document, fqn, "schema.ts");
+    imports.set(fqn, { ...found, name: conceptName(document, fqn) });
+    return found.local;
+  };
   const sorted = [...document.entities].sort((a, b) =>
     compare(a.name, b.name) || compare(a.module, b.module) || compare(a.file, b.file));
   const tables: PostgresTableView[] = [];
   const tableOwners = new Map<string, Entity>();
   const describe = (entity: Entity) => `${entity.fqn} (${entity.file})`;
   for (const entity of sorted) {
-    const view = tableView(entity);
+    const view = tableView(entity, conceptLocalOf);
     const sameTable = tableOwners.get(entity.table);
     if (sameTable) {
       fail("MESH_SCHEMA_DUPLICATE_TABLE",
@@ -183,7 +214,19 @@ export function schemaView({ document }: EmitInput): PostgresSchemaView {
     tables.push(coreTableView(core));
   }
   const builders = [...new Set(tables.flatMap((table) => table.columns.map((column) => column.builder)))].sort(compare);
-  return { builders, tables };
+  return { builders, tables, typeImports: typeImportsOf(imports) };
+}
+
+/** A concept's exported type name: its declared name (the compiler checked it is PascalCase). */
+function conceptName(document: Pick<ModelDocument, "concepts">, fqn: string): string {
+  return document.concepts!.find((concept) => concept.fqn === fqn)!.name;
+}
+
+/** One `import type { A as $A$concept } from "<specifier>"` per concept file, sorted by specifier. */
+function typeImportsOf(imports: ReadonlyMap<string, { local: string; specifier: string; name: string }>): { names: string; fromLiteral: string }[] {
+  return [...imports.values()]
+    .sort((a, b) => compare(a.specifier, b.specifier))
+    .map(({ local, specifier, name }) => ({ names: `${name} as ${local}`, fromLiteral: JSON.stringify(specifier) }));
 }
 
 function compare(a: string, b: string): number {
