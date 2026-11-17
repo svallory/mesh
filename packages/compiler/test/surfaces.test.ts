@@ -6,9 +6,14 @@ import { describe, expect, test } from "bun:test";
 import type { Diagnostic, Surface } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
 import { stableJsonStringify } from "../src/index.ts";
+import { orderedDocument } from "../src/typescript/emitters/order.ts";
 
 type Files = Record<string, string>;
-/** The domain: Task with every kind of member `fields=` may or may not name, and every kind of action. */
+/**
+ * The domain: Task with every kind of member `fields=` may or may not name, every kind of action, and the members the
+ * design lists so that an entity with all of them still resolves (an `always` block, a `checks` entry used as
+ * `check &titleSet`, a read policy that filters rows, a `forbid-if` policy, a named read used by `on:load`).
+ */
 const TASK = `import { User } from "../people/user.mesh.mx"
 import { Step } from "./step.mesh.mx"
 import { Brief } from "./brief.mesh.mx"
@@ -31,7 +36,16 @@ entity :Task
   computed
     string :summary() { return &title }
     count :stepCount of=&steps
-  actions auto=[:read, :create]
+  checks
+    check :titleSet [
+      that=() => &title.length > 0
+      code="task.title"
+      message="a task needs a title"
+    ]
+  actions auto=[:read, :create] on:load=&open
+    always types=[:update]
+      validate
+        check &titleSet
     update :complete
       do
         set
@@ -43,6 +57,10 @@ entity :Task
   policies
     policy :anyone
       authorize-if=() => true
+    policy :ownRows types=[:read]
+      authorize-if=({ actor }) => &owner.id === actor.id
+    policy :noArchived types=[:update]
+      forbid-if=() => &notes === "archived"
 `;
 const owned = (name: string, extra = "") => `import { Task } from "./task.mesh.mx"
 entity :${name}
@@ -128,7 +146,7 @@ describe("the model", () => {
     expect(brief(alias.diagnostics)).toEqual([]);
     expect(surfaceOf(alias).expose[0]).toMatchObject({ entity: "work.Task", identifier: "T" });
   });
-  test("surfaces with no line, and two surfaces, ordered by file in the document", () => {
+  test("a surface with no line, and two surfaces kept in the order buildModel reads them", () => {
     const result = build({
       "src/surfaces/public/public.mesh.mx": "surface :public\n",
       [ADMIN_FILE]: ADMIN,
@@ -136,14 +154,24 @@ describe("the model", () => {
     expect(brief(result.diagnostics)).toEqual([]);
     expect(result.document!.surfaces!.map(({ name, expose }) => [name, expose.length])).toEqual([["public", 0], ["admin", 1]]);
   });
+  test("orderedDocument sorts surfaces by file, and leaves the key absent without surfaces", () => {
+    const result = build({ "src/surfaces/public/public.mesh.mx": "surface :public\n", [ADMIN_FILE]: ADMIN });
+    expect(result.document!.surfaces!.map((s) => s.file)).toEqual(["src/surfaces/public/public.mesh.mx", ADMIN_FILE]);
+    expect(orderedDocument(result.document!).surfaces!.map((s) => s.file)).toEqual([ADMIN_FILE, "src/surfaces/public/public.mesh.mx"]);
+    expect(Object.hasOwn(orderedDocument(build(undefined).document!), "surfaces")).toBe(false);
+  });
   test("a configured surfaces folder with no file adds no surfaces key", () => {
     expect(Object.hasOwn(build({})!.document!, "surfaces")).toBe(false);
   });
-  test("a project without surfaces keeps its document byte for byte", () => {
+  test("a project without surfaces keeps its document byte for byte", async () => {
     const without = build(undefined);
     const empty = build({});
     expect(Object.hasOwn(without.document!, "surfaces")).toBe(false);
-    expect(stableJsonStringify(empty.document)).toBe(stableJsonStringify(without.document));
+    // The golden is `stableJsonStringify` of this domain built by origin/main (aa60ba9a), before surfaces existed
+    // (design section 8). A change to the fixture or to the model regenerates it from main, not from this branch.
+    const golden = await Bun.file(new URL("./fixtures/surfaces-no-surfaces.model.json.golden", import.meta.url)).text();
+    expect(stableJsonStringify(without.document)).toBe(golden);
+    expect(stableJsonStringify(empty.document)).toBe(golden);
     // With a surface, only the `surfaces` key is added.
     const { surfaces, ...rest } = build({ [ADMIN_FILE]: ADMIN }).document!;
     expect(surfaces).toHaveLength(1);
@@ -171,6 +199,26 @@ describe("fields= and action lines against the entity", () => {
       [ADMIN_FILE, 3, 36, "MESH_UNKNOWN_MEMBER", ":titel is not a field of work.Task: `fields=` names the entity's attributes, belongs-to relationships and computed fields (:id, :title, :state, :notes, :owner, :summary, :stepCount). Did you mean :title?", null],
       [ADMIN_FILE, 3, 44, "MESH_UNKNOWN_MEMBER", ":ownerId is not a field of work.Task: `fields=` names the entity's attributes, belongs-to relationships and computed fields (:id, :title, :state, :notes, :owner, :summary, :stepCount). Did you mean :owner?", null],
       [ADMIN_FILE, 3, 54, "MESH_UNKNOWN_MEMBER", ":all is not a field of work.Task: `fields=` names the entity's attributes, belongs-to relationships and computed fields (:id, :title, :state, :notes, :owner, :summary, :stepCount).", null],
+    ]);
+  });
+  test("a key column suggests its belongs-to even where the nearest name ties", () => {
+    // `ownerAt` and `owner` are both two edits from `ownerId`, so `nearestName` alone would suggest nothing.
+    const note = `import { User } from "../people/user.mesh.mx"
+entity :Note
+  attributes
+    uuid :id primary-key
+    datetime :ownerAt
+  relationships
+    belongs-to :owner entity=User
+  actions auto=[:read]
+  policies
+    policy :anyone
+      authorize-if=() => true
+`;
+    const domain = { ...DOMAIN, "src/domain/work/note.mesh.mx": note };
+    const surface = admin("  expose :notes entity=Note fields=[:ownerId]\n", 'import { Note } from "../../domain/work/note.mesh.mx"\n');
+    expect(errors(build(surface, domain))).toEqual([
+      [ADMIN_FILE, 3, 36, "MESH_UNKNOWN_MEMBER", ":ownerId is not a field of work.Note: `fields=` names the entity's attributes, belongs-to relationships and computed fields (:id, :ownerAt, :owner). Did you mean :owner?", null],
     ]);
   });
   test("an auto action, a named read and a command-answering action are actions; an action not generated is not", () => {
@@ -220,7 +268,9 @@ describe("names, places and roots", () => {
       ["src/surfaces/loose.mesh.mx", 3, 0, "MESH_SURFACE_PATH", "Surface :loose is declared in `src/surfaces/loose.mesh.mx`; a surface file lives in the folder named after its surface, `src/surfaces/loose/`", "move the file to `src/surfaces/loose/`"],
     ]);
     // A nested folder named after the surface is not its folder either.
-    expect(errors(build({ "src/surfaces/x/admin/admin.mesh.mx": ADMIN })).map(([, , , code]) => code)).toEqual(["MESH_SURFACE_PATH"]);
+    expect(errors(build({ "src/surfaces/x/admin/admin.mesh.mx": ADMIN }))).toEqual([
+      ["src/surfaces/x/admin/admin.mesh.mx", 3, 0, "MESH_SURFACE_PATH", "Surface :admin is declared in `src/surfaces/x/admin/admin.mesh.mx`; a surface file lives in the folder named after its surface, `src/surfaces/admin/`", "move the file to `src/surfaces/admin/`"],
+    ]);
   });
   test("a file of the surfaces folder whose root is not a surface", () => {
     expect(errors(build({ "src/surfaces/admin/task.mesh.mx": "entity :Task\n  attributes\n    uuid :id primary-key\n" }))).toEqual([
@@ -289,18 +339,15 @@ describe("imports", () => {
     expect(errors(build(admin("  expose :tasks entity=$T\n", 'import { Task as $T } from "../../domain/work/task.mesh.mx"\n')))).toEqual([
       [ADMIN_FILE, 1, 17, "MESH_HELPER_NAME", "The entity import name $T cannot start with $ or l$: generated code uses those prefixes for its own names", null],
     ]);
-    expect(errors(build(admin("", `${IMPORT}import { User as Task } from "../../domain/people/user.mesh.mx"\n`))).map(([, , , code]) => code)).toEqual(["MESH_DUPLICATE_IMPORT"]);
-    expect(errors(build(admin("", 'import Task from "../../domain/work/task.mesh.mx"\n'))).map(([, , , code]) => code)).toEqual(["MESH_IMPORT_FORM"]);
+    expect(errors(build(admin("", `${IMPORT}import { User as Task } from "../../domain/people/user.mesh.mx"\n`)))).toEqual([
+      [ADMIN_FILE, 2, 17, "MESH_DUPLICATE_IMPORT", "Duplicate import identifier Task", null],
+    ]);
+    expect(errors(build(admin("", 'import Task from "../../domain/work/task.mesh.mx"\n')))).toEqual([
+      [ADMIN_FILE, 1, 0, "MESH_IMPORT_FORM", "import the entity by name or as a namespace: `import { List } from …` or `import * as billing from …`", 'write `import { Task } from "../../domain/work/task.mesh.mx"`, the entity that file declares'],
+    ]);
   });
-  test("a file outside both folders, and one `ignore` excludes", () => {
-    const outside = buildModel({
-      root: "/project", domainRoot: "src/domain",
-      files: Object.entries(DOMAIN).map(([file, source]) => ({ file, source })),
-      surfaces: { root: "src/surfaces", files: [{ file: ADMIN_FILE, source: admin("", 'import { Task } from "../../domain/work/ignored.mesh.mx"\n')[ADMIN_FILE]! }] },
-      ignored: [{ file: "src/domain/work/ignored.mesh.mx", pattern: "**/ignored.mesh.mx" }],
-    });
-    expect(brief(outside.diagnostics).map(([, , , code]) => code)).toContain("MESH_IGNORED_IMPORT");
-  });
+  // A surface that imports a file outside both folders (MESH_UNKNOWN_ENTITY) or a domain file `ignore` excludes
+  // (MESH_IGNORED_IMPORT) needs the files on disk: both are in config.test.ts.
 });
 
 describe("regressions", () => {

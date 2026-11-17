@@ -57,7 +57,7 @@ describe("refused shapes", () => {
     ["attributes under surface", `${HEAD}  attributes\n`, ["MESH_TAG_NOT_ALLOWED", 4, 2, "`surface`: `attributes` is not allowed here; allowed children: `expose`"]],
     ["check under expose", expose("", "    check :x\n"), ["MESH_TAG_NOT_ALLOWED", 5, 4, "`expose`: `check` is not allowed here; allowed children: `action`"]],
     ["always under expose", expose("", "    always\n"), ["MESH_TAG_NOT_ALLOWED", 5, 4, "`expose`: `always` is not allowed here; allowed children: `action`"]],
-    ["an action at the root of the file", "action :complete\n", ["MESH_PARENT_NOT_ALLOWED", 1, 0, expect.stringContaining("`action`")]],
+    ["an action at the root of the file", "action :complete\n", ["MESH_PARENT_NOT_ALLOWED", 1, 0, "`action` must be inside `expose`; found at the top level"]],
   ])("%s", (_, source, expected) => expect(mx(source)).toEqual([expected]));
   test("`publishes` is not a tag yet (PR 3)", () => {
     expect(mx(`${HEAD}  publishes\n`).map(([code]) => code)).toEqual(["MESH_UNKNOWN_TAG"]);
@@ -71,7 +71,9 @@ describe("what changes for entity files", () => {
     ]);
   });
   test("an expose line in an entity is not allowed there", () => {
-    expect(mx("entity :Task\n  attributes\n    uuid :id primary-key\n  expose :x entity=Task\n", "/project/src/domain/task.mesh.mx").map(([code]) => code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
+    expect(mx("entity :Task\n  attributes\n    uuid :id primary-key\n  expose :x entity=Task\n", "/project/src/domain/task.mesh.mx")).toEqual([
+      ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `expose` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`"],
+    ]);
   });
   test("a `surface` root lowers in any file: where it may sit is the builder's (MESH_SURFACE_PATH)", () => {
     expect(mx("surface :admin\n", "/project/src/domain/admin.mesh.mx")).toEqual([]);

@@ -290,6 +290,30 @@ test("surfaces: a surface file that cannot be read is named a surface file, with
     position: { file: "src/surfaces/admin/admin.mesh.mx", line: 1, column: 0 }, fix: "Restore the surface file or fix the surfaces folder",
   }]);
 });
+test("surfaces: a surface that imports a project file outside both folders is MESH_UNKNOWN_ENTITY", async () => {
+  const root = await project(surfacesConfig("src/surfaces"));
+  await mkdir(resolve(root, "src/other"), { recursive: true });
+  await writeFile(resolve(root, "src/other/y.mesh.mx"), keyed.replace(":Todo", ":Y"));
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { Y } from "../../other/y.mesh.mx"\nsurface :admin\n  expose :ys entity=Y\n');
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics.map((d) => [d.position.file, d.position.line, d.position.column, d.code, d.message, d.fix])).toEqual([
+    ["src/surfaces/admin/admin.mesh.mx", 1, 0, "MESH_UNKNOWN_ENTITY", "../../other/y.mesh.mx exists but is not under the configured entity directories", null],
+  ]);
+});
+test("surfaces: a surface that imports a domain file `ignore` excludes is MESH_IGNORED_IMPORT", async () => {
+  const root = await project(surfacesConfig("src/surfaces", { ignore: "**/list.mesh.mx" }));
+  await mkdir(resolve(root, "src/surfaces/admin"), { recursive: true });
+  await writeFile(resolve(root, "src/surfaces/admin/admin.mesh.mx"), 'import { List } from "../../domain/blog/list.mesh.mx"\nsurface :admin\n  expose :lists entity=List\n');
+  const loaded = await loadConfig(root);
+  expect(loaded.diagnostics).toEqual([]);
+  const built = await loadProject(loaded.config!);
+  expect(built.diagnostics.map((d) => [d.position.file, d.position.line, d.position.column, d.code, d.message, d.fix])).toEqual([
+    ["src/surfaces/admin/admin.mesh.mx", 1, 0, "MESH_IGNORED_IMPORT", 'src/surfaces/admin/admin.mesh.mx imports ../../domain/blog/list.mesh.mx, which `ignore` in mesh.config.ts excludes (pattern "**/list.mesh.mx"); import a file that is not ignored, or remove the pattern', null],
+  ]);
+});
 test("surfaces: an ignore pattern that matches only a surface file is used and excludes it", async () => {
   const root = await withSurface(surfacesConfig("src/surfaces", { ignore: "src/surfaces/admin/**" }));
   const loaded = await loadConfig(root);
