@@ -1,5 +1,5 @@
 import { validateCapabilityManifest, type CapabilityManifest } from "./capabilities.ts";
-import type { DataLayer, DataOperations, Query, Row, TableHandle } from "./data-layer.ts";
+import type { DataLayer, DataOperations, Query, RollupFn, RollupQuery, Row, TableHandle } from "./data-layer.ts";
 import { sameValue } from "./compose.ts";
 import { FrameworkError } from "./errors.ts";
 import type { DataLayerFixture } from "./testing.ts";
@@ -312,6 +312,55 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       });
       assert(inside === 42, "an aggregate must see the transaction's own insert");
       assert(await run((tx) => tx.max(taskTable, "rank")) === 42, "the insert committed");
+    })],
+    ["rollup groups one table by its anchor column, one row per anchor that reaches a row", withTasks(async (_read, { layer, taskTable }) => {
+      const run = <T>(use: (tx: DataOperations) => Promise<T>) => layer.transaction(use);
+      const query = (fn: RollupFn, value: string, anchors: readonly string[] = ["p1", "p2", "p3", "p4"]): RollupQuery => ({ fn, table: taskTable, anchor: "parentId", anchors, value });
+      if (!declared("aggregates")) {
+        assert(await failure(layer, (tx) => tx.rollup(query("count", "id"))) instanceof FrameworkError, "an adapter without aggregates must refuse rollup with FrameworkError");
+        return;
+      }
+      // p4 reaches one row whose rank is null; p3 reaches none.
+      await run((tx) => tx.insert(taskTable, { id: "a7", parentId: "p4", createdAt: day(5), title: "Golf", rank: null }));
+      const byAnchor = async (fn: RollupFn, value: string, anchors?: readonly string[]) => {
+        const rows = await run((tx) => tx.rollup(query(fn, value, anchors)));
+        const out: Record<string, unknown> = {};
+        for (const row of rows) {
+          assert(!Object.hasOwn(out, String(row.anchor)), `${fn} of ${value} must give each anchor once, and gave ${String(row.anchor)} twice`);
+          out[String(row.anchor)] = row.value;
+        }
+        return out;
+      };
+      const same = (actual: Record<string, unknown>, expected: Record<string, unknown>, message: string) =>
+        assert(JSON.stringify(Object.keys(actual).sort()) === JSON.stringify(Object.keys(expected).sort())
+          && Object.entries(expected).every(([key, value]) => typeof value === "number" && typeof actual[key] === "number" ? Math.abs((actual[key] as number) - value) < 1e-9 : actual[key] === value),
+        `${message}: expected ${describe(expected)} but got ${describe(actual)}`);
+      same(await byAnchor("count", "rank"), { p1: 3, p2: 1, p4: 0 }, "count skips nulls, and an anchor that reaches no row is left out");
+      same(await byAnchor("count", "id"), { p1: 4, p2: 1, p4: 1 }, "count of the key counts every row");
+      same(await byAnchor("sum", "rank"), { p1: 8, p2: 5, p4: null }, "sum, null over only nulls");
+      same(await byAnchor("avg", "rank"), { p1: 8 / 3, p2: 5, p4: null }, "avg of integers is fractional, null over only nulls");
+      same(await byAnchor("min", "rank"), { p1: 1, p2: 5, p4: null }, "min, null over only nulls");
+      same(await byAnchor("max", "rank"), { p1: 5, p2: 5, p4: null }, "max, null over only nulls");
+      for (const fn of ["count", "sum", "avg"] as const)
+        for (const value of Object.values(await byAnchor(fn, "rank"))) assert(value === null || typeof value === "number", `${fn} must be a number, not ${describe(value)}`);
+      const earliest = await byAnchor("min", "createdAt", ["p1"]);
+      assert(earliest.p1 instanceof Date && earliest.p1.getTime() === day(2).getTime(), `min of a date must be a Date, not ${describe(earliest.p1)}`);
+      const latest = await byAnchor("max", "createdAt", ["p1"]);
+      assert(latest.p1 instanceof Date && latest.p1.getTime() === day(4).getTime(), `max of a date must be a Date, not ${describe(latest.p1)}`);
+      same(await byAnchor("count", "id", ["p3"]), {}, "a rollup whose anchors reach no row returns no row");
+      assert((await run((tx) => tx.rollup(query("sum", "rank", [])))).length === 0, "a rollup with no anchor returns no row");
+      for (const name of ["nope", "constructor"]) {
+        assert(await failure(layer, (tx) => tx.rollup(query("max", name))) instanceof FrameworkError, `a rollup of the column ${name} must be a FrameworkError`);
+        assert(await failure(layer, (tx) => tx.rollup({ ...query("count", "id"), anchor: name })) instanceof FrameworkError, `a rollup anchored on the column ${name} must be a FrameworkError`);
+      }
+      const many = Array.from({ length: 501 }, (_, index) => `x${index}`);
+      assert(await failure(layer, (tx) => tx.rollup(query("count", "id", many))) instanceof FrameworkError, "a rollup of more than 500 anchors must be a FrameworkError");
+      same(await byAnchor("count", "id", many.slice(0, 500)), {}, "a rollup takes 500 anchors");
+      const inside = await run(async (tx) => {
+        await tx.insert(taskTable, { id: "a9", parentId: "p3", createdAt: day(7), title: "India", rank: 42 });
+        return tx.rollup(query("sum", "rank", ["p3"]));
+      });
+      assert(inside.length === 1 && inside[0]!.anchor === "p3" && inside[0]!.value === 42, `a rollup must see the transaction's own insert, and gave ${describe(inside)}`);
     })],
     ["reads on an empty table return nothing and aggregates are null or 0", withFixture(async ({ layer, uuidTable }) => {
       await layer.transaction(async (tx) => {

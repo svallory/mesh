@@ -1,5 +1,5 @@
-import { and, eq, getTableColumns, is, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
-import { FrameworkError, MeshError, uuidv7, type Condition, type DataOperations, type Filter, type Key, type Query, type Row, type TableHandle } from "@meshfw/runtime";
+import { and, eq, getTableColumns, inArray, is, sql, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
+import { FrameworkError, MeshError, ROLLUP_ANCHORS, uuidv7, type CapabilityManifest, type Condition, type DataOperations, type Filter, type Key, type Query, type RollupQuery, type RollupRow, type Row, type TableHandle } from "@meshfw/runtime";
 import { columnOf, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
 import type { ConditionSqlOptions, SqlDialect } from "./condition.ts";
 
@@ -27,6 +27,11 @@ export interface DrizzleCommands<T extends Table> {
   aggregate(table: T, kind: "max" | "count", column: Column, where?: SQL): unknown | Promise<unknown>;
   update(table: T, condition: SQL, changes: Row): Row[] | Promise<Row[]>;
   delete(table: T, condition: SQL): Row[] | Promise<Row[]>;
+  /**
+   * Optional: run one select statement built by the shared code and return its rows as the driver gives them (the shared
+   * code decodes them). Without it, `rollup` is a `FrameworkError` naming the dialect.
+   */
+  rows?(statement: SQL): Row[] | Promise<Row[]>;
 }
 
 /** Narrow an opaque handle to the dialect's Drizzle table class, or fail: a handle
@@ -87,8 +92,22 @@ function updateSet(table: Table, changes: Row): Row {
   return set;
 }
 
-/** The guard revokes operations as soon as their transaction callback settles. */
-export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>, guard: () => void): DataOperations {
+/** What a rollup's value column is aggregated as: a text column through the dialect's `collate` for `min` and `max`. */
+function rollupValue(fn: RollupQuery["fn"], column: Column, dialect: SqlDialect): SQL {
+  if (fn === "count") return sql`count(${column})`;
+  if (fn === "sum") return sql`sum(${column})`;
+  if (fn === "avg") return sql`avg(${column})`;
+  const key = dialect.collate && column.dataType === "string" ? dialect.collate(sql`${column}`, "string") : sql`${column}`;
+  return fn === "min" ? sql`min(${key})` : sql`max(${key})`;
+}
+
+/**
+ * The guard revokes operations as soon as their transaction callback settles. `capabilities` is the adapter's manifest:
+ * an operation that needs an optional capability it does not declare (`rollup` without `aggregates`) is refused with a
+ * `FrameworkError`; left out, no optional capability is declared.
+ */
+export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>, guard: () => void, capabilities?: CapabilityManifest): DataOperations {
+  const declared = (name: string) => (capabilities?.capabilities as readonly string[] | undefined)?.includes(name) ?? false;
   const execute = async <R>(run: () => R | Promise<R>): Promise<R> => {
     guard();
     try { return await run(); }
@@ -161,5 +180,24 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       return (value ?? null) as never;
     }),
     count: (handle: TableHandle, attribute: string, filter?: Filter, where?: Condition) => execute(async () => Number(await aggregate("count", handle, attribute, filter, where))),
+    // One grouped statement: `select anchor, fn(value) from table where anchor in (...) group by anchor`. An anchor that
+    // reaches no row has no group, so it is left out; the driver's values are decoded here, as the columns decode.
+    rollup: (query: RollupQuery) => execute(async (): Promise<RollupRow[]> => {
+      if (!declared("aggregates")) throw new FrameworkError(`rollup needs the aggregates capability, and the ${capabilities?.adapter ?? "Drizzle"} data layer does not declare it`);
+      if (!commands.rows) throw new FrameworkError("rollup is not available: this Drizzle dialect has no rows command to run its grouped statement");
+      if (!(["count", "sum", "avg", "min", "max"] as readonly string[]).includes(query.fn)) throw new FrameworkError(`Unknown rollup function "${String(query.fn)}"; use count, sum, avg, min or max`);
+      if (!Array.isArray(query.anchors)) throw new FrameworkError("A rollup's anchors must be a list");
+      if (query.anchors.length > ROLLUP_ANCHORS) throw new FrameworkError(`A rollup takes at most ${ROLLUP_ANCHORS} anchors, and this one has ${query.anchors.length}: ask in chunks`);
+      const table = commands.table(query.table);
+      const anchor = columnOf(table, query.anchor);
+      const value = columnOf(table, query.value);
+      if (query.anchors.length === 0) return [];
+      const statement = sql`select ${anchor} as "anchor", ${rollupValue(query.fn, value, commands.dialect)} as "value" from ${table} where ${inArray(anchor, query.anchors as never[])} group by ${anchor}`;
+      const numeric = query.fn === "count" || query.fn === "sum" || query.fn === "avg";
+      return (await commands.rows(statement)).map((row) => ({
+        anchor: anchor.mapFromDriverValue(row.anchor) as RollupRow["anchor"],
+        value: row.value === null || row.value === undefined ? (query.fn === "count" ? 0 : null) : numeric ? Number(row.value) : value.mapFromDriverValue(row.value) as RollupRow["value"],
+      }));
+    }),
   };
 }

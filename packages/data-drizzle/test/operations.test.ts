@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DatabaseBusyError, FrameworkError, NotFoundError } from "@meshfw/runtime";
+import { DatabaseBusyError, FrameworkError, NotFoundError, defineCapabilities } from "@meshfw/runtime";
 import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, keyCondition, type DrizzleCommands } from "../src/index.ts";
 
@@ -224,4 +224,43 @@ test("bun:sqlite: an update that leaves out a column named like an Object.protot
     expect(await operations.updateByKey(named, { constructor: "k" }, { valueOf: 3 })).toEqual({ constructor: "k", toString: "t", valueOf: 3 });
     expect(await operations.updateByKey(named, { constructor: "k" }, { toString: "u" })).toEqual({ constructor: "k", toString: "u", valueOf: 3 });
   } finally { database.close(); }
+});
+
+test("rollup prints one grouped statement and decodes what the driver gives", async () => {
+  const statements: { sql: string; params: unknown[] }[] = [];
+  const { commands } = fixture();
+  const operations = drizzleOperations({
+    ...commands,
+    rows: (statement) => {
+      const { sql, params } = new SQLiteSyncDialect().sqlToQuery(statement);
+      statements.push({ sql, params });
+      return [{ anchor: "a", value: "3" }, { anchor: "b", value: null }];
+    },
+  }, () => {}, defineCapabilities("test", ["aggregates"]));
+  expect(await operations.rollup({ fn: "sum", table, anchor: "tenant", anchors: ["a", "b", "c"], value: "id" })).toEqual([{ anchor: "a", value: 3 }, { anchor: "b", value: null }]);
+  expect(statements).toEqual([{
+    sql: 'select "rows"."tenant" as "anchor", sum("rows"."id") as "value" from "rows" where "rows"."tenant" in (?, ?, ?) group by "rows"."tenant"',
+    params: ["a", "b", "c"],
+  }]);
+  // A count over rows whose values are all null is 0, never null.
+  expect(await operations.rollup({ fn: "count", table, anchor: "tenant", anchors: ["a", "b"], value: "id" })).toEqual([{ anchor: "a", value: 3 }, { anchor: "b", value: 0 }]);
+  // No anchor, no statement.
+  expect(await operations.rollup({ fn: "max", table, anchor: "tenant", anchors: [], value: "id" })).toEqual([]);
+  expect(statements).toHaveLength(2);
+});
+
+test("rollup is refused without the aggregates capability, without a rows command, and for an unknown column or too many anchors", async () => {
+  const { commands } = fixture();
+  const query = { fn: "count", table, anchor: "tenant", anchors: ["a"], value: "id" } as const;
+  const rows = () => [];
+  await expect(drizzleOperations({ ...commands, rows }, () => {}).rollup(query)).rejects.toThrow("rollup needs the aggregates capability");
+  await expect(drizzleOperations({ ...commands, rows }, () => {}, defineCapabilities("test", ["joins"])).rollup(query)).rejects.toThrow('the test data layer does not declare it');
+  await expect(drizzleOperations(commands, () => {}, defineCapabilities("test", ["aggregates"])).rollup(query)).rejects.toThrow("this Drizzle dialect has no rows command");
+  const operations = drizzleOperations({ ...commands, rows }, () => {}, defineCapabilities("test", ["aggregates"]));
+  for (const name of ["nope", "toString"]) {
+    await expect(operations.rollup({ ...query, anchor: name })).rejects.toThrow(`Unknown column "${name}"`);
+    await expect(operations.rollup({ ...query, value: name })).rejects.toThrow(`Unknown column "${name}"`);
+  }
+  await expect(operations.rollup({ ...query, anchors: Array.from({ length: 501 }, (_, index) => `t${index}`) })).rejects.toThrow("A rollup takes at most 500 anchors, and this one has 501");
+  await expect(operations.rollup({ ...query, fn: "median" as never })).rejects.toThrow('Unknown rollup function "median"');
 });

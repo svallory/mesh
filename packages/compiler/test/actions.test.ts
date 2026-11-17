@@ -445,6 +445,7 @@ function memoryLayer(): DataLayer {
     async selectByKeyForUpdate(table, key) { return of(table).get(key.id); },
     async max() { throw new Error("not used"); },
     async count() { throw new Error("not used"); },
+    async rollup() { throw new Error("not used"); },
     async updateByKey(table, key, changes) {
       const row = of(table).get(key.id);
       if (!row) return undefined;

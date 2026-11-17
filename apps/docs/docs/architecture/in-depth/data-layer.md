@@ -37,6 +37,20 @@ export interface DataOperations {
   deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
   max(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<Scalar | null>;
   count(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<number>;
+  rollup(query: RollupQuery): Promise<RollupRow[]>;
+}
+
+export type RollupFn = "count" | "sum" | "avg" | "min" | "max";
+export interface RollupQuery {
+  readonly fn: RollupFn;
+  readonly table: TableHandle;
+  readonly anchor: string; // the column the rows are grouped by
+  readonly anchors: readonly Exclude<Scalar, null | boolean>[]; // at most 500 (ROLLUP_ANCHORS)
+  readonly value: string; // the column aggregated (the key for a count)
+}
+export interface RollupRow {
+  readonly anchor: Exclude<Scalar, null | boolean>;
+  readonly value: Exclude<Scalar, boolean> | null;
 }
 
 export interface DataLayer {
@@ -47,6 +61,8 @@ export interface DataLayer {
 ```
 
 Rows use attribute names and generated TypeScript values: `Date` for datetime, `boolean`, and `string` for UUID. The adapter converts these to and from storage. `Key` maps primary-key attribute names to values. `TableHandle` is opaque to handlers: the emitted schema exports it and only the adapter interprets it. No query-library type crosses the contract, and SQL text crosses it only in the `query` operation of the `raw-sql` capability (below, [raw queries](#raw-queries)); a filter is plain data.
+
+`rollup` works out a rollup for many owner rows in one statement: over the rows of `table` whose `anchor` column holds one of `anchors`, grouped by that column (`select anchor, sum(value) from table where anchor in (...) group by anchor`). An anchor that reaches no row is left out of the result; one that reaches rows whose values are all null is present, with `null` (`0` for a `count`, which counts non-null values). `count`, `sum` and `avg` are numbers on every adapter (Postgres gives `sum` of a `bigint` and every `avg` as `numeric`, which the shared Drizzle code decodes); `min` and `max` decode as the column decodes. More than 500 anchors is a `FrameworkError`, so the loader asks in chunks. It requires `aggregates`, as `max` and `count` do.
 
 Insert and update return the stored row. A missing select or update returns `undefined`; delete returns `false` when absent and `true` when removed. A transaction commits when its callback resolves, returning that result; it rolls back every write and rethrows the same error when the callback rejects. The caller closes the layer when finished.
 

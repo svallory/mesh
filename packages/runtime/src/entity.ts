@@ -1085,6 +1085,7 @@ function readOnlyOperations(tx: DataOperations, question: Question): DataOperati
     select: (table, query) => tx.select(table, query),
     max: (table, attribute, filter, where) => tx.max(table, attribute, filter, where),
     count: (table, attribute, filter, where) => tx.count(table, attribute, filter, where),
+    rollup: (query) => tx.rollup(query),
     // A raw query is read-only by contract (`raw-sql`): forwarded as a read, and absent when the adapter has none.
     ...(tx.query === undefined ? {} : { query: (statement: RawStatement) => tx.query!(statement) }),
   } satisfies DataOperations);
