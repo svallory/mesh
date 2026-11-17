@@ -1,0 +1,51 @@
+import { Mesh } from "meshfw"
+import { Task } from "./task.mesh.mx"
+import { Claim } from "./claim.mesh.mx"
+import * as w from "./notification.mesh.mx"
+import * as execution from "../execution/run.mesh.mx"
+import { label, Label } from "./labels.ts"
+
+service :Work
+  operation :handOver
+    uses entity=Task actions=[:reassign]
+    uses entity=Claim actions=[:read, :end]
+    input
+      uuid :task
+      uuid :to
+      string :reason nullable
+    run({ input, context }) {
+      for (const claim of await Mesh.privileged(Claim).read({ filter: { taskId: { eq: input.task } } }))
+        await Claim.end({ id: claim.id, reason: input.reason ?? "handed over" }, context)
+      return Task.reassign({ id: input.task, assignee: input.to }, context)
+    }
+  operation :notify
+    uses entity=Task actions=[:read]
+    uses entity=w.Notification actions=[:send]
+    input
+      string :text min=1
+    run({ input, context }) {
+      const sent: w.Notification = await w.Notification.send({ text: input.text }, context)
+      return sent
+    }
+  operation :cancelRun
+    uses entity=execution.Run actions=[:cancel]
+    uses entity=Task actions=[:read]
+    input
+      uuid :run
+    run() {
+      return execution.Run.cancel({ id: input.run }, context)
+    }
+  operation :finish
+    uses entity=Task actions=[:complete, :read]
+    uses entity=Claim actions=[:read]
+    input
+      uuid :task
+    run() {
+      const done: Task = await Task.complete({ id: input.task }, context)
+      const text: Label = label(done.title, %.now)
+      return { done, text, by: actor.id }
+    }
+  policies
+    policy :members actions=[&handOver, &notify] authorize-if=({ actor }) => actor != null
+    policy :everyone
+      authorize-if=() => true

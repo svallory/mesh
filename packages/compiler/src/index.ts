@@ -13,6 +13,7 @@ export { stableJsonStringify } from "./typescript/stable-json.ts";
 export { typesView, type TypesView, type TypeImport, type RecordDeclaration, type TypeDeclaration, type TypeMember } from "./typescript/views/types.ts";
 export { validatorsView, type ValidatorsView, type InputSchema, type SchemaField } from "./typescript/views/validators.ts";
 export { surfaceView, type SurfaceView, type SurfaceEntityImport, type SurfaceExposureView, type SurfaceActionView } from "./typescript/views/surfaces.ts";
+export { serviceInputsView, serviceView, type ServiceInput, type ServiceInputsView, type ServiceOperation, type ServiceView } from "./typescript/views/services.ts";
 export type { GlobalsImport, GlobalsView, GlobalAlias } from "./typescript/views/globals.ts";
 export { RESERVED_COMMAND_WORDS, loadAdapterBuild, type AdapterBuild, type AdapterBuildResult, type AdapterCommand, type AdapterCommandContext } from "./typescript/adapter.ts";
 export { explainAction, explainHandler } from "./typescript/explain.ts";

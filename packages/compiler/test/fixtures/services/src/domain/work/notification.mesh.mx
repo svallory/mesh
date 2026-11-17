@@ -1,0 +1,11 @@
+entity :Notification table="notifications"
+  attributes
+    uuid :id primary-key
+    string :text nullable
+  actions auto=[:read]
+    create :send
+      input
+        &text
+  policies
+    policy :anyone
+      authorize-if=() => true

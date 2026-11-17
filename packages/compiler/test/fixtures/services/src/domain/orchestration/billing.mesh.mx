@@ -1,0 +1,16 @@
+import { Task } from "../work/task.mesh.mx"
+import { Run } from "../execution/run.mesh.mx"
+import { Billing, CloseBillingInput, z } from "./notes.ts"
+
+service :Billing
+  operation :close
+    uses entity=Task actions=[:read]
+    uses entity=Run actions=[:create]
+    run({ context }) {
+      const note: CloseBillingInput = { note: z(` ${Billing} `) }
+      void note
+      return Run.create({}, context)
+    }
+  policies
+    policy :everyone
+      authorize-if=() => true

@@ -4,11 +4,11 @@ import { moduleViews, type ModuleView } from "../views/module.ts";
 import { outputPrefix } from "./order.ts";
 
 /**
- * `<output>/domain/<path>/index.ts`, a barrel per folder that holds an entity, an event, a command or a concept, or a
+ * `<output>/domain/<path>/index.ts`, a barrel per folder that holds an entity, an event, a command, a concept or a service, or a
  * folder below it that does, and
  * `<output>/domain/index.ts` for the domain root: the file a project imports as `#mesh/domain/<path>`.
  * It exports its module's entity values, their types and load functions, its event and command classes, its concepts'
- * types and schemas, and a namespace per subfolder. Two
+ * types and schemas, its service values and their input types, and a namespace per subfolder. Two
  * exports of one barrel with one name are `MESH_EMIT_NAME`. Two folders that differ only in letter case would
  * write one file on a case-insensitive file system: `MESH_EMIT_PATH`.
  */
@@ -23,7 +23,7 @@ export const moduleGenerator: Generator<ModuleView> = {
       const other = seen.get(full.toLowerCase());
       if (other !== undefined)
         throw emitError("MESH_EMIT_PATH", `Generated path collision: ${full} and ${other} differ only in letter case`,
-          [...input.document.entities, ...(input.document.events ?? []), ...(input.document.commands ?? []), ...(input.document.concepts ?? [])]
+          [...input.document.entities, ...(input.document.events ?? []), ...(input.document.commands ?? []), ...(input.document.concepts ?? []), ...(input.document.services ?? [])]
             .find((held) => held.module === view.module || held.module.startsWith(`${view.module}/`))!.position,
           "Rename one of the two module folders so that they differ in more than letter case");
       seen.set(full.toLowerCase(), full);

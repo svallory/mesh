@@ -247,7 +247,7 @@ describe("names in one barrel", () => {
     expect(await failure({ "sales/order-management/a.mesh.mx": entity("A"), "sales/order_management/b.mesh.mx": entity("B") })).toMatchObject({
       code: "MESH_EMIT_NAME",
       message: "the folder sales/order-management and the folder sales/order_management would both be exported as order_management from #mesh/domain/sales",
-      fix: "Rename one of the two: an entity file, an entity or a folder",
+      fix: "Rename one of the two: an entity file, an entity, a service or a folder",
       position: { file: "sales/order_management/b.mesh.mx" },
     });
   });

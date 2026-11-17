@@ -1,0 +1,17 @@
+entity :Task table="tasks"
+  attributes
+    uuid :id primary-key
+    string :title default="untitled"
+    enum :state values=[:open, :done] default=:open
+    uuid :assignee nullable
+  actions auto=[:read, :create]
+    update :complete
+      do
+        set
+          &state=:done
+    update :reassign
+      input
+        &assignee
+  policies
+    policy :anyone
+      authorize-if=() => true

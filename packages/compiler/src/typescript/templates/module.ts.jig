@@ -31,6 +31,20 @@ export { {{ declaration.name }} } from {{ declaration.fromLiteral }};
 @each(concept in concepts)
 export { {{ concept.schema }}, type {{ concept.name }} } from {{ concept.fromLiteral }};
 @end
+@if(services.length)
+// The module's services: each one's value, whose methods run its operations (`<Service>.<operation>(input, context)`),
+// and its operations' input types.
+@end
+@each(service in services)
+export { {{ service.name }} } from {{ service.fromLiteral }};
+@if(service.hasTypes)
+export type {
+  @each(name in service.types)
+  {{ name }},
+  @end
+} from {{ service.typesFromLiteral }};
+@end
+@end
 @each(namespace in namespaces)
 export * as {{ namespace.name }} from {{ namespace.fromLiteral }};
 @end
