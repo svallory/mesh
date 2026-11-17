@@ -199,6 +199,11 @@ export interface DataOperations {
   writeSubscriptionProgress?: DeliveryOperations["writeSubscriptionProgress"];
   deleteSubscriptionProgress?: DeliveryOperations["deleteSubscriptionProgress"];
   firstOutboxRow?: DeliveryOperations["firstOutboxRow"];
+  /** Dead letters; see `FailureOperations`. Mandatory only for a project with a handler whose `onFailure` is `"skip"`. */
+  writeFailure?: FailureOperations["writeFailure"];
+  readFailures?: FailureOperations["readFailures"];
+  deleteFailure?: FailureOperations["deleteFailure"];
+  renameFailures?: FailureOperations["renameFailures"];
   /** Delivery from several processes; see `MultiProcessOperations`. Mandatory only when the bus declares `multi-process`. */
   lockDeliveryState?: MultiProcessOperations["lockDeliveryState"];
   writeKeep?: MultiProcessOperations["writeKeep"];
@@ -406,6 +411,44 @@ export interface DeliveryOperations {
    * `declared` (a row no declared event matches counts as listed by every handler), or null.
    */
   firstOutboxRow(after: number, before: number, listed: readonly string[], declared: readonly string[]): Promise<number | null>;
+}
+
+/**
+ * One event a handler set aside (`onFailure: "skip"`), a row of `mesh_outbox_failures`: the outbox row copied whole, with
+ * `name` the declared FQN it was delivered as (the rename map applied), the handler, why and when.
+ */
+export interface FailureRow extends OutboxRow {
+  /** The failure row's own id, assigned by the adapter at the write, never reused. */
+  readonly failure: number;
+  /** The name of the handler that set it aside. */
+  readonly handler: string;
+  /** The error the handler failed with: its `code` (null for an error without one) and its message. */
+  readonly error: { readonly code: string | null; readonly message: string };
+  /** When it was set aside, by the database's clock. */
+  readonly failedAt: Date;
+}
+
+/** A failure row's place in a handler's list, ordered by position, then failure id: the keyset `readFailures` pages by. */
+export interface FailureCursor {
+  readonly position: number;
+  readonly failure: number;
+}
+
+/**
+ * The dead-letter operations on `mesh_outbox_failures` (spec, Events and commands, "Handler failures"), each in the
+ * running transaction, beside `DeliveryOperations`. Only core calls them. Mandatory for a data adapter of a project with a
+ * handler whose `onFailure` is `"skip"`: core checks them at the start of delivery then, and calls none of them
+ * otherwise, so an adapter has all four or none.
+ */
+export interface FailureOperations {
+  /** Insert a set-aside event; the adapter assigns `failure` and stamps `failedAt` with the database's clock. */
+  writeFailure(row: Omit<FailureRow, "failure" | "failedAt">): Promise<void>;
+  /** The handler's set-aside events after `after` (none when null) in (position, failure) order, at most `limit`. */
+  readFailures(handler: string, after: FailureCursor | null, limit: number): Promise<readonly FailureRow[]>;
+  /** Delete one set-aside event by its `failure` id; false when it was gone. */
+  deleteFailure(failure: number): Promise<boolean>;
+  /** Re-key every failure row of the handler `from` to `to` (a `renamedFrom` take-over). */
+  renameFailures(from: string, to: string): Promise<void>;
 }
 
 /** One row of `mesh_delivery_process`: a process that delivers in multi mode (the bus declares `multi-process`). */

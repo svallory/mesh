@@ -280,7 +280,7 @@ describe("the multi-process core tables", () => {
     expect(columns("mesh_subscription_progress").at(-1)).toBe("run_id:uuid?");
     expect(columns(DELIVERY_PROCESS_TABLE)).toEqual(["run_id:uuid", "renewed_at:timestamp", "host:string?", "pid:integer?", "started_at:timestamp?", "keep:string", "handlers:json", "declared:json"]);
     // CORE_TABLES itself is untouched, and so is the set of names whose entity data operations are refused
-    expect(CORE_TABLES.map((core) => core.name)).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+    expect(CORE_TABLES.map((core) => core.name)).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
     expect(CORE_TABLE_NAMES.has(DELIVERY_PROCESS_TABLE)).toBe(false);
     expect(MULTI_PROCESS_CORE.tables.map((core) => core.name)).toEqual([DELIVERY_PROCESS_TABLE]);
   });
@@ -307,7 +307,7 @@ describe("the multi-process core tables", () => {
     declared: text("declared", { mode: "json" }).notNull(),
   }),`);
     const view = schemaView(withBus(emit, MULTI));
-    expect(view.tables.map((table) => table.entity)).toEqual(["Account", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_delivery_process"]);
+    expect(view.tables.map((table) => table.entity)).toEqual(["Account", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures", "mesh_delivery_process"]);
     expect(view.tables.find((table) => table.entity === "mesh_handler_progress")!.columns.at(-1)).toMatchObject({ key: "run_id", builder: "text", notNull: false });
     // with no event declared, a multi-process bus adds nothing either
     const plain = input({ "account.mesh.mx": account });

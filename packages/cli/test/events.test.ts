@@ -332,7 +332,7 @@ describe("the outbox", () => {
   afterEach(() => { probe.hooks.made = undefined; probe.hooks.step = undefined; });
 
   test("the schema creates the outbox and its state table, both empty", async () => {
-    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+    expect(Object.keys(app.tables)).toEqual(["invoice", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
     const { layer } = await open();
     try {
       expect(await layer.readOutbox(0, 10)).toEqual({ rows: [], deletedThrough: 0, highest: 0, settled: 0 });

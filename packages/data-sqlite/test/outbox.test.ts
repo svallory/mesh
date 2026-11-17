@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { FrameworkError, type DataLayer, type OutboxPage, type TableHandle } from "@meshfw/runtime";
-import { outboxConformance, outboxRow } from "@meshfw/runtime/testing";
+import { outboxConformance, outboxRow, retentionConformance } from "@meshfw/runtime/testing";
 import build from "../src/build.ts";
 import { capabilities, createSchema, sqlite } from "../src/index.ts";
 import { openPolicies } from "./open-policy.ts";
@@ -48,9 +48,10 @@ afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 describe("the emitted outbox tables", () => {
   test("a project that declares an event gets core's tables after its entities' tables", () => {
-    expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+    expect(Object.keys(tables)).toEqual(["invoices", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]);
     expect(schema).toMatch(/position: integer\("position"\)\s*\.notNull\(\)\s*\.primaryKey\(\{ autoIncrement: true \}\)/);
-    expect(schema.match(/autoIncrement/g)).toHaveLength(1);
+    expect(schema).toMatch(/failure: integer\("failure"\)\s*\.notNull\(\)\s*\.primaryKey\(\{ autoIncrement: true \}\)/);
+    expect(schema.match(/autoIncrement/g)).toHaveLength(2);
   });
 
   test("an entity whose table is mesh_outbox, in letter case or not, is MESH_SCHEMA_DUPLICATE_TABLE once an event is declared", async () => {
@@ -111,6 +112,7 @@ for (const kind of ["memory", "file"] as const) {
       expect(without).toContain("a delete that empties the outbox never lets a position be reused");
     });
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
+    for (const [name, check] of Object.entries(retentionConformance(make))) test(`retention: ${name}`, check, 30_000);
   });
 }
 
@@ -205,10 +207,22 @@ describe("data-sqlite's outbox", () => {
     const layer = sqlite({ file: ":memory:" });
     try {
       await createSchema(layer, tables);
-      for (const name of ["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]) {
+      for (const name of ["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures"]) {
         await expect(layer.transaction((tx) => tx.select(tables[name]!))).rejects.toThrow(`The table ${name} is Mesh's own`);
         await expect(layer.transaction((tx) => tx.insert(tables[name]!, { id: 1, deleted_through: 9 }))).rejects.toBeInstanceOf(FrameworkError);
       }
+    } finally { await layer.close(); }
+  });
+
+  test("a database pushed before mesh_outbox_failures existed names that table when a failure operation runs", async () => {
+    const layer = sqlite({ file: ":memory:" });
+    try {
+      const { mesh_outbox_failures: _failures, ...older } = tables;
+      await createSchema(layer, older);
+      const refused = await layer.transaction((tx) => tx.readFailures!("h", null, 10)).then(() => undefined, (error: unknown) => error);
+      expect(refused).toBeInstanceOf(FrameworkError);
+      expect((refused as Error).message).toContain("mesh_outbox_failures");
+      expect((refused as Error).message).toContain("mesh db push");
     } finally { await layer.close(); }
   });
 

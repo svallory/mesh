@@ -1,5 +1,5 @@
 import type { CapabilityManifest } from "./capabilities.ts";
-import type { DataLayer, OutboxAppend, OutboxPage } from "./data-layer.ts";
+import type { DataLayer, DataOperations, FailureOperations, FailureRow, OutboxAppend, OutboxPage } from "./data-layer.ts";
 import { FrameworkError, MeshError } from "./errors.ts";
 
 /** A fresh layer whose database has the outbox tables and no outbox row. Each check closes it. */
@@ -253,6 +253,113 @@ export function outboxConformance(makeLayer: () => Promise<OutboxFixture>, manif
       });
       const page = await layer.readOutbox(0, 10);
       assert(JSON.stringify(positions(page)) === "[1,2]" && JSON.stringify(payloads(page)) === "[1,3]", `positions ${JSON.stringify(positions(page))}`);
+    }),
+  };
+}
+
+/** A set-aside event as `writeFailure` takes it: `row`'s fields, the handler and the error. */
+function failureOf(position: number, row: OutboxAppend, handler: string, error: FailureRow["error"] = { code: null, message: "down" }): Omit<FailureRow, "failure" | "failedAt"> {
+  return { ...row, position, handler, error };
+}
+
+/** The four dead-letter operations of a transaction, asserted present together. */
+function failures(tx: DataOperations): FailureOperations {
+  const names = ["writeFailure", "readFailures", "deleteFailure", "renameFailures"] as const;
+  const present = names.filter((name) => typeof tx[name] === "function");
+  assert(present.length === names.length, `the transaction's operations have ${present.join(", ") || "none"} of ${names.join(", ")}: an adapter has all four or none`);
+  return tx as DataOperations & FailureOperations;
+}
+
+/**
+ * The retention checks a data adapter runs beside `outboxConformance` (spec, Events and commands, "Retention", "Handler
+ * failures"): today the four dead-letter operations on `mesh_outbox_failures` (`FailureOperations`), all present
+ * together; each check owns and closes its layer, as `outboxConformance`'s do. `makeLayer` gives a fresh database with
+ * core's tables for a project that declares an event.
+ */
+export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): Record<string, () => Promise<void>> {
+  const withLayer = (run: (layer: DataLayer) => Promise<void>) => async () => {
+    const layer = await makeLayer();
+    try { await run(layer); } finally { await layer.close(); }
+  };
+  const read = (layer: DataLayer, handler: string, after: Parameters<FailureOperations["readFailures"]>[1], limit: number) =>
+    layer.transaction(async (tx) => failures(tx).readFailures(handler, after, limit));
+  const write = (layer: DataLayer, ...rows: Omit<FailureRow, "failure" | "failedAt">[]) => layer.transaction(async (tx) => {
+    for (const row of rows) await failures(tx).writeFailure(row);
+  });
+  return {
+    "dead letters: a written failure reads back whole, with its own id, the handler, the error and the database's failedAt": withLayer(async (layer) => {
+      const row = outboxRow(7, { causedBy: "00000000-0000-7000-8000-00000000beef" });
+      const before = Date.now();
+      await write(layer, failureOf(42, row, "receipts", { code: "MESH_FORBIDDEN", message: "denied" }));
+      const [read1, ...rest] = await read(layer, "receipts", null, 10);
+      assert(read1 !== undefined && rest.length === 0, "one failure was written and one is to be read");
+      assert(Number.isSafeInteger(read1.failure) && read1.failure > 0, `failure is the row's id, a positive whole number, and is ${String(read1.failure)}`);
+      assert(read1.handler === "receipts" && read1.position === 42 && read1.id === row.id && read1.name === row.name && read1.entity === row.entity
+        && read1.action === row.action && read1.causedBy === row.causedBy && JSON.stringify(read1.key) === JSON.stringify(row.key)
+        && JSON.stringify(read1.metadata) === JSON.stringify(row.metadata) && JSON.stringify(read1.payload) === JSON.stringify(row.payload)
+        && read1.occurredAt instanceof Date && read1.occurredAt.getTime() === row.occurredAt.getTime(), `the failure read back as ${JSON.stringify(read1)}`);
+      assert(read1.error.code === "MESH_FORBIDDEN" && read1.error.message === "denied", `error read back as ${JSON.stringify(read1.error)}`);
+      assert(read1.failedAt instanceof Date && Math.abs(read1.failedAt.getTime() - before) < 60_000, `failedAt is the database's clock now, and is ${String(read1.failedAt)}`);
+      await write(layer, failureOf(43, outboxRow(8), "receipts", { code: null, message: "plain" }));
+      const second = (await read(layer, "receipts", null, 10))[1]!;
+      assert(second.error.code === null && second.causedBy === null, `a null code and causedBy read back as null, got ${JSON.stringify(second)}`);
+      assert((await read(layer, "other", null, 10)).length === 0, "another handler's list is empty");
+    }),
+    "dead letters: readFailures pages a handler's rows in (position, failure) order, across equal positions and ids written out of position order": withLayer(async (layer) => {
+      // Written in the order 30, 10, 20, 10, 30: the ids rise in that order, the positions do not.
+      await write(layer, ...[30, 10, 20, 10, 30].map((position, n) => failureOf(position, outboxRow(n), "h")), failureOf(15, outboxRow(9), "other"));
+      const all = await read(layer, "h", null, 100);
+      const order = all.map((row) => `${row.position}:${(row.payload as { n: number }).n}`);
+      assert(JSON.stringify(order) === '["10:1","10:3","20:2","30:0","30:4"]', `the order is (position, failure), got ${JSON.stringify(order)}`);
+      const pages: string[] = [];
+      let cursor: { position: number; failure: number } | null = null;
+      for (let guard = 0; guard < 10; guard++) {
+        const page: readonly FailureRow[] = await read(layer, "h", cursor, 2);
+        assert(page.length <= 2, `a page of limit 2 held ${page.length} rows`);
+        pages.push(...page.map((row) => `${row.position}:${(row.payload as { n: number }).n}`));
+        if (page.length < 2) break;
+        cursor = { position: page.at(-1)!.position, failure: page.at(-1)!.failure };
+      }
+      assert(JSON.stringify(pages) === JSON.stringify(order), `paging by the keyset gave ${JSON.stringify(pages)}`);
+      const past = await read(layer, "h", { position: 10, failure: all[1]!.failure }, 100);
+      assert(JSON.stringify(past.map((row) => row.position)) === "[20,30,30]", `after the second row at 10 come 20, 30, 30, got ${JSON.stringify(past.map((row) => row.position))}`);
+    }),
+    "dead letters: deleteFailure removes one row by its id and is false the second time; a rolled-back delete keeps it": withLayer(async (layer) => {
+      await write(layer, failureOf(1, outboxRow(1), "h"), failureOf(2, outboxRow(2), "h"));
+      const [first, second] = await read(layer, "h", null, 10);
+      await rejects(() => layer.transaction(async (tx) => { await failures(tx).deleteFailure(first!.failure); throw new Error("roll back"); }), () => true, "the transaction rolls back");
+      assert((await read(layer, "h", null, 10)).length === 2, "a rolled-back delete removed the row");
+      assert(await layer.transaction((tx) => failures(tx).deleteFailure(first!.failure)), "deleteFailure of a present row is true");
+      assert(!(await layer.transaction((tx) => failures(tx).deleteFailure(first!.failure))), "deleteFailure of a gone row is false");
+      const left = await read(layer, "h", null, 10);
+      assert(left.length === 1 && left[0]!.failure === second!.failure, `the other row stays, got ${JSON.stringify(left.map((row) => row.failure))}`);
+    }),
+    "dead letters: a failure id is never reused, even after the highest one is deleted": withLayer(async (layer) => {
+      await write(layer, failureOf(1, outboxRow(1), "h"), failureOf(2, outboxRow(2), "h"));
+      const highest = (await read(layer, "h", null, 10)).at(-1)!.failure;
+      await layer.transaction((tx) => failures(tx).deleteFailure(highest));
+      await write(layer, failureOf(3, outboxRow(3), "h"));
+      const next = (await read(layer, "h", null, 10)).at(-1)!;
+      assert(next.position === 3 && next.failure > highest, `the next failure id is ${next.failure}, not above the deleted ${highest}`);
+    }),
+    "dead letters: renameFailures re-keys every row of one handler to another and leaves the rest": withLayer(async (layer) => {
+      await write(layer, failureOf(1, outboxRow(1), "before"), failureOf(2, outboxRow(2), "before"), failureOf(3, outboxRow(3), "kept"));
+      await layer.transaction((tx) => failures(tx).renameFailures("before", "after"));
+      assert((await read(layer, "before", null, 10)).length === 0, "the former name keeps no row");
+      const moved = await read(layer, "after", null, 10);
+      assert(JSON.stringify(moved.map((row) => [row.position, row.handler])) === '[[1,"after"],[2,"after"]]', `got ${JSON.stringify(moved.map((row) => [row.position, row.handler]))}`);
+      assert((await read(layer, "kept", null, 10)).length === 1, "another handler's row was touched");
+      await layer.transaction((tx) => failures(tx).renameFailures("nobody", "after"));
+      assert((await read(layer, "after", null, 10)).length === 2, "renaming a handler with no rows changes nothing");
+    }),
+    "dead letters: a failure row outlives the deletion of its outbox row": withLayer(async (layer) => {
+      const row = outboxRow(1);
+      const [position] = await layer.transaction(async (tx) => [await tx.appendEvent!(row)]);
+      await write(layer, failureOf(position!, row, "h"));
+      await layer.transaction((tx) => tx.deleteOutboxThrough!(position!));
+      assert((await layer.readOutbox!(0, 10)).rows.length === 0, "the outbox row was to be deleted");
+      const kept = await read(layer, "h", null, 10);
+      assert(kept.length === 1 && kept[0]!.position === position && kept[0]!.id === row.id, "the failure row was deleted with its outbox row");
     }),
   };
 }

@@ -18,19 +18,19 @@ const ENTITIES = [
 ];
 
 /** Core's tables of the event log, which `tables` and the database hold beside the entities' own. */
-const CORE = ["mesh_handler_progress", "mesh_outbox", "mesh_outbox_state", "mesh_subscription_progress"];
+const CORE = ["mesh_handler_progress", "mesh_outbox", "mesh_outbox_failures", "mesh_outbox_state", "mesh_subscription_progress"];
 
 describe("the schema", () => {
   test("the model has 18 entities in four modules, each in a folder of its own", async () => {
     const model = JSON.parse(readFileSync(resolve(root, ".mesh/model.json"), "utf8")) as { entities: { name: string; module: string }[] };
     expect(model.entities.map((entity) => entity.name).sort()).toEqual(ENTITIES);
     expect([...new Set(model.entities.map((entity) => entity.module))].sort()).toEqual(["audit", "execution", "identity", "work"]);
-    // The 18 entity tables, and core's four tables of the event log (the outbox, its state, handler and subscription progress).
+    // The 18 entity tables, and core's five tables of the event log (the outbox, its state, handler and subscription progress, set-aside events).
     expect(Object.keys(tables).filter((name) => !CORE.includes(name))).toHaveLength(18);
     expect(Object.keys(tables).filter((name) => CORE.includes(name)).sort()).toEqual(CORE);
   });
 
-  test("`mesh db push` creates the 18 entity tables and core's four", () => {
+  test("`mesh db push` creates the 18 entity tables and core's five", () => {
     const file = resolve(root, "hyper.db");
     rmSync(file, { force: true });
     try {
@@ -40,7 +40,7 @@ describe("the schema", () => {
       const database = new Database(file, { readonly: true });
       const names = (database.query("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((row) => row.name);
       database.close();
-      // SQLite adds `sqlite_sequence` for the outbox's never-reused AUTOINCREMENT key.
+      // SQLite adds `sqlite_sequence` for the never-reused AUTOINCREMENT keys of the outbox and the failures.
       expect(names.filter((name) => !CORE.includes(name) && name !== "sqlite_sequence")).toHaveLength(18);
       expect(names.filter((name) => CORE.includes(name)).sort()).toEqual(CORE);
       expect(names).toContain("sqlite_sequence");
