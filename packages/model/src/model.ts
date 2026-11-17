@@ -143,6 +143,11 @@ export interface Through {
 export type Rollup = {
   fn: "count" | "sum" | "avg" | "min" | "max";
   of: string;
+  /**
+   * `filter=(line) => ...`: the condition each record the path reaches last must meet to be aggregated. One parameter,
+   * `param`, the record; it runs as SQL only, so the build refuses one that does not translate. Absent when not written.
+   */
+  filter?: Expression & { param: string };
 };
 /** Exactly one definition: a function body or a rollup. */
 export type Computed = {

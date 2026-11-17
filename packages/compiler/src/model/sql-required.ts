@@ -1,7 +1,8 @@
 import { dirname, resolve } from "node:path";
-import type { Action, Diagnostic, Entity, Expression, ModelDocument, Policy, SortKey, SourcePosition } from "@meshfw/model";
+import type { Action, Computed, Diagnostic, Entity, Expression, ExprNode, ModelDocument, Policy, Rollup, SortKey, SourcePosition } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { loadPolicies, policiesCovering, policyExpressions, recordReason, type PolicyExpression } from "./policies.ts";
+import { rollupRoute } from "./rollup-operation.ts";
 import { lowerCondition, lowerSortKey, type LowerOptions, type LowerResult, type NotSql } from "./sql-condition.ts";
 
 /** What the fix of a function that does not translate says, wherever SQL is required. */
@@ -38,6 +39,94 @@ export function sqlPositions(document: ModelDocument, entity: Entity, options: P
       out.push({ entity, action, kind: "sort", subject: `the sort of read :${action.name} of ${entity.fqn}`, position: key.member.position, key, index,
         lower: () => lowerSortKey(document, entity, key, options) }));
   }
+  return out;
+}
+
+/** A rollup's `filter=` (ruling D33, OD6-OD8): a condition on the rows of the last entity its path reaches, run as SQL only. */
+export interface RollupFilter {
+  /** The entity that declares the rollup. */
+  readonly entity: Entity;
+  readonly computed: Computed;
+  readonly filter: NonNullable<Rollup["filter"]>;
+  /** The entity whose rows the filter reads: the last one the path reaches (the far entity of a `through=`). */
+  readonly last: Entity;
+  /** "the filter of count :openLines of billing.Invoice". */
+  readonly subject: string;
+  /** Lowered with its parameter as the row at depth 0. */
+  readonly lower: () => LowerResult;
+}
+
+/** Every rollup filter of the entity whose path the model resolves, in written order. */
+export function rollupFilters(document: ModelDocument, entity: Entity, options: Pick<LowerOptions, "reported"> = {}): RollupFilter[] {
+  return entity.computed.flatMap((computed): RollupFilter[] => {
+    const filter = computed.rollup?.filter;
+    const last = filter ? rollupRoute(document, entity, computed)?.entities.at(-1) : undefined;
+    if (!filter || !last) return [];
+    return [{ entity, computed, filter, last, subject: `the filter of ${computed.rollup!.fn} :${computed.name} of ${entity.fqn}`,
+      lower: () => lowerCondition(document, last, filter, { ...options, root: { param: filter.param } }) }];
+  });
+}
+
+/** What a rollup filter's fix says: it reads only its record's stored columns and fixed values (R18). */
+const ROLLUP_FILTER_FIX = (param: string) => `compare columns of ${param} with literals, atoms, %.now or %.today`;
+
+/**
+ * What a rollup filter reads besides its parameter's stored columns, literals, atoms, `%.now`, `%.today` and the registry's
+ * functions (R18): `&x`, `self`, `input`, `actor`, `context`, `before`, a helper, and a relationship or computed field of
+ * the record, each `MESH_ROLLUP_FILTER`; a name the record does not have is `MESH_UNKNOWN_MEMBER`. A quantifier's own
+ * parameter is a row too, but only over a relationship of the record, which is refused first. A filter Mesh did not
+ * translate has no tree: its error is the "must run as SQL" one.
+ */
+export function rollupFilterProblems(place: RollupFilter): Diagnostic[] {
+  const { filter, last, computed } = place;
+  const param = filter.param;
+  const named = `${computed.rollup!.fn} :${computed.name}`;
+  const out: Diagnostic[] = [];
+  const refuse = (message: string, position: SourcePosition) => out.push(error("MESH_ROLLUP_FILTER", message, position, ROLLUP_FILTER_FIX(param)));
+  const tree = filter.tree;
+  // A helper handed the record (`isOpen(line.state)`) leaves the function plain: it is still a helper call.
+  const handed = filter.plain?.why === "reads-record-in-helper" ? /^a call to (.+), which is given the record$/.exec(filter.plain.detail)?.[1] : undefined;
+  if (handed !== undefined) refuse(`the filter of ${named} calls ${handed}; it reads only ${param} and fixed values`, filter.plain!.position);
+  if (!tree) return out;
+  const walk = (node: ExprNode, rows: ReadonlySet<string>): void => {
+    switch (node.kind) {
+      case "var":
+        if (!rows.has(node.name)) refuse(`the filter of ${named} reads ${node.name}; it reads only ${param}, the ${last.fqn} the path reaches, and fixed values`, node.position);
+        return;
+      case "member": {
+        const names: string[] = [];
+        let root: ExprNode = node;
+        while (root.kind === "member") { names.unshift(root.name); root = root.object; }
+        if (root.kind === "var" && root.name === "self" && !rows.has("self")) {
+          refuse(`the filter of ${named} reads &${names[0]}; it reads only ${param}, the ${last.fqn} the path reaches, and fixed values`, node.position);
+          return;
+        }
+        if (root.kind !== "var" || root.name !== param) { walk(root, rows); return; }
+        const name = names[0]!;
+        if (last.attributes.some((a) => a.name === name)) return;
+        if (last.relationships.some((r) => r.kind === "belongs-to" && r.keyColumn === name)) return;
+        const kind = last.relationships.some((r) => r.name === name) ? "relationship" : last.computed.some((c) => c.name === name) ? "computed field" : undefined;
+        if (kind) {
+          refuse(`the filter of ${named} reads ${param}.${name}, a ${kind} of ${last.fqn}; it reads only stored columns of ${param}`, node.position);
+          return;
+        }
+        out.push(error("MESH_UNKNOWN_MEMBER", `${param}.${name}: \`${name}\` is not a member of ${last.fqn}`, node.position,
+          `read a stored column of ${param}: ${[...last.attributes.map((a) => a.name), ...last.relationships.flatMap((r) => (r.keyColumn ? [r.keyColumn] : []))].join(", ")}`));
+        return;
+      }
+      case "helper":
+        refuse(`the filter of ${named} calls ${node.name}; it reads only ${param} and fixed values`, node.position);
+        node.args.forEach((arg) => walk(arg, rows));
+        return;
+      case "call": node.args.forEach((arg) => walk(arg, rows)); return;
+      case "quantify":
+        walk(node.source, rows);
+        walk(node.body, new Set([...rows, node.param]));
+        return;
+      default: return;
+    }
+  };
+  walk(tree, new Set([param]));
   return out;
 }
 
@@ -160,6 +249,17 @@ export function checkSqlRequired(document: ModelDocument, diagnostics: Diagnosti
       const lowered = place.lower();
       if (lowered.ok) continue;
       for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, place.head, "policy"));
+    }
+    // A rollup's filter is new, so it must translate from the start (R19): what it reads is checked first (R18).
+    // What it reads is reported even where the type pass found an error: `line.product.active` over a nullable product is
+    // first a relationship the filter may not read, not a read that needs `?.`, whose fix would lead to this error anyway.
+    for (const place of rollupFilters(document, entity, reported)) {
+      const reads = rollupFilterProblems(place);
+      if (reads.length) { found.push(...reads); continue; }
+      if (holdsError(place.filter.position, place.filter.source.length)) continue;
+      const lowered = place.lower();
+      if (lowered.ok) continue;
+      for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, `${place.subject} must run as SQL`, "filter"));
     }
   }
   diagnostics.push(...found);

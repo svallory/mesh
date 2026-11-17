@@ -7,7 +7,7 @@ import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { emittedNothing, printExpression, printTree, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
 import { stableJsonStringify } from "../stable-json.ts";
-import { policyConditions, sqlPositions } from "../../model/sql-required.ts";
+import { policyConditions, rollupFilters, sqlPositions } from "../../model/sql-required.ts";
 import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
@@ -104,9 +104,9 @@ export interface ExpressionsView {
   /** One function per expression, in the order of the entity file. */
   readonly entries: readonly ExpressionEntry[];
   /**
-   * `$conditions` (M10): one condition literal per declared filter, per declared sort key that is a computed field, and
-   * per function of a read or load policy that reads the record: the filters and sorts first, then the policies, each
-   * group in file order. The read (and a caller's load) binds it and hands it to the data layer as SQL. Empty when the entity has none,
+   * `$conditions` (M10): one condition literal per declared filter, per declared sort key that is a computed field, per
+   * function of a read or load policy that reads the record, and per rollup filter (`rollup.<name>.filter`): the filters
+   * and sorts first, then the policies, then the rollup filters, each group in file order. The read (and a caller's load) binds it and hands it to the data layer as SQL. Empty when the entity has none,
    * and then the file declares no `$conditions`.
    */
   readonly conditions: readonly ExpressionEntry[];
@@ -268,9 +268,12 @@ export function policySpecs(policies: readonly Policy[], ref: (expression: Expre
   return `[${specs.join(", ")}]`;
 }
 
-/** The entities that have at least one expression get a file; the rest get none. */
+/**
+ * The entities that have at least one expression get a file; the rest get none. A rollup's filter counts: it runs only as
+ * SQL, so it is a condition literal in `$conditions` and no function in `$expressions`.
+ */
 export function hasExpressions(entity: Entity): boolean {
-  return collect(entity).length > 0;
+  return collect(entity).length > 0 || entity.computed.some((computed) => computed.rollup?.filter);
 }
 
 export function expressionsView({ document }: EmitInput, entity: Entity, generatedPath: string): ExpressionsView {
@@ -480,7 +483,8 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // A parameter is printed with the in-memory form; one taken from another entity's computed body calls that file's
   // helpers, imported here under a local derived from that entity (`$billing$Customer$limit`).
   const foreignHelpers = new Map<string, HelperImport>();
-  const literalEntry = (lower: () => LowerResult, subject: string, position: SourcePosition, id: string, comment: string, scope: string): ExpressionEntry => {
+  // `rows`: the entity whose rows depth 0 reads, this one's but for a rollup filter, which reads the last entity its path reaches.
+  const literalEntry = (lower: () => LowerResult, subject: string, position: SourcePosition, id: string, comment: string, scope: string, rows: string = entity.fqn): ExpressionEntry => {
     const lowered = lower();
     if (!lowered.ok) throw emitError("MESH_EXPR_NOT_SQL", `${subject} has no SQL form`, lowered.problems[0]!.position);
     const renames = new Map<string, Map<string, string>>();
@@ -501,7 +505,7 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     return {
       key: JSON.stringify(id),
       comment: `${comment} (${entity.file}:${position.line}:${position.column + 1})`.replace(/[\r\n\u2028\u2029]/g, " "),
-      code: `{ what: ${JSON.stringify(subject)}, entity: ${JSON.stringify(entity.fqn)}, tree: ${stableJsonStringify(lowered.lowered.tree)}, params: (${emittedHere.scope ? "$s" : "_$s"}: ${scope}) => [${params.join(", ")}] }`,
+      code: `{ what: ${JSON.stringify(subject)}, entity: ${JSON.stringify(rows)}, tree: ${stableJsonStringify(lowered.lowered.tree)}, params: (${emittedHere.scope ? "$s" : "_$s"}: ${scope}) => [${params.join(", ")}] }`,
     };
   };
   const conditions = [
@@ -516,6 +520,9 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
       const f = found.find((candidate) => candidate.id === place.id)!;
       return literalEntry(place.lower, place.subject, place.expression.position, place.id, place.what, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`);
     }),
+    // A rollup's filter: its parameters are `%.now` and `%.today` only, so its scope is the clock's.
+    ...rollupFilters(document, entity).map((place) => literalEntry(place.lower, place.subject, place.filter.position, `rollup.${place.computed.name}.filter`,
+      `${place.computed.rollup!.fn} :${place.computed.name} filter`, scopeName, place.last.fqn)),
   ];
   // The entity imports: each value with its read-only type, and each record type, from the entity's actions file; its own
   // record type is already imported from its types file.

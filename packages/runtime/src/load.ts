@@ -1,4 +1,4 @@
-import { whereFor, type Condition, type Hop, type TableOf } from "./condition.ts";
+import { bindCondition, whereFor, type Bound, type Condition, type ConditionLiteral, type Hop, type TableOf } from "./condition.ts";
 import { ROLLUP_ANCHORS, type DataOperations, type Filter, type RollupQuery, type Row, type Scalar, type TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
@@ -92,6 +92,13 @@ export type ComputedPlan =
       fn: "count" | "sum" | "avg" | "min" | "max";
       /** The authored path split at the dots: a relationship, then optionally an attribute. */
       of: readonly string[];
+      /**
+       * `filter=(line) => ...`: the condition each row the path reaches last must meet to be aggregated, lowered at build
+       * (`rollup.<name>.filter` in the entity's `$conditions`). A thunk, read when a load runs, never when the plan's file
+       * loads (the expressions file and the plan can be in one import cycle). Bound with the load's clock, ANDed into the
+       * last table's condition; a filtered rollup always asks the data layer, never the rows a call loaded.
+       */
+      filter?: (() => ConditionLiteral<never>) | undefined;
     };
 export interface EntityPlan {
   table: TableHandle;
@@ -179,7 +186,7 @@ export async function loadRows(
   // What the caller gets of each name admitted row by row: never the bodies' copy, which no policy filtered.
   const admitted = new Map<string, unknown[]>();
   for (const [name, narrowing] of narrowed)
-    admitted.set(name, await admittedValues(plan, entity, entityPlan, name, narrowing, tx, work, forBodies.has(name)));
+    admitted.set(name, await admittedValues(plan, entity, entityPlan, name, narrowing, tx, work, forBodies.has(name), options));
   return rows.map((row, index) => {
     const loaded: Row = { ...row };
     for (const name of names) loaded[name] = denied.has(name) ? emptied(denied.get(name)) : admitted.has(name) ? admitted.get(name)![index] : work[index]![name];
@@ -299,6 +306,7 @@ async function admissions(plan: LoadPlan, entity: string, names: readonly string
  */
 async function admittedValues(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, narrowing: Narrowing, tx: DataOperations, work: Work[], loadedForBodies: boolean,
+  options: LoadOptions,
 ): Promise<unknown[]> {
   // No row, nothing to load: as for any name, a load that could not be served is not reached.
   if (work.length === 0) return [];
@@ -308,7 +316,7 @@ async function admittedValues(
     if (narrowing.route) {
       // On copies, with the conditions: the rows may hold the related rows a computed body loaded, which no policy filtered.
       const into: Work[] = work.map((row) => ({ ...row }));
-      await rollupRows(plan, entity, entityPlan, name, computed, rollupRoute(plan, entity, name, computed), tx, into, undefined, narrowing.route);
+      await rollupRows(plan, entity, entityPlan, name, computed, rollupRoute(plan, entity, name, computed), tx, into, undefined, narrowing.route, options);
       return into.map((row) => row[name]);
     }
     const values: unknown[] = [];
@@ -386,7 +394,7 @@ async function ensureField(
   if (computed.kind === "rollup") {
     const route = rollupRoute(plan, entity, name, computed);
     if (perRow(computed, route)) for (const row of todo) row[name] = await rollupOneRow(plan, entity, entityPlan, name, computed, tx, row);
-    else await rollupRows(plan, entity, entityPlan, name, computed, route, tx, todo, (options as Options).pending);
+    else await rollupRows(plan, entity, entityPlan, name, computed, route, tx, todo, (options as Options).pending, undefined, options);
     return;
   }
   for (const path of computed.needs) await ensurePath(plan, entity, tx, todo, path.split("."), options, depth + 1);
@@ -706,11 +714,24 @@ async function loadThrough(
 }
 
 /**
- * Does the rollup keep its per-row `count`/`max` call (one has-many or has-one with no link entity, ruling D33 OD3), or go
- * through `rollup`?
+ * Does the rollup keep its per-row `count`/`max` call (one has-many or has-one with no link entity and no filter, ruling
+ * D33 OD3), or go through `rollup`?
  */
 const perRow = (computed: Extract<ComputedPlan, { kind: "rollup" }>, route: Pick<RollupRoute, "relation" | "joined">) =>
-  (computed.fn === "count" || computed.fn === "max") && !route.joined && route.relation.kind !== "belongs-to";
+  (computed.fn === "count" || computed.fn === "max") && !route.joined && route.relation.kind !== "belongs-to" && !computed.filter;
+
+/**
+ * A rollup's `filter`, bound for one load: its parameters (`%.now`, `%.today`; a filter reads nothing else that is not
+ * the row) computed with the load's clock. `true` when there is none. A condition goes only to a layer whose manifest
+ * declares `conditions`, as a read's own does (`whereFor`), when the load names the layer.
+ */
+function boundFilter(plan: LoadPlan, computed: Extract<ComputedPlan, { kind: "rollup" }>, options: Pick<LoadOptions, "clock" | "layer">): Bound {
+  if (!computed.filter) return true;
+  const tableOf: TableOf = (fqn) => planOf(plan, fqn).table;
+  const bound = bindCondition(tableOf, computed.filter(), scope({}, options.clock ? { clock: options.clock } : {}) as never);
+  if (bound !== true && bound !== false && bound !== null && options.layer !== undefined) whereFor(options.layer, bound);
+  return bound;
+}
 
 /** One relationship of a rollup's path: `name` of `from` (an FQN), and what it is. */
 interface RollupStep {
@@ -816,18 +837,26 @@ const nothing = (computed: Extract<ComputedPlan, { kind: "rollup" }>) => (comput
  * worked out from loaded rows, which may be the copy a computed body loaded with no policy. On a route of required
  * belongs-to, the anchors the answer leaves out are asked once more without the conditions, so a row the policies
  * exclude (`null`, or `0` for a count) is told from a key that names no row (the error).
+ *
+ * A `filter` is the condition each row of the last table must meet: ANDed into that table's condition (the one-table
+ * route's `where`, a joined route's last hop's), and, like a row condition, it keeps the value from being worked out from
+ * loaded rows and has the anchors it leaves out on a route of required belongs-to asked again without it. A filter that
+ * folds to false or unknown counts no row: nothing is asked but that second question.
  */
 async function rollupRows(
   plan: LoadPlan, entity: string, entityPlan: EntityPlan, name: string, computed: Extract<ComputedPlan, { kind: "rollup" }>, route: RollupRoute, tx: DataOperations, rows: Work[], pending?: object,
-  admitted?: ReadonlyMap<string, Condition>,
+  admitted?: ReadonlyMap<string, Condition>, options: Pick<LoadOptions, "clock" | "layer"> = {},
 ): Promise<void> {
   const { path, relation, target, column } = route;
   const conditionOf = (fqn: string) => admitted?.get(fqn);
+  const filter = boundFilter(plan, computed, options);
+  // Anything that narrows the rows asked: the value then never comes from loaded rows, and an anchor left out may be excluded, not dangling.
+  const conditioned = admitted !== undefined || computed.filter !== undefined;
   const owned = relation.kind === "belongs-to";
   const anchorOf = (row: Work) => row[owned ? relation.column : entityPlan.key];
   const asked: Work[] = [];
   for (const row of rows) {
-    if (!admitted && !route.joined && computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
+    if (!conditioned && !route.joined && computed.fn !== "sum" && computed.fn !== "avg" && Object.hasOwn(row, path)) {
       row[name] = fromLoaded(computed, related(row[path]), column);
       continue;
     }
@@ -842,30 +871,35 @@ async function rollupRows(
   const anchors = [...new Set(asked.map(anchorOf))] as RollupQuery["anchors"][number][];
   const found = new Map<unknown, unknown>();
   let query: Omit<RollupQuery, "anchors">;
-  const where = (fqn: string | undefined) => {
-    const condition = fqn === undefined ? undefined : conditionOf(fqn);
+  // The condition of a table of the route: its entity's row condition, and on the last table the filter too.
+  const where = (fqn: string | undefined, last: boolean) => {
+    const own = fqn === undefined ? undefined : conditionOf(fqn);
+    const filtered = last && filter !== true && filter !== false && filter !== null ? filter : undefined;
+    const condition: Condition | undefined = own && filtered ? { kind: "call", fn: "and", args: [own, filtered] } : own ?? filtered;
     return condition ? { where: condition } : {};
   };
-  if (!route.joined) query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column, ...where(route.targetName) };
+  if (!route.joined) query = { fn: computed.fn, table: target.table, anchor: owned ? target.key : (relation as HasPlan & { column: string }).column, value: column, ...where(route.targetName, true) };
   else {
     // A route that starts at a belongs-to starts at its target, whose rows the target's condition narrows; one that
     // starts at the entity's own table has no condition there (the caller already holds those rows).
     const start = owned ? planOf(plan, relation.target) : entityPlan;
-    const hops = (owned ? route.steps.slice(1) : route.steps).map((step) => {
+    const steps = owned ? route.steps.slice(1) : route.steps;
+    const hops = steps.map((step, index) => {
       const through = step.relation.kind === "has-many" ? step.relation.through : undefined;
       const linkWhere = through ? conditionOf(through.target) : undefined;
-      return { hop: hopOf(plan, step), ...where(step.relation.target), ...(linkWhere ? { linkWhere } : {}) };
+      return { hop: hopOf(plan, step), ...where(step.relation.target, index === steps.length - 1), ...(linkWhere ? { linkWhere } : {}) };
     });
-    query = { fn: computed.fn, table: start.table, anchor: start.key, value: column, hops, key: target.key, ...where(owned ? relation.target : undefined) };
+    query = { fn: computed.fn, table: start.table, anchor: start.key, value: column, hops, key: target.key, ...where(owned ? relation.target : undefined, false) };
   }
   const ask = async (asking: Omit<RollupQuery, "anchors">, list: readonly RollupQuery["anchors"][number][], into: Map<unknown, unknown>) => {
     for (let at = 0; at < list.length; at += ROLLUP_ANCHORS)
       for (const result of await tx.rollup({ ...asking, anchors: list.slice(at, at + ROLLUP_ANCHORS) })) into.set(result.anchor, result.value);
   };
-  await ask(query, anchors, found);
+  // A filter that folded to false or unknown keeps every row out: there is nothing to ask.
+  if (filter !== false && filter !== null) await ask(query, anchors, found);
   // Excluded by a condition, not dangling: an anchor the same route reaches when no condition applies.
   const excluded = new Map<unknown, unknown>();
-  if (admitted && route.required) {
+  if (conditioned && route.required) {
     const missing = anchors.filter((anchor) => !found.has(anchor));
     if (missing.length) await ask(unconditioned(query), missing, excluded);
   }

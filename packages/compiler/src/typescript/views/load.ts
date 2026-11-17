@@ -25,9 +25,11 @@ export interface LoadView {
   /**
    * Imports of each entity's expressions file, for the entities with a computed field that has a body or a read policy
    * a load runs: the file's `$expressions` under `entityLocal(entity, "expressions")`, e.g. `$work$Task$expressions`, and
-   * its `$conditions` under `conditions` (`$work$Task$conditions`) when a read policy a load runs reads the record, else null.
+   * its `$conditions` under `conditions` (`$work$Task$conditions`) when a read policy a load runs reads the record or a
+   * rollup has a filter, else null. `local` is null when the plan reads only the file's `$conditions` (an entity whose
+   * one expression a load runs is a rollup's filter), so no import goes unread under `noUnusedLocals`.
    */
-  readonly expressionImports: readonly { readonly local: string; readonly fromLiteral: string; readonly conditions: string | null }[];
+  readonly expressionImports: readonly { readonly local: string | null; readonly fromLiteral: string; readonly conditions: string | null }[];
   /** Every entity, in the fixed entity order: the plan has one entry per entity, because a relationship may point at any of them. */
   readonly entities: readonly LoadEntity[];
 }
@@ -66,8 +68,9 @@ export const hasLoader = (entity: Entity) => entity.relationships.length + entit
 export function loadView(input: EmitInput, generatedPath: string): LoadView {
   const { document } = input;
   const ordered = orderedEntities(document);
-  const expressionImports: { local: string; fromLiteral: string; conditions: string | null }[] = [];
-  const locals = new Map<string, string>();
+  const expressionImports: { local: string | null; fromLiteral: string; conditions: string | null }[] = [];
+  /** One import per expressions file, made by the first local the plan reads from it. */
+  const sources = new Map<string, (typeof expressionImports)[number]>();
   const byFile = entitiesByFile(document);
   const entities = ordered.map((entity): LoadEntity => {
     const key = entity.attributes.find((attribute) => attribute.primaryKey);
@@ -91,24 +94,30 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
       }
       return { key: propertyName(relation.name), plan: `{ ${parts.join(", ")} }` };
     });
-    const expressionsOf = () => {
-      let local = locals.get(entity.file);
-      if (!local) {
-        // This one file holds every entity's local, so a local never uses the bare entity name: it is `$`, the
-        // entity's path from the root barrel with `$` for `.` (each folder as its namespace name), then `$expressions`:
-        // `work.Task` gives `$work$Task$expressions`, a root `List` gives `$List$expressions` (`entityLocal`).
-        local = entityLocal(entity, "expressions");
-        locals.set(entity.file, local);
-        expressionImports.push({ local, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.expressions`), conditions: null });
+    const sourceOf = () => {
+      let source = sources.get(entity.file);
+      if (!source) {
+        source = { local: null, fromLiteral: fromLiteral(generatedPath, `${posix.dirname(generatedPath)}/${entityPath(entity)}.expressions`), conditions: null };
+        sources.set(entity.file, source);
+        expressionImports.push(source);
       }
-      return local;
+      return source;
     };
+    // This one file holds every entity's locals, so a local never uses the bare entity name: it is `$`, the entity's
+    // path from the root barrel with `$` for `.` (each folder as its namespace name), then `$expressions`: `work.Task`
+    // gives `$work$Task$expressions`, a root `List` gives `$List$expressions` (`entityLocal`).
+    const expressionsOf = () => (sourceOf().local ??= entityLocal(entity, "expressions"));
     // Read from the expressions file when called, never when this file loads: an expressions file imports the actions
     // files of the entities its functions call, which import this file, so the two can be in one import cycle.
     const lazily = (id: string) => `($s: never) => ${expressionsOf()}[${JSON.stringify(id)}]($s)`;
+    /** This entity's `$conditions` local, from the same file as its `$expressions`: read through a thunk, for the same cycle. */
+    const conditionsOf = () => (sourceOf().conditions ??= entityLocal(entity, "conditions"));
     const computed = entity.computed.map((field) => {
-      if (field.rollup)
-        return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))} }` };
+      if (field.rollup) {
+        // A filter is the condition literal the build lowered, `rollup.<name>.filter`, printed only when written.
+        const filter = field.rollup.filter ? `, filter: () => ${conditionsOf()}[${JSON.stringify(`rollup.${field.name}.filter`)}]` : "";
+        return { key: propertyName(field.name), plan: `{ kind: "rollup", fn: ${JSON.stringify(field.rollup.fn)}, of: ${JSON.stringify(field.rollup.of.split("."))}${filter} }` };
+      }
       const needs = JSON.stringify(field.needs ?? []);
       return { key: propertyName(field.name), plan: `{ kind: "body", needs: ${needs},${field.body!.plain ? " plain: true," : ""} evaluate: ${lazily(`computed.${field.name}`)} }` };
     });
@@ -119,10 +128,7 @@ export function loadView(input: EmitInput, generatedPath: string): LoadView {
     const folded = policies.length ? new Set(policyConditions(document, entity).map((place) => place.expression)) : new Set();
     const sql = (expression: Expression) => {
       if (!folded.has(expression)) return undefined;
-      expressionsOf();
-      const source = expressionImports.find((candidate) => candidate.local === locals.get(entity.file))!;
-      source.conditions = entityLocal(entity, "conditions");
-      return `() => ${source.conditions}[${JSON.stringify(ids!.get(expression)!)}]`;
+      return `() => ${conditionsOf()}[${JSON.stringify(ids!.get(expression)!)}]`;
     };
     const reads = policies.length ? policySpecs(policies, (expression) => lazily(ids!.get(expression)!), "read", sql) : null;
     return {

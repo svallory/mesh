@@ -1031,12 +1031,14 @@ function buildEntity(
     const { at, pos, fail, opt, shape, conceptUse, checkShape, checkRuleText } = readers;
     const { entity: references, event: eventReferences, command: commandReferences } = src.scope.references;
     // A handler body reads no member: each `&name` in it is `MESH_HANDLER_SCOPE` from the expression layer, written or read.
-    const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish" | "handler"): Expression =>
+    // A rollup's filter (`"rollup-filter"`) reads only the record its parameter names: an `&x` there is refused with the
+    // filter's own error once the record's entity is known (`rollupFilterProblems`), not checked against this entity.
+    const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish" | "handler" | "rollup-filter"): Expression =>
       expression(
         a,
         src.source,
         at,
-        (ref) => { if (step !== "handler") checkRef(ref, scope); },
+        (ref) => { if (step !== "handler" && step !== "rollup-filter") checkRef(ref, scope); },
         ({ ref, position }) => {
           if (step !== "handler")
             fail(
@@ -1061,7 +1063,7 @@ function buildEntity(
           report: (d) => {
             if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
           },
-          ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : step === "handler" ? { handlerBody: true } : {}),
+          ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : step === "handler" ? { handlerBody: true } : step === "rollup-filter" ? { rowParameter: true } : {}),
         },
       );
     const authoredMember = (line: Tag) =>
@@ -1328,6 +1330,21 @@ function buildEntity(
         if (writtenLink) throughPositions.set(relation, at(attrOffset(throughAttr!)));
       }
     };
+    /**
+     * `filter=(line) => ...` on a rollup line, converted with its one parameter as the record (`rowParameter`); the contract
+     * refused every other parameter form. Kept as the same object, so its side tables stay, with the parameter's name and
+     * without `rest`/`takesScope`, which say what a function of the scope can reach and do not apply to it.
+     */
+    const rollupFilter = (a: Attr | undefined): { filter?: Rollup["filter"] } => {
+      const n = nodeOf(a);
+      const param = (n?.params?.[0] as { name?: string } | undefined)?.name;
+      if (!a || param === undefined) return {};
+      const filter = expr(a, "expression", "rollup-filter") as Rollup["filter"] & { rest?: true; takesScope?: true };
+      delete filter.rest;
+      delete filter.takesScope;
+      filter.param = param;
+      return { filter };
+    };
     const computed = (section: Tag) => {
       for (const tag of tags(section.children)) {
         const base = { name: declaredName(tag), position: pos(tag) };
@@ -1338,7 +1355,7 @@ function buildEntity(
             ...base,
             type: "integer",
             nullable: false,
-            rollup: { fn: tag.name as Rollup["fn"], of },
+            rollup: { fn: tag.name as Rollup["fn"], of, ...rollupFilter(attr(tag, "filter")) },
           };
           entity.computed.push(computed);
           rollups.push({ entity, computed, segments });

@@ -45,7 +45,10 @@ export interface Lowered {
 }
 
 export interface LowerOptions {
-  /** What depth 0 is: `self` (default), or the named parameter of a one-parameter function, whose reads become columns. */
+  /**
+   * What depth 0 is: `self` (default), or the named parameter of a one-parameter function (a rollup's filter), whose reads
+   * become columns; a belongs-to's key column (`line.productId`) is one of them.
+   */
   root?: { param: string };
   /**
    * `read` (default): helper calls and every other record-independent subtree become parameters. `write`: a call to an
@@ -336,6 +339,13 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
       }
       if (!last || end.mode === "list") return plain(`a member of computed :${name}, which is not a record`);
       return inline(depth, entity, field.name, scope, node, path);
+    }
+    // A function of one row (`root`, a rollup's filter) may read a belongs-to's stored key by its column (`line.productId`).
+    const keyed = options.root && depth === 0 ? entity.relationships.find((r) => r.kind === "belongs-to" && r.keyColumn === name) : undefined;
+    if (keyed && last && end.mode !== "list") {
+      const target = targetOf(entity, keyed);
+      const cls = CLASS[keyed.keyType ?? (target && keyOf(target)?.type) ?? "string"];
+      return { kind: "column", depth, name, class: cls === "json" ? "string" : cls };
     }
     return plain(`&${name} is not a member of ${entity.fqn}`);
   };

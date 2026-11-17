@@ -95,6 +95,7 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `authorize-if` | `authorize-if=() => true` | `authorize-if` | on main |
 | `authorize-if.value` | `authorize-if=() => true` | `authorize-if.value` | on main |
 | `avg` | `avg :total of=&lines.amount` | `avg` | on main |
+| `avg.filter` | `avg :total of=&lines.amount filter=(line) => line.amount > 0` | `avg.filter` | on main |
 | `avg.name` | `avg :total of=&lines.amount` | `avg.name` | on main |
 | `avg.of` | `avg :total of=&lines.amount` | `avg.of` | on main |
 | `belongs-to` | `belongs-to :related entity=Line` | `belongs-to` | on main |
@@ -125,6 +126,7 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `concept` | `concept :Sample` | `concept` | on main |
 | `concept.name` | `concept :Sample` | `concept.name` | on main |
 | `count` | `count :total of=&lines` | `count` | on main |
+| `count.filter` | `count :total of=&lines filter=(line) => line.amount > 0` | `count.filter` | on main |
 | `count.name` | `count :total of=&lines` | `count.name` | on main |
 | `count.of` | `count :total of=&lines` | `count.of` | on main |
 | `create` | `create :work` | `create` | on main |
@@ -237,9 +239,11 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `load` | `load=[&lines]` | `load` | on main |
 | `load.value` | `load=[&lines]` | `load.value` | on main |
 | `max` | `max :total of=&lines.dueOn` | `max` | on main |
+| `max.filter` | `max :total of=&lines.dueOn filter=(line) => line.dueOn < %.today` | `max.filter` | on main |
 | `max.name` | `max :total of=&lines.dueOn` | `max.name` | on main |
 | `max.of` | `max :total of=&lines.dueOn` | `max.of` | on main |
 | `min` | `min :total of=&lines.amount` | `min` | on main |
+| `min.filter` | `min :total of=&lines.amount filter=(line) => line.amount > 0` | `min.filter` | on main |
 | `min.name` | `min :total of=&lines.amount` | `min.name` | on main |
 | `min.of` | `min :total of=&lines.amount` | `min.of` | on main |
 | `operation` | `operation :close` | `operation` | on main |
@@ -292,6 +296,7 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `string.unique` | `string :field unique` | `string.unique` | on main |
 | `string.value` | `string :field() { return "hello" }` | `string.value` | on main |
 | `sum` | `sum :total of=&lines.amount` | `sum` | on main |
+| `sum.filter` | `sum :total of=&lines.amount filter=(line) => line.amount > 0` | `sum.filter` | on main |
 | `sum.name` | `sum :total of=&lines.amount` | `sum.name` | on main |
 | `sum.of` | `sum :total of=&lines.amount` | `sum.of` | on main |
 | `surface` | `surface :admin` | `surface` | on main |
