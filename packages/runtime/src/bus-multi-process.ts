@@ -1017,12 +1017,14 @@ export function multiProcessChecks(
   add("the modes never mix across processes: a single-mode worker refuses a multi start; a multi worker refuses a single-mode start with the several-processes wording", { file: true }, async (ctx) => {
     const single = await ctx.spawn("basic", ["--single"]);
     const multi = ctx.scenario("basic");
-    const taken = await rejection(() => multi.deliver());
+    // Each refusal beside a live process is repeated past a retryable DatabaseBusyError (see `again`): the holder renews
+    // its claim on mesh_outbox_state every tick, and on Postgres the start's lock of that row can meet a renewal (40001).
+    const taken = await rejection(() => again(() => multi.deliver()));
     assert(taken instanceof DelivererTakenError && taken.holder.pid === single.pid && !taken.holder.multiProcess, `got ${String(taken)}`);
     single.kill("SIGTERM");
     await single.done;
     await ctx.spawn("basic");
-    const refused = await rejection(() => ctx.scenario("basic", { bus: singleMode(ctx.bus) }).deliver());
+    const refused = await rejection(() => again(() => ctx.scenario("basic", { bus: singleMode(ctx.bus) }).deliver()));
     assert(refused instanceof DelivererTakenError && refused.holder.multiProcess && refused.message.includes("several processes"), `got ${String(refused)}`);
   });
 
@@ -1032,7 +1034,7 @@ export function multiProcessChecks(
     last.kill("SIGKILL");
     await last.done;
     await sleep(500);
-    const refused = await rejection(() => ctx.scenario("basic", { bus: singleMode(ctx.bus) }).deliver());
+    const refused = await rejection(() => again(() => ctx.scenario("basic", { bus: singleMode(ctx.bus) }).deliver()));
     assert(refused instanceof DelivererTakenError && refused.holder.multiProcess, `got ${String(refused)}`);
   });
 
@@ -1052,7 +1054,11 @@ export function multiProcessChecks(
     const binding = ctx.scenario("basic", { keep: "all" });
     const [p1] = await ctx.publish(binding, [Alpha, 1]);
     await until(async () => ((await ctx.lease("count"))?.position ?? -1) >= p1!, "the worker handled it");
-    await binding.deliver();
+    // A round beside a live process may end with a retryable DatabaseBusyError, as the user docs say deliver() can: the
+    // worker renews the nil claim on mesh_outbox_state every tick, and on Postgres a round's transaction that locks that
+    // row after a renewal committed past its snapshot fails with 40001 (m9-postgres-design.md R21, R25). The next round
+    // runs, so the check repeats it, as `again` repeats every other statement made beside a live process here.
+    await again(() => binding.deliver());
     assert(!ctx.seen.has("count"), "a round beside the holder handles nothing");
     worker.kill("SIGTERM");
     await worker.done;
