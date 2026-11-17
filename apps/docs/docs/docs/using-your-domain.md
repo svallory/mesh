@@ -21,7 +21,7 @@ const todo = await Todo.create({ title: "Buy milk", list: list.id }, { actor });
 
 ## Where the entities come from
 
-`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types.
+`mesh build` writes the generated code into `.mesh/`, and your `package.json` maps three import specifiers to it. Each module of your domain has its own: the entities in `src/domain/todo/` come from `#mesh/domain/todo`, those in `src/domain/billing/` from `#mesh/domain/billing`, and those at the domain root from `#mesh/domain`. Import an entity by name and you get two things under that name: the **entity value**, an object whose methods are the entity's actions (`Todo.create`, `Todo.complete`, `Todo.read`), and the record type. `#mesh` holds only what belongs to the whole project: `connect`, `disconnect`, `bind`, `transaction`, `tables` and the `Binding` and `Privileged` types, and `query` when the data adapter supports [raw SQL](#raw-sql-queries) (not built yet; [ADR-0087](../architecture/decisions/0087-raw-sql-escape-hatch.md)).
 
 ```ts "src/main.ts (excerpt)"
 import { connect, disconnect } from "#mesh";
@@ -392,6 +392,65 @@ policy :recordedByCascade types=[:create]
 ```
 
 An action that only another action should call carries a policy like this one. A nested call carries the context its caller passes it: a `run` step writes `Completion.record(input, { ...context, system: true })` to act for the system, and the person stays the `actor`, so a record written by a cascade still names who caused it. Treat `system` as you treat any flag in your own context: it is as trustworthy as the code that builds the context.
+
+## Raw SQL queries
+
+Some questions a read cannot ask: a recursive walk up a tree, a window function, a database function Mesh has no name for. For those, `#mesh` exports **`query`**, a template tag that runs one read-only SQL statement you write by hand and resolves with its rows (not built yet; [ADR-0087](../architecture/decisions/0087-raw-sql-escape-hatch.md)). It is exported when your data adapter supports raw SQL (it declares the `raw-sql` capability, as `@meshfw/data-sqlite` does); with an adapter that does not, `#mesh` has no `query` and your code does not compile.
+
+```ts "src/reports.ts"
+import { z } from "zod";
+import { query } from "#mesh";
+
+const Oldest = z.object({ id: z.string(), title: z.string(), listId: z.string() });
+
+/** The `perList` oldest open todos of every list: a window function, which a read cannot express. */
+export async function oldestOpen(perList: number) {
+  return query.as(Oldest)`
+    select id, title, "listId" from (
+      select id, title, "listId", row_number() over (partition by "listId" order by "insertedAt") as n
+      from todos
+      where done = ${false}
+    )
+    where n <= ${perList}`;
+}
+```
+
+**Every `${…}` is a bound value**, never SQL text: `${false}` and `${perList}` above are parameters, and there is no way to splice a string into the statement. A value is a string, a finite number, a `bigint` within signed 64 bits, a boolean, a valid `Date` or `null`; anything else (`undefined`, `NaN`, an invalid `Date`, an array, an object) is refused with a `FrameworkError`, never bound as `NULL`. The adapter converts what the database stores differently: on SQLite a boolean is bound as `1` or `0` and a `Date` as its milliseconds. `query("select 1")`, called as a plain function, is refused too. To pass a list, pass it as JSON text and read it in SQL (on SQLite, `json_each(${JSON.stringify(ids)})`).
+
+**One read-only statement.** The statement starts with `select`, `with` or `values`; anything else (an `insert`, a `pragma`, a `commit`, a leading comment) is refused before it reaches the database, and a statement that would write anyway (`with x as (…) delete from …`) is refused by the database. Text after the first statement's `;` is refused, and so is a parameter written in the text (`?`, `:name`, `$1`) or a `${…}` inside quotes, where it would not be bound.
+
+**Rows come back as stored**: plain, frozen objects keyed by the column names the statement gives, with the values the database holds, not your entity's types. On SQLite a `date`, `datetime` or `timestamp` is an integer of milliseconds and a `boolean` is `0` or `1`. An integer beyond 2^53 comes back as a `bigint`, so nothing is rounded. Every column needs its own name: `select t.id, l.id …` is refused, since a row keeps one value per name; write `l.id as "listId"`. Without a schema the rows are typed `readonly Readonly<Record<string, unknown>>[]`; ``query.as(schema)`…` `` validates each row with a Standard Schema (a Zod object, for example) and types the result, and a row that does not match rejects with a `FrameworkError` naming its index and the schema's messages.
+
+**Where it runs.** Like `transaction`, `query` uses the binding in scope, else the one `connect()` opened. Inside a running transaction (an action, a `transaction`, a handler's `process` body) it joins it and sees its uncommitted rows; outside one it opens its own. A raw query that fails, refused or rejected by the database, fails the running transaction even when your code catches the error, as a failed action call does. An entity file cannot import `#mesh`, so a rule reaches a raw query through a helper it imports: a check, a step, a `set` value or a write policy may call one. A computed field and a read policy may not: a call made while one is evaluated throws a `FrameworkError` naming it, as a `Mesh.privileged` read does. Inside a `Mesh.can` or `Mesh.checkPolicies` question it runs as a read and fails nothing outside the question.
+
+```ts "src/domain/work/work.helpers.ts (excerpt)"
+import { query } from "#mesh";
+
+/** True when `task` is `newParent` or one of its ancestors: a move under it would make a cycle. */
+export async function underItself(task: string, newParent: string | null): Promise<boolean> {
+  if (newParent === null) return false;
+  const rows = await query`
+    with recursive up(id) as (
+      select ${newParent}
+      union
+      select t."parentId" from tasks t join up on t.id = up.id
+    )
+    select 1 as hit from up where id = ${task} limit 1`;
+  return rows.length > 0;
+}
+```
+
+The entity file calls it as it calls any helper: `check :noCycle that=async ({ input }) => !(await underItself(&id, input.parent)) code="task.cycle" message="a task cannot move under its own descendant"`. The query runs inside the action's transaction, after the row was locked, so it sees what the transaction has written so far.
+
+**Read policies do not apply.** A raw query reads what its SQL selects, as a `Mesh.privileged` read does. Use it for a rule's view of stored data and in server code, never to hand rows to a caller who may not read them.
+
+**Names are stored names.** You write the database's names, which the entity file decides: the table is the entity's `table=` value, else its name in snake_case; a column is named exactly like its attribute (`insertedAt`, quoted in SQL because of its capital letter); a `belongs-to :list` is stored in the column `listId`. Renaming an attribute breaks a raw query at run time, not at build. Mesh's own tables (`mesh_outbox` and the others whose names start with `mesh_`) can be read, but they are not a stable interface. And SQL is specific to one database: a statement written for SQLite may need rewriting on Postgres.
+
+Its limits, each a consequence of the above:
+
+- The template's escapes are JavaScript's, so a backslash reaches SQL only when you write it doubled (`like '%\\_%' escape '\\'`); an escape JavaScript cannot read, such as `\x`, is refused.
+- Call `query` inside a function, never at a helper's top level: a helper an entity file imports is loaded while `#mesh` is still being evaluated, so `query` is not initialised there yet.
+- On SQLite a raw query runs synchronously on the one connection: a runaway statement (a recursive walk that never ends, a cross join of large tables) blocks the whole process, and there is no timeout. A recursive walk uses `union`, not `union all`, so that it ends even when the stored rows already hold a cycle.
 
 ## Seams
 

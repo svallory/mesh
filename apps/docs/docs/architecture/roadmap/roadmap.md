@@ -312,7 +312,7 @@ Three features come before 1.0 and belong to none of the milestones above. No ru
 
 | Item | What | Why it is before 1.0 |
 |---|---|---|
-| Raw-SQL escape hatch | SQL written by hand where an expression cannot be translated, like Ash's `fragment`. It has no design yet | The operator moved it here from "Also after 1.0" (section 6) on 2026-10-18 ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md), amended 2026-11-14) |
+| Raw-SQL escape hatch | A read-only raw query from application code and helpers (`query` from `#mesh`, [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md), Option E, accepted by the lead on 2026-11-17 pending the operator; questions 1, 7 and 14 of that record stay the operator's). Ash's `fragment` inside translated expressions is left to M10's design | The operator moved it here from "Also after 1.0" (section 6) on 2026-10-18 ([ADR-0056](../decisions/0056-translated-expressions-are-one-expression-arrows.md), amended 2026-11-14) |
 | A `has-many` through a link entity | A many-to-many relationship: `has-many :courses entity=Course through=Enrollment` in `Student` | The operator moved it here on 2026-10-18; until then this page listed many-to-many as not planned. Built on 2026-11-16 ([ADR-0070](../decisions/0070-has-many-via.md), amended 2026-11-14 and 2026-11-16) |
 | Named checks | An entity-level `checks` section; an action's `validate` refers to one of its checks by name ([ADR-0082](../decisions/0082-named-checks-and-mixins.md)) | Core since 2026-10-11, so they do not wait for the extension host ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md), amendment of 2026-10-11). The lead placed them before 1.0 on 2026-11-14, as the work tracker already did; that placement awaits the operator's review. Built on 2026-11-16 ([Entities](../../docs/entities.md#a-rule-several-actions-share)) |
 
@@ -353,6 +353,8 @@ For each item, the evidence that Hyper does without it, and the record that move
 | `can` and the structured breakdown for a call | M8, [ADR-0022](../decisions/0022-policies-simple-tier-as-extension.md) | Hyper has no "can I?" call; it returns the denial. `ForbiddenError.breakdown` stays | S |
 | The bounded write queue and `BusyError`; the restore write for import; the action manifest for generic dispatch of 61 RPC actions; HTTP, SSE and the typed client | [G16](../research/hyper-port-gap-analysis.md#4-summary-features-who-needs-them-and-the-milestone), [G18](../research/hyper-port-gap-analysis.md#4-summary-features-who-needs-them-and-the-milestone), [G14](../research/hyper-port-gap-analysis.md#4-summary-features-who-needs-them-and-the-milestone) | They serve only the engine's v2, which the port does not follow: v0 has no busy error, its export is `not_implemented`, it dispatches a fixed method table, and its subscriptions are notifications on the same socket | M |
 | `.mesh/rules.md`, `mesh explain` beyond the plan | M5, after-v1 table | Not read by any Hyper path | S |
+
+The raw-SQL escape hatch adds work to two of these rows. If it merges first, M9 owes `raw-sql` on Postgres: a savepoint with `SET LOCAL transaction_read_only`, plus closing the session-level side effects the window does not stop (advisory locks, `pg_notify`), or question 6 of [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) back to the operator ([data layer](../in-depth/data-layer.md#raw-queries)). M10 decides whether to add a raw-SQL fragment inside translated expressions ([ADR-0087](../decisions/0087-raw-sql-escape-hatch.md)).
 
 ### Also after 1.0
 
@@ -474,6 +476,10 @@ The operator ruled the domain concepts study on 2026-10-10 and 2026-10-11 ([rese
 ### 2026-10-12 amendment (generated code follows modules)
 
 [ADR-0086](../decisions/0086-entity-values-privileged-barrels-and-fqns.md) changes how the action composition of M5 is written, not what it does: an action is called on its entity value, `Mesh.privileged` replaces the `tx` handle, and each domain folder has a barrel. The milestones and their order are unchanged. Three behaviours change: a nested call carries only the context it is passed, with nothing inherited (which amends [ADR-0071](../decisions/0071-system-key-on-the-action-context.md) and [ADR-0075](../decisions/0075-seams-use-the-extension-hosts-names.md)); a policy check that calls an imported function runs after the locked read; and `transaction` takes no context and hands its function nothing.
+
+### 2026-11-17 amendment
+
+- **The raw-SQL escape hatch** (section 5, "Before 1.0, milestone not assigned"; section 6, the note under the table of items moved out of the 1.0 line). The lead accepted Option E of [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) on 2026-11-17, pending the operator: a read-only `query` function exported by `#mesh`, with no change to the entity-file language. The row no longer says "like Ash's `fragment`" or that it has no design; the fragment is M10's to decide, and M9 owes `raw-sql` on Postgres if the hatch merges first. It is still not built.
 
 ### 2026-11-14 amendments
 
