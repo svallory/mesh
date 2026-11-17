@@ -203,6 +203,15 @@ interface FrameStore {
    * carries it, so what an action does in its own work is the action's, not the operation's.
    */
   readonly operation?: OperationFrame;
+  /**
+   * R17: the label of the operation or action whose transaction this store's work runs in. Set for an action's work
+   * (`within`, and so its steps, checks, `afterWrite` seam and nested calls), for the policies an operation checks inside
+   * its transaction and its body, and for the store of an entity call made under any of those (so a nested action's
+   * policies, checked before it joins, are covered too); `run` and `transaction` carry it, so a helper that opens one
+   * is held to it. An operation called in such a store is refused. A top-level call's store has none: its
+   * `beforeTransaction` and `afterCommit` seams, and an operation's own `before` policies, run outside any transaction.
+   */
+  readonly enclosing?: string;
 }
 
 /** What an operation's body runs under: see `FrameStore.operation`. */
@@ -413,7 +422,8 @@ async function dispatchCall(value: object, fqn: string, action: string, input: u
   } catch (error) {
     return failNested(state.layer, error);
   }
-  const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}) }, question);
+  const enclosing = caller?.enclosing ?? caller?.operation?.label;
+  const store = kept({ state, scope: { live: true }, calls, ...(joined ? { clock: joined } : {}), ...(enclosing !== undefined ? { enclosing } : {}) }, question);
   const outcome = await settle(() => counted(state, () => forCaller(state, caller, () => scoped(frame!, store, () => fn(input, ...context)), probe?.layer)));
   calls.settled = true;
   // The root rejects with the cap's error itself when its own error came from the cap: the error is the cap's, or the
@@ -531,7 +541,7 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
       // publishes are refused (ADR-0094).
       const quiet = store.calls?.root.quiet;
       if (quiet !== undefined && !store.calls!.settled) quietIn(tx, store.calls!.root.label, quiet);
-      return frame.run(kept({ state, scope: store.scope, tx, clock, label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
+      return frame.run(kept({ state, scope: store.scope, tx, clock, label, enclosing: label, ...(store.calls ? { calls: store.calls } : {}) }, asking(store)), fn);
     },
     plain<T>(fn: () => Promise<T>): Promise<T> {
       const store = inScope(frame);
@@ -637,11 +647,16 @@ export function bindDomain(domain: object, layer: DataLayer, options: BindOption
 }
 
 /**
- * What a `run` or `transaction` scope opened inside `outer` keeps of it: the call chain, and the operation whose `uses`
- * lines still hold there (a helper of the body that calls `transaction(fn)` is held to them).
+ * What a `run` or `transaction` scope opened inside `outer` keeps of it: the call chain, the operation whose `uses`
+ * lines still hold there (a helper of the body that calls `transaction(fn)` is held to them), and the operation or
+ * action whose transaction it runs in (R17: a helper of a step that opens `run(fn)` may not call an operation either).
  */
-function carried(outer: FrameStore | undefined): { calls?: CallChain; operation?: OperationFrame } {
-  return { ...(outer?.calls ? { calls: outer.calls } : {}), ...(outer?.operation ? { operation: outer.operation } : {}) };
+function carried(outer: FrameStore | undefined): { calls?: CallChain; operation?: OperationFrame; enclosing?: string } {
+  return {
+    ...(outer?.calls ? { calls: outer.calls } : {}),
+    ...(outer?.operation ? { operation: outer.operation } : {}),
+    ...(outer?.enclosing !== undefined ? { enclosing: outer.enclosing } : {}),
+  };
 }
 
 /** The instant of the transaction of `state` that `caller` runs in, if it runs in one: what a call or transaction joining it reads. */
@@ -697,6 +712,9 @@ export function runOperation(value: object, fqn: string, name: string, input: un
   return operationCall(value, fqn, name, label, input, context);
 }
 
+/** Where R17 lets an operation be called, as its refusal says. */
+const R17 = "an operation is called from application code, a handler, or a seam that runs outside a transaction (beforeTransaction, afterCommit), not from inside another operation or an action's transaction (its steps, checks, policies, afterWrite seam or a helper of them)";
+
 async function operationCall(value: object, fqn: string, name: string, label: string, input: unknown, context: readonly unknown[]): Promise<unknown> {
   const frame = frames.get(value);
   const caller = inScope(frame);
@@ -707,9 +725,10 @@ async function operationCall(value: object, fqn: string, name: string, label: st
   if (state.services.get(fqn) !== value)
     throw new FrameworkError(`${label} was called inside run() or transaction() of a binding that does not bind it: that binding was made by another project's bind()`);
   // R17: an inner operation would carry its own `uses` lines and widen the outer one's, and an action's work is its own.
-  const inside = caller?.operation?.label ?? caller?.label;
+  // `enclosing` follows the work into helpers (`run`, `transaction`) and into the policies of the calls it makes.
+  const inside = caller?.operation?.label ?? caller?.enclosing ?? caller?.label;
   if (inside !== undefined)
-    return failNested(state.layer, new FrameworkError(`${label} was called inside ${inside}: an operation is called from application code, a seam or a handler, not from another operation or an action`));
+    return failNested(state.layer, new FrameworkError(`${label} was called inside ${inside}: ${R17}`));
   const spec = Object.hasOwn((value as { [OPERATIONS]: object })[OPERATIONS], name) ? (value as { [OPERATIONS]: Readonly<Record<string, OperationSpec>> })[OPERATIONS][name] : undefined;
   if (!spec) throw new FrameworkError(`${label} is not an operation of ${fqn}: rebuild the project with mesh build`);
   let calls: CallChain;
@@ -730,9 +749,9 @@ async function operationCall(value: object, fqn: string, name: string, label: st
     await policies.before(state.layer, roots());
     return transactionIn(state, store, clock, async () => {
       // The policies first, in the transaction's store: what they read (a helper's privileged read) is theirs, not the body's.
-      await policies.inside(roots());
       const current = inScope(frame)!;
-      return frame!.run(kept({ ...current, operation }, undefined), async () => spec.body(roots() as never));
+      await frame!.run(kept({ ...current, enclosing: label }, undefined), () => policies.inside(roots()));
+      return frame!.run(kept({ ...current, enclosing: label, operation }, undefined), async () => spec.body(roots() as never));
     });
   })));
   calls.settled = true;

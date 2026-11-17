@@ -255,6 +255,8 @@ describe("the uses check", () => {
 });
 
 describe("where an operation may be called (R17)", () => {
+  const R17 = "an operation is called from application code, a handler, or a seam that runs outside a transaction (beforeTransaction, afterCommit), not from inside another operation or an action's transaction (its steps, checks, policies, afterWrite seam or a helper of them)";
+
   test("an operation called from inside another operation's body fails the running transaction", async () => {
     const { binding, state } = world();
     hooks.bodies["billing.Billing#charge"] = () => "charged";
@@ -264,8 +266,7 @@ describe("where an operation may be called (R17)", () => {
       return helper().catch(() => "caught");
     };
     const error = await rejection(() => binding.run(() => Work.handOver({ task: "t" }, actor)));
-    expect((error as { cause?: unknown }).cause).toEqual(new FrameworkError(
-      "billing.Billing#charge was called inside work.Work#handOver: an operation is called from application code, a seam or a handler, not from another operation or an action"));
+    expect((error as { cause?: unknown }).cause).toEqual(new FrameworkError(`billing.Billing#charge was called inside work.Work#handOver: ${R17}`));
     expect(rows(state, "tasks")).toEqual([]);
   });
 
@@ -274,8 +275,81 @@ describe("where an operation may be called (R17)", () => {
     hooks.bodies["work.Work#handOver"] = () => "ran";
     hooks.steps["work.Task#create"] = ({ context }) => Work.handOver({ task: "t" }, context as object);
     const error = await rejection(() => binding.run(() => Task.create({ title: "x" }, actor)));
-    expect(error.message).toBe("work.Work#handOver was called inside work.Task#create: an operation is called from application code, a seam or a handler, not from another operation or an action");
+    expect(error.message).toBe(`work.Work#handOver was called inside work.Task#create: ${R17}`);
     expect(rows(state, "tasks")).toEqual([]);
+  });
+
+  test("an operation called through a helper of a step that opens transaction(fn) or run(fn) fails that action's transaction", async () => {
+    const { binding, state } = world();
+    hooks.bodies["work.Work#handOver"] = () => "ran";
+    hooks.bodies["billing.Billing#charge"] = ({ context }) => Claim.create({ task: "paid" }, context);
+    const opens = [(fn: () => Promise<unknown>) => binding.transaction(fn), (fn: () => Promise<unknown>) => binding.run(fn)];
+    for (const open of opens) {
+      for (const [op, call] of [["work.Work#handOver", (context: object) => Work.handOver({ task: "t" }, context)], ["billing.Billing#charge", (context: object) => Billing.charge({}, context)]] as const) {
+        hooks.steps["work.Task#create"] = ({ context }) => open(() => call(context as object));
+        const error = await rejection(() => binding.run(() => Task.create({ title: "x" }, actor)));
+        expect(error).toEqual(new FrameworkError(`${op} was called inside work.Task#create: ${R17}`));
+      }
+    }
+    expect(rows(state, "tasks")).toEqual([]);
+    expect(rows(state, "claims")).toEqual([]);
+  });
+
+  test("an operation called from the policy of an action a step calls fails the outer action's transaction", async () => {
+    const { binding, state } = world();
+    hooks.bodies["billing.Billing#charge"] = () => "charged";
+    hooks.policies["work.Claim#create"] = async () => { await Billing.charge({}, actor); return true; };
+    hooks.steps["work.Task#create"] = ({ context }) => Claim.create({ task: "x" }, context as object);
+    // The nested action's policy check fails the joined transaction; the refusal that follows carries R17's error.
+    const error = await rejection(() => binding.run(() => Task.create({ title: "x" }, actor)));
+    expect((error as { cause?: unknown }).cause).toEqual(new FrameworkError(`billing.Billing#charge was called inside work.Task#create: ${R17}`));
+    expect(rows(state, "tasks")).toEqual([]);
+    expect(rows(state, "claims")).toEqual([]);
+  });
+
+  test("an operation called from the policy of a listed action the body calls is refused: it cannot widen the uses lines", async () => {
+    const { binding, state } = world();
+    // Billing may create a Claim; Work may not, and must not get one through Task#create's policy.
+    hooks.bodies["billing.Billing#charge"] = ({ context }) => Claim.create({ task: "x" }, context);
+    hooks.policies["work.Task#create"] = async () => { await Billing.charge({}, actor); return true; };
+    hooks.bodies["work.Work#handOver"] = ({ context }) => Task.create({ title: "x" }, context);
+    const error = await rejection(() => binding.run(() => Work.handOver({ task: "t" }, actor)));
+    expect((error as { cause?: unknown }).cause).toEqual(new FrameworkError(`billing.Billing#charge was called inside work.Work#handOver: ${R17}`));
+    expect(rows(state, "tasks")).toEqual([]);
+    expect(rows(state, "claims")).toEqual([]);
+  });
+
+  test("an operation's own policies: one checked inside its transaction may not call an operation, one checked before it may", async () => {
+    const { binding, state } = world();
+    hooks.bodies["billing.Billing#charge"] = ({ context }) => Claim.create({ task: "paid" }, context);
+    hooks.bodies["work.Work#handOver"] = ({ context }) => Task.create({ title: "x" }, context);
+    hooks.deep = async () => { await Billing.charge({}, actor); return true; };
+    expect(await rejection(() => binding.run(() => Work.handOver({ task: "t" }, actor))))
+      .toEqual(new FrameworkError(`billing.Billing#charge was called inside work.Work#handOver: ${R17}`));
+    expect(rows(state, "claims")).toEqual([]);
+    expect(rows(state, "tasks")).toEqual([]);
+    delete hooks.deep;
+    // A `before` policy runs before any transaction, as application code does: the call commits on its own.
+    hooks.actorOnly = async () => { await Billing.charge({}, actor); return true; };
+    await binding.run(() => Work.handOver({ task: "t" }, actor));
+    expect(rows(state, "claims")).toHaveLength(1);
+    expect(rows(state, "tasks")).toHaveLength(1);
+  });
+
+  test("a beforeTransaction or afterCommit seam may call an operation; an afterWrite seam, inside the action's transaction, may not", async () => {
+    hooks.bodies["billing.Billing#charge"] = ({ context }) => Claim.create({ task: "paid" }, context);
+    const charge = async ({ entity }: { entity: string }) => { if (entity === "work.Task") await Billing.charge({}, actor); };
+    for (const seams of [{ beforeTransaction: charge }, { afterCommit: ({ changes }: { changes: readonly Change[] }) => charge({ entity: changes[0]!.entity }) }] as Seams[]) {
+      const { binding, state } = world(seams);
+      await binding.run(() => Task.create({ title: "x" }, actor));
+      expect(rows(state, "tasks")).toHaveLength(1);
+      expect(rows(state, "claims")).toHaveLength(1);
+    }
+    const { binding, state } = world({ afterWrite: (_db, { entity }) => charge({ entity }) });
+    expect(await rejection(() => binding.run(() => Task.create({ title: "x" }, actor))))
+      .toEqual(new FrameworkError(`billing.Billing#charge was called inside work.Task#create: ${R17}`));
+    expect(rows(state, "tasks")).toEqual([]);
+    expect(rows(state, "claims")).toEqual([]);
   });
 
   test("two operations run one after the other inside one application transaction, joining it: afterCommit runs once with every change", async () => {
