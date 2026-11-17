@@ -14,6 +14,6 @@ export { typesView, type TypesView, type TypeImport, type RecordDeclaration, typ
 export { validatorsView, type ValidatorsView, type InputSchema, type SchemaField } from "./typescript/views/validators.ts";
 export type { GlobalsImport, GlobalsView, GlobalAlias } from "./typescript/views/globals.ts";
 export { RESERVED_COMMAND_WORDS, loadAdapterBuild, type AdapterBuild, type AdapterBuildResult, type AdapterCommand, type AdapterCommandContext } from "./typescript/adapter.ts";
-export { explainAction } from "./typescript/explain.ts";
+export { explainAction, explainHandler } from "./typescript/explain.ts";
 export { resolveName, type NameResolution } from "./model/resolve-name.ts";
 export { conceptTypeImport } from "./typescript/concept-ref.ts";

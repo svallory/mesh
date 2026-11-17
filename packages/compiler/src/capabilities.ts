@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
 import { BUS_CAPABILITIES, renamedProblems, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
+import { sectionHandlers } from "./model/handlers.ts";
 import { rollupOperation, rollupRoute } from "./model/rollup-operation.ts";
 import { policyConditions, sqlPositions } from "./model/sql-required.ts";
 
@@ -74,7 +75,8 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
  * capability `events.requires` lists is declared by the bus (a bus capability) or by the data adapter (a data
  * capability), else `MESH_CAPABILITY` naming the capability and the adapter; and `events.renamed` maps former FQNs that no
  * event declares to declared events (`renamedProblems`), each problem a `MESH_EVENTS_CONFIG` at the `renamed` key
- * (`positions.renamed`, else `at`). `checkEvents` in `config.ts` has already refused a bus that is not one, a name that
+ * (`positions.renamed`, else `at`); and a handler of a `handlers` section needs a bus that declares `ordered-delivery`, else
+ * `MESH_CAPABILITY` at its line. `checkEvents` in `config.ts` has already refused a bus that is not one, a name that
  * is no capability and a `renamed` of the wrong shape.
  */
 export function eventsDiagnostics(
@@ -93,6 +95,13 @@ export function eventsDiagnostics(
       `The project declares ${declared.length === 1 ? "the event" : "events, among them"} ${declared[0]!.fqn}, and mesh.config.ts sets no events.bus: an event is delivered by a bus, and there is no default`,
       at, "Set events: { bus: localBus() } in mesh.config.ts (localBus from @meshfw/bus-local)"));
   }
+  // Every handler needs the bus's ordered-delivery: its progress is kept by position only. The start checks it for every
+  // handler; a handler of a `handlers` section is in the model, so the build reports it first, at the line (ruling D44, Q12).
+  if (bus !== undefined && !(bus.manifest.capabilities as readonly string[]).includes("ordered-delivery"))
+    for (const handler of sectionHandlers(document))
+      diagnostics.push(error("MESH_CAPABILITY",
+        `Handler ${handler.key} needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the event bus "${bus.manifest.adapter}" does not declare it`,
+        handler.position, "Use a bus that declares ordered-delivery, such as localBus()"));
   const busNames: readonly string[] = BUS_CAPABILITIES;
   const data: readonly string[] = config.data.capabilities?.capabilities ?? [];
   for (const name of config.events?.requires ?? []) {

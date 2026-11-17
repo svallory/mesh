@@ -227,7 +227,10 @@ export interface CommandRef {
   /** Where `on=` is written. */
   position: SourcePosition;
 }
-/** An event or a command an owner's (an entity's or an aggregate's) `events` or `commands` section names: a listing line (`InvoicePaid`, `notices.InvoiceOverdue`) or an inline declaration. */
+/**
+ * An event or a command an owner's (an entity's or an aggregate's) `events` or `commands` section names (a listing line,
+ * `InvoicePaid` or `notices.InvoiceOverdue`, or an inline declaration), or an event a handler's `on=` names.
+ */
 export interface DeclarationRef {
   /** As written: `InvoicePaid`, the alias `Paid`, or `notices.InvoiceOverdue`. Only messages read it. */
   identifier: string;
@@ -238,7 +241,7 @@ export interface DeclarationRef {
    * a ref left unresolved always comes with an error, and a build with an error writes no `model.json`.
    */
   fqn: string;
-  /** The listing line. */
+  /** The listing line, or the item of a handler's `on=`. */
   position: SourcePosition;
 }
 export interface Action {
@@ -303,6 +306,26 @@ export interface Entity {
   events?: DeclarationRef[];
   /** The commands this entity owns: its `commands` section's lines. Present only when the section has a line. */
   commands?: DeclarationRef[];
+  /** The handlers of the entity's `handlers` section, in written order. Present only when the section has a line. */
+  handlers?: HandlerDeclaration[];
+  position: SourcePosition;
+}
+/**
+ * A line of an owner's `handlers` section (`listen :receipt [on=InvoicePaid] async ({ event }) { ... }`): a handler of one
+ * of core's two kinds, run once per event it lists, registered and stored under its key.
+ */
+export interface HandlerDeclaration {
+  kind: "process" | "listen";
+  /** The declared name, as written (`receipt`). */
+  name: string;
+  /** `<owner FQN>.<name>` (`billing.Invoice.receipt`): the name it is registered and its progress row stored under. */
+  key: string;
+  /** The events `on=` names, in written order, each once. */
+  events: DeclarationRef[];
+  /** The body, a function of `{ event, context }`: always plain code (`plain.why` is `"handler"`). */
+  run: Expression;
+  /** `renamed-from=:old`, as the former key (`billing.Invoice.old`): the progress row that moves to this handler. */
+  renamedFrom?: string;
   position: SourcePosition;
 }
 /**
@@ -377,6 +400,8 @@ export interface Aggregate {
   events?: DeclarationRef[];
   /** The commands the aggregate owns: its `commands` section's lines. */
   commands?: DeclarationRef[];
+  /** The handlers of the aggregate's `handlers` section, keyed by the aggregate's FQN. Present only when the section has a line. */
+  handlers?: HandlerDeclaration[];
   position: SourcePosition;
 }
 /** One `action :name` line of an expose line: an action of the exposed entity the audience may call. */

@@ -72,7 +72,7 @@ describe("what changes for entity files", () => {
   });
   test("an expose line in an entity is not allowed there", () => {
     expect(mx("entity :Task\n  attributes\n    uuid :id primary-key\n  expose :x entity=Task\n", "/project/src/domain/task.mesh.mx")).toEqual([
-      ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `expose` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`"],
+      ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `expose` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"],
     ]);
   });
   test("a `surface` root lowers in any file: where it may sit is the builder's (MESH_SURFACE_PATH)", () => {

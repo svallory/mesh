@@ -76,11 +76,13 @@ export function coverageProject(tag: string, option: string | undefined, example
   // A `publish` raises an event the file imports: the project has one, `Paid`. An owner section's listing line lists one.
   const answers = option === "on" && ["create", "update", "destroy"].includes(tag);
   const listed = option === "reference" && (tag === "events" || tag === "commands");
-  const paid = tag === "publish" || answers || listed ? 'import { Paid } from "./paid.mesh.mx"\n' : "";
+  // A handler line's `on=` names an event the file imports: the same `Paid`.
+  const handles = tag === "process" || tag === "listen";
+  const paid = tag === "publish" || answers || listed || handles ? 'import { Paid } from "./paid.mesh.mx"\n' : "";
   // `through=` names a link entity with a belongs-to to each side: the project has one, `Tie`.
   const tie = tag === "has-many" && option === "through";
   return { root: "/project", files: [
-    ...(tag === "publish" || (listed && tag === "events") ? [{ file: "docs/paid.mesh.mx", source: "event :Paid\n  uuid :id\n" }] : []),
+    ...(tag === "publish" || handles || (listed && tag === "events") ? [{ file: "docs/paid.mesh.mx", source: "event :Paid\n  uuid :id\n" }] : []),
     ...(listed && tag === "commands" ? [{ file: "docs/paid.mesh.mx", source: "command :Paid\n  uuid :id\n" }] : []),
     // `on=` answers a command: its fields are the action's inputs, and a create has none, nor the key an update and a destroy select by.
     ...(answers ? [{ file: "docs/paid.mesh.mx", source: `command :Paid\n${tag === "create" ? "" : "  uuid :id\n"}` }] : []),

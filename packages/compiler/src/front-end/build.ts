@@ -35,6 +35,7 @@ import {
   type EventDeclaration,
   type Expression,
   type Field,
+  type HandlerDeclaration,
   type Import,
   type InputField,
   type MemberRef,
@@ -97,6 +98,7 @@ import {
   valueOf,
   type Attr,
   type IrImport,
+  type SyntaxNode,
   type Tag,
 } from "./tree.ts";
 
@@ -518,7 +520,7 @@ function readPolicyLine(
 }
 
 /** The section kinds an entity's line sources are read by, in reading order. */
-const SECTION_KINDS = ["attributes", "relationships", "computed", "checks", "actions", "policies"] as const;
+const SECTION_KINDS = ["attributes", "relationships", "computed", "checks", "actions", "policies", "handlers"] as const;
 type SectionReaders = Record<(typeof SECTION_KINDS)[number], (section: Tag) => void>;
 
 /** What a function written in one line source sees besides `&members` and the scope roots. */
@@ -545,6 +547,95 @@ interface LineSource {
   source: string;
   at: (offset: number) => SourcePosition;
   scope: ExpressionScope;
+}
+
+/**
+ * The lines of an owner's `handlers` section (`notes/architecture/handlers-design.md`, rules H5 to H11): each a `process`
+ * or `listen` handler keyed `<owner FQN>.<name>`, with the events its `on=` names, resolved as a listing line of the
+ * owner's `events` section is (an imported event, or one the file declares inline), and its body, built by `body`. The
+ * contract has checked the name, the shape of `on=` and that the body is a function. A section is a scope of names:
+ * two lines of one name, whatever their kinds, are `MESH_DUPLICATE_MEMBER` at the second, and a handler may share a name
+ * with any member of its owner (ruling D44, Q10). Returns the handlers in written order.
+ */
+function readHandlers(
+  section: Tag,
+  { file, owner, at, pos, fail, events, declaredNames, body }: {
+    file: string;
+    owner: string;
+    at: (offset: number) => SourcePosition;
+    pos: (tag: Tag) => SourcePosition;
+    fail: (code: string, message: string, at: Tag | SourcePosition, fix?: string) => void;
+    events: { scope: ReferenceScope; kind: ReferenceKind };
+    declaredNames: Map<CommandRef | DeclarationRef, string>;
+    body: (a: Attr | undefined) => Expression;
+  },
+): HandlerDeclaration[] {
+  const handlers: HandlerDeclaration[] = [];
+  const names = new Set<string>();
+  const lines = tags(section.children).filter((line) => line.name === "process" || line.name === "listen");
+  for (const line of lines) {
+    const name = atomOf(attr(line, "name"))?.name;
+    const onAttr = attr(line, "on");
+    const value = attr(line, "value");
+    // MX or the contract reported a missing or malformed name, `on=` or body.
+    if (name === undefined || !onAttr || value?.kind !== "dynamic") continue;
+    if (names.has(name)) {
+      fail("MESH_DUPLICATE_MEMBER", `Duplicate handler :${name} in the handlers section of ${owner}: a handler's name is unique across process and listen`, line, "rename one");
+      continue;
+    }
+    names.add(name);
+    const n = nodeOf(onAttr) as (SyntaxNode & { elements?: (SyntaxNode | null)[] }) | undefined;
+    const items = n?.type === "ArrayExpression" ? n.elements ?? [] : [n];
+    const refs: DeclarationRef[] = [];
+    const seen = new Set<string>();
+    for (const item of items) {
+      const written = writtenReference(item);
+      // The contract refused an item that is no reference.
+      if (!written) continue;
+      const resolved = resolveReference(written, events.scope, events.kind);
+      if (!resolved.ok) {
+        if ("code" in resolved) fail(resolved.code, resolved.message, at(resolved.offset), resolved.fix);
+        continue;
+      }
+      const position = at(written.qualifier?.offset ?? written.offset);
+      // One event named twice, under one name or two (an alias, a namespace member), is a mistake the build can name.
+      const key = `${resolve("/", dirname(file), resolved.from)}#${resolved.declared}`;
+      if (seen.has(key)) {
+        fail("MESH_OPTION_VALUE", `on lists ${referenceText(written)} twice; remove one`, position);
+        continue;
+      }
+      seen.add(key);
+      const ref: DeclarationRef = { identifier: referenceText(written), from: resolved.from, fqn: "", position };
+      declaredNames.set(ref, resolved.declared);
+      refs.push(ref);
+    }
+    const renamed = attr(line, "renamed-from");
+    const former = renamed ? atomOf(renamed)?.name : undefined;
+    handlers.push({
+      kind: line.name as "process" | "listen",
+      name,
+      key: `${owner}.${name}`,
+      events: refs,
+      run: body(value),
+      ...(former !== undefined ? { renamedFrom: `${owner}.${former}` } : {}),
+      position: pos(line),
+    });
+  }
+  // `renamed-from` moves a former handler's progress row (H11): never one this section still declares, and never to two names.
+  const formerOf = new Map<string, string>();
+  for (const handler of handlers) {
+    if (handler.renamedFrom === undefined) continue;
+    const former = handler.renamedFrom.slice(owner.length + 1);
+    const line = lines.find((candidate) => pos(candidate).offset === handler.position.offset)!;
+    const option = attr(line, "renamed-from")!;
+    const where = at(attrOffset(option));
+    if (handlers.some((other) => other.name === former))
+      fail("MESH_OPTION_VALUE", `renamed-from=:${former} names a handler this section still declares: a running handler's progress is never taken over`, where, `remove renamed-from, or rename :${former}`);
+    else if (formerOf.has(former))
+      fail("MESH_OPTION_VALUE", `:${formerOf.get(former)} and :${handler.name} both have renamed-from=:${former}: one progress row cannot move to two names`, where, "keep renamed-from on one of them");
+    else formerOf.set(former, handler.name);
+  }
+  return handlers;
 }
 
 /**
@@ -737,6 +828,32 @@ function fileImports(
   return { imports, importNames, duplicates, bindings };
 }
 
+/**
+ * The names a file's import bindings give each kind of declaration. A named import stands for the declaration its
+ * imported name names (one kind); a namespace alias for every kind its file declares, so the alias of a file that
+ * declares an entity and inline events is in both sets. An import no file of the project answers is an entity's (it is
+ * reported), and a named import of a name its file does not declare keeps the file's kind (the import check reports it).
+ */
+const boundToOf = (bindings: readonly { entry: Import; index: number; name: string }[], declaredFile: (from: string) => DeclaredFile | undefined) => {
+  const boundKinds = (entry: Import, index: number): readonly DeclarationKind[] => {
+    if (entry.helper || entry.mesh) return [];
+    const target = declaredFile(entry.from);
+    if (!target) return ["entity"];
+    if (entry.namespace) return [...new Set(target.declares.map(({ kind }) => kind))];
+    const imported = entry.imported?.[index] ?? entry.identifiers[index]!;
+    return [target.declares.find(({ name }) => name === imported)?.kind ?? target.kind];
+  };
+  return (kind: DeclarationKind) => bindings.filter(({ entry, index }) => boundKinds(entry, index).includes(kind)).map(({ name }) => name);
+};
+/** `billing.Nope` through the alias of a file that declares an entity and events or commands: a member of any kind it declares. */
+const memberKindOf = (declaredFile: (from: string) => DeclaredFile | undefined): ReferenceKind => ({
+  noun: "entity, event or command",
+  declares: (from) => hasMeshExtension(from) && declaredFile(from) !== undefined,
+  names: (from) => importable(declaredFile(from))?.map(({ name }) => name),
+  kindOf: (from, name) => importable(declaredFile(from))?.find((declaration) => declaration.name === name)?.kind,
+  code: "MESH_UNKNOWN_ENTITY",
+});
+
 function buildEntity(
   root: Tag,
   irImports: readonly IrImport[],
@@ -839,32 +956,14 @@ function buildEntity(
   const commandKind = referenceKind("command", declaredFile);
   // A listing line of the `events` section names an event as a `publish` does, and an unknown one is no failed publish.
   const listedEventKind = referenceKind("event", declaredFile, "MESH_UNKNOWN_EVENT");
-  // The kinds of declaration each binding stands for. A named import stands for the declaration its imported name names
-  // (one kind); a namespace alias for every kind its file declares, so the alias of a file that declares an entity and
-  // inline events is in both sets. An import no file of the project answers is an entity's (it is reported), and a named
-  // import of a name its file does not declare keeps the file's kind (the import check reports it).
-  const boundKinds = (entry: Import, index: number): readonly DeclarationKind[] => {
-    if (entry.helper || entry.mesh) return [];
-    const target = declaredFile(entry.from);
-    if (!target) return ["entity"];
-    if (entry.namespace) return [...new Set(target.declares.map(({ kind }) => kind))];
-    const imported = entry.imported?.[index] ?? entry.identifiers[index]!;
-    return [target.declares.find(({ name }) => name === imported)?.kind ?? target.kind];
-  };
-  const boundTo = (kind: DeclarationKind) => bindings.filter(({ entry, index }) => boundKinds(entry, index).includes(kind)).map(({ name }) => name);
+  // The kinds of declaration each binding stands for (`boundToOf`).
+  const boundTo = boundToOf(bindings, declaredFile);
   // The entities a function in this file can name: its own and each one it imports, by the name the file gives it.
   const entities = new Set([entity.name, ...boundTo("entity")]);
   // The events and commands it can name: each one it imports and each one its owner sections declare, by its name here.
   const events = new Set([...boundTo("event"), ...ownEvents.map(({ name }) => name)]);
   const commands = new Set([...boundTo("command"), ...ownCommands.map(({ name }) => name)]);
-  // `billing.Nope` through the alias of a file that declares an entity and events or commands: a member of any kind it declares.
-  const memberKind: ReferenceKind = {
-    noun: "entity, event or command",
-    declares: (from) => hasMeshExtension(from) && declaredFile(from) !== undefined,
-    names: (from) => importable(declaredFile(from))?.map(({ name }) => name),
-    kindOf: (from, name) => importable(declaredFile(from))?.find((declaration) => declaration.name === name)?.kind,
-    code: "MESH_UNKNOWN_ENTITY",
-  };
+  const memberKind = memberKindOf(declaredFile);
   // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
   // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
   const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
@@ -924,18 +1023,21 @@ function buildEntity(
     const readers = attributeReaders(src.source, file, diagnostics, src.at);
     const { at, pos, fail, opt, shape, conceptUse, checkShape, checkRuleText } = readers;
     const { entity: references, event: eventReferences, command: commandReferences } = src.scope.references;
-    const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish"): Expression =>
+    // A handler body reads no member: each `&name` in it is `MESH_HANDLER_SCOPE` from the expression layer, written or read.
+    const expr = (a: Attr | undefined, scope: "expression" | "filter" = "expression", step?: "run" | "publish" | "handler"): Expression =>
       expression(
         a,
         src.source,
         at,
-        (ref) => checkRef(ref, scope),
-        ({ ref, position }) =>
-          fail(
-            "MESH_MEMBER_ASSIGN",
-            `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
-            position,
-          ),
+        (ref) => { if (step !== "handler") checkRef(ref, scope); },
+        ({ ref, position }) => {
+          if (step !== "handler")
+            fail(
+              "MESH_MEMBER_ASSIGN",
+              `\`&${ref.name}\` cannot be assigned inside an expression; use a \`set\` line`,
+              position,
+            );
+        },
         {
           helpers: src.scope.helpers,
           imported: src.scope.imported,
@@ -952,7 +1054,7 @@ function buildEntity(
           report: (d) => {
             if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
           },
-          ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : {}),
+          ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : step === "handler" ? { handlerBody: true } : {}),
         },
       );
     const authoredMember = (line: Tag) =>
@@ -1374,7 +1476,15 @@ function buildEntity(
       for (const tag of tags(section.children))
         entity.policies.push(readPolicyLine(tag, { expr: (a) => expr(a), scope, pos }));
     };
-    return { attributes, relationships, computed, checks: checksSection, actions, policies };
+    const handlers = (section: Tag) => {
+      const read = readHandlers(section, {
+        file, owner: entity.fqn, at, pos, fail, declaredNames,
+        events: { scope: eventReferences, kind: listedEventKind },
+        body: (a) => expr(a, "expression", "handler"),
+      });
+      if (read.length) (entity.handlers ??= []).push(...read);
+    };
+    return { attributes, relationships, computed, checks: checksSection, actions, policies, handlers };
   };
   // Read by kind, in `SECTION_KINDS` order, and within a kind source by source: every source's checks are read before any
   // `validate` looks one up.
@@ -1569,11 +1679,12 @@ function buildAggregate(
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>(inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse());
-  const { imports, importNames, duplicates } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
-  // An aggregate file has no function, so a helper or `Mesh` is nothing it could use: it imports Mesh files only.
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
+  // An aggregate file imports Mesh files only: its handler bodies, its only functions, call actions of the entities it
+  // imports, and a helper or `Mesh` stays out until a ruling admits one (handlers PR 1, deviation 7).
   const refused = imports.filter((entry) => entry.helper || entry.mesh);
   for (const entry of refused)
-    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: it has no function to call ${entry.mesh ? "`Mesh`" : "a helper"} in`, entry.position, "remove the import");
+    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: its handlers call actions of the entities it imports, not ${entry.mesh ? "`Mesh`" : "a helper"}`, entry.position, "remove the import");
   const aggregate: Aggregate = {
     name,
     fqn,
@@ -1618,6 +1729,40 @@ function buildAggregate(
     commands: { scope: { imports: importNames, duplicates, own: ownCommands, self }, kind: referenceKind("command", declaredFile) },
     inline, declaredNames,
   }));
+  // A handler of the aggregate is keyed by its FQN, and its body sees what a function of an entity file sees but the
+  // entity: the entities, events and commands the file imports, and the events and commands it declares inline.
+  const handlersSection = section("handlers");
+  if (handlersSection) {
+    const eventReferences: ReferenceScope = { imports: importNames, duplicates, own: ownEvents, self };
+    const commandReferences: ReferenceScope = { imports: importNames, duplicates, own: ownCommands, self };
+    const boundTo = boundToOf(bindings, declaredFile);
+    const ownNames = [...ownEvents, ...ownCommands].map(({ name }) => name);
+    const memberKind = memberKindOf(declaredFile);
+    const read = readHandlers(handlersSection, {
+      file, owner: fqn, at, pos, fail, declaredNames,
+      events: { scope: eventReferences, kind: referenceKind("event", declaredFile, "MESH_UNKNOWN_EVENT") },
+      body: (a) => expression(a, source, at, () => {}, () => {}, {
+        helpers: new Map(),
+        imported: new Set([...importNames.keys(), ...duplicates, ...ownNames]),
+        entities: new Set(boundTo("entity")),
+        namespaces: new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name)),
+        reference: (written) => resolveReference(written, references, entityKind),
+        memberReference: (written) => resolveReference(written, references, memberKind),
+        events: new Set([...boundTo("event"), ...ownEvents.map(({ name }) => name)]),
+        commands: new Set([...boundTo("command"), ...ownCommands.map(({ name }) => name)]),
+        eventReference: (written) => resolveReference(written, eventReferences, referenceKind("event", declaredFile)),
+        commandReference: (written) => resolveReference(written, commandReferences, referenceKind("command", declaredFile)),
+        duplicates,
+        mesh: new Set(),
+        report: (d) => {
+          if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
+        },
+        handlerBody: true,
+        noHelpers: true,
+      }),
+    });
+    if (read.length) aggregate.handlers = read;
+  }
   return aggregate;
 }
 
@@ -2475,14 +2620,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
     const target = resolve(rootPath, dirname(owner.file), ref.from);
     return list.find((candidate) => resolve(rootPath, candidate.file) === target && classNameOf(candidate.name) === declared);
   };
-  // The FQN of the command each `on=` resolved to, and of each event and command an owner section lists.
+  // The FQN of the command each `on=` resolved to, of each event and command an owner section lists, and of each event a
+  // handler's `on=` names.
   for (const entity of document.entities)
     for (const action of entity.actions) {
       const answered = action.command && declarationAt(entity, action.command, commands);
       if (answered) action.command!.fqn = answered.fqn;
     }
   for (const owner of [...document.entities, ...aggregates])
-    for (const [refs, list] of [[owner.events, events], [owner.commands, commands]] as const)
+    for (const [refs, list] of [[owner.events, events], [owner.commands, commands], [owner.handlers?.flatMap((handler) => handler.events), events]] as const)
       for (const ref of refs ?? []) ref.fqn = declarationAt(owner, ref, list)?.fqn ?? "";
   // The files whose root was built: a file that failed to build says nothing about what an import of it may name.
   const builtFiles = new Set([...document.entities, ...events, ...commands, ...aggregates].map(({ file }) => resolve(rootPath, file)));

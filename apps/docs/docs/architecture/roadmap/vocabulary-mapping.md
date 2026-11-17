@@ -200,6 +200,7 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `float.value` | `float :field() { return 0.5 }` | `float.value` | on main |
 | `forbid-if` | `forbid-if=() => false` | `forbid-if` | on main |
 | `forbid-if.value` | `forbid-if=() => false` | `forbid-if.value` | on main |
+| `handlers` | `handlers` | `handlers` | on main |
 | `has-many` | `has-many :related entity=Line` | `has-many` | on main |
 | `has-many.name` | `has-many :related entity=Line` | `has-many.name` | on main |
 | `has-many.entity` | `has-many :related entity=Line` | `has-many.entity` | on main |
@@ -228,6 +229,11 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `json.optional` | `json :field optional` | `json.optional` | on main |
 | `json.default` | `json :field default={ list: [1, 2] }` | `json.default` | on main |
 | `json.value` | `json :field() { return null }` | `json.value` | on main |
+| `listen` | `listen :mailed [on=Paid] ({ event }) { return event.id }` | `listen` | on main |
+| `listen.name` | `listen :mailed [on=Paid] ({ event }) { return event.id }` | `listen.name` | on main |
+| `listen.on` | `listen :mailed [on=Paid] ({ event }) { return event.id }` | `listen.on` | on main |
+| `listen.value` | `listen :mailed [on=Paid] ({ event }) { return event.id }` | `listen.value` | on main |
+| `listen.renamed-from` | `listen :mailed [on=Paid renamed-from=:sent] ({ event }) { return event.id }` | `listen.renamed-from` | on main |
 | `load` | `load=[&lines]` | `load` | on main |
 | `load.value` | `load=[&lines]` | `load.value` | on main |
 | `max` | `max :total of=&lines.dueOn` | `max` | on main |
@@ -244,6 +250,11 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `policy.when` | `policy :rule when=() => true authorize-if=() => true` | `policy.when` | on main |
 | `policy.authorize-if` | `policy :rule authorize-if=() => true` | `policy.authorize-if` | on main |
 | `policy.forbid-if` | `policy :rule forbid-if=() => true` | `policy.forbid-if` | on main |
+| `process` | `process :settle [on=[Paid]] ({ event }) { return event.id }` | `process` | on main |
+| `process.name` | `process :settle [on=[Paid]] ({ event }) { return event.id }` | `process.name` | on main |
+| `process.on` | `process :settle [on=[Paid]] ({ event }) { return event.id }` | `process.on` | on main |
+| `process.value` | `process :settle [on=[Paid]] ({ event }) { return event.id }` | `process.value` | on main |
+| `process.renamed-from` | `process :settle [on=Paid renamed-from=:settled] ({ event }) { return event.id }` | `process.renamed-from` | on main |
 | `publish` | `publish=() => new Paid({ id: &id })` | `publish` | on main |
 | `publish.value` | `publish=() => new Paid({ id: &id })` | `publish.value` | on main |
 | `read` | `read :work` | `read` | on main |
@@ -462,7 +473,7 @@ The source of truth is [`packages/compiler/src/contracts.ts`](https://github.com
 
 | Group | Current form | Where checked |
 |---|---|---|
-| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase |
+| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase |
 | Stored attributes and arguments | `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp` | Type-specific options in contracts; defaults and scalar formats in the builder. Attributes are required unless `nullable` |
 | Primary keys | `primary-key` on `uuid`, `integer` or `string` only | Contracts reject other types; the builder requires exactly one non-null key |
 | Relationships | `belongs-to`, `has-many`, `has-one`, each with an imported entity identifier or a member of a namespace import (`billing.Invoice`) | Contracts check the written reference's shape; the builder resolves named imports, namespace members and their relative paths |

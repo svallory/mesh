@@ -92,14 +92,14 @@ describe("the contracts", () => {
     ["a name on the root line", "  root entity=Task :x\n", [[3, 19, "error", "MESH_UNKNOWN_OPTION", "`root`: unknown option `:x` (`name`)"]]],
     ["a function as the root", "  root entity=() => Task\n", [[3, 7, "error", "MESH_ENTITY_REFERENCE", "`root`: entity must be an imported identifier (`List`) or a member of a namespace import (`billing.Invoice`)"]]],
     ["a wrapped root", "  root entity=(Task)\n", [[3, 14, "error", "MESH_ENTITY_REFERENCE", "`root`: entity must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`entity=List`, `entity=billing.Invoice`)"]]],
-    ["an entity section", "  root entity=Task\n  attributes\n", [[4, 2, "error", "MESH_TAG_NOT_ALLOWED", "`aggregate`: `attributes` is not allowed here; allowed children: `root`, `entities`, `events`, `commands`"]]],
+    ["an entity section", "  root entity=Task\n  attributes\n", [[4, 2, "error", "MESH_TAG_NOT_ALLOWED", "`aggregate`: `attributes` is not allowed here; allowed children: `root`, `entities`, `events`, `commands`, `handlers`"]]],
     ["a string prop", '  root entity=Task\n  entities\n    Dep prop="dependent"\n', [[5, 13, "error", "MESH_OPTION_VALUE", "`Dep` (inline contract): option `prop` must be atom, got string"]]],
     ["a list prop", "  root entity=Task\n  entities\n    Dep prop=[:a]\n", [[5, 13, "error", "MESH_OPTION_VALUE", "`Dep` (inline contract): option `prop` must be atom, got array"]]],
     ["a repeated prop", "  root entity=Task\n  entities\n    Dep prop=:a prop=:b\n", [[5, 8, "warning", "MESH_DUPLICATE_OPTION", "duplicate option `prop`: the later one at 5:17 wins, so this one is dropped"]]],
     ["another option on a part", "  root entity=Task\n  entities\n    Dep link=:a\n", [[5, 8, "error", "MESH_UNKNOWN_OPTION", "`Dep` (inline contract): unknown option `link`"]]],
     ["a child under a part", "  root entity=Task\n  entities\n    Dep\n      uuid :x\n", [[6, 6, "error", "MESH_TAG_NOT_ALLOWED", "`Dep` (inline contract): `uuid` is not allowed here; allowed children: none"]]],
     ["a part line under the root", "  root entity=Task\n    Dep\n", [[4, 4, "error", "MESH_UNKNOWN_TAG", "`Dep` is not a known tag in the `mesh` dialect"]]],
-    ["an entities section under an entity", null, [[5, 2, "error", "MESH_TAG_NOT_ALLOWED", "`entity`: `entities` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`"]]],
+    ["an entities section under an entity", null, [[5, 2, "error", "MESH_TAG_NOT_ALLOWED", "`entity`: `entities` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"]]],
   ])("MX refuses %s", (_label, body, expected) => {
     const source = body === null ? 'import { Task } from "./task.mesh.mx"\nentity :X\n  attributes\n    uuid :id primary-key\n  entities\n' : HEAD + body;
     expect(lowered(source)).toEqual(expected);
@@ -228,8 +228,8 @@ describe("what a root or a part line may name", () => {
 
   test("an aggregate file takes no helper and no Mesh import (OD7), and names only the import", () => {
     expect(errors(build({ ...QUIET, "work/task-aggregate.mesh.mx": aggregate({ imports: 'import { Task } from "./task.mesh.mx"\nimport { isStaff } from "./helpers"\nimport { Mesh } from "meshfw"\n', parts: "" }) }))).toEqual([
-      at(2, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: it has no function to call a helper in", "remove the import"),
-      at(3, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: it has no function to call `Mesh` in", "remove the import"),
+      at(2, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: its handlers call actions of the entities it imports, not a helper", "remove the import"),
+      at(3, 0, "MESH_UNKNOWN_IMPORT", "An aggregate file imports only .mesh.mx files: its handlers call actions of the entities it imports, not `Mesh`", "remove the import"),
     ]);
   });
 
