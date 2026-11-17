@@ -2,15 +2,15 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, ModelDocument } from "@meshfw/model";
 import { BUS_CAPABILITIES, type DataAdapter, type EventsConfig } from "@meshfw/runtime";
 import { error } from "./model/index.ts";
-import { sqlPositions } from "./model/sql-required.ts";
+import { policyConditions, sqlPositions } from "./model/sql-required.ts";
 
 /**
  * What the model needs from the configured data adapter, checked against its static
  * capability manifest (ADR-0013): an error for each entity that needs a capability the
  * adapter does not declare, never a run-time surprise. Today those are the `integer-key-fill`
  * an integer primary key needs, the `aggregates` a `count` or `max` rollup calls (M7), and for a read's declared filter
- * or sort, which run as SQL (M10), `conditions`, plus `joins` where the condition crosses a relationship (a correlated
- * subquery: `aggregates` covers the data layer's `max`/`count`, not SQL inside a condition).
+ * or sort and a read policy that reads the record, which run as SQL (M10), `conditions`, plus `joins` where the condition
+ * crosses a relationship (a correlated subquery: `aggregates` covers the data layer's `max`/`count`, not SQL inside a condition).
  */
 export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdapter): Diagnostic[] {
   const declared: readonly string[] = adapter.capabilities?.capabilities ?? [];
@@ -29,7 +29,11 @@ export function capabilityDiagnostics(document: ModelDocument, adapter: DataAdap
           field.position, "Use a data adapter that declares aggregates, or remove the rollup"));
       }
     }
-    for (const place of sqlPositions(document, entity)) {
+    const places = [
+      ...sqlPositions(document, entity),
+      ...policyConditions(document, entity).map((place) => ({ ...place, kind: "policy" as const, position: place.expression.position })),
+    ];
+    for (const place of places) {
       const lowered = place.lower();
       if (!lowered.ok) continue; // the build reported it
       if (!declared.includes("conditions")) {

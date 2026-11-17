@@ -44,10 +44,8 @@ entity :Todo table="todos"
         asc &insertedAt
 
   policies
-    policy :owner types=[:update, :destroy]
+    policy :owner types=[:read, :update, :destroy]
       authorize-if=({ actor }) => &list.ownerId === actor.id
-    policy :signedIn types=[:read]
-      authorize-if=({ actor }) => actor.id !== null
     policy :ownerCreates types=[:create]
       authorize-if=async ({ input, actor }) => {
         const [list] = await Mesh.privileged(List).read({ filter: { id: { eq: input.list } } })

@@ -96,6 +96,7 @@ export function bindInvocationReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? InvocationTxWith<InvocationLoadNames<L>>[] : never;
       });
     },
@@ -227,7 +228,7 @@ export function bindInvocation(
               taskId: $Record["taskId"] | null;
               recordedById: $Record["recordedById"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Invocation", $record, "action function"),
               "execution.Invocation#record",

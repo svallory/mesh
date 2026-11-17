@@ -846,7 +846,7 @@ When a check reads the stored row, a denied caller is told forbidden, on every w
 mesh build
 ```
 
-The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, a relationship to an entity that has neither `on:load` nor an auto read, a read policy that reads the record or calls `Mesh.privileged`, and a capability the adapter does not declare. Code Mesh cannot translate where SQL is required (a read's `filter`, a sort key, a read policy's condition) is an error (`MESH_EXPR_NOT_SQL`): a function that is not one expression, a helper given the record, or a computed field Mesh runs in memory, read there directly or through another one. Each diagnostic names the file, line, column and code:
+The build rejects unknown declarations, options and members, a member input with options, duplicate input names, two entities in one file, a check without `that`, an `on:load` that does not name a read, a relationship to an entity that has neither `on:load` nor an auto read, a read policy that calls `Mesh.privileged`, and a capability the adapter does not declare. Code Mesh cannot translate where SQL is required (a read's `filter`, a sort key, a read policy's condition) is an error (`MESH_EXPR_NOT_SQL`): a function that is not one expression, a helper given the record, or a computed field Mesh runs in memory, read there directly or through another one. Each diagnostic names the file, line, column and code:
 
 ```text
 src/domain/todo/todo.mesh.mx:22:9 error MESH_UNKNOWN_MEMBER &titel is not a member of todo.Todo. Did you mean &title?

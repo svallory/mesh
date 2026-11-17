@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { CHUNK, FrameworkError, guarded, loadInto, loadRows, rejectComputedQuery, unloadFrom, scope, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
+import { CHUNK, FrameworkError, guarded, loadInto, loadRows, rejectComputedQuery, unloadFrom, scope, type Condition, type ConditionLiteral, type DataOperations, type LoadPlan, type PolicySpec, type Row } from "../src/index.ts";
+import { and, eq, not, or } from "../src/expr.ts";
 
 /**
  * An in-memory data layer that understands the filters loading uses (`eq`, `in`, `nil`) and an ascending `sort` with the
- * key (`id`) appended, and records every call.
+ * key (`id`) appended, and records every call. Of translated conditions it runs a `where` over the row's own columns
+ * (`column`, `value`, `eq`, `and`, `or`, `not`, `isTrue`, `isFalse`) and fails loudly on anything else, an `order` included.
  */
 function memory(tables: Record<string, Row[]>) {
   const calls: string[] = [];
@@ -15,20 +17,39 @@ function memory(tables: Record<string, Row[]>) {
   const compare = (a: unknown, b: unknown) => (a === b ? 0 : (a as number) < (b as number) ? -1 : 1);
   const sorted = (rows: Row[], sort: readonly string[] | undefined) =>
     sort ? [...rows].sort((a, b) => [...sort, "id"].reduce((order, key) => order || compare(a[key], b[key]), 0)) : rows;
-  // This double runs no translated condition: a where or an order it would drop must fail loudly (design 3.4), so a
-  // change that passes one has to extend the double instead of passing against unfiltered rows.
-  const noCondition = (where: unknown) => { if (where !== undefined) throw new Error("this test double runs no condition"); };
+  // A where or an order this double cannot run must fail loudly (design 3.4), so a change that passes one has to
+  // extend the double instead of passing against unfiltered rows.
+  const noCondition = (where: unknown) => { if (where !== undefined) throw new Error("this test double runs no order"); };
+  const value = (node: Condition, row: Row): unknown => {
+    if (node.kind === "column" && node.depth === 0) return row[node.name] ?? null;
+    if (node.kind === "value") return node.value;
+    if (node.kind !== "call") throw new Error(`this test double runs no ${node.kind} node`);
+    const [a, b] = node.args.map((arg) => () => value(arg, row));
+    switch (node.fn) {
+      case "eq": return eq(a!(), b!());
+      case "not": return not(a!());
+      case "isTrue": return a!() === true;
+      case "isFalse": return a!() === false;
+      case "and": return node.args.reduce<unknown>((acc, arg) => and(acc, () => value(arg, row)), true);
+      case "or": return node.args.reduce<unknown>((acc, arg) => or(acc, () => value(arg, row)), false);
+      default: throw new Error(`this test double runs no ${node.fn}`);
+    }
+  };
+  const holds = (row: Row, where: unknown) => where === undefined || value(where as Condition, row) === true;
+  const describeWhere = (where: unknown) => (where === undefined ? "" : " where");
   const tx = {
     select: async (table: unknown, query?: { filter?: never; sort?: readonly string[]; where?: unknown; order?: unknown }) => {
-      noCondition(query?.where); noCondition(query?.order);
-      calls.push(`select ${(table as { name: string }).name}${query?.sort ? ` sort=${query.sort.join(",")}` : ""}`);
-      return sorted(rowsOf(table).filter((row) => matches(row, query?.filter)), query?.sort).map((row) => ({ ...row }));
+      noCondition(query?.order);
+      calls.push(`select ${(table as { name: string }).name}${query?.sort ? ` sort=${query.sort.join(",")}` : ""}${describeWhere(query?.where)}`);
+      return sorted(rowsOf(table).filter((row) => matches(row, query?.filter) && holds(row, query?.where)), query?.sort).map((row) => ({ ...row }));
     },
-    count: async (table: unknown, attribute: string, filter?: never, where?: unknown) => { noCondition(where); calls.push(`count ${(table as { name: string }).name}.${attribute}`); return rowsOf(table).filter((row) => matches(row, filter) && row[attribute] != null).length; },
+    count: async (table: unknown, attribute: string, filter?: never, where?: unknown) => {
+      calls.push(`count ${(table as { name: string }).name}.${attribute}${describeWhere(where)}`);
+      return rowsOf(table).filter((row) => matches(row, filter) && holds(row, where) && row[attribute] != null).length;
+    },
     max: async (table: unknown, attribute: string, filter?: never, where?: unknown) => {
-      noCondition(where);
-      calls.push(`max ${(table as { name: string }).name}.${attribute}`);
-      const values = rowsOf(table).filter((row) => matches(row, filter)).map((row) => row[attribute]).filter((v): v is number => v != null);
+      calls.push(`max ${(table as { name: string }).name}.${attribute}${describeWhere(where)}`);
+      const values = rowsOf(table).filter((row) => matches(row, filter) && holds(row, where)).map((row) => row[attribute]).filter((v): v is number => v != null);
       return values.length ? Math.max(...values) : null;
     },
   } as unknown as DataOperations;
@@ -404,12 +425,126 @@ describe("what a caller loads runs the read policies of the entity it reaches", 
     await expect(loadRows(guarded(handle), "Node", tx, rows, ["loose"], { actor: { id: "guest" }, policies: true })).rejects.toThrow(/has no belongs-to back/);
   });
 
-  test("a read policy that reads the record is the M10 error", async () => {
-    const { tx, handle } = data();
-    const base = guarded(handle);
-    const reading: PolicySpec = { ...open, checks: [{ ...open.checks[0]!, record: true }] };
+});
+
+describe("a read policy that reads the record admits a caller's load row by row", () => {
+  /** A check that reads the record: `&<column> === actor.id`, folded into the query of the rows it reaches. */
+  const mine = (column: string, name = "mine"): PolicySpec => {
+    const literal: ConditionLiteral<{ actor?: { id?: unknown } }> = {
+      what: `policy :${name} authorize-if`, entity: "Any",
+      tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: column, class: "string" }, { kind: "param", index: 0, class: "string" }] },
+      params: (s) => [s.actor?.id],
+    };
+    return { name, when: null, checks: [{ kind: "authorize-if", check: `({ actor }) => &${column} === actor.id`, record: true,
+      run: (() => { throw new Error("a record check is folded, never run in memory"); }) as never, sql: () => literal as never }] };
+  };
+  const open: PolicySpec = { name: "anyone", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
+  const owned = (handle: (name: string) => never) => {
+    const base = plan(handle);
+    return { ...base, Node: { ...base.Node!, reads: [mine("by")] }, Owner: { ...base.Owner!, reads: [mine("by")] }, Badge: { ...base.Badge!, reads: [mine("by")] } } as LoadPlan;
+  };
+  const data = () => memory({
+    nodes: [{ id: 1, parentId: null, ownerId: 10, by: "a" }, { id: 2, parentId: 1, ownerId: 11, by: "a", rank: 5 }, { id: 3, parentId: 1, ownerId: 10, by: "b", rank: 9 }],
+    owners: [{ id: 10, by: "a" }, { id: 11, by: "b" }],
+    badges: [{ id: 7, nodeId: 1, by: "b" }, { id: 8, nodeId: 2, by: "a" }],
+  });
+
+  test("a has-many lists the admitted rows, a belongs-to or has-one not admitted is null, a rollup counts admitted rows", async () => {
+    const { tx, calls, handle } = data();
     const rows = (await tx.select(handle("nodes"))) as Row[];
-    await expect(loadRows({ ...base, Owner: { ...base.Owner!, reads: [reading] } }, "Node", tx, rows, ["owner"], { policies: true })).rejects.toThrow(/M10/);
+    calls.length = 0;
+    const a = await loadRows(owned(handle), "Node", tx, rows, ["children", "owner", "badge", "kids", "maxRank"], { actor: { id: "a" }, policies: true });
+    expect(a.map((row) => [(row.children as Row[]).map((c) => c.id), (row.owner as Row | null)?.id ?? null, (row.badge as Row | null)?.id ?? null, row.kids, row.maxRank]))
+      .toEqual([[[2], 10, null, 1, 5], [[], null, 8, 0, null], [[], 10, null, 0, null]]);
+    // Each query carries the condition; the rollups are queried, not worked out from the loaded children.
+    expect(calls.filter((call) => call.startsWith("count") || call.startsWith("max"))).toEqual([
+      "count nodes.id where", "count nodes.id where", "count nodes.id where", "max nodes.rank where", "max nodes.rank where", "max nodes.rank where"]);
+    // Owner 11 exists (it is excluded, so null, never the dangling-key error), looked up once more by key.
+    expect(calls).toContain("select owners where");
+    expect(calls.filter((call) => call === "select owners")).toHaveLength(1);
+    // With no actor the condition is unknown on every row: nothing is admitted, and nothing is an error.
+    const nobody = await loadRows(owned(handle), "Node", tx, rows, ["children", "owner", "kids"], { policies: true });
+    expect(nobody.map((row) => [row.children, row.owner, row.kids])).toEqual([[[], null, 0], [[], null, 0], [[], null, 0]]);
+    // A privileged load (no `policies`) still sees every row.
+    const all = await loadRows(owned(handle), "Node", tx, rows, ["children", "owner"]);
+    expect((all[0]!.children as Row[]).map((c) => c.id)).toEqual([2, 3]);
+  });
+
+  test("a belongs-to key that names no row is still the error, for an admitted and an excluded caller alike", async () => {
+    const { tx, handle } = memory({ nodes: [{ id: 1, parentId: null, ownerId: 99, by: "a" }], owners: [], badges: [] });
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    for (const actor of [{ id: "a" }, { id: "z" }])
+      await expect(loadRows(owned(handle), "Node", tx, rows, ["owner"], { actor, policies: true }))
+        .rejects.toThrow("belongs-to :owner of Node points at Owner 99, which does not exist");
+  });
+
+  test("a relationship a computed body the caller named reads is loaded whole for the body, and narrowed for the caller", async () => {
+    const { tx, handle } = data();
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const a = await loadRows(owned(handle), "Node", tx, rows, ["childCount", "children", "kids"], { actor: { id: "a" }, policies: true });
+    // The body counts every child (it is the entity's own rule); the caller's list and rollup hold only the admitted one.
+    expect(a[0]).toMatchObject({ childCount: 2, kids: 1 });
+    expect((a[0]!.children as Row[]).map((c) => c.id)).toEqual([2]);
+    // Narrowed in order, and the rows are the loaded ones.
+    const b = await loadRows(owned(handle), "Node", tx, rows, ["children", "childCount"], { actor: { id: "b" }, policies: true });
+    expect((b[0]!.children as Row[]).map((c) => c.id)).toEqual([3]);
+    expect(b[0]!.childCount).toBe(2);
+  });
+
+  test("a belongs-to or has-one a computed body reads is loaded for the body, and null for the caller where it is not admitted", async () => {
+    const { tx, handle } = data();
+    const base = owned(handle);
+    const id = (value: unknown) => (value as Row | null)?.id ?? null;
+    const withBodies = { ...base, Node: { ...base.Node!, computed: { ...base.Node!.computed,
+      ownerId: { kind: "body", needs: ["owner"], evaluate: (s: { self: { owner: Row | null } }) => id(s.self.owner) } as never,
+      badgeId: { kind: "body", needs: ["badge"], evaluate: (s: { self: { badge: Row | null } }) => id(s.self.badge) } as never,
+    } } } as LoadPlan;
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    const a = await loadRows(withBodies, "Node", tx, rows, ["owner", "ownerId", "badge", "badgeId"], { actor: { id: "a" }, policies: true });
+    // Owner 11 and badge 7 are `by: "b"`: the bodies see them, the caller does not.
+    expect(a.map((row) => [id(row.owner), row.ownerId, id(row.badge), row.badgeId])).toEqual([[10, 10, null, 7], [null, 11, 8, 8], [10, 10, null, null]]);
+  });
+
+  test("a policy that reads the record beside one that denies the caller outright queries nothing", async () => {
+    const { tx, calls, handle } = data();
+    const base = owned(handle);
+    const closed = { ...base, Owner: { ...base.Owner!, reads: [mine("by"), { name: "never", when: null, checks: [{ kind: "authorize-if", check: "() => false", record: false, run: (() => false) as never }] }] } } as LoadPlan;
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    calls.length = 0;
+    const a = await loadRows(closed, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true });
+    expect(a.map((row) => row.owner)).toEqual([null, null, null]);
+    expect(calls).toEqual([]);
+    // And one that admits everyone needs no condition.
+    const free = { ...base, Owner: { ...base.Owner!, reads: [open] } } as LoadPlan;
+    calls.length = 0;
+    await loadRows(free, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true });
+    expect(calls).toEqual(["select owners"]);
+  });
+
+  test("a condition goes only to a layer that declares conditions: another is refused before any query", async () => {
+    const { tx, calls, handle } = data();
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    calls.length = 0;
+    for (const layer of [{}, { capabilities: { adapter: "plain", capabilities: [] } }])
+      await expect(loadRows(owned(handle), "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer }))
+        .rejects.toThrow(/does not declare the conditions capability/);
+    expect(calls).toEqual([]);
+    // A layer that declares it is handed the condition; a policy with no condition needs none.
+    const sql = { capabilities: { adapter: "sql", capabilities: ["conditions"] } };
+    const a = await loadRows(owned(handle), "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer: sql });
+    expect(a.map((row) => (row.owner as Row | null)?.id ?? null)).toEqual([10, null, 10]);
+    const base = owned(handle);
+    const free = { ...base, Owner: { ...base.Owner!, reads: [open] } } as LoadPlan;
+    await loadRows(free, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer: {} });
+  });
+
+  test("a check that reads the record with no condition to fold is a framework error", async () => {
+    const { tx, handle } = data();
+    const base = plan(handle);
+    const bare: PolicySpec = { name: "bare", when: null, checks: [{ kind: "authorize-if", check: "() => &by", record: true, run: (() => true) as never }] };
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    await expect(loadRows({ ...base, Owner: { ...base.Owner!, reads: [bare] } }, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true }))
+      .rejects.toThrow(/policy :bare reads the record, and its check carries no condition to fold into the query/);
   });
 });
 
@@ -535,6 +670,24 @@ describe("a has-many through a link entity", () => {
       expect(ids(open[0]!.courses)).toEqual(["c11", "c12", "c13"]);
       const counted = await loadRows(closed, "Student", tx, [{ id: "s1" }], ["courseCount", "courses"], { policies: true });
       expect(counted[0]).toMatchObject({ courseCount: 3, courses: [] });
+    });
+    test("a through a computed body reads is narrowed for the caller by the link entity's condition on each link row", async () => {
+      const { tx, handle } = data();
+      const base = guardedBy(handle, true, true);
+      // `&id !== "e2"`: s1's only enrollment in c11 is excluded; c13 stays, through e1 and e3.
+      const literal: ConditionLiteral<unknown> = {
+        what: "policy :notE2 authorize-if", entity: "Enrollment",
+        tree: { kind: "call", fn: "not", args: [{ kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "param", index: 0, class: "string" }] }] },
+        params: () => ["e2"],
+      };
+      const notE2: PolicySpec = { name: "notE2", when: null, checks: [{ kind: "authorize-if", check: "() => &id !== \"e2\"", record: true,
+        run: (() => { throw new Error("a record check is folded, never run in memory"); }) as never, sql: () => literal as never }] };
+      const linked = { ...base, Enrollment: { ...base.Enrollment!, reads: [notE2] } } as LoadPlan;
+      const loaded = await loadRows(linked, "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courseCount", "courses"], { policies: true });
+      expect(loaded.map((row) => [row.courseCount, ids(row.courses)])).toEqual([[3, ["c12", "c13"]], [1, ["c12"]]]);
+      // Without the body, the same condition is loaded with the query.
+      const plain = await loadRows(linked, "Student", tx, [{ id: "s1" }, { id: "s2" }], ["courses"], { policies: true });
+      expect(plain.map((row) => ids(row.courses))).toEqual([["c12", "c13"], ["c12"]]);
     });
     test("an exit that was not resolved is an error for a denied caller, with no query", async () => {
       const { tx, calls, handle } = data();

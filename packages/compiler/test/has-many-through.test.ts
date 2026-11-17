@@ -474,10 +474,13 @@ describe("policies and on:load", () => {
     expect(result.diagnostics.map((d) => d.message)).toEqual([expect.stringContaining("is [], a count over it 0 and any other rollup null")]);
   });
 
-  test("a link read policy that reads the record waits for M10, as for any entity a relationship reaches", () => {
+  test("a link read policy that reads the record is folded into the query, as for any entity a relationship reaches", () => {
     const result = school({ enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :own types=[:read]\n      authorize-if=({ actor }) => &student.id === actor.id\n") });
-    expect(result.diagnostics.map((d) => [d.code, d.position.file])).toEqual([["MESH_NOT_IMPLEMENTED", "app/enrollment.mesh.mx"]]);
-    expect(result.diagnostics[0]!.message).toContain("policy :own authorize-if reads the record");
+    expect(result.diagnostics).toEqual([]);
+    // One with no SQL form names the loads it covers.
+    const plain = school({ enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :own types=[:read]\n      authorize-if=({ actor }) => { return &student.id === actor.id }\n") });
+    expect(plain.diagnostics.map((d) => [d.code, d.position.file])).toEqual([["MESH_EXPR_NOT_SQL", "app/enrollment.mesh.mx"]]);
+    expect(plain.diagnostics[0]!.message).toContain("policy :own authorize-if must run as SQL, since the policy covers read :read, the loads of it");
   });
 
   test("a link with no read is MESH_ON_LOAD at the through= value", () => {

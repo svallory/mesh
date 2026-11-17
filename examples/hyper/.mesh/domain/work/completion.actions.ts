@@ -88,6 +88,7 @@ export function bindCompletionReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? CompletionTxWith<CompletionLoadNames<L>>[] : never;
       });
     },

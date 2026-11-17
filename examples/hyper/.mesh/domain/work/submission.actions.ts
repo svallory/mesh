@@ -117,6 +117,7 @@ export function bindSubmissionReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? SubmissionTxWith<SubmissionLoadNames<L>>[] : never;
       });
     },
@@ -228,7 +229,7 @@ export function bindSubmission(
               taskId: $Record["taskId"] | null;
               submitterId: $Record["submitterId"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Submission", $record, "action function"),
               "work.Submission#submit",
@@ -453,7 +454,7 @@ export function bindSubmission(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Submission", $record, "action function"),
               "work.Submission#withdraw",

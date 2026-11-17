@@ -1,12 +1,13 @@
 import { dirname, posix, relative } from "node:path";
-import { isCheckGroup, type Action, type Entity, type Expression, type ExprNode, type Policy, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, type Action, type Entity, type Expression, type ExprNode, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
+import type { LowerResult } from "../../model/sql-condition.ts";
 import { policyExpressions, readsRecord } from "../../model/policies.ts";
 import type { EmitInput } from "../emit.ts";
 import { emitError } from "../emit-error.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "../../model/new-instance.ts";
 import { emittedNothing, printExpression, printTree, ROOTS, type EntityLocals, type NamedInTypes } from "../expression-printer.ts";
 import { stableJsonStringify } from "../stable-json.ts";
-import { sqlPositions } from "../../model/sql-required.ts";
+import { policyConditions, sqlPositions } from "../../model/sql-required.ts";
 import { typeNames } from "../type-names.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
@@ -103,8 +104,9 @@ export interface ExpressionsView {
   /** One function per expression, in the order of the entity file. */
   readonly entries: readonly ExpressionEntry[];
   /**
-   * `$conditions` (M10): one condition literal per declared filter and per declared sort key that is a computed field, in
-   * the order of the entity file; the read binds it and hands it to the data layer as SQL. Empty when the entity has none,
+   * `$conditions` (M10): one condition literal per declared filter, per declared sort key that is a computed field, and
+   * per function of a read or load policy that reads the record: the filters and sorts first, then the policies, each
+   * group in file order. The read (and a caller's load) binds it and hands it to the data layer as SQL. Empty when the entity has none,
    * and then the file declares no `$conditions`.
    */
   readonly conditions: readonly ExpressionEntry[];
@@ -251,10 +253,14 @@ export function expressionIds(entity: Entity): Map<Expression, string> {
 /**
  * The policies as `authorizer` from `@meshfw/runtime` takes them, an array literal: each with its `when` and its checks,
  * every function with its source, where it runs (`record`: inside the transaction) and `ref(expression)`, how the generated
- * file reads it from the expressions file.
+ * file reads it from the expressions file. On a read, a function that reads the record also gets `sql`, the thunk
+ * `sql(expression)` prints, that reads its condition literal (`$conditions`), which the authorizer folds into the query.
  */
-export function policySpecs(policies: readonly Policy[], ref: (expression: Expression) => string, on: "write" | "read"): string {
-  const fn = (expression: Expression) => `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression, on)}, run: ${ref(expression)}`;
+export function policySpecs(policies: readonly Policy[], ref: (expression: Expression) => string, on: "write" | "read", sql?: (expression: Expression) => string | undefined): string {
+  const fn = (expression: Expression) => {
+    const literal = on === "read" && readsRecord(expression, on) ? sql?.(expression) : undefined;
+    return `check: ${JSON.stringify(expression.source)}, record: ${readsRecord(expression, on)}, run: ${ref(expression)}${literal ? `, sql: ${literal}` : ""}`;
+  };
   const specs = policies.map((policy) => {
     const checks = policyExpressions(policy).filter(({ kind }) => kind !== "when").map(({ kind, expression }) => `{ kind: ${JSON.stringify(kind)}, ${fn(expression)} }`);
     return `{ name: ${JSON.stringify(policy.name)}, when: ${policy.when ? `{ ${fn(policy.when)} }` : "null"}, checks: [${checks.join(", ")}] }`;
@@ -474,10 +480,9 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
   // A parameter is printed with the in-memory form; one taken from another entity's computed body calls that file's
   // helpers, imported here under a local derived from that entity (`$billing$Customer$limit`).
   const foreignHelpers = new Map<string, HelperImport>();
-  const conditions = sqlPositions(document, entity).flatMap((place): ExpressionEntry[] => {
-    if (place.kind === "sort" && !entity.computed.some((c) => c.name === place.key!.member.name)) return [];
-    const lowered = place.lower();
-    if (!lowered.ok) throw emitError("MESH_EXPR_NOT_SQL", `${place.subject} has no SQL form`, lowered.problems[0]!.position);
+  const literalEntry = (lower: () => LowerResult, subject: string, position: SourcePosition, id: string, comment: string, scope: string): ExpressionEntry => {
+    const lowered = lower();
+    if (!lowered.ok) throw emitError("MESH_EXPR_NOT_SQL", `${subject} has no SQL form`, lowered.problems[0]!.position);
     const renames = new Map<string, Map<string, string>>();
     for (const { name, module, file } of lowered.lowered.imports) {
       const source = document.entities.find((candidate) => candidate.file === file)!;
@@ -493,14 +498,25 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     const emittedHere = emittedNothing();
     const params = lowered.lowered.params.map((param) => printTree(param.tree, false, emittedHere, renames.get(param.from)));
     usesExpr ||= emittedHere.expr;
-    const scope = `${scopeName}<${inputOf([place.action])}>`;
-    const id = place.kind === "filter" ? `read.${place.action.name}.filter` : `read.${place.action.name}.sort.${place.index}`;
-    return [{
+    return {
       key: JSON.stringify(id),
-      comment: `read :${place.action.name} ${place.kind === "filter" ? "filter" : `sort key ${place.index}`} (${entity.file}:${place.position.line}:${place.position.column + 1})`.replace(/[\r\n\u2028\u2029]/g, " "),
-      code: `{ what: ${JSON.stringify(place.subject)}, entity: ${JSON.stringify(entity.fqn)}, tree: ${stableJsonStringify(lowered.lowered.tree)}, params: (${emittedHere.scope ? "$s" : "_$s"}: ${scope}) => [${params.join(", ")}] }`,
-    }];
-  });
+      comment: `${comment} (${entity.file}:${position.line}:${position.column + 1})`.replace(/[\r\n\u2028\u2029]/g, " "),
+      code: `{ what: ${JSON.stringify(subject)}, entity: ${JSON.stringify(entity.fqn)}, tree: ${stableJsonStringify(lowered.lowered.tree)}, params: (${emittedHere.scope ? "$s" : "_$s"}: ${scope}) => [${params.join(", ")}] }`,
+    };
+  };
+  const conditions = [
+    ...sqlPositions(document, entity).flatMap((place): ExpressionEntry[] => {
+      if (place.kind === "sort" && !entity.computed.some((c) => c.name === place.key!.member.name)) return [];
+      const id = place.kind === "filter" ? `read.${place.action.name}.filter` : `read.${place.action.name}.sort.${place.index}`;
+      return [literalEntry(place.lower, place.subject, place.position, id,
+        `read :${place.action.name} ${place.kind === "filter" ? "filter" : `sort key ${place.index}`}`, `${scopeName}<${inputOf([place.action])}>`)];
+    }),
+    // A read policy that reads the record: its scope is the one its in-memory form has in `$expressions`.
+    ...policyConditions(document, entity).map((place) => {
+      const f = found.find((candidate) => candidate.id === place.id)!;
+      return literalEntry(place.lower, place.subject, place.expression.position, place.id, place.what, `${scopeOf(f.scope)}<${inputOf(f.actions)}>`);
+    }),
+  ];
   // The entity imports: each value with its read-only type, and each record type, from the entity's actions file; its own
   // record type is already imported from its types file.
   const entityFrom = new Map<string, { names: Set<string>; value: boolean }>();

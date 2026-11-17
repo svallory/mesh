@@ -1,5 +1,6 @@
 import { Answer, answers } from "./answer.ts";
 import { failJoined } from "./compose.ts";
+import { bindCondition, type Condition, type ConditionLiteral, type Mark, type TableOf, type Where } from "./condition.ts";
 import type { DataLayer } from "./data-layer.ts";
 import type { ActionFrame } from "./entity.ts";
 import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
@@ -20,7 +21,12 @@ import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
  * action. A covering policy whose `when=` is false does not apply to the call; when none applies, a write is forbidden
  * and a read gives no rows (S1 of the PR #79 review).
  *
- * `Mesh.checkPolicies` runs the call itself on a layer that answers (`answer.ts`): `before` and `filter` see it,
+ * A read policy is a filter on the query (ADR-0022): `filter` decides it for the whole read when no check reads the
+ * record, and `rows` folds the checks that do into a condition on each row (M10): each such check carries `sql`, its
+ * condition literal, which is bound with the caller's scope and combined with what the other checks gave by the same
+ * rules, applied row by row. `admits` and `admitsRows` do the same for a caller's load of the entity.
+ *
+ * `Mesh.checkPolicies` runs the call itself on a layer that answers (`answer.ts`): `before`, `filter` and `rows` see it,
  * and once the policies have decided they throw an `Answer` with the decision, which `inside` then does too, instead of
  * resolving, rejecting with `ForbiddenError` or failing a running transaction. The checks run exactly as for the call.
  */
@@ -36,13 +42,19 @@ export interface PolicyCheckSpec {
   /** True when the check reads the record (or anything the build cannot analyse): it then runs inside the transaction. */
   readonly record: boolean;
   readonly run: PolicyFunction;
+  /**
+   * On a check that reads the record, of a policy that covers a read or a load: its condition literal, which `rows` and
+   * `admitsRows` bind and fold into the query. A thunk, since the load plan that holds it is built at module load and the
+   * expressions file that holds the literal may be in an import cycle with it.
+   */
+  readonly sql?: (() => ConditionLiteral<never>) | undefined;
 }
 
 /** One policy that covers the action by its `types=`/`actions=` scope. */
 export interface PolicySpec {
   readonly name: string;
   /** The policy's `when=`: false means the policy does not cover this call; unknown fails it. */
-  readonly when: { readonly check: string; readonly record: boolean; readonly run: PolicyFunction } | null;
+  readonly when: { readonly check: string; readonly record: boolean; readonly run: PolicyFunction; readonly sql?: (() => ConditionLiteral<never>) | undefined } | null;
   readonly checks: readonly PolicyCheckSpec[];
 }
 
@@ -58,19 +70,50 @@ export interface Authorizer {
   inside(scope: object): Promise<void>;
   /**
    * A read's policies as a filter (ADR-0022): true when every covering policy passes, false when one fails or none applies
-   * (the read then returns no rows). A read no policy covers is forbidden.
+   * (the read then returns no rows). A read no policy covers is forbidden. For policies none of whose checks reads the
+   * record; one that does goes through `rows`.
    */
   filter(layer: DataLayer, scope: object): Promise<boolean>;
   /**
+   * A read's policies as a condition on each row (M10): the checks that do not read the record run in memory, as with
+   * `filter`; each one that does is bound (its `sql` literal, with `scope`, its parameters computed marked with the frame)
+   * and the policies are combined row by row: a row is returned when at least one covering policy applies to it and every
+   * one that applies passes. `false` is no row (the read then runs no query), `true` every row, else the condition. A read
+   * no policy covers is forbidden. Answering for `Mesh.checkPolicies`, the read is allowed unless the result is `false`:
+   * what reads the record is part of the query, and denies no call.
+   */
+  rows(layer: DataLayer, scope: object, tableOf: TableOf): Promise<Where>;
+  /**
    * A load's policies: the read policies of the entity a caller loads, run with the caller's scope. True when they
    * admit the caller, false when one fails, none applies or none covers the load: a load no policy covers gives nothing,
-   * never an error. Inside the transaction, so a throw fails it.
+   * never an error. Inside the transaction, so a throw fails it. For policies none of whose checks reads the record.
    */
   admits(scope: object): Promise<boolean>;
+  /** A load's policies as a condition on each row of the entity reached, as `rows` does for a read; none covering is `false`. */
+  admitsRows(scope: object, tableOf: TableOf): Promise<Where>;
 }
 
 type Spec = PolicySpec["when"] & object;
 type Result = boolean | null;
+/** A two-valued part of the per-row formula: a constant, or a condition that is true or false on each row. */
+type Part = boolean | Condition;
+
+const call = (fn: "isTrue" | "isFalse" | "and" | "or", args: Condition[]): Condition => ({ kind: "call", fn, args });
+/** `x IS TRUE`: unknown is not true. */
+const isTrue = (value: Result | Condition): Part => (value === true || value === false || value === null ? value === true : call("isTrue", [value]));
+/** `x IS FALSE`: unknown is not false. */
+const isFalse = (value: Result | Condition): Part => (value === true || value === false || value === null ? value === false : call("isFalse", [value]));
+/** `AND` (or `OR`) of two-valued parts, the constants folded away: `false` (`true`) absorbs, `true` (`false`) drops out. */
+const combine = (fn: "and" | "or", parts: readonly Part[]): Part => {
+  const absorbing = fn === "or";
+  const kept: Condition[] = [];
+  for (const part of parts) {
+    if (part === absorbing) return absorbing;
+    if (part !== !absorbing) kept.push(part as Condition);
+  }
+  if (kept.length === 0) return !absorbing;
+  return kept.length === 1 ? kept[0]! : call(fn, kept);
+};
 
 /** `true` and `false` are themselves; anything else (null, undefined, a non-boolean from plain code) is unknown. */
 const outcome = (value: unknown): Result => (value === true ? true : value === false ? false : null);
@@ -157,11 +200,61 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       ? { allowed: false, breakdown: error.breakdown }
       : { allowed: true, breakdown: Object.freeze(breakdown(true).map((check) => Object.freeze(check))) }));
   };
-  /** A read policy that reads the record is a filter on the query, which M10 folds; the build refuses it, and this is the guard behind it. */
+  /** `filter` and `admits` decide a read from the checks that do not read the record; one that does is `rows`' and `admitsRows`'. */
   const readsTheRecord = (): FrameworkError | undefined => {
     const reads = policies.find((policy) => policy.when?.record || policy.checks.some((check) => check.record));
-    return reads && new FrameworkError(`${entity}#${action} cannot run in this version: policy :${reads.name} reads the record, `
-      + "and a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10");
+    return reads && new FrameworkError(`${entity}#${action}: policy :${reads.name} reads the record, so it is a condition on each row `
+      + "of the query and is folded into it by rows (a load: admitsRows), never decided for the whole read by filter or admits");
+  };
+  /** The conditions the checks that read the record were bound to, by spec; one bound to a constant is in `results`. */
+  const bound = new Map<Spec | PolicyCheckSpec, Condition>();
+  /** Bind each check that reads the record, of each policy that may still apply, with `scope`. */
+  const bindAll = (scope: object, tableOf: TableOf) => {
+    for (const policy of policies) {
+      const mark: Mark | undefined = frame ? (fn) => frame.marked(`policy :${policy.name} of ${entity}`, fn) : undefined;
+      const bindOne = (spec: Spec | PolicyCheckSpec) => {
+        if (results.has(spec) || bound.has(spec)) return;
+        if (!spec.sql)
+          throw new FrameworkError(`${entity}#${action}: policy :${policy.name} reads the record, and its check carries no condition to fold into the query; rebuild the project with \`mesh build\``);
+        const value = bindCondition(tableOf, spec.sql(), scope as never, mark);
+        if (value === true || value === false || value === null) results.set(spec, value);
+        else bound.set(spec, value);
+      };
+      if (policy.when?.record) bindOne(policy.when);
+      if (policy.when && results.get(policy.when) === false) continue;
+      for (const check of policy.checks) if (check.record) bindOne(check);
+    }
+  };
+  /** What a function gave: its in-memory result or bound constant, else its condition; not run (its policy skipped) is unknown. */
+  const valueOf = (spec: Spec | PolicyCheckSpec): Result | Condition => (results.has(spec) ? results.get(spec)! : bound.get(spec) ?? null);
+  /**
+   * The per-row formula over the covering policies: `applies(p)` is `when IS TRUE` (no `when`: true), `skips(p)` is
+   * `when IS FALSE`, `passes(p)` is every `forbid-if IS FALSE` and, with any `authorize-if`, one `IS TRUE`; a row is
+   * admitted when some policy applies and each one skips or applies and passes. Built over three-valued constants and
+   * conditions, so an unknown `when` fails its policy and an unknown `forbid-if` forbids, as in memory.
+   */
+  const formula = (): Part => {
+    const applies = (policy: PolicySpec): Part => (policy.when ? isTrue(valueOf(policy.when)) : true);
+    const skips = (policy: PolicySpec): Part => (policy.when ? isFalse(valueOf(policy.when)) : false);
+    const passes = (policy: PolicySpec): Part => {
+      // a policy with no check is a build error; one that gets here anyway fails closed.
+      if (policy.checks.length === 0) return false;
+      const forbids = policy.checks.filter((check) => check.kind === "forbid-if").map((check) => isFalse(valueOf(check)));
+      const authorizes = policy.checks.filter((check) => check.kind === "authorize-if").map((check) => isTrue(valueOf(check)));
+      return combine("and", [...forbids, authorizes.length ? combine("or", authorizes) : true]);
+    };
+    return combine("and", [
+      combine("or", policies.map(applies)),
+      ...policies.map((policy) => combine("or", [skips(policy), combine("and", [applies(policy), passes(policy)])])),
+    ]);
+  };
+  /** Known before any binding: a covering policy that applies already fails, or none can apply. */
+  const deniedEarly = (): boolean =>
+    policies.some((policy) => covers(policy) === "yes" && fails(policy) === true) || policies.every((policy) => covers(policy) === "no");
+  /** The denial once `formula` gave false: the policies known to fail, else (none applies) `decide`'s. */
+  const denialNow = (): ForbiddenError => {
+    const known = policies.filter((policy) => covers(policy) === "yes" && fails(policy) === true);
+    return known.length ? denial(known) : decide() ?? denial(policies);
   };
   /** A nested call (inside a running transaction) fails that transaction, as a failed cast does; a top-level call rejects. */
   const reject = (layer: DataLayer, error: Error): Promise<never> => {
@@ -204,6 +297,21 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       if (answering) answer(error);
       return error === undefined;
     },
+    async rows(layer: DataLayer, scope: object, tableOf: TableOf): Promise<Where> {
+      answering = answers(layer);
+      if (policies.length === 0) return answering ? answer(decide()) : reject(layer, decide()!);
+      reading = true;
+      await guarded(layer, scope, (record) => !record);
+      let where: Part = false;
+      if (!deniedEarly()) {
+        // A binding that throws (a parameter's helper, a value of the wrong type) fails the call as a check that throws does.
+        try { bindAll(scope, tableOf); }
+        catch (error) { await reject(layer, error instanceof Error ? error : new FrameworkError(`A policy check of ${entity}#${action} threw ${String(error)}`)); }
+        where = formula();
+      }
+      if (answering) answer(where === false ? denialNow() : undefined);
+      return where;
+    },
     async admits(scope: object): Promise<boolean> {
       if (policies.length === 0) return false;
       const reads = readsTheRecord();
@@ -211,6 +319,14 @@ export function authorizer(entity: string, action: string, policies: readonly Po
       reading = true;
       await evaluate(scope, () => true);
       return decide() === undefined;
+    },
+    async admitsRows(scope: object, tableOf: TableOf): Promise<Where> {
+      if (policies.length === 0) return false;
+      reading = true;
+      await evaluate(scope, (record) => !record);
+      if (deniedEarly()) return false;
+      bindAll(scope, tableOf);
+      return formula();
     },
   });
 }

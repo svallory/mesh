@@ -1,5 +1,5 @@
 import { isCheckGroup, type Action, type Check, type Entity, type ModelDocument, type Step, type ValidateItem } from "@meshfw/model";
-import { sqlPositions } from "../model/sql-required.ts";
+import { policyConditions, sqlPositions } from "../model/sql-required.ts";
 import { checksOf, isEmptyGroup } from "../model/action-expressions.ts";
 import { policiesCovering, policyExpressions, readsRecord } from "../model/policies.ts";
 import { alwaysFor, stepsFor } from "./views/actions.ts";
@@ -53,12 +53,13 @@ function checkLines(items: readonly ValidateItem[], depth: number, into: string[
 /**
  * Each policy that covers the action, with each of its functions and where it runs (lead ruling 1 of M8a): a
  * function that reads only `actor`, `context` and `input` runs once before the transaction opens; one that reads the
- * record runs inside it, before validate. A read's policies are a filter. With none, every call is forbidden.
+ * record runs inside it, before validate. A read's policies are a filter: one that reads the record is folded into the
+ * query as a condition on each row (M10). With none, every call is forbidden.
  */
 function policyLines(entity: Entity, action: Action): string[] {
   const covering = policiesCovering(entity, action);
   if (covering.length === 0) return ["none covers it: every call is forbidden (an action no policy covers is denied)"];
-  const record = action.kind === "read" ? "reads the record: a read policy that does so is refused until M10"
+  const record = action.kind === "read" ? "folded into the query: a row is returned only when it holds"
     : action.kind === "create" ? "inside the transaction, on the new instance before the input, before validate"
       : "inside the transaction, on the locked row, before validate";
   const early = action.kind === "read" ? "before the query, once: a caller it does not admit gets no rows" : "before the transaction, once";
@@ -92,15 +93,22 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
   if (!action) return undefined;
   const lines = [`${entity.fqn}#${action.name} (${action.kind})`];
   if (action.kind === "read") {
-    if (!action.filter && !action.sort) section(lines, "strategy", ["one query: the caller's filter, sort, limit and offset over the table"]);
+    const covering = policiesCovering(entity, action);
+    const folded = covering.some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, "read")));
+    const policies = folded ? ", with the policies that read the record folded in" : "";
+    if (!action.filter && !action.sort && !folded) section(lines, "strategy", ["one query: the caller's filter, sort, limit and offset over the table"]);
     else {
-      // The read's own filter and sort run as SQL in the same query (M10); with the model, the relationships the
-      // conditions cross are named, since each is a subquery per row.
-      const strategy = [`one query: ${action.filter ? "the read's filter and the caller's" : "the caller's filter"}, the caller's sort${action.sort ? " then the read's" : ""}, limit and offset over the table`];
+      // The read's own filter and sort, and a policy that reads the record, run as SQL in the same query (M10); with
+      // the model, the relationships the conditions cross are named, since each is a subquery per row.
+      const strategy = [`one query: ${action.filter ? "the read's filter and the caller's" : "the caller's filter"}, the caller's sort${action.sort ? " then the read's" : ""}, limit and offset over the table${policies}`];
       if (action.filter) strategy.push(`filter ${squash(action.filter.source)}: runs as SQL, with the caller's filter and the policies`);
       for (const key of action.sort ?? []) strategy.push(`sort ${key.direction} &${key.member.name}: runs as SQL, after the caller's sort keys; rows that tie on every key come in primary-key order`);
       const crossed = new Set<string>();
-      for (const place of document ? sqlPositions(document, entity).filter((p) => p.action === action) : []) {
+      const places = document ? [
+        ...sqlPositions(document, entity).filter((p) => p.action === action),
+        ...policyConditions(document, entity).filter((p) => covering.includes(p.policy)),
+      ] : [];
+      for (const place of places) {
         const lowered = place.lower();
         if (lowered.ok) for (const crossing of lowered.lowered.crossings) crossed.add(crossing.path);
       }

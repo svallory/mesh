@@ -96,7 +96,7 @@ describe("the load view", () => {
 
   test("the expressions file is imported once, and only for an entity with a body", () => {
     const view = loadView(input(documentOf()), "generated/load.ts");
-    expect(view.expressionImports).toEqual([{ local: "$app$Author$expressions", fromLiteral: '"./domain/app/author.expressions"' }]);
+    expect(view.expressionImports).toEqual([{ local: "$app$Author$expressions", fromLiteral: '"./domain/app/author.expressions"', conditions: null }]);
     expect(view.schemaFromLiteral).toBe('"./schema"');
   });
 

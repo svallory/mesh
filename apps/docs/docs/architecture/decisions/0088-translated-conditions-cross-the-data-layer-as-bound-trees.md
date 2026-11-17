@@ -53,6 +53,6 @@ Option 3 keeps the wire type unchanged and closes the hole option 1 opens. Bindi
 ## Action items
 
 - [x] The contract, the binder, the Drizzle printer, SQLite's dialect and the conformance suites (M10, first pull request).
-- [ ] Lowering, the build error and the generated reads for declared filters and sorts (M10, second pull request).
-- [ ] The per-row read policy fold and filtered loads (M10, third pull request).
+- [x] Lowering, the build error and the generated reads for declared filters and sorts (M10, second pull request).
+- [x] The per-row read policy fold and filtered loads (M10, third pull request).
 - [x] The Postgres dialect (M9, [ADR-0089](./0089-postgres-adapter.md)).

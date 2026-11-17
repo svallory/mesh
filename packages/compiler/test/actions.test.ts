@@ -212,7 +212,7 @@ describe("actions view", () => {
       `if ($where === false) return [] as unknown as ${returns};`,
       "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, where: $whereFor(layer, $where), sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
       `if (!parsed.load?.length) return $rows as unknown as ${returns};`,
-      `return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${returns};`,
+      `return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame, layer })) as unknown as ${returns};`,
     ] });
     // No hop: the table map is empty, and no read has a declared sort, so there is no `$sortClasses`.
     expect(view.moduleLines).toEqual([
@@ -227,7 +227,7 @@ describe("actions view", () => {
       "if (!parsed.load?.length) return $rows as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);",
       "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
       'const $clock = clock ?? $pinClock(options.clock);',
-      'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
+      'return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame, layer })) as unknown as (L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never);'],
       generics: "<const L extends readonly (keyof ArticleLoadable)[] = readonly []>",
       // The read action casts its input once, for its policies, and hands it over as `cast` (R2-N4); a `privileged` read casts it in the body.
       contextParam: ", context?: unknown, clock?: () => $Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInputSchema>" });

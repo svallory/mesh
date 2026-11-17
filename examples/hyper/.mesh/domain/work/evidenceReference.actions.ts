@@ -97,6 +97,7 @@ export function bindEvidenceReferenceReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown
           ? EvidenceReferenceTxWith<EvidenceReferenceLoadNames<L>>[]
           : never;

@@ -111,6 +111,7 @@ export function bindCollaboratorReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? CollaboratorWith<CollaboratorLoadNames<L>>[] : never;
       });
     },

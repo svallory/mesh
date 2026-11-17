@@ -25,7 +25,5 @@ entity :List table="lists"
   policies
     policy :anyoneCreates types=[:create]
       authorize-if=() => true
-    policy :ownerOnly types=[:destroy]
+    policy :ownerOnly types=[:read, :destroy]
       authorize-if=({ actor }) => &ownerId === actor.id
-    policy :signedIn types=[:read]
-      authorize-if=({ actor }) => actor.id !== null

@@ -121,6 +121,7 @@ export function bindClaimReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never;
       });
     },
@@ -238,7 +239,7 @@ export function bindClaim(
               taskId: $Record["taskId"] | null;
               holderId: $Record["holderId"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#acquire",
@@ -440,7 +441,7 @@ export function bindClaim(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#renew",
@@ -638,7 +639,7 @@ export function bindClaim(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#release",
@@ -833,7 +834,7 @@ export function bindClaim(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Claim", $record, "action function"),
               "work.Claim#revoke",

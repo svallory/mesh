@@ -97,6 +97,7 @@ export function bindReviewReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? ReviewTxWith<ReviewLoadNames<L>>[] : never;
       });
     },
@@ -211,7 +212,7 @@ export function bindReview(
               submissionId: $Record["submissionId"] | null;
               reviewerId: $Record["reviewerId"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Review", $record, "action function"),
               "work.Review#accept",
@@ -420,7 +421,7 @@ export function bindReview(
               submissionId: $Record["submissionId"] | null;
               reviewerId: $Record["reviewerId"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Review", $record, "action function"),
               "work.Review#return",

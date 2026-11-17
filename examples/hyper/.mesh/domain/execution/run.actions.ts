@@ -110,6 +110,7 @@ export function bindRunReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? RunTxWith<RunLoadNames<L>>[] : never;
       });
     },
@@ -208,7 +209,7 @@ export function bindRun(
               responsibleId: $Record["responsibleId"] | null;
               startedById: $Record["startedById"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Run", $record, "action function"),
               "execution.Run#start",

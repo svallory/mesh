@@ -142,6 +142,7 @@ export function bindTaskReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? TaskTxWith<TaskLoadNames<L>>[] : never;
       });
     },
@@ -739,7 +740,7 @@ export function bindTask(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Task", $record, "action function"),
               "work.Task#move",
@@ -1410,7 +1411,7 @@ export function bindTask(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Task", $record, "action function"),
               "work.Task#complete",
@@ -1622,7 +1623,7 @@ export function bindTask(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Task", $record, "action function"),
               "work.Task#assign",
@@ -1808,7 +1809,7 @@ export function bindTask(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Task", $record, "action function"),
               "work.Task#unassign",

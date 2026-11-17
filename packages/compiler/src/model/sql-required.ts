@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
-import type { Action, Diagnostic, Entity, Expression, ModelDocument, SortKey, SourcePosition } from "@meshfw/model";
+import type { Action, Diagnostic, Entity, Expression, ModelDocument, Policy, SortKey, SourcePosition } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
-import { loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
+import { loadPolicies, policiesCovering, policyExpressions, recordReason, type PolicyExpression } from "./policies.ts";
 import { lowerCondition, lowerSortKey, type LowerOptions, type LowerResult, type NotSql } from "./sql-condition.ts";
 
 /** What the fix of a function that does not translate says, wherever SQL is required. */
@@ -41,6 +41,52 @@ export function sqlPositions(document: ModelDocument, entity: Entity, options: P
   return out;
 }
 
+/** The entities a caller's load can reach (by file): the target of every relationship, and the link entity of a `through=`. */
+function loadedFiles(document: ModelDocument): Set<string> {
+  return new Set(document.entities.flatMap((from) => from.relationships.flatMap((relation) => [
+    resolve(dirname(from.file), relation.entity.from),
+    ...(relation.through ? [resolve(dirname(from.file), relation.through.entity.from)] : []),
+  ])));
+}
+
+/** What a policy of the entity covers that runs as SQL: `read :x` for each read, and the loads of it when a relationship reaches it. */
+function coveredReads(entity: Entity, policy: Policy, loaded: ReadonlySet<string>): string[] {
+  const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
+  const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
+  if (loaded.has(resolve(entity.file)) && loadPolicies(entity).includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
+  return covered;
+}
+
+/**
+ * One function of a policy that covers a read or a load and reads the record: a condition on each row of the query
+ * (M10), lowered like a filter and folded into it by the authorizer (`rows`, `admitsRows`).
+ */
+export interface PolicyCondition extends PolicyExpression {
+  readonly entity: Entity;
+  readonly policy: Policy;
+  /** "policy :owner authorize-if of billing.Invoice". */
+  readonly subject: string;
+  /** "policy :owner authorize-if must run as SQL, since the policy covers read :read of billing.Invoice". */
+  readonly head: string;
+  readonly lower: () => LowerResult;
+}
+
+/** Every function of the entity's policies that reads the record and covers a read or a load, in written order. */
+export function policyConditions(document: ModelDocument, entity: Entity, options: Pick<LowerOptions, "reported"> = {}, loaded: ReadonlySet<string> = loadedFiles(document)): PolicyCondition[] {
+  const out: PolicyCondition[] = [];
+  for (const policy of entity.policies) {
+    const covered = coveredReads(entity, policy, loaded);
+    if (!covered.length) continue;
+    for (const found of policyExpressions(policy)) {
+      if (!recordReason(found.expression, "read")) continue;
+      out.push({ ...found, entity, policy, subject: `${found.what} of ${entity.fqn}`,
+        head: `${found.what} must run as SQL, since the policy covers ${covered.join(", ")} of ${entity.fqn}`,
+        lower: () => lowerCondition(document, entity, found.expression, options) });
+    }
+  }
+  return out;
+}
+
 /** The diagnostic for one problem of a function in a SQL position. `head` is "<subject> must run as SQL[, since ...]". */
 function notSql(problem: Exclude<NotSql, { kind: "reported" }>, subject: string, head: string, kind: "filter" | "sort" | "policy"): Diagnostic {
   switch (problem.kind) {
@@ -65,7 +111,9 @@ function notSql(problem: Exclude<NotSql, { kind: "reported" }>, subject: string,
     case "json":
       return kind === "sort"
         ? error("MESH_SORT_TYPE", `${problem.member} is :json, which a sort cannot use: the database does not look inside it`, problem.position)
-        : error("MESH_FILTER_TYPE", `${problem.member} is :json, which a filter cannot use: the database does not look inside it`, problem.position);
+        : kind === "policy"
+          ? error("MESH_FILTER_TYPE", `${problem.member} is :json, which a read policy cannot use: it is a filter on the query, and the database does not look inside it`, problem.position)
+          : error("MESH_FILTER_TYPE", `${problem.member} is :json, which a filter cannot use: the database does not look inside it`, problem.position);
     case "write-call":
       return error("MESH_EXPR_NOT_SQL", `${head}, and it calls ${problem.callee}, which in a write policy counts as reading the record`, problem.position, NOT_SQL_FIX);
   }
@@ -75,31 +123,26 @@ function notSql(problem: Exclude<NotSql, { kind: "reported" }>, subject: string,
  * Where SQL is required, what Mesh cannot run there is a build error, never evaluated over loaded rows (M10, ADR-0056,
  * roadmap principle 2): a read's declared filter and each key of its declared sort are lowered to a condition
  * (`lowerCondition`, `lowerSortKey`) and each problem is reported; any plain function of a policy that covers a read or a
- * load is `MESH_EXPR_NOT_SQL`, whatever made it plain (a block body, a helper given the record). A function that already
+ * load is `MESH_EXPR_NOT_SQL`, whatever made it plain (a block body, a helper given the record), and one that reads the
+ * record is lowered as a filter is (`policyConditions`), since the authorizer folds it into the query. A function that already
  * holds an error is left alone, and so is one that inlines a computed body that holds one; one that holds only a warning (`MESH_EXPR_PLAIN` from the type pass) still gets the error.
- * A read policy check that reads the record is still `MESH_NOT_IMPLEMENTED` (`checkLifecycleLimits`) and is not lowered here.
  */
 export function checkSqlRequired(document: ModelDocument, diagnostics: Diagnostic[]): void {
   const holdsError = (position: SourcePosition, length: number) => diagnostics.some((d) => d.severity === "error"
     && d.position.file === position.file && d.position.offset >= position.offset && d.position.offset < position.offset + Math.max(length, 1));
-  const loaded = new Set(document.entities.flatMap((from) => from.relationships.flatMap((relation) => [
-    resolve(dirname(from.file), relation.entity.from),
-    ...(relation.through ? [resolve(dirname(from.file), relation.through.entity.from)] : []),
-  ])));
+  const loaded = loadedFiles(document);
   const found: Diagnostic[] = [];
+  const reported = { reported: (body: Expression) => holdsError(body.position, body.source.length) };
   for (const entity of document.entities) {
-    for (const place of sqlPositions(document, entity, { reported: (body) => holdsError(body.position, body.source.length) })) {
+    for (const place of sqlPositions(document, entity, reported)) {
       const length = place.expression ? place.expression.source.length : place.key!.member.name.length + 1;
       if (holdsError(place.position, length)) continue;
       const lowered = place.lower();
       if (lowered.ok) continue;
       for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, `${place.subject} must run as SQL`, place.kind));
     }
-    const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
-    const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
     for (const policy of entity.policies) {
-      const covered = reads.filter((action) => policiesCovering(entity, action).includes(policy)).map((action) => `read :${action.name}`);
-      if (loads.includes(policy)) covered.push("the loads of it (a relationship or a rollup that reaches it)");
+      const covered = coveredReads(entity, policy, loaded);
       if (!covered.length) continue;
       for (const { expression, what } of policyExpressions(policy)) {
         if (!expression.plain || recordReason(expression, "read")) continue;
@@ -107,6 +150,12 @@ export function checkSqlRequired(document: ModelDocument, diagnostics: Diagnosti
         const head = `${what} must run as SQL, since the policy covers ${covered.join(", ")} of ${entity.fqn}`;
         found.push(notSql({ kind: "plain", position: expression.plain.position, detail: expression.plain.detail }, `${what} of ${entity.fqn}`, head, "policy"));
       }
+    }
+    for (const place of policyConditions(document, entity, reported, loaded)) {
+      if (holdsError(place.expression.position, place.expression.source.length)) continue;
+      const lowered = place.lower();
+      if (lowered.ok) continue;
+      for (const problem of lowered.problems) if (problem.kind !== "reported") found.push(notSql(problem, place.subject, place.head, "policy"));
     }
   }
   diagnostics.push(...found);

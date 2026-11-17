@@ -111,6 +111,7 @@ export function bindAssignmentReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? AssignmentTxWith<AssignmentLoadNames<L>>[] : never;
       });
     },

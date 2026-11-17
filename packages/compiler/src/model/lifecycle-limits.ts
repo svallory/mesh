@@ -9,7 +9,7 @@ import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, record
  * computed field, an `always` block whose `actions=` names a read, which runs neither `validate` nor `do` (a read's own
  * `validate` or `do`, and `:read` in an always block's `types=`, are refused by the contracts), a `set` or `load` in a
  * destroy, and in a policy
- * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged` or reading the record, and a
+ * (M8) `before`, a call to an entity's action and, on a read or a load, a call to `privileged`, and a
  * policy with no check, and an `async` computed body or one that awaits. `privilegedCallsOf` gives where a function calls
  * `privileged`, `askCallsOf` where it calls `Mesh.checkPolicies` or `Mesh.can`, `asynchronyOf` whether it is `async` or awaits, and
  * `scopeReachOf` which scope names a rest or plain parameter reads, and `throughPositionOf` where a `through=` value is
@@ -130,8 +130,7 @@ export function checkLifecycleLimits(
     }
     const reads = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string }))].filter((action) => action.kind === "read");
     const loads = loaded.has(resolve(entity.file)) ? loadPolicies(entity) : [];
-    // A policy decides; it does not act, and it sees no `before` (it runs before `validate`). A read policy that
-    // reads the record is a filter on the query, which the SQL evaluator folds in M10.
+    // A policy decides; it does not act, and it sees no `before` (it runs before `validate`).
     for (const policy of entity.policies)
       for (const { expression, what } of policyExpressions(policy)) {
         const uses = (name: string) => expression.params.includes(name) || expression.plain?.roots.includes(name) || (expression.rest === true && new RegExp(`\\b${name}\\b`).test(expression.source));
@@ -178,13 +177,8 @@ export function checkLifecycleLimits(
               position,
               "Move the condition into a write policy (scope this one to the writes with `types=` or `actions=`) or a check, or into a computed field that the filter compares"));
         }
-      const reading = covered.length ? policyExpressions(policy).find(({ expression }) => recordReason(expression, "read")) : undefined;
-      if (reading)
-        diagnostics.push(error("MESH_NOT_IMPLEMENTED",
-          `${reading.what} ${recordReason(reading.expression, "read")}, and the policy covers ${covered.join(", ")} of ${entity.fqn}: a read policy that reads the record is a filter on the query, which the SQL evaluator folds in M10`,
-          reading.expression.position,
-          "Until M10, a read policy reads only `actor`, `context` and `input` (it then gives the whole result or none); scope a record-reading policy to the writes with `types=` or `actions=`"));
-      // Any other plain condition is `MESH_EXPR_NOT_SQL`, from `checkSqlRequired` (`model/sql-required.ts`).
+      // A plain condition is `MESH_EXPR_NOT_SQL`, and one that reads the record is lowered as a filter is, by
+      // `checkSqlRequired` (`model/sql-required.ts`).
     }
     // A destroy returns nothing and writes nothing: a `set` or `load` in one would be dropped, so it is refused.
     const refuseDestroyStep = (steps: Step[], where: string): void => {

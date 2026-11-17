@@ -116,6 +116,7 @@ export function bindAttemptReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? AttemptTxWith<AttemptLoadNames<L>>[] : never;
       });
     },
@@ -241,7 +242,7 @@ export function bindAttempt(
               performerId: $Record["performerId"] | null;
               delegatorId: $Record["delegatorId"] | null;
             } = { ...$changes };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Attempt", $record, "action function"),
               "execution.Attempt#start",

@@ -4,7 +4,7 @@ import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-
 import { filledKey } from "../../model/new-instance.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
 import { hopTables, valueClassOf } from "../../model/sql-condition.ts";
-import { sqlPositions } from "../../model/sql-required.ts";
+import { policyConditions, sqlPositions } from "../../model/sql-required.ts";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
@@ -57,7 +57,7 @@ export interface ActionsView {
   readonly schemaFromLiteral: string;
   /** The entity's expressions file as a quoted string literal, or `null` when it has no expression an action runs. */
   readonly expressionsFromLiteral: string | null;
-  /** What the file imports from the expressions file as values: `$expressions`, and `$conditions` when a read binds a condition (M10). */
+  /** What the file imports from the expressions file as values: `$expressions`, and `$conditions` when a read binds a condition or a read policy folds one (M10). */
   readonly expressionsValues: readonly string[];
   /**
    * Module-level declarations printed after the imports, each line in full: `$tableOf` and `$sortClasses`, which a read
@@ -362,7 +362,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     const specs = policySpecs(covering, (expression) => {
       usesExpressions = true;
       return idOf(expression);
-    }, action.kind === "read" ? "read" : "write");
+    }, action.kind === "read" ? "read" : "write", (expression) => {
+      // A read policy that reads the record is folded into the query: its condition literal, read when the policy runs.
+      conditionsUsed = true;
+      return `() => $conditions[${JSON.stringify(ids.get(expression)!)}]`;
+    });
     // A read's policies run marked with the frame: a `privileged` read made while one is evaluated throws.
     if (action.kind === "read") frameUsed = true;
     return `$authorizer(${JSON.stringify(entity.fqn)}, ${JSON.stringify(action.name)}, ${specs}${action.kind === "read" ? ", frame" : ""})`;
@@ -422,6 +426,12 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         validator, returnType: txReturnType };
       // ---- policies (M8): a read's policies are a filter on the read (ADR-0022, lead ruling 2 of M8a) --------------
       optionsUsed = true;
+      // Does a covering policy read the record? Then the policies are a condition on each row, folded into the query.
+      const folded = covering.some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, "read")));
+      if (folded) {
+        runtimeTypes.add("Where");
+        tableOfUsed = true;
+      }
       const preCheck = [
         "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them",
         "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
@@ -430,10 +440,17 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         "const $clock = frame.clock(options.clock);",
         // The checks see the input as the action does, cast; an invalid input is reported as one, denied or not.
         `const $parsed = await $castInput(layer, ${validator}, input);`,
-        `if (!(await ${authorizerCall(action, covering)}.filter(layer, ${preScope("$parsed as never", where)}))) return [] as unknown as ${returnType};`,
+        ...(folded
+          ? [
+            // A policy that reads the record is a condition on each row (M10): the checks that do not run first, and the
+            // rest is bound and handed to the body, which folds it into the query; false is no row and no query.
+            `const $rows = await ${authorizerCall(action, covering)}.rows(layer, ${preScope("$parsed as never", where)}, $tableOf);`,
+            `if ($rows === false) return [] as unknown as ${returnType};`,
+          ]
+          : [`if (!(await ${authorizerCall(action, covering)}.filter(layer, ${preScope("$parsed as never", where)}))) return [] as unknown as ${returnType};`]),
       ];
       const differs = loads && tx.with !== `${recordName}With`;
-      const readsCall = `$reads.${name}(input, context, $clock, true, $parsed)`;
+      const readsCall = `$reads.${name}(input, context, $clock, true, $parsed${folded ? ", $rows" : ""})`;
       // ---- end policies ----------------------------------------------------------------------------------------
       const method = { ...base, inputType, generics, returnType, txReturnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: false,
         statements: [], isRead: true, seamTarget: null, readsCall: differs ? `(await ${readsCall}) as unknown as ${returnType}` : readsCall, preCheck };
@@ -457,13 +474,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           `const $s = $scope({ input: $readOnlyRecord(parsed as never, ${where}), actor: $context.actor, context: $context }, { clock: $clock });`,
         );
         if (action.filter) {
-          runtime.add("bindCondition").add("allOf").add("whereFor");
+          runtime.add("bindCondition");
           conditionsUsed = true;
-          sql.push(
-            `const $where = $allOf([$bindCondition($tableOf, $conditions[${JSON.stringify(`read.${action.name}.filter`)}], $s as never)]);`,
-            `if ($where === false) return [] as unknown as ${txReturnType};`,
-          );
-          whereOption = ", where: $whereFor(layer, $where)";
         }
         if (action.sort) {
           runtime.add("orderOf");
@@ -479,6 +491,17 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         }
         tableOfUsed = true;
       }
+      // The read's filter and, from the read action, its policies' condition (`rows`; absent from a `Mesh.privileged` read),
+      // all of which must hold for a row: a part that is false or unknown for every row returns no row with no query.
+      const whereParts = [
+        ...(action.filter ? [`$bindCondition($tableOf, $conditions[${JSON.stringify(`read.${action.name}.filter`)}], $s as never)`] : []),
+        ...(folded ? ["rows ?? true"] : []),
+      ];
+      if (whereParts.length) {
+        runtime.add("allOf").add("whereFor");
+        sql.push(`const $where = $allOf([${whereParts.join(", ")}]);`, `if ($where === false) return [] as unknown as ${txReturnType};`);
+        whereOption = ", where: $whereFor(layer, $where)";
+      }
       const query = [`filter: ${computed.length ? "$filter" : read("parsed", "filter")}${whereOption}`, order, `limit: ${read("parsed", "limit")}`, `offset: ${read("parsed", "offset")}`].join(", ");
       const select = `await tx.select(${table}, { ${query} })`;
       if (loads) {
@@ -490,7 +513,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       }
       if (declared) readsClock = true;
       runtimeTypes.add("CastOutput");
-      readBodies.push({ ...body, contextParam: declared && !loads ? `, context?: unknown, clock?: () => $Date, _policies?: boolean${castParam}` : body.contextParam, unsupported: null, usesParsed: true,
+      const rowsParam = folded ? ", rows?: $Where" : "";
+      readBodies.push({ ...body, contextParam: `${declared && !loads ? `, context?: unknown, clock?: () => $Date, _policies?: boolean${castParam}` : body.contextParam}${rowsParam}`, unsupported: null, usesParsed: true,
         statements: [
           ...(computed.length ? [`const $filter = rejectComputedQuery(${JSON.stringify(entity.fqn)}, [${computed.join(", ")}], parsed);`] : []),
           ...sql,
@@ -504,7 +528,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
                 "const $clock = clock ?? $pinClock(options.clock);",
               ]),
               // From the read action, what the rows load runs the read policies of the entity it reaches.
-              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${txReturnType};`,
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame, layer })) as unknown as ${txReturnType};`,
             ]
             : [`return (${select}) as ${recordName}[];`]),
         ] });
@@ -880,7 +904,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // `Mesh.privileged` read and every action the call makes inside its transaction read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
-    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame };");
+    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };");
     if (used.scope) {
       runtime.add("scope");
       // An update or a destroy reads a stored record, so `before` is never null for its functions.
@@ -952,7 +976,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   const moduleLines: string[] = [];
   if (tableOfUsed) {
     const reached = new Set<string>();
-    for (const place of sqlPositions(document, entity)) {
+    for (const place of [...sqlPositions(document, entity), ...policyConditions(document, entity)]) {
       const lowered = place.lower();
       if (lowered.ok) hopTables(lowered.lowered.tree, reached);
     }
