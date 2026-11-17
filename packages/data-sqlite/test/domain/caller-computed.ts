@@ -65,12 +65,12 @@ entity :Line table="lines"
 
 /** The caller-computed suite on `adapter`: the generated reads of one domain, called against a fresh layer per test. */
 export function callerComputedSuite(adapter: DomainAdapter): void {
-  async function generate(): Promise<string> {
+  async function generate(sources: Record<string, string> = { customer, invoice, line }): Promise<string> {
     const dir = await mkdtemp(join(SCRATCH, ".scratch-caller-computed-"));
     const data = adapter.data(["aggregates", "conditions", "joins"]);
     const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data };
     await mkdir(join(dir, "src/domain"), { recursive: true });
-    const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries({ customer, invoice, line }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
+    const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: openPolicies(Object.entries(sources).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source }))) });
     expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, adapter.build), config);
     await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'test', transaction: async () => undefined, close: async () => undefined } };\n");
@@ -97,7 +97,7 @@ export function callerComputedSuite(adapter: DomainAdapter): void {
    * Customers ada (owner 91) and bo (owner 92). ada holds i1 (50, due Jan 3), i2 (150, Jan 1), i3 (20, no date); bo holds
    * i4 (300, Jan 9). Lines: i1 has qty 1, i4 qty 5. The clock reads Jan 5, so i1 and i2 are late, i3's lateness is unknown.
    */
-  async function seed(tx: DataOperations) {
+  async function seedOn(app: any, tx: DataOperations) {
     await tx.insert(app.tables.customers, { id: id(1), ownerId: id(91), name: "ada" });
     await tx.insert(app.tables.customers, { id: id(2), ownerId: id(92), name: "bo" });
     await tx.insert(app.tables.invoices, { id: id(13), total: 20, dueOn: null, customerId: id(1) });
@@ -107,11 +107,11 @@ export function callerComputedSuite(adapter: DomainAdapter): void {
     await tx.insert(app.tables.lines, { id: id(21), qty: 1, invoiceId: id(11) });
     await tx.insert(app.tables.lines, { id: id(22), qty: 5, invoiceId: id(14) });
   }
-  async function seeded() {
-    const db = await adapter.layer(app.tables);
-    await db.transaction(seed);
-    const binding = app.bind(db, { clock: () => day(5) });
-    return { db, binding, mesh: callsOf(binding, domain) };
+  async function seeded(on: { app: any; domain: any } = { app, domain }) {
+    const db = await adapter.layer(on.app.tables);
+    await db.transaction((tx) => seedOn(on.app, tx));
+    const binding = on.app.bind(db, { clock: () => day(5) });
+    return { db, binding, mesh: callsOf(binding, on.domain) };
   }
   const totals = (rows: readonly { total: number }[]) => rows.map((row) => row.total);
   /** Every invoice, privileged, sorted by total, with `names` loaded: what each computed field is, for the reads to agree with. */
@@ -183,6 +183,16 @@ export function callerComputedSuite(adapter: DomainAdapter): void {
       } finally { await db.close(); }
     });
 
+    test("with load, the rows and the loaded values agree with the filter and the sort", async () => {
+      const { db, mesh } = await seeded();
+      try {
+        const rows = await mesh.readInvoice({ filter: { doubled: { gt: 0 }, isLate: { eq: true } }, sort: ["-doubled"], load: ["owner", "doubled", "isLate", "customer"] }, alice);
+        expect(rows.map((row: any) => [row.total, row.doubled, row.isLate, row.owner, row.customer?.name])).toEqual([[150, 300, true, "ada", "ada"], [50, 100, true, "ada", "ada"]]);
+        const sized = await mesh.readInvoice({ filter: { size: { eq: "small" } }, sort: ["owner", "-total"], load: ["size", "owner"] }, alice);
+        expect(sized.map((row: any) => [row.total, row.size, row.owner])).toEqual([[50, "small", "ada"], [20, "small", "ada"]]);
+      } finally { await db.close(); }
+    });
+
     test("under a read policy that reads the record, only the admitted rows; Mesh.privileged runs no policy", async () => {
       const { db, mesh, binding } = await seeded();
       try {
@@ -192,6 +202,41 @@ export function callerComputedSuite(adapter: DomainAdapter): void {
         expect(totals(await binding.run(() => privilegedOf(domain.Invoice).read({ filter: { size: { eq: "large" } }, sort: ["total"] })))).toEqual([150, 300]);
       } finally { await db.close(); }
     });
+  });
+
+  describe("the generated modules", () => {
+    test("a read by a translated field works when the expressions file is imported before the actions file", async () => {
+      const fresh = await generate();
+      try {
+        // A fresh directory is a fresh module graph: the expressions file is evaluated first, so the actions file it
+        // imports finishes before it; the caller-computed literals must still be read only when a read runs.
+        await import(join(fresh, ".mesh/domain/invoice.expressions.ts"));
+        const on = { app: await import(join(fresh, ".mesh/index.ts")), domain: await import(join(fresh, ".mesh/domain/index.ts")) };
+        const { db, binding } = await seeded(on);
+        try {
+          expect(totals(await binding.run(() => privilegedOf(on.domain.Invoice).read({ filter: { doubled: { gt: 100 } }, sort: ["-size", "total"] })))).toEqual([150, 300]);
+        } finally { await db.close(); }
+      } finally { await rm(fresh, { recursive: true, force: true }); }
+    }, 30_000);
+  });
+
+  describe("a body that reaches an entity the caller may not read (ruling O7 (a))", () => {
+    test("the inlined SQL still reads the related row, as the loaded body does; the loaded relationship is denied", async () => {
+      const closed = customer.replace("  actions auto=[:read]\n", "  actions auto=[:read]\n  policies\n    policy :nobody types=[:read]\n      authorize-if=() => false\n");
+      expect(closed).not.toBe(customer);
+      const fresh = await generate({ customer: closed, invoice, line });
+      try {
+        const on = { app: await import(join(fresh, ".mesh/index.ts")), domain: await import(join(fresh, ".mesh/domain/index.ts")) };
+        const { db, mesh } = await seeded(on);
+        try {
+          expect(await mesh.readCustomer({}, alice)).toEqual([]);
+          expect(totals(await mesh.readInvoice({ filter: { owner: { eq: "ada" } }, sort: ["total"] }, alice))).toEqual([20, 50, 150]);
+          expect(totals(await mesh.readInvoice({ sort: ["-owner", "total"] }, alice))).toEqual([20, 50, 150]);
+          const rows = await mesh.readInvoice({ filter: { owner: { eq: "ada" } }, sort: ["total"], load: ["owner", "customer"] }, alice);
+          expect(rows.map((row: any) => [row.total, row.owner, row.customer])).toEqual([[20, "ada", null], [50, "ada", null], [150, "ada", null]]);
+        } finally { await db.close(); }
+      } finally { await rm(fresh, { recursive: true, force: true }); }
+    }, 30_000);
   });
 
   describe("a caller's sort by a translated computed field", () => {
