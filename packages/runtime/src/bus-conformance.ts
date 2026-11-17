@@ -643,7 +643,13 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         manifest: world.bus.manifest,
         create(core: BusCore, options: Parameters<EventBus["create"]>[1]) {
           const instance = world.bus.create(core, options);
-          return Object.freeze({ ...instance, deliver: async () => { kinds.push(...core.handlers.map((handler) => handler.kind)); return instance.deliver(); } });
+          // Forward each member rather than spread: a bus whose instance is a class keeps its methods on the prototype.
+          return Object.freeze({
+            start: () => instance.start(),
+            stop: () => instance.stop(),
+            deliver: async () => { kinds.push(...core.handlers.map((handler) => handler.kind)); return instance.deliver(); },
+            ...(instance.resumeHandler ? { resumeHandler: (handler: Parameters<NonNullable<typeof instance.resumeHandler>>[0]) => instance.resumeHandler!(handler) } : {}),
+          });
         },
       });
       const binding = world.bind({ handlers: { conformance: { model: { ...world.recorder("model", [Alpha]), [HANDLER_KIND]: kind } } } }, { bus: watching });
