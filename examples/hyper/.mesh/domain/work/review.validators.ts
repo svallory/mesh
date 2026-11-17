@@ -26,6 +26,53 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+/**
+ * Marks the issues of the Mesh file's line rules (`min`, `max`, `match`) with `meshRule: { code, source }`, which
+ * `@meshfw/runtime` reads: Zod's own issue code and a top-level field name pick the rule. Zod's safe-integer range check
+ * of `z.int()` (origin `int`) is no line rule and stays unmarked. Returns the same schema, its type unchanged.
+ */
+type $Rules = {
+  readonly [field: string]: {
+    readonly [zodCode: string]: {
+      code: string;
+      source: { file: string; line: number; column: number };
+    };
+  };
+};
+const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
+  const standard = schema["~standard"];
+  const mark = <R extends { readonly issues?: readonly unknown[] | undefined }>(result: R): R =>
+    result.issues
+      ? ({
+          issues: result.issues.map((issue) => {
+            const raw = issue as {
+              path?: readonly unknown[];
+              code?: string;
+              format?: string;
+              origin?: string;
+            };
+            const key = raw.path?.length === 1 ? raw.path[0] : undefined;
+            const field = typeof key === "string" ? key : undefined;
+            const zod =
+              raw.code === "invalid_format" && raw.format === "regex" ? "regex" : raw.code;
+            const rule =
+              field === undefined || raw.origin === "int" || zod === undefined
+                ? undefined
+                : rules[field]?.[zod];
+            return rule ? { ...raw, meshRule: rule } : issue;
+          }),
+        } as unknown as R)
+      : result;
+  schema["~standard"] = {
+    ...standard,
+    validate: (value: unknown) => {
+      const result = standard.validate(value);
+      return "then" in result ? result.then(mark) : mark(result);
+    },
+  } as typeof standard;
+  return schema;
+};
+
 const comparison = <T extends z.ZodType>(value: T) =>
   z
     .strictObject({
@@ -91,11 +138,21 @@ export type AcceptReviewInputShape = Assert<
   SameShape<z.output<typeof acceptReviewInputSchema>, AcceptReviewInput>
 >;
 
-export const returnReviewInputSchema = z.strictObject({
-  reasons: z.string().min(1),
-  submission: z.uuid(),
-  expectedVersion: z.int().nullable().optional(),
-}) satisfies z.ZodType<ReturnReviewInput>;
+export const returnReviewInputSchema = $ruled(
+  z.strictObject({
+    reasons: z.string().min(1, "must be at least 1 character"),
+    submission: z.uuid(),
+    expectedVersion: z.int().nullable().optional(),
+  }),
+  {
+    reasons: {
+      too_small: {
+        code: "too_short",
+        source: { file: "src/domain/work/review.mesh.mx", line: 56, column: 9 },
+      },
+    },
+  },
+) satisfies z.ZodType<ReturnReviewInput>;
 
 export type ReturnReviewInputShape = Assert<
   SameShape<z.output<typeof returnReviewInputSchema>, ReturnReviewInput>

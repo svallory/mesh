@@ -147,6 +147,21 @@ test("acceptance 3: a failing validation's first frame outside node_modules and 
   } finally { await db.close(); }
 });
 
+test("a broken line rule reports Mesh's code and message and the line of the rule, as the tutorial prints", async () => {
+  const { db, blog } = await fresh();
+  try {
+    await blog.run(async () => {
+      const caught = await Post.create({ title: "", author: alice.id }, context).catch((error: unknown) => error);
+      expect(caught).toBeInstanceOf(InvalidInputError);
+      const error = caught as InvalidInputError;
+      expect([error.code, error.issues[0]!.code, error.issues[0]!.message]).toEqual(["invalid_input", "too_short", "must be at least 1 character"]);
+      expect(error.issues).toEqual([{ label: null, code: "too_short", path: ["title"], message: "must be at least 1 character", source: { file: "src/domain/blog/post.mesh.mx", line: 7, column: 5 }, details: null }]);
+      const long = await Post.create({ title: "x".repeat(201), author: alice.id }, context).catch((error: unknown) => error);
+      expect((long as InvalidInputError).issues.map((issue) => [issue.code, issue.message])).toEqual([["too_long", "must be at most 200 characters"]]);
+    });
+  } finally { await db.close(); }
+});
+
 test("a constant set is applied: Post.publish sets state to published", async () => {
   const { db, blog } = await fresh();
   try {

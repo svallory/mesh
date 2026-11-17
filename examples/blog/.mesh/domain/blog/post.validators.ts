@@ -30,6 +30,53 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+/**
+ * Marks the issues of the Mesh file's line rules (`min`, `max`, `match`) with `meshRule: { code, source }`, which
+ * `@meshfw/runtime` reads: Zod's own issue code and a top-level field name pick the rule. Zod's safe-integer range check
+ * of `z.int()` (origin `int`) is no line rule and stays unmarked. Returns the same schema, its type unchanged.
+ */
+type $Rules = {
+  readonly [field: string]: {
+    readonly [zodCode: string]: {
+      code: string;
+      source: { file: string; line: number; column: number };
+    };
+  };
+};
+const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
+  const standard = schema["~standard"];
+  const mark = <R extends { readonly issues?: readonly unknown[] | undefined }>(result: R): R =>
+    result.issues
+      ? ({
+          issues: result.issues.map((issue) => {
+            const raw = issue as {
+              path?: readonly unknown[];
+              code?: string;
+              format?: string;
+              origin?: string;
+            };
+            const key = raw.path?.length === 1 ? raw.path[0] : undefined;
+            const field = typeof key === "string" ? key : undefined;
+            const zod =
+              raw.code === "invalid_format" && raw.format === "regex" ? "regex" : raw.code;
+            const rule =
+              field === undefined || raw.origin === "int" || zod === undefined
+                ? undefined
+                : rules[field]?.[zod];
+            return rule ? { ...raw, meshRule: rule } : issue;
+          }),
+        } as unknown as R)
+      : result;
+  schema["~standard"] = {
+    ...standard,
+    validate: (value: unknown) => {
+      const result = standard.validate(value);
+      return "then" in result ? result.then(mark) : mark(result);
+    },
+  } as typeof standard;
+  return schema;
+};
+
 const comparison = <T extends z.ZodType>(value: T) =>
   z
     .strictObject({
@@ -108,12 +155,29 @@ export const postSortSchema = z
   )
   .readonly();
 
-export const createPostInputSchema = z.strictObject({
-  title: z.string().min(1).max(200),
-  body: z.string().nullable().optional(),
-  metadata: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
-  author: z.uuid(),
-}) satisfies z.ZodType<CreatePostInput>;
+export const createPostInputSchema = $ruled(
+  z.strictObject({
+    title: z
+      .string()
+      .min(1, "must be at least 1 character")
+      .max(200, "must be at most 200 characters"),
+    body: z.string().nullable().optional(),
+    metadata: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
+    author: z.uuid(),
+  }),
+  {
+    title: {
+      too_small: {
+        code: "too_short",
+        source: { file: "src/domain/blog/post.mesh.mx", line: 7, column: 5 },
+      },
+      too_big: {
+        code: "too_long",
+        source: { file: "src/domain/blog/post.mesh.mx", line: 7, column: 5 },
+      },
+    },
+  },
+) satisfies z.ZodType<CreatePostInput>;
 
 export type CreatePostInputShape = Assert<
   SameShape<z.output<typeof createPostInputSchema>, CreatePostInput>

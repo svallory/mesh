@@ -4,7 +4,7 @@ import { classNameOf } from "../../model/class-name.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityFileComment } from "./types.ts";
 import { baseType, entityLocal, entityPath, propertyName, valueType } from "./inputs.ts";
-import { fieldSchema } from "./validators.ts";
+import { fieldSchema, ruleTable } from "./validators.ts";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
@@ -85,6 +85,11 @@ export interface DeclarationView {
   readonly json: boolean;
   /** True when a field holds a date: the file imports the type `DeepReadonly` as `$DeepReadonly`, which a `parameterType` names. */
   readonly deepReadonly: boolean;
+  /**
+   * The `$ruled` table of the fields' line rules as printed (see `InputSchema.rules` in `validators.ts`), or `null` when
+   * no field has one: the file then declares no `$ruled` helper and prints the schema unwrapped.
+   */
+  readonly rules: string | null;
   /** The globals the file names (`$Date`, `$RegExp`), from `$globals.ts`; null when it names none. */
   readonly globals: GlobalsImport | null;
 }
@@ -128,6 +133,7 @@ export function declarationView(declaration: Declaration): DeclarationView {
     datesLiteral: JSON.stringify(declaration.fields.filter(holdsDate).map((field) => field.name)),
     json: declaration.fields.some((field) => field.type === "json"),
     deepReadonly: declaration.fields.some(holdsDate),
+    rules: ruleTable(declaration.fields),
   };
   // The template prints `$Object.freeze` itself.
   return { ...view, globals: globalsImport(declarationPath(declaration), view, ["Object"]) };

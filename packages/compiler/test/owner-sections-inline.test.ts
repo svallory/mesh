@@ -332,11 +332,14 @@ describe("what is generated", () => {
   };
   const text = (generated: readonly { path: string; contents: string }[], path: string) => generated.find((file) => file.path === path)!.contents;
 
-  test("the inline event's class file is the file form's, apart from the file its header names", async () => {
+  // A line rule's issue names the field's file and line (`$ruled`'s table), which differ between the two forms.
+  const rulePositions = (code: string) => code.replace(/line: \d+, column: \d+/g, "line: L, column: C");
+
+  test("the inline event's class file is the file form's, apart from the file its header names and its line rules' positions", async () => {
     const inline = await generate(build());
     const own = await generate(build({ "billing/invoice-voided.mesh.mx": `event :InvoiceVoided\n${VOIDED("  ")}` }, FILE_FORM));
     const path = ".mesh/domain/billing/invoiceVoided.event.ts";
-    expect(text(inline, path).replace("billing/invoice.mesh.mx", "FILE")).toBe(text(own, path).replace("billing/invoice-voided.mesh.mx", "FILE"));
+    expect(rulePositions(text(inline, path).replaceAll("billing/invoice.mesh.mx", "FILE"))).toBe(rulePositions(text(own, path).replaceAll("billing/invoice-voided.mesh.mx", "FILE")));
     // the class import of the entity's functions is the same either way: it is derived from the declaration, not the import
     expect(text(inline, ".mesh/domain/billing/invoice.expressions.ts")).toContain('import { InvoiceVoided as $billing$InvoiceVoided$class } from "./invoiceVoided.event";');
     // the file form's entity file has one import line more, so its comments name other lines
@@ -344,10 +347,10 @@ describe("what is generated", () => {
     expect(lines(text(inline, ".mesh/domain/billing/invoice.expressions.ts"))).toBe(lines(text(own, ".mesh/domain/billing/invoice.expressions.ts")));
   });
 
-  test("every generated file but model.json is the file form's, apart from the source names and lines its comments give", async () => {
+  test("every generated file but model.json is the file form's, apart from the source names and lines its comments and line rules give", async () => {
     const inline = await generate(build());
     const own = await generate(build({ "billing/invoice-voided.mesh.mx": `event :InvoiceVoided\n${VOIDED("  ")}` }, FILE_FORM));
-    const normal = (code: string) => code.replace(/billing\/invoice(-voided)?\.mesh\.mx(:\d+(:\d+)?)?/g, "FILE");
+    const normal = (code: string) => rulePositions(code.replace(/billing\/invoice(-voided)?\.mesh\.mx(:\d+(:\d+)?)?/g, "FILE"));
     const tree = (generated: readonly { path: string; contents: string }[]) =>
       Object.fromEntries(generated.filter((file) => !file.path.endsWith("model.json")).map((file) => [file.path, normal(file.contents)]));
     expect(Object.keys(tree(inline)).sort()).toEqual(Object.keys(tree(own)).sort());

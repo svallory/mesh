@@ -3,7 +3,9 @@
 import { describe, expect, test } from "bun:test";
 import { type Call, codes, RpcError } from "@meshfw/jsonrpc";
 import { type ActionContext, ForbiddenError, FrameworkError, InvalidInputError, type Issue, NotFoundError } from "@meshfw/runtime";
+import { Claim } from "#mesh/domain/work";
 import { contentChecks, messages, recordTypeOf, rpcErrorOf, specCodes, wireError } from "../src/rpc/errors";
+import { as, within } from "./world";
 
 const issue = (code: string | null, message: string, extra: Partial<Issue> = {}): Issue =>
   ({ label: code === null ? null : code.replace(/\W/g, ""), code, path: [], message, source: null, details: null, ...extra });
@@ -50,12 +52,47 @@ describe("rpcErrorOf: InvalidInputError", () => {
     });
   });
 
-  test("an issue with no code is a schema failure, -32602 in the shape phase, and the coded ones are not reported with it", () => {
+  test("an issue with no label is a schema failure, -32602 in the shape phase, and the labelled ones are not reported with it", () => {
     const error = new InvalidInputError([issue(null, "Invalid UUID", { path: ["collaborator"] }), issue("task.open", "the task is settled")]);
     expect(wire(error)).toEqual({
       code: -32602,
       message: "invalid_params",
       data: { phase: "shape", failures: [{ check: "schema", reason: "collaborator: Invalid UUID", details: { path: ["collaborator"] } }] },
+    });
+  });
+
+  test("a broken line rule (Mesh's code, no label) is a schema failure, -32602 in the shape phase", () => {
+    const source = { file: "src/domain/work/task.mesh.mx", line: 12, column: 9 };
+    const error = new InvalidInputError([{ label: null, code: "too_short", path: ["reason"], message: "must be at least 1 character", source, details: null }]);
+    expect(wire(error)).toEqual({
+      code: -32602,
+      message: "invalid_params",
+      data: { phase: "shape", failures: [{ check: "schema", reason: "reason: must be at least 1 character", details: { path: ["reason"] } }] },
+    });
+  });
+
+  test("a real line-rule violation, through the generated validator, is -32602 in the shape phase", () => within(async (w) => {
+    // `Claim.revoke` takes `reason` with `min=1`: the generated validator's `$ruled` marks the issue with `meshRule`,
+    // `issueOf` gives it Mesh's code and no label, and `rpcErrorOf` must keep it a schema failure.
+    const held = await Claim.acquire({ task: w.task.id }, as(w.bot));
+    const error = await Claim.revoke({ id: held.id, reason: "" }, as(w.alice)).then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(InvalidInputError);
+    const [only] = (error as InvalidInputError).issues;
+    expect(only).toMatchObject({ label: null, code: "too_short", path: ["reason"] });
+    expect(only?.source?.file).toMatch(/claim\.mesh\.mx$/);
+    expect(wire(error)).toEqual({
+      code: -32602,
+      message: "invalid_params",
+      data: { phase: "shape", failures: [{ check: "schema", reason: "reason: must be at least 1 character", details: { path: ["reason"] } }] },
+    });
+  }));
+
+  test("a null passed into a required field (code required, no label) is a schema failure, -32602, not an internal error", () => {
+    const error = new InvalidInputError([{ label: null, code: "required", path: ["title"], message: "title is required and cannot be null", source: null, details: null }]);
+    expect(wire(error)).toEqual({
+      code: -32602,
+      message: "invalid_params",
+      data: { phase: "shape", failures: [{ check: "schema", reason: "title: title is required and cannot be null", details: { path: ["title"] } }] },
     });
   });
 

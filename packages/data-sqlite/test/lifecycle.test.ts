@@ -477,8 +477,12 @@ describe("create", () => {
     const world = await fresh();
     try {
       const error = await invalid(world.mesh.openTask({ title: "", owner: world.member.id, reviewer: world.member.id, priority: 12 }, world.ctx));
-      expect(error.issues.every((issue: Issue) => issue.label === null && issue.source === null && issue.details === null)).toBe(true);
-      expect(error.issues.map((issue: Issue) => issue.path[0]).sort()).toEqual(["priority", "title"]);
+      // Both are line rules: no label or details (no check ran), Mesh's code and the attribute line as the source.
+      expect(error.issues.every((issue: Issue) => issue.label === null && issue.details === null)).toBe(true);
+      expect(error.issues.map((issue: Issue) => [issue.path[0], issue.code, issue.source])).toEqual([
+        ["title", "too_short", { file: "src/domain/task.mesh.mx", line: 6, column: 5 }],
+        ["priority", "too_big", { file: "src/domain/task.mesh.mx", line: 9, column: 5 }],
+      ]);
     } finally { await world.db.close(); }
   });
 });

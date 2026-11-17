@@ -147,13 +147,15 @@ function schemaFailure(path: readonly (string | number)[], message: string): Fai
 
 /**
  * The wire error for an `InvalidInputError`. Shape comes before content (PROTOCOL.md:107), so input that failed its
- * schema is reported alone, as `-32602`. `evidence.exists` is the spec's `exists` on an evidence reference, in the
- * permission phase (PROTOCOL.md:69). Every other coded issue is a content check: `-32002` when the expected version is
- * among them, else `-32003`, with all of them listed (PROTOCOL.md:217 lets the code be any listed failure's).
+ * schema is reported alone, as `-32602`: an issue with no label, which is no `check` of an entity file (a wrong type or
+ * a missing key, uncoded; a broken line rule, coded `too_short` and the like; a null passed into a required field,
+ * `required`). `evidence.exists` is the spec's `exists` on an evidence reference, in the permission phase
+ * (PROTOCOL.md:69). Every other issue is a content check: `-32002` when the expected version is among them, else
+ * `-32003`, with all of them listed (PROTOCOL.md:217 lets the code be any listed failure's).
  */
 function invalidInput(error: InvalidInputError): RpcError | undefined {
-  const uncoded = error.issues.filter((issue) => issue.code === null);
-  if (uncoded.length > 0) return rejection(codes.invalidParams, "shape", uncoded.map((issue) => schemaFailure(issue.path, issue.message)));
+  const shape = error.issues.filter((issue) => issue.label === null);
+  if (shape.length > 0) return rejection(codes.invalidParams, "shape", shape.map((issue) => schemaFailure(issue.path, issue.message)));
   const missing = error.issues.find((issue) => issue.code === "evidence.exists");
   if (missing) {
     const ids = (asDetails(missing.details)?.missing as readonly string[] | undefined) ?? [];

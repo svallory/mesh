@@ -30,6 +30,17 @@ describe("checkFields", () => {
       ]);
     }
   });
+  test("a line rule's issue keeps its code and source, and its message the declaration's suffix", () => {
+    const source = { file: "src/billing/invoice-paid.mesh.mx", line: 5, column: 5 };
+    const failing = schema(() => ({ issues: [{ message: "must be at least 0", path: ["n"], meshRule: { code: "too_small", source } }, { message: "Invalid input", path: ["m"] }] as StandardSchemaV1.Issue[] }));
+    try { checkFields(failing, {}, "event", "billing.InvoicePaid"); throw new Error("no throw"); } catch (cause) {
+      expect(cause).toBeInstanceOf(InvalidInputError);
+      expect((cause as InvalidInputError).issues).toEqual([
+        { message: "must be at least 0 (event billing.InvoicePaid)", path: ["n"], label: null, code: "too_small", source, details: null },
+        { message: "Invalid input (event billing.InvoicePaid)", path: ["m"], label: null, code: null, source: null, details: null },
+      ]);
+    }
+  });
   test("a schema that answers with a promise, or a malformed result, is a FrameworkError", () => {
     expect(() => checkFields(schema(async () => ({ value: { n: 1 } })), {}, "event", "a.B")).toThrow(FrameworkError);
     expect(() => checkFields(schema(() => 1 as never), {}, "event", "a.B")).toThrow(FrameworkError);

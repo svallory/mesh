@@ -35,6 +35,53 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+/**
+ * Marks the issues of the Mesh file's line rules (`min`, `max`, `match`) with `meshRule: { code, source }`, which
+ * `@meshfw/runtime` reads: Zod's own issue code and a top-level field name pick the rule. Zod's safe-integer range check
+ * of `z.int()` (origin `int`) is no line rule and stays unmarked. Returns the same schema, its type unchanged.
+ */
+type $Rules = {
+  readonly [field: string]: {
+    readonly [zodCode: string]: {
+      code: string;
+      source: { file: string; line: number; column: number };
+    };
+  };
+};
+const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
+  const standard = schema["~standard"];
+  const mark = <R extends { readonly issues?: readonly unknown[] | undefined }>(result: R): R =>
+    result.issues
+      ? ({
+          issues: result.issues.map((issue) => {
+            const raw = issue as {
+              path?: readonly unknown[];
+              code?: string;
+              format?: string;
+              origin?: string;
+            };
+            const key = raw.path?.length === 1 ? raw.path[0] : undefined;
+            const field = typeof key === "string" ? key : undefined;
+            const zod =
+              raw.code === "invalid_format" && raw.format === "regex" ? "regex" : raw.code;
+            const rule =
+              field === undefined || raw.origin === "int" || zod === undefined
+                ? undefined
+                : rules[field]?.[zod];
+            return rule ? { ...raw, meshRule: rule } : issue;
+          }),
+        } as unknown as R)
+      : result;
+  schema["~standard"] = {
+    ...standard,
+    validate: (value: unknown) => {
+      const result = standard.validate(value);
+      return "then" in result ? result.then(mark) : mark(result);
+    },
+  } as typeof standard;
+  return schema;
+};
+
 const comparison = <T extends z.ZodType>(value: T) =>
   z
     .strictObject({
@@ -184,23 +231,49 @@ export type TouchTaskInputShape = Assert<
   SameShape<z.output<typeof touchTaskInputSchema>, TouchTaskInput>
 >;
 
-export const cancelTaskInputSchema = z.strictObject({
-  id: z.uuid(),
-  reason: z.string().min(1),
-  expectedVersion: z.int().nullable().optional(),
-}) satisfies z.ZodType<CancelTaskInput>;
+export const cancelTaskInputSchema = $ruled(
+  z.strictObject({
+    id: z.uuid(),
+    reason: z.string().min(1, "must be at least 1 character"),
+    expectedVersion: z.int().nullable().optional(),
+  }),
+  {
+    reason: {
+      too_small: {
+        code: "too_short",
+        source: { file: "src/domain/work/task.mesh.mx", line: 154, column: 9 },
+      },
+    },
+  },
+) satisfies z.ZodType<CancelTaskInput>;
 
 export type CancelTaskInputShape = Assert<
   SameShape<z.output<typeof cancelTaskInputSchema>, CancelTaskInput>
 >;
 
-export const completeTaskInputSchema = z.strictObject({
-  id: z.uuid(),
-  fence: z.int().min(1).nullable().optional(),
-  summary: z.string().min(1).nullable().optional(),
-  evidence: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
-  expectedVersion: z.int().nullable().optional(),
-}) satisfies z.ZodType<CompleteTaskInput>;
+export const completeTaskInputSchema = $ruled(
+  z.strictObject({
+    id: z.uuid(),
+    fence: z.int().min(1, "must be at least 1").nullable().optional(),
+    summary: z.string().min(1, "must be at least 1 character").nullable().optional(),
+    evidence: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
+    expectedVersion: z.int().nullable().optional(),
+  }),
+  {
+    fence: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/work/task.mesh.mx", line: 172, column: 9 },
+      },
+    },
+    summary: {
+      too_small: {
+        code: "too_short",
+        source: { file: "src/domain/work/task.mesh.mx", line: 173, column: 9 },
+      },
+    },
+  },
+) satisfies z.ZodType<CompleteTaskInput>;
 
 export type CompleteTaskInputShape = Assert<
   SameShape<z.output<typeof completeTaskInputSchema>, CompleteTaskInput>

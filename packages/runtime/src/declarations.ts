@@ -1,5 +1,6 @@
 import { FrameworkError, InvalidInputError } from "./errors.ts";
 import type { StandardSchemaV1 } from "./standard-schema.ts";
+import { issueOf } from "./input.ts";
 
 /**
  * The key under which a generated event or command class carries what the runtime asks of it: its kind, its FQN and a
@@ -51,17 +52,7 @@ export function checkFields<Output>(schema: StandardSchemaV1<unknown, Output>, f
   if (typeof result !== "object" || result === null || !("value" in result || "issues" in result))
     throw new FrameworkError("Malformed Standard Schema result: expected an object containing value or issues");
   if (result.issues !== undefined) {
-    throw new InvalidInputError(result.issues.map((issue: StandardSchemaV1.Issue) => ({
-      message: `${issue.message} (${kind} ${fqn})`,
-      path: issue.path?.map((segment) => {
-        const key = typeof segment === "object" ? segment.key : segment;
-        return typeof key === "number" ? key : String(key);
-      }) ?? [],
-      label: null,
-      code: null,
-      source: null,
-      details: null,
-    })));
+    throw new InvalidInputError(result.issues.map((issue: StandardSchemaV1.Issue) => issueOf(issue, ` (${kind} ${fqn})`)));
   }
   return result.value;
 }
