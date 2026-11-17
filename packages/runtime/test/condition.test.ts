@@ -130,6 +130,29 @@ describe("bindCondition", () => {
     expect(bind(count, [2])).toMatchObject({ kind: "call", fn: "gt" });
   });
 
+  test("a rollup node resolves each hop's tables, binds its filter's parameters, and is never folded", () => {
+    const toLine = { table: "billing.Line", column: "invoiceId", outer: "id", key: "id" };
+    const through = { table: "billing.Customer", column: "id", outer: "customerId", key: "id", through: { table: "billing.Link", entry: "lineId", exit: "customerId" } };
+    const tree: LiteralNode = call("gt", { kind: "rollup", fn: "sum", depth: 0, hops: [toLine, through], value: "score", class: "integer", where: call("gt", col("score", "integer"), param(0, "integer")) }, param(1, "integer"));
+    expect(bind(tree, [3, 10])).toEqual({ kind: "call", fn: "gt", args: [
+      { kind: "rollup", fn: "sum", depth: 0, value: "score", class: "integer",
+        hops: [{ ...toLine, table: lines }, { ...through, table: customers, through: { table: links, entry: "lineId", exit: "customerId" } }],
+        where: { kind: "call", fn: "gt", args: [col("score", "integer") as never, { kind: "value", value: 3, class: "integer" }] } },
+      { kind: "value", value: 10, class: "integer" },
+    ] });
+    // No filter: no where; a filter that folds stays inside the node, which is never folded itself.
+    expect(bind({ kind: "rollup", fn: "count", depth: 0, hops: [toLine], value: "id", class: "integer" })).toEqual({ kind: "rollup", fn: "count", depth: 0, hops: [{ ...toLine, table: lines }], value: "id", class: "integer" });
+    expect(bind({ kind: "rollup", fn: "count", depth: 0, hops: [toLine], value: "id", class: "integer", where: param(0, "boolean") }, [true]))
+      .toMatchObject({ kind: "rollup", where: { kind: "value", value: true, class: "boolean" } });
+    // The class check names the rollup as the stored side.
+    expect(() => bind(call("gt", { kind: "rollup", fn: "max", depth: 0, hops: [toLine], value: "qty", class: "integer" }, param(0, "integer")), ["2"]))
+      .toThrow("compares the max rollup of related rows (integer) with the string \"2\"");
+    // A malformed node is refused, never printed.
+    expect(() => bind({ kind: "rollup", fn: "median", depth: 0, hops: [toLine], value: "qty", class: "integer" } as never)).toThrow('has a rollup of unknown function "median"');
+    expect(() => bind({ kind: "rollup", fn: "count", depth: 0, hops: [], value: "id", class: "integer" })).toThrow("has a rollup with no hops");
+    expect(() => bind({ kind: "rollup", fn: "count", depth: 0, hops: [toLine], value: "id", class: "number" } as never)).toThrow("of unknown class");
+  });
+
   test("isTrue and isFalse fold two-valued", () => {
     for (const [v, t, f] of [[true, true, false], [false, false, true], [null, false, false]] as const) {
       expect(bind(call("isTrue", param(0, "boolean")), [v])).toBe(t);
@@ -208,6 +231,10 @@ describe("whereFor", () => {
     expect(() => whereFor(manifest("aggregates"), c)).toThrow('the data adapter "fake" does not declare the conditions capability');
     expect(() => whereFor(manifest("conditions"), hop)).toThrow('the data adapter "fake" does not declare the joins capability');
     expect(() => whereFor(manifest("conditions"), { kind: "call", fn: "not", args: [hop] })).toThrow(FrameworkError);
+    // A rollup runs as a subquery over its route: it needs joins, even over one relationship.
+    const rollup: Condition = { kind: "call", fn: "gt", args: [{ kind: "rollup", fn: "count", depth: 0, hops: [{ table: lines, column: "invoiceId", outer: "id", key: "id" }], value: "id", class: "integer" }, { kind: "value", value: 0, class: "integer" }] };
+    expect(() => whereFor(manifest("conditions"), rollup)).toThrow("does not declare the joins capability");
+    expect(whereFor(manifest("conditions", "joins"), rollup)).toBe(rollup);
   });
 });
 

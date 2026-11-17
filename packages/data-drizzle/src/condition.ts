@@ -39,6 +39,8 @@ export interface ConditionSqlOptions {
 const COMPARISONS = { eq: "=", ne: "<>", lt: "<", lte: "<=", gt: ">", gte: ">=", add: "+", sub: "-", mul: "*" } as const;
 const BOOLEAN_FNS = new Set(["eq", "ne", "isNull", "isNotNull", "lt", "lte", "gt", "gte", "and", "or", "not", "isTrue", "isFalse"]);
 const MAX_DEPTH = 256;
+/** Most relationships a rollup in a condition crosses, as a rollup's route in the data layer does. */
+const MAX_ROUTE = 64;
 
 /** The class a node's value has, for a dialect's `collate`; undefined where nothing says. */
 export function classOfNode(node: Condition): ValueClass | undefined {
@@ -50,6 +52,7 @@ export function classOfNode(node: Condition): ValueClass | undefined {
     case "count": return "integer";
     case "one":
     case "first": return classOfNode(node.value);
+    case "rollup": return node.class;
     case "call": {
       if (BOOLEAN_FNS.has(node.fn)) return "boolean";
       if (node.fn === "div") return "float";
@@ -123,8 +126,59 @@ function printer(root: Table, options: ConditionSqlOptions) {
         : sql`(select count(*) from ${from} where ${link} and (${print(node.where, depth + 1)}) is true)`);
       case "first": return enter(node.hop, depth, (from, link, key) =>
         sql`(select ${print(node.value, depth + 1)} from ${from} where ${link} and (${print(node.where, depth + 1)}) is true order by ${key} limit 1)`);
+      case "rollup": return rollup(node, depth);
       default: throw new FrameworkError(`Unknown condition node kind ${JSON.stringify((node as { kind?: unknown }).kind)}`);
     }
+  };
+
+  /**
+   * `(select fn(r.value) from last as r where <r reached from the row at node.depth> [and (filter) is true])`. One hop is
+   * its link; more are `r.key in (select key from <the hops joined from that row>)`, so a row of the last table counts
+   * once however many paths reach it (no derived table, which would need a correlated FROM). The last table is the alias
+   * of the next depth (`t<n>`), the route's other tables `t<n>r1`, `t<n>r2`, ..., and the filter is a condition of its
+   * own over the last table (its own hops would alias `t<n>w1`, ...).
+   */
+  const rollup = (node: Extract<Condition, { kind: "rollup" }>, depth: number): SQL => {
+    if (!Number.isInteger(node.depth) || node.depth < 0 || node.depth > depth) {
+      throw new FrameworkError(`A condition's rollup starts at depth ${String(node.depth)}, where only depths 0 to ${depth} are open`);
+    }
+    if (!Array.isArray(node.hops) || node.hops.length === 0) throw new FrameworkError("A condition's rollup needs a non-empty list of hops");
+    if (node.hops.length > MAX_ROUTE) throw new FrameworkError(`A condition's rollup crosses at most ${MAX_ROUTE} relationships, and this one crosses ${node.hops.length}`);
+    for (const hop of node.hops) if (typeof hop !== "object" || hop === null) throw new FrameworkError("A rollup's hop must be an object { table, column, outer, key }");
+    const n = depth + 1;
+    const name = `${prefix}${n}`;
+    const last = node.hops[node.hops.length - 1]!;
+    const lastOriginal = options.resolve(last.table);
+    const reached = options.dialect.alias(lastOriginal, name);
+    const outer = tables[node.depth]!;
+    let reach: SQL;
+    if (node.hops.length === 1) reach = hopLink(last, outer, reached, `${linkPrefix}${n}`, options);
+    else {
+      let from: Table = outer;
+      let start: SQL | undefined;
+      const joins: SQL[] = [];
+      node.hops.forEach((hop, i) => {
+        const route = `${prefix}${n}r${i + 1}`;
+        const original = options.resolve(hop.table);
+        const far = options.dialect.alias(original, route);
+        const link = hopLink(hop, from, far, `${linkPrefix}${n}r${i + 1}`, options);
+        if (i === 0) { start = link; joins.push(sql`${original} as ${sql.identifier(route)}`); }
+        else joins.push(sql` inner join ${original} as ${sql.identifier(route)} on ${link}`);
+        from = far;
+      });
+      reach = sql`${columnOf(reached, last.key)} in (select ${columnOf(from, last.key)} from ${sql.join(joins)} where ${start!})`;
+    }
+    const column = columnOf(reached, node.value);
+    const operand = sql`${column}`;
+    const value = node.fn === "count" ? sql`count(${operand})`
+      : node.fn === "sum" ? sql`sum(${operand})`
+        : node.fn === "avg" ? sql`avg(${operand})`
+          : node.fn === "min" || node.fn === "max"
+            ? sql`${sql.raw(node.fn)}(${options.dialect.collate && column.dataType === "string" ? options.dialect.collate(operand, "string") : operand})`
+            : undefined;
+    if (value === undefined) throw new FrameworkError(`A condition's rollup has the unknown function ${JSON.stringify(node.fn)}; use count, sum, avg, min or max`);
+    const filter = node.where === undefined ? sql`` : sql` and (${conditionSql(reached, node.where, { ...options, aliasPrefix: `${prefix}${n}w` })}) is true`;
+    return sql`(select ${value} from ${lastOriginal} as ${sql.identifier(name)} where ${reach}${filter})`;
   };
 
   const call = (node: Extract<Condition, { kind: "call" }>, depth: number): SQL => {

@@ -1,5 +1,5 @@
 import type { CapabilityManifest } from "./capabilities.ts";
-import type { Scalar, Sort, TableHandle } from "./data-layer.ts";
+import type { RollupFn, Scalar, Sort, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { asBool, expr } from "./expr.ts";
 
@@ -55,6 +55,15 @@ export type ConditionNode<T = TableHandle, P = never> =
   | { readonly kind: "count"; readonly hop: Hop<T>; readonly where?: ConditionNode<T, P> }
   /** `value` read on the first related row (in key order) whose `where` is true; null when there is none. */
   | { readonly kind: "first"; readonly hop: Hop<T>; readonly where: ConditionNode<T, P>; readonly value: ConditionNode<T, P> }
+  /**
+   * A rollup read where SQL is required (`&lineCount > 0`, `sort desc &total`): `fn` over the column `value` of the rows
+   * of the last hop's table that `hops` reach from the row `depth` hops in (0: the row the query returns), each row once
+   * however many paths reach it, and a hop that matches nothing (a null or dangling key) adding nothing. `count` counts
+   * `value`, the last table's key, and is 0 over no row; the others are null over no row or only null values. `where` is
+   * the rollup's filter: a condition of its own whose depth 0 is a row of the last table. `class` is the rollup's. It
+   * gives the value a load through `Mesh.privileged` gives: no read policy of the entities the hops reach runs.
+   */
+  | { readonly kind: "rollup"; readonly fn: RollupFn; readonly depth: number; readonly hops: readonly Hop<T>[]; readonly value: string; readonly class: ValueClass; readonly where?: ConditionNode<T, P> }
   | P;
 
 /** A bound condition: what `Query.where` carries. */
@@ -94,7 +103,8 @@ export type Mark = <T>(run: () => T) => T;
 
 type Value = Extract<Condition, { kind: "value" }>;
 
-const HOP_KINDS = new Set(["one", "some", "every", "count", "first"]);
+const HOP_KINDS = new Set(["one", "some", "every", "count", "first", "rollup"]);
+const ROLLUP_FNS = new Set<string>(["count", "sum", "avg", "min", "max"]);
 const CLASSES = new Set<string>(["string", "integer", "float", "boolean", "date"]);
 
 /** The value as a message names it: "the number 2.5", "a string", "an object". */
@@ -199,7 +209,7 @@ function fold(fn: SqlFunction, args: readonly Condition[]): Condition {
  * `(run) => frame.marked("policy :<name> of <entity>", run)`), turn `undefined` into `null`, check each value against
  * its class (a value the database would convert is refused, so SQL never answers differently from memory), put the
  * values in, resolve every hop's FQN through `tableOf`, and fold every foldable subtree with the in-memory functions of
- * `expr`. Foldable: reads no `column` and contains no hop node (`one`, `some`, `every`, `count`, `first`), since those
+ * `expr`. Foldable: reads no `column` and contains no hop node (`one`, `some`, `every`, `count`, `first`, `rollup`), since those
  * depend on rows even when their `where` or `value` reads no column. Returns the constant when the whole tree folds to
  * a boolean or to unknown (`null`); a tree that folds to another constant (an order key) is a `value` node.
  */
@@ -251,6 +261,12 @@ export function bindCondition<S>(tableOf: TableOf, literal: ConditionLiteral<S>,
         ? { kind: "count", hop: hop(part.hop) }
         : { kind: "count", hop: hop(part.hop), where: bind(part.where, depth + 1) };
       case "first": return { kind: "first", hop: hop(part.hop), where: bind(part.where, depth + 1), value: bind(part.value, depth + 1) };
+      case "rollup": {
+        if (typeof part.fn !== "string" || !ROLLUP_FNS.has(part.fn)) throw new FrameworkError(`${what} has a rollup of unknown function ${JSON.stringify(part.fn)}`);
+        if (!Array.isArray(part.hops) || part.hops.length === 0) throw new FrameworkError(`${what} has a rollup with no hops`);
+        const rollup = { kind: "rollup", fn: part.fn, depth: part.depth, hops: part.hops.map(hop), value: part.value, class: classOf(part.class, what) } as const;
+        return part.where === undefined ? rollup : { ...rollup, where: bind(part.where, depth + 1) };
+      }
       default: throw new FrameworkError(`${what} has a node of unknown kind ${JSON.stringify((part as { kind?: unknown }).kind)}`);
     }
   };
@@ -277,6 +293,7 @@ function columnSide(literal: LiteralNode): string | undefined {
     case "one":
     case "first": { const inner = columnSide(literal.value); return inner && `${inner} of a related row`; }
     case "count": return "the count of related rows";
+    case "rollup": return `the ${literal.fn} rollup of related rows`;
     default: return undefined;
   }
 }

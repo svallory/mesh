@@ -142,6 +142,59 @@ describe("lowerCondition", () => {
   });
 });
 
+describe("a rollup read where SQL is required (m10-rollups, R22)", () => {
+  const TAGS = { table: "billing.Tag", column: "id", outer: "id", key: "id", through: { table: "billing.InvoiceTag", entry: "invoiceId", exit: "tagId" } };
+  const rollups = `    sum :qtyTotal of=&lines.qty
+    avg :qtyAvg of=&lines .qty
+    min :firstDue of=&customer.invoices.dueOn
+    count :nTags of=&tags
+    count :siblings of=&customer.invoices
+    count :bigLines of=&lines filter=(l) => l.qty > 1 + 1 && l.invoiceId !== null
+`;
+  const rollup = (fn: string, hops: unknown[], value: string, cls: string, extra: Record<string, unknown> = {}) => ({ kind: "rollup", fn, depth: 0, hops, value, class: cls, ...extra });
+  // [filter, tree, the parameters as printed, the crossings' paths]
+  const cases: [string, unknown, string[], string[]][] = [
+    ["() => &nLines > 2", call("gt", rollup("count", [LINES], "id", "integer"), val(2, "integer")), [], ["&nLines"]],
+    // The rollup's type is its class: a sum of integers is integer, an average float (a literal it meets takes it).
+    ["() => &qtyTotal > 2", call("gt", rollup("sum", [LINES], "qty", "integer"), val(2, "integer")), [], ["&qtyTotal"]],
+    ["() => &qtyAvg > 2", call("gt", rollup("avg", [LINES], "qty", "float"), val(2, "float")), [], ["&qtyAvg"]],
+    ["() => &qtyTotal === null", call("isNull", rollup("sum", [LINES], "qty", "integer")), [], ["&qtyTotal"]],
+    // A belongs-to then a has-many, and a through hop: one hop each.
+    ["() => &firstDue < %.today", call("lt", rollup("min", [CUSTOMER, INVOICES], "dueOn", "date"), param(0, "date")), ["$.today($s)"], ["&firstDue"]],
+    ["() => &siblings > 1", call("gt", rollup("count", [CUSTOMER, INVOICES], "id", "integer"), val(1, "integer")), [], ["&siblings"]],
+    ["() => &nTags === 0", call("eq", rollup("count", [TAGS], "id", "integer"), val(0, "integer")), [], ["&nTags"]],
+    // The filter is a condition of its own over the last table (its key column readable), its parameters joining the
+    // function's, lowered first as the rollup is the record-dependent side.
+    ["({ input }) => &bigLines > input.n", call("gt", rollup("count", [LINES], "id", "integer", {
+      where: call("and", call("gt", col("qty", "integer"), param(0, "integer")), call("isNotNull", col("invoiceId", "string"))) }), param(1, "integer")),
+      ["$.add(1, 1)", "$s.input?.n"], ["&bigLines"]],
+    // Of the outer row inside a quantifier: the rollup starts at depth 0 while the predicate reads depth 1.
+    ["() => &lines.some((l) => l.qty > &qtyTotal)", { kind: "some", hop: LINES, where: call("gt", col("qty", "integer", 1), rollup("sum", [LINES], "qty", "integer")) }, [], ["&lines", "&qtyTotal"]],
+    // Of a row a hop reaches: the customer's invoices, each with its own rollup at depth 1.
+    ["() => &customer.invoices.some((i) => i.nLines > 1)", { kind: "one", hop: CUSTOMER, value: { kind: "some", hop: INVOICES, where: call("gt", { ...rollup("count", [LINES], "id", "integer"), depth: 2 }, val(1, "integer")) } }, [], ["&customer.invoices", "i.nLines"]],
+  ];
+  test("each read lowers to a rollup node over its route, with its parameters and crossings", () => {
+    const built = fixture.build(invoice(cases.map(([filter]) => filter), "", rollups));
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const entity = built.entity("Invoice");
+    const results = entity.actions.filter((a) => a.filter).map((a) => lowerCondition(built.document!, entity, a.filter!));
+    cases.forEach(([filter, tree, params, crossings], i) => {
+      const result = ok(results[i]!);
+      expect(result.tree as unknown, filter).toEqual(tree);
+      expect(result.params.map((p) => printTree(p.tree)), filter).toEqual(params);
+      expect(result.crossings.map((c) => c.path), filter).toEqual(crossings);
+    });
+  });
+
+  test("a rollup whose filter already holds an error is reported there, not at the read", () => {
+    const built = fixture.build(invoice(["() => &bigLines > 0"], "", rollups));
+    const entity = built.entity("Invoice");
+    const filter = entity.computed.find((c) => c.name === "bigLines")!.rollup!.filter!;
+    const result = lowerCondition(built.document!, entity, entity.actions[0]!.filter!, { reported: (body) => body === filter });
+    expect(result.ok ? [] : result.problems.map((p) => [p.kind, "field" in p ? p.field : ""])).toEqual([["reported", "bigLines"]]);
+  });
+});
+
 describe("what has no SQL form", () => {
   // A function in a SQL position that has none is a build error (sql-required.test.ts), so the build gives no model to
   // lower: each case is written as a computed body here, where it builds, and lowered as a filter would be.
@@ -152,20 +205,18 @@ describe("what has no SQL form", () => {
     return { built, results: bodies.map((_, i) => lowerCondition(built.document!, entity, entity.computed.find((c) => c.name === `probe${i}`)!.body!)) };
   };
   const kinds = (result: LowerResult) => (result.ok ? [] : result.problems.map((p) => p.kind));
-  test("a plain computed field (directly and through another), a rollup, a foreign list, a json member", () => {
+  test("a plain computed field (directly and through another), a foreign list, a json member", () => {
     const { built, results } = problemsOf([
       '&customer.label === "a!"',
       '&shout === "a!"',
-      "&nLines > 2",
       "[&total].some((c) => c === 1)",
       "&customer.meta !== null",
       '&customer.label === "a" && &nLines > 1',
     ]);
-    expect(results.map(kinds)).toEqual([["plain-computed"], ["plain-computed"], ["rollup"], ["plain"], ["json"], ["plain-computed", "rollup"]]);
-    const [direct, through, rollup] = results as (LowerResult & { ok: false })[];
+    expect(results.map(kinds)).toEqual([["plain-computed"], ["plain-computed"], ["plain"], ["json"], ["plain-computed"]]);
+    const [direct, through] = results as (LowerResult & { ok: false })[];
     expect(direct!.problems[0]).toMatchObject({ field: "&customer.label", detail: "arithmetic on values that are not numbers" });
     expect(through!.problems[0]).toMatchObject({ field: "label of billing.Customer", through: "&shout" });
-    expect(rollup!.problems[0]).toMatchObject({ field: "&nLines", fn: "count", relation: "&lines" });
     // Reported at the read in the function, not inside the body it inlines.
     expect(through!.problems[0]!.position.offset).toBe(built.source.indexOf('&shout === "a!"'));
   });
@@ -199,19 +250,23 @@ const FILES_NODE = `entity :Node
 `;
 
 describe("lowerSortKey", () => {
-  test("an attribute is a column; a translated computed field its body; a plain one and a rollup are refused", () => {
+  test("an attribute is a column; a translated computed field its body; a rollup its node; a plain one is refused", () => {
     const built = fixture.build(invoice([], `    read :sorted
       sort
         desc &dueOn
         asc &isLate
+        desc &nLines
 `));
+    expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const entity = built.entity("Invoice");
     const keys = entity.actions.find((a) => a.name === "sorted")!.sort!;
-    // A key the build refuses is not in a built model: the last two are made by hand.
-    const results = [...keys, ...["shout", "nLines"].map((name) => ({ direction: "asc" as const, member: { name, position: entity.position } }))]
+    // A key the build refuses is not in a built model: the last is made by hand.
+    const results = [...keys, { direction: "asc" as const, member: { name: "shout", position: entity.position } }]
       .map((key) => lowerSortKey(built.document!, entity, key));
     expect(ok(results[0]!).tree as LiteralNode).toEqual(col("dueOn", "date") as LiteralNode);
     expect(ok(results[1]!).tree as unknown).toEqual(call("lt", col("dueOn", "date"), param(0, "date")));
-    expect(results.slice(2).map((r) => (r.ok ? "ok" : r.problems.map((p) => p.kind).join()))).toEqual(["plain-computed", "rollup"]);
+    expect(ok(results[2]!).tree as unknown).toEqual({ kind: "rollup", fn: "count", depth: 0, hops: [LINES], value: "id", class: "integer" });
+    expect(ok(results[2]!).crossings.map((c) => c.path)).toEqual(["&nLines"]);
+    expect(results.slice(3).map((r) => (r.ok ? "ok" : r.problems.map((p) => p.kind).join()))).toEqual(["plain-computed"]);
   });
 });

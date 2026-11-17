@@ -81,7 +81,9 @@ const LINKS: Row[] = [
  * order, `max`/`count` honour `where`, and, with `aggregates`, `rollup` honours `where`. With `joins` declared too, the
  * hops: `one` (null for no row and for a dangling key), `some`, `every` (true over no row, false over unknown), `count`,
  * `first` (the lowest key), a through hop counting a far row once and skipping a null exit, two steps, a depth-0 column
- * inside a hop, and a rollup's route honouring the `where` of its start and of each hop and the `linkWhere` of a link.
+ * inside a hop, a rollup node (each row its route reaches once, from its own starting row, narrowed by its filter, in
+ * `where` and in `order`), and a rollup's route honouring the `where` of its start and of each hop and the `linkWhere` of
+ * a link.
  */
 export function dataLayerConditionConformance(makeLayer: () => Promise<ConditionFixture>, manifest: CapabilityManifest): Record<string, () => Promise<void>> {
   const declared = (name: string) => (manifest.capabilities as readonly string[]).includes(name);
@@ -250,6 +252,44 @@ export function dataLayerConditionConformance(makeLayer: () => Promise<Condition
         const h = hops(fixture);
         await expectIds(read, { order: [{ by: { kind: "count", hop: h.children }, desc: true }] }, ["p1", "p2", "p3", "p4"], "by number of children, ties in key order");
         await expectIds(read, { order: [{ by: { kind: "one", hop: h.toParent, value: col("s", "string", 1) }, desc: false }] }, ["p1", "p4", "p2", "p3"], "by the parent's s, nulls first");
+      })],
+      ["a rollup reads each row its route reaches once, from the row it starts at, narrowed by its filter", withRows(async (read, fixture) => {
+        const h = hops(fixture);
+        const rollup = (fn: RollupFn, steps: Hop[], value: string, cls: ValueClass, where?: Node, depth = 0): Node =>
+          ({ kind: "rollup", fn, depth, hops: steps, value, class: cls, ...(where ? { where } : {}) });
+        const list: (readonly [string, Node, string[]])[] = [
+          // p1: c1 (no qty), c2 (3); p2: c3 (1), c4 (5); p3: c5 (no qty); p4: none.
+          ["two children", call("eq", rollup("count", [h.children], "id", "integer"), val(2, "integer")), ["p1", "p2"]],
+          ["no child counts 0", call("eq", rollup("count", [h.children], "id", "integer"), val(0, "integer")), ["p4"]],
+          ["a sum of 6", call("eq", rollup("sum", [h.children], "qty", "integer"), val(6, "integer")), ["p2"]],
+          ["a sum over no row or only null values is null", call("isNull", rollup("sum", [h.children], "qty", "integer")), ["p3", "p4"]],
+          ["an average of 3 leaves a null value out", call("eq", rollup("avg", [h.children], "qty", "float"), val(3, "float")), ["p1", "p2"]],
+          ["a min of 1", call("eq", rollup("min", [h.children], "qty", "integer"), val(1, "integer")), ["p2"]],
+          // Over a belongs-to: p1 has no parent and p4's parent key dangles, so both reach nothing.
+          ["the max over a belongs-to", call("eq", rollup("max", [h.toParent], "d", "date"), val(D(1000), "date")), ["p2"]],
+          ["a belongs-to with no key or a dangling one reaches nothing", call("isNull", rollup("max", [h.toParent], "d", "date")), ["p1", "p4"]],
+          // p1 reaches c3 through two links and skips the link with no exit: c3 counts once.
+          ["a through hop counts a far row once", call("eq", rollup("sum", [h.linked], "qty", "integer"), val(1, "integer")), ["p1"]],
+          ["a through hop's count", call("eq", rollup("count", [h.linked], "id", "integer"), val(1, "integer")), ["p1", "p2"]],
+          // Children, then their parent: two children of p1 reach p1 itself, which counts once.
+          ["two paths to one row count it once", call("eq", rollup("count", [h.children, h.toParent], "id", "integer"), val(1, "integer")), ["p1", "p2", "p3"]],
+          ["and add it once", call("eq", rollup("sum", [h.children, h.toParent], "n", "integer"), val(1, "integer")), ["p1"]],
+          // A route of two hops whose second is a through hop, one with a filter, and one whose through hop comes first
+          // (its IN subquery then sits inside the join of the route).
+          ["a through hop after a belongs-to", call("eq", rollup("sum", [h.toParent, h.linked], "qty", "integer"), val(1, "integer")), ["p2"]],
+          ["a filter on a route of two hops", call("eq", rollup("count", [h.toParent, h.children], "id", "integer", call("gt", col("qty", "integer"), val(2, "integer"))), val(1, "integer")), ["p2", "p3"]],
+          ["a through hop first in a route of two hops", call("eq", rollup("count", [h.linked, h.toParent], "id", "integer"), val(1, "integer")), ["p1", "p2"]],
+          ["the filter keeps the rows of the last table it makes true", call("eq", rollup("count", [h.children], "id", "integer", call("gt", col("qty", "integer"), val(2, "integer"))), val(1, "integer")), ["p1", "p2"]],
+          ["a filter that is unknown for a row leaves it out", call("eq", rollup("count", [h.children], "id", "integer", call("gt", col("qty", "integer"), val(0, "integer"))), val(2, "integer")), ["p2"]],
+          // Inside a hop: the parent's number of children (p1 has 2, p2 has 2).
+          ["a rollup of the row a hop reaches", call("eq", { kind: "one", hop: h.toParent, value: rollup("count", [h.children], "id", "integer", undefined, 1) }, val(2, "integer")), ["p2", "p3"]],
+          // Inside a quantifier, of the outer row: a child whose qty is under the sum of its siblings' and its own.
+          ["a rollup of the outer row inside a quantifier", { kind: "some", hop: h.children, where: call("lt", col("qty", "integer", 1), rollup("sum", [h.children], "qty", "integer")) }, ["p2"]],
+        ];
+        for (const [message, where, expected] of list) await expectIds(read, { where }, expected, message);
+        const bySum = rollup("sum", [h.children], "qty", "integer");
+        await expectIds(read, { order: [{ by: bySum, desc: true }] }, ["p2", "p1", "p3", "p4"], "by the sum of qty, descending: nulls last, ties in key order");
+        await expectIds(read, { order: [{ by: bySum, desc: false }] }, ["p3", "p4", "p1", "p2"], "by the sum of qty, ascending: nulls first");
       })],
       ["max and count honour a where that crosses a relationship", withRows(async (_read, fixture) => {
         const h = hops(fixture);

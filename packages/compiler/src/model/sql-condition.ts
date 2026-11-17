@@ -1,4 +1,4 @@
-import type { Action, AttributeType, Entity, ValueType, Expression, ExprNode, ModelDocument, Relationship, SortKey, SourcePosition } from "@meshfw/model";
+import type { Action, AttributeType, Computed, Entity, ValueType, Expression, ExprNode, ModelDocument, Relationship, SortKey, SourcePosition } from "@meshfw/model";
 import type { Hop, LiteralNode, ValueClass } from "@meshfw/runtime";
 import { entitiesByFile, keyHolderOf } from "./key-holder.ts";
 import { dirname, resolve } from "node:path";
@@ -8,8 +8,9 @@ import { dirname, resolve } from "node:path";
  * plain-data condition the data adapter turns into SQL. Each maximal subtree that reads no row (`input.x`, `actor.id`,
  * `isStaff(actor)`, `%.today`) becomes a numbered parameter the generated code computes in memory with the emitted form,
  * so both evaluators agree on it by construction. A row is the record the condition is about (depth 0) or a related row
- * a hop or a quantifier reaches (depth 1 and deeper). A translated computed field read there is inlined; what has no SQL
- * form is reported, never evaluated over loaded rows (roadmap principle 2).
+ * a hop or a quantifier reaches (depth 1 and deeper). A translated computed field read there is inlined, and a rollup is a
+ * `rollup` node over its route (m10-rollups, R22); what has no SQL form is reported, never evaluated over loaded rows
+ * (roadmap principle 2).
  */
 
 /** Why a function in a SQL position has no SQL form. */
@@ -21,8 +22,6 @@ export type NotSql =
    * both are paths as written, from their root (`&customer.label`, `l.invoice.customer.label`).
    */
   | { kind: "plain-computed"; position: SourcePosition; field: string; detail: string; through?: string }
-  /** `field` is the path as written (`&nLines`, `i.nLines`); `relation` the relationship from the same root (`i.lines`). */
-  | { kind: "rollup"; position: SourcePosition; field: string; fn: string; relation: string }
   /** A quantifier whose list is not a relationship of a row (`input.ids.some((i) => i === &id)`). */
   | { kind: "foreign-list"; position: SourcePosition; op: "some" | "every" | "find" | "filter" }
   /** A computed field that reaches itself again when inlined. */
@@ -83,6 +82,10 @@ export function hopTables(node: LiteralNode, into: Set<string> = new Set()): Set
     case "some": case "every": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); hopTables(node.where, into); break;
     case "count": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); if (node.where) hopTables(node.where, into); break;
     case "first": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); hopTables(node.where, into); hopTables(node.value, into); break;
+    case "rollup":
+      for (const hop of node.hops) { into.add(hop.table); if (hop.through) into.add(hop.through.table); }
+      if (node.where) hopTables(node.where, into);
+      break;
   }
   return into;
 }
@@ -99,8 +102,10 @@ interface Scope {
   readonly action?: Action | undefined;
   /** Inside an inlined computed body: the read in the function that inlined it, where every problem is reported. */
   readonly outer?: { readonly position: SourcePosition; readonly path: string; readonly field: string } | undefined;
-  /** The computed fields being inlined, outermost first (`billing.Invoice#total`). */
+  /** The computed fields being inlined (`billing.Invoice#total`) and the rollups whose filter is being lowered (`billing.Invoice.c`), outermost first. */
   readonly inlining: readonly string[];
+  /** The depth of the row whose belongs-to key columns may be read by name (`line.productId`): a rollup filter's parameter. */
+  readonly keyed?: number;
 }
 
 /** Thrown inside the walk; collected into `problems`. */
@@ -110,7 +115,7 @@ class Refused extends Error {
 
 function classOfLowered(node: LiteralNode): ValueClass | undefined {
   switch (node.kind) {
-    case "column": case "value": case "param": return node.class;
+    case "column": case "value": case "param": case "rollup": return node.class;
     case "some": case "every": return "boolean";
     case "count": return "integer";
     case "one": case "first": return classOfLowered(node.value);
@@ -330,24 +335,65 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
     }
     const field = entity.computed.find((c) => c.name === name);
     if (field) {
-      if (field.rollup) {
-        // The relationship the fix names, from the record the rollup is a member of: `i.lines` for `i.nLines`. Inside an
-        // inlined body, from that body's own record (`&lines`), which the outer condition cannot name.
-        const relation = field.rollup.of.split(".")[0]!;
-        const root = scope.outer ? "&" : path.includes(".") ? path.slice(0, path.lastIndexOf(".") + 1) : path.startsWith("&") ? "&" : "";
-        return refuse({ kind: "rollup", position, field: scope.outer?.field ?? path, fn: field.rollup.fn, relation: `${root}${relation}` });
-      }
       if (!last || end.mode === "list") return plain(`a member of computed :${name}, which is not a record`);
+      if (field.rollup) {
+        cross();
+        return rollup(depth, entity, field, scope, node);
+      }
       return inline(depth, entity, field.name, scope, node, path);
     }
     // A function of one row (`root`, a rollup's filter) may read a belongs-to's stored key by its column (`line.productId`).
-    const keyed = options.root && depth === 0 ? entity.relationships.find((r) => r.kind === "belongs-to" && r.keyColumn === name) : undefined;
+    const keyed = scope.keyed === depth ? entity.relationships.find((r) => r.kind === "belongs-to" && r.keyColumn === name) : undefined;
     if (keyed && last && end.mode !== "list") {
       const target = targetOf(entity, keyed);
       const cls = CLASS[keyed.keyType ?? (target && keyOf(target)?.type) ?? "string"];
       return { kind: "column", depth, name, class: cls === "json" ? "string" : cls };
     }
     return plain(`&${name} is not a member of ${entity.fqn}`);
+  };
+
+  /**
+   * A rollup read on a row of `entity` at `depth`: one hop per relationship of its path, the value column (the last
+   * entity's key for a `count`), and its filter lowered as a condition of its own whose depth 0 is a row of the last
+   * entity (its parameters join this function's). The filter's own problems are reported at the filter, so here a filter
+   * that has one is `reported`.
+   */
+  const rollup = (depth: number, entity: Entity, field: Computed, scope: Scope, node: ExprNode): LiteralNode => {
+    const position = at(scope, node.position);
+    const of = field.rollup!;
+    const segments = of.of.split(".").map((segment) => segment.trim());
+    const hops: Hop<string>[] = [];
+    let current = entity;
+    for (const [i, segment] of segments.entries()) {
+      const relation = current.relationships.find((r) => r.name === segment);
+      if (!relation) {
+        if (i === segments.length - 1 && i > 0 && of.fn !== "count") break;
+        return refuse({ kind: "plain", position, detail: `rollup :${field.name} reads &${of.of}, which is not resolved` });
+      }
+      const target = targetOf(current, relation);
+      if (!target) return refuse({ kind: "plain", position, detail: `${relation.kind} :${relation.name} is not resolved` });
+      hops.push(hopOf(current, relation, target, scope, node.position));
+      current = target;
+    }
+    const value = of.fn === "count" ? keyOf(current)?.name : segments.at(-1)!;
+    const cls = CLASS[field.type];
+    const stored = value !== undefined && current.attributes.some((attribute) => attribute.name === value);
+    if (!stored || cls === "json" || hops.length !== segments.length - (of.fn === "count" ? 0 : 1)) return refuse({ kind: "plain", position, detail: `rollup :${field.name} reads &${of.of}, which is not resolved` });
+    const rolled = { kind: "rollup", fn: of.fn, depth, hops, value, class: cls } as const;
+    const filter = of.filter;
+    if (!filter) return rolled;
+    const reported = (): never => refuse({ kind: "reported", position, field: field.name });
+    // A filter that reads this rollup again, directly or through another entity, breaks R18 and is reported at the filter
+    // (MESH_ROLLUP_FILTER); lowering stops here rather than unfold it forever.
+    const key = `${entity.fqn}.${field.name}`;
+    if (!filter.tree || options.reported?.(filter) || scope.inlining.includes(key) || scope.inlining.length >= MAX_INLINE) return reported();
+    try {
+      const where = lower(filter.tree, { rows: new Map([[filter.param, { depth: 0, entity: current }]]), from: entity, action: undefined, outer: undefined, inlining: [...scope.inlining, key], keyed: 0 }, "boolean");
+      return { ...rolled, where };
+    } catch (cause) {
+      if (cause instanceof Refused) return reported();
+      throw cause;
+    }
   };
 
   /** A translated computed field's body, lowered with its `self` at `depth`: inlined each time it is read. */
@@ -606,7 +652,7 @@ function lowerer(document: ModelDocument, owner: Entity, options: LowerOptions) 
 
 function rootScope(document: ModelDocument, entity: Entity, expression: Expression | undefined, options: LowerOptions): Scope {
   const action = expression ? entity.actions.find((a) => a.filter === expression) : undefined;
-  return { rows: new Map([[options.root?.param ?? "self", { depth: 0, entity }]]), from: entity, action, inlining: [] };
+  return { rows: new Map([[options.root?.param ?? "self", { depth: 0, entity }]]), from: entity, action, inlining: [], ...(options.root ? { keyed: 0 } : {}) };
 }
 
 /** One function in a SQL position. Never throws for a model the build accepted. */
