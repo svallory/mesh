@@ -62,6 +62,12 @@ export interface ConvertContext {
   commands?: ReadonlySet<string>;
   /** Resolves `billing.InvoicePaid` or `InvoicePaid` as an event, as `entity=` resolves an entity (`resolveReference`; `MESH_PUBLISH` is its code). */
   eventReference?: (written: WrittenReference) => Resolution;
+  /**
+   * Resolves `billing.VoidInvoice` or `VoidInvoice` as a command. `checkPublished` calls a published `new` a command only
+   * when it resolves to one: the alias of a file that declares an entity, events and commands is in `commands`, and
+   * `new billing.Invoice` through it names the entity.
+   */
+  commandReference?: (written: WrittenReference) => Resolution;
   report: (diagnostic: Diagnostic) => void;
   /** A `run` step is plain by form. */
   runStep?: boolean;
@@ -69,7 +75,8 @@ export interface ConvertContext {
   publishStep?: boolean;
   /**
    * Identifiers a `publish` function names as the callee of a `new` it returns: `checkPublished` reports a name that is no
-   * event as `MESH_PUBLISH` with the suggestion `entity=` gives, so the free-variable error does not report it too.
+   * event as `MESH_PUBLISH` with the suggestion `entity=` gives, so neither the free-variable error nor a namespace
+   * member's `MESH_UNKNOWN_ENTITY` reports it too.
    */
   exemptFree?: ReadonlySet<unknown>;
 }
@@ -520,7 +527,8 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         const member = parent?.property as N | undefined;
         const memberName = !parent?.computed && member?.type === "Identifier" ? member.name
           : parent?.computed && member?.type === "StringLiteral" ? String(member.value) : undefined;
-        if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object"
+        // The callee of a `new` a `publish` returns is checkPublished's to report, as an event.
+        if (entities.has(n.name!) && ctx.namespaces?.has(n.name!) && ctx.reference && key === "object" && !ctx.exemptFree?.has(n)
           && (parent!.type === "MemberExpression" || parent!.type === "OptionalMemberExpression") && memberName !== undefined) {
           // An alias whose file also declares events or commands: `billing.InvoiceVoided` is a member as `billing.Invoice` is.
           const merged = ctx.events?.has(n.name!) || ctx.commands?.has(n.name!);
@@ -1122,7 +1130,8 @@ function checkPublished(fn: N, ctx: ConvertContext): PublishTarget[] {
       continue;
     }
     const resolved = ctx.eventReference?.(written);
-    if (ctx.commands?.has(root) && !(resolved?.ok)) {
+    const command = ctx.commandReference ? ctx.commandReference(written).ok : ctx.commands?.has(root);
+    if (command && !(resolved?.ok)) {
       ctx.report({
         severity: "error",
         code: "MESH_PUBLISH",

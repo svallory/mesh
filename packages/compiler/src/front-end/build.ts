@@ -598,6 +598,7 @@ function buildEntity(
         events,
         commands,
         eventReference: (written) => resolveReference(written, eventReferences, eventKind),
+        commandReference: (written) => resolveReference(written, commandReferences, commandKind),
         duplicates,
         mesh: meshImports,
         report: (d) => {

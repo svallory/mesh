@@ -256,6 +256,31 @@ describe("another file names an inline declaration (R8, R8a)", () => {
     const entityOnly = build({ "work/task.mesh.mx": task("        run=() => w.Nope\n", "", 'import * as w from "./run.mesh.mx"\n'), "work/run.mesh.mx": worker("Run", "", "        run=() => undefined\n") });
     expect(errors(entityOnly).map((d) => d[5])).toEqual(["w.Nope is not an imported entity: ./run.mesh.mx declares `Run`. Did you mean w.Run?"]);
   });
+
+  test("a publish through a merged alias calls a member a command only when it is one", () => {
+    const imports = 'import * as billing from "../billing/invoice.mesh.mx"\n';
+    const published = (callee: string) => errors(build({ "work/task.mesh.mx": task(`        publish=() => new ${callee}({})\n`, "", imports) })).map((d) => [d[1], d[4], d[5]]);
+    expect(published("billing.Invoice")).toEqual([
+      [8, "MESH_PUBLISH", "billing.Invoice is not an imported event: ../billing/invoice.mesh.mx declares `InvoiceVoided`. Did you mean billing.InvoiceVoided?"],
+    ]);
+    expect(published("billing.Nope")).toEqual([
+      [8, "MESH_PUBLISH", "billing.Nope is not an imported event: ../billing/invoice.mesh.mx declares `InvoiceVoided`. Did you mean billing.InvoiceVoided?"],
+    ]);
+    expect(published("billing.VoidInvoice").map((d) => d[2])).toEqual([
+      "`billing.VoidInvoice` is a command, not an event: a `publish` function returns `new` of an event the file imports, and a command asks for a write instead of recording a fact",
+    ]);
+  });
+
+  test("another entity answers an inline command by name and through a namespace member", () => {
+    // the owner here answers nothing, so the other entity's action is the command's one answer
+    const owner = invoice().replace(/    update on=VoidInvoice\n(      .*\n)+/, "");
+    for (const [imports, on] of [['import { VoidInvoice } from "../billing/invoice.mesh.mx"\n', "VoidInvoice"], ['import * as billing from "../billing/invoice.mesh.mx"\n', "billing.VoidInvoice"]] as const) {
+      const result = build({ "work/task.mesh.mx": task(`        run=() => undefined\n    update on=${on}\n      input\n        string :reason nullable\n`, "", imports) }, owner);
+      expect(errors(result)).toEqual([]);
+      const action = entityOf(result, "Task").actions.find((a) => a.command !== undefined)!;
+      expect([action.name, action.command!.fqn]).toEqual(["voidInvoice", "billing.VoidInvoice"]);
+    }
+  });
 });
 
 describe("what is generated", () => {
