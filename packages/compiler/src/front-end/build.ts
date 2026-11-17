@@ -1050,7 +1050,26 @@ function buildEntity(
   // `notices.InvoiceOverdue`, resolved as `entity=` is. An inline declaration means what the same declaration in a file of
   // its own means (the same fields, class and FQN); the file names it without an import.
   // Each inline class name, to what first took it: a second declaration of one name in the file gives it two meanings.
+  // The inline lines of both sections are built in written order, whichever section the file writes first, so a clash
+  // is reported at the later line and the earlier declaration is the one kept (R9b).
   const classNames = new Map<string, string>([[entity.name, "entity"]]);
+  const inlineLines = (["events", "commands"] as const)
+    .flatMap((name) => tags(section(name)?.children ?? []).filter((line) => line.name === (name === "events" ? "event" : "command")))
+    .sort((a, b) => pos(a).offset - pos(b).offset);
+  const built = new Map<(typeof inlineLines)[number], ReturnType<typeof buildDeclarationBody> | undefined>();
+  for (const line of inlineLines) {
+    const noun = line.name as "event" | "command";
+    const declaration = buildDeclarationBody(line, source, file, diagnostics, module);
+    const className = classNameOf(declaration.name);
+    const taken = classNames.get(className);
+    if (taken !== undefined) {
+      fail("MESH_DUPLICATE_ENTITY", `Duplicate name ${className} in ${file}: the ${taken} ${className} and the ${noun} ${className} would be one class name ${declaration.fqn}`, line, "rename one");
+      built.set(line, undefined);
+      continue;
+    }
+    classNames.set(className, noun);
+    built.set(line, declaration);
+  }
   for (const name of ["events", "commands"] as const) {
     const noun = name === "events" ? "event" : "command";
     const kind = name === "events" ? listedEventKind : commandKind;
@@ -1059,14 +1078,9 @@ function buildEntity(
     const seen = new Set<string>();
     for (const line of tags(section(name)?.children ?? [])) {
       if (line.name === noun) {
-        const declaration = buildDeclarationBody(line, source, file, diagnostics, module);
+        const declaration = built.get(line);
+        if (!declaration) continue;
         const className = classNameOf(declaration.name);
-        const taken = classNames.get(className);
-        if (taken !== undefined) {
-          fail("MESH_DUPLICATE_ENTITY", `Duplicate name ${className} in ${file}: the ${taken} ${className} and the ${noun} ${className} would be one class name ${declaration.fqn}`, line, "rename one");
-          continue;
-        }
-        classNames.set(className, noun);
         const key = `${resolve("/", file)}#${className}`;
         if (seen.has(key)) {
           fail("MESH_DUPLICATE_MEMBER", `${className} is listed twice in the ${name} section of ${entity.fqn}`, line, "remove one");

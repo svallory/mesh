@@ -150,6 +150,13 @@ describe("an inline declaration", () => {
     ]);
   });
 
+  test("a listing written above the section's own inline declaration: the later line, the declaration, is the duplicate (OD4a)", () => {
+    const result = build({}, invoice().replace("    event :InvoiceVoided\n", "    InvoiceVoided\n    event :InvoiceVoided\n"));
+    expect(errors(result)).toEqual([
+      ["billing/invoice.mesh.mx", 13, 4, "error", "MESH_DUPLICATE_MEMBER", "InvoiceVoided is listed twice in the events section of billing.Invoice", "remove one"],
+    ]);
+  });
+
   test("an own inline command listed under events is no event", () => {
     expect(errors(build({}, invoice({ events: "    VoidInvoice\n" }))).map((d) => [d[4], d[5]])).toEqual([["MESH_UNKNOWN_EVENT", "VoidInvoice is not an imported event."]]);
   });
@@ -163,6 +170,27 @@ describe("one name, one meaning (R9, R9b, R10)", () => {
     ]);
     expect(errors(build({}, invoice({ commands: "    command :Invoice\n" }))).map((d) => d[5])).toEqual([
       "Duplicate name Invoice in billing/invoice.mesh.mx: the entity Invoice and the command Invoice would be one class name billing.Invoice",
+    ]);
+    // two inline events of one class name in one section
+    expect(errors(build({}, invoice({ events: "    event :invoice_voided\n" })))).toEqual([
+      ["billing/invoice.mesh.mx", 17, 4, "error", "MESH_DUPLICATE_ENTITY", "Duplicate name InvoiceVoided in billing/invoice.mesh.mx: the event InvoiceVoided and the event InvoiceVoided would be one class name billing.InvoiceVoided", "rename one"],
+    ]);
+  });
+
+  test("R9b in a file that writes `commands` before `events`: the error is at the later line, which names the earlier declaration first", () => {
+    const source = `entity :Invoice
+  attributes
+    uuid :id primary-key
+  commands
+    command :InvoiceVoided
+      uuid :id
+  events
+    event :InvoiceVoided
+      uuid :invoiceId
+`;
+    const result = build({}, source);
+    expect(errors(result)).toEqual([
+      ["billing/invoice.mesh.mx", 8, 4, "error", "MESH_DUPLICATE_ENTITY", "Duplicate name InvoiceVoided in billing/invoice.mesh.mx: the command InvoiceVoided and the event InvoiceVoided would be one class name billing.InvoiceVoided", "rename one"],
     ]);
   });
 
