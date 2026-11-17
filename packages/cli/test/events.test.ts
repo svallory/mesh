@@ -1068,7 +1068,8 @@ describe("mesh events adopt and mesh events keep", () => {
     expect(nobody.stderr).toContain('events adopt failed: No live process registers the handler "nobody", so there is no list to adopt: if it was removed, drop its progress with `mesh events forget nobody`');
     expect(await union()).toEqual(["billing.InvoicePaid", "billing.InvoiceVoided"]);
     await live();
-    expect(await mesh(dir, "events", "adopt", "h", "--drop", "billing.InvoiceVoided")).toEqual({
+    // --drop repeats; an event named twice is dropped once.
+    expect(await mesh(dir, "events", "adopt", "h", "--drop", "billing.InvoiceVoided", "--drop", "billing.InvoiceVoided")).toEqual({
       code: 0, stderr: "",
       stdout: "dropped billing.InvoiceVoided\nkept billing.InvoicePaid: listed by pid 4242 on host api-1\nadopted the handler h: its registered union is now billing.InvoicePaid\n",
     });

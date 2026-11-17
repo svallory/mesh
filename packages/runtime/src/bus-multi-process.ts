@@ -648,6 +648,94 @@ export function multiProcessChecks(
     } finally { console.warn = warn; }
   });
 
+  /** A bus that never runs a round, so no deletion pass runs but the ones a check calls; core still renews the process row. */
+  const inertBus = (ctx: Ctx, onCore: (core: BusCore) => void): EventBus => Object.freeze({
+    manifest: ctx.bus.manifest,
+    create: (handed: BusCore) => { onCore(handed); return { start: async () => {}, stop: async () => {}, deliver: async () => {} }; },
+  });
+  const THIRD = "00000000-0000-4000-8000-0000000000e3";
+
+  add("the waiting report comes only after the lapse time held by none, counts only live registrants, treats a lapsed holder as none, restarts its clock once held, and repeats at most hourly", { timing: { renewMs: 30, lapseMs: 200 } }, async (ctx) => {
+    let core: BusCore | undefined;
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (...parts: unknown[]) => { warnings.push(parts.map(String).join(" ")); };
+    const waiting = () => warnings.filter((line) => line.includes('the handler "h" is registered by'));
+    try {
+      await ctx.start(ctx.scenario("empty", { bus: inertBus(ctx, (handed) => { core = handed; }) }));
+      // OTHER registers h and lapses (it never renews); THIRD registers h with every event of its union and is kept live.
+      await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha"]);
+      const third = () => ctx.writeFake(THIRD, { h: ["multi.Alpha"] }, ["multi.Alpha"]);
+      await third();
+      const lease = (runId: string | null) => ctx.layer.transaction((tx) => ops(tx).writeHandlerLease({ name: "h", kind: "process", position: 0, events: ["multi.Alpha"], generation: 1, runId }));
+      await lease(null);
+      await core!.deletionPass();
+      assert(waiting().length === 0, `the first pass that sees h held by none does not report it, got ${JSON.stringify(warnings)}`);
+      await sleep(250);
+      await third();
+      await lease(THIRD);
+      await core!.deletionPass();
+      assert(waiting().length === 0, `a handler a live process holds is not reported, got ${JSON.stringify(warnings)}`);
+      // OTHER's row has lapsed: its lease counts as held by none, and the clock starts again from this pass.
+      await lease(OTHER);
+      await core!.deletionPass();
+      assert(waiting().length === 0, `held again since the last pass, h is not reported at once, got ${JSON.stringify(warnings)}`);
+      await core!.deletionPass();
+      assert(waiting().length === 0, `a second pass inside the lapse time does not report h yet, got ${JSON.stringify(warnings)}`);
+      await sleep(250);
+      await third();
+      await core!.deletionPass();
+      const reported = waiting();
+      assert(reported.length === 1 && reported[0]!.includes('the handler "h" is registered by 1 live process and held by none: it waits at position 0, and a live process lists every event of its union')
+        && reported[0]!.includes("`mesh events adopt h` lists its union"), `the report counts THIRD only and names nothing pending, got ${JSON.stringify(warnings)}`);
+      await core!.deletionPass();
+      assert(waiting().length === 1, `a second pass within the hour does not report again, got ${JSON.stringify(warnings)}`);
+    } finally { console.warn = warn; }
+  });
+
+  add("the keep report names a live process that runs with \"all\"; a lapsed one does not stop mesh events keep until-delivered", { timing: { renewMs: 30, lapseMs: 200 } }, async (ctx) => {
+    let core: BusCore | undefined;
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (...parts: unknown[]) => { warnings.push(parts.map(String).join(" ")); };
+    try {
+      await ctx.start(ctx.scenario("empty", { bus: inertBus(ctx, (handed) => { core = handed; }) }));
+      await keepByValue(ctx.layer, "all", { multiProcess: true });
+      await ctx.writeFake(OTHER, {}, ["multi.Alpha"], "all");
+      await core!.deletionPass();
+      const report = warnings.filter((line) => line.includes("the recorded keep of"));
+      assert(report.length === 1 && report[0]!.includes('The live process pid 4242 on host elsewhere runs with "all"; stop it, or change its configuration, then run `mesh events keep until-delivered`'), `the keep report names the keeper, got ${JSON.stringify(warnings)}`);
+      const refused = await rejection(() => keepByValue(ctx.layer, "until-delivered", { multiProcess: true }));
+      assert(refused instanceof FrameworkError && refused.message.includes("pid 4242 on host elsewhere"), String(refused));
+      await sleep(250);
+      const back = await keepByValue(ctx.layer, "until-delivered", { multiProcess: true });
+      assert(back.before === "all" && back.after === "until-delivered", `a lapsed process row with keep "all" does not count, got ${JSON.stringify(back)}`);
+    } finally { console.warn = warn; }
+  });
+
+  add("adoptByName counts only live process rows, refuses a registered handler without a progress row, and drops a repeated event once", { timing: { renewMs: 30, lapseMs: 200 } }, async (ctx) => {
+    await ctx.start(ctx.scenario("empty", { bus: inertBus(ctx, () => {}) }));
+    // OTHER lists Alpha for h and registers solo; both then lapse with OTHER's row.
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha", "multi.Beta"], solo: ["multi.Alpha"] }, ["multi.Alpha", "multi.Beta"]);
+    await ctx.layer.transaction(async (tx) => {
+      await ops(tx).writeHandlerLease({ name: "h", kind: "process", position: 0, events: ["multi.Alpha", "multi.Beta"], generation: 1, runId: null });
+      await ops(tx).writeHandlerLease({ name: "solo", kind: "process", position: 0, events: ["multi.Alpha"], generation: 1, runId: null });
+    });
+    const listed = await rejection(() => adoptByName(ctx.layer, "h", { drop: ["multi.Alpha"], multiProcess: true }));
+    assert(listed instanceof FrameworkError && listed.message.includes("multi.Alpha is listed for \"h\" by a live process (pid 4242 on host elsewhere)"), `while OTHER is live it blocks the drop, got ${String(listed)}`);
+    await sleep(250);
+    // THIRD, live, lists Beta only for h, and registers lost, which has no progress row.
+    await ctx.writeFake(THIRD, { h: ["multi.Beta"], lost: ["multi.Alpha"] }, ["multi.Alpha", "multi.Beta"]);
+    const dropped = await adoptByName(ctx.layer, "h", { drop: ["multi.Alpha", "multi.Alpha"], multiProcess: true });
+    assert(dropped.changed && JSON.stringify(dropped.dropped) === JSON.stringify(["multi.Alpha"]) && JSON.stringify(dropped.union) === JSON.stringify(["multi.Beta"])
+      && JSON.stringify(dropped.kept) === JSON.stringify([{ event: "multi.Beta", listedBy: "pid 4242 on host elsewhere" }]), `a lapsed lister does not block --drop, and a repeated event drops once, got ${JSON.stringify(dropped)}`);
+    assert(JSON.stringify((await ctx.lease("h"))!.events) === JSON.stringify(["multi.Beta"]), "the stored union is the adopted one");
+    const solo = await rejection(() => adoptByName(ctx.layer, "solo", { multiProcess: true }));
+    assert(solo instanceof FrameworkError && solo.message.includes('No live process registers the handler "solo", so there is no list to adopt'), `a handler only a lapsed row registers has no list to adopt, got ${String(solo)}`);
+    const lost = await rejection(() => adoptByName(ctx.layer, "lost", { multiProcess: true }));
+    assert(lost instanceof FrameworkError && lost.message === 'The handler "lost" has no progress row: it was forgotten while registered; restart a process that registers it', String(lost));
+  });
+
   add("a subscription that ends at a row only another live build declares names that process, before any deletion pass", { timing: { renewMs: 10_000, lapseMs: 30_000 } }, async (ctx) => {
     let core: BusCore | undefined;
     // A bus that never delivers, so no deletion pass runs and the check alone feeds the subscription.
