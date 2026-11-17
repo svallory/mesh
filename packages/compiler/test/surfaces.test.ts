@@ -3,7 +3,8 @@
 // and checked against the built entities by `resolveSurfaces` (`model/surfaces.ts`), the place rules
 // (`MESH_SURFACE_PATH`), the import rules (R4, R5, OD5) and a project without surfaces, whose document is unchanged.
 import { describe, expect, test } from "bun:test";
-import type { Diagnostic, Surface } from "@meshfw/model";
+import type { Diagnostic, EventDeclaration, Surface } from "@meshfw/model";
+import { resolveSurfaces } from "../src/model/surfaces.ts";
 import { buildModel } from "../src/front-end/build.ts";
 import { stableJsonStringify } from "../src/index.ts";
 import { orderedDocument } from "../src/typescript/emitters/order.ts";
@@ -420,8 +421,12 @@ describe("publishes", () => {
       [ADMIN_FILE, 11, 4, "MESH_DUPLICATE_MEMBER", "TagAdded is listed twice in the publishes section of surface admin", "remove one"],
     ]);
   });
-  test("a tag parameter on a line is MESH_SYNTAX", () => {
-    expect(errors(published("    TaskCompleted|x|\n")).map(([, line, , code]) => [line, code])).toEqual([[5, "MESH_SYNTAX"]]);
+  test("a tag parameter or a variable binding on a line is MESH_SYNTAX", () => {
+    const message = "`TaskCompleted`: tag parameters and variable bindings are not entity declarations";
+    expect(errors(published("    TaskCompleted|x|\n"))).toEqual([[ADMIN_FILE, 5, 4, "MESH_SYNTAX", message, null]]);
+    // MX refuses the binding itself, at the `/x`, and the builder adds no second diagnostic.
+    const binding = "`/var` on `TaskCompleted` (inline contract) is not supported: it has no template, so it has no `return` to bind";
+    expect(errors(published("    TaskCompleted/x\n"))).toEqual([[ADMIN_FILE, 5, 18, "MESH_SYNTAX", binding, null]]);
   });
   test("a head through an import that does not resolve reports the import only", () => {
     expect(errors(published("    Gone\n", 'import { Gone } from "../../domain/work/gone.mesh.mx"\n'))).toEqual([
@@ -432,6 +437,22 @@ describe("publishes", () => {
     const broken = { ...domain, "src/domain/work/broken.mesh.mx": "event :Broken\n  bogus :x\n" };
     const result = build(admin("  publishes\n    Broken\n", 'import { Broken } from "../../domain/work/broken.mesh.mx"\n'), broken);
     expect(errors(result).map(([file, , , code]) => [file, code])).toEqual([["src/domain/work/broken.mesh.mx", "MESH_UNKNOWN_TAG"]]);
+  });
+  test("resolveSurfaces drops a line whose event was not built and keeps the others, adding no diagnostic", () => {
+    // Through buildModel the case always carries the error that left the event unbuilt, so the document is null; the
+    // rule is pinned on resolveSurfaces itself, which must never leave a line with an empty FQN in the surface.
+    const at = { file: ADMIN_FILE, line: 5, column: 4, offset: 0 };
+    const broken = { identifier: "Broken", fqn: "", position: at };
+    const done = { identifier: "TaskCompleted", fqn: "", position: { ...at, line: 6 } };
+    const surface: Surface = { name: "admin", file: ADMIN_FILE, expose: [], publishes: [broken, done], position: at } as unknown as Surface;
+    const event = { name: "TaskCompleted", fqn: "work.TaskCompleted", file: "src/domain/work/task-completed.mesh.mx" } as unknown as EventDeclaration;
+    const diagnostics: Diagnostic[] = [];
+    resolveSurfaces({ entities: [], events: [event] }, "/p", [{ surface, exposures: [], publishes: [
+      { event: broken, target: "/p/src/domain/work/broken.mesh.mx", declared: "Broken" },
+      { event: done, target: "/p/src/domain/work/task-completed.mesh.mx", declared: "TaskCompleted" },
+    ] }], diagnostics, () => undefined);
+    expect(diagnostics).toEqual([]);
+    expect(surface.publishes!.map(({ identifier, fqn }) => [identifier, fqn])).toEqual([["TaskCompleted", "work.TaskCompleted"]]);
   });
   test("an event no surface lists is still an event of the project (R22)", () => {
     const result = build({ [ADMIN_FILE]: ADMIN }, domain);
