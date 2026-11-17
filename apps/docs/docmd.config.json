@@ -486,6 +486,10 @@
             {
               "title": "0089. Postgres adapter: serializable transactions, transient errors and SQLite's order",
               "path": "/architecture/decisions/0089-postgres-adapter/"
+            },
+            {
+              "title": "0090. Line rules report Mesh's codes",
+              "path": "/architecture/decisions/0090-line-rules-report-meshs-codes/"
             }
           ]
         },

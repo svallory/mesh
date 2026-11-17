@@ -13,11 +13,50 @@ import type { DeepReadonly as $DeepReadonly } from "@meshfw/runtime";
 {{ globals.keyword }} { {{ globals.names }} } from {{ globals.fromLiteral }};
 @end
 
+@if(rules)
+/**
+ * Marks the issues of the Mesh file's line rules (`min`, `max`, `match`) with `meshRule: { code, source }`, which
+ * `@meshfw/runtime` reads: Zod's own issue code and a top-level field name pick the rule. Zod's safe-integer range check
+ * of `z.int()` (origin `int`) is no line rule and stays unmarked. Returns the same schema, its type unchanged.
+ */
+type $Rules = { readonly [field: string]: { readonly [zodCode: string]: { code: string; source: { file: string; line: number; column: number } } } };
+const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
+  const standard = schema["~standard"];
+  const mark = <R extends { readonly issues?: readonly unknown[] | undefined }>(result: R): R =>
+    result.issues
+      ? ({
+          issues: result.issues.map((issue) => {
+            const raw = issue as { path?: readonly unknown[]; code?: string; format?: string; origin?: string };
+            const key = raw.path?.length === 1 ? raw.path[0] : undefined;
+            const field = typeof key === "string" ? key : undefined;
+            const zod = raw.code === "invalid_format" && raw.format === "regex" ? "regex" : raw.code;
+            const rule = field === undefined || raw.origin === "int" || zod === undefined ? undefined : rules[field]?.[zod];
+            return rule ? { ...raw, meshRule: rule } : issue;
+          }),
+        } as unknown as R)
+      : result;
+  schema["~standard"] = {
+    ...standard,
+    validate: (value: unknown) => {
+      const result = standard.validate(value);
+      return "then" in result ? result.then(mark) : mark(result);
+    },
+  } as typeof standard;
+  return schema;
+};
+
+const $fields = $ruled(z.strictObject({
+  @each(field in fields)
+  {{ field.key }}: {{ field.schema }},
+  @end
+}), {{ rules }});
+@else
 const $fields = z.strictObject({
   @each(field in fields)
   {{ field.key }}: {{ field.schema }},
   @end
 });
+@end
 
 /**
  * The {{ kind }} {{ fqnLiteral }}. The constructor checks every field against the declaration and freezes the instance;

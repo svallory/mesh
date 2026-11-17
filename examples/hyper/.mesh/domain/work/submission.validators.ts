@@ -29,6 +29,53 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+/**
+ * Marks the issues of the Mesh file's line rules (`min`, `max`, `match`) with `meshRule: { code, source }`, which
+ * `@meshfw/runtime` reads: Zod's own issue code and a top-level field name pick the rule. Zod's safe-integer range check
+ * of `z.int()` (origin `int`) is no line rule and stays unmarked. Returns the same schema, its type unchanged.
+ */
+type $Rules = {
+  readonly [field: string]: {
+    readonly [zodCode: string]: {
+      code: string;
+      source: { file: string; line: number; column: number };
+    };
+  };
+};
+const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
+  const standard = schema["~standard"];
+  const mark = <R extends { readonly issues?: readonly unknown[] | undefined }>(result: R): R =>
+    result.issues
+      ? ({
+          issues: result.issues.map((issue) => {
+            const raw = issue as {
+              path?: readonly unknown[];
+              code?: string;
+              format?: string;
+              origin?: string;
+            };
+            const key = raw.path?.length === 1 ? raw.path[0] : undefined;
+            const field = typeof key === "string" ? key : undefined;
+            const zod =
+              raw.code === "invalid_format" && raw.format === "regex" ? "regex" : raw.code;
+            const rule =
+              field === undefined || raw.origin === "int" || zod === undefined
+                ? undefined
+                : rules[field]?.[zod];
+            return rule ? { ...raw, meshRule: rule } : issue;
+          }),
+        } as unknown as R)
+      : result;
+  schema["~standard"] = {
+    ...standard,
+    validate: (value: unknown) => {
+      const result = standard.validate(value);
+      return "then" in result ? result.then(mark) : mark(result);
+    },
+  } as typeof standard;
+  return schema;
+};
+
 const comparison = <T extends z.ZodType>(value: T) =>
   z
     .strictObject({
@@ -86,13 +133,29 @@ export const submissionSortSchema = z
   )
   .readonly();
 
-export const submitSubmissionInputSchema = z.strictObject({
-  task: z.uuid(),
-  fence: z.int().min(1),
-  summary: z.string().min(1),
-  evidence: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
-  expectedVersion: z.int().nullable().optional(),
-}) satisfies z.ZodType<SubmitSubmissionInput>;
+export const submitSubmissionInputSchema = $ruled(
+  z.strictObject({
+    task: z.uuid(),
+    fence: z.int().min(1, "must be at least 1"),
+    summary: z.string().min(1, "must be at least 1 character"),
+    evidence: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
+    expectedVersion: z.int().nullable().optional(),
+  }),
+  {
+    fence: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/work/submission.mesh.mx", line: 32, column: 9 },
+      },
+    },
+    summary: {
+      too_small: {
+        code: "too_short",
+        source: { file: "src/domain/work/submission.mesh.mx", line: 33, column: 9 },
+      },
+    },
+  },
+) satisfies z.ZodType<SubmitSubmissionInput>;
 
 export type SubmitSubmissionInputShape = Assert<
   SameShape<z.output<typeof submitSubmissionInputSchema>, SubmitSubmissionInput>
@@ -118,13 +181,23 @@ export type SettleSubmissionInputShape = Assert<
   SameShape<z.output<typeof settleSubmissionInputSchema>, SettleSubmissionInput>
 >;
 
-export const recordAcceptedSubmissionInputSchema = z.strictObject({
-  task: z.uuid(),
-  summary: z.string().min(1).nullable().optional(),
-  evidence: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
-  fence: z.int().nullable().optional(),
-  taskVersion: z.int(),
-}) satisfies z.ZodType<RecordAcceptedSubmissionInput>;
+export const recordAcceptedSubmissionInputSchema = $ruled(
+  z.strictObject({
+    task: z.uuid(),
+    summary: z.string().min(1, "must be at least 1 character").nullable().optional(),
+    evidence: (z.unknown().transform($jsonValue) as z.ZodType<unknown>).nullable().optional(),
+    fence: z.int().nullable().optional(),
+    taskVersion: z.int(),
+  }),
+  {
+    summary: {
+      too_small: {
+        code: "too_short",
+        source: { file: "src/domain/work/submission.mesh.mx", line: 13, column: 5 },
+      },
+    },
+  },
+) satisfies z.ZodType<RecordAcceptedSubmissionInput>;
 
 export type RecordAcceptedSubmissionInputShape = Assert<
   SameShape<z.output<typeof recordAcceptedSubmissionInputSchema>, RecordAcceptedSubmissionInput>

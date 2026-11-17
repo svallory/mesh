@@ -50,12 +50,31 @@ describe("rpcErrorOf: InvalidInputError", () => {
     });
   });
 
-  test("an issue with no code is a schema failure, -32602 in the shape phase, and the coded ones are not reported with it", () => {
+  test("an issue with no label is a schema failure, -32602 in the shape phase, and the labelled ones are not reported with it", () => {
     const error = new InvalidInputError([issue(null, "Invalid UUID", { path: ["collaborator"] }), issue("task.open", "the task is settled")]);
     expect(wire(error)).toEqual({
       code: -32602,
       message: "invalid_params",
       data: { phase: "shape", failures: [{ check: "schema", reason: "collaborator: Invalid UUID", details: { path: ["collaborator"] } }] },
+    });
+  });
+
+  test("a broken line rule (Mesh's code, no label) is a schema failure, -32602 in the shape phase", () => {
+    const source = { file: "src/domain/work/task.mesh.mx", line: 12, column: 9 };
+    const error = new InvalidInputError([{ label: null, code: "too_short", path: ["reason"], message: "must be at least 1 character", source, details: null }]);
+    expect(wire(error)).toEqual({
+      code: -32602,
+      message: "invalid_params",
+      data: { phase: "shape", failures: [{ check: "schema", reason: "reason: must be at least 1 character", details: { path: ["reason"] } }] },
+    });
+  });
+
+  test("a null passed into a required field (code required, no label) is a schema failure, -32602, not an internal error", () => {
+    const error = new InvalidInputError([{ label: null, code: "required", path: ["title"], message: "title is required and cannot be null", source: null, details: null }]);
+    expect(wire(error)).toEqual({
+      code: -32602,
+      message: "invalid_params",
+      data: { phase: "shape", failures: [{ check: "schema", reason: "title: title is required and cannot be null", details: { path: ["title"] } }] },
     });
   });
 

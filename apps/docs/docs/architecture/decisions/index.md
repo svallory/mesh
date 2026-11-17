@@ -139,6 +139,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0087](./0087-raw-sql-escape-hatch.md) | The raw-SQL escape hatch: a read-only `query` function exported by `#mesh` before 1.0 (Option E), with Ash's `fragment` left to M10 | Accepted by the lead for Option E, pending the operator (2026-11-17); questions 1, 7 and 14 open | operator; lead for Option E |
 | [0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) | Translated conditions cross the data layer as bound condition trees | Accepted (lead ruling D32, pending operator review) | lead, delegated |
 | [0089](./0089-postgres-adapter.md) | Postgres adapter: serializable transactions, transient errors and SQLite's order | Accepted (lead ruling D30, pending operator review) | lead, delegated |
+| [0090](./0090-line-rules-report-meshs-codes.md) | Line rules report Mesh's codes and positions, carried by a generated wrapper over Zod's own checks | Accepted (lead ruling D38, pending operator review) | lead, delegated |
 
 ## Superseded records
 

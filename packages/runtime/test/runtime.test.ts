@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as runtime from "@meshfw/runtime";
 import { castInput, DatabaseBusyError, ForbiddenError, FrameworkError, InvalidInputError, MeshError, NotFoundError, parseInput } from "@meshfw/runtime";
 import type { DataLayer, Issue, PolicyCheck, StandardSchemaV1 } from "@meshfw/runtime";
+import { issueOf } from "../src/input.ts";
 
 const cause = new Error("original");
 const issue = (path: (string | number)[], message: string): Issue => ({ path, message, label: null, code: null, source: null, details: null });
@@ -180,6 +181,63 @@ test("parseInput preserves numeric raw and wrapped keys and sets absent rule met
 test("parseInput maps missing and empty paths to input issues for async failures", async () => {
   const validator = schema(async () => ({ issues: [{ message: "required" }, { message: "wrong", path: [] }] }));
   await expect(parseInput(validator, null)).rejects.toThrow("(input): required\n(input): wrong");
+});
+
+// A validator Mesh generated marks a broken line rule's issue with `meshRule: { code, source }` (`$ruled` in the
+// validators template); `issueOf` keeps that code and position and gives every other issue none.
+describe("issueOf", () => {
+  const source = { file: "src/domain/todo/todo.mesh.mx", line: 4, column: 5 };
+  test("keeps the code and source of a well-formed meshRule, with label and details null", () => {
+    expect(issueOf({ message: "must be at least 1 character", path: ["title"], meshRule: { code: "too_short", source } } as StandardSchemaV1.Issue)).toEqual({
+      message: "must be at least 1 character", path: ["title"], label: null, code: "too_short", source, details: null,
+    });
+  });
+  test("copies the source, so the issue never shares the validator's object", () => {
+    const rule = { code: "too_short", source: { ...source } };
+    const mapped = issueOf({ message: "m", path: ["title"], meshRule: rule } as StandardSchemaV1.Issue);
+    expect(mapped.source).toEqual(source);
+    expect(mapped.source).not.toBe(rule.source);
+  });
+  test("appends the suffix to the message", () => {
+    expect(issueOf({ message: "must be at least 0", path: ["amount"], meshRule: { code: "too_small", source } } as StandardSchemaV1.Issue, " (event billing.InvoicePaid)")).toMatchObject({
+      message: "must be at least 0 (event billing.InvoicePaid)", code: "too_small", source,
+    });
+  });
+  test("an issue with no meshRule maps to null code and source, as before", () => {
+    expect(issueOf({ message: "Invalid input", path: ["title"] })).toEqual(issue(["title"], "Invalid input"));
+  });
+  test.each([
+    ["missing code", { source }],
+    ["empty code", { code: "", source }],
+    ["code not a string", { code: 1, source }],
+    ["missing source", { code: "too_short" }],
+    ["source null", { code: "too_short", source: null }],
+    ["line a string", { code: "too_short", source: { ...source, line: "4" } }],
+    ["column missing", { code: "too_short", source: { file: source.file, line: 4 } }],
+    ["file not a string", { code: "too_short", source: { ...source, file: 1 } }],
+    ["extra nesting", { rule: { code: "too_short", source } }],
+    ["a string", "too_short"],
+    ["null", null],
+  ])("a malformed meshRule (%s) is ignored", (_name, meshRule) => {
+    expect(issueOf({ message: "m", path: ["title"], meshRule } as unknown as StandardSchemaV1.Issue)).toEqual(issue(["title"], "m"));
+  });
+  test("parseInput carries the code and source of each marked issue, and leaves the others uncoded", async () => {
+    const validator = schema(() => ({ issues: [
+      { message: "must be at least 1 character", path: ["title"], meshRule: { code: "too_short", source } },
+      { message: "Invalid input: expected string", path: ["slug"] },
+    ] as StandardSchemaV1.Issue[] }));
+    try {
+      await parseInput(validator, {});
+      throw new Error("expected failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(InvalidInputError);
+      expect((error as InvalidInputError).issues).toEqual([
+        { message: "must be at least 1 character", path: ["title"], label: null, code: "too_short", source, details: null },
+        issue(["slug"], "Invalid input: expected string"),
+      ]);
+      expect((error as InvalidInputError).code).toBe("invalid_input");
+    }
+  });
 });
 
 test.each([false, true])("parseInput propagates validator exceptions unchanged (async=%s)", async (async) => {

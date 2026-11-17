@@ -218,6 +218,7 @@ describe("validatorsView", () => {
     expect(validators(documentWithNote(), "Note")).toEqual({
       entityFile: "todo/note.mesh.mx",
       hasInputs: false,
+      lineRules: false,
       typesFromLiteral: '"./note.types"',
       schemas: [],
       json: false,
@@ -256,16 +257,34 @@ describe("validatorsView", () => {
   test("field schemas: bounds, pattern, enum values, nullability and optionality", () => {
     const view = validators(documentOf(), "Todo");
     expect(view.schemas[0]!.fields).toEqual([
-      { name: "title", key: "title", schema: 'z.string().min(1).max(100).regex(new $RegExp("^.+$", ""))' },
+      { name: "title", key: "title", schema: 'z.string().min(1, "must be at least 1 character").max(100, "must be at most 100 characters").regex(new $RegExp("^.+$", ""), "must match /^.+$/")' },
       { name: "list", key: "list", schema: "z.uuid()" },
       { name: "status", key: "status", schema: 'z.enum(["draft", "sent"]).optional()' },
       { name: "reason", key: "reason", schema: "z.string().nullable().optional()" },
     ]);
     expect(view.schemas[1]!.fields.map((f) => f.schema)).toEqual([
       "z.uuid()",
-      'z.string().min(1).max(100).regex(new $RegExp("^.+$", "")).optional()',
-      "z.int().min(1)",
+      'z.string().min(1, "must be at least 1 character").max(100, "must be at most 100 characters").regex(new $RegExp("^.+$", ""), "must match /^.+$/").optional()',
+      'z.int().min(1, "must be at least 1")',
     ]);
+  });
+
+  test("a schema's rules table names each field with a line rule, its codes and its line; the read's limit and offset are no line rules", () => {
+    const view = validators(documentOf(), "Todo");
+    const title = '{ file: "todo/todo.mesh.mx", line: 5, column: 5 }';
+    const count = '{ file: "todo/todo.mesh.mx", line: 39, column: 9 }';
+    expect(view.lineRules).toBe(true);
+    expect(view.schemas.map((schema) => [schema.typeName, schema.rules])).toEqual([
+      ["CreateTodoInput", `{ title: { too_small: { code: "too_short", source: ${title} }, too_big: { code: "too_long", source: ${title} }, regex: { code: "no_match", source: ${title} } } }`],
+      ["CompleteTodoInput", `{ title: { too_small: { code: "too_short", source: ${title} }, too_big: { code: "too_long", source: ${title} }, regex: { code: "no_match", source: ${title} } }, count: { too_small: { code: "too_small", source: ${count} } } }`],
+      ["PendingTodoInput", null],
+      ["ReadTodoInput", null],
+      ["DestroyTodoInput", null],
+    ]);
+    // List has a read (limit, offset: `z.int().min(0)`) and no line rule: no table, no helper.
+    const list = validators(documentOf(), "List");
+    expect(list.schemas.map((schema) => schema.rules)).toEqual([null]);
+    expect(list.lineRules).toBe(false);
   });
 
   test("a name that is not an identifier becomes a JSON-quoted key", () => {

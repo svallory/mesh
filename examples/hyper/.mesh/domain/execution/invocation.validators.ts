@@ -26,6 +26,53 @@ type SameShape<A, B> = [Keys<A>] extends [Keys<B>]
 
 type Assert<T extends true> = T;
 
+/**
+ * Marks the issues of the Mesh file's line rules (`min`, `max`, `match`) with `meshRule: { code, source }`, which
+ * `@meshfw/runtime` reads: Zod's own issue code and a top-level field name pick the rule. Zod's safe-integer range check
+ * of `z.int()` (origin `int`) is no line rule and stays unmarked. Returns the same schema, its type unchanged.
+ */
+type $Rules = {
+  readonly [field: string]: {
+    readonly [zodCode: string]: {
+      code: string;
+      source: { file: string; line: number; column: number };
+    };
+  };
+};
+const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
+  const standard = schema["~standard"];
+  const mark = <R extends { readonly issues?: readonly unknown[] | undefined }>(result: R): R =>
+    result.issues
+      ? ({
+          issues: result.issues.map((issue) => {
+            const raw = issue as {
+              path?: readonly unknown[];
+              code?: string;
+              format?: string;
+              origin?: string;
+            };
+            const key = raw.path?.length === 1 ? raw.path[0] : undefined;
+            const field = typeof key === "string" ? key : undefined;
+            const zod =
+              raw.code === "invalid_format" && raw.format === "regex" ? "regex" : raw.code;
+            const rule =
+              field === undefined || raw.origin === "int" || zod === undefined
+                ? undefined
+                : rules[field]?.[zod];
+            return rule ? { ...raw, meshRule: rule } : issue;
+          }),
+        } as unknown as R)
+      : result;
+  schema["~standard"] = {
+    ...standard,
+    validate: (value: unknown) => {
+      const result = standard.validate(value);
+      return "then" in result ? result.then(mark) : mark(result);
+    },
+  } as typeof standard;
+  return schema;
+};
+
 const comparison = <T extends z.ZodType>(value: T) =>
   z
     .strictObject({
@@ -122,46 +169,102 @@ export const invocationSortSchema = z
   )
   .readonly();
 
-export const recordInvocationInputSchema = z.strictObject({
-  attempt: z.uuid(),
-  requestedProvider: z.string().nullable().optional(),
-  requestedModel: z.string().nullable().optional(),
-  actualProvider: z.string().nullable().optional(),
-  actualModel: z.string().nullable().optional(),
-  inputTokens: z.int().min(0).nullable().optional(),
-  outputTokens: z.int().min(0).nullable().optional(),
-  cacheReadTokens: z.int().min(0).nullable().optional(),
-  cacheWriteTokens: z.int().min(0).nullable().optional(),
-  usageSource: z.enum(["runtime", "provider", "estimate"]),
-  estimatedCost: z.number().nullable().optional(),
-  pricingBasis: z.string().nullable().optional(),
-  startedAt: z.date().nullable().optional(),
-  endedAt: z.date().nullable().optional(),
-  session: z.uuid().nullable().optional(),
-}) satisfies z.ZodType<RecordInvocationInput>;
+export const recordInvocationInputSchema = $ruled(
+  z.strictObject({
+    attempt: z.uuid(),
+    requestedProvider: z.string().nullable().optional(),
+    requestedModel: z.string().nullable().optional(),
+    actualProvider: z.string().nullable().optional(),
+    actualModel: z.string().nullable().optional(),
+    inputTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    outputTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    cacheReadTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    cacheWriteTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    usageSource: z.enum(["runtime", "provider", "estimate"]),
+    estimatedCost: z.number().nullable().optional(),
+    pricingBasis: z.string().nullable().optional(),
+    startedAt: z.date().nullable().optional(),
+    endedAt: z.date().nullable().optional(),
+    session: z.uuid().nullable().optional(),
+  }),
+  {
+    inputTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 16, column: 5 },
+      },
+    },
+    outputTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 17, column: 5 },
+      },
+    },
+    cacheReadTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 18, column: 5 },
+      },
+    },
+    cacheWriteTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 19, column: 5 },
+      },
+    },
+  },
+) satisfies z.ZodType<RecordInvocationInput>;
 
 export type RecordInvocationInputShape = Assert<
   SameShape<z.output<typeof recordInvocationInputSchema>, RecordInvocationInput>
 >;
 
-export const correctInvocationInputSchema = z.strictObject({
-  corrects: z.uuid().nullable().optional(),
-  reason: z.string().nullable().optional(),
-  requestedProvider: z.string().nullable().optional(),
-  requestedModel: z.string().nullable().optional(),
-  actualProvider: z.string().nullable().optional(),
-  actualModel: z.string().nullable().optional(),
-  inputTokens: z.int().min(0).nullable().optional(),
-  outputTokens: z.int().min(0).nullable().optional(),
-  cacheReadTokens: z.int().min(0).nullable().optional(),
-  cacheWriteTokens: z.int().min(0).nullable().optional(),
-  usageSource: z.enum(["runtime", "provider", "estimate"]),
-  estimatedCost: z.number().nullable().optional(),
-  pricingBasis: z.string().nullable().optional(),
-  startedAt: z.date().nullable().optional(),
-  endedAt: z.date().nullable().optional(),
-  session: z.uuid().nullable().optional(),
-}) satisfies z.ZodType<CorrectInvocationInput>;
+export const correctInvocationInputSchema = $ruled(
+  z.strictObject({
+    corrects: z.uuid().nullable().optional(),
+    reason: z.string().nullable().optional(),
+    requestedProvider: z.string().nullable().optional(),
+    requestedModel: z.string().nullable().optional(),
+    actualProvider: z.string().nullable().optional(),
+    actualModel: z.string().nullable().optional(),
+    inputTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    outputTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    cacheReadTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    cacheWriteTokens: z.int().min(0, "must be at least 0").nullable().optional(),
+    usageSource: z.enum(["runtime", "provider", "estimate"]),
+    estimatedCost: z.number().nullable().optional(),
+    pricingBasis: z.string().nullable().optional(),
+    startedAt: z.date().nullable().optional(),
+    endedAt: z.date().nullable().optional(),
+    session: z.uuid().nullable().optional(),
+  }),
+  {
+    inputTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 16, column: 5 },
+      },
+    },
+    outputTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 17, column: 5 },
+      },
+    },
+    cacheReadTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 18, column: 5 },
+      },
+    },
+    cacheWriteTokens: {
+      too_small: {
+        code: "too_small",
+        source: { file: "src/domain/execution/invocation.mesh.mx", line: 19, column: 5 },
+      },
+    },
+  },
+) satisfies z.ZodType<CorrectInvocationInput>;
 
 export type CorrectInvocationInputShape = Assert<
   SameShape<z.output<typeof correctInvocationInputSchema>, CorrectInvocationInput>

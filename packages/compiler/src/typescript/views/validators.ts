@@ -25,6 +25,8 @@ export interface ValidatorsView {
   readonly globals: GlobalsImport | null;
   /** True when an input has a `json` field: the file then imports `jsonValue` from `@meshfw/runtime` as `$jsonValue`. */
   readonly json: boolean;
+  /** True when a schema has a line rule (`rules` not null): the file then declares the `$ruled` helper. */
+  readonly lineRules: boolean;
 }
 
 /** The filter and sort schemas a read input uses. */
@@ -55,6 +57,12 @@ export interface InputSchema {
   readonly shapeTypeName: string;
   /** The schema's properties, in the order of the input type's members. */
   readonly fields: readonly SchemaField[];
+  /**
+   * The schema's `$ruled` table as printed, one entry per field with a line rule (`fieldRuleTable`), keyed by the
+   * field's key: `{ title: { too_small: { code: "too_short", source: { ... } } } }`. `null` when no field has a rule; the
+   * schema is then printed unwrapped.
+   */
+  readonly rules: string | null;
 }
 
 /** `<key>: <schema>,` */
@@ -103,12 +111,14 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
         key: propertyName(attribute.name),
         schema: query ? querySchema(entity, query) : fieldSchema(attribute, optional),
       })),
+      rules: ruleTable(input.fields.filter(({ query }) => !query).map(({ attribute }) => attribute)),
     })),
     query: hasRead(entity) ? queryView(entity) : null,
   };
   // The template prints `$Object.keys` in the comparison schema a read's filter uses; a file with no input imports nothing.
   const json = inputs.some((input) => input.fields.some(({ attribute, query }) => !query && attribute.type === "json"));
-  return { ...view, json, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
+  const lineRules = view.schemas.some((schema) => schema.rules !== null);
+  return { ...view, json, lineRules, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
 }
 
 const filterConst = (entity: Entity) => schemaName(filterTypeName(entity));
@@ -143,14 +153,61 @@ function queryView(entity: Entity): QuerySchema {
   };
 }
 
-/** The Zod expression for one field: base type, bounds, pattern, then nullability and optionality. */
+/** One line rule of a field: the Zod issue code its check gives, and Mesh's code and message for it. */
+interface LineRule {
+  readonly zod: "too_small" | "too_big" | "regex";
+  readonly code: string;
+  readonly message: string;
+}
+
+/**
+ * The line rules (`min`, `max`, `match`) of a field with Mesh's standard code and message for each: a string's bounds
+ * count characters (`too_short`, `too_long`, "must be at least 1 character"), a number's bound its value (`too_small`,
+ * `too_big`, "must be at least 0"), a pattern is `no_match`, "must match /p/f". Always min, max, match, in that order.
+ */
+function lineRules(field: FieldShape): { min?: LineRule; max?: LineRule; match?: LineRule } {
+  const text = field.type === "string";
+  const bound = (n: number) => (text ? `${n} character${n === 1 ? "" : "s"}` : `${n}`);
+  return {
+    ...(field.min !== undefined ? { min: { zod: "too_small", code: text ? "too_short" : "too_small", message: `must be at least ${bound(field.min)}` } } : {}),
+    ...(field.max !== undefined ? { max: { zod: "too_big", code: text ? "too_long" : "too_big", message: `must be at most ${bound(field.max)}` } } : {}),
+    ...(field.match ? { match: { zod: "regex", code: "no_match", message: `must match /${field.match.pattern}/${field.match.flags}` } } : {}),
+  };
+}
+
+/**
+ * The Zod expression for one field: base type, bounds, pattern, then nullability and optionality. The bounds and the
+ * pattern are Zod's own checks, so a schema converter still sees them; each carries Mesh's standard message.
+ */
 export function fieldSchema(field: FieldShape, optional: boolean): string {
   let base =
     field.type === "enum"
       ? `z.enum([${(field.values ?? []).map((v) => JSON.stringify(v.value)).join(", ")}])`
       : VALIDATOR_TYPES[field.type];
-  if (field.min !== undefined) base += `.min(${field.min})`;
-  if (field.max !== undefined) base += `.max(${field.max})`;
-  if (field.match) base += `.regex(new $RegExp(${JSON.stringify(field.match.pattern)}, ${JSON.stringify(field.match.flags)}))`;
+  const rules = lineRules(field);
+  if (rules.min) base += `.min(${field.min}, ${JSON.stringify(rules.min.message)})`;
+  if (rules.max) base += `.max(${field.max}, ${JSON.stringify(rules.max.message)})`;
+  if (rules.match) base += `.regex(new $RegExp(${JSON.stringify(field.match!.pattern)}, ${JSON.stringify(field.match!.flags)}), ${JSON.stringify(rules.match.message)})`;
   return base + (field.nullable ? ".nullable()" : "") + (optional ? ".optional()" : "");
+}
+
+/**
+ * A field's entry of its schema's `$ruled` table as printed, `{ too_small: { code: "too_short", source: { ... } } }`,
+ * keyed by the Zod issue code of each line rule; `undefined` when the field has none. The source is the field's line,
+ * its column printed 1-based (ADR-0039).
+ */
+export function fieldRuleTable(field: FieldShape): string | undefined {
+  const { file, line, column } = field.position;
+  const source = `{ file: ${JSON.stringify(file)}, line: ${line}, column: ${column + 1} }`;
+  const entries = Object.values(lineRules(field)).map((rule) => `${rule.zod}: { code: ${JSON.stringify(rule.code)}, source: ${source} }`);
+  return entries.length > 0 ? `{ ${entries.join(", ")} }` : undefined;
+}
+
+/** A schema's `$ruled` table as printed, from its fields' entries keyed by property key, or `null` when none has a rule. */
+export function ruleTable(fields: readonly FieldShape[]): string | null {
+  const entries = fields.flatMap((field) => {
+    const table = fieldRuleTable(field);
+    return table === undefined ? [] : [`${propertyName(field.name)}: ${table}`];
+  });
+  return entries.length > 0 ? `{ ${entries.join(", ")} }` : null;
 }

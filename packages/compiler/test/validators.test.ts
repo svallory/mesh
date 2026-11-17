@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { z } from "zod";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ATTRIBUTE_TYPES } from "@meshfw/model";
@@ -194,7 +195,7 @@ test("generated validators and all ten scalar mappings typecheck with exact opti
 test("validator drift tripwires catch keys, requiredness, nullability and scalar width", async () => {
   const out = await emitted();
   const title =
-    'title: z.string().min(1).max(20).regex(new $RegExp("^[A-Z]", ""))';
+    'title: z.string().min(1, "must be at least 1 character").max(20, "must be at most 20 characters").regex(new $RegExp("^[A-Z]", ""), "must match /^[A-Z]/")';
   const body = "body: z.string().nullable().optional(),";
   // Use an unconstrained title for stable one-line formatting in this mutation test.
   const plain = await emitted(
@@ -287,4 +288,107 @@ test("generated import preflight reports all missing packages once at mesh.confi
       column: 0,
       offset: 0,
     });
+});
+
+// Line rules at run time, through the generated schema: Zod's own checks with Mesh's message, and the `$ruled` wrapper
+// that marks each rule's issue with `meshRule: { code, source }` for `@meshfw/runtime`'s `issueOf`.
+const rulesSource = `entity :Rule
+  attributes
+    uuid :id primary-key
+    string :title min=1 max=3 match=/^[a-z]/
+    string :tag nullable max=1
+    string :code nullable match=/^ab/gi
+    integer :n nullable max=10
+    float :ratio nullable min=0.5
+    boolean :flag default=false
+  actions
+    create :create
+      input
+        &title
+        &tag
+        &code
+        &n
+        &ratio
+        &flag
+    update :update
+      input
+        &title
+`;
+type Marked = { message: string; path?: readonly unknown[]; meshRule?: { code: string; source: { file: string; line: number; column: number } } };
+const at = (line: number) => ({ file: "blog/post.mesh.mx", line, column: 5 });
+
+describe("line rules through the generated schema", () => {
+  let validate: (name: string, input: unknown) => Promise<readonly Marked[] | undefined>;
+  let generated: Awaited<ReturnType<typeof emitted>>;
+  beforeAll(async () => {
+    generated = await emitted(rulesSource);
+    validate = async (name, input) => ((await generated.schemas[name]!["~standard"].validate(input)) as { issues?: readonly Marked[] }).issues;
+  });
+  const issues = async (input: Record<string, unknown>, name = "createRuleInputSchema") =>
+    (await validate(name, input))?.map((issue) => ({ path: issue.path, message: issue.message, meshRule: issue.meshRule }));
+
+  test("two broken rules on one value give two issues, min before match, each with Mesh's code, message and line", async () => {
+    expect(await issues({ title: "" })).toEqual([
+      { path: ["title"], message: "must be at least 1 character", meshRule: { code: "too_short", source: at(4) } },
+      { path: ["title"], message: "must match /^[a-z]/", meshRule: { code: "no_match", source: at(4) } },
+    ]);
+    expect(await issues({ title: "abcd" })).toEqual([{ path: ["title"], message: "must be at most 3 characters", meshRule: { code: "too_long", source: at(4) } }]);
+  });
+
+  test("a type error, a missing field and an unknown key stay unmarked", async () => {
+    for (const input of [{ title: 3 }, {}, { title: "a", typo: 1 }]) {
+      const found = await issues(input);
+      expect(found?.length).toBeGreaterThan(0);
+      for (const issue of found!) expect(issue.meshRule).toBeUndefined();
+    }
+  });
+
+  test("a string's length is what Zod counts, Unicode code points: one emoji fits max=1, two do not, nor e and a combining accent", async () => {
+    expect(await issues({ title: "a", tag: "😀" })).toBeUndefined();
+    expect(await issues({ title: "a", tag: "é" })).toBeUndefined();
+    for (const tag of ["😀😀", "e\u0301"])
+      expect(await issues({ title: "a", tag })).toEqual([{ path: ["tag"], message: "must be at most 1 character", meshRule: { code: "too_long", source: at(5) } }]);
+  });
+
+  test("a g flag carries no lastIndex from one value to the next, and i is kept", async () => {
+    expect(await issues({ title: "a", code: "AB" })).toBeUndefined();
+    expect(await issues({ title: "a", code: "AB" })).toBeUndefined();
+    expect(await issues({ title: "a", code: "x" })).toEqual([{ path: ["code"], message: "must match /^ab/gi", meshRule: { code: "no_match", source: at(6) } }]);
+  });
+
+  test("numbers: too_big and too_small; z.int()'s safe-integer issue stays unmarked beside the line rule's", async () => {
+    expect(await issues({ title: "a", n: 11 })).toEqual([{ path: ["n"], message: "must be at most 10", meshRule: { code: "too_big", source: at(7) } }]);
+    expect(await issues({ title: "a", ratio: 0.4 })).toEqual([{ path: ["ratio"], message: "must be at least 0.5", meshRule: { code: "too_small", source: at(8) } }]);
+    const huge = await issues({ title: "a", n: 2 ** 60 });
+    expect(huge?.filter((issue) => issue.meshRule === undefined)).toHaveLength(1);
+    expect(huge?.filter((issue) => issue.meshRule !== undefined)).toEqual([{ path: ["n"], message: "must be at most 10", meshRule: { code: "too_big", source: at(7) } }]);
+  });
+
+  test("null on a nullable field and an omitted optional update field give no issue; the update still checks a given value", async () => {
+    expect(await issues({ title: "a", tag: null, code: null, n: null, ratio: null })).toBeUndefined();
+    const id = "00000000-0000-4000-8000-000000000001";
+    expect(await issues({ id }, "updateRuleInputSchema")).toBeUndefined();
+    expect(await issues({ id, title: "" }, "updateRuleInputSchema")).toEqual([
+      { path: ["title"], message: "must be at least 1 character", meshRule: { code: "too_short", source: at(4) } },
+      { path: ["title"], message: "must match /^[a-z]/", meshRule: { code: "no_match", source: at(4) } },
+    ]);
+  });
+
+  test("a valid value passes unchanged", async () => {
+    expect(await generated.schemas.createRuleInputSchema!["~standard"].validate({ title: "ab", n: 10, ratio: 0.5 })).toEqual({ value: { title: "ab", n: 10, ratio: 0.5 } });
+  });
+
+  test("the bounds and the pattern stay visible to a schema converter", async () => {
+    const schema = generated.schemas.createRuleInputSchema as unknown as z.ZodType;
+    const properties = (z.toJSONSchema(schema) as { properties: Record<string, Record<string, unknown>> }).properties;
+    expect(properties.title).toMatchObject({ type: "string", minLength: 1, maxLength: 3, pattern: "^[a-z]" });
+    expect(JSON.stringify(properties.n)).toContain('"maximum":10');
+    expect(JSON.stringify(properties.ratio)).toContain('"minimum":0.5');
+  });
+
+  test("a file with no line rule declares no $ruled helper and wraps no schema", async () => {
+    const plain = await emitted("entity :Plain\n  attributes\n    uuid :id primary-key\n    string :title nullable\n  actions auto=[:create, :read]\n");
+    expect(plain.validator.contents).not.toContain("$ruled");
+    expect(generated.validator.contents).toContain("export const createRuleInputSchema = $ruled(");
+  });
 });

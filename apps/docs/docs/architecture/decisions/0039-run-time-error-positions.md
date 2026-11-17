@@ -11,6 +11,8 @@ Accepted
 
 > **Amendment, 2026-10-17.** Accepted: run-time errors carry positions embedded as data in the generated code; there are no source maps.
 
+> **Amendment, 2026-11-17 ([ADR-0090](./0090-line-rules-report-meshs-codes.md)).** A broken line rule (`min`, `max`, `match`) carries the position of its attribute, argument or field line, embedded in the generated validator's `$ruled` table.
+
 ## Date
 
 2026-10-04

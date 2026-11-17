@@ -225,7 +225,17 @@ test("the binary wrapper builds the project in a real process", async () => {
       try { new InvoicePaid(fields); } catch (cause) { expect(cause).toBeInstanceOf(InvalidInputError); return (cause as InvalidInputError).issues.map((issue) => [issue.path.join("."), issue.message]); }
       throw new Error("expected the constructor to throw");
     };
-    expect(issues({ ...valid, amount: -1 })).toEqual([["amount", "Too small: expected number to be >=0 (event billing.InvoicePaid)"]]);
+    expect(issues({ ...valid, amount: -1 })).toEqual([["amount", "must be at least 0 (event billing.InvoicePaid)"]]);
+    // a line rule's issue carries Mesh's code and the field's line; a type error none
+    const coded = (fields: object) => {
+      try { new InvoicePaid(fields); } catch (cause) { return (cause as InvalidInputError).issues.map((issue) => [issue.path.join("."), issue.code, issue.source]); }
+      throw new Error("expected the constructor to throw");
+    };
+    const line = (n: number) => ({ file: "domain/billing/invoice-paid.mesh.mx", line: n, column: 3 });
+    expect(coded({ ...valid, amount: -1 })).toEqual([["amount", "too_small", line(3)]]);
+    expect(coded({ ...valid, reference: "no" })).toEqual([["reference", "too_short", line(4)], ["reference", "no_match", line(4)]]);
+    expect(coded({ ...valid, reference: "INV-1234567890" })).toEqual([["reference", "too_long", line(4)]]);
+    expect(coded({ ...valid, amount: "1" })).toEqual([["amount", null, null]]);
     expect(issues({ ...valid, amount: "1" }).map(([path]) => path)).toEqual(["amount"]);
     expect(issues({ ...valid, invoiceId: "nope" }).map(([path]) => path)).toEqual(["invoiceId"]);
     // "no" is too short and does not match the pattern: both are reported

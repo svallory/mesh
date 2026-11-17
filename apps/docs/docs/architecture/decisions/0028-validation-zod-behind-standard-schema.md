@@ -9,6 +9,8 @@ description: "Decision record 0028: Generated validators are Zod schemas, seen t
 
 Accepted
 
+> **Amendment, 2026-11-17 ([ADR-0090](./0090-line-rules-report-meshs-codes.md)).** A Standard Schema issue from a validator Mesh generated may carry one extension key, `meshRule: { code, source }`, which marks a broken line rule; `@meshfw/runtime` reads only that key. The generated `$ruled` helper that sets it reads Zod's issue codes, inside the generated file, so swapping the library rewrites it with the templates.
+
 ## Date
 
 2026-10-04
