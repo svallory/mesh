@@ -23,6 +23,14 @@ export interface SqlDialect {
    * compare by code point; a key of another class is returned as it is. SQLite's BINARY already does, so it has none.
    */
   collate?(key: SQL, kind: ValueClass): SQL;
+  /**
+   * Optional: a boolean SQL expression that fails the statement with `marker` (a text expression) in the driver's error,
+   * for a policy guard (ADR-0046, option B). SQLite `(json_extract('{}', marker) is null)`, whose bad JSON path error
+   * carries the path. With `raised`, `drizzleOperations` gives `deleteByKeyGuarded` (when `policy-guards` is declared).
+   */
+  raise?(marker: SQL): SQL;
+  /** With `raise`: the driver's message when `error` is the error `raise` produces, else undefined. */
+  raised?(error: unknown): string | undefined;
 }
 
 export interface ConditionSqlOptions {

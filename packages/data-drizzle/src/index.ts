@@ -1,5 +1,5 @@
 import { and, eq, getTableColumns, inArray, is, sql, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
-import { FrameworkError, MeshError, ROLLUP_ANCHORS, uuidv7, type CapabilityManifest, type Condition, type DataOperations, type Filter, type Key, type Query, type RollupQuery, type RollupRow, type Row, type TableHandle } from "@meshfw/runtime";
+import { FrameworkError, MeshError, PolicyGuardDenial, ROLLUP_ANCHORS, guardDenialOf, uuidv7, type CapabilityManifest, type Condition, type DataOperations, type Filter, type Key, type Query, type RollupQuery, type RollupRow, type Row, type TableHandle, type WriteGuard } from "@meshfw/runtime";
 import { columnOf, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
 import { conditionSql, hopLink, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 
@@ -104,6 +104,48 @@ function rollupValue(fn: RollupQuery["fn"], operand: SQL, column: Column, dialec
   return fn === "min" ? sql`min(${key})` : sql`max(${key})`;
 }
 
+/** A guard check's value as SQL: its condition, or the constant it folded to. */
+function checkSql(table: Table, check: WriteGuard["checks"][number], options: ConditionSqlOptions): SQL {
+  if (check === true) return sql`true`;
+  if (check === false) return sql`false`;
+  if (check === null) return sql`null`;
+  return conditionSql(table, check, options);
+}
+
+/**
+ * The guard's part of a one-statement delete (ADR-0046, option B), for its `WHERE` beside the key condition `keyed`:
+ * `case when <keyed> and not (<admits>) then <raise(marker)> else true end`. `admits` is, over the policies, every
+ * `forbid` check IS FALSE and, unless `authorize` is null, one `authorize` check IS TRUE; the marker is
+ * `mesh:forbidden:<nonce>:<one letter per check>:<the row's key as text>`. The key condition is repeated inside the
+ * `CASE` so the raise happens only on the keyed row, whatever order the database evaluates the terms in, and the key
+ * column makes the marker depend on the row, so no database folds the raise as a constant. `IS TRUE`/`IS FALSE` make an
+ * unknown check fail closed.
+ */
+function guardSql(table: Table, keyed: SQL, guard: WriteGuard, nonce: string, options: ConditionSqlOptions, raise: (marker: SQL) => SQL): SQL {
+  if (typeof guard !== "object" || guard === null || !Array.isArray(guard.checks) || !Array.isArray(guard.policies))
+    throw new FrameworkError("A policy guard must be { checks, policies } with two lists");
+  const key = soleKey(table);
+  if (!key) throw new FrameworkError("A guarded delete needs a table with a single-column primary key");
+  const checks = guard.checks.map((check) => checkSql(table, check, options));
+  const at = (index: unknown): SQL => {
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= checks.length)
+      throw new FrameworkError(`A policy guard's policy points at check ${String(index)}, and the guard has ${checks.length}`);
+    return checks[index]!;
+  };
+  const policies = guard.policies.map((policy) => {
+    if (typeof policy !== "object" || policy === null || !Array.isArray(policy.forbid) || (policy.authorize !== null && !Array.isArray(policy.authorize)))
+      throw new FrameworkError("Each policy of a policy guard must be { forbid, authorize } with forbid a list and authorize a list or null");
+    const parts = policy.forbid.map((index: number) => sql`((${at(index)}) is false)`);
+    if (policy.authorize !== null)
+      parts.push(policy.authorize.length === 0 ? sql`false` : sql`(${sql.join(policy.authorize.map((index: number) => sql`((${at(index)}) is true)`), sql` or `)})`);
+    return parts.length === 0 ? sql`true` : sql`(${sql.join(parts, sql` and `)})`;
+  });
+  const admits = policies.length === 0 ? sql`true` : sql.join(policies, sql` and `);
+  const letters = checks.map((check) => sql`(case when (${check}) is true then 't' when (${check}) is false then 'f' else 'n' end)`);
+  const marker = sql`'mesh:forbidden:' || ${options.dialect.param(nonce, "string")} || ':' || ${letters.length === 0 ? sql`''` : sql.join(letters, sql` || `)} || ':' || cast(${key.column} as text)`;
+  return sql`(case when ${keyed} and not (${admits}) then ${raise(marker)} else true end)`;
+}
+
 /** Most hops a rollup's route takes, as a condition's depth is bounded. */
 const ROLLUP_HOPS = 64;
 
@@ -119,8 +161,8 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     try { return await run(); }
     catch (cause) {
       // A Mesh error is the adapter's own report (a DatabaseBusyError from a command that mapped its driver's failure),
-      // so it reaches the caller unchanged; anything else is a raw driver error.
-      if (cause instanceof MeshError) throw cause;
+      // so it reaches the caller unchanged, as does a policy guard's denial; anything else is a raw driver error.
+      if (cause instanceof MeshError || cause instanceof PolicyGuardDenial) throw cause;
       // M2: typed constraint errors arrive with the M3 contract.
       throw new FrameworkError("Database operation failed", { cause });
     }
@@ -181,6 +223,23 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       const table = commands.table(handle);
       return (await commands.delete(table, keyCondition(table, key))).length > 0;
     }),
+    // A delete that checks the policies in its own statement (ADR-0046, option B): only with the capability declared and a
+    // dialect that can raise, so the method is present exactly when the manifest says so.
+    ...(declared("policy-guards") && commands.dialect.raise && commands.dialect.raised ? {
+      deleteByKeyGuarded: (handle: TableHandle, key: Key, guard: WriteGuard) => execute(async () => {
+        const { raise, raised } = commands.dialect as Required<Pick<SqlDialect, "raise" | "raised">>;
+        const table = commands.table(handle);
+        const keyed = keyCondition(table, key);
+        // Drawn after the input is fixed, so no input value can carry it into an error message.
+        const nonce = crypto.randomUUID().replaceAll("-", "");
+        const statement = and(keyed, guardSql(table, keyed, guard, nonce, conditions, raise))!;
+        try {
+          return (await commands.delete(table, statement)).length > 0;
+        } catch (error) {
+          throw guardDenialOf(error, { checks: guard.checks.length, nonce, raised: (e) => raised(e) }) ?? error;
+        }
+      }),
+    } : {}),
     max: (handle: TableHandle, attribute: string, filter?: Filter, where?: Condition) => execute(async () => {
       const value = await aggregate("max", handle, attribute, filter, where);
       return (value ?? null) as never;

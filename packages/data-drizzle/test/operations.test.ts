@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
-import { DatabaseBusyError, FrameworkError, NotFoundError, defineCapabilities, type CapabilityManifest } from "@meshfw/runtime";
+import { describe, expect, test } from "bun:test";
+import { sql, type SQL } from "drizzle-orm";
+import { DatabaseBusyError, FrameworkError, NotFoundError, PolicyGuardDenial, defineCapabilities, type CapabilityManifest, type Row } from "@meshfw/runtime";
 import { SQLiteSyncDialect, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { drizzleOperations, keyCondition, type DrizzleCommands } from "../src/index.ts";
+import { drizzleOperations, keyCondition, type DrizzleCommands, type SqlDialect } from "../src/index.ts";
 
 const table = sqliteTable("rows", { id: integer("id"), tenant: text("tenant"), title: text("title") });
 const row = { id: 1, tenant: "a", title: "one" };
@@ -356,4 +357,50 @@ test("rollup prints each where against its own table, and needs conditions for o
   await expect(plain.rollup({ ...one, where: is("id", "s1") })).rejects.toThrow(refused);
   await expect(plain.rollup({ ...one, key: "id", hops: [{ ...courseHop, where: is("code", "c") }] })).rejects.toThrow(refused);
   await expect(plain.rollup({ ...one, key: "id", hops: [{ ...courseHop, linkWhere: is("id", "e") }] })).rejects.toThrow(refused);
+});
+
+describe("deleteByKeyGuarded (policy-guards, ADR-0046 B)", () => {
+  const keyed = sqliteTable("keyed", { id: integer("id").primaryKey(), title: text("title") });
+  const raising: SqlDialect = { ...testDialect, raise: (marker) => sql`(json_extract('{}', ${marker}) is null)`, raised: (error) => (error as { driver?: string }).driver };
+  const guard = { checks: [false], policies: [{ forbid: [], authorize: [0] }] };
+  function guarded(dialect: SqlDialect, manifest: CapabilityManifest | undefined, remove: (statement: SQL) => Row[]) {
+    const commands: DrizzleCommands<typeof keyed> = {
+      dialect, table: () => keyed, insert: (_t, v) => v, select: () => [], aggregate: () => null, update: () => [],
+      delete: (_table, condition) => remove(condition),
+    };
+    return drizzleOperations(commands, () => {}, manifest);
+  }
+  const declaring = defineCapabilities("t", ["policy-guards"]);
+
+  test("present only with the capability declared and a dialect that raises", () => {
+    expect(guarded(raising, declaring, () => []).deleteByKeyGuarded).toBeFunction();
+    expect(guarded(raising, defineCapabilities("t", []), () => []).deleteByKeyGuarded).toBeUndefined();
+    expect(guarded(raising, undefined, () => []).deleteByKeyGuarded).toBeUndefined();
+    expect(guarded(testDialect, declaring, () => []).deleteByKeyGuarded).toBeUndefined();
+    expect(guarded({ ...testDialect, raise: raising.raise }, declaring, () => []).deleteByKeyGuarded).toBeUndefined();
+  });
+
+  test("one delete whose condition holds the key twice, the raise and the nonce as a parameter", async () => {
+    let printed: { sql: string; params: unknown[] } | undefined;
+    const operations = guarded(raising, declaring, (statement) => { printed = new SQLiteSyncDialect().sqlToQuery(statement); return [{ id: 3 }]; });
+    expect(await operations.deleteByKeyGuarded!(keyed, { id: 3 }, guard)).toBe(true);
+    expect(printed!.sql.match(/"keyed"\."id" = \?/g)).toHaveLength(2);
+    expect(printed!.sql).toContain("json_extract('{}', 'mesh:forbidden:' || ?");
+    expect(printed!.sql).toContain('cast("keyed"."id" as text)');
+    expect(printed!.params.filter((p) => typeof p === "string" && /^[0-9a-f]{32}$/.test(p))).toHaveLength(1);
+  });
+
+  test("the driver's raise becomes PolicyGuardDenial; a wrapper's message or another error passes as a FrameworkError", async () => {
+    let nonce = "";
+    const operations = (fail: (n: string) => unknown) => guarded(raising, declaring, (statement) => {
+      nonce = (new SQLiteSyncDialect().sqlToQuery(statement).params.find((p) => typeof p === "string" && /^[0-9a-f]{32}$/.test(p)) as string);
+      throw fail(nonce);
+    });
+    const denial = await operations((n) => Object.assign(new Error("wrapped"), { cause: { driver: `bad JSON path: 'mesh:forbidden:${n}:f:3'` } })).deleteByKeyGuarded!(keyed, { id: 3 }, guard).catch((e: unknown) => e);
+    expect(denial).toBeInstanceOf(PolicyGuardDenial);
+    expect((denial as PolicyGuardDenial).results).toEqual([false]);
+    const echoed = await operations((n) => new Error(`params: mesh:forbidden:${n}:t:`)).deleteByKeyGuarded!(keyed, { id: 3 }, guard).catch((e: unknown) => e);
+    expect(echoed).toBeInstanceOf(FrameworkError);
+    expect((echoed as Error).message).toBe("Database operation failed");
+  });
 });
