@@ -263,19 +263,19 @@ export function bindCondition<S>(tableOf: TableOf, literal: ConditionLiteral<S>,
 type Side = { readonly column?: string; readonly position: string } | undefined;
 
 /** The stored side of an expression, as the message names it: `the column s`, `length of the column s`. */
-function columnSide(node: LiteralNode): string | undefined {
-  if (typeof node !== "object" || node === null) return undefined;
-  switch (node.kind) {
-    case "column": return `the column ${node.name}`;
+function columnSide(literal: LiteralNode): string | undefined {
+  if (typeof literal !== "object" || literal === null) return undefined;
+  switch (literal.kind) {
+    case "column": return `the column ${literal.name}`;
     case "call": {
-      for (const arg of Array.isArray(node.args) ? node.args : []) {
+      for (const arg of Array.isArray(literal.args) ? literal.args : []) {
         const inner = columnSide(arg);
-        if (inner !== undefined) return `${node.fn} of ${inner}`;
+        if (inner !== undefined) return `${literal.fn} of ${inner}`;
       }
       return undefined;
     }
     case "one":
-    case "first": { const inner = columnSide(node.value); return inner && `${inner} of a related row`; }
+    case "first": { const inner = columnSide(literal.value); return inner && `${inner} of a related row`; }
     case "count": return "the count of related rows";
     default: return undefined;
   }
