@@ -476,7 +476,7 @@
               "path": "/architecture/decisions/0086-entity-values-privileged-barrels-and-fqns/"
             },
             {
-              "title": "0087. The raw-SQL escape hatch (proposed)",
+              "title": "0087. The raw-SQL escape hatch",
               "path": "/architecture/decisions/0087-raw-sql-escape-hatch/"
             }
           ]
