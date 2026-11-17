@@ -46,7 +46,7 @@ entity :Task
 
 test("copyExpression copies every table keyed by an expression: a new one must be added to it", () => {
   const text = readFileSync(new URL("../src/front-end/expression.ts", import.meta.url), "utf8");
-  expect(text.match(/new WeakMap</g)?.length).toBe(6);
+  expect(text.match(/new WeakMap</g)?.length).toBe(7);
 });
 
 const FILE = "billing/invoice.mesh.mx";

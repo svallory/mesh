@@ -43,16 +43,30 @@ function checkExpressions(items: readonly ValidateItem[], into: ActionExpression
 
 /** Every function in an entity's actions and `always` blocks (`check`, `when`, `set` values, `run`), in written order. */
 export function actionExpressions(entity: Entity): ActionExpression[] {
-  const found: ActionExpression[] = [];
+  return actionExpressionsByOwner(entity).flatMap((owner) => owner.expressions);
+}
+
+/**
+ * The functions of `actionExpressions`, grouped by the action or `always` block that holds them, in declaration order;
+ * `owner` is worded as messages word it (`update :finish`, `always`). Action and `always` functions only: a handler body
+ * (the `handlers` section) never joins, since it is where the spec sends an effect on another aggregate, and the
+ * architecture rule `:action-calls-other-aggregate` reads this list.
+ */
+export function actionExpressionsByOwner(entity: Entity): { owner: string; expressions: ActionExpression[] }[] {
+  const owners: { owner: string; expressions: ActionExpression[] }[] = [];
   for (const action of entity.actions) {
-    checkExpressions(action.validate, found);
-    stepExpressions(action.do, found);
+    const expressions: ActionExpression[] = [];
+    checkExpressions(action.validate, expressions);
+    stepExpressions(action.do, expressions);
+    owners.push({ owner: `${action.kind} :${action.name}`, expressions });
   }
   for (const always of entity.always) {
-    checkExpressions(always.validate, found);
-    stepExpressions(always.do, found);
+    const expressions: ActionExpression[] = [];
+    checkExpressions(always.validate, expressions);
+    stepExpressions(always.do, expressions);
+    owners.push({ owner: "always", expressions });
   }
-  return found;
+  return owners;
 }
 
 /** Every check of a `validate` list, depth first: the lines under a `when` with the rest. */

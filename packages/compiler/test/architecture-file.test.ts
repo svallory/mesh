@@ -1,8 +1,8 @@
 // The architecture file (`notes/architecture/architecture-file-design.md`, PR 1; rules R1 to R15 and R19, ruling D40):
 // `architecture :name` directly in the domain root, its `use preset=`, `severity` and `disable` lines, the presets it
 // imports from "meshfw/architecture", the settings it resolves (`readArchitectureFile`), the refusal of an import of it
-// (R8) and the list-form domain root that leaves it out. No rule has a check yet, so a project's document is the same
-// with the file as without it. The import-layering test of the compiler's own source is `architecture.test.ts`.
+// (R8) and the list-form domain root that leaves it out. A project's document is the same with the file as without it;
+// the rules' checks are `architecture-rules.test.ts`. The import-layering test of the compiler's own source is `architecture.test.ts`.
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

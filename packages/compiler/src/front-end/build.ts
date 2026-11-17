@@ -58,7 +58,7 @@ import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { architectureFileText, isArchitectureFileName, readArchitectureFile } from "./architecture-file.ts";
 import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
-import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
+import { askCallsOf, asynchronyOf, copyExpression, demotionOf, entityCallsOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, offsetAt, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope, type WrittenReference } from "./references.ts";
@@ -79,7 +79,7 @@ import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import { checkServices } from "../model/services.ts";
-import { checkArchitecture, DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
+import { aggregateNamesOf, checkArchitecture, DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
 import { buildService } from "./services.ts";
 import {
   atomForwards,
@@ -2834,7 +2834,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   // A file that did not parse may hold the action that answers a command: with one missing, "unanswered" is not known.
   checkCommands(document, diagnostics, parsedFiles.length === project.files.length);
   // The architecture rules read the whole built model, so they run after every other check; an `error` setting fails the build.
-  checkArchitecture(architectureSettings, { document }, diagnostics);
+  checkArchitecture(architectureSettings, { document, entityCallsOf, aggregatesOf: aggregateNamesOf(document) }, diagnostics);
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(
