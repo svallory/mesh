@@ -965,9 +965,9 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         assert((await failures(world, "h")).length === 1 && (await world.state()).handlers.find((row) => row.name === "h")!.position === p, "the next round was to set the event aside");
       });
 
-      add("dead letters: retryFailed replays a handler's set-aside events in position order, removes each it handles, and stops at the first that fails again, keeping it and the later ones", async (world) => {
+      for (const kind of ["process", "listen"] as const) add(`dead letters: retryFailed replays a ${kind} handler's set-aside events in position order, removes each it handles, and stops at the first that fails again, keeping it and the later ones`, async (world) => {
         const broken = new Set<number>();
-        const binding = world.bind({ handlers: { process: { h: breaking(world, "h", broken, {}, false) } } });
+        const binding = world.bind({ handlers: { [kind]: { h: breaking(world, "h", broken, {}, false) } } });
         await binding.deliver();
         const published = await world.publish(binding, [Alpha, 1], [Alpha, 2], [Alpha, 3], [Alpha, 4]);
         for (const p of published) broken.add(p);
@@ -999,6 +999,34 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const taken = settled.filter((each) => each.status === "rejected");
         assert(settled.filter((each) => each.status === "fulfilled").length === 1 && taken.length === 1
           && taken[0]!.reason instanceof DelivererTakenError && taken[0]!.reason.holder.thisProcess, `got ${JSON.stringify(settled.map((each) => each.status === "fulfilled" ? "started" : String(each.reason)))}`);
+      });
+
+      if (!declares.has("multi-process")) for (const kind of ["process", "listen"] as const) add(`dead letters: a ${kind} handler replayed by retryFailed whose claim moves to another process while its body runs: the call rejects with MESH_DELIVERER_LOST and keeps the event it had not removed`, async (world) => {
+        const fails = new Set<number>();
+        let moved = false;
+        const binding = world.bind({ handlers: { [kind]: { h: world.recorder("h", [Alpha], { onFailure: "skip" as never, run: async (event) => {
+          if (fails.has(event.position)) throw Object.assign(new Error("down"), { retryable: false });
+          if (moved) return;
+          moved = true;
+          await world.layer.transaction(async (tx) => {
+            const { generation } = await ops(tx).readDeliveryState();
+            await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000dd", generation: generation + 1, host: "elsewhere", pid: 4242, startedAt: new Date() });
+          });
+        } }) } } });
+        await binding.deliver();
+        const published = await world.publish(binding, [Alpha, 1], [Alpha, 2]);
+        for (const p of published) fails.add(p);
+        await warnings(() => binding.deliver());
+        assert((await failures(world, "h")).length === 2, "both events were to be set aside");
+        fails.clear();
+        const lost = await rejection(() => retryFailed(binding, "h"));
+        assert(lost instanceof DelivererLostError, `retryFailed was to reject with MESH_DELIVERER_LOST, got ${String(lost)}`);
+        // A process body commits with the removal it shares a transaction with, and the next event's fence fails; a
+        // listen body runs outside, and the transaction that would remove its row is the one fenced.
+        const kept = (await failures(world, "h")).map((row) => row.position);
+        const expected = kind === "process" ? published.slice(1) : published;
+        assert(JSON.stringify(kept) === JSON.stringify(expected), `the rows kept were ${JSON.stringify(kept)}, expected ${JSON.stringify(expected)}`);
+        assert(positions(world, "h").filter((p) => published.includes(p)).length === 2 + 1, `the handler ran after the claim moved: ${JSON.stringify(positions(world, "h"))}`);
       });
 
       add("dead letters: a listen handler replayed by retryFailed runs outside any transaction, and its row is removed after", async (world) => {
@@ -1053,7 +1081,7 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       });
 
       for (const started of [false, true]) {
-        add(`dead letters: a second retryFailed for the same handler while one runs in this process is refused${started ? ", with delivery started" : ""}; one for another handler is not`, async (world) => {
+        add(`dead letters: a second retryFailed for the same handler while one runs in this process is refused${started ? ", with delivery started; one for another handler is not" : "; one for another handler is MESH_DELIVERER_TAKEN, since the first holds the claim it took for the call"}`, async (world) => {
           let release!: () => void;
           const gate = new Promise<void>((resolve) => { release = resolve; });
           let blocking = false;
@@ -1072,8 +1100,13 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
           await until(() => (world.seen.get("h") ?? []).length >= 2, "the first retryFailed runs its handler");
           const second = await rejection(() => retryFailed(binding, "h"));
           assert(second instanceof FrameworkError && second.message === 'retryFailed("h") is already running in this process: two runs would handle one set-aside event twice', `got ${String(second)}`);
-          // Another handler's call is not refused; it waits for the layer's transaction the first one's body holds.
+          // With delivery started, another handler's call is not refused; it waits for the layer's transaction the first
+          // one's body holds. Without, the first call holds this process's place for the claim it took.
           const other = started ? retryFailed(binding, "other") : undefined;
+          if (!started) {
+            const taken = await rejection(() => retryFailed(binding, "other"));
+            assert(taken instanceof DelivererTakenError && taken.holder.thisProcess, `another handler's retryFailed without started delivery gave ${String(taken)}`);
+          }
           release();
           const result = await first;
           if (other) {
@@ -1117,15 +1150,18 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         let core: BusCore | undefined;
         const watching: EventBus = Object.freeze({ manifest: world.bus.manifest, create(given: BusCore, options: Parameters<EventBus["create"]>[1]) { core = given; return world.bus.create(given, options); } });
         const binding = world.bind({ handlers: { process: { skip: world.recorder("skip", [Alpha], { onFailure: "skip" as never }), stop: world.recorder("stop", [Alpha]) } } }, { bus: watching });
-        const [p] = await world.publish(binding, [Alpha, 1]);
+        const [p, b] = await world.publish(binding, [Alpha, 1], [Beta, 2]);
         await start(world, binding);
         const row = (await core!.rows(0, 10)).rows.find((each) => each.position === p)!;
+        const betaRow = (await core!.rows(0, 10)).rows.find((each) => each.position === b)!;
         const skip = core!.handlers.find((handler) => handler.name === "skip")!;
         const stop = core!.handlers.find((handler) => handler.name === "stop")!;
         const refusals = [
           [() => core!.setAside(stop, row, new Error("x")), 'whose onFailure is "stop"'],
           [() => core!.setAside(skip, row, new DatabaseBusyError("db", 0)), "MESH_DATABASE_BUSY as the failure"],
           [() => core!.setAside(skip, row, new DelivererLostError("db", "test")), "MESH_DELIVERER_LOST as the failure"],
+          [() => core!.setAside(skip, row, new HandlerLostError("skip", "taken", 0, "test")), "MESH_HANDLER_LOST as the failure"],
+          [() => core!.setAside(skip, betaRow, new Error("x")), "which does not list it"],
         ] as const;
         for (const [run, text] of refusals) {
           const error = await rejection(run);

@@ -486,8 +486,8 @@ export class MultiClaim implements ClaimStrategy {
   }
 
   /** A `retryFailed` transaction's fence: the nil claim and the handler's lease, as a handler transaction checks them. */
-  async fenceReplay(delivery: DeliveryOperations, handler: RegisteredHandler): Promise<void> {
-    await this.#lease(multiOperations(delivery), handler, 0);
+  async fenceReplay(delivery: DeliveryOperations, handler: RegisteredHandler, position: number): Promise<void> {
+    await this.#lease(multiOperations(delivery), handler, position);
   }
 
   async writeProgress(delivery: DeliveryOperations, progress: HandlerProgressRow, position: number): Promise<void> {

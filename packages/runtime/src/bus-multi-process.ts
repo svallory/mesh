@@ -394,6 +394,38 @@ export function multiProcessChecks(
     assert((await ctx.lease("h"))?.runId === null, "the call releases the lease it took");
   });
 
+  if (bus().manifest.capabilities.includes("dead-letters")) for (const kind of ["process", "listen"] as const) add(`dead letters: a ${kind} handler replayed by retryFailed whose lease another process takes while its body runs: the call rejects with MESH_HANDLER_LOST naming the event, and keeps the event it had not removed`, { timing: IN_PROCESS }, async (ctx) => {
+    const publisher = ctx.bind(FULL, {});
+    const published = await ctx.publish(publisher, [Alpha, 1], [Alpha, 2]);
+    const rows = (await ctx.layer.readOutbox!(published[0]! - 1, 2)).rows;
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha", "multi.Beta", "multi.Echo"]);
+    await ctx.layer.transaction(async (tx) => {
+      await ops(tx).writeHandlerLease({ name: "h", kind, position: published[1]!, events: ["multi.Alpha"], generation: 1, runId: null });
+      for (const row of rows) await ops(tx).writeFailure({ ...row, handler: "h", error: { code: null, message: "down" } });
+    });
+    let moved = false;
+    const ran: number[] = [];
+    const binding = ctx.bind(FULL, { handlers: { [kind]: { h: { events: [Alpha], onFailure: "skip" as never, run: async (event: EventRecord<object>) => {
+      ran.push(event.position);
+      if (moved) return;
+      moved = true;
+      await ctx.layer.transaction(async (tx) => {
+        const lease = (await ops(tx).lockHandlerProgress("h"))!;
+        await ops(tx).writeHandlerLease({ ...lease, runId: OTHER, generation: lease.generation + 1 });
+      });
+    } } } } });
+    const lost = await rejection(() => retryFailed(binding, "h"));
+    // A process body commits with the removal it shares a transaction with, and the next event's fence fails; a listen
+    // body runs outside, and the transaction that would remove its row is the one fenced.
+    const at = kind === "process" ? published[1] : published[0];
+    assert(lost instanceof HandlerLostError && lost.handler === "h" && lost.reason === "taken" && lost.position === at, `got ${String(lost)}${lost instanceof HandlerLostError ? ` at ${lost.position}` : ""}`);
+    const kept = (await ctx.layer.transaction((tx) => ops(tx).readFailures("h", null, 10))).map((row) => row.position);
+    const expected = kind === "process" ? published.slice(1) : published;
+    assert(JSON.stringify(kept) === JSON.stringify(expected), `the rows kept were ${JSON.stringify(kept)}, expected ${JSON.stringify(expected)}`);
+    assert(JSON.stringify(ran) === JSON.stringify(published.slice(0, 1)), `the handler ran after its lease moved: ${JSON.stringify(ran)}`);
+    assert((await ctx.lease("h"))?.runId === OTHER, "the other process's lease was cleared or taken back");
+  });
+
   add("a row of an event in the handler's union and not in its list yields the handler: no row is passed, the lease is cleared, and it is not taken again until resumeHandler", { timing: IN_PROCESS }, async (ctx) => {
     const binding = ctx.scenario("old-list", { keep: "all" });
     await ctx.start(binding);

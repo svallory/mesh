@@ -359,8 +359,9 @@ export interface ClaimStrategy {
   /**
    * In a `retryFailed` transaction, before a set-aside event is replayed or removed: the fence alone (the claim's
    * generation, or the handler's lease), with no position check, since a set-aside event is below the progress row.
+   * `position` is the set-aside event's, which a lost lease names.
    */
-  fenceReplay(ops: DeliveryOperations, handler: RegisteredHandler): Promise<void>;
+  fenceReplay(ops: DeliveryOperations, handler: RegisteredHandler, position: number): Promise<void>;
   /** After `runHandler` rejected with `error`, outside its transaction; resolves with the error to reject with instead, if any. */
   afterReject(handler: RegisteredHandler, error: unknown): Promise<unknown>;
   /** In each deletion batch's transaction: the fence; the state the batch computes from. */
@@ -691,7 +692,7 @@ export class Deliverer {
       if (handler.kind === "process" || entry.kind !== undefined) {
         return await handlerScope(this.binding, label, failure.id, true, async () => {
           const removed = await this.layer.transaction(async (tx) => {
-            await this.strategy.fenceReplay(operations(tx), handler);
+            await this.strategy.fenceReplay(operations(tx), handler, failure.position);
             causedIn(tx, failure.id);
             return failureOperations(tx, why).deleteFailure(failure.failure);
           });
@@ -700,12 +701,12 @@ export class Deliverer {
           return "handled" as const;
         }, entry.kind);
       }
-      await this.layer.transaction((tx) => this.strategy.fenceReplay(operations(tx), handler));
+      await this.layer.transaction((tx) => this.strategy.fenceReplay(operations(tx), handler, failure.position));
       const context = this.#context(record);
       await handlerScope(this.binding, label, failure.id, false, () => Promise.resolve(run(context)));
       // The guard and the claim mean no other run of this row overlaps: a row already gone was removed by hand.
       await this.layer.transaction(async (tx) => {
-        await this.strategy.fenceReplay(operations(tx), handler);
+        await this.strategy.fenceReplay(operations(tx), handler, failure.position);
         await failureOperations(tx, why).deleteFailure(failure.failure);
       });
       return "handled";
