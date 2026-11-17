@@ -123,7 +123,14 @@ export default defineConfig({
 });
 ```
 
-Nothing in Mesh creates a Postgres server or a database for you. Create the database, then use [migrations](./command-line.md#migrations) to bring the schema to it.
+Nothing in Mesh creates a Postgres server or a database for you. Create the database, then bring the schema to it with `mesh db push` (see [Migrations](./command-line.md#migrations); `mesh migrate` is not built for Postgres yet). Give the project a database of its own: `mesh db push` refuses a `public` schema that holds tables, views or sequences the project does not declare.
+
+What differs from SQLite on Postgres:
+
+- **Transactions** run at `SERIALIZABLE`, one at a time per data layer (several processes give you concurrency), and wait at most 5 seconds for any one lock. Two processes that conflict get a retryable `DatabaseBusyError` (see [Using your domain](./using-your-domain.md)); Mesh never re-runs your call for you.
+- **A statement that fails aborts the transaction**, even when your code catches the error: the call then rejects, and nothing it wrote is kept. On SQLite a caught failure leaves the transaction usable.
+- **Sort order** is SQLite's: nulls first ascending and last descending, text compared byte by byte, so a test on SQLite predicts the order in production.
+- **Long transactions that publish** hold delivery back: a handler or subscription waits for every transaction that published before it to end. A commit in another process wakes the deliverer at once (Postgres's `LISTEN`/`NOTIFY`); the bus's poll stays, for a wake-up that is missed.
 
 SQLite in its in-memory mode is what tests use. See [Testing](./testing.md).
 

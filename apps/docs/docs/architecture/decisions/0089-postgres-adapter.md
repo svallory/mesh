@@ -60,4 +60,4 @@ M9 adds a second SQL adapter, `@meshfw/data-postgres` ([roadmap](../roadmap/road
 
 - [x] The adapter without events: transactions, error mapping, the dialect, the schema generator, `createSchema`, `mesh db push`, contract and condition conformance (M9, this pull request).
 - [x] The outbox with the reader rule and core's delivery state with the claim's row lock (M9).
-- [ ] `LISTEN`/`NOTIFY` wake-ups and the user docs (M9).
+- [x] `LISTEN`/`NOTIFY` wake-ups and the user docs (M9).

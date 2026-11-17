@@ -88,10 +88,12 @@ export async function outboxSequence(query: Query): Promise<string> {
 /** The sequence's last assigned value, 0 before the first: the highest position ever assigned. */
 const highestOf = (sequence: string) => `(SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${sequence})`;
 
-/** What a transaction needs to append: its query, the lock key, and whether it already took the lock and its xid. */
+/** What a transaction needs to append: its query, the lock key, the channel, and whether it already took the lock and its xid. */
 export interface Appender {
   readonly query: Query;
   readonly key: readonly [number, number];
+  /** The layer's NOTIFY channel (`outboxChannel`), which a listener's `LISTEN` names. */
+  readonly channel: string;
   sequence(): Promise<string>;
   /** Set once the transaction holds the advisory lock and its xid. */
   prepared: boolean;
@@ -100,7 +102,8 @@ export interface Appender {
 /**
  * Inserts one row in the running transaction and returns its position. On the transaction's first append, before the
  * insert and as separate statements: the shared advisory lock, then `pg_current_xact_id()`, so the transaction holds
- * both before it takes a position (the reader rule rests on that order).
+ * both before it takes a position (the reader rule rests on that order), then one `pg_notify` on the layer's channel,
+ * which Postgres delivers to every `LISTEN` after the commit and drops on a rollback (`onAppended`'s wake-up).
  */
 export async function appendEvent(appender: Appender, row: OutboxAppend): Promise<number> {
   if (!(row.occurredAt instanceof Date) || Number.isNaN(row.occurredAt.getTime())) throw new FrameworkError("An outbox row's occurredAt must be a valid Date");
@@ -109,6 +112,7 @@ export async function appendEvent(appender: Appender, row: OutboxAppend): Promis
   if (!appender.prepared) {
     await query("SELECT pg_advisory_xact_lock_shared($1::int4, $2::int4)", appender.key);
     await query("SELECT pg_current_xact_id()");
+    await query("SELECT pg_notify($1, '')", [appender.channel]);
     appender.prepared = true;
   }
   const [stored] = await withOutboxTables(() => query(

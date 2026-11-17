@@ -55,6 +55,17 @@ A call made outside `run` and `transaction` goes to the data layer `connect()` o
 
 `app.transaction(fn)` is `run` with one transaction around everything inside: the calls join it, `afterCommit` runs once when it commits, and a throw rolls all of them back. Like `transaction`, it hands `fn` nothing and takes no context.
 
+### On Postgres
+
+Tests against Postgres need a server. `createSchema(db, tables)` from `@meshfw/data-postgres` works the same way on a `postgres({ url })` layer: it pushes the generated tables into the database's `public` schema, which should be one the test made for itself (it refuses a schema that holds tables it does not declare). A Postgres database is shared by every connection to it, so give each test file a database of its own and drop it afterwards. Run most tests on SQLite's `:memory:`, which the Postgres adapter keeps in step with: the same sort order and value ranges.
+
+Mesh's own data-postgres tests read the server from `MESH_TEST_POSTGRES_URL`, a URL whose user may create databases, and are skipped without it:
+
+```bash
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=mesh postgres:16.16
+export MESH_TEST_POSTGRES_URL=postgres://postgres:mesh@localhost:5432/postgres
+```
+
 ## What to assert
 
 Actions return the record, or an array of records, typed from the entity file. A test reads the same type your program does.
