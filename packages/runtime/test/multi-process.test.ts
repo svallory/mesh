@@ -1,10 +1,10 @@
 // Delivery from several processes, the parts that need no database: MESH_HANDLER_LOST, the several-processes wording of
 // MESH_DELIVERER_TAKEN, testBus ending a handler another process holds for the round without reporting it, and the
-// choice of the claim strategy by the bus's manifest over a fake data layer.
+// choice of the claim strategy by the bus's manifest over a fake data layer, and the argument checks of adopt and keep.
 import { describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
-  DelivererTakenError, FrameworkError, HandlerLostError, MeshError, bindDomain, type BusCapability, type BusCore, type ClaimHolder, type DataLayer,
+  DelivererTakenError, FrameworkError, HandlerLostError, MeshError, adoptByName, adoptHandler, bindDomain, keepByValue, type BusCapability, type BusCore, type ClaimHolder, type DataLayer,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 
@@ -125,5 +125,48 @@ describe("the strategy follows the bus's manifest (rule M1), and multi mode need
     const { layer } = layerWithout(["readDeliveryState"]);
     const error = await bind(layer, ["ordered-delivery", "multi-process"]).deliver().then(() => undefined, (thrown: unknown) => thrown);
     expect((error as Error).message).toStartWith("The data layer's transactions have no readDeliveryState: delivering events needs a data adapter with the delivery operations");
+  });
+});
+
+describe("adoptByName, adoptHandler and keepByValue: arguments and mode (rules R5, K4, M6)", () => {
+  /** A layer whose every operation reads nothing; only the refusals before or at the first read matter here. */
+  const empty = (calls: string[] = []) => ({
+    database: `fake #${Math.random()}`,
+    transaction: async <T>(run: (ops: never) => Promise<T>) => run(new Proxy({}, {
+      get: (_target, name) => async () => { calls.push(String(name)); return String(name).endsWith("DeliveryState") ? { deletedThrough: 0, highest: 0, generation: 0, claim: null, now: new Date(), keep: null } : String(name).startsWith("read") ? [] : undefined; },
+    }) as never),
+    refuseIfFailed: () => false,
+    close: async () => {},
+  }) as unknown as DataLayer;
+  const bind = (layer: DataLayer, capabilities: readonly BusCapability[]) =>
+    bindDomain({}, layer, { events: { bus: testBus({ capabilities }), load: async () => ({}) } }, new AsyncLocalStorage() as never);
+  const rejection = (run: () => Promise<unknown>) => run().then(() => undefined, (error: unknown) => error as Error);
+
+  test("outside multi mode each refuses before it opens a transaction, saying it applies to a bus that declares multi-process", async () => {
+    const calls: string[] = [];
+    const layer = empty(calls);
+    expect((await rejection(() => adoptByName(layer, "h")))?.message).toBe("mesh events adopt applies to a project whose bus declares multi-process: in single mode a handler's events are the list its one deliverer registered");
+    expect((await rejection(() => adoptByName(layer, "h", { multiProcess: false })))?.message).toStartWith("mesh events adopt applies to a project whose bus declares multi-process");
+    expect((await rejection(() => keepByValue(layer, "all")))?.message).toBe("mesh events keep applies to a project whose bus declares multi-process: in single mode the deliverer's own keep is the one in force");
+    expect((await rejection(() => adoptHandler(bind(layer, ["ordered-delivery"]), "h")))?.message).toStartWith("adoptHandler applies to a project whose bus declares multi-process");
+    expect(calls).toEqual([]);
+  });
+
+  test("a bad name, drop list or keep is a FrameworkError worded as its neighbours", async () => {
+    const layer = empty();
+    const multi = bind(layer, ["ordered-delivery", "multi-process"]);
+    expect(await rejection(() => adoptByName(layer, "", { multiProcess: true }))).toBeInstanceOf(FrameworkError);
+    expect((await rejection(() => adoptByName(layer, "h", { drop: "multi.A" as never, multiProcess: true })))?.message).toBe('mesh events adopt: drop is a list of event names, such as ["billing.InvoiceVoided"], and is a string');
+    expect((await rejection(() => adoptByName(layer, "h", { drop: [""], multiProcess: true })))?.message).toStartWith("mesh events adopt: drop is a list of event names");
+    expect((await rejection(() => adoptHandler(multi, 3 as never)))?.message).toBe("adoptHandler takes a handler's name, and was given a number");
+    expect((await rejection(() => adoptHandler(multi, "h", { drop: [1] as never })))?.message).toStartWith("adoptHandler: drop is a list of event names");
+    expect((await rejection(() => keepByValue(layer, "forever" as never, { multiProcess: true })))?.message).toBe('mesh events keep takes "until-delivered" or "all", and was given a string');
+  });
+
+  test("adoptHandler on a multi-process binding runs adopt on its layer: a handler no live process registers is refused, named with the caller", async () => {
+    const calls: string[] = [];
+    const error = await rejection(() => adoptHandler(bind(empty(calls), ["ordered-delivery", "multi-process"]), "notify"));
+    expect(error?.message).toBe('adoptHandler: no live process registers the handler "notify", so there is no list to adopt: if it was removed, drop its progress with `mesh events forget notify`');
+    expect(calls.slice(0, 2)).toEqual(["lockDeliveryState", "readProcesses"]);
   });
 });
