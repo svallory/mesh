@@ -1,0 +1,29 @@
+import { TaskCompleted } from "./task-completed.mesh.mx"
+
+entity :Task
+  attributes
+    uuid :id primary-key
+    enum :state values=[:open, :done, :archived] default=:open
+  actions auto=[:read]
+    create :open
+    update :complete
+      do
+        set
+          &state=:done
+        publish=() => new TaskCompleted({ taskId: &id })
+    update :touch
+      do
+        publish=() => new TaskTouched({ taskId: &id })
+    update :archive
+      do
+        set
+          &state=:archived
+        publish=() => new TaskArchived({ taskId: &id })
+  events
+    event :TaskTouched
+      uuid :taskId
+    event :TaskArchived
+      uuid :taskId
+  policies
+    policy :anyone types=[:create, :read, :update]
+      authorize-if=() => true

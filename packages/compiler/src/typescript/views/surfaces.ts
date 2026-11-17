@@ -35,7 +35,7 @@ export interface SurfaceView {
   readonly entityImports: readonly SurfaceEntityImport[];
   /** One entry per expose line, in written order. */
   readonly exposures: readonly SurfaceExposureView[];
-  /** The FQNs of the events the surface sends out, each a quoted string literal; always empty until `publishes` is built. */
+  /** The FQNs of the events the surface sends out (its `publishes` section), in written order, each a quoted string literal; empty without the section. */
   readonly publishes: readonly string[];
 }
 
@@ -229,6 +229,6 @@ export function surfaceView({ document }: EmitInput, surface: Surface): SurfaceV
       exposures.some((exposure) => exposure.actions.length) ? ["Promise"] : [], true),
     entityImports,
     exposures,
-    publishes: [],
+    publishes: (surface.publishes ?? []).map((event) => JSON.stringify(event.fqn)),
   };
 }
