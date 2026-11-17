@@ -102,17 +102,20 @@ export function testDatabase(tables: Readonly<Record<string, TableHandle>>): Tes
 export function lazyDatabases(): { layerFor(tables: Readonly<Record<string, TableHandle>>): Promise<PostgresLayer> } {
   const made = new Map<Readonly<Record<string, TableHandle>>, Promise<{ name: string; admin: SQL; names: string[] }>>();
   const layers: PostgresLayer[] = [];
+  const created: string[] = [];
   let schemas = 0;
   afterAll(async () => {
     for (const layer of layers.splice(0)) await layer.close().catch(() => undefined);
     const server = serverUrl === undefined ? undefined : new SQL(serverUrl, { max: 1 });
-    for (const pending of made.values()) {
-      const { name, admin } = await pending;
-      await admin.close();
-      await server?.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+    try {
+      // Every database CREATE DATABASE made is dropped, also one whose createSchema failed, and a failed drop does not
+      // stop the ones after it.
+      for (const pending of made.values()) await (await pending.catch(() => undefined))?.admin.close().catch(() => undefined);
+      for (const name of created.splice(0)) await server?.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => undefined);
+    } finally {
+      made.clear();
+      await server?.close();
     }
-    made.clear();
-    await server?.close();
   }, 60_000);
   const database = (tables: Readonly<Record<string, TableHandle>>) => {
     let pending = made.get(tables);
@@ -121,6 +124,7 @@ export function lazyDatabases(): { layerFor(tables: Readonly<Record<string, Tabl
         const name = `mesh_t_${process.pid}_${++databases}_${Math.random().toString(36).slice(2, 8)}`;
         const server = new SQL(serverUrl!, { max: 1 });
         try { await server.unsafe(`CREATE DATABASE "${name}"`); } finally { await server.close(); }
+        created.push(name);
         const layer = postgres({ url: databaseUrl(name) });
         try { await createSchema(layer, tables); } finally { await layer.close(); }
         return { name, admin: new SQL(databaseUrl(name), { max: 2 }), names: Object.values(tables).map((handle) => getTableName(postgresTable(handle))) };
