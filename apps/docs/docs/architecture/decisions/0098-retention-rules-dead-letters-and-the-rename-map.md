@@ -50,7 +50,7 @@ Every event project carries an empty `mesh_outbox_failures` and its `schema.ts` 
 
 - `BusCore` gains `setAside`; a bus that declares `dead-letters` calls it for a `"skip"` handler whose retries are used up and goes on. The bus conformance suite has a dead-letters group for such a bus.
 - `CORE_TABLES` gains `mesh_outbox_failures`; `@meshfw/runtime` exports `FailureOperations`, `FailureRow`, `retryFailed` and `RetryFailedResult`, and `@meshfw/runtime/testing` exports `retentionConformance` for the failure operations. SQLite and Postgres implement them.
-- `#mesh` exports `retryFailed` and the type `RetryFailedResult` when the bus declares `dead-letters`; a project on another bus keeps its generated files byte for byte.
+- `#mesh` exports `retryFailed` and the type `RetryFailedResult` when the bus declares `dead-letters`; a project on another bus keeps its generated `index.ts` and `binding.ts` byte for byte, while `schema.ts` gains `mesh_outbox_failures` in every event project.
 - [ADR-0079](./0079-commands-events-and-the-outbox.md) gains a pointer to this record for the per-event setting.
 
 ## Action items
