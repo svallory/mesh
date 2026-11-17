@@ -30,6 +30,8 @@
         "computed",
         "checks",
         "actions",
+        "events",
+        "commands",
         "always",
         "input",
         "validate",

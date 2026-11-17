@@ -201,14 +201,14 @@ describe("line heads under tagShorthands: false", () => {
       expect(built(entity(head)), head).toEqual([["error", "MESH_INVALID_TAG_NAME", 4, 2 + at]]);
   });
 
-  test("a dotted head is one tag, never a tag with a class; no section takes one yet, so it is MESH_UNKNOWN_TAG", () => {
+  test("a dotted head is one tag, never a tag with a class; outside a section that lists references it is MESH_UNKNOWN_TAG", () => {
     const source = entity("billing.InvoiceVoided");
     const { ir, diagnostics } = lowerSource(source, "/v/t.mesh.mx", { dialect: SYNTAX_DIALECT, ...BASE });
     expect(diagnostics).toEqual([]);
     const head = find(ir!.body as unknown as SpannedNode[], "billing.InvoiceVoided");
     expect(head.attrs).toEqual([]);
     expect(source.slice(head.nameSpan.sourceStart, head.nameSpan.sourceEnd)).toBe("billing.InvoiceVoided");
-    // Events, commands and the other sections that list references are not built (M6), so Mesh's contracts claim no dotted tag.
+    // Only a section that lists references (an owner's `events` and `commands`) claims a dotted head; `entity` does not.
     const result = buildModel({ root: "/project", files: [{ file: "t/t.mesh.mx", source }] });
     expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column, d.message])).toEqual([
       ["MESH_UNKNOWN_TAG", 4, 2, "`billing.InvoiceVoided` is not a known tag in the `mesh` dialect"],

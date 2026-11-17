@@ -68,7 +68,7 @@ Grouped by why. Row numbers refer to section 3.
 
 ## 3. Contract coverage
 
-Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
+Each example is a complete tag or tagless member line, tested in a minimal entity with its declared ancestors, stored fields, and an imported Line entity. The test parses **and builds** every cell. There is one row per (tag, option) pair the contracts accept, so the rows equal the production contracts: a pair the contracts reject has no row, and is deleted rather than kept as "not applicable". MX lowers a tagless `&title` line to a `member` child tag, which an inline wildcard contract under `input` and `set` accepts: `input.member` takes no value, while `set.member.value` holds the assigned value (the compiler requires it). The coverage test enumerates these wildcard options as well as the named contracts; `member` is not an authored tag. A listing line of an owner's `events` or `commands` section is a wildcard child too, whose head is a reference (`Paid`, an event or a command the file imports): its row is `events.reference` or `commands.reference`. Slots that hold one member only (`asc`/`desc` and `on:load`) have MX's contract type `member`; lists of members (`load`, `actions`) are arrays whose elements Mesh checks.
 
 The `optional` rows are command field lines, tested in a command file with an answering update; `optional` is refused on event fields, attributes, arguments and computed fields ([Events: Answering a command](../../docs/events.md#answering-a-command)).
 
@@ -112,6 +112,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `checks` | `checks` | `checks` | on main |
 | `command` | `command :Paid` | `command` | on main |
 | `command.name` | `command :Paid` | `command.name` | on main |
+| `commands` | `commands` | `commands` | on main |
+| `commands` listing line | `Paid` | `commands.reference` | on main |
 | `computed` | `computed` | `computed` | on main |
 | `count` | `count :total of=&lines` | `count` | on main |
 | `count.name` | `count :total of=&lines` | `count.name` | on main |
@@ -161,6 +163,8 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `enum.value` | `enum :field() { return :draft }` | `enum.value` | on main |
 | `event` | `event :Paid` | `event` | on main |
 | `event.name` | `event :Paid` | `event.name` | on main |
+| `events` | `events` | `events` | on main |
+| `events` listing line | `Paid` | `events.reference` | on main |
 | `filter` | `filter=() => true` | `filter` | on main |
 | `filter.value` | `filter=() => true` | `filter.value` | on main |
 | `float` | `float :field` | `float` | on main |
@@ -423,7 +427,7 @@ The source of truth is [`packages/compiler/src/contracts.ts`](https://github.com
 
 | Group | Current form | Where checked |
 |---|---|---|
-| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase |
+| Entity and sections | `entity :Name`, optional `table`, and `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands` | Contracts constrain nesting; the builder requires exactly one entity per file; a name in any casing is converted to PascalCase |
 | Stored attributes and arguments | `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp` | Type-specific options in contracts; defaults and scalar formats in the builder. Attributes are required unless `nullable` |
 | Primary keys | `primary-key` on `uuid`, `integer` or `string` only | Contracts reject other types; the builder requires exactly one non-null key |
 | Relationships | `belongs-to`, `has-many`, `has-one`, each with an imported entity identifier or a member of a namespace import (`billing.Invoice`) | Contracts check the written reference's shape; the builder resolves named imports, namespace members and their relative paths |

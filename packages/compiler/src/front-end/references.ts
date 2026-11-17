@@ -50,25 +50,32 @@ export interface ReferenceScope {
    * for a kind the file's own declaration is not (an entity file declares no event, so `own` is not an event).
    */
   own?: { name: string; from: string };
-  /**
-   * The names the file at `from` (as an import of this file writes the path) declares, or undefined when the project has
-   * no such file: the import itself is reported then, so a reference through it is not.
-   */
-  declared: (from: string) => readonly string[] | undefined;
 }
 
 /** What a position references: `entity=` takes an entity, a `publish` function's `new` an event, and `on=` will take a command. */
 export interface ReferenceKind {
   /** What the position takes, for messages: `entity`. */
   noun: string;
-  /** Whether a file at `from` declares what the position takes (an entity file, `hasMeshExtension`). */
+  /** Whether a file at `from` declares at least one declaration of what the position takes (`hasMeshExtension`). */
   declares: (from: string) => boolean;
+  /**
+   * The names of this kind the file at `from` (as an import of this file writes the path) declares, or undefined when the
+   * project has no such file or could not parse it: the import itself is reported then, so a reference through it is not.
+   */
+  names: (from: string) => readonly string[] | undefined;
+  /**
+   * The kind of the declaration the file at `from` declares under `name` (`entity`, `event`, `command`), or undefined when
+   * it declares no such name. A name an import binds stands for that declaration, never for the file: a position takes it
+   * only when the declaration is of the position's kind.
+   */
+  kindOf: (from: string, name: string) => string | undefined;
   /** The code of an unknown reference: `MESH_UNKNOWN_ENTITY`. */
   code: string;
 }
 
 export type Resolution =
-  | { ok: true; identifier: string; from: string }
+  /** `declared` is the name in the declaring file: an alias's imported name, a namespace member's name, the own declaration's name. */
+  | { ok: true; identifier: string; from: string; declared: string }
   | { ok: false; code: string; message: string; offset: number; fix?: string }
   /** A reference through a name two imports bind: `MESH_DUPLICATE_IMPORT` already reports it. */
   | { ok: false; reported: true };
@@ -98,10 +105,19 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
   };
   if (!qualifier) {
     const imported = scope.imports.get(name);
-    if (!imported) return scope.own && name === scope.own.name ? { ok: true, identifier, from: scope.own.from } : unknown();
-    if (!imported.namespace) return kind.declares(imported.from) ? { ok: true, identifier, from: imported.from } : unknown();
+    if (!imported) return scope.own && name === scope.own.name ? { ok: true, identifier, from: scope.own.from, declared: scope.own.name } : unknown();
+    if (!imported.namespace) {
+      if (!kind.declares(imported.from)) return unknown();
+      // The binding names a declaration of the file: the position takes it only when that declaration is of its kind.
+      const importedName = importedNameOf(imported, name);
+      const found = kind.names(imported.from) === undefined ? kind.noun : kind.kindOf(imported.from, importedName);
+      if (found === kind.noun) return { ok: true, identifier, from: imported.from, declared: importedName };
+      // A name the file does not declare: the import's own check reports the binding (`MESH_UNKNOWN_IMPORT`).
+      if (found === undefined) return { ok: false, reported: true };
+      return unknown(`: ${imported.from} declares ${importedName} as ${an(found)}`);
+    }
     // `entity=billing`: the file, not what it declares.
-    const members = kind.declares(imported.from) ? scope.declared(imported.from) : undefined;
+    const members = kind.declares(imported.from) ? kind.names(imported.from) : undefined;
     const member = members?.length === 1 ? members[0] : undefined;
     return fail(
       `${name} is a namespace import of ${imported.from}, not ${an(kind.noun)}: name ${kind.declares(imported.from) ? `the ${kind.noun} it declares, \`${name}.${member ?? "Name"}\`` : `${an(kind.noun)} that ${an(kind.noun)} file declares`}`,
@@ -121,8 +137,8 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
       : unknown();
   if (!kind.declares(imported.from))
     return fail(`${identifier} is not an imported ${kind.noun}: ${qualifier.name} is a namespace import of ${imported.from}, which is not ${an(kind.noun)} file`, qualifier.offset);
-  const members = scope.declared(imported.from);
-  if (!members || members.includes(name)) return { ok: true, identifier, from: imported.from };
+  const members = kind.names(imported.from);
+  if (!members || members.includes(name)) return { ok: true, identifier, from: imported.from, declared: name };
   const nearest = nearestName(name, members) ?? (members.length === 1 ? members[0] : undefined);
   return fail(
     `${identifier} is not an imported ${kind.noun}: ${imported.from} declares ${members.map((member) => `\`${member}\``).join(", ") || "nothing"}.${nearest ? ` Did you mean ${qualifier.name}.${nearest}?` : ""}`,
@@ -131,13 +147,35 @@ export function resolveReference(written: WrittenReference, scope: ReferenceScop
   );
 }
 
-/** Every reference the scope resolves, for advice: the own name, each named import of a declaring file and each namespace member. */
+/** The name a named import's local stands for in the imported file: `PayInvoice` for `Pay` in `import { PayInvoice as Pay }`. */
+const importedNameOf = (imported: Import, local: string): string => imported.imported?.[imported.identifiers.indexOf(local)] ?? local;
+
+/**
+ * Every reference the scope resolves, for advice: the own name, each named import of a declaration of the kind and each
+ * namespace member of the kind.
+ */
 function candidates(scope: ReferenceScope, kind: ReferenceKind): string[] {
   const names = scope.own ? [scope.own.name] : [];
   for (const [local, imported] of scope.imports) {
     if (!kind.declares(imported.from)) continue;
-    if (!imported.namespace) names.push(local);
-    else for (const member of scope.declared(imported.from) ?? []) names.push(`${local}.${member}`);
+    const members = kind.names(imported.from);
+    if (!imported.namespace) {
+      if (members === undefined || kind.kindOf(imported.from, importedNameOf(imported, local)) === kind.noun) names.push(local);
+    } else for (const member of members ?? []) names.push(`${local}.${member}`);
   }
   return names;
+}
+
+/**
+ * The reference a line head writes, for a line that is a reference and nothing else (a listing line of an owner's `events`
+ * or `commands` section): `InvoicePaid`, or `notices.InvoiceOverdue`, a member of a namespace import. MX reads a dotted
+ * head as one tag name, so the parts are split here, each at its offset in the file. A head of three or more parts is no
+ * reference, `undefined`: the caller reports it.
+ */
+export function lineHeadReference(tag: { name: string; nameSpan?: { sourceStart: number } }): WrittenReference | undefined {
+  const start = tag.nameSpan?.sourceStart ?? 0;
+  const parts = tag.name.split(".");
+  if (parts.length === 1) return { name: tag.name, offset: start };
+  if (parts.length === 2) return { qualifier: { name: parts[0]!, offset: start }, name: parts[1]!, offset: start + parts[0]!.length + 1 };
+  return undefined;
 }
