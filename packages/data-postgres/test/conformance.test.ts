@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import { SQL } from "bun";
+import { beforeAll, expect, test } from "bun:test";
 import { bigint, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import type { DataLayer } from "@meshfw/runtime";
 import { dataLayerConformanceV1, rawSqlConformance, type DataLayerFixtureV1, type RawSqlFixture } from "@meshfw/runtime/testing";
@@ -38,7 +39,35 @@ describeServer("contract v1 conformance, Postgres", () => {
   for (const [name, check] of Object.entries(rawSqlConformance(makeRaw, capabilities))) test(name, check, 60_000);
 });
 
-test("the capability manifest declares conditions and joins, and neither gapless-positions nor raw-sql", () => {
-  expect(capabilities).toEqual({ adapter: "postgres", capabilities: ["aggregates", "integer-key-fill", "conditions", "joins"] });
+// Postgres folds the constant parts of a statement while it plans it with the parameters' values (a custom plan) and
+// keeps them as parameters in a generic plan, so a policy guard's raise must hold under both (ADR-0046, option B). A
+// prepared statement takes custom plans for its first five runs; this database forces a generic plan from the first.
+describeServer("the policy-guards checks under a forced generic plan, Postgres", () => {
+  const database = testDatabase({ records, uuidTable, integerTable, taskTable });
+  beforeAll(async () => {
+    const [{ name }] = await database.admin.unsafe("select current_database() as name");
+    await database.admin.unsafe(`ALTER DATABASE "${name}" SET plan_cache_mode = force_generic_plan`);
+  });
+  test("a new connection to the database plans generically", async () => {
+    const connection = new SQL(database.url, { max: 1 });
+    try { expect((await connection.unsafe("show plan_cache_mode"))[0].plan_cache_mode).toBe("force_generic_plan"); }
+    finally { await connection.close(); }
+  });
+  const make = async (): Promise<DataLayerFixtureV1> => {
+    const layer = await database.freshLayer();
+    return {
+      layer: { transaction: layer.transaction, refuseIfFailed: layer.refuseIfFailed, close: layer.close } satisfies DataLayer,
+      table: records, sampleRow, secondRow, key: { id: sampleRow.id }, secondKey: { id: secondRow.id },
+      changes: { title: "Changed" },
+      uuidTable, integerTable, taskTable,
+    };
+  };
+  const checks = Object.entries(dataLayerConformanceV1(make, capabilities)).filter(([name]) => name.startsWith("policy-guards: "));
+  test("the policy-guards group is in the suite", () => { expect(checks.length).toBeGreaterThan(0); });
+  for (const [name, check] of checks) test(name, check, 60_000);
+});
+
+test("the capability manifest declares conditions, joins and policy-guards, and neither gapless-positions nor raw-sql", () => {
+  expect(capabilities).toEqual({ adapter: "postgres", capabilities: ["aggregates", "integer-key-fill", "conditions", "joins", "policy-guards"] });
   expect(Object.isFrozen(capabilities)).toBe(true);
 });
