@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { CAPABILITIES, FrameworkError, type DataLayer, type DataOperations } from "@meshfw/runtime";
-import { dataLayerConformanceV1, type DataLayerFixtureV1 } from "@meshfw/runtime/testing";
+import { dataLayerConformanceV1, rawSqlConformance, type DataLayerFixtureV1, type RawSqlFixture } from "@meshfw/runtime/testing";
 import { capabilities, createSchema, sqlite } from "../src/index.ts";
 
 const records = sqliteTable("records", { id: text("id").primaryKey().notNull(), title: text("title").notNull() });
@@ -46,11 +46,32 @@ for (const kind of ["memory", "file"] as const) {
   });
 }
 
+/** The SQLite parts of the raw-SQL block: quoted names, the stored forms, the statements and text parameters SQLite would take. */
+function rawSqlFixture(kind: "memory" | "file", dirs: string[]) {
+  const make = fixtureFactory(kind, dirs);
+  return async (): Promise<RawSqlFixture> => ({
+    ...await make(),
+    taskTableName: '"tasks"',
+    columns: { id: '"id"', createdAt: '"createdAt"' },
+    stored: { boolean: (value) => value ? 1 : 0, date: (value) => value.getTime() },
+    refusedStatements: ["pragma query_only = off", "pragma foreign_keys = off", "attach ':memory:' as x", "detach x", "vacuum", "explain select 1", "reindex", "analyze"],
+    textParameters: ["?", "?1", ":a", "@a", "$a"],
+  });
+}
+
+for (const kind of ["memory", "file"] as const) {
+  describe(`raw-sql conformance, ${kind} database`, () => {
+    const dirs: string[] = [];
+    afterAll(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+    for (const [name, check] of Object.entries(rawSqlConformance(rawSqlFixture(kind, dirs), capabilities))) test(name, check, 60_000);
+  });
+}
+
 describe("the capability manifest", () => {
   test("is static data on the descriptor and the entry point, readable without opening a connection", () => {
     const layer = sqlite({ file: join(tmpdir(), "mesh-never-created.db") });
     expect(layer.capabilities).toBe(capabilities);
-    expect(capabilities).toEqual({ adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins"] });
+    expect(capabilities).toEqual({ adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins", "raw-sql"] });
     expect(Object.isFrozen(capabilities)).toBe(true);
     for (const name of capabilities.capabilities) expect(CAPABILITIES).toContain(name);
   });

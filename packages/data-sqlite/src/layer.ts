@@ -8,12 +8,13 @@ import { resolve } from "node:path";
 import { sqliteDialect } from "./dialect.ts";
 import { deliveryOperations, multiProcessOperations } from "./delivery.ts";
 import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
+import { rawQuery } from "./raw-query.ts";
 
 /** How many `:memory:` layers this process made: each names its private database `:memory: #<n>`. */
 let memoryLayers = 0;
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
-export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins"]);
+export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins", "raw-sql"]);
 
 // A type alias, not an interface, so it satisfies `DataAdapter.options` (an index signature).
 export type SQLiteOptions = { readonly file: string };
@@ -224,6 +225,7 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
     }, guard),
       appendEvent: async (row) => { guard(); return busy(() => appendEvent(connection!, row)); },
       deleteOutboxThrough: async (position) => { guard(); return busy(() => deleteOutboxThrough(connection!, position)); },
+      query: async (statement) => { guard(); return busy(() => rawQuery(connection!, statement)); },
       ...deliveryOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
       ...multiProcessOperations(() => connection!, (statement) => { guard(); return busy(statement); }),
     }),

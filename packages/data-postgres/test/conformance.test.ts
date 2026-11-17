@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { bigint, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import type { DataLayer } from "@meshfw/runtime";
-import { dataLayerConformanceV1, type DataLayerFixtureV1 } from "@meshfw/runtime/testing";
+import { dataLayerConformanceV1, rawSqlConformance, type DataLayerFixtureV1, type RawSqlFixture } from "@meshfw/runtime/testing";
 import { capabilities } from "../src/index.ts";
 import { describeServer, testDatabase } from "./support.ts";
 
@@ -29,9 +29,16 @@ describeServer("contract v1 conformance, Postgres", () => {
     };
   };
   for (const [name, check] of Object.entries(dataLayerConformanceV1(make, capabilities))) test(name, check, 60_000);
+  // data-postgres does not declare raw-sql yet (ADR-0087 question 6, ruling D34: the read-only window leaves session
+  // side effects such as advisory locks open), so the block is its one check: no query operation is handed out.
+  const makeRaw = async (): Promise<RawSqlFixture> => ({
+    ...await make(), taskTableName: '"tasks"', columns: { id: '"id"', createdAt: '"createdAt"' },
+    stored: { boolean: (value) => value, date: (value) => value }, refusedStatements: [], textParameters: ["$1"],
+  });
+  for (const [name, check] of Object.entries(rawSqlConformance(makeRaw, capabilities))) test(name, check, 60_000);
 });
 
-test("the capability manifest declares conditions and joins and never gapless-positions", () => {
+test("the capability manifest declares conditions and joins, and neither gapless-positions nor raw-sql", () => {
   expect(capabilities).toEqual({ adapter: "postgres", capabilities: ["aggregates", "integer-key-fill", "conditions", "joins"] });
   expect(Object.isFrozen(capabilities)).toBe(true);
 });
