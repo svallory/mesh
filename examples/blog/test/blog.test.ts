@@ -60,7 +60,7 @@ function counting(layer: DataLayer, counter: { locked: number }): DataLayer {
 }
 
 // What a destroy with no policy that reads the record does (no read without a seam) is in
-// packages/data-sqlite/test/lifecycle.test.ts. Here `:owner` reads the post's author, so every destroy reads the row.
+// packages/data-sqlite/test/domain/lifecycle.ts. Here `:owner` reads the post's author, so every destroy reads the row.
 describe("a destroy the :owner policy covers reads the row once under the lock, and a seam that wants the change reads it no second time (M6 ruling 4)", () => {
   const destroyOne = async (seams: Seams | undefined) => {
     const db = sqlite({ file: ":memory:" });

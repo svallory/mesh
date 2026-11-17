@@ -92,3 +92,56 @@ export function testDatabase(tables: Readonly<Record<string, TableHandle>>): Tes
     },
   };
 }
+
+/**
+ * Layers for tables that exist only once a test has run (the domain suites generate their schema in `beforeAll`): the
+ * first `layerFor(tables)` creates a database with `tables` prepared in its `public` schema, and every call returns a
+ * new layer over a clone of them in a schema of its own, as `freshLayer` does. One `afterAll` closes every layer and
+ * drops every database.
+ */
+export function lazyDatabases(): { layerFor(tables: Readonly<Record<string, TableHandle>>): Promise<PostgresLayer> } {
+  const made = new Map<Readonly<Record<string, TableHandle>>, Promise<{ name: string; admin: SQL; names: string[] }>>();
+  const layers: PostgresLayer[] = [];
+  const created: string[] = [];
+  let schemas = 0;
+  afterAll(async () => {
+    for (const layer of layers.splice(0)) await layer.close().catch(() => undefined);
+    const server = serverUrl === undefined ? undefined : new SQL(serverUrl, { max: 1 });
+    try {
+      // Every database CREATE DATABASE made is dropped, also one whose createSchema failed, and a failed drop does not
+      // stop the ones after it.
+      for (const pending of made.values()) await (await pending.catch(() => undefined))?.admin.close().catch(() => undefined);
+      for (const name of created.splice(0)) await server?.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => undefined);
+    } finally {
+      made.clear();
+      await server?.close();
+    }
+  }, 60_000);
+  const database = (tables: Readonly<Record<string, TableHandle>>) => {
+    let pending = made.get(tables);
+    if (pending === undefined) {
+      pending = (async () => {
+        const name = `mesh_t_${process.pid}_${++databases}_${Math.random().toString(36).slice(2, 8)}`;
+        const server = new SQL(serverUrl!, { max: 1 });
+        try { await server.unsafe(`CREATE DATABASE "${name}"`); } finally { await server.close(); }
+        created.push(name);
+        const layer = postgres({ url: databaseUrl(name) });
+        try { await createSchema(layer, tables); } finally { await layer.close(); }
+        return { name, admin: new SQL(databaseUrl(name), { max: 2 }), names: Object.values(tables).map((handle) => getTableName(postgresTable(handle))) };
+      })();
+      made.set(tables, pending);
+    }
+    return pending;
+  };
+  return {
+    async layerFor(tables) {
+      const { name, admin, names } = await database(tables);
+      const schema = `c${++schemas}`;
+      await admin.unsafe(`CREATE SCHEMA "${schema}"`);
+      for (const table of names) await admin.unsafe(`CREATE TABLE "${schema}"."${table}" (LIKE public."${table}" INCLUDING ALL)`);
+      const layer = postgresWith({ url: databaseUrl(name) }, { schema });
+      layers.push(layer);
+      return layer;
+    },
+  };
+}

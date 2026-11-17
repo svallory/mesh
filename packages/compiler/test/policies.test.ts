@@ -1,7 +1,7 @@
 // M8a at build time: what a policy may read, what `actions=` may name, which checks run where, a read or load policy
 // that reads the record (folded into the query since M10), a policy with no check, `&x` on a create (S2 of the
 // review), `Mesh.isSystem(context)`, and what `mesh explain` says. The run-time side is
-// `packages/data-sqlite/test/policies.test.ts`.
+// `packages/data-sqlite/test/domain/policies.ts`.
 import { describe, expect, test } from "bun:test";
 import type { Diagnostic, Entity } from "@meshfw/model";
 import { buildModel } from "../src/front-end/build.ts";
