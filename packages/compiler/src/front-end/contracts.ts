@@ -49,6 +49,17 @@ const fn = (required = false): CustomTagAttribute => ({
   required,
 });
 const named = () => ({ name: atom(true) });
+/**
+ * A field parent: a tag whose children are field lines (`attributes`, `event`, `command`, `concept`). It admits a concept
+ * use (`Money :total`), whose name no contract can list in advance (a concept is a tag file MX finds by its file name,
+ * `concept-file.ts`), so it declares no `children` (ruling D36, OD3). Each field kind's `parents` keeps a misplaced known
+ * line an error (`MESH_PARENT_NOT_ALLOWED`), and MX keeps a tagless `&title` one (`MESH_UNKNOWN_TAG`). Every change to one
+ * of these contracts builds it through this helper, so `children` stays absent.
+ */
+export const fieldParent = (def: CustomTag): CustomTag => {
+  const { children: _open, ...rest } = closed(def);
+  return rest;
+};
 const children = (...names: readonly string[]) =>
   Object.fromEntries(names.map((name) => [name, { repeatable: true }]));
 /**
@@ -259,22 +270,19 @@ const contracts: ContractMap = {
   }),
   // An event and a command are files of their own (M6), or declared inline in an owner's section: the line declares one,
   // and its children are field lines, written as attribute lines are (`uuid :invoiceId`). The field kinds are the
-  // attribute types, whose contracts also list these two as parents; `default`, `unique`, `primary-key`, `on` and `value`
+  // attribute types, whose contracts list these two as parents (the two are field parents, `fieldParent`); `default`, `unique`, `primary-key`, `on` and `value`
   // are not options of a field, which the builder reports as `MESH_UNKNOWN_OPTION` (a contract is per tag, so it cannot
   // tell a field from an attribute).
-  event: closed({
+  event: fieldParent({
     parents: ["#root", "events"],
     attributes: named(),
-    children: children(...ATTRIBUTE_TYPES),
   }),
-  command: closed({
+  command: fieldParent({
     parents: ["#root", "commands"],
     attributes: named(),
-    children: children(...ATTRIBUTE_TYPES),
   }),
-  attributes: closed({
+  attributes: fieldParent({
     parents: ["entity"],
-    children: children(...ATTRIBUTE_TYPES),
   }),
   relationships: closed({
     parents: ["entity"],

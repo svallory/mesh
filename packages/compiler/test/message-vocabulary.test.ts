@@ -95,9 +95,16 @@ describe("Mesh's own contracts, each with an `analyze` hook, read in Mesh's word
     ["a missing required option", k + "  relationships\n    belongs-to :l\n", "MESH_MISSING_OPTION", "`belongs-to`: missing required option `entity`"],
     [
       "a child the section does not allow",
-      "entity :T\n  attributes\n    belongs-to :x entity=T\n",
+      "entity :T\n  relationships\n    string :x\n",
       "MESH_TAG_NOT_ALLOWED",
-      "`attributes`: `belongs-to` is not allowed here; allowed children: `uuid`, `string`, `integer`, `float`, `decimal`, `boolean`, `enum`, `date`, `datetime`, `timestamp`, `json`",
+      "`relationships`: `string` is not allowed here; allowed children: `belongs-to`, `has-many`, `has-one`",
+    ],
+    [
+      // `attributes` is a field parent with no `children` list (ruling D36, OD3): the misplaced line's own `parents` refuse it.
+      "a line under a field parent that is not a field kind",
+      "entity :T\n  attributes\n    belongs-to :x entity=T\n",
+      "MESH_PARENT_NOT_ALLOWED",
+      "`belongs-to` must be inside `relationships`; found inside `attributes`",
     ],
     ["a tag outside its parents", "attributes\n", "MESH_PARENT_NOT_ALLOWED", "`attributes` must be inside `entity`; found at the top level"],
     ["a repeated section", "entity :T\n  attributes\n  attributes\n", "MESH_REPEATED_CHILD", "`entity`: `attributes` may not be repeated"],

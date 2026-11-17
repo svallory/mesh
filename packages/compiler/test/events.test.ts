@@ -138,9 +138,11 @@ describe("an event and a command file", () => {
     expect(brief(one("command :A\n  uuid :id\ncommand :B\n  uuid :id\n"))[0]![5]).toBe("A command file must contain exactly one command");
     expect(brief(one("import { X } from \"./invoice-paid.mesh.mx\"\nevent :Bad\n  uuid :id\n"))).toEqual([["billing/bad.mesh.mx", 1, 0, "error", "MESH_UNKNOWN_IMPORT",
       "An event file takes no import: its fields are attribute lines, whose kinds are attribute types", "remove the import"]]);
-    // a field line is an attribute line: a relationship, an action or anything else is not allowed under an event
-    expect(one("event :R\n  belongs-to :x entity=R\n").map((d) => d.code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
-    expect(one("event :R\n  actions\n    read :all\n").map((d) => d.code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
+    // a field line is an attribute line: a relationship, an action or anything else is not allowed under an event. An
+    // event is a field parent with no `children` list (it admits a concept use, ruling D36 OD3), so the line's own
+    // `parents` refuse it.
+    expect(one("event :R\n  belongs-to :x entity=R\n").map((d) => [d.code, d.message])).toEqual([["MESH_PARENT_NOT_ALLOWED", "`belongs-to` must be inside `relationships`; found inside `event`"]]);
+    expect(one("event :R\n  actions\n    read :all\n").map((d) => [d.code, d.message])).toEqual([["MESH_PARENT_NOT_ALLOWED", "`actions` must be inside `entity`; found inside `event`"]]);
   });
 
   test("two declarations with one FQN are one error naming both files; the same name in two modules is fine", () => {
