@@ -508,6 +508,10 @@ describe("reads take a filter, sort, limit and offset", () => {
         // A computed field given as undefined too: the read leaves it out of what the data layer gets, which has no column for it.
         expect(titlesOf(await Post.read({ filter: { excerpt: undefined, commentCount: undefined, title: { eq: "delta" } } }, context))).toEqual(["delta"]);
         expect(titlesOf(await Post.read({ filter: { or: [{ excerpt: undefined }, { title: { eq: "echo" } }] }, sort }, context))).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+
+        // Compared or sorted by, excerpt (a body Mesh runs in memory) and commentCount (a rollup) are refused before any query.
+        await expect(Post.read({ filter: { excerpt: { eq: "x" } } }, context)).rejects.toThrow("A filter by blog.Post#excerpt is not available: excerpt is a computed field Mesh runs in memory");
+        await expect(Post.read({ sort: ["-commentCount"] }, context)).rejects.toThrow("A sort by blog.Post#commentCount is not available: commentCount is a rollup");
       });
     } finally { await db.close(); }
   });

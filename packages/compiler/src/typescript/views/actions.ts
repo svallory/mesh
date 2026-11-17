@@ -11,7 +11,7 @@ import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { globalAlias, globalsImport, withoutStrings, type GlobalsImport } from "./globals.ts";
 import { hasLoader, loaderName } from "./load.ts";
-import { computedColumns, effectiveActions, queryColumns, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, type PlannedInput } from "./inputs.ts";
+import { callerComputed, effectiveActions, queryColumns, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, type PlannedInput } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
 
 /**
@@ -314,11 +314,8 @@ function columnOf(entity: Entity, name: string, position: SourcePosition): { nam
   throw emitError("MESH_UNKNOWN_MEMBER", `Unknown member &${name} in entity ${entity.fqn}`, position);
 }
 
-/** Names that stay unprefixed in the actions file, as they were before the lifecycle added the others. */
-const PLAIN_IMPORTS: ReadonlySet<string> = new Set(["rejectComputedQuery"]);
-
-/** `NotFoundError as $NotFoundError`; `rejectComputedQuery`, which generated code has always imported, keeps its name. */
-const runtimeImport = (name: string) => (PLAIN_IMPORTS.has(name) ? name : `${name} as $${name}`);
+/** `NotFoundError as $NotFoundError`. */
+const runtimeImport = (name: string) => `${name} as $${name}`;
 
 /**
  * `set &x=({ input }) => input.x` for the member input `&x`: the one form ADR-0012 exempts from the null-to-required
@@ -379,6 +376,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   let readsClock = false;
   let tableOfUsed = false;
   let sortClassesUsed = false;
+  let callerComputedUsed = false;
+  // What a caller's filter and sort may do with each computed field they name (O6 (a)).
+  const callerFields = callerComputed(document, entity);
   const readBodies: ReadBody[] = [];
   const idOf = (expression: Expression): string => {
     const id = ids.get(expression);
@@ -483,18 +483,26 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       // ---- end policies ----------------------------------------------------------------------------------------
       const method = { ...base, inputType, generics, returnType, txReturnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: false,
         statements: [], isRead: true, seamTarget: null, readsCall: differs ? `(await ${readsCall}) as unknown as ${returnType}` : readsCall, preCheck };
-      // A caller's filter or sort by a computed field or rollup is refused before touching the database.
-      // What the data layer gets is the filter less the computed fields given as `undefined`, which are left out.
-      const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
-      if (computed.length) runtime.add("rejectComputedQuery");
+      // A caller's filter or sort by a computed field (O6 (a)): one that translates runs as SQL, `callerQuery` binding its
+      // literal on the read's scope; a rollup or one Mesh runs in memory is refused before touching the database. What the
+      // data layer gets as `filter` is the caller's less the computed fields given as `undefined`, which are left out.
+      const hasComputed = callerFields.length > 0;
+      const callerSql = callerFields.some((field) => field.kind === "translated");
+      if (hasComputed) {
+        runtime.add("callerQuery");
+        callerComputedUsed = true;
+      }
       // ---- SQL (M10): the read's own filter and sort run as SQL, beside the caller's filter, sort and paging ------
       // The filter is bound (its parameters computed in memory on the read's scope) and handed over as `where`; a filter
       // that folds to false or unknown returns no row without a query. The declared sort follows the caller's (O3) as `order`.
       const declared = Boolean(action.filter || action.sort);
+      // The read builds its scope when something it binds reads it: a declared filter or sort, or a translated computed field.
+      const scoped = declared || callerSql;
       const sql: string[] = [];
       let whereOption = "";
       let order = `sort: ${read("parsed", "sort")}`;
-      if (declared) {
+      let declaredKeys: string[] = [];
+      if (scoped) {
         runtime.add("scope").add("readOnlyRecord").add("pinClock");
         sql.push(
           "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
@@ -507,31 +515,48 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
           conditionsUsed = true;
         }
         if (action.sort) {
-          runtime.add("orderOf");
           sortClassesUsed = true;
-          const keys = action.sort.map((key, index) => {
+          declaredKeys = action.sort.map((key, index) => {
             const desc = key.direction === "desc";
             const attribute = entity.attributes.find((a) => a.name === key.member.name);
             if (attribute) return `{ column: ${JSON.stringify(attribute.name)}, class: ${JSON.stringify(valueClassOf(attribute.type) ?? "string")}, desc: ${desc} }`;
             conditionsUsed = true;
             return `{ literal: $conditions[${JSON.stringify(`read.${action.name}.sort.${index}`)}], desc: ${desc} }`;
           });
-          order = `order: $orderOf($tableOf, ${read("parsed", "sort")}, $sortClasses, [${keys.join(", ")}], $s as never)`;
+          if (!callerSql) {
+            runtime.add("orderOf");
+            order = `order: $orderOf($tableOf, ${read("parsed", "sort")}, $sortClasses, [${declaredKeys.join(", ")}], $s as never)`;
+          }
+        }
+        // With a translated computed field, `callerQuery` gives the order (the caller's keys, then the declared ones) or
+        // the caller's sort, whichever the call needs.
+        if (callerSql) {
+          sortClassesUsed = true;
+          order = "sort: $caller.sort, order: $caller.order";
         }
         tableOfUsed = true;
       }
-      // The read's filter and, from the read action, its policies' condition (`rows`; absent from a `Mesh.privileged` read),
-      // all of which must hold for a row: a part that is false or unknown for every row returns no row with no query.
+      // The caller's filter less what it leaves out; with a translated computed field, the filter or, when it compares
+      // one, its condition, with the read's scope, the column classes and the declared sort keys.
+      const callerCall = !hasComputed ? []
+        : callerSql
+          ? [`const $caller = $callerQuery(${JSON.stringify(entity.fqn)}, $callerComputed, parsed, { tableOf: $tableOf, scope: $s as never, classes: $sortClasses, layer${declaredKeys.length ? `, declared: [${declaredKeys.join(", ")}]` : ""} });`]
+          : [`const $caller = $callerQuery(${JSON.stringify(entity.fqn)}, $callerComputed, parsed);`];
+      // The caller's condition, the read's filter and, from the read action, its policies' condition (`rows`; absent from a
+      // `Mesh.privileged` read), all of which must hold for a row: a part that is false or unknown for every row returns no
+      // row with no query.
       const whereParts = [
+        ...(callerSql ? ["$caller.where"] : []),
         ...(action.filter ? [`$bindCondition($tableOf, $conditions[${JSON.stringify(`read.${action.name}.filter`)}], $s as never)`] : []),
         ...(folded ? ["rows ?? true"] : []),
       ];
+      if (callerSql) sql.push(...callerCall);
       if (whereParts.length) {
         runtime.add("allOf").add("whereFor");
         sql.push(`const $where = $allOf([${whereParts.join(", ")}]);`, `if ($where === false) return [] as unknown as ${txReturnType};`);
         whereOption = ", where: $whereFor(layer, $where)";
       }
-      const query = [`filter: ${computed.length ? "$filter" : read("parsed", "filter")}${whereOption}`, order, `limit: ${read("parsed", "limit")}`, `offset: ${read("parsed", "offset")}`].join(", ");
+      const query = [`filter: ${hasComputed ? "$caller.filter" : read("parsed", "filter")}${whereOption}`, order, `limit: ${read("parsed", "limit")}`, `offset: ${read("parsed", "offset")}`].join(", ");
       const select = `await tx.select(${table}, { ${query} })`;
       if (loads) {
         // The names were validated before the transaction opened. The rows are read, then loaded in the same transaction.
@@ -540,18 +565,18 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         planUsed = true;
         readsLoad = true;
       }
-      if (declared) readsClock = true;
+      if (scoped) readsClock = true;
       runtimeTypes.add("CastOutput");
       const rowsParam = folded ? ", rows?: $Where" : "";
-      readBodies.push({ ...body, contextParam: `${declared && !loads ? `, context?: unknown, clock?: () => $Date, _policies?: boolean${castParam}` : body.contextParam}${rowsParam}`, unsupported: null, usesParsed: true,
+      readBodies.push({ ...body, contextParam: `${scoped && !loads ? `, context?: unknown, clock?: () => $Date, _policies?: boolean${castParam}` : body.contextParam}${rowsParam}`, unsupported: null, usesParsed: true,
         statements: [
-          ...(computed.length ? [`const $filter = rejectComputedQuery(${JSON.stringify(entity.fqn)}, [${computed.join(", ")}], parsed);`] : []),
+          ...(callerSql ? [] : callerCall),
           ...sql,
           ...(loads
             ? [
               `const $rows = (${select}) as ${recordName}[];`,
               `if (!parsed.load?.length) return $rows as unknown as ${txReturnType};`,
-              ...(declared ? [] : [
+              ...(scoped ? [] : [
                 "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
                 // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
                 "const $clock = clock ?? $pinClock(options.clock);",
@@ -1002,16 +1027,29 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const lowered = place.lower();
       if (lowered.ok) hopTables(lowered.lowered.tree, reached);
     }
+    if (callerComputedUsed) for (const field of callerFields) if (field.kind === "translated") hopTables(field.lowered.tree, reached);
     const entries = [...reached].sort().map((fqn) => `${JSON.stringify(fqn)}: ${tableAccess(document.entities.find((candidate) => candidate.fqn === fqn)!)}`);
     runtimeTypes.add("TableHandle").add("TableOf");
     moduleLines.push(`/** The table of each entity the conditions of this file's reads reach, by FQN. */`,
       `const $tableOf: $TableOf = (fqn) => (${entries.length ? `{ ${entries.join(", ")} }` : "{}"} as { readonly [fqn: string]: $TableHandle })[fqn]!;`);
   }
+  // Both maps end in `as const`: a key named like a member of Object (`toString`) would otherwise take that member's type
+  // as its context, and its string would widen to `string`.
   if (sortClassesUsed) {
     runtimeTypes.add("ValueClass");
     const columns = queryColumns(entity).filter((column) => !entity.computed.some((field) => field.name === column.name));
-    moduleLines.push("/** How each column a caller may sort by is stored, for the order a read with a declared sort hands the data layer. */",
-      `const $sortClasses: { readonly [name: string]: $ValueClass } = { ${columns.map((column) => `${propertyName(column.name)}: ${JSON.stringify(valueClassOf(column.type) ?? "string")}`).join(", ")} };`);
+    moduleLines.push("/** How each column a caller may filter and sort by is stored, for the order and the conditions a read hands the data layer. */",
+      `const $sortClasses: { readonly [name: string]: $ValueClass } = { ${columns.map((column) => `${propertyName(column.name)}: ${JSON.stringify(valueClassOf(column.type) ?? "string")}`).join(", ")} } as const;`);
+  }
+  if (callerComputedUsed) {
+    runtimeTypes.add("CallerComputed");
+    const entries = callerFields.map((field) => {
+      if (field.kind !== "translated") return `${propertyName(field.column.name)}: ${JSON.stringify(field.kind)}`;
+      conditionsUsed = true;
+      return `${propertyName(field.column.name)}: { class: ${JSON.stringify(valueClassOf(field.column.type) ?? "string")}, literal: () => $conditions[${JSON.stringify(`computed.${field.column.name}`)}] }`;
+    });
+    moduleLines.push("/** What a caller's filter and sort may do with each computed field: translate its condition literal, read when a read runs, or refuse it. */",
+      `const $callerComputed: { readonly [name: string]: $CallerComputed } = { ${entries.join(", ")} } as const;`);
   }
   // ---- end SQL ------------------------------------------------------------------------------------------------------
   const view = {

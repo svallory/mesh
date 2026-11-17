@@ -13,7 +13,7 @@ import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { hasLoader } from "./load.ts";
 import { entityFileComment } from "./types.ts";
 import { classLocal, className, declarationFile, declarationsOf, type Declaration } from "./declarations.ts";
-import { effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, typeName } from "./inputs.ts";
+import { callerComputed, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, hasRead, typeName } from "./inputs.ts";
 
 /**
  * What `expressions.ts.jig` renders for one entity: every expression in its entity file as
@@ -105,8 +105,9 @@ export interface ExpressionsView {
   readonly entries: readonly ExpressionEntry[];
   /**
    * `$conditions` (M10): one condition literal per declared filter, per declared sort key that is a computed field, per
-   * function of a read or load policy that reads the record, and per rollup filter (`rollup.<name>.filter`): the filters
-   * and sorts first, then the policies, then the rollup filters, each group in file order. The read (and a caller's load) binds it and hands it to the data layer as SQL. Empty when the entity has none,
+   * function of a read or load policy that reads the record, per rollup filter (`rollup.<name>.filter`), and, on an entity
+   * with a read, per computed field a caller's filter and sort may name that translates (`computed.<name>`): the filters
+   * and sorts first, then the policies, then the rollup filters, then the computed fields, each group in file order. The read (and a caller's load) binds it and hands it to the data layer as SQL. Empty when the entity has none,
    * and then the file declares no `$conditions`.
    */
   readonly conditions: readonly ExpressionEntry[];
@@ -523,6 +524,13 @@ export function expressionsView({ document }: EmitInput, entity: Entity, generat
     // A rollup's filter: its parameters are `%.now` and `%.today` only, so its scope is the clock's.
     ...rollupFilters(document, entity).map((place) => literalEntry(place.lower, place.subject, place.filter.position, `rollup.${place.computed.name}.filter`,
       `${place.computed.rollup!.fn} :${place.computed.name} filter`, scopeName, place.last.fqn)),
+    // Each computed field a caller's filter and sort may name that translates (O6 (a)): read by the entity's reads.
+    ...(hasRead(entity) ? callerComputed(document, entity) : []).flatMap((field): ExpressionEntry[] => {
+      if (field.kind !== "translated") return [];
+      const computed = entity.computed.find((candidate) => candidate.name === field.column.name)!;
+      return [literalEntry(() => ({ ok: true, lowered: field.lowered }), `computed :${computed.name} of ${entity.fqn}`, computed.position, `computed.${computed.name}`,
+        `computed :${computed.name}, for a caller's filter and sort`, `${scopeName}<unknown>`)];
+    }),
   ];
   // The entity imports: each value with its read-only type, and each record type, from the entity's actions file; its own
   // record type is already imported from its types file.

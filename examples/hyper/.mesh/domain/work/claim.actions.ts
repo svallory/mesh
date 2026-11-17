@@ -7,7 +7,9 @@ import {
   InvalidInputError as $InvalidInputError,
   NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
+  allOf as $allOf,
   authorizer as $authorizer,
+  callerQuery as $callerQuery,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -20,13 +22,13 @@ import {
   publishEvent as $publishEvent,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
-  rejectComputedQuery,
   rescope as $rescope,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
   unloadFrom as $unloadFrom,
   uuidv7 as $uuidv7,
+  whereFor as $whereFor,
   writeCount as $writeCount,
   type ActionContext as $ActionContext,
   type ActionFrame as $ActionFrame,
@@ -36,11 +38,15 @@ import {
   type DeepReadonly as $DeepReadonly,
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
+  type CallerComputed as $CallerComputed,
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type Issue as $Issue,
   type LoadOptions as $LoadOptions,
   type Row as $Row,
+  type TableHandle as $TableHandle,
+  type TableOf as $TableOf,
+  type ValueClass as $ValueClass,
 } from "@meshfw/runtime";
 import type {
   Claim as $Record,
@@ -69,6 +75,7 @@ import {
 } from "./claim.validators";
 import { tables } from "../../schema";
 import {
+  $conditions,
   $expressions,
   type $work$Claim$Scope as $Scope,
   type $work$Claim$StoredScope as $StoredScope,
@@ -82,6 +89,25 @@ import {
   type $Pick,
   type $Promise,
 } from "../../$globals";
+
+/** The table of each entity the conditions of this file's reads reach, by FQN. */
+const $tableOf: $TableOf = (fqn) => (({}) as { readonly [fqn: string]: $TableHandle })[fqn]!;
+/** How each column a caller may filter and sort by is stored, for the order and the conditions a read hands the data layer. */
+const $sortClasses: { readonly [name: string]: $ValueClass } = {
+  id: "string",
+  fence: "integer",
+  acquiredAt: "date",
+  expiresAt: "date",
+  endedAt: "date",
+  endReason: "string",
+  state: "string",
+  taskId: "string",
+  holderId: "string",
+} as const;
+/** What a caller's filter and sort may do with each computed field: translate its condition literal, read when a read runs, or refuse it. */
+const $callerComputed: { readonly [name: string]: $CallerComputed } = {
+  lapsed: { class: "boolean", literal: () => $conditions["computed.lapsed"] },
+} as const;
 
 /**
  * The reads of this entity without their policies: what `Mesh.privileged(Claim)` runs. The read actions
@@ -104,17 +130,35 @@ export function bindClaimReads(
       // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readClaimInputSchema, input));
       return layer.transaction(async (tx) => {
-        const $filter = rejectComputedQuery("work.Claim", ["lapsed"], parsed);
+        const $context = (context ?? {}) as unknown as { [key: string]: unknown };
+        const $clock = clock ?? $pinClock(options.clock);
+        const $s = $scope(
+          {
+            input: $readOnlyRecord(parsed as never, "work.Claim#read"),
+            actor: $context.actor,
+            context: $context,
+          },
+          { clock: $clock },
+        );
+        const $caller = $callerQuery("work.Claim", $callerComputed, parsed, {
+          tableOf: $tableOf,
+          scope: $s as never,
+          classes: $sortClasses,
+          layer,
+        });
+        const $where = $allOf([$caller.where]);
+        if ($where === false)
+          return [] as unknown as L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never;
         const $rows = (await tx.select(tables.claims, {
-          filter: $filter,
-          sort: parsed.sort,
+          filter: $caller.filter,
+          where: $whereFor(layer, $where),
+          sort: $caller.sort,
+          order: $caller.order,
           limit: parsed.limit,
           offset: parsed.offset,
         })) as Claim[];
         if (!parsed.load?.length)
           return $rows as unknown as L extends unknown ? ClaimTxWith<ClaimLoadNames<L>>[] : never;
-        const $context = (context ?? {}) as unknown as { [key: string]: unknown };
-        const $clock = clock ?? $pinClock(options.clock);
         return (await $loadRows($loadPlan, "work.Claim", tx, $rows, parsed.load, {
           actor: $context.actor,
           context: $context,

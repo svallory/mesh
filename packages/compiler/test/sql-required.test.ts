@@ -302,13 +302,14 @@ describe("the generated read of a policy that reads the record", () => {
     expect(read.preCheck.at(-2)).toMatch(/^const \$rows = await \$authorizer\("billing\.Invoice", "read", .*\.rows\(layer, \$scope\(.*\), \$tableOf\);$/);
     expect(read.preCheck.at(-1)).toBe("if ($rows === false) return [] as unknown as (L extends unknown ? InvoiceWith<InvoiceLoadNames<L>>[] : never);");
     expect(read.readsCall).toContain("$reads.read(input, context, $clock, true, $parsed, $rows)");
-    // The auto read has no filter of its own: its body applies the policies' condition alone.
+    // The auto read has no filter of its own: its body applies the policies' condition beside the caller's (Invoice has
+    // translated computed fields, so the caller's filter may be a condition too).
     const body = view.reads.find((m) => m.name === "read")!;
     expect(body.contextParam.endsWith(", rows?: $Where")).toBe(true);
-    expect(body.statements).toContain("const $where = $allOf([rows ?? true]);");
+    expect(body.statements).toContain("const $where = $allOf([$caller.where, rows ?? true]);");
     expect(body.statements.find((line) => line.includes("tx.select"))).toContain("where: $whereFor(layer, $where)");
     // A declared filter is combined with them.
-    expect(view.reads.find((m) => m.name === "r0")!.statements).toContain('const $where = $allOf([$bindCondition($tableOf, $conditions["read.r0.filter"], $s as never), rows ?? true]);');
+    expect(view.reads.find((m) => m.name === "r0")!.statements).toContain('const $where = $allOf([$caller.where, $bindCondition($tableOf, $conditions["read.r0.filter"], $s as never), rows ?? true]);');
     // The table map lists what the policy's hop reaches.
     expect(view.moduleLines.find((line) => line.startsWith("const $tableOf"))).toContain('"billing.Customer": tables.customer }');
     expect(view.runtimeTypes).toContain("Where as $Where");
@@ -317,7 +318,7 @@ describe("the generated read of a policy that reads the record", () => {
   test("the expressions file holds the policy's literal, typed by the scope its in-memory form has", () => {
     const { built, input } = emitted("      authorize-if=({ actor }) => &customer.ownerId === actor.id\n");
     const conditions = expressionsView(input, built.entity("Invoice"), "generated/domain/billing/invoice.expressions.ts").conditions;
-    expect(conditions.map((entry) => entry.key)).toEqual(['"read.r0.filter"', '"policy.mine.authorize-if.0"']);
+    expect(conditions.map((entry) => entry.key)).toEqual(['"read.r0.filter"', '"policy.mine.authorize-if.0"', '"computed.isLate"', '"computed.late"']);
     expect(conditions[1]!.code).toContain('what: "policy :mine authorize-if of billing.Invoice"');
     expect(conditions[1]!.code.replace(/\s+/g, "")).toContain('"hop":{"column":"id","key":"id","outer":"customerId","table":"billing.Customer"}');
     expect(conditions[1]!.code).toMatch(/params: \(\$s: \$billing\$Invoice\$\w*Scope<unknown>\) => \[\$s\.actor/);
@@ -335,5 +336,49 @@ describe("the generated read of a policy that reads the record", () => {
     const { view } = emitted("      authorize-if=({ actor }) => actor.id !== null\n");
     expect(view.methods.find((m) => m.name === "read")!.preCheck.at(-1)).toContain(".filter(layer, ");
     expect(view.reads.find((m) => m.name === "read")!.contextParam).not.toContain("rows");
+  });
+});
+
+describe("a caller's filter and sort by a translated computed field (O6 (a))", () => {
+  const view = (source: string, name = "Invoice", more: Record<string, string> = {}) => {
+    const built = fixture.build(source, more);
+    expect(errors(built.diagnostics)).toEqual([]);
+    const input = { document: built.document!, config: configOf("/project", "generated") };
+    const entity = built.entity(name);
+    return {
+      conditions: expressionsView(input, entity, `generated/domain/billing/${name.toLowerCase()}.expressions.ts`).conditions.map((entry) => entry.key),
+      moduleLines: actionsView(input, entity).moduleLines,
+    };
+  };
+
+  test("an entity with a read gets each translated field's literal and the $callerComputed table", () => {
+    const { conditions, moduleLines } = view(invoice([]));
+    expect(conditions).toEqual(['"computed.isLate"', '"computed.late"']);
+    const table = moduleLines.find((line) => line.startsWith("const $callerComputed"));
+    expect(table).toContain('isLate: { class: "boolean", literal: () => $conditions["computed.isLate"] }');
+    expect(table).toContain('shout: "plain"');
+    expect(table).toContain('nLines: "rollup"');
+  });
+
+  test("an entity with no read gets neither: the expressions view and the actions view agree", () => {
+    // Nothing reaches Note, so it needs no read; its computed field translates as Invoice's isLate does.
+    const note = `entity :Note
+  attributes
+    uuid :id primary-key
+    date :dueOn nullable
+  computed
+    boolean :isLate() { return &dueOn < %.today }
+  actions auto=[:create]
+  policies
+    policy :open
+      authorize-if=() => true
+`;
+    const { conditions, moduleLines } = view(invoice([]), "Note", { "billing/note.mesh.mx": note });
+    expect(conditions.filter((key) => key.startsWith('"computed.'))).toEqual([]);
+    expect(moduleLines.some((line) => line.includes("$callerComputed"))).toBe(false);
+    // The same field on an entity with a read is emitted, so the guard is what leaves it out here.
+    const read = view(invoice([]), "Note", { "billing/note.mesh.mx": note.replace("auto=[:create]", "auto=[:create, :read]") });
+    expect(read.conditions).toEqual(['"computed.isLate"']);
+    expect(read.moduleLines.some((line) => line.startsWith("const $callerComputed"))).toBe(true);
   });
 });

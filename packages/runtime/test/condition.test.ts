@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { EXPRESSION_TABLES } from "@meshfw/runtime/testing";
 import {
-  FrameworkError, allOf, bindCondition, expr, orderOf, scope, whereFor,
+  FrameworkError, allOf, bindCondition, callerQuery, expr, orderOf, scope, whereFor,
+  type CallerComputed,
   type Condition, type ConditionLiteral, type LiteralNode, type SqlFunction, type TableHandle, type ValueClass,
 } from "@meshfw/runtime";
 
@@ -271,5 +272,141 @@ describe("orderOf", () => {
     expect(() => orderOf(tableOf, ["-"], classes, [], {})).toThrow(FrameworkError);
     expect(() => orderOf(tableOf, "title" as never, classes, [], {})).toThrow(FrameworkError);
     expect(() => orderOf(tableOf, ["toString"], classes, [], {})).toThrow(FrameworkError);
+  });
+});
+
+describe("callerQuery", () => {
+  const classes = { title: "string", total: "integer", dueOn: "date" } as const;
+  const layer = { capabilities: { adapter: "fake", capabilities: ["conditions", "joins"] } };
+  const c = (name: string, cls: ValueClass): Condition => ({ kind: "column", depth: 0, name, class: cls });
+  const v = (value: string | number | boolean | Date | null, cls: ValueClass): Condition => ({ kind: "value", value, class: cls });
+  const k = (fn: SqlFunction, ...args: Condition[]): Condition => ({ kind: "call", fn, args });
+  const lineHop = { table: "billing.Line", column: "invoiceId", outer: "id", key: "id" };
+  // doubled: &total * 2. busy: &lines.some((l) => l.qty > input-independent 2). late: &dueOn < %.today (a parameter).
+  const doubled = { class: "integer", literal: () => literal(call("mul", col("total", "integer"), val(2, "integer")), [], "computed :doubled of billing.Invoice") } as const;
+  const busy = { class: "boolean", literal: () => literal({ kind: "some", hop: lineHop, where: call("gt", col("qty", "integer", 1), val(2, "integer")) }, []) } as const;
+  const late = {
+    class: "boolean",
+    literal: () => ({ what: "computed :late", entity: "billing.Invoice", tree: call("lt", col("dueOn", "date"), param(0, "date")), params: (s: never) => [expr.today(s)] }) as ConditionLiteral<never>,
+  } as const;
+  const always = { class: "boolean", literal: () => literal(val(true, "boolean")) } as const;
+  const nothing = { class: "string", literal: () => literal(param(0, "string"), [null]) } as const;
+  const computed: Record<string, CallerComputed> = { doubled, busy, late, always, nothing, label: "plain" as const, lineCount: "rollup" as const, toString: "plain" as const };
+  const s = scope({}, { clock: () => new Date(86_400_000 * 3 + 5) });
+  const sql = { tableOf, scope: s, classes, layer };
+  const doubledNode = k("mul", c("total", "integer"), v(2, "integer"));
+  const busyNode: Condition = { kind: "some", hop: { table: lines, column: "invoiceId", outer: "id", key: "id" }, where: k("gt", { kind: "column", depth: 1, name: "qty", class: "integer" }, v(2, "integer")) };
+
+  test("a filter with no translated computed field stays a filter; the sort stays a sort", () => {
+    const filter = { title: { eq: "a" } };
+    const q = callerQuery("billing.Invoice", computed, { filter, sort: ["-title"] }, sql);
+    expect(q).toEqual({ filter, where: true, sort: ["-title"] });
+    expect(q.filter).toBe(filter);
+    expect(callerQuery("billing.Invoice", computed, {}, sql)).toEqual({ filter: undefined, where: true, sort: undefined });
+  });
+  test("a filter that compares a translated computed field moves, whole, to where", () => {
+    const q = callerQuery("billing.Invoice", computed, { filter: { title: { eq: "a" }, doubled: { gt: 10 } } }, sql);
+    expect(q.filter).toBeUndefined();
+    expect(q.where).toEqual(k("and", k("eq", c("title", "string"), v("a", "string")), k("gt", doubledNode, v(10, "integer"))));
+    // Under or, beside a stored column: the stored column is a column of the condition.
+    expect(callerQuery("billing.Invoice", computed, { filter: { or: [{ total: { lt: 3 } }, { busy: { eq: true } }] } }, sql).where)
+      .toEqual(k("or", k("lt", c("total", "integer"), v(3, "integer")), k("eq", busyNode, v(true, "boolean"))));
+    // A literal's parameters are computed on the read's scope.
+    expect(callerQuery("billing.Invoice", computed, { filter: { late: { eq: false } } }, sql).where)
+      .toEqual(k("eq", k("lt", c("dueOn", "date"), v(new Date(86_400_000 * 3), "date")), v(false, "boolean")));
+  });
+  test("every operator is the data layer's: eq/ne null are null tests, in is one of, nil, several operators all hold", () => {
+    const where = (spec: unknown) => callerQuery("billing.Invoice", computed, { filter: { doubled: spec } }, sql).where;
+    expect(where({ eq: null })).toEqual(k("isNull", doubledNode));
+    expect(where({ ne: null })).toEqual(k("isNotNull", doubledNode));
+    expect(where({ ne: 4 })).toEqual(k("ne", doubledNode, v(4, "integer")));
+    expect(where({ nil: true })).toEqual(k("isNull", doubledNode));
+    expect(where({ nil: false })).toEqual(k("isNotNull", doubledNode));
+    expect(where({ in: [2] })).toEqual(k("eq", doubledNode, v(2, "integer")));
+    expect(where({ in: [2, 4] })).toEqual(k("or", k("eq", doubledNode, v(2, "integer")), k("eq", doubledNode, v(4, "integer"))));
+    expect(where({ in: [] })).toBe(false);
+    expect(where({ gte: 2, lt: 9 })).toEqual(k("and", k("gte", doubledNode, v(2, "integer")), k("lt", doubledNode, v(9, "integer"))));
+    // A fraction against an integer field is compared as a number.
+    expect(where({ gt: 2.5 })).toEqual(k("gt", doubledNode, v(2.5, "float")));
+  });
+  test("and/or of nothing, and a body that folds to a constant, fold", () => {
+    const where = (filter: unknown) => callerQuery("billing.Invoice", computed, { filter }, sql).where;
+    expect(where({ always: { eq: true } })).toBe(true);
+    expect(where({ always: { eq: false } })).toBe(false);
+    expect(where({ and: [], always: { eq: true } })).toBe(true);
+    expect(where({ or: [], always: { eq: true } })).toBe(false);
+    // An unknown body: eq is unknown, and an unknown where returns no row (allOf).
+    expect(where({ nothing: { eq: "x" } })).toBeNull();
+    expect(where({ nothing: { eq: null } })).toBe(true);
+    expect(where({ or: [{ always: { eq: true } }, { busy: { eq: true } }] })).toBe(true);
+  });
+  test("a filter the data layer would refuse is refused with its message", () => {
+    const refused = (filter: unknown) => () => callerQuery("billing.Invoice", computed, { filter: { doubled: { eq: 1 }, ...(filter as object) } }, sql);
+    expect(refused({ nope: { eq: 1 } })).toThrow('Unknown column "nope"; use an attribute in the emitted table');
+    expect(refused({ title: "a" })).toThrow('Filter on "title" must be an object such as { eq: value }, not a bare value');
+    expect(refused({ title: {} })).toThrow('Filter on "title" has no operator');
+    expect(refused({ title: { like: "a" } })).toThrow('Unknown filter operator "like" on "title"');
+    expect(refused({ total: { in: 1 } })).toThrow("Filter total.in must be a list");
+    expect(refused({ total: { in: [null] } })).toThrow("must not contain null; combine it with nil: true under or");
+    expect(refused({ total: { lt: null } })).toThrow("Filter total.lt cannot compare with null; use nil");
+    expect(refused({ total: { nil: 1 } })).toThrow("Filter total.nil must be true or false");
+    expect(refused({ and: {} })).toThrow('Filter "and" must be a list of filters');
+    expect(refused({ total: { eq: "1" } })).toThrow('Filter total.eq compares total (integer) with the string "1": the database would convert it, so Mesh refuses it');
+    expect(refused({ dueOn: { eq: new Date(Number.NaN) } })).toThrow(FrameworkError);
+    expect(() => callerQuery("billing.Invoice", computed, { filter: { and: [{ doubled: { eq: 1 } }, 3] } }, sql)).toThrow("A filter must be an object");
+  });
+  test("a computed field Mesh runs in memory, or a rollup, is refused in a filter and in a sort", () => {
+    const run = (query: { filter?: unknown; sort?: unknown }, withSql = true) => () => callerQuery("billing.Invoice", computed, query, withSql ? sql : undefined);
+    const plain = (what: string) => `A ${what} by billing.Invoice#label is not available: label is a computed field Mesh runs in memory`;
+    const rollup = (what: string) => `A ${what} by billing.Invoice#lineCount is not available: lineCount is a rollup, which a caller's filter and sort cannot name; a read's own filter= and sort can`;
+    expect(run({ filter: { label: { eq: "a" } } })).toThrow(plain("filter"));
+    expect(run({ sort: ["-label"] })).toThrow(plain("sort"));
+    expect(run({ filter: { and: [{ title: { eq: "a" } }, { or: [{ lineCount: { gt: 1 } }] }] } })).toThrow(rollup("filter"));
+    expect(run({ sort: ["title", "lineCount"] })).toThrow(rollup("sort"));
+    // Without the SQL half a translated field cannot be read; the build always passes it, so this is a framework fault.
+    expect(run({ filter: { doubled: { eq: 1 } } }, false)).toThrow("callerQuery needs the read's SQL options to translate billing.Invoice#doubled");
+    expect(run({ sort: ["doubled"] }, false)).toThrow("callerQuery needs the read's SQL options to translate billing.Invoice#doubled");
+    // A name that only resembles one, or an inherited member of Object, is not a computed field.
+    expect(run({ filter: { labels: { eq: "a" } }, sort: ["-labels"] }, false)).not.toThrow();
+    expect(run({ sort: ["valueOf"] }, false)).not.toThrow();
+  });
+  test("a computed field given as undefined is left out, at any depth; a stored column stays; nothing to take out is the filter itself", () => {
+    const clean = (filter: unknown) => callerQuery<unknown, unknown>("billing.Invoice", computed, { filter }).filter;
+    expect(clean({ toString: undefined, label: undefined, title: { eq: "a" } })).toEqual({ title: { eq: "a" } });
+    const cleaned = clean({ or: [{ toString: undefined, title: { eq: "a" } }, { and: [{ label: undefined }, { title: { eq: "b" } }] }] });
+    expect(cleaned).toEqual({ or: [{ title: { eq: "a" } }, { and: [{}, { title: { eq: "b" } }] }] });
+    const stored = { title: undefined, toString: undefined };
+    expect(Object.keys(clean(stored) as object)).toEqual(["title"]);
+    const plain = { and: [{ title: { eq: "a" } }], title: undefined };
+    expect(clean(plain)).toBe(plain);
+    const given = { or: [{ toString: undefined }] };
+    clean(given);
+    expect(Object.keys(given.or[0]!)).toEqual(["toString"]);
+    // Given as undefined beside a translated comparison: left out of the condition too.
+    expect(callerQuery("billing.Invoice", computed, { filter: { label: undefined, doubled: { eq: 4 } } }, sql).where).toEqual(k("eq", doubledNode, v(4, "integer")));
+    expect(() => clean({ toString: undefined, label: { eq: "v" } })).toThrow("label is a computed field Mesh runs in memory");
+  });
+  test("a sort by a translated computed field is an order: the caller's keys, then the declared ones", () => {
+    expect(callerQuery("billing.Invoice", computed, { sort: ["-doubled", "title"] }, sql)).toEqual({
+      filter: undefined, where: true,
+      order: [{ by: doubledNode, desc: true }, { by: c("title", "string"), desc: false }],
+    });
+    const declared = [{ column: "dueOn", class: "date", desc: false }, { literal: busy.literal() as ConditionLiteral<unknown>, desc: true }] as const;
+    expect(callerQuery("billing.Invoice", computed, { sort: ["busy"] }, { ...sql, declared }).order).toEqual([
+      { by: busyNode, desc: false }, { by: c("dueOn", "date"), desc: false }, { by: busyNode, desc: true },
+    ]);
+    // A declared sort with no caller sort is the order too; a constant computed key orders nothing.
+    expect(callerQuery("billing.Invoice", computed, { sort: ["always"] }, { ...sql, declared }).order).toEqual([{ by: c("dueOn", "date"), desc: false }, { by: busyNode, desc: true }]);
+    expect(callerQuery("billing.Invoice", computed, { sort: ["always"] }, sql).order).toBeUndefined();
+  });
+  test("a computed field named by the caller runs only on a layer that declares conditions, and joins for a hop", () => {
+    const without = { ...sql, layer: { capabilities: { adapter: "fake", capabilities: [] } } };
+    const noJoins = { ...sql, layer: { capabilities: { adapter: "fake", capabilities: ["conditions"] } } };
+    expect(() => callerQuery("billing.Invoice", computed, { filter: { doubled: { eq: 2 } } }, without)).toThrow("does not declare the conditions capability");
+    expect(() => callerQuery("billing.Invoice", computed, { filter: { busy: { eq: true } } }, noJoins)).toThrow("does not declare the joins capability");
+    expect(() => callerQuery("billing.Invoice", computed, { sort: ["busy"] }, noJoins)).toThrow("does not declare the joins capability");
+    // What needs no SQL needs no capability: a stored filter and sort, and a condition that folded to a constant.
+    expect(callerQuery("billing.Invoice", computed, { filter: { title: { eq: "a" } }, sort: ["title"] }, without).where).toBe(true);
+    expect(callerQuery("billing.Invoice", computed, { filter: { always: { eq: false } } }, without).where).toBe(false);
   });
 });

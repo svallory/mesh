@@ -339,12 +339,26 @@ describe("acceptance 5: an unloaded relationship is a type error; a load that ca
     } finally { await db.close(); }
   });
 
-  test("a read by a rollup or computed field fails with the error that names M10", async () => {
+  test("a caller filters and sorts by a translated computed field in SQL; a rollup is refused", async () => {
     const { db, hyper } = await fresh();
     try {
       await hyper.run(async () => {
-        await expect(Task.read({ filter: { maxFence: { gt: 1 } } }, context)).rejects.toThrow("filtering and sorting by one is evaluated by the SQL evaluator, which arrives in M10");
-        await expect(Task.read({ sort: ["-derivedState"] }, context)).rejects.toThrow("A sort by work.Task#derivedState is not available yet");
+        const { alice } = await people(hyper);
+        const first = await Task.create({ title: "first" }, as(alice));
+        const second = await Task.create({ title: "second" }, as(alice));
+        const third = await Task.create({ title: "third" }, as(alice));
+        await Dependency.add({ dependent: second.id, prerequisite: first.id }, as(alice));
+        await Dependency.add({ dependent: third.id, prerequisite: second.id }, as(alice));
+        await load(db, (tx) => tx.updateByKey(tables.tasks, { id: second.id }, { state: "done" }));
+        // The same answers the loaded fields give (above): first ready, second done, third ready (its prerequisite is done).
+        const titles = (tasks: readonly { title: string }[]) => tasks.map((task) => task.title);
+        expect(titles(await Task.read({ filter: { derivedState: { eq: "ready" } }, sort: ["title"] }, context))).toEqual(["first", "third"]);
+        expect(titles(await Task.read({ filter: { or: [{ blocked: { eq: true } }, { title: { eq: "third" } }] }, sort: ["-title"] }, context))).toEqual(["third", "second"]);
+        // derivedState in text order: done before ready; ties in primary-key order.
+        expect(titles(await Task.read({ sort: ["derivedState"] }, context))).toEqual(["second", "first", "third"]);
+        expect(titles(await Task.read({ filter: { blocked: { eq: false } }, sort: ["-derivedState", "-title"] }, context))).toEqual(["third", "first"]);
+        await expect(Task.read({ filter: { maxFence: { gt: 1 } } }, context)).rejects.toThrow("A filter by work.Task#maxFence is not available: maxFence is a rollup, which a caller's filter and sort cannot name; a read's own filter= and sort can");
+        await expect(Task.read({ sort: ["-maxFence"] }, context)).rejects.toThrow("A sort by work.Task#maxFence is not available: maxFence is a rollup");
       });
     } finally { await db.close(); }
   });

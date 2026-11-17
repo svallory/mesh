@@ -1,11 +1,12 @@
 // data-sqlite's end-to-end domain suites (packages/data-sqlite/test/domain/) on Postgres: relationships, rollups (the
 // per-row count and max, and the batched sum, avg, min and belongs-to rollups, and rollups over joined routes),
-// has-many through, the action lifecycle, policies, validate-when and integer keys. They reach what the conformance
-// suites do not (compiled reads, loads and actions over generated tables) through the commands where this adapter differs
+// has-many through, a caller's filter and sort by a translated computed field, the action lifecycle, policies,
+// validate-when and integer keys. They reach what the conformance suites do not (compiled reads, loads and actions over generated tables) through the commands where this adapter differs
 // from SQLite's (`returning`, row locks, `bigint` and `count` mapping, and offset without limit through a compiled read).
 // Each layer runs in a schema of its own, cloned from the suite's generated tables.
 import { describe } from "bun:test";
 import type { DomainAdapter } from "../../data-sqlite/test/domain/harness.ts";
+import { callerComputedSuite } from "../../data-sqlite/test/domain/caller-computed.ts";
 import { conceptsSuite } from "../../data-sqlite/test/domain/concepts.ts";
 import { keyTypesSuite } from "../../data-sqlite/test/domain/key-types.ts";
 import { lifecycleSuite } from "../../data-sqlite/test/domain/lifecycle.ts";
@@ -32,6 +33,7 @@ describeServer("the domain suites on Postgres", () => {
     integerColumn: (name) => `bigint("${name}", { mode: "number" })`,
     layer: (tables) => databases.layerFor(tables),
   };
+  describe("a caller's filter and sort by a computed field", () => callerComputedSuite(postgres));
   describe("concepts", () => conceptsSuite(postgres));
   describe("key types", () => keyTypesSuite(postgres));
   describe("load", () => loadSuite(postgres));

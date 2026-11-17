@@ -359,10 +359,14 @@ export type DeclaredKey<S> = { readonly column: string; readonly class: ValueCla
 /**
  * The caller's `sort` and the read's declared keys as one order: the caller's keys first, then the declared keys (the
  * adapter adds the primary key last), or undefined when there is neither. `classes` gives the class of each attribute
- * a caller may sort by; a caller key outside it is refused. A declared column the caller already sorts by is not
- * repeated, and a declared computed key that folds to a constant orders nothing and is left out.
+ * a caller may sort by, and `computed` the literal of each computed field a caller may sort by (`callerQuery`); a caller
+ * key in neither is refused. A declared column the caller already sorts by is not repeated, and a computed key (the
+ * caller's or a declared one) that folds to a constant orders nothing and is left out.
  */
-export function orderOf<S>(tableOf: TableOf, callerSort: Sort | undefined, classes: Readonly<Record<string, ValueClass>>, declared: readonly DeclaredKey<S>[], scope: S): readonly OrderKey[] | undefined {
+export function orderOf<S>(
+  tableOf: TableOf, callerSort: Sort | undefined, classes: Readonly<Record<string, ValueClass>>, declared: readonly DeclaredKey<S>[], scope: S,
+  computed: Readonly<Record<string, ConditionLiteral<S>>> = {},
+): readonly OrderKey[] | undefined {
   if (callerSort !== undefined && (!Array.isArray(callerSort) || callerSort.some((field) => typeof field !== "string"))) {
     throw new FrameworkError('sort must be a list of attribute names, "-name" for descending');
   }
@@ -372,6 +376,11 @@ export function orderOf<S>(tableOf: TableOf, callerSort: Sort | undefined, class
     const desc = field.startsWith("-");
     const name = desc ? field.slice(1) : field;
     if (name === "") throw new FrameworkError('A sort field needs a name: "title" or "-title"');
+    if (Object.hasOwn(computed, name)) {
+      const by = bindCondition(tableOf, computed[name]!, scope);
+      if (!(by === true || by === false || by === null || by.kind === "value")) order.push({ by, desc });
+      continue;
+    }
     if (!Object.hasOwn(classes, name)) throw new FrameworkError(`Cannot sort by "${name}": it is not an attribute a caller may sort by`);
     sorted.add(name);
     order.push({ by: { kind: "column", depth: 0, name, class: classes[name]! }, desc });
@@ -390,3 +399,202 @@ export function orderOf<S>(tableOf: TableOf, callerSort: Sort | undefined, class
   return order.length === 0 ? undefined : order;
 }
 
+
+/**
+ * What a caller's `filter` and `sort` may do with one computed field of the entity a read returns (the generated
+ * `$callerComputed`): a translated field gives its class and its condition literal, read only when a read runs (the
+ * actions file and the expressions file import each other); `"plain"` is a field Mesh runs in memory and `"rollup"` a
+ * rollup, which a caller cannot name: what a caller loads of a rollup counts only the rows the read policies admit, which
+ * a query does not.
+ */
+export type CallerComputed = "plain" | "rollup" | { readonly class: ValueClass; readonly literal: () => ConditionLiteral<never> };
+
+/** What `callerQuery` needs to translate a computed field: given by a read of an entity with a translated computed field. */
+export interface CallerSql<S> {
+  readonly tableOf: TableOf;
+  /** The read's scope, on which each literal's parameters are computed. */
+  readonly scope: S;
+  /** The class of each stored column a caller may filter and sort by. */
+  readonly classes: Readonly<Record<string, ValueClass>>;
+  /** The data layer: a computed field the caller names runs as SQL only on one that declares `conditions` (and `joins`). */
+  readonly layer: object;
+  /** The read's declared sort keys, which follow the caller's (`orderOf`). */
+  readonly declared?: readonly DeclaredKey<S>[];
+}
+
+/** A caller's query as the data layer takes it: `filter` and `sort`, or `where` and `order` where a computed field is named. */
+export interface CallerQuery<F> {
+  /** The filter left to the data layer: the caller's, less every computed field given as `undefined`; none once moved to `where`. */
+  readonly filter: F | undefined;
+  /** The caller's filter as a condition when it compares a translated computed field, else `true`. */
+  readonly where: Bound;
+  readonly sort?: Sort | undefined;
+  /** With `CallerSql`: the order when the read declares a sort or the caller sorts by a computed field (`sort` is then absent). */
+  readonly order?: readonly OrderKey[] | undefined;
+}
+
+const FILTER_OPERATORS = ["eq", "ne", "lt", "lte", "gt", "gte", "in", "nil"] as const;
+
+/**
+ * A read's caller `filter` and `sort` (M10, ruling D32 O6 (a)). A computed field Mesh translates may be named in both: a
+ * filter that compares one becomes, as a whole, a condition (`where`), the field's body inlined in place of its name and
+ * the stored columns beside it read as columns, with the comparisons the data layer gives a `Filter` (`eq` or `ne` null
+ * is the null test, `in` one of the values, `nil` the null test, an unknown comparison leaves the row out); a sort key
+ * that names one is an order key of its body. A computed field Mesh runs in memory, or a rollup, fails with a
+ * `FrameworkError` before the database is touched, so a wrong result is never returned.
+ *
+ * The returned `filter` is the caller's less every computed field whose comparison is `undefined`, at any depth under
+ * `and` and `or`: a generated filter type writes one as `toString?: $Comparison<string> | undefined`, and a filter
+ * literal leaves out one named like a member of the Object interface (`toString`, `valueOf`) only by giving it as
+ * `undefined`. The data layer has no column for it, so it never sees it. A stored column given as `undefined` stays:
+ * the data layer leaves it out (`Filter`). A filter with nothing to take out is returned as it is.
+ */
+export function callerQuery<F, S>(
+  entity: string, computed: Readonly<Record<string, CallerComputed>>, query: { readonly filter?: F | undefined; readonly sort?: unknown }, sql?: CallerSql<S>,
+): CallerQuery<F> {
+  const kind = (name: string): CallerComputed | undefined => (Object.hasOwn(computed, name) ? computed[name] : undefined);
+  const refuse = (name: string, what: "filter" | "sort", field: CallerComputed) => {
+    if (field === "rollup") {
+      throw new FrameworkError(`A ${what} by ${entity}#${name} is not available: ${name} is a rollup, which a caller's filter and sort cannot name; a read's own filter= and sort can`);
+    }
+    if (field === "plain") throw new FrameworkError(`A ${what} by ${entity}#${name} is not available: ${name} is a computed field Mesh runs in memory`);
+    // The build passes the read's SQL options whenever a field translates, so this is a framework fault, not the caller's.
+    if (!sql) throw new FrameworkError(`callerQuery needs the read's SQL options to translate ${entity}#${name}`);
+  };
+  let translated = false;
+  const clean = (filter: unknown): unknown => {
+    if (filter === null || typeof filter !== "object" || Array.isArray(filter)) return filter;
+    const kept: [string, unknown][] = [];
+    let changed = false;
+    for (const [key, value] of Object.entries(filter)) {
+      const field = kind(key);
+      if ((key === "and" || key === "or") && Array.isArray(value)) {
+        const items = value.map(clean);
+        const inner = items.some((item, index) => item !== value[index]);
+        changed ||= inner;
+        kept.push([key, inner ? items : value]);
+      } else if (field !== undefined) {
+        if (value === undefined) changed = true;
+        else {
+          refuse(key, "filter", field);
+          translated = true;
+          kept.push([key, value]);
+        }
+      } else kept.push([key, value]);
+    }
+    return changed ? Object.fromEntries(kept) : filter;
+  };
+  const filter = clean(query.filter) as F | undefined;
+  const sort = query.sort;
+  let sortsComputed = false;
+  if (Array.isArray(sort))
+    for (const key of sort) {
+      const name = typeof key === "string" && key.startsWith("-") ? key.slice(1) : key;
+      const field = typeof name === "string" ? kind(name) : undefined;
+      if (field === undefined) continue;
+      refuse(name as string, "sort", field);
+      sortsComputed = true;
+    }
+  if (!sql) return { filter, where: true, sort: sort as Sort | undefined };
+
+  // Each translated field's literal, bound once per call on the read's scope.
+  const bound = new Map<string, Condition>();
+  const literals: Record<string, ConditionLiteral<S>> = {};
+  for (const [name, field] of Object.entries(computed)) if (typeof field === "object") literals[name] = field.literal() as ConditionLiteral<S>;
+  const body = (name: string, cls: ValueClass): Condition => {
+    let left = bound.get(name);
+    if (!left) {
+      const result = bindCondition(sql.tableOf, literals[name]!, sql.scope);
+      left = result === true || result === false || result === null ? value(result, result === null ? cls : "boolean") : result;
+      bound.set(name, left);
+    }
+    return left;
+  };
+  const where = translated ? filterWhere(filter, (name) => {
+    const field = kind(name);
+    if (typeof field === "object") return { left: body(name, field.class), cls: field.class };
+    if (Object.hasOwn(sql.classes, name)) return { left: { kind: "column", depth: 0, name, class: sql.classes[name]! }, cls: sql.classes[name]! };
+    return undefined;
+  }) : true;
+  // A condition that folded to false or unknown runs no query (`allOf`); one that did not runs only where the layer can run it.
+  if (where !== true && where !== false && where !== null) whereFor(sql.layer, where);
+  if (!sortsComputed && !sql.declared?.length) return { filter: translated ? undefined : filter, where, sort: sort as Sort | undefined };
+  const order = orderOf(sql.tableOf, sort as Sort | undefined, sql.classes, sql.declared ?? [], sql.scope, literals);
+  // An order key that is not a stored column of the row runs as SQL, so the layer must declare what it needs.
+  for (const key of order ?? []) if (key.by.kind !== "column") whereFor(sql.layer, key.by);
+  return { filter: translated ? undefined : filter, where, order };
+}
+
+/**
+ * A caller's `Filter` as a condition: `read` gives the condition and class of each name (a translated computed field's body,
+ * or a stored column), and undefined for a name the entity has no column for. Checked as the data layer checks a
+ * `Filter`, with the same messages.
+ */
+function filterWhere(filter: unknown, read: (name: string) => { left: Condition; cls: ValueClass } | undefined): Bound {
+  const scalarOf = (v: unknown, at: string): Scalar => {
+    if (v === null || typeof v === "string" || typeof v === "boolean") return v;
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (v instanceof Date && !Number.isNaN(v.getTime())) return v;
+    throw new FrameworkError(`${at} must be a string, finite number, boolean, valid Date or null, not ${v === undefined ? "undefined" : String(v)}`);
+  };
+  const operand = (v: Exclude<Scalar, null>, cls: ValueClass, name: string, at: string): Value => {
+    // A fraction compared with an integer is compared as a number, as SQL compares it.
+    const as: ValueClass = cls === "integer" && typeof v === "number" && !Number.isInteger(v) ? "float" : cls;
+    if (!fits(v, as)) throw new FrameworkError(`${at} compares ${name} (${cls}) with ${described(v)}: the database would convert it, so Mesh refuses it`);
+    return value(v, as);
+  };
+  const comparison = (left: Condition, cls: ValueClass, name: string, spec: unknown): Condition => {
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec) || spec instanceof Date) {
+      throw new FrameworkError(`Filter on "${name}" must be an object such as { eq: value }, not a bare value`);
+    }
+    const given = Object.keys(spec);
+    if (given.length === 0) throw new FrameworkError(`Filter on "${name}" has no operator; use one of ${FILTER_OPERATORS.join(", ")}`);
+    const parts: Condition[] = [];
+    const op = spec as Record<string, unknown>;
+    for (const key of given) {
+      if (!(FILTER_OPERATORS as readonly string[]).includes(key)) {
+        throw new FrameworkError(`Unknown filter operator "${key}" on "${name}"; use one of ${FILTER_OPERATORS.join(", ")}`);
+      }
+      const v = op[key];
+      const at = `Filter ${name}.${key}`;
+      if (key === "nil") {
+        if (typeof v !== "boolean") throw new FrameworkError(`${at} must be true or false`);
+        parts.push(fold(v ? "isNull" : "isNotNull", [left]));
+      } else if (key === "in") {
+        if (!Array.isArray(v)) throw new FrameworkError(`${at} must be a list`);
+        const items = v.map((item) => scalarOf(item, `${at} item`));
+        if (items.includes(null)) throw new FrameworkError(`${at} must not contain null; combine it with nil: true under or`);
+        const eqs = items.map((item) => fold("eq", [left, operand(item as Exclude<Scalar, null>, cls, name, `${at} item`)]));
+        parts.push(eqs.length === 0 ? value(false, "boolean") : eqs.length === 1 ? eqs[0]! : fold("or", eqs));
+      } else {
+        const given = scalarOf(v, at);
+        if (given === null) {
+          if (key === "eq") parts.push(fold("isNull", [left]));
+          else if (key === "ne") parts.push(fold("isNotNull", [left]));
+          else throw new FrameworkError(`${at} cannot compare with null; use nil`);
+        } else parts.push(fold(key as SqlFunction, [left, operand(given, cls, name, at)]));
+      }
+    }
+    return parts.length === 1 ? parts[0]! : fold("and", parts);
+  };
+  const walk = (part: unknown, depth: number): Condition => {
+    if (typeof part !== "object" || part === null || Array.isArray(part)) throw new FrameworkError("A filter must be an object such as { title: { eq: 'x' } }");
+    if (depth > 64) throw new FrameworkError("Filter is nested more than 64 levels deep");
+    const parts: Condition[] = [];
+    for (const [key, spec] of Object.entries(part)) {
+      if (key === "and" || key === "or") {
+        if (!Array.isArray(spec)) throw new FrameworkError(`Filter "${key}" must be a list of filters`);
+        const inner = spec.map((item) => walk(item, depth + 1));
+        parts.push(inner.length === 0 ? value(key === "and", "boolean") : inner.length === 1 ? inner[0]! : fold(key, inner));
+      } else {
+        const column = read(key);
+        if (!column) throw new FrameworkError(`Unknown column "${key}"; use an attribute in the emitted table`);
+        if (spec !== undefined) parts.push(comparison(column.left, column.cls, key, spec));
+      }
+    }
+    return parts.length === 0 ? value(true, "boolean") : parts.length === 1 ? parts[0]! : fold("and", parts);
+  };
+  const condition = walk(filter, 0);
+  if (isValue(condition) && (condition.value === null || typeof condition.value === "boolean")) return condition.value;
+  return condition;
+}

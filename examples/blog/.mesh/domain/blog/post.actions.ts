@@ -9,6 +9,7 @@ import {
   allOf as $allOf,
   authorizer as $authorizer,
   bindCondition as $bindCondition,
+  callerQuery as $callerQuery,
   castInput as $castInput,
   checkScope as $checkScope,
   checkUnchanged as $checkUnchanged,
@@ -21,7 +22,6 @@ import {
   pinClock as $pinClock,
   readOnlyRecord as $readOnlyRecord,
   recordWrite as $recordWrite,
-  rejectComputedQuery,
   runAction as $runAction,
   runCheck as $runCheck,
   scope as $scope,
@@ -37,6 +37,7 @@ import {
   type DeepReadonly as $DeepReadonly,
   type EntityReadsBind as $EntityReadsBind,
   type EntityValue as $EntityValue,
+  type CallerComputed as $CallerComputed,
   type CastOutput as $CastOutput,
   type DataOperations as $DataOperations,
   type Issue as $Issue,
@@ -87,7 +88,7 @@ import {
 
 /** The table of each entity the conditions of this file's reads reach, by FQN. */
 const $tableOf: $TableOf = (fqn) => (({}) as { readonly [fqn: string]: $TableHandle })[fqn]!;
-/** How each column a caller may sort by is stored, for the order a read with a declared sort hands the data layer. */
+/** How each column a caller may filter and sort by is stored, for the order and the conditions a read hands the data layer. */
 const $sortClasses: { readonly [name: string]: $ValueClass } = {
   id: "string",
   title: "string",
@@ -102,7 +103,12 @@ const $sortClasses: { readonly [name: string]: $ValueClass } = {
   insertedAt: "date",
   updatedAt: "date",
   authorId: "string",
-};
+} as const;
+/** What a caller's filter and sort may do with each computed field: translate its condition literal, read when a read runs, or refuse it. */
+const $callerComputed: { readonly [name: string]: $CallerComputed } = {
+  excerpt: "plain",
+  commentCount: "rollup",
+} as const;
 
 /**
  * The reads of this entity without their policies: what `Mesh.privileged(Post)` runs. The read actions
@@ -125,7 +131,7 @@ export function bindPostReads(
       // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, publishedPostInputSchema, input));
       return layer.transaction(async (tx) => {
-        const $filter = rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
+        const $caller = $callerQuery("blog.Post", $callerComputed, parsed);
         const $context = (context ?? {}) as unknown as { [key: string]: unknown };
         const $clock = clock ?? $pinClock(options.clock);
         const $s = $scope(
@@ -142,7 +148,7 @@ export function bindPostReads(
         if ($where === false)
           return [] as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
         const $rows = (await tx.select(tables.posts, {
-          filter: $filter,
+          filter: $caller.filter,
           where: $whereFor(layer, $where),
           order: $orderOf(
             $tableOf,
@@ -178,9 +184,9 @@ export function bindPostReads(
       // for its policies and hands it over as `cast`; a `Mesh.privileged` read casts it here.
       const parsed = cast ?? (await $castInput(layer, readPostInputSchema, input));
       return layer.transaction(async (tx) => {
-        const $filter = rejectComputedQuery("blog.Post", ["excerpt", "commentCount"], parsed);
+        const $caller = $callerQuery("blog.Post", $callerComputed, parsed);
         const $rows = (await tx.select(tables.posts, {
-          filter: $filter,
+          filter: $caller.filter,
           sort: parsed.sort,
           limit: parsed.limit,
           offset: parsed.offset,
