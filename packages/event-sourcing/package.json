@@ -1,0 +1,31 @@
+{
+  "name": "@meshfw/event-sourcing",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "The event-sourcing extension: project handlers, which build a read model from every event they list, from the beginning of history",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/no-replay/tsconfig.json"
+  },
+  "peerDependencies": {
+    "@meshfw/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@meshfw/bus-local": "workspace:*",
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/data-sqlite": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "meshfw": "workspace:*",
+    "zod": "4.6.5"
+  }
+}
