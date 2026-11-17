@@ -90,7 +90,7 @@ Contract v0 provides the small suite above; M3 expands it into the full suite ev
 
 ## The capability rule across parallel milestones
 
-M9 (Postgres) can start once M5 is merged and run alongside M6 to M8 ([roadmap](../roadmap/roadmap.md), section 4). A milestone that adds an optional capability (M5 atomic expressions, M7 joins and aggregates) implements it in every data adapter merged when it is merged. M9 implements on Postgres every capability in the suite on the day M9 merges. Whichever merges second owes the missing combination. M9 is done when Postgres passes the whole suite, after 1.0 ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
+M9 (Postgres) can start once M5 is merged and run alongside M6 to M8 ([roadmap](../roadmap/roadmap.md), section 4). A milestone that adds an optional capability (M5 atomic expressions, M7 joins and aggregates) implements it in every data adapter merged when it is merged. M9 implements on Postgres every capability in the suite on the day M9 merges. Whichever merges second owes the missing combination, except `raw-sql`, which waits on ADR-0087's question 6 (see [Raw queries](#raw-queries)). M9 is done when Postgres passes the whole suite, after 1.0 ([ADR-0072](../decisions/0072-mesh-1-0-is-the-port-gate.md)).
 
 ## Raw queries
 
