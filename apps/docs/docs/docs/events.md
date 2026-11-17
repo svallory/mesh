@@ -346,7 +346,7 @@ Delivery registers the handlers each time it starts. With P the position a handl
 
 ## Running the deliverer
 
-One process per database delivers, unless the bus declares `multi-process` (`localBus({ processes: "many" })`): it holds the database's **claim**, a row in `mesh_outbox_state`. A second process that tries to deliver fails with `DelivererTakenError` (`MESH_DELIVERER_TAKEN`), which names the holder (its host, pid and start time, and how long ago it renewed the claim) and `lapsesAt`, when a crashed holder's claim may be taken over. How a process delivers depends on how it connects:
+By default one process per database delivers: it holds the database's **claim**, a row in `mesh_outbox_state`. A second process that tries to deliver fails with `DelivererTakenError` (`MESH_DELIVERER_TAKEN`), which names the holder (its host, pid and start time, and how long ago it renewed the claim) and `lapsesAt`, when a crashed holder's claim may be taken over. With a bus that declares `multi-process`, such as `localBus({ processes: "many" })`, several processes deliver at once instead: each handler is held by one of them at a time and taken over by another when its holder stops renewing, and a process that delivers with a bus without `multi-process` beside them fails with `DelivererTakenError`. How a process delivers depends on how it connects:
 
 | Call | What it does |
 |:--|:--|
@@ -378,7 +378,7 @@ The running deliverer renews its claim every 5 seconds, whatever the bus; a clai
 
 ## `localBus`
 
-`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter, for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay` and `subscribe`, and `multi-process` too with `processes: "many"`; it does not declare `dead-letters`, so `onFailure: "skip"` is refused. Its options are all optional:
+`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter (with `processes: "many"`, on one that has the multi-process delivery operations), for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay` and `subscribe`, and `multi-process` too with `processes: "many"`; it does not declare `dead-letters`, so `onFailure: "skip"` is refused. Its options are all optional:
 
 | Option | Default | What it does |
 |:--|:--|:--|
@@ -386,7 +386,7 @@ The running deliverer renews its claim every 5 seconds, whatever the bus; a clai
 | `retryDelays` | `[100, 1000, 10000]` after start; `[0, 0, 0]` in `deliver()` rounds | The wait in milliseconds before each retry of a failing handler; when they are used up, the handler stops. A value you set applies to both |
 | `maxQueue` | `10000` | How many events a live subscription may have waiting for its callback before it ends with `SubscriptionOverflowError` |
 | `onStopped` | writes the error with `console.error` | After start, the function called with the `HandlerStoppedError` each time a handler stops, in place of the default report; see "A stopped handler" below |
-| `processes` | `"one"` | How many processes may deliver the database: `"one"`, one deliverer per database; `"many"`, several at once, each handler held by one of them at a time and taken over by another when its holder stops renewing (the bus then declares `multi-process`) |
+| `processes` | `"one"` | How many processes may deliver the database: `"one"`, one deliverer per database; `"many"`, several at once, each handler held by one of them at a time and taken over by another when its holder stops renewing (the bus then declares `multi-process`). `"many"` needs a data adapter with the multi-process delivery operations (`@meshfw/data-sqlite` today; with another adapter, starting delivery is a `FrameworkError`), and the schema changes with it: `tables` gains `mesh_delivery_process` and a column on `mesh_outbox_state`, `mesh_handler_progress` and `mesh_subscription_progress`, so run `mesh build` and push the schema again (`mesh db push`) after you set it |
 
 ```ts "mesh.config.ts"
 import { localBus } from "@meshfw/bus-local";
