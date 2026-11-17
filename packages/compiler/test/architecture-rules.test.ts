@@ -105,12 +105,19 @@ describe(":action-calls-other-aggregate", () => {
     expect(said(rulesProject(run(RUN_STEP('Task["close"]({ id: self.otherId }, context)'))))).toEqual([warning("run", "update :finish", "Task.close")]);
     expect(said(rulesProject(run(RUN_STEP("Task[`close`]({ id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "Task.close")]);
     expect(said(rulesProject(run(RUN_STEP("Task.close.call(null, { id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "Task.close")]);
+    expect(said(rulesProject(run(RUN_STEP("Task?.close({ id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "Task.close")]);
+    expect(said(rulesProject(run(RUN_STEP("work?.Task?.[\"close\"]?.({ id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "work.Task.close")]);
     expect(said(rulesProject(run("    update :finish\n      do\n        run [after=:write] async ({ self, context }) {\n          await Task.close({ id: self.otherId }, context)\n        }\n")))).toEqual([warning("run", "update :finish", "Task.close", 15, 16)]);
   });
   test("an auto create or destroy counts as a write action", () => {
     const withAuto = { "work/task.mesh.mx": TASK.replace("auto=[:read]", "auto=[:read, :create, :destroy]") };
     expect(said(rulesProject(run(RUN_STEP("Task.destroy({ id: self.otherId }, context)")), withAuto))).toEqual([warning("run", "update :finish", "Task.destroy")]);
     expect(said(rulesProject(run(RUN_STEP("Task.create({}, context)")), withAuto))).toEqual([warning("run", "update :finish", "Task.create")]);
+  });
+  test("a named custom create or destroy counts as a write action", () => {
+    const custom = { "work/task.mesh.mx": TASK.replace("    read :open\n", "    read :open\n    create :register\n    destroy :retire\n") };
+    expect(said(rulesProject(run(RUN_STEP("Task.register({}, context)")), custom))).toEqual([warning("run", "update :finish", "Task.register")]);
+    expect(said(rulesProject(run(RUN_STEP("Task.retire({ id: self.otherId }, context)")), custom))).toEqual([warning("run", "update :finish", "Task.retire")]);
   });
   test("in a `set` value, a check's `that`, a step's `when` and an `always` block", () => {
     const set = "    update :finish\n      do\n        set\n          &otherId=async ({ self, context }) => (await Task.close({ id: self.otherId }, context)).id\n";
