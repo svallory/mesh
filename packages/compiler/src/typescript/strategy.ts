@@ -62,7 +62,7 @@ export function destroyStrategy(document: ModelDocument | undefined, entity: Ent
   }
   return {
     strategy: "guarded",
-    reason: `one delete by key with the policies in the statement: the checks that read the record (${[...new Set(reading.map(({ policy }) => `:${policy.name}`))].join(", ")}) run inside the delete, which fails as forbidden when they deny (ADR-0046, option B); with an afterWrite or afterCommit seam registered, or under Mesh.checkPolicies or Mesh.can, the row is read under the lock first and the policies run in memory`,
+    reason: `one delete by key with the policies in the statement: the checks that read the record (${[...new Set(reading.map(({ policy }) => `:${policy.name}`))].join(", ")}) run inside the delete, which fails as forbidden when they deny (ADR-0046, option B); with an afterWrite or afterCommit seam registered, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete, the row is read under the lock first and the policies run in memory`,
     guarded: reading,
   };
 }

@@ -37,9 +37,13 @@ entity :Folder
 const command = `command :RemoveNote
   uuid :id
 `;
+const gone = `event :NoteGone
+  uuid :noteId
+`;
 // One destroy per case, each covered by a policy of its own (`actions=[&x]`), so each answers one question.
 const note = `import { Folder } from "./folder.mesh.mx"
 import { RemoveNote } from "./remove-note.mesh.mx"
+import { NoteGone } from "./note-gone.mesh.mx"
 import { isStaff } from "./helpers"
 import { Mesh } from "meshfw"
 entity :Note
@@ -73,6 +77,9 @@ entity :Note
     destroy :withRunAfter
       do
         run [after=:write] () { }
+    destroy :withPublish
+      do
+        publish=() => new NoteGone({ noteId: &id })
     destroy on=RemoveNote
   policies
     policy :public types=[:read]
@@ -81,7 +88,7 @@ entity :Note
       authorize-if=() => true
     policy :signedIn actions=[&actorOnly]
       authorize-if=({ actor }) => actor.id !== null
-    policy :owner actions=[&byOwner, &withCheck, &alwaysChecked, &withRun, &withRunAfter, &removeNote]
+    policy :owner actions=[&byOwner, &withCheck, &alwaysChecked, &withRun, &withRunAfter, &withPublish, &removeNote]
       authorize-if=({ actor }) => &ownerId === actor.id
       forbid-if=() => &locked
     policy :folderOwner actions=[&byFolder]
@@ -111,7 +118,7 @@ beforeAll(async () => {
   root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-destroy-strategy-"));
   await mkdir(resolve(root, "notes"));
   await writeFile(resolve(root, "notes/helpers.ts"), helpers);
-  const built = buildModel({ root, files: Object.entries({ folder, note, "remove-note": command }).map(([name, source]) => ({ file: `notes/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root, files: Object.entries({ folder, note, "remove-note": command, "note-gone": gone }).map(([name, source]) => ({ file: `notes/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   document = built.document!;
 });
@@ -138,6 +145,8 @@ describe("destroyStrategy", () => {
     ["alwaysChecked", "read", "read"],
     ["withRun", "read", "read"],
     ["withRunAfter", "read", "read"],
+    // a publish step reads the deleted record, so the row is read first
+    ["withPublish", "read", "read"],
   ];
   for (const [action, withGuards, withoutGuards] of cases)
     test(`${action}: ${withGuards} with policy-guards, ${withoutGuards} without`, () => {
@@ -182,11 +191,11 @@ describe("mesh explain", () => {
 
   test("a guarded destroy says the delete checks the policies, and where each check runs", () => {
     const lines = explainAction(entity("Note"), "byOwner", document, GUARDS)!;
-    expect(section(lines, "strategy")).toEqual(["one delete by key with the policies in the statement: the checks that read the record (:owner) run inside the delete, which fails as forbidden when they deny (ADR-0046, option B); with an afterWrite or afterCommit seam registered, or under Mesh.checkPolicies or Mesh.can, the row is read under the lock first and the policies run in memory"]);
+    expect(section(lines, "strategy")).toEqual(["one delete by key with the policies in the statement: the checks that read the record (:owner) run inside the delete, which fails as forbidden when they deny (ADR-0046, option B); with an afterWrite or afterCommit seam registered, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete, the row is read under the lock first and the policies run in memory"]);
     expect(section(lines, "policies").slice(0, 3)).toEqual([
       ":owner",
-      "  authorize-if ({ actor }) => &ownerId === actor.id: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before or under Mesh.checkPolicies",
-      "  forbid-if () => &locked: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before or under Mesh.checkPolicies",
+      "  authorize-if ({ actor }) => &ownerId === actor.id: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete",
+      "  forbid-if () => &locked: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete",
     ]);
   });
 
