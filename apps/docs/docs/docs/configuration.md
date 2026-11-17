@@ -157,8 +157,20 @@ events: {
 |:--|:--|
 | `bus` | The event bus that delivers events to handlers and subscriptions, such as `localBus()`. There is no default: a project that declares an event and sets no bus fails the build |
 | `load` | A function that imports the events module, which exports the handlers, the `metadata` function and the handlers' `context`. `connect()` calls it; the build never does, so the module may import `#mesh` at its top |
-| `keep` | How long the outbox keeps a row: `"until-delivered"`, the default, deletes a row once every reader has passed it; `"all"` keeps every row, for an application that reads its history. Only the deliverer deletes, by its own `keep`, from its next claim, so a deploy that drops `"all"` deletes the delivered history at its first deletion pass |
+| `keep` | How long the outbox keeps a row: `"until-delivered"`, the default, deletes a row once every reader has passed it; `"all"` keeps every row, for an application that reads its history. Only the deliverer deletes, by its own `keep`, from its next claim, so a deploy that drops `"all"` deletes the delivered history at its first deletion pass. With a bus that declares `multi-process` the `keep` in force is recorded in the database and moves back only through `mesh events keep until-delivered` |
 | `requires` | The capabilities the application needs, from the bus's list (`ordered-delivery`, `replay`, `subscribe`, `dead-letters`, `multi-process`) and the data adapter's. One the configured adapters lack fails the build with `MESH_CAPABILITY`, naming the adapter that lacks it |
+
+To deliver from several processes at once, configure a bus that declares `multi-process` and, to make the build check it, list it in `requires`:
+
+```ts "mesh.config.ts (excerpt)"
+events: {
+  bus: localBus({ processes: "many" }),
+  requires: ["multi-process"],
+  load: () => import("./src/events.ts"),
+},
+```
+
+[Events](./events.md#delivering-from-several-processes) says what changes.
 
 The build checks the section: a project that declares an event with no `bus`, a `bus` that is not an event-bus descriptor (a manifest naming the adapter and its capabilities from the closed list, and a `create` function), a `requires` entry that is no capability, any other field, a `keep` that is neither value, or a `load` that is not a function fails it with `MESH_EVENTS_CONFIG`. The build reads the bus's manifest and never starts it. [Events](./events.md) explains the outbox, the bus, handlers and the events module.
 

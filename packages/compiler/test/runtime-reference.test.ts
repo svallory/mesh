@@ -27,7 +27,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
     const names = [...section.matchAll(/export (?:interface|class) (\w+)/g)].map((match) => match[1]!);
     expect(names).toEqual([
       "EventsConfig", "EventsModule", "EventBusCapabilities", "BusManifest", "EventBus", "BusOptions", "EventBusInstance", "RegisteredHandler", "OutboxRow",
-      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress",
+      "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress", "Adopted",
       "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
       "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
       "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError", "HandlerLostError",

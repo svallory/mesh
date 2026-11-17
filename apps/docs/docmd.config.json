@@ -490,6 +490,10 @@
             {
               "title": "0090. Line rules report Mesh's codes",
               "path": "/architecture/decisions/0090-line-rules-report-meshs-codes/"
+            },
+            {
+              "title": "0091. Delivery from several processes: a lease per handler",
+              "path": "/architecture/decisions/0091-delivery-from-several-processes/"
             }
           ]
         },

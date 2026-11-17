@@ -346,7 +346,7 @@ Delivery registers the handlers each time it starts. With P the position a handl
 
 ## Running the deliverer
 
-By default one process per database delivers: it holds the database's **claim**, a row in `mesh_outbox_state`. A second process that tries to deliver fails with `DelivererTakenError` (`MESH_DELIVERER_TAKEN`), which names the holder (its host, pid and start time, and how long ago it renewed the claim) and `lapsesAt`, when a crashed holder's claim may be taken over. With a bus that declares `multi-process`, such as `localBus({ processes: "many" })`, several processes deliver at once instead: each handler is held by one of them at a time and taken over by another when its holder stops renewing, and a process that delivers with a bus without `multi-process` beside them fails with `DelivererTakenError`. How a process delivers depends on how it connects:
+By default one process per database delivers: it holds the database's **claim**, a row in `mesh_outbox_state`. A second process that tries to deliver fails with `DelivererTakenError` (`MESH_DELIVERER_TAKEN`), which names the holder (its host, pid and start time, and how long ago it renewed the claim) and `lapsesAt`, when a crashed holder's claim may be taken over. With a bus that declares `multi-process`, such as `localBus({ processes: "many" })`, several processes deliver at once instead: each handler is held by one of them at a time and taken over by another when its holder stops renewing, and a process that delivers with a bus without `multi-process` beside them fails with `DelivererTakenError` (see [Delivering from several processes](#delivering-from-several-processes)). How a process delivers depends on how it connects:
 
 | Call | What it does |
 |:--|:--|
@@ -375,6 +375,43 @@ await binding.deliver(); // every handler gets the InvoicePaid
 `deliver()` resolves once the round is done. It rejects with `HandlerStoppedError` when a handler stopped in the round, or with `DatabaseBusyError`. A round hands each handler the rows there were when it reached that handler, so an event a `process` handler publishes reaches the handlers after it in the next round. It does not queue: one `deliver()` that overlaps another round is `MESH_DELIVERER_TAKEN`. `deliver()` on a binding whose delivery is started, and either call on a binding with no bus, is a `FrameworkError`.
 
 The running deliverer renews its claim every 5 seconds, whatever the bus; a claim not renewed for 15 seconds has lapsed, and another process may take it over. The deliverer that lost the claim notices at its next transaction and stops with `DelivererLostError` (`MESH_DELIVERER_LOST`): its handlers stop, its subscriptions end with that error, and no event is handled twice or deleted by it. Both numbers are fixed for now. Mind one consequence: a transaction longer than 15 seconds in the deliverer's process (an action, or a `process` handler awaiting a slow call) holds the database long enough for a waiting process to take over a healthy deliverer, which then stops loudly and loses nothing.
+
+## Delivering from several processes
+
+By default one process delivers a database's events, and a second one fails. To run several workers that all deliver, for failover, configure a bus that declares `multi-process`. `localBus` does with `processes: "many"`:
+
+```ts "mesh.config.ts (excerpt)"
+import { localBus } from "@meshfw/bus-local";
+
+events: {
+  bus: localBus({ processes: "many" }),
+  requires: ["multi-process"],
+  load: () => import("./src/events.ts"),
+},
+```
+
+The schema changes with it (`tables` gains `mesh_delivery_process` and a column on three core tables), so run `mesh build` and push the schema again. The data adapter must have the multi-process delivery operations: `@meshfw/data-sqlite` has them; with an adapter that lacks them, starting delivery is a `FrameworkError` that names the first one missing.
+
+**Processes and handlers.** Every process that starts delivery writes its row in `mesh_delivery_process` and renews it every 5 seconds; a row not renewed for 15 seconds has lapsed, as a claim does. There is no single deliverer. Each handler is held by one process at a time, through a **lease** on its progress row: the first live process takes every handler that no live process holds, and when its holder dies or stalls, another process takes the handler over within the 15 seconds and goes on from its progress row. A holder that was only paused and wakes finds the lease taken at its next handler transaction: that transaction rolls back, the handler stops in that process with `HandlerLostError` (`MESH_HANDLER_LOST`), which the bus never reports, and its renewal then fails with `DelivererLostError`. So a `process` handler never handles an event twice; a `listen` body that was running when its lease was lost moves nothing, and the next holder runs it again (at least once, as always for `listen`). More processes buy failover, not throughput per handler: a handler is serial, so it runs in one process at a time. On SQLite every process runs on one host and shares one writer.
+
+A process that delivers with a bus that does not declare `multi-process` fails with `DelivererTakenError` while any of them lives, and its message says the database is delivered from several processes; a process with `processes: "many"` likewise fails while a single-mode deliverer holds the claim. Every process configures the same bus.
+
+**Subscriptions** open in any delivering process; the row records which one. A name open in another live process is refused with a `FrameworkError` naming it, and one left open by a process that crashed is reopened.
+
+**Deleting.** Every delivering process runs the deletion pass, and a pass never moves a reader another process holds. `deliver()` rounds work too, and a round delivers only the handlers whose lease it can take, so beside a process that holds some it does not feed every handler.
+
+**A stopped handler** (after a failure the bus does not retry) keeps its lease while its process lives, so it does not move from process to process with the event that fails it. `resumeHandler(name)` in that process, or a restart, sends it on.
+
+### Deploys that change a handler's events
+
+During a rolling deploy two builds run side by side, and they may list different events for one handler. Mesh keeps, for each handler, its **registered union**: every event any build has listed for it since the last adoption. A process never passes a row of an event in the union that its own build does not list. It gives the handler up there instead, and a process whose build lists the event takes it over, so no event is lost while the builds change.
+
+- **A deploy that adds an event** needs nothing: the old processes give the handler up at its first row of the new event, and the new ones handle it. A row of an event that only the new build declares is passed by the old build's other handlers, which do not list it. A row of an event that no running build declares still stops the handler with `EventUndeclaredError`, as in one process.
+- **A deploy that removes an event** stops the handler at the next row of that event once only the new build runs: the union still lists it, and no live process does. Mesh does not drop it on its own, since a process of the old build that is only restarting would come back past rows it lists. The delivering processes log the handler once it has been held by none for 15 seconds, then hourly: `Mesh: the handler "notify" is registered by 2 live processes and held by none: it waits at position 812, where billing.InvoiceVoided is listed by a build no live process runs. Drop it with mesh events adopt notify --drop billing.InvoiceVoided, or start a process whose build lists it`. Run that command (see [Command line](./command-line.md#events-adopt)); the handler goes on at the next renewal. `adoptHandler(name, { drop })`, from `#mesh` in a project whose bus declares `multi-process`, does the same from application code. Neither ever drops an event a live process lists.
+
+### The recorded `keep`
+
+The `keep` in force is recorded in `mesh_outbox_state`, and it moves only towards `"all"`: a process configured with `keep: "all"` records it when it starts, and no process deletes while it is recorded. A deploy that drops `keep: "all"` therefore deletes nothing until you run `mesh events keep until-delivered` (see [Command line](./command-line.md#events-keep)), which refuses while a live process still runs with `"all"`. A process configured with `"until-delivered"` logs the recorded `"all"`, then hourly, naming the command.
 
 ## `localBus`
 
@@ -473,7 +510,7 @@ Under `keep: "until-delivered"`, the deliverer deletes the outbox rows that ever
 
 A row handed to a subscription's callback but not yet acknowledged is not passed, so a row is never deleted while a client may still be processing it. Rows a handler or a subscription does not list do not hold it back. Deleting always removes the oldest rows, so the rows kept stay contiguous and a cursor keeps its meaning. Under `keep: "all"` nothing is deleted.
 
-Only the deliverer deletes, by the `keep` its own configuration sets, from the next time it claims. A deploy whose configuration drops `keep: "all"` therefore deletes the delivered history at its first deletion pass.
+Only the deliverer deletes, by the `keep` its own configuration sets, from the next time it claims. A deploy whose configuration drops `keep: "all"` therefore deletes the delivered history at its first deletion pass. With a bus that declares `multi-process`, every delivering process deletes, and the `keep` in force is the one recorded in the database (see [The recorded `keep`](#the-recorded-keep)).
 
 ### Orphan rows
 

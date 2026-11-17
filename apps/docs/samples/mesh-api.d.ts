@@ -219,6 +219,19 @@ declare module "@meshfw/runtime" {
     readonly position: number;
   }
 
+  /** What `adoptHandler` (and `mesh events adopt`) did to a handler's registered union, in delivery from several processes. */
+  export interface Adopted {
+    readonly handler: string;
+    /** The registered union after the call, sorted. */
+    readonly union: readonly string[];
+    /** The events dropped from it. */
+    readonly dropped: readonly string[];
+    /** Every event kept, with the live process that lists it (`pid 4242 on host api-1`), or null when none does. */
+    readonly kept: readonly { readonly event: string; readonly listedBy: string | null }[];
+    /** False when the union is unchanged. */
+    readonly changed: boolean;
+  }
+
   /** What the project's `metadata` function returns for each event; a project declares its fields by augmenting this interface. */
   export interface EventMetadata {}
 
@@ -897,7 +910,7 @@ declare module "#mesh/domain/billing" {
 }
 
 declare module "#mesh" {
-  import type { ActionContext, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
+  import type { ActionContext, Adopted, EventRecord as $EventRecord, EventsConfig, MetadataFunction as $MetadataFunction, ReadEventsPage, ReadEventsQuery, Seams, SubscribeQuery, Subscription, SubscriptionProgress } from "@meshfw/runtime";
   import type { Invoice, InvoicePaid, PayInvoice } from "#mesh/domain/billing";
   import type { PostgresDataLayer } from "@meshfw/data-postgres";
   import type { SqliteDataLayer } from "@meshfw/data-sqlite";
@@ -950,6 +963,11 @@ declare module "#mesh" {
   export function subscribe(query: SubscribeQuery, callback: (event: EventRecord) => unknown): Promise<Subscription>;
   /** Drop the progress row of a handler that was removed or renamed without `renamedFrom`; one the running deliverer registered is refused. */
   export function forgetHandler(name: string): Promise<void>;
+  /**
+   * Shrink the registered union of a handler delivered from several processes: every event a live process lists is kept,
+   * and of the others only those named in `drop`. Exported only when the configured bus declares `multi-process`.
+   */
+  export function adoptHandler(name: string, options?: { readonly drop?: readonly string[] }): Promise<Adopted>;
   /**
    * Every persisted subscription, open or closed, with its acknowledged position, ordered by name; needs no running deliverer.
    * Reads through the layer's transaction (a write lock on SQLite); inside an application transaction it joins it.
