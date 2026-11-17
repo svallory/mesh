@@ -1,11 +1,13 @@
 ---
 title: "0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies"
-description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct (DOM-09) and general publish-subscribe (DOM-08), open when written, are decided (amended 2026-10-17). Amended 2026-11-14 (how to read the illustration and item 5: how `uses` is enforced is decided with the service construct, after 1.0)."
+description: "Decision record 0078: where an effect across entities goes, where service files live, what a service is, the `uses` keyword and the one-entity warning. Status: Accepted (DOM-01, DOM-13, DOM-14, DOM-15, DOM-16); the service construct (DOM-09) and general publish-subscribe (DOM-08), open when written, are decided (amended 2026-10-17). Amended 2026-11-14 (how to read the illustration and item 5: how `uses` is enforced is decided with the service construct, after 1.0) and 2026-11-17 (the cross-aggregate warning built: switchable, write actions only, declared aggregates only; lead ruling D40)."
 ---
 
 # 0078. Effects are split three ways; services follow Vernon's definition and `uses` lists their dependencies
 
 ## Status
+
+> **Amendment, 2026-11-17 (the cross-aggregate warning built).** Decision item 1's "Whether the warning can be switched off is not ruled" is answered by lead ruling D40 (pending operator review), which takes the recommended option of each open decision in the design `notes/architecture/architecture-file-design.md`: the warning is the architecture rule `:action-calls-other-aggregate`, code `MESH_ACTION_CALLS_OTHER_AGGREGATE`, and the architecture file can re-grade it and switch it off (OD7 (a): "Switchable: `disable` and `severity` both apply"). The same ruling fixes which calls it counts and which entities it sees. It counts a call of a write action, `create`, `update` or `destroy`, its own or from `auto=`; a read, `Mesh.privileged(Task).read(...)` included, is never reported (OD8 (a): "Write actions only"). An entity that no aggregate file lists belongs to no aggregate, so a call to or from it is not reported (OD9 (a): "An unlisted entity is in no aggregate; a call to or from it is never reported"). It reads the functions of an entity's actions and `always` blocks written in the `.mesh.mx` file, never a handler body, which is where a later effect on another aggregate goes, nor a helper module's code. The first action item below is done for both warnings.
 
 > **Note, 2026-11-17 (the service construct proposed).** The shape of a service and how `uses` is enforced are proposed in [ADR-0097](./0097-the-service-construct.md) (lead ruling D42, pending operator review): a `service :Name` file of `operation` members with `uses entity=X actions=[...]` lines, checked by the build and at run time. Decision item 5's "`tsc` enforces them" is replaced there. The one-entity warning is `MESH_SERVICE_ONE_ENTITY`.
 
@@ -79,4 +81,4 @@ Three homes for an effect keep each aggregate's invariants in one place and make
 ## Action items
 
 - [ ] Operator: DOM-08 and DOM-09.
-- [ ] When the architecture rules are built ([ADR-0084](./0084-architecture-rules-are-core.md)): the "entity action calls another aggregate's action" warning and the "service touches one entity" warning.
+- [x] When the architecture rules are built ([ADR-0084](./0084-architecture-rules-are-core.md)): the "entity action calls another aggregate's action" warning and the "service touches one entity" warning (both built, 2026-11-17 amendment).

@@ -9,6 +9,7 @@ import type {
   SourcePosition,
 } from "@meshfw/model";
 import type { PublishTarget } from "../model/publish-steps.ts";
+import type { EntityCall } from "../model/architecture-rules.ts";
 import type { At, AtomForwards, MemberForwards, SyntaxNode } from "./tree.ts";
 import { writtenReference, type Resolution, type WrittenReference } from "./references.ts";
 
@@ -421,6 +422,35 @@ function chainRoot(n: N): N | undefined {
 }
 const CHAIN_WRAPPERS = new Set(["ParenthesizedExpression", "TSNonNullExpression", "TSAsExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
 
+/**
+ * The call a member chain that starts at an entity makes, for the architecture rules: the first member after the entity
+ * (`close` in `Task.close(...)`, `Task["close"](...)`, ``Task[`close`](...)`` and `Task.close.call(...)`), and through a namespace import the
+ * entity it names (`work.Task.close`). A member the build cannot read (`Task[name]`) gives none.
+ */
+function entityCall(callee: N, root: N, ctx: ConvertContext): EntityCall | undefined {
+  const members: (string | undefined)[] = [];
+  for (let at: N | undefined = callee; at && at !== root; ) {
+    if (at.type === "MemberExpression" || at.type === "OptionalMemberExpression") {
+      const property = at.property as N;
+      members.unshift(!at.computed && property.type === "Identifier" ? property.name : at.computed ? staticString(property) : undefined);
+      at = at.object as N;
+    } else at = at.expression as N;
+  }
+  const namespace = ctx.namespaces?.has(root.name!) === true;
+  const qualified = namespace ? members[0] : undefined;
+  const member = namespace ? members[1] : members[0];
+  if (member === undefined || (namespace && qualified === undefined)) return undefined;
+  return { binding: root.name!, ...(qualified !== undefined ? { qualified } : {}), member, position: ctx.at(start(root)) };
+}
+
+/** The string a computed member names when the build can read it: `"close"`, or a template with no substitution. */
+function staticString(n: N): string | undefined {
+  if (n.type === "StringLiteral") return String(n.value);
+  const quasis = n.quasis as { value: { cooked?: string | null } }[] | undefined;
+  if (n.type === "TemplateLiteral" && (n.expressions as unknown[] | undefined)?.length === 0 && quasis?.length === 1) return quasis[0]!.value.cooked ?? undefined;
+  return undefined;
+}
+
 function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: Names): string[] {
   const bound = bindings(fn);
   const roots = new Set<string>();
@@ -658,7 +688,11 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     // (`billing?.Invoice.open`, `billing["Invoice"].open`, `Task.touch.call`), so no spelling escapes `MESH_POLICY_ACTS`
     // and `MESH_COMPUTED_COMPOSES`.
     const root = callee && (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") ? chainRoot(callee) : undefined;
-    if (root && namesEntity(root.name!, scope)) names.acts = true;
+    if (root && namesEntity(root.name!, scope)) {
+      names.acts = true;
+      const call = entityCall(callee!, root, ctx);
+      if (call) (names.calls ??= []).push(call);
+    }
     const opened = scopeNames(n);
     const inner = opened && opened.size > 0 ? new Set([...scope, ...opened]) : scope;
     for (const [k, child] of Object.entries(n)) if (k !== "loc" && k !== "extra") walk(child, n, k, inner);
@@ -699,7 +733,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
  * node has no types (MX strips them), so a helper named only in a type is left to the TypeScript back end (`typeNames` in
  * `typescript/type-names.ts`).
  */
-interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; record?: true; values?: CapturedValue[] }
+interface Names { entities: Set<string>; events: Set<string>; acts: boolean; helpers: Set<string>; mesh: Set<string>; structuredClone?: true; privileged?: SourcePosition[]; asks?: SourcePosition[]; calls?: EntityCall[]; record?: true; values?: CapturedValue[] }
 /** A read of a helper module's name that is no call of it: the name as written (`LIMIT`, `h.LIMIT`), and whether a call is handed it. */
 interface CapturedValue { name: string; position: SourcePosition; handed?: true }
 
@@ -1042,6 +1076,10 @@ export const rememberPrivilegedCalls = (expression: object, calls: readonly Sour
 const askCalls = new WeakMap<object, readonly SourcePosition[]>();
 export const askCallsOf = (expression: object): readonly SourcePosition[] => askCalls.get(expression) ?? [];
 export const rememberAskCalls = (expression: object, calls: readonly SourcePosition[]): void => { askCalls.set(expression, calls); };
+/** Each call a function makes to a member of an entity value (`Task.close(...)`), for the architecture rules (`model/architecture-rules.ts`). */
+const entityCalls = new WeakMap<object, readonly EntityCall[]>();
+export const entityCallsOf = (expression: object): readonly EntityCall[] => entityCalls.get(expression) ?? [];
+export const rememberEntityCalls = (expression: object, calls: readonly EntityCall[]): void => { entityCalls.set(expression, calls); };
 /** How a function is asynchronous, if it is: written `async`, or using `await` in its own body: a computed field must not be (MESH_COMPUTED_ASYNC). */
 export type Asynchrony = "async" | "await";
 const asynchronous = new WeakMap<object, Asynchrony>();
@@ -1090,6 +1128,8 @@ export function copyExpression<T extends object>(expression: T): T {
   if (privileged) privilegedCalls.set(copy, privileged);
   const asks = askCalls.get(expression);
   if (asks) askCalls.set(copy, asks);
+  const calls = entityCalls.get(expression);
+  if (calls) entityCalls.set(copy, calls);
   const asynchrony = asynchronous.get(expression);
   if (asynchrony) asynchronous.set(copy, asynchrony);
   const reach = scopeReaches.get(expression);
@@ -1237,7 +1277,7 @@ function checkPublished(fn: N, ctx: ConvertContext): PublishTarget[] {
   return targets;
 }
 
-export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; publishTargets?: PublishTarget[] } {
+export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd: number }, ctx: ConvertContext): { tree?: ExprNode; plain?: PlainReason; demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; entityCalls?: EntityCall[]; publishTargets?: PublishTarget[] } {
   const f = fn as N;
   const called = new Set<string>();
   const names: Names = { entities: new Set(), events: new Set(), acts: false, helpers: new Set(), mesh: new Set() };
@@ -1288,7 +1328,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
     }
     return { parts, rest };
   };
-  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; publishTargets?: PublishTarget[] } => {
+  const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; entityCalls?: EntityCall[]; publishTargets?: PublishTarget[] } => {
     // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
     const object = e.why === "unsupported-parameter" || e.why === "handler" ? undefined : objectParts();
     return {
@@ -1296,6 +1336,8 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
       // A function that names `privileged` is always plain (`uses-privileged`), so only a plain one carries the calls.
       ...(names.privileged ? { privilegedCalls: names.privileged } : {}),
       ...(names.asks ? { askCalls: names.asks } : {}),
+      // A function that calls an entity is always plain (`calls-entity`), so only a plain one carries the calls.
+      ...(names.calls ? { entityCalls: names.calls } : {}),
       ...(published.length ? { publishTargets: published } : {}),
     };
   };

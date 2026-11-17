@@ -1,7 +1,8 @@
 import type { SpannedIr } from "@mxlang/core";
 import type { AtomNode } from "./syntax/atoms-sugars.ts";
 import type { MemberNode } from "./syntax/member.ts";
-import { asynchronyOfFunction, rememberAskCalls, rememberAsynchrony, rememberDemotion, rememberPrivilegedCalls, rememberPublishTargets, rememberScopeReach, scopeReachOfFunction, translate, type ConvertContext, type Demotion, type PublishTarget } from "./expression.ts";
+import type { EntityCall } from "../model/architecture-rules.ts";
+import { asynchronyOfFunction, rememberAskCalls, rememberAsynchrony, rememberEntityCalls, rememberDemotion, rememberPrivilegedCalls, rememberPublishTargets, rememberScopeReach, scopeReachOfFunction, translate, type ConvertContext, type Demotion, type PublishTarget } from "./expression.ts";
 import type {
   Atom,
   Diagnostic,
@@ -318,7 +319,7 @@ export function expression(
     ? translate(n, data.span, { ...convert, source, at, atoms: atomForwards(a), members })
     : {};
   // Side tables, never fields of the expression: a field here would be written to `model.json`.
-  const { demotion, privilegedCalls, askCalls, publishTargets, ...fields } = translated as { demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; publishTargets?: PublishTarget[] };
+  const { demotion, privilegedCalls, askCalls, entityCalls, publishTargets, ...fields } = translated as { demotion?: Demotion; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; entityCalls?: EntityCall[]; publishTargets?: PublishTarget[] };
   const result: Expression = {
     source: source.slice(data.span.sourceStart, data.span.sourceEnd),
     params,
@@ -330,6 +331,7 @@ export function expression(
   if (demotion) rememberDemotion(result, demotion);
   if (privilegedCalls) rememberPrivilegedCalls(result, privilegedCalls);
   if (askCalls) rememberAskCalls(result, askCalls);
+  if (entityCalls) rememberEntityCalls(result, entityCalls);
   if (publishTargets) rememberPublishTargets(result, publishTargets);
   const asynchrony = asynchronyOfFunction(n);
   if (asynchrony) rememberAsynchrony(result, asynchrony);

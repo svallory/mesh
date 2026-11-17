@@ -58,7 +58,7 @@ import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { architectureFileText, isArchitectureFileName, readArchitectureFile } from "./architecture-file.ts";
 import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
-import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
+import { askCallsOf, asynchronyOf, copyExpression, demotionOf, entityCallsOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
 import { error, offsetAt, positionAt, type BuildResult, type ProjectDescription } from "../model/index.ts";
 import { lineHeadReference, referenceText, resolveReference, writtenReference, type ReferenceKind, type ReferenceScope, type WrittenReference } from "./references.ts";
@@ -79,7 +79,7 @@ import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import { checkServices } from "../model/services.ts";
-import { DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
+import { aggregateNamesOf, checkArchitecture, DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
 import { buildService } from "./services.ts";
 import {
   atomForwards,
@@ -2623,8 +2623,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   if (surfaces.length) document.surfaces = surfaces;
   // The architecture file is the file named so directly in the domain root (R2): any other `architecture` root is refused
-  // and not read, and a project with none runs every rule at its default level. Only `:service-touches-one-entity` has a
-  // check yet (`checkServices`); the others are read and kept.
+  // and not read, and a project with none runs every rule at its default level. The rules run last (`checkArchitecture`).
   let architectureFile: string | undefined;
   let architectureSettings: ArchitectureSettings = DEFAULT_SETTINGS;
   for (const candidate of architectureFiles) {
@@ -2813,7 +2812,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   resolveRelationships(document, inversePositions, throughPositions, diagnostics);
   resolveSurfaces(document, rootPath, pendingSurfaces, diagnostics, nearestName);
-  checkServices(document, diagnostics, nearestName, architectureSettings.get("service-touches-one-entity") ?? "warning");
+  checkServices(document, diagnostics, nearestName);
   resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });
@@ -2834,6 +2833,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
   });
   // A file that did not parse may hold the action that answers a command: with one missing, "unanswered" is not known.
   checkCommands(document, diagnostics, parsedFiles.length === project.files.length);
+  // The architecture rules read the whole built model, so they run after every other check; an `error` setting fails the build.
+  checkArchitecture(architectureSettings, { document, entityCallsOf, aggregatesOf: aggregateNamesOf(document) }, diagnostics);
   const invalid = findNonJsonValue(document);
   if (invalid)
     diagnostics.push(

@@ -178,7 +178,7 @@ describe("the one-entity warning (R3)", () => {
     const result = build(work(ONE + OPEN));
     expect(diags(result)).toEqual([[WORK_FILE, 7, 2, "warning", "MESH_SERVICE_ONE_ENTITY",
       "operation :close of work.Work uses only work.Task: an operation that touches one entity belongs on that entity, as an action",
-      "move it to Task as an action, or add the other entities it reaches"]]);
+      "move it to Task as an action, add the other entities it reaches, or switch the rule off in the architecture file: `disable :service-touches-one-entity`"]]);
     expect(result.document).not.toBeNull();
   });
   test("not for two entities, and not for two same-named entities of two modules", () => {

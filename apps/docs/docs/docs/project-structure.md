@@ -102,8 +102,8 @@ Presets apply first, in the order the file writes them, then the file's own `sev
 
 | Rule | Default | What it reports |
 |---|---|---|
-| `:action-calls-other-aggregate` | `warning` | an entity action that calls a write action of an entity of another [aggregate](#aggregates) (`MESH_ACTION_CALLS_OTHER_AGGREGATE`); not checked yet |
-| `:service-touches-one-entity` | `warning` | a service operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`); raised when a service is built, at the level this file sets |
+| `:action-calls-other-aggregate` | `warning` | a function of an entity's action or `always` block that calls a create, update or destroy action of an entity of another [aggregate](#aggregates) (`MESH_ACTION_CALLS_OTHER_AGGREGATE`), reported at the call; only entities that aggregate files list are checked, and a read, a handler body and a helper module's code are not |
+| `:service-touches-one-entity` | `warning` | a service operation that touches one entity only (`MESH_SERVICE_ONE_ENTITY`) |
 
 Mesh's own invariants, such as an import that reaches outside the domain root, are ordinary build errors: no line of the file names, re-grades or disables one.
 
