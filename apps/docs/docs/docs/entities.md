@@ -211,6 +211,39 @@ entity :Post
 
 `json` holds data whose shape you do not model, such as a list of ids or a map of results. Mesh validates that the value is JSON and stores it as JSON, and does not look inside; the caller narrows `unknown` to the shape they expect. A `json` always accepts `null`, as if it were `nullable`: it is stored as a NULL column, a create that does not send it stores `null`, and the validator takes `null` as it takes any other JSON value. Writing `nullable` on a `json` is legal but redundant, and the build warns about it. It takes `default=` (a JSON literal) but not `unique`, `min`, `max` or `match`, and it cannot be a rollup operand or appear in a `filter`. To query by a part of the value, declare that part as its own attribute.
 
+### Concepts
+
+A concept is a value with no identity and one or more fields, such as an amount of money in a currency. It is declared in a file of its own directly inside a folder named `concepts`, named after the concept, and its field lines are written as an event's are:
+
+```mx "src/domain/concepts/Money.mesh.mx"
+concept :Money
+  string :currency match=/^[A-Z]{3}$/
+  integer :amount min=0
+```
+
+A line whose head is the concept's name declares a member that holds one, with no import: Mesh finds the concept in the nearest `concepts` folder up from the entity file.
+
+```mx "src/domain/billing/invoice.mesh.mx"
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    Money :total
+    Money :refund nullable
+  actions auto=[:read]
+    create :open
+      input
+        &total
+        &refund
+    update :refundAll
+      do
+        set
+          &refund={ currency: "EUR", amount: 0 }
+```
+
+The member's TypeScript type is the concept's generated type (`{ readonly currency: string; readonly amount: number }`), and its value is checked with the concept's generated schema on the way in, so `{ currency: "eur", amount: 1 }` is an `InvalidInputError` whose issue's path is `total.currency`. A concept member takes `nullable` and, on a command field, `optional`; it takes no `default=`, `unique`, `primary-key` or rule of its own, since its fields carry the rules. A field of a concept may be any attribute type but a date (`date`, `datetime`, `timestamp`, which JSON does not keep), or another concept.
+
+A concept member is stored as one JSON value, so the database does not look inside it: it cannot be sorted by, appear in a `filter` or a read policy (`MESH_SORT_TYPE`, `MESH_FILTER_TYPE`), or be a rollup operand (`MESH_ROLLUP_TYPE`), and the caller's filter and sort types leave it out. A value is replaced whole, never changed in place: `set &total={ ... }` takes an object literal with exactly the concept's fields (an `enum` field as an atom), or a function, and anything else is `MESH_SET_VALUE`. A function that reads inside one, `check :positive that=() => &total.amount > 0`, runs as plain TypeScript with the `MESH_EXPR_PLAIN` warning, as one that reads inside a `json` value does; through a `nullable` concept member, write `&refund?.amount`. A concept is also the type of an event or command field, and a command field answers an action input only of the same concept.
+
 `integer`, `float` and `decimal` are all `number` in TypeScript, but a whole number, a money amount and a measurement are different things to store. An atom may be compared with, or assigned to, an `enum` field only: `&status === :sent` is a build error (`MESH_EXPR_ATOM`) if `status` is a `string`, and so is an atom compared with a number, with another atom, or with a field of `actor` or `context`, which are plain TypeScript values. The error's fix writes the string: `actor.role === "admin"`. A field of `input` is an enum where its action declares it as one, an `enum` argument or the member input of an enum attribute, so `input.status === :sent` is legal in that action's checks and steps; a policy or an `always` block covers several actions and its `input` is not typed, so there the string is written.
 
 ### Options on an attribute line

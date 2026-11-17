@@ -2,7 +2,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { extname, join, relative, sep } from "node:path";
 import type { IrDiagnostic } from "@mxlang/core";
+import type { CustomTag } from "@mxlang/core";
 import { parseEntitySource } from "../src/front-end/build.ts";
+import { CONCEPT_USE } from "../src/front-end/concept-file.ts";
 import { SCRATCH_PREFIX, isScratchPath } from "./scan-skip.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
@@ -358,7 +360,8 @@ function invalidMembersInV4(source: string): string | null {
     while (parents.length && parents[parents.length - 1]!.indent >= indent) parents.pop();
     const parent = parents[parents.length - 1];
     const kind = /^([a-z][\w-]*)\b/.exec(text)?.[1] ?? "";
-    const declaration = /^[a-z][\w-]*\s+:(\w+)/.exec(text);
+    // A concept use (`Money :total`) declares a member as an attribute line does.
+    const declaration = /^[A-Za-z][\w-]*\s+:(\w+)/.exec(text);
     if (declaration && (V4_MEMBER_SECTIONS.has(parent?.kind ?? "") ||
       (kind === "check" && parents.some((entry) => entry.kind === "validate")))) members.add(declaration[1]!);
     // An entity may name its own type in a relationship with no import (M7).
@@ -426,10 +429,24 @@ function invalidMembersInV4(source: string): string | null {
   return null;
 }
 
+/**
+ * The concepts the Docs pages declare (every fence whose root is `concept :Name`), each as the contract of a concept use.
+ * A fence is lowered under a path with no `concepts` folder, so MX's scan finds none of them: the checks pass these as
+ * `parseEntitySource`'s `extraTags`, and a fence that uses a concept no page declares still fails as an unknown tag.
+ */
+export function docsConcepts(blocks: readonly { block: readonly string[] }[]): Record<string, CustomTag> {
+  const concepts: Record<string, CustomTag> = {};
+  for (const { block } of blocks) {
+    const root = /^concept\s+:(\w+)/.exec(block.find((text) => text.trim() !== "")?.trimStart() ?? "");
+    if (root) concepts[root[1]!] = CONCEPT_USE as CustomTag;
+  }
+  return concepts;
+}
+
 /** A parser crash is a finding, not an exception. */
-export function parseV4(source: string, file: string): IrDiagnostic[] {
+export function parseV4(source: string, file: string, extraTags?: Readonly<Record<string, CustomTag>>): IrDiagnostic[] {
   try {
-    return parseEntitySource(source, file).diagnostics;
+    return parseEntitySource(source, file, extraTags).diagnostics;
   } catch (cause) {
     return [{ severity: "error", message: `MX could not parse the block at all: ${(cause as Error).message.split("\n")[0]}`, line: 1, column: 0, offset: 0 }];
   }
@@ -443,6 +460,7 @@ export function parseV4(source: string, file: string): IrDiagnostic[] {
 export function checkDocsSyntaxV4(dir: string) {
   let checked = 0;
   const blocks = docsMxBlocks(dir);
+  const concepts = docsConcepts(blocks);
   const errors: string[] = [];
   for (const { name, line, block, closed } of blocks) {
     const where = `${name}:${line}`;
@@ -454,7 +472,7 @@ export function checkDocsSyntaxV4(dir: string) {
     checked++;
     const quoted = oldSpellingInV4(block.join("\n"));
     if (quoted) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${quoted}`);
-    for (const diagnostic of parseV4(`${block.join("\n")}\n`, where)) {
+    for (const diagnostic of parseV4(`${block.join("\n")}\n`, where, concepts)) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
     }
   }
@@ -467,6 +485,7 @@ export function checkDocsSamples(dir: string) {
   let parsed = 0;
   let skipped = 0;
   const blocks = docsMxBlocks(dir);
+  const concepts = docsConcepts(blocks);
   const errors: string[] = [];
   for (const { name, line, block, closed } of blocks) {
     const where = `${name}:${line}`;
@@ -476,7 +495,7 @@ export function checkDocsSamples(dir: string) {
       parsed++;
       const old = oldSpellingInV4(block.join("\n"));
       if (old) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: ${old}`);
-      for (const diagnostic of parseV4(`${block.join("\n")}\n`, where)) {
+      for (const diagnostic of parseV4(`${block.join("\n")}\n`, where, concepts)) {
         errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);
       }
       continue;
@@ -485,7 +504,7 @@ export function checkDocsSamples(dir: string) {
     // An entity file may open with its imports, so an `import` line heads a complete block too.
     if (!/^(entity\b|aggregate\b|resource\b|import\s)/.test(root)) { skipped++; continue; }
     if (/^resource\b/.test(root)) errors.push(`${where}: MX fence is not written in ${DOCS_SYNTAX}: use entity :Name, not resource`);
-    const diagnostics = parseEntitySource(`${block.join("\n")}\n`, join(dir, name)).diagnostics;
+    const diagnostics = parseEntitySource(`${block.join("\n")}\n`, join(dir, name), concepts).diagnostics;
     parsed++;
     for (const diagnostic of diagnostics) {
       errors.push(`${where}: MX block ${diagnostic.line}:${diagnostic.column + 1}: ${diagnostic.message}`);

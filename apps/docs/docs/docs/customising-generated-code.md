@@ -87,6 +87,12 @@ The build now uses your `actions.ts.jig` and Mesh's own for the rest, and a Mesh
 
 The keyword is `import type` when the functions take only types from a module (a `Money` type that a function names in an annotation and never calls). A project that sets `verbatimModuleSyntax` keeps a plain `import` of such a module as written, and `tsc` refuses it with TS1484. An override written before the view had a `keyword` field prints `import` every time, so a project with that setting fails type checking at the line, and the fix is to replace the literal `import` in each import line with the `keyword` field.
 
+## Concepts in the views
+
+A project that declares a concept gets one more template, `concept.ts.jig`, rendered once per concept with a `ConceptView`: its `name` and `schema`, its `fields` (each a `key`, a printed `type` and a printed `zod` expression), `json` and `globals` as the validators view has them, and `typeImports`, one entry per concept a field holds (`type` as `Money as $Money$concept`, `schema` as `moneySchema as $Money$schema`, and `fromLiteral`). The views that print a concept member list the concepts they need the same way: `ValidatorsView.concepts` (the schemas) and `DeclarationView.concepts` (the types and schemas) for `validators.ts.jig` and `declaration.ts.jig`, and the types view adds each concept to its `imports`. `ModuleView.concepts` lists the concepts a module's barrel exports. An override of one of these templates written before concepts must print those imports, or its file fails type checking at the first concept member.
+
+A data adapter's schema template types a concept column with the concept's type: `ColumnView.typeArgument` is the local it prints as `.$type<$Money$concept>()` (`null` for every other column), and `SchemaView.typeImports` the type-only imports that bring it in. An adapter written outside Mesh names a concept the same way through `conceptTypeImport(document, fqn, fromFile)` from `@meshfw/compiler`, which returns the `local` and the `specifier` of the concept's generated file relative to `fromFile` (`conceptTypeImport(document, "Money", "schema.ts")` is `{ local: "$Money$concept", specifier: "./domain/money.concept" }`).
+
 ## Next
 
 - [Project structure](./project-structure.md) — what `.mesh/` contains and why it is committed.

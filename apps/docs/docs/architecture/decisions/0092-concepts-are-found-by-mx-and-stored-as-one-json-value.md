@@ -5,9 +5,11 @@ description: "Decision record 0092: concept files live directly in folders named
 
 # 0092. Concepts are found by MX's scan, generated as a type and a schema, and stored as one JSON value
 
+> **Amendment, 2026-11-17 (concept-typed members built).** A concept use builds a member, an event or command field or a concept field of `type: "concept"` whose `concept` is the FQN it resolved to (the model's `ValueType`), as decision 7 says: one JSON column (`text` in JSON mode on SQLite, `jsonb` on Postgres, each typed with the concept's generated type), the concept's type in the record, input, event and command types and its schema in their validators, each imported under an FQN-derived local (`$billing$Money$concept`). A sort, a filter, a read policy and a rollup over a concept member are `MESH_SORT_TYPE`, `MESH_FILTER_TYPE` and `MESH_ROLLUP_TYPE` naming the concept; the SQL evaluator (M10) never translates a read of one. `set &total={ ... }` takes an object literal with exactly the concept's fields, each fitting, else `MESH_SET_VALUE`, and it is printed by the concept's fields (an enum atom as its name). A read inside a concept member, or a comparison of two, demotes the function to plain code with the `MESH_EXPR_PLAIN` warning; where SQL is required that is `MESH_EXPR_NOT_SQL`, as for a demoted `json` read. A command field answers an action input only of the same concept FQN (`MESH_COMMAND_INPUT`). `@meshfw/compiler` exports `conceptTypeImport(document, fqn, fromFile)`, the naming rule a data adapter uses for a concept column.
+
 ## Status
 
-Accepted (lead ruling D36, pending operator review). Builds the concept half of [ADR-0080](./0080-aggregates-and-concepts.md) on the discovery of [ADR-0085](./0085-tag-discovery-for-dialect-tags.md), and deviates from 0085's chosen option in one place (below). Concept files are built; a concept use (`Money :total`) is not built yet and is refused as `MESH_NOT_IMPLEMENTED`.
+Accepted (lead ruling D36, pending operator review). Builds the concept half of [ADR-0080](./0080-aggregates-and-concepts.md) on the discovery of [ADR-0085](./0085-tag-discovery-for-dialect-tags.md), and deviates from 0085's chosen option in one place (below). Concept files are built; concept-typed members (`Money :total`) are built too (concepts PR 2, amendment below).
 
 ## Date
 
@@ -35,7 +37,7 @@ MX ships what ADR-0085 asked for (since MX `0.1.0-alpha.18`; Mesh pins alpha.37)
 4. **The field parents are open.** `attributes`, `event`, `command` and `concept` declare no `children` (OD3, option (a)), built through one helper, `fieldParent`, so a unit that changes them keeps them open. Each field kind's `parents` keeps a misplaced line an error. The lead asks the MX lead for a `children` entry that admits a dialect's tag-file tags (option (c)); with it the parents close again.
 5. **Identity.** A concept's module is the folder above its `concepts` folder (group folders dropped), and its FQN is the module and its name, as written: `billing.Money`, or `Money` at the domain root (OD8). Two concepts of one FQN, which a group folder's `concepts` beside its module's gives, are `MESH_DUPLICATE_ENTITY`, an exception to silent shadowing (OD11), as is a concept sharing its FQN with an entity, event or command. A concept file is never imported (`MESH_UNKNOWN_IMPORT`), and takes no import.
 6. **Generated code.** Each concept is `<output>/domain/<module>/<name>.concept.ts`: a TypeScript type whose members are `readonly` (a concept value is replaced whole) and a `z.strictObject` schema (`moneySchema`) that satisfies it, both exported by the module's barrel. No concept ships with Mesh (OD2).
-7. **Storage and expressions, for concept-typed members.** A concept member is stored as one JSON column (OD1): not filterable or sortable until JSON paths are translated, and a read inside it (`&total.amount`) runs as plain code, as a read inside a `json` value does (OD7). These come with concept-typed members, the next unit of this work.
+7. **Storage and expressions, for concept-typed members.** A concept member is stored as one JSON column (OD1): not filterable or sortable until JSON paths are translated, and a read inside it (`&total.amount`) runs as plain code, as a read inside a `json` value does (OD7). Built by concepts PR 2 (amendment above).
 
 ## Options considered
 
@@ -53,5 +55,5 @@ The concepts design (`notes/architecture/concepts-design.md`, section 11) lists 
 ## Action items
 
 - [x] Concept files: manifest, contracts, hook, scan, model and generator (this record).
-- [ ] Concept-typed members: a concept use as an attribute, an event, command or concept field; its record, input, validator and SQLite column; `set` literals; the expression rules.
+- [x] Concept-typed members: a concept use as an attribute, an event, command or concept field; its record, input, validator and SQLite and Postgres columns; `set` literals; the expression rules (amendment above).
 - [ ] Lead: ask the MX lead whether `lowerSource` should scan a dialect's `tagDirs` (decision 3), for a `children` entry that admits tag-file tags (decision 4), and to confirm that `checkDialectFile` passes the scan for a routed dialect file.
