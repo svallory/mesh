@@ -735,8 +735,11 @@ function policyGuardChecks(withTasks: WithTasks, declared: (name: string) => boo
       denied(await attempt(layer, taskTable, { id: "a1" }, { checks: [eqc(col("parentId"), val(null))], policies: [pol([0])] }), [null], "a comparison with null");
       await expectSame(read, ALL, "nothing is deleted");
     }),
-    guardedCheck("the guard is evaluated on the keyed row only, never on another row the database scans", async (read, { layer, taskTable }) => {
-      // The check is false on every row but a5: a delete of a5 must not raise for them.
+    guardedCheck("a check false on every row but the keyed one does not deny the keyed delete", async (read, { layer, taskTable }) => {
+      // The check is false on every row but a5: a delete of a5 must not raise for them. This shows the outcome only; it
+      // cannot show that the guard is never evaluated on another row, because an adapter that looks the row up by its
+      // key never reaches the others whatever its statement says. The key inside the guard's CASE (R6) is pinned by the
+      // printed-SQL test of deleteByKeyGuarded in data-drizzle's test/operations.test.ts.
       const outcome = await attempt(layer, taskTable, { id: "a5" }, { checks: [eqc(col("id"), val("a5"))], policies: [pol([0])] });
       assert(outcome === true, `a guard true on the keyed row admits it whatever it gives on others, got ${describe(outcome)}`);
       await expectSame(read, ["a1", "a2", "a3", "a4", "a6"], "only the keyed row is deleted");
