@@ -1561,7 +1561,8 @@ function buildAggregate(
 /**
  * An event or a command: a file of its own whose root line declares it and whose children are field lines
  * (`notes/spec/events-and-commands.md`, "Events" and "Commands"). A field line is an attribute line with the options that
- * constrain a value only: `nullable`, `values`, `min`, `max` and `match`, plus `optional` for commands. What concerns storage or creation, `default`,
+ * constrain a value only: `nullable`, `values`, `min`, `max` and `match`, `message` and `code` beside a rule (ADR-0092),
+ * plus `optional` for commands. What concerns storage or creation, `default`,
  * `unique`, `primary-key` and `on`, is `MESH_UNKNOWN_OPTION`, since the declaration is a message that carries what its
  * sender put in it, with no row behind it (and `value`, a computed field's body, is no option of one either). A contract
  * is per tag and the field kinds are the attribute types, so the contract cannot tell a field from an attribute, and the
