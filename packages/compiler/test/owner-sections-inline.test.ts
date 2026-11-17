@@ -344,6 +344,17 @@ describe("what is generated", () => {
     expect(lines(text(inline, ".mesh/domain/billing/invoice.expressions.ts"))).toBe(lines(text(own, ".mesh/domain/billing/invoice.expressions.ts")));
   });
 
+  test("every generated file but model.json is the file form's, apart from the source names and lines its comments give", async () => {
+    const inline = await generate(build());
+    const own = await generate(build({ "billing/invoice-voided.mesh.mx": `event :InvoiceVoided\n${VOIDED("  ")}` }, FILE_FORM));
+    const normal = (code: string) => code.replace(/billing\/invoice(-voided)?\.mesh\.mx(:\d+(:\d+)?)?/g, "FILE");
+    const tree = (generated: readonly { path: string; contents: string }[]) =>
+      Object.fromEntries(generated.filter((file) => !file.path.endsWith("model.json")).map((file) => [file.path, normal(file.contents)]));
+    expect(Object.keys(tree(inline)).sort()).toEqual(Object.keys(tree(own)).sort());
+    expect(Object.keys(tree(inline))).toEqual(expect.arrayContaining([".mesh/domain/billing/invoice.actions.ts", ".mesh/index.ts", ".mesh/domain/billing/invoiceVoided.event.ts"]));
+    expect(tree(inline)).toEqual(tree(own));
+  });
+
   test("two inline events of one file come out in written order in the event table", async () => {
     const generated = await generate(build({}, invoice({ events: "    event :AInvoiceNoted\n      uuid :invoiceId\n" })));
     const index = text(generated, ".mesh/index.ts");
