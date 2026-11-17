@@ -20,14 +20,14 @@ export interface EventMetadata {}
  */
 export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
-export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError, EventsConfigError, HandlerOptionError, DelivererTakenError, DelivererLostError, HandlerLostError, SubscriptionOverflowError, HandlerStoppedError } from "./errors.ts";
+export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError, EventsConfigError, HandlerOptionError, DelivererTakenError, DelivererLostError, HandlerLostError, SubscriptionOverflowError, HandlerStoppedError, PolicyGuardDenial, guardDenialOf } from "./errors.ts";
 export type { ClaimHolder, DatabaseBusyOptions, DatabaseBusyReason, StoppedHandler, DenialReason, Issue, IssueSource, MeshErrorOptions, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";
 export { dispatchCommand, type ActionResult, type CommandAction } from "./dispatch.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, RollupFn, RollupHop, RollupQuery, RollupRow, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, FailureCursor, FailureOperations, FailureRow, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, RawRow, RetentionOperations, RawStatement, RawValue, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, RollupFn, RollupHop, RollupQuery, RollupRow, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, FailureCursor, FailureOperations, FailureRow, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, RawRow, RetentionOperations, RawStatement, RawValue, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions, WriteGuard } from "./data-layer.ts";
 export { ROLLUP_ANCHORS } from "./data-layer.ts";
 export { SQL_FUNCTION_ARITY, allOf, bindCondition, callerQuery, hasHop, orderOf, whereFor } from "./condition.ts";
 export type { Bound, CallerComputed, CallerQuery, CallerSql, Condition, ConditionLiteral, ConditionNode, DeclaredKey, Hop, LiteralNode, Mark, OrderKey, ParamNode, SqlFunction, TableOf, ValueClass, Where } from "./condition.ts";

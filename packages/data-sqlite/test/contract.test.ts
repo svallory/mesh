@@ -71,7 +71,7 @@ describe("the capability manifest", () => {
   test("is static data on the descriptor and the entry point, readable without opening a connection", () => {
     const layer = sqlite({ file: join(tmpdir(), "mesh-never-created.db") });
     expect(layer.capabilities).toBe(capabilities);
-    expect(capabilities).toEqual({ adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins", "raw-sql"] });
+    expect(capabilities).toEqual({ adapter: "sqlite", capabilities: ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins", "raw-sql", "policy-guards"] });
     expect(Object.isFrozen(capabilities)).toBe(true);
     for (const name of capabilities.capabilities) expect(CAPABILITIES).toContain(name);
   });
@@ -253,6 +253,16 @@ describe("the suite catches adapters that break the contract", () => {
         },
       })),
     }), "selectByKey and selectByKeyForUpdate return the same row by value", "must be equal by value");
+  });
+
+  test("a guarded delete that ignores its guard", async () => {
+    await broken((layer) => ({ close: layer.close, transaction: (run) => layer.transaction((tx) => run({ ...tx, deleteByKeyGuarded: (table, key) => tx.deleteByKey(table, key) })) }),
+      "policy-guards: a guard that admits deletes the row; one that denies deletes nothing and reports every check's result", "expected PolicyGuardDenial");
+  });
+
+  test("a layer that declares policy-guards and hands out no guarded delete", async () => {
+    await broken((layer) => ({ close: layer.close, transaction: (run) => layer.transaction((tx) => run({ ...tx, deleteByKeyGuarded: undefined })) }),
+      "the capability manifest is valid and consistent with the fixture", "deleteByKeyGuarded must be present exactly when policy-guards is declared");
   });
 
   test("a manifest that names a capability outside the union is refused", async () => {

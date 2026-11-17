@@ -1,9 +1,9 @@
 import { Answer, answers } from "./answer.ts";
 import { failJoined } from "./compose.ts";
-import { bindCondition, type Condition, type ConditionLiteral, type Mark, type TableOf, type Where } from "./condition.ts";
-import type { DataLayer } from "./data-layer.ts";
+import { bindCondition, type Bound, type Condition, type ConditionLiteral, type Mark, type TableOf, type Where } from "./condition.ts";
+import type { DataLayer, WriteGuard } from "./data-layer.ts";
 import type { ActionFrame } from "./entity.ts";
-import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
+import { ForbiddenError, FrameworkError, PolicyGuardDenial, guardCountMismatch, type PolicyCheck } from "./errors.ts";
 
 /**
  * The policy evaluator the generated actions call (M8, ADR-0055). Policies combine without order: a policy passes
@@ -26,6 +26,10 @@ import { ForbiddenError, FrameworkError, type PolicyCheck } from "./errors.ts";
  * condition literal, which is bound with the caller's scope and combined with what the other checks gave by the same
  * rules, applied row by row. `admits` and `admitsRows` do the same for a caller's load of the entity.
  *
+ * A destroy that runs as one statement (ADR-0046, option B) hands the checks that read the record to the data layer:
+ * `guard` binds them on the pre-check's scope into a `WriteGuard`, and `statement` turns the adapter's
+ * `PolicyGuardDenial` into the `ForbiddenError` `inside` would have thrown, from the same results.
+ *
  * `Mesh.checkPolicies` runs the call itself on a layer that answers (`answer.ts`): `before`, `filter` and `rows` see it,
  * and once the policies have decided they throw an `Answer` with the decision, which `inside` then does too, instead of
  * resolving, rejecting with `ForbiddenError` or failing a running transaction. The checks run exactly as for the call.
@@ -44,7 +48,7 @@ export interface PolicyCheckSpec {
   readonly run: PolicyFunction;
   /**
    * On a check that reads the record, of a policy that covers a read or a load: its condition literal, which `rows` and
-   * `admitsRows` bind and fold into the query. A thunk, since the load plan that holds it is built at module load and the
+   * `admitsRows` bind and fold into the query; on one of a destroy that runs as one statement, the literal `guard` binds. A thunk, since the load plan that holds it is built at module load and the
    * expressions file that holds the literal may be in an import cycle with it.
    */
   readonly sql?: (() => ConditionLiteral<never>) | undefined;
@@ -91,6 +95,22 @@ export interface Authorizer {
   admits(scope: object): Promise<boolean>;
   /** A load's policies as a condition on each row of the entity reached, as `rows` does for a read; none covering is `false`. */
   admitsRows(scope: object, tableOf: TableOf): Promise<Where>;
+  /** True when the call runs for `Mesh.checkPolicies` or `Mesh.can` (known after `before`). */
+  readonly answering: boolean;
+  /**
+   * After `before`, for a write that runs as one statement (ADR-0046, option B): every check that reads the record, of
+   * every policy that applies, bound on `scope` (the pre-check's scope: actor, context, input, clock), with which of
+   * them decide and how; undefined when no applying policy has one (`before` then decided). Throws a `FrameworkError`
+   * when one of them has no `sql`, or when a policy's `when` reads the record (the build never guards such a write).
+   */
+  guard(scope: object, tableOf: TableOf): WriteGuard | undefined;
+  /**
+   * Run the guarded write. A `PolicyGuardDenial` it throws becomes the decision: its results are recorded as `inside`
+   * would have recorded them and the same `ForbiddenError` is thrown. A denial whose results admit the call is a
+   * `FrameworkError`, never an allow. Any other error passes through unchanged. Called while answering, it throws a
+   * `FrameworkError`: a permission question never takes the guarded write.
+   */
+  statement<T>(write: () => Promise<T>): Promise<T>;
 }
 
 type Spec = PolicySpec["when"] & object;
@@ -266,7 +286,58 @@ export function authorizer(entity: string, action: string, policies: readonly Po
     try { await evaluate(scope, wanted); }
     catch (error) { await reject(layer, error instanceof Error ? error : new FrameworkError(`A policy check of ${entity}#${action} threw ${String(error)}`)); }
   };
+  /** The specs of the checks the last `guard` listed, in its order: `statement` records a denial's results on them. */
+  let guardedSpecs: readonly PolicyCheckSpec[] | undefined;
+  const stale = (policy: PolicySpec) => new FrameworkError(`${entity}#${action}: policy :${policy.name} has a check that reads the record and no SQL condition; the generated actions are out of date, rebuild the project`);
   return Object.freeze({
+    get answering(): boolean { return answering; },
+    guard(scope: object, tableOf: TableOf): WriteGuard | undefined {
+      const checks: Bound[] = [];
+      const specs: PolicyCheckSpec[] = [];
+      const entries: { readonly forbid: readonly number[]; readonly authorize: readonly number[] | null }[] = [];
+      for (const policy of policies) {
+        const state = covers(policy);
+        if (state === "no") continue;
+        // A `when` that reads the record keeps the write on the read path (the build's strategy): one here is a stale build.
+        if (state === "not-yet") throw stale(policy);
+        const reading = policy.checks.filter((check) => check.record);
+        if (reading.length === 0) continue;
+        const index = new Map<PolicyCheckSpec, number>();
+        for (const check of reading) {
+          if (!check.sql) throw stale(policy);
+          index.set(check, checks.push(bindCondition(tableOf, check.sql(), scope as never)) - 1);
+          specs.push(check);
+        }
+        const authorizes = policy.checks.filter((check) => check.kind === "authorize-if");
+        // Authorized before the transaction (an `authorize-if` that does not read the record held): its record-reading
+        // `authorize-if` checks decide nothing, but are still evaluated for the breakdown, as `inside` runs them.
+        const held = authorizes.some((check) => !check.record && results.get(check) === true);
+        entries.push(Object.freeze({
+          forbid: Object.freeze(reading.filter((check) => check.kind === "forbid-if").map((check) => index.get(check)!)),
+          authorize: authorizes.length === 0 || held ? null : Object.freeze(reading.filter((check) => check.kind === "authorize-if").map((check) => index.get(check)!)),
+        }));
+      }
+      if (checks.length === 0) return undefined;
+      guardedSpecs = Object.freeze(specs);
+      return Object.freeze({ checks: Object.freeze(checks), policies: Object.freeze(entries) });
+    },
+    async statement<T>(write: () => Promise<T>): Promise<T> {
+      if (answering) throw new FrameworkError(`${entity}#${action}: a permission question took the guarded delete; the generated actions are out of date, rebuild the project`);
+      try {
+        return await write();
+      } catch (error) {
+        if (!(error instanceof PolicyGuardDenial)) throw error;
+        const specs = guardedSpecs;
+        if (specs === undefined)
+          throw new FrameworkError(`${entity}#${action}: a guarded write reported a policy denial before guard() built its guard; the generated actions are out of date, rebuild the project`, { cause: error });
+        if (error.results.length !== specs.length) throw guardCountMismatch(error.results.length, specs.length, error);
+        specs.forEach((spec, i) => results.set(spec, outcome(error.results[i])));
+        const denied = decide();
+        if (denied === undefined)
+          throw new FrameworkError(`${entity}#${action}: the data adapter's policy guard reported a denial that its own results admit; nothing was deleted, and the call fails`, { cause: error });
+        throw denied;
+      }
+    },
     async before(layer: DataLayer, scope: object): Promise<void> {
       answering = answers(layer);
       await guarded(layer, scope, (record) => !record);

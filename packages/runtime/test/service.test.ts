@@ -2,11 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   ForbiddenError, FrameworkError, InvalidInputError, Mesh, OPERATIONS, SERVICE, bindDomain, connectBinding, expr, isEntityValue, isServiceValue, releaseBinding,
-  service, settled, type Binding, type Change, type Seams,
+  service, settled, type Binding, type Change, type DataOperations, type Seams,
 } from "../src/index.ts";
 import { handlerScope } from "../src/entity.ts";
 import * as domain from "./service-domain/work.ts";
-import { Billing, Claim, Member, Task, Work, hooks, memoryLayer, reset, schemaOf } from "./service-domain/work.ts";
+import { Billing, Claim, Member, Task, Work, hooks, memoryLayer, reset, schemaOf, tables } from "./service-domain/work.ts";
 
 /**
  * Service values and `runOperation` (services design, sections 5.2 and 8) over a domain written as `mesh build` writes
@@ -496,6 +496,23 @@ describe("one instant, the call chain and the refusals at entry", () => {
     const error = await rejection(() => binding.run(() => Mesh.checkPolicies(Task.create as never, { title: "x" } as never, {})));
     expect(error).toBeInstanceOf(FrameworkError);
     expect(error.message).toStartWith("Mesh.checkPolicies(work.Task#create) cannot answer without writing: work.Work#handOver, called while its policies were checked, writes a row");
+  });
+
+  test("a delete, guarded or not, on a read's transaction while Mesh.checkPolicies is answered is refused as a write", async () => {
+    const guard = { checks: [false], policies: [{ forbid: [], authorize: [0] }] };
+    const writes = {
+      deleteByKey: (tx: DataOperations) => tx.deleteByKey(tables.tasks, { id: "t" }),
+      deleteByKeyGuarded: (tx: DataOperations) => tx.deleteByKeyGuarded!(tables.tasks, { id: "t" }, guard),
+    };
+    for (const [name, write] of Object.entries(writes)) {
+      reset();
+      const { binding } = world();
+      hooks.read = write;
+      hooks.policies["work.Task#create"] = async () => { await Task.read({}); return true; };
+      const error = await rejection(() => binding.run(() => Mesh.checkPolicies(Task.create as never, { title: "x" } as never, {})));
+      expect(error, name).toBeInstanceOf(FrameworkError);
+      expect(error.message, name).toStartWith("Mesh.checkPolicies(work.Task#create) cannot answer without writing: a call made while its policies were checked writes a row");
+    }
   });
 
   test("an operation of a value no binding of the project binds is refused inside another binding's run", async () => {

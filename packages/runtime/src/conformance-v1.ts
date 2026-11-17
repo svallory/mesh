@@ -1,7 +1,8 @@
 import { validateCapabilityManifest, type CapabilityManifest } from "./capabilities.ts";
-import type { DataLayer, DataOperations, Query, RollupFn, RollupQuery, Row, TableHandle } from "./data-layer.ts";
+import type { Condition } from "./condition.ts";
+import type { DataLayer, DataOperations, Key, Query, RollupFn, RollupQuery, Row, TableHandle, WriteGuard } from "./data-layer.ts";
 import { sameValue } from "./compose.ts";
-import { FrameworkError } from "./errors.ts";
+import { FrameworkError, PolicyGuardDenial } from "./errors.ts";
 import type { DataLayerFixture } from "./testing.ts";
 
 /**
@@ -84,6 +85,8 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
     ["the capability manifest is valid and consistent with the fixture", withFixture(async (fixture) => {
       validateCapabilityManifest(manifest);
       assert(!declared("integer-key-fill") || fixture.integerTable !== undefined, "an adapter that declares integer-key-fill needs the fixture's integerTable");
+      const guarded = await fixture.layer.transaction(async (tx) => typeof tx.deleteByKeyGuarded === "function");
+      assert(guarded === declared("policy-guards"), `deleteByKeyGuarded must be present exactly when policy-guards is declared: declared ${String(declared("policy-guards"))}, present ${String(guarded)}`);
     })],
     ["select without a query returns every row in primary-key order", withTasks(async (read) => {
       await expectIds(read, undefined, ["a1", "a2", "a3", "a4", "a5", "a6"], "no query");
@@ -678,5 +681,142 @@ export function contractV1Checks(makeLayer: () => Promise<DataLayerFixtureV1>, m
       });
       assert(joined.join() === "102,103", "a joined call must continue the same sequence");
     })],
+    ...policyGuardChecks(withTasks, declared),
   ]);
+}
+
+// ---- policy-guards: a delete that checks the policies in its own statement (ADR-0046, option B) ----------------------
+
+type WithTasks = (run: (read: (query?: Query) => Promise<string[]>, fixture: DataLayerFixtureV1) => Promise<void>) => () => Promise<void>;
+
+const col = (name: string, cls: "string" | "integer" | "date" = "string"): Condition => ({ kind: "column", depth: 0, name, class: cls });
+const val = (value: string | number | Date | null, cls: "string" | "integer" | "date" = "string"): Condition => ({ kind: "value", value, class: cls });
+const eqc = (a: Condition, b: Condition): Condition => ({ kind: "call", fn: "eq", args: [a, b] });
+/** One policy of `authorize` checks (any one true), or `null` when none decides; `forbid` checks must all be false. */
+const pol = (authorize: readonly number[] | null, forbid: readonly number[] = []) => ({ authorize, forbid });
+
+/**
+ * The checks run only for an adapter that declares `policy-guards`; the manifest check above asserts that
+ * `deleteByKeyGuarded` is present exactly then. Conditions are bound trees, as the authorizer hands them over.
+ */
+function policyGuardChecks(withTasks: WithTasks, declared: (name: string) => boolean): (readonly [string, () => Promise<void>])[] {
+  const guardedCheck = (name: string, run: Parameters<WithTasks>[0]) =>
+    [`policy-guards: ${name}`, withTasks(async (read, fixture) => { if (declared("policy-guards")) await run(read, fixture); })] as const;
+  /** The outcome of one guarded delete in its own transaction: true/false as returned, or the error. */
+  const attempt = async (layer: DataLayer, table: TableHandle, key: Key, guard: WriteGuard): Promise<unknown> => {
+    try { return await layer.transaction((tx) => tx.deleteByKeyGuarded!(table, key, guard)); } catch (error) { return error; }
+  };
+  const denied = (outcome: unknown, results: readonly (boolean | null)[], message: string) => {
+    assert(outcome instanceof PolicyGuardDenial, `${message}: expected PolicyGuardDenial, got ${describe(outcome)}`);
+    assert(describe(outcome.results) === describe(results), `${message}: expected results ${describe(results)}, got ${describe(outcome.results)}`);
+  };
+  const ALL = ["a1", "a2", "a3", "a4", "a5", "a6"];
+  return [
+    guardedCheck("a guard that admits deletes the row; one that denies deletes nothing and reports every check's result", async (read, { layer, taskTable }) => {
+      const title = (t: string) => eqc(col("title"), val(t));
+      // a2 is Bravo in p1.
+      const outcome = await attempt(layer, taskTable, { id: "a2" }, { checks: [title("Nope"), eqc(col("parentId"), val("p1"))], policies: [pol([0], [1])] });
+      denied(outcome, [false, true], "an authorize check false and a forbid check true");
+      await expectSame(read, ALL, "a denied delete deletes nothing");
+      const admitted = await attempt(layer, taskTable, { id: "a2" }, { checks: [title("Bravo"), eqc(col("parentId"), val("p9"))], policies: [pol([0], [1])] });
+      assert(admitted === true, `an admitted guarded delete returns true, got ${describe(admitted)}`);
+      await expectSame(read, ["a1", "a3", "a4", "a5", "a6"], "an admitted delete deletes the row");
+    }),
+    guardedCheck("a missing key returns false and raises nothing, even with a guard that would deny", async (read, { layer, taskTable }) => {
+      const outcome = await attempt(layer, taskTable, { id: "missing" }, { checks: [false], policies: [pol([0])] });
+      assert(outcome === false, `a guarded delete of a missing key returns false, got ${describe(outcome)}`);
+      await expectSame(read, ALL, "nothing is deleted");
+    }),
+    guardedCheck("an unknown check fails closed: an unknown authorize-if does not authorize and an unknown forbid-if forbids", async (read, { layer, taskTable }) => {
+      // a3's rank and a1's parentId are null, so a comparison with them is unknown.
+      const rank = eqc(col("rank", "integer"), val(3, "integer"));
+      denied(await attempt(layer, taskTable, { id: "a3" }, { checks: [rank], policies: [pol([0])] }), [null], "an unknown authorize-if");
+      denied(await attempt(layer, taskTable, { id: "a3" }, { checks: [rank], policies: [pol(null, [0])] }), [null], "an unknown forbid-if");
+      denied(await attempt(layer, taskTable, { id: "a1" }, { checks: [eqc(col("parentId"), val(null))], policies: [pol([0])] }), [null], "a comparison with null");
+      await expectSame(read, ALL, "nothing is deleted");
+    }),
+    guardedCheck("a check false on every row but the keyed one does not deny the keyed delete", async (read, { layer, taskTable }) => {
+      // The check is false on every row but a5: a delete of a5 must not raise for them. This shows the outcome only; it
+      // cannot show that the guard is never evaluated on another row, because an adapter that looks the row up by its
+      // key never reaches the others whatever its statement says. The key inside the guard's CASE (R6) is pinned by the
+      // printed-SQL test of deleteByKeyGuarded in data-drizzle's test/operations.test.ts.
+      const outcome = await attempt(layer, taskTable, { id: "a5" }, { checks: [eqc(col("id"), val("a5"))], policies: [pol([0])] });
+      assert(outcome === true, `a guard true on the keyed row admits it whatever it gives on others, got ${describe(outcome)}`);
+      await expectSame(read, ["a1", "a2", "a3", "a4", "a6"], "only the keyed row is deleted");
+    }),
+    guardedCheck("within a policy the authorize checks combine with OR and the forbid checks with NOR; across policies, AND", async (read, { layer, taskTable }) => {
+      const cases: [string, WriteGuard, boolean][] = [
+        ["one of two authorize checks true", { checks: [false, true], policies: [pol([0, 1])] }, true],
+        ["no authorize check true", { checks: [false, null], policies: [pol([0, 1])] }, false],
+        ["an empty authorize list authorizes nothing", { checks: [true], policies: [pol([])] }, false],
+        ["authorize null: only the forbid checks decide", { checks: [false, false], policies: [pol(null, [0, 1])] }, true],
+        ["one forbid check true among false ones", { checks: [false, true], policies: [pol(null, [0, 1])] }, false],
+        ["a forbid check true beats an authorize check true", { checks: [true, true], policies: [pol([0], [1])] }, false],
+        ["two policies that both pass", { checks: [true, false], policies: [pol([0]), pol(null, [1])] }, true],
+        ["two policies, the second fails", { checks: [true, true], policies: [pol([0]), pol(null, [1])] }, false],
+        ["a check no policy indexes still decides nothing", { checks: [false, true], policies: [pol(null), pol([1])] }, true],
+        ["no policy at all admits", { checks: [false], policies: [] }, true],
+      ];
+      for (const [name, guard, admits] of cases) {
+        const outcome = await attempt(layer, taskTable, { id: "a4" }, guard);
+        if (admits) {
+          assert(outcome === true, `${name}: expected the delete, got ${describe(outcome)}`);
+          await layer.transaction((tx) => tx.insert(taskTable, TASKS[3]!));
+        } else denied(outcome, guard.checks as readonly (boolean | null)[], name);
+      }
+      await expectSame(read, ALL, "every denied case deleted nothing");
+    }),
+    guardedCheck("parameters of each class compare as stored: a date, an integer and text", async (read, { layer, taskTable }) => {
+      const before: Condition = { kind: "call", fn: "lt", args: [col("createdAt", "date"), val(day(3), "date")] };
+      const rank: Condition = { kind: "call", fn: "gte", args: [col("rank", "integer"), val(5, "integer")] };
+      // a4: created on day 3, rank 5, title Delta.
+      denied(await attempt(layer, taskTable, { id: "a4" }, { checks: [before, rank, eqc(col("title"), val("Delta"))], policies: [pol([0], [1, 2])] }), [false, true, true], "a4");
+      assert(await attempt(layer, taskTable, { id: "a2" }, { checks: [before, rank], policies: [pol([0], [1])] }) === true, "a2 is created before day 3 with rank 1, so it is admitted");
+      await expectSame(read, ["a1", "a3", "a4", "a5", "a6"], "only a2 is deleted");
+    }),
+    guardedCheck("a check that crosses a relationship reads the related row, the table's own included", async (read, { layer, taskTable }) => {
+      if (!declared("joins")) return;
+      // A task's parent, a row of the same table: `one` over the belongs-to.
+      await layer.transaction((tx) => tx.insert(taskTable, { id: "p1", parentId: null, createdAt: day(6), title: "Papa", rank: 10 }));
+      const parentTitle = (title: string): Condition =>
+        eqc({ kind: "one", hop: { table: taskTable, column: "id", outer: "parentId", key: "id" }, value: { kind: "column", depth: 1, name: "title", class: "string" } }, val(title));
+      denied(await attempt(layer, taskTable, { id: "a2" }, { checks: [parentTitle("Quebec")], policies: [pol([0])] }), [false], "a parent with another title");
+      // a5's parent p2 has no row, so the related value is null and the check unknown.
+      denied(await attempt(layer, taskTable, { id: "a5" }, { checks: [parentTitle("Papa")], policies: [pol([0])] }), [null], "no related row");
+      assert(await attempt(layer, taskTable, { id: "a2" }, { checks: [parentTitle("Papa")], policies: [pol([0])] }) === true, "a parent with that title admits");
+      await expectSame(read, ["a1", "a3", "a4", "a5", "a6", "p1"], "only a2 is deleted");
+    }),
+    guardedCheck("a denial inside a transaction that then rolls back leaves the table unchanged", async (read, { layer, taskTable }) => {
+      let reported: unknown;
+      const outcome = await failure(layer, async (tx) => {
+        await tx.deleteByKey(taskTable, { id: "a1" });
+        try { await tx.deleteByKeyGuarded!(taskTable, { id: "a2" }, { checks: [false], policies: [pol([0])] }); } catch (error) { reported = error; }
+        throw new Error("roll back");
+      });
+      denied(reported, [false], "inside a transaction");
+      assert(outcome instanceof Error, "the transaction rejects");
+      await expectSame(read, ALL, "the rolled-back transaction changed nothing");
+    }),
+    guardedCheck("an integer key is cast to text in the marker", async (_read, { layer, integerTable }) => {
+      if (integerTable === undefined) return;
+      await layer.transaction((tx) => tx.insert(integerTable, { seq: 7, label: "seven" }));
+      denied(await attempt(layer, integerTable, { seq: 7 }, { checks: [eqc(col("label"), val("eight"))], policies: [pol([0])] }), [false], "an integer key");
+      assert(await attempt(layer, integerTable, { seq: 7 }, { checks: [eqc(col("label"), val("seven"))], policies: [pol([0])] }) === true, "the integer-keyed row is deleted when admitted");
+    }),
+    guardedCheck("a guard that points at a check it does not have is a FrameworkError and deletes nothing", async (read, { layer, taskTable }) => {
+      // The adapter refuses the guard itself, before any statement reaches the database: a FrameworkError with no
+      // cause. A guard that crashed SQL building or the driver would arrive wrapped, with the crash as its cause.
+      for (const guard of [{ checks: [true], policies: [pol([1])] }, { checks: [true], policies: [pol(null, [-1])] }, { checks: "x", policies: [] }, { checks: [], policies: [{ forbid: "x", authorize: null }] }]) {
+        const outcome = await attempt(layer, taskTable, { id: "a1" }, guard as never);
+        assert(outcome instanceof FrameworkError, `the guard ${describe(guard)} must be refused with FrameworkError, got ${describe(outcome)}`);
+        assert(outcome.cause === undefined, `the guard ${describe(guard)} must be refused by the adapter, not by a failed statement (${outcome.message})`);
+      }
+      await expectSame(read, ALL, "nothing is deleted");
+    }),
+  ];
+}
+
+async function expectSame(read: (query?: Query) => Promise<string[]>, expected: readonly string[], message: string): Promise<void> {
+  const actual = await read();
+  assert(JSON.stringify(actual) === JSON.stringify(expected), `${message}: expected ${expected.join(",")} but got ${actual.join(",")}`);
 }

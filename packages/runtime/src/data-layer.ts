@@ -1,4 +1,4 @@
-import type { Condition, Hop, OrderKey } from "./condition.ts";
+import type { Bound, Condition, Hop, OrderKey } from "./condition.ts";
 
 /** Attribute names mapped to generated TypeScript values (including Date and boolean).
  * Storage conversions belong to the adapter, not the caller.
@@ -139,6 +139,20 @@ export interface RollupRow {
 }
 
 /**
+ * The policy checks a one-statement write evaluates on the row it touches (ADR-0046, option B). `checks` lists every
+ * record-reading check of every policy that applies to the call, in the order the authorizer lists them, each bound
+ * (a condition, or the constant it folded to; `null` is unknown). `policies` says which of them decide and how: a
+ * policy passes when every `forbid` check IS FALSE and, when `authorize` is not null, at least one `authorize` check
+ * IS TRUE (none listed: it does not pass). The call is admitted when every policy passes. Indices point into `checks`.
+ * A check may be listed and decide nothing (its policy was already authorized before the transaction); it is still
+ * evaluated, so that its result is in the breakdown.
+ */
+export interface WriteGuard {
+  readonly checks: readonly Bound[];
+  readonly policies: readonly { readonly forbid: readonly number[]; readonly authorize: readonly number[] | null }[];
+}
+
+/**
  * Contract v1: operations are available only inside a transaction.
  *
  * Keys: an insert whose row has no value for a single-column primary key gets one. A text
@@ -169,6 +183,14 @@ export interface DataOperations {
   updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
   /** Delete one row, returning false when absent. */
   deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
+  /**
+   * Delete the row with this key in one statement when `guard` admits it; false when no row has the key (the guard is
+   * then not evaluated). When the row exists and the guard does not admit it, nothing is deleted and the call rejects
+   * with `PolicyGuardDenial`, whose `results` hold one entry per `guard.checks` entry, each evaluated on that row only.
+   * Present exactly when the adapter declares the `policy-guards` capability (ADR-0046, option B). A separate method,
+   * not a parameter of `deleteByKey`: an adapter that ignored an extra parameter would delete unchecked.
+   */
+  deleteByKeyGuarded?(table: TableHandle, key: Key, guard: WriteGuard): Promise<boolean>;
   /**
    * The highest value of one attribute among the rows matching `filter`, or null when no
    * row matches or every match is null. Requires the `aggregates` capability. `where`, as `Query.where`, narrows the

@@ -117,6 +117,8 @@ export const hooks: {
   deep?: (scope: OperationScope<Record<string, unknown>>) => unknown;
   /** Evaluated as Task's computed field `marked` while a read loads it. */
   computed?: () => unknown;
+  /** Run with a read's transaction operations, after its select. */
+  read?: (tx: DataOperations) => unknown;
 } = { steps: {}, policies: {}, bodies: {} };
 
 export function reset(): void {
@@ -126,6 +128,7 @@ export function reset(): void {
   delete hooks.actorOnly;
   delete hooks.deep;
   delete hooks.computed;
+  delete hooks.read;
 }
 
 /** An event class shaped as `mesh build` generates one. */
@@ -186,6 +189,7 @@ function readBody(fqn: string, table: Table, layer: DataLayer, frame: ActionFram
     const parsed = (input ?? {}) as { load?: string[] };
     return layer.transaction(async (tx) => {
       const rows = await tx.select(table);
+      await hooks.read?.(tx);
       const claims = parsed.load?.includes("claims") ? await tx.select(tables.claims) : undefined;
       const computed = hooks.computed && fqn === "work.Task" ? frame.marked(`computed :lapsed of ${fqn}`, hooks.computed) : undefined;
       return rows.map((row) => ({ ...row, ...(claims ? { claims } : {}), ...(computed !== undefined ? { computed } : {}), at: clock?.() ?? null }));
