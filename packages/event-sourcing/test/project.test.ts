@@ -64,7 +64,7 @@ async function database(): Promise<Layer> {
   await createSchema(layer, app.tables);
   return layer;
 }
-type Keep = "until-delivered" | "all";
+type Keep = "until-delivered" | "all" | { readonly default: "until-delivered" | "all"; readonly events: Readonly<Record<string, "until-delivered" | "all">> };
 function bind(layer: Layer, handlers: Handlers, options: { keep?: Keep; bus?: EventBus } = {}): Binding {
   return app.bind(layer, { events: { bus: options.bus ?? localBus({ retryDelays: [] }), keep: options.keep ?? "all", load: async () => ({ handlers }) } });
 }
@@ -182,6 +182,29 @@ describe("starting a new project handler", () => {
       // the neighbour that works: from now
       await bind(layer, { project: { totals: recorder([], { from: "now" }) } }).deliver();
       expect(await rows(layer)).toEqual([["totals", "project:now", 2, "billing.InvoicePaid"]]);
+    } finally { await layer.close(); }
+  });
+
+  test("once only holes were deleted (a per-event keep, deleted-through position 0), from the beginning fails without naming a position", async () => {
+    const layer = await database();
+    try {
+      // InvoiceVoided is kept "all" and comes first, so the prefix never moves; the InvoicePaid rows above it are holes.
+      const perEvent: Keep = { default: "until-delivered", events: { "billing.InvoiceVoided": "all" } };
+      await voidOne(layer);
+      await pay(layer, 2);
+      // "voided" registers before the deletion, so its row is a complete project row the adopt test below grows
+      const voided = () => ({ voided: recorder([], { events: [InvoiceVoided] }) });
+      await bind(layer, { process: { drain: processHandler() }, project: voided() }, { keep: perEvent }).deliver();
+      await bind(layer, { project: voided() }, { keep: perEvent }).deliver();
+      await forgetByName(layer, "drain");
+      const before = (await state(layer)).state;
+      expect([before.deletedThrough, Object.keys(before.holes ?? {})]).toEqual([0, ["billing.InvoicePaid"]]);
+      const error = await unchangedBy(layer, () => bind(layer, { project: { ...voided(), totals: recorder([]) } }, { keep: perEvent }).deliver());
+      expect(history(error, { handler: "totals", events: ["billing.InvoicePaid"], reason: "deleted" })).toBe(
+        'The project handler "totals" starts from the beginning of history, and outbox rows have been deleted on this database (above a kept row, under a per-event events.keep; keep is "until-delivered"), so its read model would be built from part of the history of billing.InvoicePaid. Set from: "now" and backfill the read model from current rows. If this event is new and none has been published yet, from: "now" misses nothing');
+      // a handler that grows to list the event is refused the same way
+      const grown = await unchangedBy(layer, () => bind(layer, { project: { voided: recorder([], { events: [InvoiceVoided, InvoicePaid] }) } }, { keep: perEvent }).deliver());
+      expect(history(grown, { handler: "voided", events: ["billing.InvoicePaid"], reason: "deleted" })).toContain("(above a kept row, under a per-event events.keep)");
     } finally { await layer.close(); }
   });
 
