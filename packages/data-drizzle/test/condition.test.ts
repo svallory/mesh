@@ -3,7 +3,7 @@ import { sql, type SQL, type Table } from "drizzle-orm";
 import { SQLiteSyncDialect, alias, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { FrameworkError, type Condition, type Hop, type TableHandle } from "@meshfw/runtime";
 import { conditionSql, orderSql, selectOptions, type ConditionSqlOptions } from "../src/index.ts";
-import { testDialect } from "./dialect.ts";
+import { orderingDialect, testDialect } from "./dialect.ts";
 
 const render = new SQLiteSyncDialect();
 const invoices = sqliteTable("invoices", {
@@ -92,6 +92,19 @@ describe("conditionSql", () => {
     expect(() => q(col("note", 1))).toThrow(FrameworkError);
     expect(() => q(col("nope"))).toThrow(FrameworkError);
     expect(() => q({ kind: "one", hop: { ...toCustomer, outer: "nope" }, value: col("name", 1) })).toThrow(FrameworkError);
+  });
+});
+
+describe("range comparisons follow the dialect's collation", () => {
+  const pg: ConditionSqlOptions = { ...options, dialect: orderingDialect };
+  test("a string comparison collates its left side, whichever side names the class; equality and numbers do not", () => {
+    expect(q(call("lt", col("note"), val("m")), invoices, pg).sql).toBe('("invoices"."db_note" collate "C" < ?)');
+    expect(q(call("gte", val("m"), col("note")), invoices, pg).sql).toBe('(? collate "C" >= "invoices"."db_note")');
+    expect(q(call("eq", col("note"), val("m")), invoices, pg).sql).toBe('("invoices"."db_note" = ?)');
+    expect(q(call("gt", col("total", 0, "integer"), val(3, "integer")), invoices, pg).sql).toBe('("invoices"."total" > ?)');
+  });
+  test("SQLite's dialect has no collation, so its SQL is unchanged", () => {
+    expect(q(call("lt", col("note"), val("m"))).sql).toBe('("invoices"."db_note" < ?)');
   });
 });
 

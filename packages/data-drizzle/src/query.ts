@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type Column, type SQL, type Table } from "drizzle-orm";
 import { FrameworkError, type Comparison, type Filter, type Query, type Scalar } from "@meshfw/runtime";
-import { conditionSql, orderSql, type ConditionSqlOptions } from "./condition.ts";
+import { conditionSql, orderSql, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 
 /** A read translated for Drizzle: conditions and order as SQL, paging as numbers. */
 export interface DrizzleSelect {
@@ -29,7 +29,23 @@ function scalar(value: unknown, where: string): Exclude<Scalar, null> | null {
   throw new FrameworkError(`${where} must be a string, finite number, boolean, valid Date or null, not ${value === undefined ? "undefined" : String(value)}`);
 }
 
-function comparison(column: Column, name: string, spec: unknown): SQL {
+/**
+ * A column as a range comparison or a sort reads it: a text column through the dialect's `collate`, so strings compare
+ * and order by code point on every database (SQLite's BINARY already does, and its dialect has no `collate`).
+ */
+function ordered(column: Column, dialect: SqlDialect | undefined): Column | SQL {
+  return dialect?.collate && column.dataType === "string" ? dialect.collate(sql`${column}`, "string") : column;
+}
+
+/** One sort key: `<column> asc|desc`, then the dialect's `nulls`, so nulls sort as the smallest value everywhere. */
+function sortKey(column: Column, descending: boolean, dialect: SqlDialect | undefined): SQL {
+  const key = ordered(column, dialect);
+  const nulls = dialect?.nulls(descending);
+  const direction = descending ? desc(key) : asc(key);
+  return nulls ? sql`${direction} ${nulls}` : direction;
+}
+
+function comparison(column: Column, name: string, spec: unknown, dialect: SqlDialect | undefined): SQL {
   if (typeof spec !== "object" || spec === null || Array.isArray(spec) || spec instanceof Date) {
     throw new FrameworkError(`Filter on "${name}" must be an object such as { eq: value }, not a bare value`);
   }
@@ -58,15 +74,21 @@ function comparison(column: Column, name: string, spec: unknown): SQL {
         else if (key === "ne") parts.push(isNotNull(column));
         else throw new FrameworkError(`${at} cannot compare with null; use nil`);
       } else {
-        const build = { eq, ne, lt, lte, gt, gte }[key as "eq"];
-        parts.push(build(column, operand));
+        if (key === "eq" || key === "ne") parts.push((key === "eq" ? eq : ne)(column, operand));
+        else {
+          // A range comparison of text follows the dialect's collation; the operand is bound through the column's
+          // encoding either way. Equality needs none: a deterministic collation compares equal bytes as equal.
+          const build = { lt, lte, gt, gte }[key as "lt"];
+          const left = ordered(column, dialect);
+          parts.push(left === column ? build(column, operand) : build(left as SQL, sql.param(operand, column)));
+        }
       }
     }
   }
   return parts.length === 1 ? parts[0]! : and(...parts)!;
 }
 
-function filterSql(table: Table, filter: unknown, depth: number): SQL {
+function filterSql(table: Table, filter: unknown, depth: number, dialect: SqlDialect | undefined): SQL {
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)) {
     throw new FrameworkError("A filter must be an object such as { title: { eq: 'x' } }");
   }
@@ -75,21 +97,24 @@ function filterSql(table: Table, filter: unknown, depth: number): SQL {
   for (const [key, value] of Object.entries(filter)) {
     if (key === "and" || key === "or") {
       if (!Array.isArray(value)) throw new FrameworkError(`Filter "${key}" must be a list of filters`);
-      const inner = value.map((item) => filterSql(table, item, depth + 1));
+      const inner = value.map((item) => filterSql(table, item, depth + 1, dialect));
       parts.push(inner.length === 0 ? (key === "and" ? ALWAYS : NEVER) : (key === "and" ? and : or)(...inner)!);
     } else {
       // The column must exist even when its comparison is `undefined`, which leaves it out (`Filter`).
       const column = columnOf(table, key);
-      if (value !== undefined) parts.push(comparison(column, key, value));
+      if (value !== undefined) parts.push(comparison(column, key, value, dialect));
     }
   }
   return parts.length === 0 ? ALWAYS : parts.length === 1 ? parts[0]! : and(...parts)!;
 }
 
-/** Translate a plain-data filter. `undefined` and `{}` mean no condition (undefined result). */
-export function filterCondition(table: Table, filter: Filter | undefined): SQL | undefined {
+/**
+ * Translate a plain-data filter. `undefined` and `{}` mean no condition (undefined result). With a `dialect`, a range
+ * comparison of a text column goes through its `collate`.
+ */
+export function filterCondition(table: Table, filter: Filter | undefined, dialect?: SqlDialect): SQL | undefined {
   if (filter === undefined) return undefined;
-  const condition = filterSql(table, filter, 0);
+  const condition = filterSql(table, filter, 0, dialect);
   return condition === ALWAYS ? undefined : condition;
 }
 
@@ -104,6 +129,7 @@ function wholeNumber(value: unknown, name: string): number | undefined {
 /**
  * Translate a query: filter, sort or order (primary key last, so ties are stable) and paging. `where` and `order` need
  * `conditions` (the dialect and table resolver); without them a query that carries either is refused, never ignored.
+ * With `conditions`, every sort key and range comparison follows its dialect's `nulls` and `collate`, as `order` does.
  */
 export function selectOptions(table: Table, query: Query | undefined, conditions?: ConditionSqlOptions): DrizzleSelect {
   if (query !== undefined && (typeof query !== "object" || query === null)) throw new FrameworkError("A query must be an object { filter, sort, limit, offset }");
@@ -125,14 +151,14 @@ export function selectOptions(table: Table, query: Query | undefined, conditions
     if (name === "") throw new FrameworkError('A sort field needs a name: "title" or "-title"');
     const column = columnOf(table, name);
     sorted.add(name);
-    orderBy.push(descending ? desc(column) : asc(column));
+    orderBy.push(sortKey(column, descending, conditions?.dialect));
   }
   if (order !== undefined) {
     orderBy.push(...orderSql(table, order, conditions!));
     for (const key of order) if (key.by.kind === "column" && key.by.depth === 0) sorted.add(key.by.name);
   }
   for (const [name, column] of Object.entries(columns)) {
-    if (column.primary && !sorted.has(name)) orderBy.push(asc(column));
+    if (column.primary && !sorted.has(name)) orderBy.push(sortKey(column, false, conditions?.dialect));
   }
   return {
     where: whereOf(table, query?.filter, query?.where, conditions),
@@ -144,7 +170,7 @@ export function selectOptions(table: Table, query: Query | undefined, conditions
 
 /** The filter and the condition ANDed, or undefined when there is neither. */
 export function whereOf(table: Table, filter: Filter | undefined, where: Query["where"], conditions: ConditionSqlOptions | undefined): SQL | undefined {
-  const byFilter = filterCondition(table, filter);
+  const byFilter = filterCondition(table, filter, conditions?.dialect);
   if (where === undefined) return byFilter;
   if (conditions === undefined) throw new FrameworkError("This data layer runs no condition: a where needs the conditions capability");
   const byCondition = conditionSql(table, where, conditions);
