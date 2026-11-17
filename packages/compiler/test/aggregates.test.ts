@@ -286,6 +286,29 @@ describe("what the aggregate's name binds (R24a, OD17)", () => {
     ]);
   });
 
+  test("a namespace member that names it, or names nothing, in a function is the namespace member's unknown code", () => {
+    const steps = "        run=() => { console.log(t.TaskAggregate, t.Nope, t.TaskReopened) }\n";
+    const result = build({ "work/note.mesh.mx": entity("Note", { imports: 'import * as t from "./task-aggregate.mesh.mx"\n', steps }) });
+    expect(errors(result)).toEqual([
+      ["work/note.mesh.mx", 8, 34, "MESH_UNKNOWN_ENTITY", "t.TaskAggregate is not an imported entity, event or command: ./task-aggregate.mesh.mx declares `TaskReopened`. Did you mean t.TaskReopened?", "write `t.TaskReopened`"],
+      ["work/note.mesh.mx", 8, 51, "MESH_UNKNOWN_ENTITY", "t.Nope is not an imported entity, event or command: ./task-aggregate.mesh.mx declares `TaskReopened`. Did you mean t.TaskReopened?", "write `t.TaskReopened`"],
+    ]);
+  });
+
+  test("a named import of it is reported once, at the import: its uses in `entity=`, a `new` and a listing say nothing more", () => {
+    const result = build({
+      "work/note.mesh.mx": entity("Note", {
+        imports: 'import { TaskAggregate } from "./task-aggregate.mesh.mx"\n',
+        relationships: "    belongs-to :a entity=TaskAggregate\n",
+        steps: "        publish=() => new TaskAggregate({ taskId: &id })\n        run=() => { console.log(TaskAggregate) }\n",
+        sections: "  events\n    TaskAggregate\n",
+      }),
+    });
+    expect(errors(result)).toEqual([
+      ["work/note.mesh.mx", 1, 9, "MESH_UNKNOWN_IMPORT", "`TaskAggregate` is the aggregate ./task-aggregate.mesh.mx declares, and an aggregate is no value: import the events or commands it declares (`TaskReopened`)", null],
+    ]);
+  });
+
   test("its inline events are imported by name and as namespace members, and listed by another owner (R8, R15)", () => {
     const result = build({
       "work/note.mesh.mx": entity("Note", { imports: 'import * as t from "./task-aggregate.mesh.mx"\n', steps: "        publish=() => new t.TaskReopened({ taskId: &id })\n", sections: "  events\n    t.TaskReopened\n" }),

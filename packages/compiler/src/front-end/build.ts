@@ -605,12 +605,14 @@ const inlineDeclarationsOf = (declaredFile: (from: string) => DeclaredFile | und
  * name goes to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
  * nothing: no name set holds it, and a reference through the name reports nothing more (`duplicates`). A name the file's
  * own declaration takes (`ownKind`: its entity, its inline events and commands) bound again by an import is the same error.
+ * A named import of an aggregate's name binds nothing either and goes to `duplicates`: the import check reports it.
  */
 function fileImports(
   irImports: readonly IrImport[],
   file: string,
   ownKind: ReadonlyMap<string, DeclarationKind>,
   importDetails: Map<Import, ParsedImport>,
+  declaredFile: (from: string) => DeclaredFile | undefined,
   at: (offset: number) => SourcePosition,
   fail: (code: string, message: string, at: SourcePosition, fix?: string) => void,
 ) {
@@ -650,6 +652,13 @@ function fileImports(
           `Duplicate import identifier ${name}: the file declares the ${own} ${name} too`,
           localOffset === undefined ? entry.position : at(localOffset),
         );
+        continue;
+      }
+      // A named import of the aggregate its file declares binds nothing too: the import check reports it
+      // (`MESH_UNKNOWN_IMPORT`, R24a), and a use of the name reports nothing more, as for any name its file does not declare.
+      const target = entry.namespace || entry.helper || entry.mesh ? undefined : declaredFile(entry.from);
+      if (target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
+        duplicates.add(name);
         continue;
       }
       if (importNames.has(name)) {
@@ -727,7 +736,7 @@ function buildEntity(
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>([...inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse(), [entity.name, "entity"]]);
-  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, at, fail);
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
   entity.imports = imports;
   const pending: {
     ref: MemberRef;
@@ -810,7 +819,7 @@ function buildEntity(
     at,
     scope: {
       helpers: helperImports,
-      imported: new Set([...importNames.keys(), ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
+      imported: new Set([...importNames.keys(), ...duplicates, ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
       entities,
       namespaces,
       events,
@@ -1463,7 +1472,7 @@ function buildAggregate(
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>(inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse());
-  const { imports, importNames, duplicates } = fileImports(irImports, file, ownKind, importDetails, at, fail);
+  const { imports, importNames, duplicates } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
   // An aggregate file has no function, so a helper or `Mesh` is nothing it could use: it imports Mesh files only.
   const refused = imports.filter((entry) => entry.helper || entry.mesh);
   for (const entry of refused)
