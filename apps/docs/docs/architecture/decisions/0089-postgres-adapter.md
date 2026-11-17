@@ -1,13 +1,13 @@
 ---
 title: "0089. Postgres adapter: serializable transactions, transient errors and SQLite's order"
-description: "Decision record 0089: how @meshfw/data-postgres runs transactions (one at a time per layer, SERIALIZABLE, a 5 s lock wait, a failed statement aborts the call), reports transient errors as MESH_DATABASE_BUSY with a reason, stores attribute types for parity with SQLite and pins SQLite's sort order. Status: Accepted (lead ruling D30, pending operator review)."
+description: "Decision record 0089: how @meshfw/data-postgres runs transactions (one at a time per layer, SERIALIZABLE, a 5 s lock wait, a failed statement aborts the call), reports transient errors as MESH_DATABASE_BUSY with a reason, stores attribute types for parity with SQLite, pins SQLite's sort order, reads the outbox under a reader rule and orders the claim with a row lock. Status: Accepted (lead ruling D30, pending operator review)."
 ---
 
 # 0089. Postgres adapter: serializable transactions, transient errors and SQLite's order
 
 ## Status
 
-Accepted (lead ruling D30, pending operator review). Implements, for Postgres, the contract of [ADR-0013](./0013-data-layer-contract-and-capabilities.md) and the dialect interface of [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md), on the Drizzle pair of [ADR-0014](./0014-sql-adapters-on-drizzle.md) and [ADR-0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md). This record covers the adapter without events; the outbox's reader rule, the claim's row lock and `LISTEN`/`NOTIFY` wake-ups are later pull requests of the same unit and amend it.
+Accepted (lead ruling D30, pending operator review). Implements, for Postgres, the contract of [ADR-0013](./0013-data-layer-contract-and-capabilities.md) and the dialect interface of [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md), on the Drizzle pair of [ADR-0014](./0014-sql-adapters-on-drizzle.md) and [ADR-0062](./0062-direct-dependencies-zod-drizzle-opentelemetry.md). This record covers the adapter, the outbox's reader rule and the claim's row lock (decisions 9 and 10, amended with the second pull request); `LISTEN`/`NOTIFY` wake-ups are a later pull request of the same unit and amend it.
 
 ## Date
 
@@ -36,6 +36,8 @@ M9 adds a second SQL adapter, `@meshfw/data-postgres` ([roadmap](../roadmap/road
 6. **Identifiers.** A table or column name, or the unique-constraint name Drizzle derives from them, longer than 63 bytes is refused at build time (`MESH_SCHEMA_IDENTIFIER`), since Postgres would cut it silently; so is a name holding a double quote or a control character, which drizzle-kit 0.31.11 does not escape. Names that differ only in letter case are distinct, as quoted identifiers are on Postgres.
 7. **`mesh db push` ships** (O7), with `createSchema`, through drizzle-kit 0.31.11's `pushSchema`, and both refuse a database whose `public` schema holds a table, view or sequence that is not the project's (drizzle-kit drops sequences outside its table filter and asks interactive questions about foreign tables).
 8. **No `gapless-positions`**: on Postgres it would cost a lock held from the first `publish` to the commit. The manifest is `aggregates`, `integer-key-fill`, `conditions` and `joins`.
+9. **The outbox's reader rule** (O3): a read returns rows only at or below its `settled` position, below which every transaction that took a position has ended. An appending transaction takes a shared transaction-level advisory lock on a key derived from the outbox's channel name, then its transaction id, both before its position; a read samples the sequence, then lists the transaction ids of that key's holders in this database (`pg_locks` filtered on the database), and a sample clears once none of them still runs. The listing runs before the statement that reads the rows, so every transaction it saw end is visible to that statement. Only appenders hold delivery back, not other writers on the server. An alternative, bounding a sample by the snapshot's `xmax` (`pg_snapshot_xmax`), was rejected: that bound is one past the latest completed transaction id, so a running appender can sit at or above it, and the sample would let a read skip its row.
+10. **The claim's row lock**: `readDeliveryState` reads the state row `FOR UPDATE` (creating it first), so a takeover and a handler transaction or deletion batch of another process are ordered; at `SERIALIZABLE` the side that waited behind a change fails with `40001`, which ends a round without counting a try, and the next transaction sees the new generation. Core's renewal retries such a failure until the lapse.
 
 ## Options considered
 
@@ -57,5 +59,5 @@ M9 adds a second SQL adapter, `@meshfw/data-postgres` ([roadmap](../roadmap/road
 ## Action items
 
 - [x] The adapter without events: transactions, error mapping, the dialect, the schema generator, `createSchema`, `mesh db push`, contract and condition conformance (M9, this pull request).
-- [ ] The outbox with the reader rule and core's delivery state with the claim's row lock (M9).
+- [x] The outbox with the reader rule and core's delivery state with the claim's row lock (M9).
 - [ ] `LISTEN`/`NOTIFY` wake-ups and the user docs (M9).

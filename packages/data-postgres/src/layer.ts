@@ -3,9 +3,11 @@ import { count, getTableColumns, getTableName, is, max, sql, SQL as DrizzleSQL, 
 import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
 import { PgJsonb, PgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { deliveryOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
+import { appendEvent, deleteOutboxThrough, OutboxReader, outboxChannel, outboxLockKey, outboxSequence, type Appender, type Query } from "./outbox.ts";
 
 /**
  * What this adapter supports beyond the mandatory set, as static data (ADR-0013). No `gapless-positions`: on Postgres
@@ -19,8 +21,8 @@ export type PostgresOptions = { readonly url: string | undefined };
 /**
  * What `postgres()` returns: one frozen value that is both the data adapter a project names in `mesh.config.ts` and
  * that adapter's run-time data layer. Building reads the descriptor fields only, so `url` may be undefined while the
- * project builds; nothing connects until the first transaction (or `createSchema`), which throws a `FrameworkError`
- * when `url` is missing (`mesh db push` exits 1 with the same advice).
+ * project builds; nothing connects until the first transaction, `readOutbox` or `createSchema`, each of which throws a
+ * `FrameworkError` when `url` is missing (`mesh db push` exits 1 with the same advice).
  */
 export interface PostgresLayer extends DataAdapter, DataLayer {
   readonly kind: "data-adapter";
@@ -43,6 +45,15 @@ export interface PostgresLayer extends DataAdapter, DataLayer {
    * is unopened again and the next transaction opens a new pool.
    */
   transaction<T>(run: (tx: DataOperations) => Promise<T>, options?: TransactionOptions): Promise<T>;
+  /**
+   * The outbox read (the reader rule, `src/outbox.ts`): three statements (the sequence sample, the appenders' xids from
+   * `pg_locks`, the row read; one more on the first read, to resolve the sequence) on a connection of its own, outside
+   * the transaction queue, each in its own autocommit transaction at the server's default isolation, one read at a
+   * time per layer. A page holds only rows at or below its
+   * `settled` position, below which every transaction that took a position has ended, so a row that commits later is
+   * never below a row a read returned. Refused inside a transaction.
+   */
+  readOutbox: OutboxOperations["readOutbox"];
 }
 
 /** Internal settings of one layer; `postgres()` uses the defaults. Not exported from the package: tests use it. */
@@ -137,6 +148,15 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   /** What messages name before a URL can be read. */
   const label = database ?? "postgres (no readable url)";
   let pool: BunSQL | undefined;
+  /** The key every appender of this layer's outbox holds shared until it ends (the reader rule). */
+  const lockKey = outboxLockKey(outboxChannel(tuning.schema));
+  /** The outbox's sequence, resolved on the first outbox call; forgotten by close(). */
+  let sequenceName: string | undefined;
+  let reader = new OutboxReader(lockKey);
+  /** The connection outbox reads run on, reserved on the first read and kept until close() or until it breaks. */
+  let readConnection: ReservedSQL | undefined;
+  /** The last read, so reads run one at a time. */
+  let reading: Promise<unknown> = Promise.resolve();
 
   const url = (caller: string): string => {
     if (configured.url === undefined || configured.url.trim() === "") {
@@ -193,7 +213,10 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     operations(conn, guard, failed) {
       const run = statement(conn, failed);
       const { db } = conn;
-      return refuseJsonFilters(drizzleOperations({
+      const query: Query = async (text, params) => { guard(); return await run(() => conn.reserved.unsafe(text, params as unknown[] | undefined)); };
+      const sequence = async () => sequenceName ??= await outboxSequence(query);
+      const appender: Appender = { query, key: lockKey, sequence, prepared: false };
+      const entities = refuseJsonFilters(drizzleOperations({
         dialect: postgresDialect,
         table: entityTable,
         insert: (table, row) => run(async () => (await db.insert(table).values(jsonIn(table, row)).returning(fieldsOf(table)))[0]!),
@@ -219,6 +242,12 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
         update: (table, condition, changes) => run(async () => await db.update(table).set(jsonIn(table, changes)).where(condition).returning(fieldsOf(table))),
         delete: (table, condition) => run(async () => await db.delete(table).where(condition).returning(fieldsOf(table))),
       }, guard));
+      return Object.freeze({
+        ...entities,
+        appendEvent: (row) => appendEvent(appender, row),
+        deleteOutboxThrough: async (position) => deleteOutboxThrough(query, await sequence(), position),
+        ...deliveryOperations(query, sequence),
+      } satisfies DataOperations);
     },
     async commit(conn) {
       checkCommitTag(await conn.reserved.unsafe("COMMIT"));
@@ -234,6 +263,36 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     report: (cause: unknown, stage: "begin" | "commit" | "job") => mapPostgresError(cause, label, stage satisfies Stage),
   }, defaultWaitMs);
 
+  /** One outbox read on the read connection; a lost connection is dropped, and the next read reserves another. */
+  const readOnce = async (after: number, limit: number) => {
+    const current = open();
+    if (!readConnection) {
+      const started = performance.now();
+      let reserved: ReservedSQL;
+      try { reserved = await reserveWithin(current, { started, at: started + defaultWaitMs }); }
+      catch (cause) { throw mapPostgresError(cause, label, "connect"); }
+      if (tuning.schema !== undefined) {
+        try { await reserved.unsafe(`SET search_path TO "${tuning.schema}"`); }
+        catch (cause) { void Promise.resolve().then(() => reserved.close()).catch(() => undefined); throw mapPostgresError(cause, label, "job"); }
+      }
+      readConnection = reserved;
+    }
+    const conn = readConnection;
+    const query: Query = async (text, params) => {
+      try { return await conn.unsafe(text, params as unknown[] | undefined); }
+      catch (cause) {
+        const mapped = mapPostgresError(cause, label, "job");
+        if (isConnectionLoss(mapped)) {
+          if (readConnection === conn) readConnection = undefined;
+          void Promise.resolve().then(() => conn.close()).catch(() => { /* already gone */ });
+        }
+        throw mapped;
+      }
+    };
+    sequenceName ??= await outboxSequence(query);
+    return reader.read(query, sequenceName, after, limit);
+  };
+
   const state: State = {
     url,
     schema: tuning.schema,
@@ -246,12 +305,26 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     transaction(run, transactionOptions?: TransactionOptions) {
       return queue.transaction(run, transactionOptions?.waitMs === undefined ? undefined : { waitMs: transactionOptions.waitMs });
     },
+    readOutbox(after, limit) {
+      // The read sees committed rows only; inside a transaction it is refused rather than run beside it.
+      if (queue.insideTransaction()) {
+        return Promise.reject(new FrameworkError("The outbox cannot be read inside a transaction: the read sees committed rows only, and a transaction's own events come from published() (from #mesh)"));
+      }
+      const read = reading.then(() => readOnce(after, limit));
+      reading = read.catch(() => undefined);
+      return read;
+    },
     refuseIfFailed: () => queue.refuseIfFailed(),
     async close() {
       const { running, queued } = queue.counts();
       if (running || queued) throw new FrameworkError(`Cannot close Postgres data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
+      await reading;
       const closing = pool;
       pool = undefined;
+      readConnection?.release();
+      readConnection = undefined;
+      sequenceName = undefined;
+      reader = new OutboxReader(lockKey);
       await closing?.close();
     },
   };

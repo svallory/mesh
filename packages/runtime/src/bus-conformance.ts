@@ -271,8 +271,13 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         } finally {
           for (const stop of stops.splice(0).reverse()) await stop().catch(() => undefined);
           setDeliveryTiming(null);
-          await sleep(5);
-          await layer.close();
+          // A stream that ended (a lost claim, a stop) closes its row in a transaction of its own after `done`
+          // settled; on a networked server that write takes longer than a tick, and a layer refuses to close while
+          // a transaction runs. So the close is retried for up to 2 s.
+          for (let tries = 0; ; tries++) {
+            await sleep(5);
+            try { await layer.close(); break; } catch (error) { if (tries >= 400) throw error; }
+          }
         }
       };
     };
@@ -900,9 +905,14 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const bus = fakeBus(async () => {});
         const binding = world.bind({}, { bus });
         const delivery = await start(world, binding);
-        // hold the layer, so subscribe's transaction waits behind it while the stop runs
+        // hold the layer, so subscribe's transaction waits behind it while the stop runs. The holder's callback
+        // starts only once the layer has begun the transaction (on a networked server, several round trips), so
+        // the check waits for it to enter before going on: `release` is assigned there.
         let release!: () => void;
-        const held = world.layer.transaction(() => new Promise<void>((resolve) => { release = resolve; }));
+        let entered!: () => void;
+        const inside = new Promise<void>((resolve) => { entered = resolve; });
+        const held = world.layer.transaction(() => new Promise<void>((resolve) => { release = resolve; entered(); }));
+        await inside;
         const pending = subscribe(binding, { name: "s" }, () => {});
         const stopping = delivery.stop();
         await sleep(10);
