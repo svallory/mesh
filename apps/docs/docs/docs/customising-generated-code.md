@@ -27,6 +27,7 @@ It copies the generator templates into your project:
 .mesh-generators/
   actions.ts.jig
   binding.ts.jig
+  concept.ts.jig
   declaration.ts.jig
   expressions.ts.jig
   index.ts.jig

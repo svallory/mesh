@@ -25,6 +25,12 @@ export type {
 @each(declaration in declarations)
 export { {{ declaration.name }} } from {{ declaration.fromLiteral }};
 @end
+@if(concepts.length)
+// The module's concepts: each one's type and the Zod schema that checks a value of it.
+@end
+@each(concept in concepts)
+export { {{ concept.schema }}, type {{ concept.name }} } from {{ concept.fromLiteral }};
+@end
 @each(namespace in namespaces)
 export * as {{ namespace.name }} from {{ namespace.fromLiteral }};
 @end
