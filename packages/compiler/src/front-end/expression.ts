@@ -424,7 +424,7 @@ const CHAIN_WRAPPERS = new Set(["ParenthesizedExpression", "TSNonNullExpression"
 
 /**
  * The call a member chain that starts at an entity makes, for the architecture rules: the first member after the entity
- * (`close` in `Task.close(...)`, `Task["close"](...)` and `Task.close.call(...)`), and through a namespace import the
+ * (`close` in `Task.close(...)`, `Task["close"](...)`, ``Task[`close`](...)`` and `Task.close.call(...)`), and through a namespace import the
  * entity it names (`work.Task.close`). A member the build cannot read (`Task[name]`) gives none.
  */
 function entityCall(callee: N, root: N, ctx: ConvertContext): EntityCall | undefined {
@@ -432,7 +432,7 @@ function entityCall(callee: N, root: N, ctx: ConvertContext): EntityCall | undef
   for (let at: N | undefined = callee; at && at !== root; ) {
     if (at.type === "MemberExpression" || at.type === "OptionalMemberExpression") {
       const property = at.property as N;
-      members.unshift(!at.computed && property.type === "Identifier" ? property.name : property.type === "StringLiteral" ? String(property.value) : undefined);
+      members.unshift(!at.computed && property.type === "Identifier" ? property.name : at.computed ? staticString(property) : undefined);
       at = at.object as N;
     } else at = at.expression as N;
   }
@@ -441,6 +441,14 @@ function entityCall(callee: N, root: N, ctx: ConvertContext): EntityCall | undef
   const member = namespace ? members[1] : members[0];
   if (member === undefined || (namespace && qualified === undefined)) return undefined;
   return { binding: root.name!, ...(qualified !== undefined ? { qualified } : {}), member, position: ctx.at(start(root)) };
+}
+
+/** The string a computed member names when the build can read it: `"close"`, or a template with no substitution. */
+function staticString(n: N): string | undefined {
+  if (n.type === "StringLiteral") return String(n.value);
+  const quasis = n.quasis as { value: { cooked?: string | null } }[] | undefined;
+  if (n.type === "TemplateLiteral" && (n.expressions as unknown[] | undefined)?.length === 0 && quasis?.length === 1) return quasis[0]!.value.cooked ?? undefined;
+  return undefined;
 }
 
 function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: Names): string[] {

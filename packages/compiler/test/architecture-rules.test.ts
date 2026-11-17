@@ -98,9 +98,12 @@ describe(":action-calls-other-aggregate", () => {
     expect(said(off)).toEqual([]);
     expect(JSON.stringify(off.document)).toBe(JSON.stringify(result.document));
   });
-  test("through a namespace import, a computed string member and an awaited call", () => {
+  test("through a namespace import, an aliased import, a computed string or template member and an awaited call", () => {
+    const aliased = run(RUN_STEP("T.close({ id: self.otherId }, context)")).replace("import { Mesh }", 'import { Task as T } from "../work/task.mesh.mx"\nimport { Mesh }');
+    expect(said(rulesProject(aliased))).toEqual([warning("run", "update :finish", "T.close", 15)]);
     expect(said(rulesProject(run(RUN_STEP("work.Task.close({ id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "work.Task.close")]);
     expect(said(rulesProject(run(RUN_STEP('Task["close"]({ id: self.otherId }, context)'))))).toEqual([warning("run", "update :finish", "Task.close")]);
+    expect(said(rulesProject(run(RUN_STEP("Task[`close`]({ id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "Task.close")]);
     expect(said(rulesProject(run(RUN_STEP("Task.close.call(null, { id: self.otherId }, context)"))))).toEqual([warning("run", "update :finish", "Task.close")]);
     expect(said(rulesProject(run("    update :finish\n      do\n        run [after=:write] async ({ self, context }) {\n          await Task.close({ id: self.otherId }, context)\n        }\n")))).toEqual([warning("run", "update :finish", "Task.close", 15, 16)]);
   });
@@ -126,7 +129,10 @@ describe(":action-calls-other-aggregate", () => {
   });
   test("no warning: the same aggregate, the entity itself, an entity in no aggregate, reads and names that are no write action", () => {
     // Task's own `close` step calls Comment.create: both are in TaskAggregate.
-    expect(said(rulesProject(run(RUN_STEP("Run.settle({ id: self.id }, context)"))))).toEqual([]);
+    // The entity itself, through an import of its own file: the binding resolves, to the caller.
+    const self = (call: string) => run(RUN_STEP(call)).replace("import { Mesh }", 'import { Run } from "./run.mesh.mx"\nimport * as ex from "./run.mesh.mx"\nimport { Mesh }');
+    expect(said(rulesProject(self("Run.settle({ id: self.id }, context)")))).toEqual([]);
+    expect(said(rulesProject(self("ex.Run.settle({ id: self.id }, context)")))).toEqual([]);
     // Note is in no aggregate file (OD9 (a)): neither its call to Task nor Run's call to it is reported.
     expect(said(rulesProject(run(RUN_STEP("Note.touch({ id: self.id }, context)"))))).toEqual([]);
     // Reads (OD8 (a)): the auto read, a custom read, and Mesh.privileged.
