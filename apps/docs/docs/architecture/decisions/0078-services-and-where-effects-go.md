@@ -7,6 +7,8 @@ description: "Decision record 0078: where an effect across entities goes, where 
 
 ## Status
 
+> **Note, 2026-11-17 (the service construct proposed).** The shape of a service and how `uses` is enforced are proposed in [ADR-0097](./0097-the-service-construct.md) (lead ruling D42, pending operator review): a `service :Name` file of `operation` members with `uses entity=X actions=[...]` lines, checked by the build and at run time. Decision item 5's "`tsc` enforces them" is replaced there. The one-entity warning is `MESH_SERVICE_ONE_ENTITY`.
+
 > **Amendment, 2026-11-14 (how to read the illustration and Decision item 5).** Three statements below are out of date. They are kept as written, and no new decision is made here: each point repeats a ruling that another record already holds.
 >
 > 1. **The illustration's caption says "DOM-09 is open".** DOM-09 is decided: a service's shape is decided after 1.0 (amendment of 2026-10-17, below).
