@@ -15,13 +15,18 @@ function memory(tables: Record<string, Row[]>) {
   const compare = (a: unknown, b: unknown) => (a === b ? 0 : (a as number) < (b as number) ? -1 : 1);
   const sorted = (rows: Row[], sort: readonly string[] | undefined) =>
     sort ? [...rows].sort((a, b) => [...sort, "id"].reduce((order, key) => order || compare(a[key], b[key]), 0)) : rows;
+  // This double runs no translated condition: a where or an order it would drop must fail loudly (design 3.4), so a
+  // change that passes one has to extend the double instead of passing against unfiltered rows.
+  const noCondition = (where: unknown) => { if (where !== undefined) throw new Error("this test double runs no condition"); };
   const tx = {
-    select: async (table: unknown, query?: { filter?: never; sort?: readonly string[] }) => {
+    select: async (table: unknown, query?: { filter?: never; sort?: readonly string[]; where?: unknown; order?: unknown }) => {
+      noCondition(query?.where); noCondition(query?.order);
       calls.push(`select ${(table as { name: string }).name}${query?.sort ? ` sort=${query.sort.join(",")}` : ""}`);
       return sorted(rowsOf(table).filter((row) => matches(row, query?.filter)), query?.sort).map((row) => ({ ...row }));
     },
-    count: async (table: unknown, attribute: string, filter?: never) => { calls.push(`count ${(table as { name: string }).name}.${attribute}`); return rowsOf(table).filter((row) => matches(row, filter) && row[attribute] != null).length; },
-    max: async (table: unknown, attribute: string, filter?: never) => {
+    count: async (table: unknown, attribute: string, filter?: never, where?: unknown) => { noCondition(where); calls.push(`count ${(table as { name: string }).name}.${attribute}`); return rowsOf(table).filter((row) => matches(row, filter) && row[attribute] != null).length; },
+    max: async (table: unknown, attribute: string, filter?: never, where?: unknown) => {
+      noCondition(where);
       calls.push(`max ${(table as { name: string }).name}.${attribute}`);
       const values = rowsOf(table).filter((row) => matches(row, filter)).map((row) => row[attribute]).filter((v): v is number => v != null);
       return values.length ? Math.max(...values) : null;

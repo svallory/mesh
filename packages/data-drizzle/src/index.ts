@@ -1,13 +1,17 @@
 import { and, eq, getTableColumns, is, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
-import { FrameworkError, MeshError, uuidv7, type DataOperations, type Filter, type Key, type Query, type Row, type TableHandle } from "@meshfw/runtime";
-import { columnOf, filterCondition, selectOptions, type DrizzleSelect } from "./query.ts";
+import { FrameworkError, MeshError, uuidv7, type Condition, type DataOperations, type Filter, type Key, type Query, type Row, type TableHandle } from "@meshfw/runtime";
+import { columnOf, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
+import type { ConditionSqlOptions, SqlDialect } from "./condition.ts";
 
-export { columnOf, filterCondition, selectOptions, type DrizzleSelect } from "./query.ts";
+export { columnOf, filterCondition, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
+export { classOfNode, conditionSql, orderSql, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 
 /** Dialect-specific query builders; shared validation and key semantics stay here.
  * Both synchronous and asynchronous Drizzle drivers can implement these calls.
  */
 export interface DrizzleCommands<T extends Table> {
+  /** How the dialect writes the parts of a condition that differ between databases (`conditionSql`). */
+  readonly dialect: SqlDialect;
   table(handle: TableHandle): T;
   insert(table: T, row: Row): Row | Promise<Row>;
   select(table: T, options?: DrizzleSelect): Row[] | Promise<Row[]>;
@@ -109,10 +113,11 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     inserts.set(table, result.then(() => undefined, () => undefined));
     return result;
   };
-  const aggregate = (kind: "max" | "count", handle: TableHandle, attribute: string, filter: Filter | undefined) => {
+  const conditions: ConditionSqlOptions = { dialect: commands.dialect, resolve: (handle) => commands.table(handle) };
+  const aggregate = (kind: "max" | "count", handle: TableHandle, attribute: string, filter: Filter | undefined, where: Condition | undefined) => {
     const table = commands.table(handle);
     const column = columnOf(table, attribute);
-    return commands.aggregate(table, kind, column, filterCondition(table, filter));
+    return commands.aggregate(table, kind, column, whereOf(table, filter, where, conditions));
   };
   /** The generated key of a row that lacks one: a UUIDv7 for text, highest plus one for integers. */
   const withKey = async (table: T, row: Row): Promise<Row> => {
@@ -133,7 +138,7 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     }),
     select: (handle: TableHandle, query?: Query) => execute(() => {
       const table = commands.table(handle);
-      return commands.select(table, selectOptions(table, query));
+      return commands.select(table, selectOptions(table, query, conditions));
     }),
     selectByKey: (handle: TableHandle, key: Key) => execute(() => byKey(handle, key, false)),
     // Locks through the dialect's `selectForUpdate` when it has one; SQLite does not need it.
@@ -150,10 +155,10 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
       const table = commands.table(handle);
       return (await commands.delete(table, keyCondition(table, key))).length > 0;
     }),
-    max: (handle: TableHandle, attribute: string, filter?: Filter) => execute(async () => {
-      const value = await aggregate("max", handle, attribute, filter);
+    max: (handle: TableHandle, attribute: string, filter?: Filter, where?: Condition) => execute(async () => {
+      const value = await aggregate("max", handle, attribute, filter, where);
       return (value ?? null) as never;
     }),
-    count: (handle: TableHandle, attribute: string, filter?: Filter) => execute(async () => Number(await aggregate("count", handle, attribute, filter))),
+    count: (handle: TableHandle, attribute: string, filter?: Filter, where?: Condition) => execute(async () => Number(await aggregate("count", handle, attribute, filter, where))),
   };
 }

@@ -52,6 +52,10 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0086](./0086-entity-values-privileged-barrels-and-fqns.md) holds the rulings on how generated code follows modules: an action is called on its entity value, `privileged` replaces the `tx` handle, each folder has a barrel, and every name Mesh writes out is the fully qualified name. It amends 0047, 0058, 0067, 0068, 0071, 0074 and 0075 and settles [finding 21](../open-questions.md#dx-findings).
 
+## What changed on 2026-11-17
+
+[Record 0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) decides how translated conditions reach the database (M10): a plain-data condition tree, bound in memory and set only by generated code, honoured by adapters that declare the new `conditions` capability. It amends 0010 and 0013.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -61,9 +65,9 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0003](./0003-generated-code-carries-behaviour.md) | Generated code carries the behaviour; the run-time library stays thin | Accepted | operator |
 | [0004](./0004-no-measurement-gate.md) | Mesh is built regardless; measuring the agent benefit is not a gate | Accepted | operator |
 | [0005](./0005-core-interface-is-a-function-call.md) | The core's interface is a function call; transports are optional adapters, none in v1 | Accepted | operator |
-| [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056, 0072 | operator; roadmap author |
+| [0010](./0010-one-expression-tree-two-evaluators.md) | One expression tree, evaluated in memory and in SQL | Accepted, amended by 0056, 0072, 0088 | operator; roadmap author |
 | [0012](./0012-expression-semantics.md) | Expression semantics where SQL and JavaScript differ | Accepted (lead ruling, pending operator review), amended 2026-10-13: one instant per transaction (ACT-29) | lead |
-| [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted | operator |
+| [0013](./0013-data-layer-contract-and-capabilities.md) | Data-layer contract: a mandatory set plus declared capabilities | Accepted, amended by 0088 | operator |
 | [0014](./0014-sql-adapters-on-drizzle.md) | SQL adapters are built on Drizzle and drizzle-kit | Accepted | operator's position, lead's choice of tool |
 | [0016](./0016-in-memory-data-via-sqlite.md) | In-memory data for tests is SQLite's in-memory mode | Accepted | roadmap author |
 | [0017](./0017-atomic-by-default-and-classification.md) | Updates are atomic by default; a step never runs twice | Accepted, amended by 0053, 0054, 0072 | operator, lead, roadmap author |
@@ -131,6 +135,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders (target design) | Accepted | operator with MX |
 | [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted, amended 2026-10-13: `Mesh` without `now` and `today` (PRJ-22, SYN-29) | operator |
 | [0087](./0087-raw-sql-escape-hatch.md) | The raw-SQL escape hatch: a read-only `query` function exported by `#mesh` before 1.0 (Option E), with Ash's `fragment` left to M10 | Accepted by the lead for Option E, pending the operator (2026-11-17); questions 1, 7 and 14 open | operator; lead for Option E |
+| [0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) | Translated conditions cross the data layer as bound condition trees | Accepted (lead ruling D32, pending operator review) | lead, delegated |
 
 ## Superseded records
 

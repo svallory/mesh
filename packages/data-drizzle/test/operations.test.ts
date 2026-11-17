@@ -8,6 +8,7 @@ const row = { id: 1, tenant: "a", title: "one" };
 function fixture() {
   let updates = 0;
   const commands: DrizzleCommands<typeof table> = {
+    dialect: testDialect,
     table: () => table,
     insert: (_table, values) => values,
     select: () => [row],
@@ -95,6 +96,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { pgTable, text as pgText } from "drizzle-orm/pg-core";
 import { drizzleTable } from "../src/index.ts";
+import { testDialect } from "./dialect.ts";
 
 const posts = sqliteTable("posts", {
   id: integer("id").primaryKey(),
@@ -106,6 +108,7 @@ function sqliteOperations() {
   database.run('CREATE TABLE posts (id integer PRIMARY KEY, tenant text NOT NULL, title text NOT NULL UNIQUE)');
   const db = drizzle(database);
   const commands: DrizzleCommands<SQLiteTable> = {
+    dialect: testDialect,
     table: (handle) => drizzleTable(handle, SQLiteTable, "SQLite"),
     insert: (target, values) => db.insert(target).values(values).returning().get()!,
     select: (target, options) => {
@@ -184,6 +187,7 @@ function namedOperations() {
   database.run('CREATE TABLE named ("constructor" text PRIMARY KEY NOT NULL, "toString" text, "valueOf" integer)');
   const db = drizzle(database);
   const commands: DrizzleCommands<SQLiteTable> = {
+    dialect: testDialect,
     table: (handle) => drizzleTable(handle, SQLiteTable, "SQLite"),
     insert: (target, values) => db.insert(target).values(values).returning().get()!,
     select: (target) => db.select().from(target).all(),

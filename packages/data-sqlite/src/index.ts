@@ -3,6 +3,7 @@ import { sqliteState } from "./layer.ts";
 import { checkTableNames, planSchemaPush } from "./push-schema.ts";
 
 export { sqlite, capabilities, type SQLiteLayer, type SQLiteOptions } from "./layer.ts";
+export { sqliteDialect } from "./dialect.ts";
 
 /** Prepare the emitted schema (`tables` from `.mesh/schema.ts`) on this layer's own
  * connection. Tests and development only: production databases are prepared with

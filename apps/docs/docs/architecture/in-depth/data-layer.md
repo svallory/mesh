@@ -32,11 +32,11 @@ export interface DataOperations {
   insert(table: TableHandle, row: Row): Promise<Row>;
   selectByKey(table: TableHandle, key: Key): Promise<Row | undefined>;
   selectByKeyForUpdate(table: TableHandle, key: Key): Promise<Row | undefined>;
-  select(table: TableHandle, query?: Query): Promise<Row[]>; // { filter, sort, limit, offset }
+  select(table: TableHandle, query?: Query): Promise<Row[]>; // { filter, sort, limit, offset, where, order }
   updateByKey(table: TableHandle, key: Key, changes: Row): Promise<Row | undefined>;
   deleteByKey(table: TableHandle, key: Key): Promise<boolean>;
-  max(table: TableHandle, attribute: string, filter?: Filter): Promise<Scalar | null>;
-  count(table: TableHandle, attribute: string, filter?: Filter): Promise<number>;
+  max(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<Scalar | null>;
+  count(table: TableHandle, attribute: string, filter?: Filter, where?: Condition): Promise<number>;
 }
 
 export interface DataLayer {
@@ -62,13 +62,13 @@ The suite also checks the queue rules every adapter shares: two concurrent trans
 
 ## Mandatory set and declared capabilities
 
-Every data adapter must implement select, insert, update, delete, transactions, filters, sort and pagination. Four things are optional and declared: **joins, aggregates, upserts, atomic expressions** ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), Ruling 4; [roadmap](../roadmap/roadmap.md), M3). Atomic expressions is what lets a `set` value fold into one `UPDATE` ([action lifecycle](./action-lifecycle.md)). Pagination has two kinds, offset and keyset. M5 adds a "read for update" call to the contract: it reads one row with a write lock (a row lock on Postgres, an immediate transaction on SQLite) for read-then-write actions, which the build chooses from the action body ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)) ([roadmap](../roadmap/roadmap.md), M5; [action lifecycle](./action-lifecycle.md)). The call is an adapter hook, `selectByKeyForUpdate`, so each adapter takes the lock its own way: a Postgres adapter issues `SELECT ... FOR UPDATE`, and on SQLite the transaction's `BEGIN IMMEDIATE` already holds the write lock.
+Every data adapter must implement select, insert, update, delete, transactions, filters, sort and pagination. Four things are optional and declared: **joins, aggregates, upserts, atomic expressions** ([rulings of 2026-10-04](../decisions/rulings-2026-10-04.md), Ruling 4; [roadmap](../roadmap/roadmap.md), M3). [ADR-0088](../decisions/0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) adds a fifth, **conditions**: the adapter runs a translated condition tree in `where`, `order` and the aggregates' `where`. Atomic expressions is what lets a `set` value fold into one `UPDATE` ([action lifecycle](./action-lifecycle.md)). Pagination has two kinds, offset and keyset. M5 adds a "read for update" call to the contract: it reads one row with a write lock (a row lock on Postgres, an immediate transaction on SQLite) for read-then-write actions, which the build chooses from the action body ([ADR-0054](../decisions/0054-write-strategy-is-inferred.md)) ([roadmap](../roadmap/roadmap.md), M5; [action lifecycle](./action-lifecycle.md)). The call is an adapter hook, `selectByKeyForUpdate`, so each adapter takes the lock its own way: a Postgres adapter issues `SELECT ... FOR UPDATE`, and on SQLite the transaction's `BEGIN IMMEDIATE` already holds the write lock.
 
-The closed list of capability names in `packages/runtime/src/capabilities.ts` has six names today: `aggregates`, `integer-key-fill`, `joins`, `upserts`, `atomic-expressions` and `gapless-positions`. [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) (accepted by the lead for its Option E on 2026-11-17, pending the operator) adds a seventh, `raw-sql`, appended last: the adapter runs one read-only statement written by hand ([raw queries](#raw-queries)). It is not built yet.
+The closed list of capability names in `packages/runtime/src/capabilities.ts` has seven names today: `aggregates`, `integer-key-fill`, `joins`, `upserts`, `atomic-expressions`, `gapless-positions` and `conditions` ([ADR-0088](../decisions/0088-translated-conditions-cross-the-data-layer-as-bound-trees.md)). [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md) (accepted by the lead for its Option E on 2026-11-17, pending the operator) adds an eighth, `raw-sql`, appended last: the adapter runs one read-only statement written by hand ([raw queries](#raw-queries)). It is not built yet.
 
 ## Filters in M3 and trees in M4
 
-In M3 a filter is plain data (field, operator, literal), also the form a caller passes at run time ([roadmap](../roadmap/roadmap.md), M3). In M4 the expression tree "crosses the data-layer contract" and the adapter compiles it into Drizzle's builder when a query runs. Queries are assembled at run time from the action's filter, the caller's filter and, later, policies ([roadmap](../roadmap/roadmap.md), M4). Still not decided: whether the tree replaces or extends the M3 filter type, whether a caller's filter is converted to a tree, and how the three sources combine. See [expressions](./expressions.md).
+In M3 a filter is plain data (field, operator, literal), also the form a caller passes at run time ([roadmap](../roadmap/roadmap.md), M3). The roadmap planned for M4 that the expression tree "crosses the data-layer contract" and that the adapter compiles it into Drizzle's builder ([roadmap](../roadmap/roadmap.md), M4). [ADR-0088](../decisions/0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) decides what this page listed as open: the tree does not replace the M3 filter but travels beside it, as `Query.where` and `Query.order` (and the aggregates' `where`), a plain-data condition tree bound in memory and set only by generated code; a caller's filter stays a filter and is ANDed with the tree; the adapter prints the tree as SQL text with bound parameters rather than through Drizzle's builder. See [expressions](./expressions.md).
 
 ## The capability manifest
 

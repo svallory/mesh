@@ -1,6 +1,6 @@
 ---
 title: "0010. One expression tree, two evaluators"
-description: "Decision record 0010: One expression tree, two evaluators. Status: Accepted, amended by ADR-0056, ADR-0072."
+description: "Decision record 0010: One expression tree, two evaluators. Status: Accepted, amended by ADR-0056, ADR-0072, ADR-0088."
 ---
 
 # 0010. One expression tree, two evaluators
@@ -8,6 +8,8 @@ description: "Decision record 0010: One expression tree, two evaluators. Status:
 > **Amended** by [ADR-0056](./0056-translated-expressions-are-one-expression-arrows.md) on 2026-10-05: read the successor for what changed. The body below is kept as history.
 >
 > **Amended** by [ADR-0072](./0072-mesh-1-0-is-the-port-gate.md) on 2026-10-10: Only the in-memory evaluator is built before Mesh 1.0; the SQL evaluator comes after it. The body below is kept as history.
+>
+> **Amended** by [ADR-0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) on 2026-11-17: what crosses the data-layer contract is not the model's expression tree but the condition the build lowers from it, with its record-independent parts computed in memory and bound as parameters. The build check that each function has a SQL form in the adapter is the `conditions` capability as a whole until extension functions exist.
 
 ## Status
 

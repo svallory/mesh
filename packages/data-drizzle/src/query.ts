@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type Column, type SQL, type Table } from "drizzle-orm";
 import { FrameworkError, type Comparison, type Filter, type Query, type Scalar } from "@meshfw/runtime";
+import { conditionSql, orderSql, type ConditionSqlOptions } from "./condition.ts";
 
 /** A read translated for Drizzle: conditions and order as SQL, paging as numbers. */
 export interface DrizzleSelect {
@@ -100,13 +101,21 @@ function wholeNumber(value: unknown, name: string): number | undefined {
   return value;
 }
 
-/** Translate a query: filter, sort (primary key last, so ties are stable) and paging. */
-export function selectOptions(table: Table, query: Query | undefined): DrizzleSelect {
+/**
+ * Translate a query: filter, sort or order (primary key last, so ties are stable) and paging. `where` and `order` need
+ * `conditions` (the dialect and table resolver); without them a query that carries either is refused, never ignored.
+ */
+export function selectOptions(table: Table, query: Query | undefined, conditions?: ConditionSqlOptions): DrizzleSelect {
   if (query !== undefined && (typeof query !== "object" || query === null)) throw new FrameworkError("A query must be an object { filter, sort, limit, offset }");
   const columns = getTableColumns(table);
   const orderBy: SQL[] = [];
-  const sorted = new Set<Column>();
+  const sorted = new Set<string>();
   const sort = query?.sort;
+  const order = query?.order;
+  if (sort !== undefined && order !== undefined) throw new FrameworkError("A query takes sort or order, not both: order is the generated form of a read's sort");
+  if ((order !== undefined || query?.where !== undefined) && conditions === undefined) {
+    throw new FrameworkError("This data layer runs no condition: a query with where or order needs the conditions capability");
+  }
   if (sort !== undefined && (!Array.isArray(sort) || sort.some((field) => typeof field !== "string"))) {
     throw new FrameworkError('sort must be a list of attribute names, "-name" for descending');
   }
@@ -115,16 +124,29 @@ export function selectOptions(table: Table, query: Query | undefined): DrizzleSe
     const name = descending ? field.slice(1) : field;
     if (name === "") throw new FrameworkError('A sort field needs a name: "title" or "-title"');
     const column = columnOf(table, name);
-    sorted.add(column);
+    sorted.add(name);
     orderBy.push(descending ? desc(column) : asc(column));
   }
-  for (const column of Object.values(columns)) {
-    if (column.primary && !sorted.has(column)) orderBy.push(asc(column));
+  if (order !== undefined) {
+    orderBy.push(...orderSql(table, order, conditions!));
+    for (const key of order) if (key.by.kind === "column" && key.by.depth === 0) sorted.add(key.by.name);
+  }
+  for (const [name, column] of Object.entries(columns)) {
+    if (column.primary && !sorted.has(name)) orderBy.push(asc(column));
   }
   return {
-    where: filterCondition(table, query?.filter),
+    where: whereOf(table, query?.filter, query?.where, conditions),
     orderBy,
     limit: wholeNumber(query?.limit, "limit"),
     offset: wholeNumber(query?.offset, "offset"),
   };
+}
+
+/** The filter and the condition ANDed, or undefined when there is neither. */
+export function whereOf(table: Table, filter: Filter | undefined, where: Query["where"], conditions: ConditionSqlOptions | undefined): SQL | undefined {
+  const byFilter = filterCondition(table, filter);
+  if (where === undefined) return byFilter;
+  if (conditions === undefined) throw new FrameworkError("This data layer runs no condition: a where needs the conditions capability");
+  const byCondition = conditionSql(table, where, conditions);
+  return byFilter === undefined ? byCondition : and(byFilter, byCondition);
 }

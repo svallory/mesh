@@ -6,6 +6,7 @@ import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { drizzleOperations, drizzleTable } from "@meshfw/data-drizzle";
 import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { resolve } from "node:path";
+import { sqliteDialect } from "./dialect.ts";
 import { deliveryOperations } from "./delivery.ts";
 import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 
@@ -13,7 +14,7 @@ import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 let memoryLayers = 0;
 
 /** What this adapter supports beyond the mandatory set, as static data (ADR-0013). */
-export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions"]);
+export const capabilities: CapabilityManifest = defineCapabilities("sqlite", ["aggregates", "integer-key-fill", "gapless-positions", "conditions", "joins"]);
 
 // A type alias, not an interface, so it satisfies `DataAdapter.options` (an index signature).
 export type SQLiteOptions = { readonly file: string };
@@ -302,6 +303,7 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       let active = true;
       const guard = () => { if (!active) throw new FrameworkError("Transaction operations are no longer active"); };
       const operations: DataOperations = { ...drizzleOperations({
+        dialect: sqliteDialect,
         table: entityTable,
         insert: (table, row) => busy(() => database.insert(table).values(row).returning().get()!),
         select: (table, options) => busy(() => {
