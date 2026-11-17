@@ -87,11 +87,11 @@ When the rule refuses, delivery does not start: `connect()`, `startDelivery()` o
 | `reason` | When | What to do |
 |:--|:--|:--|
 | `"deleted"` | a new handler, or one whose list gained events, on a database that has deleted rows | `from: "now"` and a backfill. For an event that is new and has never been published, `from: "now"` misses nothing and the backfill is empty |
-| `"kept-below"` | a handler gained an event that has a kept row at or below the handler's position, which it would never be handed | rebuild it (below), give it a new name, or `from: "now"` and a backfill |
+| `"kept-below"` | a handler gained an event that has a kept row at or below the handler's position, which it would never be handed, or a kept row at or below the position names an event the project no longer declares | rebuild it (below), give it a new name, or `from: "now"` and a backfill |
 | `"kind"` | its progress row was registered under another kind (a `process` handler of that name, or one it takes over with `renamedFrom`) | rebuild it or give it a new name; once rows were deleted, `from: "now"` |
-| `"from"` | its progress row started from now (it was deployed with `from: "now"`, or takes over such a row with `renamedFrom`) | the same as `"kind"`: such a row lacks every event before its start |
+| `"from"` | its progress row started from now (it was deployed with `from: "now"`, or takes over such a row with `renamedFrom`) | the same as `"kind"`: Mesh cannot tell whether such a row has every event before its start |
 
-These do not trigger it: an unchanged handler, which keeps registering whatever was deleted since; a handler that lists fewer events; a gained event with no kept row at or below the position (it is handled from there on); `renamedFrom` from another project handler whose history is complete; and any handler under `from: "now"`. A project handler's progress row records whether its history is complete in its stored kind, `project` or `project:now`, which `mesh_handler_progress` shows. A complete one run for a while under `from: "now"` stays complete as long as its list does not grow, and may go back to `"beginning"`.
+These do not trigger it: an unchanged handler, which keeps registering whatever was deleted since; a handler that lists fewer events; a gained event with no kept row at or below the position (it is handled from there on); `renamedFrom` from another project handler whose history is complete; and any handler under `from: "now"`. A project handler's progress row records whether its history is complete in its stored kind, `project` or `project:now`, which `mesh_handler_progress` shows. A complete one run for a while under `from: "now"` stays complete as long as its list does not grow, and may go back to `"beginning"`. A handler first deployed with `from: "now"` is stored as `project:now` even when nothing had been published yet, so it cannot switch to `"beginning"` later without a rebuild.
 
 ## Rebuilding a read model
 
