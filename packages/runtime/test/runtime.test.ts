@@ -28,6 +28,42 @@ test("DatabaseBusyError carries the file and the wait, and words a statement tha
   expect(new DatabaseBusyError("a.db", 0).message).toBe('The database file "a.db" is locked by another connection, and this statement is not retried');
 });
 
+test("DatabaseBusyError defaults to reason locked with no SQLSTATE, so data-sqlite's errors and messages are unchanged", () => {
+  for (const error of [new DatabaseBusyError("a.db", 5001), new DatabaseBusyError("a.db", 0), new DatabaseBusyError("a.db", 10, { reason: "locked", cause })]) {
+    expect(error.reason).toBe("locked");
+    expect(error.sqlstate).toBeNull();
+    expect(error.code).toBe("MESH_DATABASE_BUSY");
+    expect(error.retryable).toBe(true);
+  }
+  expect(new DatabaseBusyError("a.db", 10, { reason: "locked" }).message).toBe('The database file "a.db" stayed locked by another connection for 10 ms, so the call gave up');
+});
+
+const pg = "postgres://db.internal:5432/app";
+test.each([
+  [{ reason: "lock-timeout", sqlstate: "55P03" }, 5000, true, `The database ${pg} kept a row or table locked by another transaction for 5000 ms, so the call gave up (SQLSTATE 55P03)`],
+  [{ reason: "serialization", sqlstate: "40001" }, 0, true, `The database ${pg} could not serialize this transaction with a concurrent one, so it was rolled back; the same call may succeed if repeated (SQLSTATE 40001)`],
+  [{ reason: "deadlock", sqlstate: "40P01" }, 0, true, `The database ${pg} found this transaction in a deadlock with another one and rolled it back; the same call may succeed if repeated (SQLSTATE 40P01)`],
+  [{ reason: "connection", sqlstate: "57P01" }, 0, true, `The connection to the database ${pg} was lost, so the transaction was rolled back`],
+  [{ reason: "connection", during: "commit" }, 0, false, `The connection to the database ${pg} was lost during COMMIT, so whether the transaction committed is unknown; check before repeating the call`],
+  [{ reason: "connection", during: "connect", cause: new Error("connection refused") }, 0, true, `Could not connect to the database ${pg}: connection refused; the same call may succeed once the server answers`],
+] as const)("DatabaseBusyError words reason %o", (options, waitedMs, retryable, message) => {
+  const error = new DatabaseBusyError(pg, waitedMs, options);
+  expect(error.message).toBe(message);
+  expect(error.reason).toBe(options.reason);
+  expect(error.sqlstate).toBe("sqlstate" in options ? options.sqlstate : null);
+  expect(error.retryable).toBe(retryable);
+  expect(error.code).toBe("MESH_DATABASE_BUSY");
+  expect(error.file).toBe(pg);
+  expect(error.waitedMs).toBe(waitedMs);
+});
+
+test("DatabaseBusyError: an explicit retryable wins over the reason's default, both ways", () => {
+  expect(new DatabaseBusyError(pg, 0, { reason: "serialization", retryable: false }).retryable).toBe(false);
+  expect(new DatabaseBusyError(pg, 0, { reason: "connection", during: "commit", retryable: true }).retryable).toBe(true);
+  // A cause that is not an Error is still named in the could-not-connect message.
+  expect(new DatabaseBusyError(pg, 0, { reason: "connection", during: "connect", cause: "ECONNREFUSED" }).message).toContain(": ECONNREFUSED;");
+});
+
 test.each([
   ["FrameworkError", (options?: runtime.MeshErrorOptions) => new FrameworkError("misconfigured", options), false],
   ["InvalidInputError", (options?: runtime.MeshErrorOptions) => new InvalidInputError([issue([], "bad")], options), false],

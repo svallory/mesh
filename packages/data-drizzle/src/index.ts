@@ -1,5 +1,5 @@
 import { and, eq, getTableColumns, is, type Column, type DrizzleEntityClass, type SQL, type Table } from "drizzle-orm";
-import { FrameworkError, uuidv7, type DataOperations, type Filter, type Key, type Query, type Row, type TableHandle } from "@meshfw/runtime";
+import { FrameworkError, MeshError, uuidv7, type DataOperations, type Filter, type Key, type Query, type Row, type TableHandle } from "@meshfw/runtime";
 import { columnOf, filterCondition, selectOptions, type DrizzleSelect } from "./query.ts";
 
 export { columnOf, filterCondition, selectOptions, type DrizzleSelect } from "./query.ts";
@@ -88,7 +88,9 @@ export function drizzleOperations<T extends Table>(commands: DrizzleCommands<T>,
     guard();
     try { return await run(); }
     catch (cause) {
-      if (cause instanceof FrameworkError) throw cause;
+      // A Mesh error is the adapter's own report (a DatabaseBusyError from a command that mapped its driver's failure),
+      // so it reaches the caller unchanged; anything else is a raw driver error.
+      if (cause instanceof MeshError) throw cause;
       // M2: typed constraint errors arrive with the M3 contract.
       throw new FrameworkError("Database operation failed", { cause });
     }
