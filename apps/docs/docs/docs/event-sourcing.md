@@ -118,15 +118,15 @@ import { InvoicePaid } from "#mesh/domain/billing";
 export const upcast = upcasters(
   upcaster(
     InvoicePaid,
-    (payload) => ("invoice" in payload ? { invoiceRef: payload.invoice } : payload),
-    (payload) => ("invoiceRef" in payload ? { invoiceId: payload.invoiceRef } : payload),
+    ({ invoice, ...rest }) => (invoice === undefined ? rest : { ...rest, invoiceRef: invoice }),
+    ({ invoiceRef, ...rest }) => (invoiceRef === undefined ? rest : { ...rest, invoiceId: invoiceRef }),
   ),
 );
 ```
 
-Each step takes the payload so far (the stored one, for the first step) and the stored row, and returns the next shape, or the payload itself when it does not apply. The steps of an event run in order over every stored row of it, so a row of any age arrives in today's shape and a row already in today's shape passes through every step unchanged. Rows of events with no upcaster are not touched. Mesh stores no version number: a step tells a shape by its fields.
+Each step takes the payload so far (the stored one, for the first step) and the stored row, and returns the next shape: the whole payload, with only the fields that changed replaced. A step that returned only the renamed field would drop `amount`, `method` and `paidAt`, and the class would refuse the row. A step that does not apply returns the payload unchanged. The steps of an event run in order over every stored row of it, so a row of any age arrives in today's shape and a row already in today's shape passes through every step unchanged. Rows of events with no upcaster are not touched. Mesh stores no version number: a step tells a shape by its fields.
 
-`upcast` runs on every stored row read back: handlers of every kind, subscriptions, `readEvents` and `retryFailed`. It runs before a date field is turned back into a `Date` and before the event's class is built, so a step that adds a date field returns it as ISO text, as the outbox stores dates. `published()` is not upcast: its records are the transaction's own events, already in today's shape. Because `readEvents` reads `upcast`, it loads the events module on its first call, also in a process that never publishes.
+`upcast` runs on every stored row read back: handlers of every kind, subscriptions, `readEvents` and `retryFailed`. It runs before a date field is turned back into a `Date` and before the event's class is built, so a step that adds a date field returns it as ISO text, as the outbox stores dates. `published()` is not upcast: its records are the transaction's own events, already in today's shape. Because `readEvents` and `subscribe` read `upcast`, each loads the events module on its first call, also in a process that never publishes, and a `load` that rejects fails the call.
 
 Upcasting changes a payload, never a name. A row stored under a name the project no longer declares is still `MESH_EVENT_UNDECLARED`; map the old name with `events.renamed` ([Moving or renaming an event](./events.md#moving-or-renaming-an-event)). The rename map runs first, so an upcaster is written for the event's current class and receives old rows under its new name.
 
