@@ -939,4 +939,32 @@ declare module "#mesh" {
 
   /** The emitted schema's tables, for `createSchema(db, tables)`, keyed by table name as stored (`table=` included). */
   export const tables: { readonly lists: object; readonly todos: object };
+
+  // `query` and its types are exported only when the data adapter declares the `raw-sql` capability (ADR-0087).
+
+  /** A value a raw query binds; anything else is refused, never bound as NULL. A `bigint` must fit in signed 64 bits. */
+  export type RawValue = string | number | bigint | boolean | Date | null;
+  /** A row of a raw query: the column names the statement gives, the values as stored. Frozen. */
+  export type RawRow = Readonly<Record<string, unknown>>;
+  /** A Standard Schema (a Zod object, for example), as `query.as` takes it. */
+  type RawRowSchema = {
+    readonly "~standard": {
+      readonly version: 1;
+      readonly vendor: string;
+      readonly validate: (value: unknown) => unknown;
+      readonly types?: { readonly input: unknown; readonly output: unknown } | undefined;
+    };
+  };
+  type RawRowOutput<S extends RawRowSchema> = NonNullable<S["~standard"]["types"]>["output"];
+  /** What `query` is: a template tag, plus `as(schema)`, the same tag validating and typing each row. */
+  export type RawQuery = {
+    (strings: TemplateStringsArray, ...values: readonly RawValue[]): Promise<readonly RawRow[]>;
+    as<S extends RawRowSchema>(schema: S): (strings: TemplateStringsArray, ...values: readonly RawValue[]) => Promise<readonly RawRowOutput<S>[]>;
+  };
+  /**
+   * Runs one read-only SQL statement written by hand (`select`, `with` or `values`), inside the running transaction of the
+   * binding in scope, else of the connected one, else in a transaction of its own. Every `${…}` is bound as a parameter.
+   * Rows come back as stored, frozen. Read policies do not apply. Throws while a computed field or a read policy is evaluated.
+   */
+  export const query: RawQuery;
 }
