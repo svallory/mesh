@@ -140,15 +140,19 @@ const publishListeners = new PerDatabase<Set<() => void>>(() => new Set());
 export function onPublished(layer: DataLayer, listener: () => void): () => void {
   const listeners = publishListeners.get(layer);
   listeners.add(listener);
-  const appended = layer.onAppended?.(listener);
+  // The adapter calls this from its own notification callback: a throw is reported here and never reaches the adapter.
+  const appended = layer.onAppended?.(() => { wake(listener); });
   return () => { listeners.delete(listener); appended?.(); };
+}
+
+/** Calls one `onPublished` listener; a listener that throws is reported, never thrown to the caller. */
+function wake(listener: () => void): void {
+  try { listener(); } catch (error) { console.error("A bus's onPublished listener threw:", error); }
 }
 
 /** Called by `outermost` after a commit that published: wakes every listener of the database. A listener that throws is reported, never the commit's failure. */
 export function notifyPublished(layer: DataLayer): void {
-  for (const listener of [...publishListeners.get(layer)]) {
-    try { listener(); } catch (error) { console.error("A bus's onPublished listener threw:", error); }
-  }
+  for (const listener of [...publishListeners.get(layer)]) wake(listener);
 }
 
 /** The loaded events module, by the configuration object that loads it: loaded once per configuration. */

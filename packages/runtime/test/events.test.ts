@@ -404,6 +404,27 @@ describe("onPublished", () => {
     expect(calls).toBe(2);
   });
 
+  test("a listener that throws when the layer calls it through onAppended is reported, and the throw never reaches the layer", () => {
+    const { layer, state } = memoryLayer({ appended: true });
+    const named = Object.assign(layer, { database: "memory #appended-throws" });
+    let after = 0;
+    const stopThrowing = onPublished(named, () => { throw new Error("listener broke"); });
+    const stopAfter = onPublished(named, () => { after++; });
+    const reported: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { reported.push(args); };
+    try {
+      for (const listener of [...state.listeners]) expect(() => listener()).not.toThrow();
+    } finally { console.error = original; }
+    expect(after).toBe(1);
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.[0]).toBe("A bus's onPublished listener threw:");
+    expect((reported[0]?.[1] as Error).message).toBe("listener broke");
+    stopThrowing();
+    stopAfter();
+    expect(state.listeners.size).toBe(0);
+  });
+
   test("on a layer without onAppended, only commits in this process wake the listener", async () => {
     const { layer } = memoryLayer();
     const named = Object.assign(layer, { database: "memory #plain" });
