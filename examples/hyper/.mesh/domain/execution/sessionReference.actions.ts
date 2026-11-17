@@ -112,6 +112,7 @@ export function bindSessionReferenceReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown
           ? SessionReferenceTxWith<SessionReferenceLoadNames<L>>[]
           : never;

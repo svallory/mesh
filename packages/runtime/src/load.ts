@@ -1,4 +1,4 @@
-import type { Condition, TableOf } from "./condition.ts";
+import { whereFor, type Condition, type TableOf } from "./condition.ts";
 import type { DataOperations, Filter, Row, TableHandle } from "./data-layer.ts";
 import { FrameworkError } from "./errors.ts";
 import { pinClock, scope, type Clock } from "./expr.ts";
@@ -122,6 +122,13 @@ export interface LoadOptions {
    */
   frame?: Pick<ActionFrame, "marked"> | undefined;
   /**
+   * `loadRows` only: the data layer `tx` belongs to. A condition a read policy gives a name the caller loads goes to it
+   * only if its capability manifest declares `conditions` (and `joins`, for one that crosses a relationship), as a read's
+   * own does (`whereFor`): a layer that ignored it would return rows the policy excludes. The build refuses both first;
+   * this is the defence behind it. The generated actions pass it.
+   */
+  layer?: object | undefined;
+  /**
    * `loadInto` only: the record is a create's new instance before the input is applied, so a required
    * `belongs-to` whose key the input has not filled yet is null on it instead of an error.
    */
@@ -234,7 +241,9 @@ async function admissions(plan: LoadPlan, entity: string, names: readonly string
     if (!decided.has(target)) {
       const policies = planOf(plan, target).reads ?? [];
       const roots = { input: Object.freeze({}), actor: options.actor, context: options.context ?? {} };
-      decided.set(target, await authorizer(target, "read", policies, options.frame).admitsRows(scope(roots, options.clock ? { clock: options.clock } : {}), tableOf));
+      const where = await authorizer(target, "read", policies, options.frame).admitsRows(scope(roots, options.clock ? { clock: options.clock } : {}), tableOf);
+      if (where !== true && where !== false && options.layer !== undefined) whereFor(options.layer, where);
+      decided.set(target, where);
     }
     return decided.get(target)!;
   };

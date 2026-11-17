@@ -103,6 +103,7 @@ export function bindDependencyReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? DependencyTxWith<DependencyLoadNames<L>>[] : never;
       });
     },
@@ -380,7 +381,7 @@ export function bindDependency(
               | undefined;
             if ($before === undefined) throw new $NotFoundError("work.Dependency", $key);
             const $record: $Record = { ...$before };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "work.Dependency", $record, "action function"),
               "work.Dependency#remove",

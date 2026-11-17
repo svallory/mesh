@@ -78,6 +78,7 @@ export function bindCommentReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? CommentTxWith<CommentLoadNames<L>>[] : never;
       });
     },

@@ -110,6 +110,7 @@ export function bindMachineReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? MachineWith<MachineLoadNames<L>>[] : never;
       });
     },
@@ -572,7 +573,7 @@ export function bindMachine(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "execution.Machine", $record, "action function"),
               "execution.Machine#retire",

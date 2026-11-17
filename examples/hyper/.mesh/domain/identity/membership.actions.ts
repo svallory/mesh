@@ -113,6 +113,7 @@ export function bindMembershipReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? MembershipTxWith<MembershipLoadNames<L>>[] : never;
       });
     },

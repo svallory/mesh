@@ -521,6 +521,23 @@ describe("a read policy that reads the record admits a caller's load row by row"
     expect(calls).toEqual(["select owners"]);
   });
 
+  test("a condition goes only to a layer that declares conditions: another is refused before any query", async () => {
+    const { tx, calls, handle } = data();
+    const rows = (await tx.select(handle("nodes"))) as Row[];
+    calls.length = 0;
+    for (const layer of [{}, { capabilities: { adapter: "plain", capabilities: [] } }])
+      await expect(loadRows(owned(handle), "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer }))
+        .rejects.toThrow(/does not declare the conditions capability/);
+    expect(calls).toEqual([]);
+    // A layer that declares it is handed the condition; a policy with no condition needs none.
+    const sql = { capabilities: { adapter: "sql", capabilities: ["conditions"] } };
+    const a = await loadRows(owned(handle), "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer: sql });
+    expect(a.map((row) => (row.owner as Row | null)?.id ?? null)).toEqual([10, null, 10]);
+    const base = owned(handle);
+    const free = { ...base, Owner: { ...base.Owner!, reads: [open] } } as LoadPlan;
+    await loadRows(free, "Node", tx, rows, ["owner"], { actor: { id: "a" }, policies: true, layer: {} });
+  });
+
   test("a check that reads the record with no condition to fold is a framework error", async () => {
     const { tx, handle } = data();
     const base = plan(handle);

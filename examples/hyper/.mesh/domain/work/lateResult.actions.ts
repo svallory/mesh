@@ -92,6 +92,7 @@ export function bindLateResultReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? LateResultTxWith<LateResultLoadNames<L>>[] : never;
       });
     },

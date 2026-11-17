@@ -162,6 +162,7 @@ export function bindPostReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
       });
     },
@@ -194,6 +195,7 @@ export function bindPostReads(
           clock: $clock,
           policies,
           frame,
+          layer,
         })) as unknown as L extends unknown ? PostTxWith<PostLoadNames<L>>[] : never;
       });
     },
@@ -345,7 +347,7 @@ export function bindPost(
             const $changes: $Partial<$Record> = {};
             const $record: $Record = { ...$before };
             const $writes = $writeCount(tx);
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "blog.Post", $record, "action function"),
               "blog.Post#publish",
@@ -457,7 +459,7 @@ export function bindPost(
               | undefined;
             if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
             const $record: $Record = { ...$before };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "blog.Post", $record, "action function"),
               "blog.Post#archive",
@@ -646,7 +648,7 @@ export function bindPost(
               | undefined;
             if ($before === undefined) throw new $NotFoundError("blog.Post", $key);
             const $record: $Record = { ...$before };
-            const $load = { actor: $actor, context: $context, clock: $clock, frame };
+            const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };
             const $self = $readOnlyRecord(
               $guarded($loadPlan, "blog.Post", $record, "action function"),
               "blog.Post#destroy",

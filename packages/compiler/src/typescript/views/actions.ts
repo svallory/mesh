@@ -528,7 +528,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
                 "const $clock = clock ?? $pinClock(options.clock);",
               ]),
               // From the read action, what the rows load runs the read policies of the entity it reaches.
-              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${txReturnType};`,
+              `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame, layer })) as unknown as ${txReturnType};`,
             ]
             : [`return (${select}) as ${recordName}[];`]),
         ] });
@@ -904,7 +904,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // `Mesh.privileged` read and every action the call makes inside its transaction read it.
     if (used.now) prelude.push("const $now = $clock();");
     const afterHead: string[] = [];
-    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame };");
+    if (used.load) afterHead.push("const $load = { actor: $actor, context: $context, clock: $clock, frame, layer };");
     if (used.scope) {
       runtime.add("scope");
       // An update or a destroy reads a stored record, so `before` is never null for its functions.
