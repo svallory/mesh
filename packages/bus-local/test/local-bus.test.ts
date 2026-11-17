@@ -962,6 +962,39 @@ describe("localBus and dead letters (onFailure: \"skip\")", () => {
     await instance.stop();
   });
 
+  test("started: a set-aside refused with MESH_HANDLER_LOST (another process took the handler) is no stop and reports nothing", async () => {
+    const reports: unknown[] = [];
+    let calls = 0;
+    const { core } = skipCore(async () => { calls++; throw new HandlerLostError("h", "taken", 1, "test"); }, { n: 0 }, {});
+    const instance = createLocalBus({ pollInterval: 60_000 }, { report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+    await instance.start();
+    await until(() => calls === 1, "the set-aside");
+    await sleep(20);
+    expect(reports).toEqual([]);
+    await instance.stop();
+  });
+
+  test("started: a skip handler at a row no declared event matches is never set aside: it stops, reported once", async () => {
+    const reports: unknown[] = [];
+    let calls = 0;
+    const undeclared = new EventUndeclaredError("x.Gone", 1);
+    const core = fakeCore({
+      handlers: [{ name: "h", onFailure: "skip" }], position: async () => 0,
+      rows: async (after: number) => ({ rows: after === 0 ? [{ position: 1, name: "x.Gone" }] : [], deletedThrough: 0, highest: 1, settled: 1 }),
+      lists: () => true, isRetryable: () => false, setAside: async () => { calls++; },
+      runHandler: async () => { throw undeclared; },
+      deletionPass: async () => {}, onPublished: () => () => {},
+    });
+    const instance = createLocalBus({ pollInterval: 60_000 }, { report: (error) => { reports.push(error); } }).create(core, { keep: "until-delivered" });
+    await instance.start();
+    await until(() => reports.length === 1, "the stop is reported");
+    await sleep(20);
+    expect(reports).toHaveLength(1);
+    expect((reports[0] as HandlerStoppedError).stopped).toMatchObject([{ handler: "h", position: 1, cause: undeclared }]);
+    expect(calls).toBe(0);
+    await instance.stop();
+  });
+
   test("deliver(): a refused set-aside is the stop, with the refusal as its cause; a busy one rejects the round", async () => {
     const refused = new FrameworkError("core.setAside refused it");
     const { core } = skipCore(async () => { throw refused; }, { n: 0 }, {});
