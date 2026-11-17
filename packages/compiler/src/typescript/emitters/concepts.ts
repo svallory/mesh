@@ -17,7 +17,7 @@ export const conceptsGenerator: Generator<ConceptView> = {
       const path = `${outputPrefix(input.config)}/${conceptPath(concept)}.ts`;
       if (paths.has(path.toLowerCase())) throw emitError("MESH_EMIT_PATH", `Generated path collision: ${path}`, concept.position);
       paths.add(path.toLowerCase());
-      return { path, view: conceptView(concept) };
+      return { path, view: conceptView(concept, input.document) };
     });
   },
 };

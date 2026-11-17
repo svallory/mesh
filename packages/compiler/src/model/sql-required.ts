@@ -109,6 +109,10 @@ function notSql(problem: Exclude<NotSql, { kind: "reported" }>, subject: string,
       return error("MESH_NOT_IMPLEMENTED", `${subject} reads ${problem.field}, a ${problem.fn} rollup, and filtering, sorting or authorizing by a rollup arrives with SQL rollups (M10)`,
         problem.position, `write the condition over the relationship itself, which translates: \`${problem.relation}.length > 2\`, \`${problem.relation}.some((x) => x.n > 2)\``);
     case "json":
+      // A concept member is one JSON value as well (ADR-0092), named as the concept.
+      if (problem.concept !== undefined)
+        return error(kind === "sort" ? "MESH_SORT_TYPE" : "MESH_FILTER_TYPE",
+          `${problem.member} is the concept ${problem.concept}, which a ${kind === "sort" ? "sort" : kind === "policy" ? "read policy" : "filter"} cannot use: it is stored as one JSON value`, problem.position);
       return kind === "sort"
         ? error("MESH_SORT_TYPE", `${problem.member} is :json, which a sort cannot use: the database does not look inside it`, problem.position)
         : kind === "policy"

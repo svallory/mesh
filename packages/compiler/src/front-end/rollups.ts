@@ -7,6 +7,7 @@ import type {
   ModelDocument,
   SourcePosition,
 } from "@meshfw/model";
+import { keyTypeOf } from "@meshfw/model";
 import { nearestName } from "./nearest-name.ts";
 import { inverseProblem } from "../model/inverse.ts";
 
@@ -116,12 +117,13 @@ export function resolveRollups(
         if (fn === "sum" || fn === "avg" ? !numeric : !ordered) {
           fail(
             "MESH_ROLLUP_TYPE",
-            `${fn} needs ${fn === "sum" || fn === "avg" ? "a number" : "a number, date or datetime"}, &${ref.name} is :${attribute.type}`,
+            `${fn} needs ${fn === "sum" || fn === "avg" ? "a number" : "a number, date or datetime"}, &${ref.name} is ${attribute.type === "concept" ? `the concept ${attribute.concept}` : `:${attribute.type}`}`,
             ref.position,
           );
           break;
         }
-        computed.type = fn === "avg" ? "decimal" : attribute.type;
+        // Reached only for a number or a date member, never a concept.
+        computed.type = fn === "avg" ? "decimal" : keyTypeOf(attribute);
         computed.nullable = nullable || attribute.nullable;
       }
     }

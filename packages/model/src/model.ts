@@ -1,5 +1,5 @@
 import type { ActionType } from "./action-types.ts";
-import type { AttributeType } from "./attribute-types.ts";
+import type { AttributeType, ValueType } from "./attribute-types.ts";
 import type { ExprNode, PlainReason } from "./expression.ts";
 import type { SourcePosition } from "./position.ts";
 
@@ -80,7 +80,10 @@ export interface Expression {
 
 export interface Attribute {
   name: string;
-  type: AttributeType;
+  /** An attribute type, or `concept` for a concept use (`Money :total`), which stores one JSON value (ADR-0092). */
+  type: ValueType;
+  /** Present exactly when `type` is `concept`: the concept's FQN (`billing.Money`, or `Money` at the domain root). */
+  concept?: string;
   nullable: boolean;
   primaryKey: boolean;
   unique: boolean;
@@ -294,7 +297,7 @@ export interface Entity {
  * One field of an event or a command: an attribute line without what concerns storage or creation, so it has no
  * `primaryKey`, `unique`, `default` or `on`.
  */
-export type Field = Pick<Attribute, "name" | "type" | "nullable" | "values" | "min" | "max" | "match" | "ruleMessage" | "ruleCode" | "position"> & {
+export type Field = Pick<Attribute, "name" | "type" | "concept" | "nullable" | "values" | "min" | "max" | "match" | "ruleMessage" | "ruleCode" | "position"> & {
   /** Command fields only: the caller may omit the field without admitting null. Absent unless enabled on a non-nullable field. */
   optional?: true;
 };

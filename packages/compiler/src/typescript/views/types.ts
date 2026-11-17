@@ -1,5 +1,6 @@
 import { dirname, relative, resolve } from "node:path";
 import type { Entity } from "@meshfw/model";
+import { conceptImports } from "./concepts.ts";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
@@ -8,6 +9,7 @@ import {
   baseType,
   entityInputs,
   entityLocal,
+  conceptsUsed,
   entityPath,
   filterTypeName,
   hasRead,
@@ -195,6 +197,9 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
         key: propertyName(relation.keyColumn),
         type: `${tsTypeOf(relation.keyType ?? "string")}${relation.nullable ? " | null" : ""}`,
       });
+  // Each concept a member holds, imported as a type under its FQN-derived local (`$Money$concept`).
+  const concepts = conceptImports(document, conceptsUsed([...entity.attributes, ...inputs.flatMap((input) => input.fields.filter(({ query }) => !query).map(({ attribute }) => attribute))]), `${entityPath(entity)}.types`);
+  for (const concept of concepts) imports.push({ name: concept.type.split(" as ")[1]!, names: concept.type, fromLiteral: concept.fromLiteral });
   const view = {
     entityFile: entityFileComment(entity),
     imports,

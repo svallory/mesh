@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 import { EmitError, type EmitInput } from "@meshfw/compiler";
-import type { AttributeType, Entity, SourcePosition } from "@meshfw/model";
+import { keyTypeOf, type AttributeType, type Entity, type SourcePosition } from "@meshfw/model";
 import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
 import { DELIVERY_PROCESS_TABLE, coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
 
@@ -135,7 +135,7 @@ function tableView(entity: Entity): TableView {
     columns.push(view);
   };
   for (const attribute of entity.attributes) {
-    add(attribute.name, attribute.position, column(attribute.name, attribute.type, attribute.nullable, attribute.primaryKey,
+    add(attribute.name, attribute.position, column(attribute.name, keyTypeOf(attribute), attribute.nullable, attribute.primaryKey,
       (attribute.values ?? []).map((atom) => atom.value), attribute.unique));
   }
   for (const relation of entity.relationships) {

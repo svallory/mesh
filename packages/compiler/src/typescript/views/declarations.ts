@@ -1,9 +1,10 @@
-import { attributeTypeInfo, type CommandDeclaration, type EventDeclaration } from "@meshfw/model";
+import { attributeTypeInfo, type CommandDeclaration, type EventDeclaration, type ModelDocument } from "@meshfw/model";
+import { conceptImports, type ConceptImport } from "./concepts.ts";
 import type { EmitInput } from "../emit.ts";
 import { classNameOf } from "../../model/class-name.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityFileComment } from "./types.ts";
-import { baseType, entityLocal, entityPath, propertyName, valueType } from "./inputs.ts";
+import { baseType, conceptsUsed, entityLocal, entityPath, propertyName, valueType } from "./inputs.ts";
 import { fieldSchema, ruleTable } from "./validators.ts";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -79,6 +80,11 @@ export interface DeclarationView {
   /** The kind as a quoted string literal, `"event"` or `"command"`. */
   readonly kindLiteral: string;
   readonly fields: readonly DeclarationField[];
+  /**
+   * Each concept a field holds, sorted by FQN: the file imports its type and schema under their locals
+   * (`import { moneySchema as $Money$schema, type Money as $Money$concept } from "../money.concept"`).
+   */
+  readonly concepts: readonly ConceptImport[];
   /** The names of the fields that hold a date, as an array literal (`["paidAt"]`): stored as text in JSON, revived by `readEvents`. */
   readonly datesLiteral: string;
   /** True when a field is `json`: the file imports `jsonValue` as `$jsonValue`. */
@@ -95,7 +101,7 @@ export interface DeclarationView {
 }
 
 /** True for a field whose values are a `Date`: `date`, `datetime` and `timestamp`. */
-const holdsDate = (field: Pick<Declaration["fields"][number], "type">): boolean => attributeTypeInfo(field.type).tsType === "Date";
+const holdsDate = (field: Pick<Declaration["fields"][number], "type">): boolean => field.type !== "concept" && attributeTypeInfo(field.type).tsType === "Date";
 
 /** What the constructor assigns to a field read as `read` off the checked fields (see `DeclarationField.assignment`). */
 function assignmentOf(read: string, date: boolean, optional: boolean, kind: Declaration["kind"]): string {
@@ -104,8 +110,8 @@ function assignmentOf(read: string, date: boolean, optional: boolean, kind: Decl
   return optional && kind === "event" ? `${read} ?? null` : read;
 }
 
-/** The view of one event or command. Pure and synchronous. */
-export function declarationView(declaration: Declaration): DeclarationView {
+/** The view of one event or command. Pure and synchronous; a field holding a concept `document` lacks is an `EmitError`. */
+export function declarationView(declaration: Declaration, document: Pick<ModelDocument, "concepts">): DeclarationView {
   const name = className(declaration);
   const fields = declaration.fields.map((field): DeclarationField => {
     const optional = field.nullable || (declaration.kind === "command" && field.optional === true);
@@ -130,6 +136,7 @@ export function declarationView(declaration: Declaration): DeclarationView {
     fqnLiteral: JSON.stringify(declaration.fqn),
     kindLiteral: JSON.stringify(declaration.kind),
     fields,
+    concepts: conceptImports(document, conceptsUsed(declaration.fields), declarationPath(declaration)),
     datesLiteral: JSON.stringify(declaration.fields.filter(holdsDate).map((field) => field.name)),
     json: declaration.fields.some((field) => field.type === "json"),
     deepReadonly: declaration.fields.some(holdsDate),

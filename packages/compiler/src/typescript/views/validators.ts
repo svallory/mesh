@@ -1,6 +1,7 @@
 import type { AttributeType, Entity } from "@meshfw/model";
+import { conceptImports, type ConceptImport } from "./concepts.ts";
 import type { EmitInput } from "../emit.ts";
-import { entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, schemaName, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
+import { conceptLocal, conceptsUsed, entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, schemaName, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
 import { entityFileComment } from "./types.ts";
 
@@ -27,6 +28,8 @@ export interface ValidatorsView {
   readonly json: boolean;
   /** True when a schema has a line rule (`rules` not null): the file then declares the `$ruled` helper. */
   readonly lineRules: boolean;
+  /** Each concept an input field holds, sorted by FQN: the file imports its schema under its local (`moneySchema as $Money$schema`). */
+  readonly concepts: readonly ConceptImport[];
 }
 
 /** The filter and sort schemas a read input uses. */
@@ -118,7 +121,8 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
   // The template prints `$Object.keys` in the comparison schema a read's filter uses; a file with no input imports nothing.
   const json = inputs.some((input) => input.fields.some(({ attribute, query }) => !query && attribute.type === "json"));
   const lineRules = view.schemas.some((schema) => schema.rules !== null);
-  return { ...view, json, lineRules, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
+  const concepts = conceptImports(document, conceptsUsed(inputs.flatMap((input) => input.fields.filter(({ query }) => !query).map(({ attribute }) => attribute))), `${entityPath(entity)}.validators`);
+  return { ...view, json, lineRules, concepts, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
 }
 
 const filterConst = (entity: Entity) => schemaName(filterTypeName(entity));
@@ -184,6 +188,8 @@ function lineRules(field: FieldShape): { min?: LineRule; max?: LineRule; match?:
  * pattern are Zod's own checks, so a schema converter still sees them; each carries Mesh's standard message.
  */
 export function fieldSchema(field: FieldShape, optional: boolean): string {
+  // A concept is checked by its own generated schema, imported under its local (`conceptImports`); it takes no line rule.
+  if (field.type === "concept") return conceptLocal(field.concept!, "schema") + (field.nullable ? ".nullable()" : "") + (optional ? ".optional()" : "");
   let base =
     field.type === "enum"
       ? `z.enum([${(field.values ?? []).map((v) => JSON.stringify(v.value)).join(", ")}])`

@@ -1,8 +1,8 @@
-import { isCheckGroup, type Action, type Check, type Entity, type ModelDocument, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, type Action, type Atom, type Check, type Literal, type Entity, type ModelDocument, type Step, type ValidateItem } from "@meshfw/model";
 import { policyConditions, sqlPositions } from "../model/sql-required.ts";
 import { checksOf, isEmptyGroup } from "../model/action-expressions.ts";
 import { policiesCovering, policyExpressions, readsRecord } from "../model/policies.ts";
-import { alwaysFor, stepsFor } from "./views/actions.ts";
+import { alwaysFor, conceptData, stepsFor } from "./views/actions.ts";
 import { effectiveActions } from "./views/inputs.ts";
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
@@ -23,15 +23,20 @@ function stepsAt(steps: readonly Step[], after: boolean): Step[] {
   return out;
 }
 
-function stepLines(steps: readonly Step[], depth: number, into: string[], after = false): void {
+/** How a `set` literal is printed: a concept member's by its concept's fields (`conceptData`), any other as written, an atom as its name. */
+type LiteralPrinter = (member: string, value: unknown) => string;
+const plainLiteral: LiteralPrinter = (_, value) =>
+  JSON.stringify(typeof value === "object" && value !== null && !Array.isArray(value) && "value" in value ? (value as { value: unknown }).value : value);
+
+function stepLines(steps: readonly Step[], depth: number, into: string[], after = false, literal: LiteralPrinter = plainLiteral): void {
   const pad = "  ".repeat(depth);
   for (const step of steps) {
     if (step.kind === "set")
       for (const { member, value } of step.assignments)
-        into.push(`${pad}set &${member.name} = ${typeof value === "object" && value !== null && "source" in value ? squash((value as { source: string }).source) : JSON.stringify(typeof value === "object" && value !== null && !Array.isArray(value) && "value" in value ? (value as { value: unknown }).value : value)}`);
+        into.push(`${pad}set &${member.name} = ${typeof value === "object" && value !== null && "source" in value ? squash((value as { source: string }).source) : literal(member.name, value)}`);
     else if (step.kind === "when") {
       into.push(`${pad}when ${squash(step.condition.source)}${after ? " (as it held before the write)" : ""}`);
-      stepLines(step.steps, depth + 1, into, after);
+      stepLines(step.steps, depth + 1, into, after, literal);
     } else if (step.kind === "load") into.push(`${pad}load ${step.members.map((member) => `&${member.name}`).join(", ")}`);
     else if (step.kind === "publish") into.push(`${pad}publish ${squash(step.fn.source)} (plain, ${step.fn.plain?.why ?? "publish-step"}: it raises the event after the write)`);
     else into.push(`${pad}run ${squash(step.fn.source)}`);
@@ -125,10 +130,15 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
   const checks: string[] = [];
   for (const block of blocks) checkLines(block.validate, 0, checks, block.always ? "always: " : "");
   const all = stepsFor(action, blocks.flatMap((block) => block.steps));
+  // A concept member's literal is printed as the generated action assigns it; without the model, as written.
+  const literal: LiteralPrinter = (name, value) => {
+    const attribute = entity.attributes.find((candidate) => candidate.name === name);
+    return attribute?.type === "concept" && document ? JSON.stringify(conceptData(value as Literal | Atom, attribute.concept!, document)) : plainLiteral(name, value);
+  };
   const steps: string[] = [];
-  stepLines(stepsAt(all, false), 0, steps);
+  stepLines(stepsAt(all, false), 0, steps, false, literal);
   const afterWrite: string[] = [];
-  stepLines(stepsAt(all, true), 0, afterWrite, true);
+  stepLines(stepsAt(all, true), 0, afterWrite, true, literal);
   const recordPolicy = policiesCovering(entity, action).some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, action.kind === "read" ? "read" : "write")));
   const reads = action.kind === "update" || checksOf(blocks.flatMap((block) => block.validate)).length > 0 || all.length > 0 || recordPolicy;
   const strategy = action.kind === "create" ? "one insert; nothing is read first"

@@ -129,7 +129,8 @@ export interface PlainReason {
   parts?: ExprNode[];
 }
 
-export type TypeClass = "number" | "string" | "boolean" | "date" | "enum" | "json" | "list" | "record" | "any";
+/** `concept`: a concept member, whose value is opaque to a translated expression as a `json` one is (ADR-0092). */
+export type TypeClass = "number" | "string" | "boolean" | "date" | "enum" | "json" | "concept" | "list" | "record" | "any";
 
 export interface FunctionSpec {
   id: FunctionId;

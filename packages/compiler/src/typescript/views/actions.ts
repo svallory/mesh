@@ -1,11 +1,12 @@
 import { dirname, relative } from "node:path";
-import { isCheckGroup, type Action, type Always, type Atom, type Attribute, type Check, type Entity, type Expression, type Literal, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
+import { isCheckGroup, type Action, type Always, type Atom, type Attribute, type Check, type Entity, type Expression, type Literal, type ModelDocument, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
 import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-expressions.ts";
 import { filledKey } from "../../model/new-instance.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
 import { hopTables, valueClassOf } from "../../model/sql-condition.ts";
 import { policyConditions, sqlPositions } from "../../model/sql-required.ts";
 import { emitError } from "../emit-error.ts";
+import { conceptByFqn } from "./concepts.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { globalAlias, globalsImport, withoutStrings, type GlobalsImport } from "./globals.ts";
@@ -247,8 +248,33 @@ function isAtom(value: Literal | Atom): value is Atom {
     && Object.keys(value).length === 1 && typeof (value as { value?: unknown }).value === "string";
 }
 
+/**
+ * A concept literal as plain data (`set &total={ currency: "EUR", amount: 0 }`), walked by the concept's fields in their
+ * written order, never by the value's own shape: an enum field's atom becomes its name, a nested concept recurses, a
+ * `json` field is kept as written, and `null` stays null. So a concept whose one field is named `value` gives
+ * `{ value: "x" }`, never the atom reading `"x"`. The build checked the literal against the concept (`literalFits`).
+ */
+export function conceptData(value: Literal | Atom, fqn: string, document: Pick<ModelDocument, "concepts">): unknown {
+  if (value === null) return null;
+  const concept = conceptByFqn(document, fqn);
+  const record = value as Record<string, Literal | Atom>;
+  const data: Record<string, unknown> = {};
+  for (const field of concept.fields) {
+    const each = record[field.name]!;
+    const printed = field.type === "concept" ? conceptData(each, field.concept!, document)
+      : field.type === "json" ? each
+      : isAtom(each as Literal | Atom) ? (each as Atom).value : each;
+    // A field named `__proto__` is refused by the build; `defineProperty` keeps any other name an own key.
+    Object.defineProperty(data, field.name, { value: printed, enumerable: true, configurable: true, writable: true });
+  }
+  return data;
+}
+
 /** A literal or atom as a TypeScript value of the attribute's type: an atom is its name as a string. */
-function printValue(value: Literal | Atom, type: Attribute["type"]): string {
+function printValue(value: Literal | Atom, column: { type: Attribute["type"]; concept?: string }, document: Pick<ModelDocument, "concepts">): string {
+  const type = column.type;
+  // A concept is printed by its fields, never by the value's shape (`conceptData`).
+  if (type === "concept") return JSON.stringify(conceptData(value, column.concept!, document));
   // A json value is data as written; an object with a lone string `value` is not an atom there.
   if (type === "json") return JSON.stringify(value);
   const plain = isAtom(value) ? value.value : value;
@@ -284,7 +310,7 @@ export function stepsFor(action: Action, steps: readonly Step[]): Step[] {
 }
 
 /** The stored column a member names: an attribute, or a belongs-to's key column. */
-function columnOf(entity: Entity, name: string, position: SourcePosition): { name: string; type: Attribute["type"]; relation?: string } {
+function columnOf(entity: Entity, name: string, position: SourcePosition): { name: string; type: Attribute["type"]; concept?: string; relation?: string } {
   const attribute = entity.attributes.find((a) => a.name === name);
   if (attribute) return attribute;
   const relation = entity.relationships.find((r) => r.name === name && r.keyColumn);
@@ -653,7 +679,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         fill(attribute.name, attribute.position, {
           key: attribute.primaryKey ? (filledKey(attribute.type) ? "filled" : "written") : null,
           stamped: attribute.on !== undefined,
-          fallback: attribute.default === undefined ? undefined : printValue(attribute.default, attribute.type),
+          fallback: attribute.default === undefined ? undefined : printValue(attribute.default, attribute, document),
           nullable: attribute.nullable,
         });
       for (const relation of entity.relationships)
@@ -778,7 +804,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
                 const where = `${value.position.file}:${value.position.line}:${value.position.column + 1}`;
                 emit(`{ const $value = await ${call(value)}; if ($value === undefined || $value === null) throw new $FrameworkError(${JSON.stringify(`set &${member.name} (${where}) produced no value, and ${column.relation ? `the relationship ${member.name}` : member.name} is required`)}); ${target(column.name)} = $value; }`);
               }
-            } else emit(`${target(column.name)} = ${printValue(value, column.type)};`);
+            } else emit(`${target(column.name)} = ${printValue(value, column, document)};`);
           }
           // What was loaded was worked out from columns this step has just changed.
           if (anyNeeds) {
