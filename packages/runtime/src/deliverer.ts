@@ -605,7 +605,7 @@ export class Deliverer {
     this.strategy.enter(handler, row);
     const eventClass = this.events.get(row.name);
     // Delivery from several processes: a row this build does not declare is judged in the fence; it never reaches a body.
-    const record = eventClass ? recordOf(row, eventClass) : undefined;
+    const record = eventClass ? recordOf(row, eventClass, this.module.upcast) : undefined;
     const label = `the ${handler.kind} handler ${handler.name}`;
     const run = (context: ActionContext) => (entry.handler as Handler).run(record!, { context });
     // A contributed kind (ADR-0094) runs as a `process` handler does: its body in the handler transaction.
@@ -710,7 +710,7 @@ export class Deliverer {
     const why = `retryFailed(${JSON.stringify(handler.name)}) replays set-aside events`;
     const label = `the ${handler.kind} handler ${handler.name}`;
     try {
-      const record = recordOf({ ...failure, name }, eventClass);
+      const record = recordOf({ ...failure, name }, eventClass, this.module.upcast);
       const run = (context: ActionContext) => (entry.handler as Handler).run(record, { context });
       if (handler.kind === "process" || entry.kind !== undefined) {
         return await handlerScope(this.binding, label, failure.id, true, async () => {
@@ -1251,7 +1251,8 @@ class OpenSubscription implements LiveSubscription {
   readonly handle: Subscription;
 
   constructor(readonly db: DatabaseState, readonly layer: DataLayer, readonly events: ReadonlyMap<string, EventClass>, readonly name: string,
-    readonly filter: SubscriptionFilter, position: number, readonly callback: (event: EventRecord) => unknown, readonly multiProcess = false) {
+    readonly filter: SubscriptionFilter, position: number, readonly callback: (event: EventRecord) => unknown, readonly multiProcess = false,
+    readonly upcast?: EventsModule["upcast"]) {
     this.cursor = position;
     this.#handed = position;
     this.#acked = position;
@@ -1278,7 +1279,7 @@ class OpenSubscription implements LiveSubscription {
       }
       this.cursor = row.position;
       if (!matches(this.filter, row)) continue;
-      this.#queue.push(recordOf(row, eventClass));
+      this.#queue.push(recordOf(row, eventClass, this.upcast));
       if (this.#queue.length > maxQueue) { this.end(new SubscriptionOverflowError(this.name, maxQueue)); return; }
     }
     void this.#drain();
@@ -1367,11 +1368,14 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
   if (insideTransaction(binding)) throw new FrameworkError("subscribe was called inside a transaction: a subscription never runs inside one");
   requireDatabase(layer, "subscribe");
   const filter = filterOf(query, events, renamed);
+  // Loaded here, not left to a delivery round: under bind(layer, { events }) a subscription can open before anything
+  // has loaded the module, and its rows must reach the callback upcast all the same.
+  const { upcast } = await loadEvents(config);
   const db = databases.get(layer);
   if (db.subscriptions.has(name))
     throw new FrameworkError(`A subscription named ${JSON.stringify(name)} is open in this process already: two readers acknowledging under one row would pass each other's rows`);
   const multiProcess = isMultiProcess(checkedBus(config.bus));
-  const placeholder = new OpenSubscription(db, layer, events, name, filter, 0, callback, multiProcess);
+  const placeholder = new OpenSubscription(db, layer, events, name, filter, 0, callback, multiProcess, upcast);
   placeholder.opening = true;
   db.subscriptions.set(name, placeholder);
   try {
@@ -1397,7 +1401,7 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
       await ops.writeSubscriptionProgress({ name, position: start, filter, open: true, generation });
       return start;
     });
-    const subscription = new OpenSubscription(db, layer, events, name, filter, position, callback, multiProcess);
+    const subscription = new OpenSubscription(db, layer, events, name, filter, position, callback, multiProcess, upcast);
     if (db.subscriptions.get(name) === placeholder) db.subscriptions.delete(name);
     if (placeholder.ended) {
       // Delivery stopped, or the claim was lost, while the row was being written: the stream ends as it would have.

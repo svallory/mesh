@@ -67,6 +67,13 @@ export interface EventsModule {
   metadata?: MetadataFunction<never>;
   /** The context handlers run with; default `{ system: true }`. It can read the original person from the event's `metadata`. */
   context?: (event: EventRecord) => ActionContext;
+  /**
+   * Turns a stored row's payload into the fields its event's class accepts today (ADR-0094): called for every stored row
+   * read back (handlers, subscriptions, `readEvents`, `retryFailed`), after the rename map gives the row its declared
+   * name and before its dates are revived and its class is constructed. Returns the payload unchanged when it already has
+   * today's shape. `upcasters()` of `@meshfw/event-sourcing` builds one.
+   */
+  upcast?: (stored: OutboxRow) => unknown;
 }
 
 /**
@@ -270,6 +277,9 @@ export function loadEvents(config: EventsConfig | undefined): Promise<EventsModu
       const context = (loaded as { context?: unknown }).context;
       if (context !== undefined && typeof context !== "function")
         throw new FrameworkError(`The events module exports context as ${describe(context)}: it must be a function (event) => ({ ... }), the context handlers run with`);
+      const upcast = (loaded as { upcast?: unknown }).upcast;
+      if (upcast !== undefined && typeof upcast !== "function")
+        throw new FrameworkError(`The events module exports upcast as ${describe(upcast)}: it must be a function (stored) => payload, which turns a stored row's payload into its event's current fields`);
       const handlers = (loaded as { handlers?: unknown }).handlers;
       if (handlers !== undefined) {
         if (typeof handlers !== "object" || handlers === null || Array.isArray(handlers))
@@ -513,6 +523,7 @@ const DEFAULT_LIMIT = 100;
  */
 export async function readEventsFrom(
   layer: DataLayer, classes: ReadonlyMap<string, EventClass>, query: ReadEventsQuery = {}, renamed: ReadonlyMap<string, string> = NO_RENAMES,
+  upcast?: EventsModule["upcast"],
 ): Promise<ReadEventsPage> {
   if (typeof query !== "object" || query === null)
     throw new FrameworkError(`readEvents takes an object, { after, limit, names, entity, key }, and was given ${describe(query)}`);
@@ -534,7 +545,7 @@ export async function readEventsFrom(
     if (wanted && !wanted.has(row.name)) continue;
     if (entity !== undefined && row.entity !== entity) continue;
     if (key !== undefined && !sameKey(row.key, key)) continue;
-    events.push(recordOf(row, eventClass));
+    events.push(recordOf(row, eventClass, upcast));
   }
   const last = page.rows.at(-1)?.position ?? after;
   const cursor = page.rows.length < limit ? Math.max(last, page.settled) : last;
@@ -548,17 +559,36 @@ export function sameKey(stored: Key, wanted: Key): boolean {
   return a.length === b.length && b.every((field) => Object.hasOwn(stored, field) && JSON.stringify(stored[field]) === JSON.stringify(wanted[field]));
 }
 
-/** A stored row as a reader gets it: its payload rebuilt into an instance of its class, its dates revived first. */
-export function recordOf(row: OutboxRow, eventClass: EventClass): EventRecord {
+/**
+ * A stored row as a reader gets it: its payload turned into today's fields by the events module's `upcast` when it has
+ * one, then rebuilt into an instance of its class, its dates revived first. `row.name` is already the declared name
+ * (the rename map runs before this), so `upcast` sees the row under its event's current FQN.
+ */
+export function recordOf(row: OutboxRow, eventClass: EventClass, upcast?: EventsModule["upcast"]): EventRecord {
   const declaration = eventClass[DECLARATION];
-  const fields = { ...(row.payload as Record<string, unknown>) };
+  let stored: unknown = row.payload;
+  if (upcast !== undefined) {
+    try {
+      stored = upcast(row);
+    } catch (cause) {
+      throw new FrameworkError(`The events module's upcast threw on the ${row.name} at position ${row.position}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    }
+    if (typeof stored !== "object" || stored === null || Array.isArray(stored))
+      throw new FrameworkError(`The events module's upcast returned ${describe(stored)} for the ${row.name} at position ${row.position}: it must return the event's fields, an object`);
+    if (typeof (stored as { then?: unknown }).then === "function") {
+      // Refused, never awaited: mark it handled so an async upcast that rejects leaves no unhandled rejection behind.
+      Promise.resolve(stored).then(undefined, () => {});
+      throw new FrameworkError(`The events module's upcast returned a promise for the ${row.name} at position ${row.position}: it must return the event's fields, an object, without awaiting`);
+    }
+  }
+  const fields = { ...(stored as Record<string, unknown>) };
   for (const field of declaration.dates ?? [])
     if (typeof fields[field] === "string") fields[field] = new Date(fields[field] as string);
   let payload: object;
   try {
     payload = new eventClass(fields as never);
   } catch (cause) {
-    throw new FrameworkError(`The outbox row at position ${row.position} holds a ${row.name} that its class no longer accepts (its fields changed since it was published): ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    throw new FrameworkError(`The outbox row at position ${row.position} holds a ${row.name} that its class no longer accepts (its fields changed since it was published): ${cause instanceof Error ? cause.message : String(cause)}. ${upcast === undefined ? "Export upcast from the events module to turn old payloads into today's fields (upcasters() of @meshfw/event-sourcing)" : `The events module's upcast left it in a shape the class refuses: give ${row.name} a step that turns this payload into today's fields`}`, { cause });
   }
   return Object.freeze({
     id: row.id,

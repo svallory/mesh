@@ -57,6 +57,8 @@ declare module "@meshfw/runtime" {
     metadata?: MetadataFunction<never>;
     /** The context handlers run with; default `{ system: true }`. */
     context?: (event: EventRecord) => ActionContext;
+    /** Turns a stored row's payload into the fields its event's class accepts today, for every stored row read back; `upcasters()` of @meshfw/event-sourcing builds one. */
+    upcast?: (stored: OutboxRow) => unknown;
   }
 
   /** A data adapter's capabilities, a closed list. */
