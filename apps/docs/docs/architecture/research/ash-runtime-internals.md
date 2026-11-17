@@ -419,6 +419,8 @@ mix deps.compile ash --force
 
 `Ash.Query.Function.Fragment` is the per-call escape hatch: a string with `?` slots plus expressions, or a function or MFA (`fragment.ex:24-48`). Both appear in the AST, so both can be evaluated in-memory too (`fragment.ex:50+`).
 
+> **Correction, 2026-11-17** ([ADR-0087](../decisions/0087-raw-sql-escape-hatch.md), "What Ash's `fragment` is", fact 2). The last sentence is wrong for the string form. Both forms appear in the AST, but only the function or MFA form can be evaluated in memory: in Ash 3.37.4, [`Ash.Query.Function.Fragment`](https://github.com/ash-project/ash/blob/v3.37.4/lib/ash/query/function/fragment.ex) evaluates a function or an MFA and answers `:unknown` for everything else, so a SQL string fragment runs only in the database. The sentence is kept as written.
+
 ### 5.6 Expression calculations vs. `calculate/3`
 
 `Ash.Resource.Calculation` has optional `expression/2` and `calculate/3`, plus `load/3` (what must be selected), `init/1`, `describe/1`, `strict_loads?/0` (`scratch/ash-src/ash/lib/ash/resource/calculation/calculation.ex:209-224`). Docs recommend module calculations when "calculations require more complex code or can't be pushed down into the data layer" (`documentation/topics/resources/calculations.md:54-60`). Expression calculations can declare `calculate :full_name, :auto, expr(...)` and Ash infers `:string` / `:boolean` / `:integer` (`calculations.md:29-51`). In-memory `calculate/3` is always batch-oriented — it receives a *list* of records and returns a list (`calculations.ex:531-534`).
