@@ -65,6 +65,43 @@ describeServer("the reader rule", () => {
     expect(after).toMatchObject({ settled: 2, highest: 2 });
   }, 60_000);
 
+  test("settled advances while appenders overlap: a sample waits only for the appenders running when it was taken", async () => {
+    const writer = await database.freshLayer();
+    const reader = database.sibling(writer);
+    const a = openAppend(writer, 1);
+    await a.appended;
+    // The sample v = 1 waits for {A}.
+    expect(await reader.readOutbox(0, 10)).toMatchObject({ rows: [], settled: 0, highest: 1 });
+    await a.release();
+    const b = openAppend(database.sibling(writer), 2);
+    await b.appended;
+    try {
+      // A ended; B, which took position 2 after the sample, runs. A rule that waits for no appender at all to run
+      // would stall here under steady load.
+      const during = await reader.readOutbox(0, 10);
+      expect(positions(during)).toEqual([1]);
+      expect(during).toMatchObject({ settled: 1, highest: 2 });
+    } finally { await b.release(); }
+    const after = await reader.readOutbox(0, 10);
+    expect(positions(after)).toEqual([1, 2]);
+    expect(after.settled).toBe(2);
+  }, 60_000);
+
+  test("more reads than the samples kept, while one appender is held, only delay settled", async () => {
+    const writer = await database.freshLayer();
+    const reader = database.sibling(writer);
+    const held = openAppend(writer, 1);
+    await held.appended;
+    for (let i = 0; i < 70; i++) expect((await reader.readOutbox(0, 10)).settled).toBe(0);
+    await held.release();
+    await writer.transaction(async (tx) => { await tx.appendEvent!(outboxRow(2)); });
+    // Samples were dropped while the appender held; the next reads still reach every committed row.
+    let page = await reader.readOutbox(0, 10);
+    if (page.settled < 2) page = await reader.readOutbox(0, 10);
+    expect(positions(page)).toEqual([1, 2]);
+    expect(page.settled).toBe(2);
+  }, 60_000);
+
   test("the appender's own layer, read outside its transaction, is held back too", async () => {
     const writer = await database.freshLayer();
     await writer.transaction(async (tx) => { await tx.appendEvent!(outboxRow(1)); });
