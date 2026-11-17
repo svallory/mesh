@@ -7,7 +7,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { FrameworkError, HandlerOptionError, HandlerStoppedError, Mesh, type DataLayer, type DataOperations, type DeliveryOperations, type EventRecord, type HandlerKind } from "@meshfw/runtime";
+import { DelivererLostError, FrameworkError, HandlerOptionError, HandlerStoppedError, Mesh, type BusCore, type BusOptions, type DataLayer, type DataOperations, type DeliveryOperations, type EventRecord, type HandlerKind } from "@meshfw/runtime";
+import { setDeliveryTiming } from "@meshfw/runtime/testing";
 import { localBus } from "../src/index.ts";
 import { buildSchema } from "./schema.ts";
 
@@ -162,6 +163,24 @@ describe("registering a handler of a contributed kind", () => {
     } finally { await layer.close(); }
   });
 
+  test("renamedFrom moves a process handler's row to the kind: adopt sees the former row, the former row is deleted, and delivery resumes after its position", async () => {
+    const layer = await database();
+    try {
+      await paid(layer, 2);
+      await bind(layer, { process: { notify: Mesh.handler({ events: [InvoicePaid], run: () => undefined }) } }).deliver();
+      await paid(layer, 1);
+      let adopted: { name: string; kind: string; position: number } | undefined;
+      kind.control.adopt = async (_handler, row) => { adopted = { name: row.name, kind: row.kind, position: row.position }; };
+      kind.control.stored = (_handler, row) => (row?.kind === "process" ? "model:moved" : "model");
+      const seen: number[] = [];
+      const totals = kind.model({ events: [InvoicePaid], renamedFrom: "notify", run: (event: EventRecord<{ invoiceId: string }>) => { seen.push(event.position); } });
+      await bind(layer, { model: { totals } }).deliver();
+      expect(adopted).toEqual({ name: "notify", kind: "process", position: 2 });
+      expect((await state(layer)).handlers.map((row) => [row.name, row.kind, row.position])).toEqual([["totals", "model:moved", 3]]);
+      expect(seen).toEqual([3]);
+    } finally { await layer.close(); }
+  });
+
   test("a refusal from adopt fails deliver(), startDelivery() and connect() alike, and leaves the claim and every row as they were", async () => {
     const layer = await database();
     try {
@@ -240,6 +259,89 @@ describe("registering a handler of a contributed kind", () => {
       expect((error as Error).message).toBe("adopt refused at 2");
       expect((await state(layer)).handlers).toEqual(before.handlers);
     } finally { await layer.close(); }
+  });
+});
+
+describe("a contributed kind delivered from several processes", () => {
+  const many = () => localBus({ processes: "many", retryDelays: [] });
+  const OTHER = "0190f000-0000-7000-8000-00000000beef";
+  type Multi = DeliveryOperations & { writeProcess(row: object): Promise<void>; deleteProcess(runId: string): Promise<void> };
+  const multi = (tx: DataOperations) => tx as DataOperations & Multi;
+  const fake = (layer: Layer, handlers: Record<string, readonly string[]>, declared: readonly string[]) =>
+    layer.transaction((tx) => multi(tx).writeProcess({ runId: OTHER, host: "elsewhere", pid: 4242, startedAt: null, keep: "until-delivered", handlers, declared }));
+  const stopFake = (layer: Layer) => layer.transaction((tx) => multi(tx).deleteProcess(OTHER));
+  const append = (layer: Layer, name: string) => layer.transaction((tx) => tx.appendEvent!({
+    id: crypto.randomUUID(), name, entity: "other.Thing", action: "make", key: { id: "x" }, causedBy: null, metadata: {}, occurredAt: new Date(), payload: {},
+  }));
+  /** Poll `done` every 20 ms for up to two seconds. */
+  async function until(done: () => Promise<boolean> | boolean): Promise<void> {
+    for (let i = 0; i < 100 && !(await done()); i++) await Bun.sleep(20);
+  }
+  afterAll(() => setDeliveryTiming(null));
+
+  test("the registration carries the keep in force and counts as declared every event another live build declares", async () => {
+    const layer = await database({ multiProcess: true });
+    try {
+      await paid(layer, 1);
+      // a process of keep "all" set the database's keep before; this one runs with until-delivered
+      await bind(layer, {}, { bus: many(), keep: "all" }).deliver();
+      await append(layer, "other.Foreign");
+      await append(layer, "other.Unknown");
+      await fake(layer, {}, ["other.Foreign"]);
+      let seen: { keep: string; first: number | null } | undefined;
+      kind.control.start = async (_handler, registration) => {
+        seen = { keep: registration.keep, first: await registration.firstRow(0, registration.highest + 1, []) };
+        return registration.highest;
+      };
+      await bind(layer, { model: { totals: recorder([]) } }, { bus: many(), keep: "until-delivered" }).deliver();
+      // other.Foreign (2) is declared by the other live build; other.Unknown (3) by none, so it is the first
+      expect(seen).toEqual({ keep: "all", first: 3 });
+    } finally { await layer.close(); }
+  });
+
+  /** `notify` (a process handler) delivered to 2; another live process still registers it; `totals` is renamed from it. */
+  async function renamed(layer: Layer, options: { onLost?: (error: Error) => void } = {}) {
+    await paid(layer, 2);
+    await bind(layer, { process: { notify: Mesh.handler({ events: [InvoicePaid], run: () => undefined }) } }, { bus: many() }).deliver();
+    await fake(layer, { notify: ["billing.InvoicePaid"] }, ["billing.InvoicePaid", "billing.RefundIssued"]);
+    setDeliveryTiming({ renewMs: 30, lapseMs: 1500 });
+    const base = many();
+    const bus = { manifest: base.manifest, create: (core: BusCore, busOptions: BusOptions) => { core.onClaimLost((error) => options.onLost?.(error)); return base.create(core, busOptions); } };
+    const totals = kind.model({ events: [InvoicePaid], renamedFrom: "notify", run: () => undefined });
+    const delivery = await bind(layer, { model: { totals } }, { bus }).startDelivery();
+    expect(kind.calls).toEqual(["check totals"]);
+    expect((await state(layer)).handlers.map((row) => row.name)).toEqual(["notify"]);
+    return delivery;
+  }
+
+  test("a renamedFrom move that waited for the former name's process hands adopt the former row once it stops", async () => {
+    const layer = await database({ multiProcess: true });
+    try {
+      kind.control.stored = (_handler, row) => (row?.kind === "process" ? "model:moved" : "model");
+      const delivery = await renamed(layer);
+      try {
+        await stopFake(layer);
+        await until(async () => (await state(layer)).handlers.some((row) => row.name === "totals"));
+        expect(kind.calls).toEqual(["check totals", "adopt totals process []"]);
+        expect((await state(layer)).handlers.map((row) => [row.name, row.kind, row.position])).toEqual([["totals", "model:moved", 2]]);
+      } finally { await delivery.stop(); }
+    } finally { setDeliveryTiming(null); await layer.close(); }
+  });
+
+  test("a refusal of that move by the kind stops delivery with MESH_DELIVERER_LOST naming the move, and leaves the former row", async () => {
+    const layer = await database({ multiProcess: true });
+    try {
+      kind.control.adopt = async () => { throw new Error("the kind refuses the move"); };
+      let lost: Error | undefined;
+      const delivery = await renamed(layer, { onLost: (error) => { lost = error; } });
+      try {
+        await stopFake(layer);
+        await until(() => lost !== undefined);
+        expect(lost).toBeInstanceOf(DelivererLostError);
+        expect(lost!.message).toContain('the renamedFrom move of the handler "totals" from "notify", made once no live process registered "notify", was refused: the kind refuses the move');
+        expect((await state(layer)).handlers.map((row) => [row.name, row.kind, row.position])).toEqual([["notify", "process", 2]]);
+      } finally { await delivery.stop().catch(() => undefined); }
+    } finally { setDeliveryTiming(null); await layer.close(); }
   });
 });
 

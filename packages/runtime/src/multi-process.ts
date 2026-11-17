@@ -360,7 +360,15 @@ export class MultiClaim implements ClaimStrategy {
       if (own) progress.set(name, own);
       if (formerRow) progress.set(former, formerRow);
       const registration = registrationOf(ops, state, this.deliverer.keep === "all" ? "all" : state.keep ?? this.deliverer.keep, knownDeclared(this.deliverer.declared, others));
-      const start = await handlerStart(entry, progress, registration);
+      let start: Awaited<ReturnType<typeof handlerStart>>;
+      try {
+        start = await handlerStart(entry, progress, registration);
+      } catch (error) {
+        // connect() resolved long ago, so a refusal here (the handler's kind refusing the adopt, an invalid start or stored
+        // kind) has no start to reject: it rolls this transaction back and stops delivery, naming the move (ADR-0093).
+        const message = error instanceof Error ? error.message : String(error);
+        throw this.deliverer.lose(`the renamedFrom move of the handler ${JSON.stringify(name)} from ${JSON.stringify(former)}, made once no live process registered ${JSON.stringify(former)}, was refused: ${message}`);
+      }
       if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
       const events = own ? union(own.events, start.row.events) : start.row.events;
       await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });
