@@ -5,6 +5,8 @@ import { ATTRIBUTE_TYPES, type ModelDocument } from "@meshfw/model";
 import { EmitError, buildModel, generateFiles, type EmitInput, type ResolvedConfig } from "@meshfw/compiler";
 import build, { POSTGRES_COLUMNS, schemaGenerator, schemaView } from "../src/build.ts";
 import { truncatedName } from "../src/identifiers.ts";
+import type { BusCapability } from "@meshfw/runtime";
+import { testBus } from "@meshfw/runtime/testing";
 
 const config: ResolvedConfig = {
   root: "/project", configFile: "/project/mesh.config.ts", entityFiles: [], domainRoot: "/project/src/domain",
@@ -321,5 +323,66 @@ export const tables = {
     }), build);
     const contents = files.find((file) => file.path === ".mesh/schema.ts")!.contents.replace(/\s+/g, "");
     expect(contents).toContain('position:bigint("position",{mode:"number"}).notNull().primaryKey().generatedAlwaysAsIdentity(),');
+  });
+});
+
+describe("the multi-process core tables", () => {
+  const event = "event :Paid\n  integer :n\n";
+  const account = "entity :Account table=\"accounts\"\n  attributes\n    uuid :id primary-key\n";
+  const MULTI: readonly BusCapability[] = ["ordered-delivery", "replay", "subscribe", "multi-process"];
+  const withBus = (emit: EmitInput, capabilities: readonly BusCapability[] | undefined): EmitInput =>
+    ({ document: emit.document, config: capabilities === undefined ? config : { ...config, events: { bus: testBus({ capabilities }) } } });
+
+  test("schema.ts is byte-identical with no bus and a bus without multi-process; a multi-process bus adds the table and three columns only", async () => {
+    const emit = input({ "account.mesh.mx": account, "paid.mesh.mx": event });
+    const render = async (capabilities: readonly BusCapability[] | undefined) =>
+      (await generateFiles(withBus(emit, capabilities), build)).find((file) => file.path === ".mesh/schema.ts")!.contents;
+    const none = await render(undefined);
+    expect(await render(["ordered-delivery", "replay", "subscribe"])).toBe(none);
+    expect(await render(["ordered-delivery"])).toBe(none);
+    expect(none).not.toContain("mesh_delivery_process");
+    expect(none).not.toContain('run_id: text("run_id"),\n  }),\n  mesh_subscription_progress');
+    const multi = await render(MULTI);
+    expect(multi).toContain(`mesh_delivery_process: _meshPg("mesh_delivery_process", {
+    run_id: text("run_id").notNull().primaryKey(),
+    renewed_at: timestamp("renewed_at", {
+      mode: "date",
+      precision: 3,
+      withTimezone: true,
+    }).notNull(),
+    host: text("host"),
+    pid: bigint("pid", { mode: "number" }),
+    started_at: timestamp("started_at", { mode: "date", precision: 3, withTimezone: true }),
+    keep: text("keep").notNull(),
+    handlers: jsonb("handlers").notNull(),
+    declared: jsonb("declared").notNull(),
+  }),`);
+    // the only other difference: one nullable column at the end of three of core's tables
+    const added = multi.split("\n").filter((line) => !none.split("\n").includes(line));
+    expect(added.filter((line) => !line.includes("mesh_delivery_process") && !/^\s+(run_id|renewed_at|host|pid|started_at|keep|handlers|declared): /.test(line) && line.trim() !== "}),")).toEqual([]);
+    const view = schemaView(withBus(emit, MULTI));
+    expect(view.tables.map((table) => table.entity)).toEqual(["Account", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_outbox_failures", "mesh_delivery_process"]);
+    const last = (entity: string) => view.tables.find((table) => table.entity === entity)!.columns.at(-1);
+    expect(last("mesh_outbox_state")).toMatchObject({ key: "keep", builder: "text", notNull: false });
+    expect(last("mesh_handler_progress")).toMatchObject({ key: "run_id", builder: "text", notNull: false });
+    expect(last("mesh_subscription_progress")).toMatchObject({ key: "run_id", builder: "text", notNull: false });
+    expect(view.tables.flatMap((table) => table.columns).filter((column) => column.identity).map((column) => column.key)).toEqual(["position", "failure"]);
+    // with no event declared, a multi-process bus adds nothing either
+    expect(schemaView(withBus(input({ "account.mesh.mx": account }), MULTI)).tables.map((table) => table.entity)).toEqual(["Account"]);
+  });
+
+  test("an entity whose table is mesh_delivery_process is MESH_SCHEMA_DUPLICATE_TABLE only in a project whose bus declares multi-process", () => {
+    const clash = "entity :Proc table=\"mesh_delivery_process\"\n  attributes\n    uuid :id primary-key\n";
+    const emit = input({ "proc.mesh.mx": clash, "paid.mesh.mx": event });
+    expect(emitError(() => schemaView(withBus(emit, MULTI))).diagnostic).toMatchObject({
+      code: "MESH_SCHEMA_DUPLICATE_TABLE",
+      message: 'Entity Proc (src/domain/proc.mesh.mx) uses the Postgres table "mesh_delivery_process", which is Mesh\'s own once the project\'s bus declares multi-process: it holds the processes that deliver',
+      fix: 'Set table="..." on the entity to another name',
+    });
+    expect(schemaView(withBus(emit, ["ordered-delivery", "replay", "subscribe"])).tables.map((table) => table.entity)).toContain("Proc");
+    expect(schemaView(withBus(emit, undefined)).tables.map((table) => table.entity)).toContain("Proc");
+    // Postgres compares names exactly: another letter case is another table, even in a multi-process project
+    const upper = input({ "proc.mesh.mx": clash.replace("mesh_delivery_process", "MESH_DELIVERY_PROCESS"), "paid.mesh.mx": event });
+    expect(schemaView(withBus(upper, MULTI)).tables.map((table) => table.entity)).toContain("Proc");
   });
 });
