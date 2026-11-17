@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
-import { FrameworkError, type TableHandle } from "@meshfw/runtime";
+import { FrameworkError, type DataLayer, type OutboxPage, type TableHandle } from "@meshfw/runtime";
 import { outboxConformance, outboxRow } from "@meshfw/runtime/testing";
 import build from "../src/build.ts";
 import { capabilities, createSchema, sqlite } from "../src/index.ts";
@@ -113,6 +113,39 @@ for (const kind of ["memory", "file"] as const) {
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
 }
+
+describe("outbox conformance refuses a layer whose pages break the invariants", () => {
+  // data-sqlite keeps the page invariants, so these wrap it with a readOutbox that breaks one each and show the suite
+  // fails: a check turned around would otherwise pass until a server adapter breaks the rule.
+  const check = "with no transaction open, settled is highest, after appends, a rollback and a delete";
+  const broken = (bend: (page: OutboxPage) => OutboxPage) => async (): Promise<DataLayer> => {
+    const layer: DataLayer = sqlite({ file: ":memory:" });
+    await createSchema(layer, tables);
+    return {
+      database: layer.database,
+      transaction: (body, given) => layer.transaction(body, given),
+      refuseIfFailed: () => layer.refuseIfFailed(),
+      close: () => layer.close(),
+      readOutbox: async (after, limit) => bend(await layer.readOutbox!(after, limit)),
+    };
+  };
+  const run = (bend: (page: OutboxPage) => OutboxPage) => outboxConformance(broken(bend), capabilities)[check]!();
+
+  test("a page whose settled is above highest", async () => {
+    await expect(run((page) => ({ ...page, settled: page.highest + 1 }))).rejects.toThrow(/^Outbox conformance: .*deletedThrough <= settled <= highest must hold/);
+  });
+  test("a page with a row above settled", async () => {
+    await expect(run((page) => page.rows.length === 0 ? page : { ...page, settled: page.rows.at(-1)!.position - 1 }))
+      .rejects.toThrow(/^Outbox conformance: .*row 2 is out of order, at or below after, or above settled/);
+  });
+  test("a page whose settled is below deletedThrough", async () => {
+    await expect(run((page) => page.deletedThrough === 0 ? page : { ...page, settled: page.deletedThrough - 1, rows: [] }))
+      .rejects.toThrow(/^Outbox conformance: .*deletedThrough 1, settled 0, .*deletedThrough <= settled <= highest must hold/);
+  });
+  test("the same check passes on data-sqlite itself", async () => {
+    await run((page) => page);
+  });
+});
 
 describe("data-sqlite's outbox", () => {
   let scratch: string;
