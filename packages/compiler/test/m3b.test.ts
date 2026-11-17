@@ -305,15 +305,17 @@ describe("the data adapter's capabilities", () => {
       const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-cap-"));
       roots.push(root);
       await mkdir(resolve(root, "src/domain"), { recursive: true });
-      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n  computed\n    ${computed}\n  actions auto=[:read]\n`);
+      await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n    belongs-to :pinned entity=Todo nullable\n  computed\n    ${computed}\n  actions auto=[:read]\n`);
       await writeFile(resolve(root, "src/domain/todo.mesh.mx"), `import { List } from "./list.mesh.mx"\nentity :Todo\n  attributes\n    uuid :id primary-key\n    integer :rank\n  relationships\n    belongs-to :list entity=List\n  actions auto=[:read]\n`);
       await writeFile(resolve(root, "mesh.config.ts"), `export default { domain: "src/domain", output: ".mesh", data: { kind: "data-adapter", name: "fake", build: "./none", ${adapter} options: {} } };\n`);
       return root;
     }
-    // count and max over one has-many keep their per-row operations; every other rollup calls the batched `rollup`.
+    // count and max over one has-many keep their per-row operations; every other rollup, a count or max over a
+    // belongs-to among them, calls the batched `rollup`.
     test.each([
       ['count :todoCount of=&todos', "count", "count"], ['max :topRank of=&todos.rank', "max", "max"],
       ['sum :rankSum of=&todos.rank', "sum", "rollup"], ['avg :rankAvg of=&todos.rank', "avg", "rollup"], ['min :lowRank of=&todos.rank', "min", "rollup"],
+      ['max :pinnedRank of=&pinned.rank', "max", "rollup"], ['count :pinnedCount of=&pinned', "count", "rollup"],
     ])("%s fails without aggregates, at the rollup", async (computed, fn, operation) => {
       const loaded = await loadConfig(await rollupProject(manifest("integer-key-fill"), computed));
       const built = await loadProject(loaded.config!);
@@ -321,7 +323,7 @@ describe("the data adapter's capabilities", () => {
       expect(built.diagnostics).toEqual([expect.objectContaining({
         code: "MESH_CAPABILITY", severity: "error",
         message: `Entity List has the ${fn} rollup :${computed.split(" ")[1]!.slice(1)}, which calls the data layer's ${operation}, and the data adapter "fake" does not declare the aggregates capability`,
-        position: expect.objectContaining({ line: 8 }),
+        position: expect.objectContaining({ line: 9 }),
         fix: "Use a data adapter that declares aggregates, or remove the rollup",
       })]);
     });
