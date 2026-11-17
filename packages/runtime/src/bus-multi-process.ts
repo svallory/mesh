@@ -3,7 +3,7 @@ import type { DataLayer, DataOperations, DeliveryOperations, HandlerLeaseRow, Mu
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { PID, forgetByName, resumeHandler, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
-import { DelivererLostError, DelivererTakenError, FrameworkError, HandlerLostError } from "./errors.ts";
+import { DelivererLostError, DelivererTakenError, EventUndeclaredError, FrameworkError, HandlerLostError, HandlerStoppedError } from "./errors.ts";
 import { publishEvent, type EventRecord, type EventsModule } from "./events.ts";
 
 /**
@@ -124,6 +124,29 @@ function watched(bus: EventBus, onCore: (core: BusCore) => void): EventBus {
   return Object.freeze({ manifest: bus.manifest, create: (core: BusCore, options: { readonly keep: "until-delivered" | "all" }) => { onCore(core); return bus.create(core, options); } });
 }
 
+/** `bus` with every `runHandler` rejection and every stop `retry` returns recorded, with the position of the row. */
+function rejecting(bus: EventBus, rejected: { position: number; error: unknown }[]): EventBus {
+  return Object.freeze({
+    manifest: bus.manifest,
+    create: (core: BusCore, options: { readonly keep: "until-delivered" | "all" }) => {
+      // Core is a frozen object of closures: copy its descriptors (the handlers getter stays live) and replace runHandler.
+      const runHandler: BusCore["runHandler"] = async (handler, row) => {
+        try { return await core.runHandler(handler, row); } catch (error) { rejected.push({ position: row.position, error }); throw error; }
+      };
+      const retry: BusCore["retry"] = async (handler, row, delays) => {
+        const stop = await core.retry(handler, row, delays);
+        if (stop) rejected.push({ position: row.position, error: stop.cause });
+        return stop;
+      };
+      return bus.create(Object.freeze(Object.defineProperties({}, {
+        ...Object.getOwnPropertyDescriptors(core),
+        runHandler: { value: runHandler, enumerable: true },
+        retry: { value: retry, enumerable: true },
+      })) as BusCore, options);
+    },
+  });
+}
+
 /** What a worker script hands `runMultiProcessWorker`: the bus under test, a layer over the file, the project's async frame. */
 export interface MultiProcessWorkerParts {
   readonly bus: EventBus;
@@ -186,6 +209,8 @@ export function multiProcessChecks(
     publish(binding: Binding, ...events: [EventType, number][]): Promise<number[]>;
     leases(): Promise<readonly HandlerLeaseRow[]>;
     lease(name: string): Promise<HandlerLeaseRow | undefined>;
+    /** Every row the outbox holds. */
+    outbox(): Promise<OutboxRow[]>;
     /** The positions of the events each `Echo` names as its cause, by the cause's position. */
     echoed(): Promise<Map<number, number>>;
     writeFake(runId: string, handlers: Record<string, readonly string[]>, declared: readonly string[], keep?: "until-delivered" | "all"): Promise<void>;
@@ -240,7 +265,7 @@ export function multiProcessChecks(
         },
         leases: () => layer.transaction((tx) => ops(tx).readHandlerLeases()),
         lease: async (name) => (await ctx.leases()).find((row) => row.name === name),
-        async echoed() {
+        async outbox() {
           const rows: OutboxRow[] = [];
           let after = 0;
           for (;;) {
@@ -249,6 +274,10 @@ export function multiProcessChecks(
             if (page.rows.length < 500) break;
             after = page.rows.at(-1)!.position;
           }
+          return rows;
+        },
+        async echoed() {
+          const rows = await ctx.outbox();
           const byId = new Map(rows.map((row) => [row.id, row.position]));
           const counts = new Map<number, number>();
           for (const row of rows) {
@@ -374,21 +403,69 @@ export function multiProcessChecks(
     assert(JSON.stringify(ctx.seen.get("h")) === JSON.stringify([a1, a3]), `got ${JSON.stringify(ctx.seen.get("h"))}`);
   });
 
-  add("an event only another live build declares is passed by a handler whose union lacks it; one no live build declares stops the handler", { timing: IN_PROCESS }, async (ctx) => {
-    const binding = ctx.scenario("old-list", { keep: "all" });
-    await ctx.start(binding);
+  add("an event only another live build declares is passed, and its row deleted, by a handler whose union lacks it; one no live build declares stops the handler with MESH_EVENT_UNDECLARED and is kept", { timing: IN_PROCESS }, async (ctx) => {
+    const binding = ctx.scenario("old-list");
+    await binding.deliver();
     const publisher = ctx.bind(WITH_GONE, {});
-    // multi.Gone is declared by a live process row of another build: h passes its row (rule R2(d)).
+    // multi.Gone is declared by a live process row of another build: h passes its row (rule R2(d)), and the deletion
+    // pass deletes over it (rule K1), since a live build declares it.
     await ctx.writeFake(OTHER, {}, ["multi.Alpha", "multi.Beta", "multi.Echo", "multi.Gone"]);
-    const [, a2] = await ctx.publish(publisher, [Gone, 1], [Alpha, 2]);
-    await until(async () => ((await ctx.lease("h"))?.position ?? -1) >= a2!, "h passed the Gone row and handled Alpha 2");
-    // Once no live build declares it, a Gone row stops the handler there, as the spec says.
+    const [g1, a2] = await ctx.publish(publisher, [Gone, 1], [Alpha, 2]);
+    await binding.deliver();
+    assert(JSON.stringify(ctx.seen.get("h")) === JSON.stringify([a2]), `h passed the Gone row and handled Alpha 2, got ${JSON.stringify(ctx.seen.get("h"))}`);
+    assert(!(await ctx.outbox()).some((row) => row.position === g1), "the passed Gone row, which a live build declares, was deleted");
+    // Once no live build declares it, a Gone row stops the handler there (rule R2(e)) and is never deleted (rule R4).
     await ctx.layer.transaction((tx) => ops(tx).deleteProcess(OTHER));
     const [g3, a4] = await ctx.publish(publisher, [Gone, 3], [Alpha, 4]);
-    await sleep(300);
-    const lease = (await ctx.lease("h"))!;
-    assert(lease.position < g3!, `h stopped before the undeclared row ${g3}, got ${lease.position}`);
+    const error = await rejection(() => binding.deliver());
+    assert(error instanceof HandlerStoppedError, `deliver() was to reject with MESH_HANDLER_STOPPED, and ${error === undefined ? "resolved" : `rejected with ${String(error)}`}`);
+    const [stop, ...rest] = error.stopped;
+    assert(rest.length === 0 && stop?.handler === "h" && stop.position === g3, `h alone stops at the undeclared row ${g3}, got ${JSON.stringify(error.stopped.map(({ handler, position }) => ({ handler, position })))}`);
+    assert(stop.cause instanceof EventUndeclaredError && stop.cause.eventName === "multi.Gone" && stop.cause.position === g3, `the stop's cause is MESH_EVENT_UNDECLARED for multi.Gone at ${g3}, got ${String(stop.cause)}`);
+    assert(((await ctx.lease("h"))?.position ?? -1) < g3!, "h's position stays below the undeclared row");
+    assert((await ctx.outbox()).some((row) => row.position === g3), "the undeclared row was deleted");
     assert(!(ctx.seen.get("h") ?? []).includes(a4!), "the Alpha after it was not handled");
+  });
+
+  add("a started handler that meets a row no live build declares stops with MESH_EVENT_UNDECLARED, not a yield, and keeps its lease", { timing: IN_PROCESS }, async (ctx) => {
+    const rejected: { position: number; error: unknown }[] = [];
+    const binding = ctx.scenario("old-list", { bus: rejecting(ctx.bus, rejected) });
+    await ctx.start(binding);
+    const runId = await ownRunId(ctx);
+    const taken = (await ctx.lease("h"))!;
+    assert(taken.runId === runId, "h is held by this process");
+    const [g1, a2] = await ctx.publish(ctx.bind(WITH_GONE, {}), [Gone, 1], [Alpha, 2]);
+    await until(() => rejected.length > 0, "the bus handed h a row and it was refused");
+    await sleep(100);
+    const [first] = rejected;
+    assert(first!.error instanceof EventUndeclaredError && first!.error.eventName === "multi.Gone" && first!.error.position === g1,
+      `the refusal is MESH_EVENT_UNDECLARED for multi.Gone at ${g1}, got ${String(first!.error)}`);
+    const lease = (await ctx.lease("h"))!;
+    assert(lease.runId === runId && lease.generation === taken.generation && lease.position < g1!, `h stopped, not yielded: it keeps its lease below the Gone row, got ${JSON.stringify(lease)}`);
+    assert(!(ctx.seen.get("h") ?? []).includes(a2!), "the Alpha after it was not handled");
+  });
+
+  add("a row no live build declares that a stale snapshot passed is met by the fence below the next listed row, and refused as MESH_EVENT_UNDECLARED naming that row", { timing: IN_PROCESS }, async (ctx) => {
+    let core: BusCore | undefined;
+    // A bus that never delivers, so the check alone hands core its rows.
+    const inert: EventBus = Object.freeze({
+      manifest: ctx.bus.manifest,
+      create: (handed: BusCore) => { core = handed; return { start: async () => {}, stop: async () => {}, deliver: async () => {} }; },
+    });
+    // The build that declares multi.Gone is live at registration, so this process's snapshot knows Gone (rule R3).
+    await ctx.writeFake(OTHER, {}, ["multi.Alpha", "multi.Beta", "multi.Echo", "multi.Gone"]);
+    await ctx.start(ctx.scenario("old-list", { bus: inert }));
+    const handler = core!.handlers.find((each) => each.name === "h")!;
+    assert(handler !== undefined, "h is held");
+    const [g1, a2] = await ctx.publish(ctx.bind(WITH_GONE, {}), [Gone, 1], [Alpha, 2]);
+    const rows = (await ctx.layer.readOutbox!(g1! - 1, 2)).rows;
+    assert(!core!.lists(handler, rows[0]!), "the snapshot knows Gone, so the bus would pass its row");
+    await ctx.layer.transaction((tx) => ops(tx).deleteProcess(OTHER));
+    const refused = await rejection(() => core!.runHandler(handler, rows[1]!));
+    assert(refused instanceof EventUndeclaredError && refused.eventName === "multi.Gone" && refused.position === g1,
+      `runHandler for Alpha ${a2} is refused with MESH_EVENT_UNDECLARED for multi.Gone at ${g1}, not the fence's internal marker, got ${String(refused)}`);
+    assert(!(await ctx.echoed()).has(a2!), "nothing was handled");
+    assert(core!.handlers.some((each) => each.name === "h"), "a stop is not a lost lease: h is still held");
   });
 
   add("a release that failed leaves leases naming this process; a later deliver() round of the same process takes them again", { timing: IN_PROCESS }, async (ctx) => {
