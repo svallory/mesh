@@ -402,6 +402,37 @@ const contracts: ContractMap = {
     parents: ["expose"],
     attributes: named(),
   }),
+  // A domain service (`notes/spec/other-file-kinds.md`, "Services"; services design, section 3.2; ruling D42): a file of
+  // its own whose operations span entities. It is stateless by grammar, so it takes none of an entity's data sections
+  // (R5): only its operations and the policies that cover them.
+  service: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: { operation: { repeatable: true, required: true }, policies: {} },
+  }),
+  // One operation of a service: the entities it reaches (`uses`, at least one, OD-9), its input and its body. No `on=`
+  // (OD-11), and no `validate`, `do` or `output` (OD-7): the body is the whole operation.
+  operation: closed({
+    parents: ["service"],
+    attributes: named(),
+    children: { uses: { repeatable: true, required: true }, input: {}, run: { required: true } },
+  }),
+  // `uses entity=Task actions=[:complete, :read]` (OD-5): the entity, written as `belongs-to entity=` writes it, and the
+  // actions of it the operation may call, by atom. MX's type check refuses a list that is no list (`actions=:read`) and
+  // an item that is no atom (`[&x]`, `["read"]`) as `MESH_OPTION_VALUE`, so only the empty list reaches the hook; a
+  // repeated atom is the builder's, at the second one.
+  uses: closed({
+    parents: ["operation"],
+    attributes: { entity: { type: "expression", required: true }, actions: { ...atomList(), required: true } },
+    analyze(calls, ctx) {
+      entityReference(["entity"])(calls, ctx);
+      for (const call of calls) {
+        const list = get(call, "actions");
+        if (list && node(list)?.type === "ArrayExpression" && !node(list)?.elements?.length)
+          ctx.fail("actions must list at least one action of the entity, as atoms (`actions=[:complete]`)", { at: list.loc, code: "MESH_ATOM_LIST" });
+      }
+    },
+  }),
   relationships: closed({
     parents: ["entity"],
     children: children(...RELATIONSHIP_KINDS),
@@ -440,7 +471,7 @@ const contracts: ContractMap = {
     },
   }),
   input: closed({
-    parents: [...ACTION_TYPES],
+    parents: [...ACTION_TYPES, "operation"],
     children: {
       ...children(...ATTRIBUTE_TYPES),
       "*": memberLine({}),
@@ -509,7 +540,8 @@ const contracts: ContractMap = {
     analyze: references(["value"]),
   }),
   run: closed({
-    parents: ["do", "when"],
+    // Under an `operation`, the operation's body; the builder refuses `after=` there, since an operation writes no row.
+    parents: ["do", "when", "operation"],
     // `after=:write` moves the step after the action's own row is written (ADR-0068 decision 2).
     attributes: { value: fn(true), after: { type: "mesh:Atom", values: ["write"] } },
   }),
@@ -532,7 +564,7 @@ const contracts: ContractMap = {
   }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
   sort: closed({ parents: ["read"], children: children("asc", "desc") }),
-  policies: closed({ parents: ["entity"], children: children("policy") }),
+  policies: closed({ parents: ["entity", "service"], children: children("policy") }),
   policy: closed({
     parents: ["policies"],
     attributes: {

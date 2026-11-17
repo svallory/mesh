@@ -437,6 +437,41 @@ export interface Surface {
   expose: Exposure[];
   position: SourcePosition;
 }
+/** One `uses` line of an operation: an entity the operation reaches and the actions of it the operation may call. */
+export interface ServiceUse {
+  /** The entity, as written, and the file it is declared in (as `Relationship.entity`). */
+  entity: EntityRef;
+  /** The entity's FQN (`work.Task`), set once the build resolves the reference to a built entity. */
+  fqn?: string;
+  /** The actions named, as written (`[:complete, :read]`), each where its atom is. Any action of the entity, `auto=` ones included. */
+  actions: MemberRef[];
+  position: SourcePosition;
+}
+/** One operation of a service (`operation :handOver`): to a service what an action is to an entity. */
+export interface Operation {
+  name: string;
+  uses: ServiceUse[];
+  /** Typed field lines only: a service has no members. Empty when there is no `input`. */
+  input: Argument[];
+  /** The body: authored TypeScript, plain by position as a `run` step is (`plain.why` is `run-step`). */
+  run: Expression;
+  position: SourcePosition;
+}
+/** A domain service (`service :Work`, a file of its own): stateless logic across entities. */
+export interface Service {
+  /** The class name (`service :work` is `Work`). */
+  name: string;
+  /** As `Entity.fqn`: the module's folders joined by `.`, then the name. */
+  fqn: string;
+  /** Project-relative path of the service file. */
+  file: string;
+  module: string;
+  imports: Import[];
+  operations: Operation[];
+  /** No policy has `types`; `actions` names operations. Every function is plain (`plain.why` is `service`). */
+  policies: Policy[];
+  position: SourcePosition;
+}
 export interface ModelDocument {
   entities: Entity[];
   /** Present only when the project declares an event, so a project with none keeps its `model.json` as it was. */
@@ -449,6 +484,8 @@ export interface ModelDocument {
   concepts?: ConceptDeclaration[];
   /** Present only when the project declares a surface, so a project with none keeps its `model.json` as it was. */
   surfaces?: Surface[];
+  /** Present only when the project declares a service, so a project with none keeps its `model.json` as it was. */
+  services?: Service[];
   /** Selected adapter identity only; options may contain secrets and never serialize. */
   data?: { name: string };
 }

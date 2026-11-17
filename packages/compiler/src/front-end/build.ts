@@ -43,6 +43,7 @@ import {
   type Policy,
   type Relationship,
   type Rollup,
+  type Service,
   type SourcePosition,
   type Step,
   isExpression,
@@ -76,6 +77,8 @@ import { aggregatesOf, resolveAggregates } from "../model/aggregates.ts";
 import { classNameOf, isClassName } from "../model/class-name.ts";
 import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
+import { checkServices } from "../model/services.ts";
+import { buildService } from "./services.ts";
 import {
   atomForwards,
   atomList,
@@ -112,7 +115,7 @@ export const PROTOTYPE_SETTING_NAME = "__proto__";
 /** The top-level nodes of a lowered file. */
 type IrBody = NonNullable<ReturnType<typeof lowerSource>["ir"]>["body"];
 /** An entity import as MX parsed it (`Import.from`/`names`); never re-parsed. */
-interface ParsedImport {
+export interface ParsedImport {
   names: string[];
   /** `offset`: the imported name as written; `localOffset`: the local binding (the alias when written). */
   bindings: { local: string; imported: string; offset: number; localOffset: number }[];
@@ -127,7 +130,7 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture" | "surface";
+export type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture" | "surface" | "service";
 /**
  * What a file of the project declares: its root line's kind, and every declaration by the name an import of it binds (the
  * root's, as Mesh converts it: `entity :todo` declares `Todo`), the root's first, then each inline event and command of
@@ -135,16 +138,18 @@ type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" 
  * written: recorded so a message can name it, never a name an import may bind (an aggregate is no value). The architecture
  * file declares nothing: its entry is `{ kind: "architecture", declares: [] }`, and an import of it is refused. A file
  * whose root is `surface`, and every file of the surfaces folder, declares nothing either: `{ kind: "surface", declares: [] }`.
+ * A service file declares its service, `{ kind: "service", declares: [{ kind: "service", name: "Work" }] }`: recorded so the
+ * import check can name it, never a name an import binds (a service file is imported by no file of the domain, OD-12).
  */
-interface DeclaredFile {
+export interface DeclaredFile {
   kind: DeclarationKind;
   declares: { kind: DeclarationKind; name: string }[];
 }
-const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture", "surface"]);
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture", "surface", "service"]);
 /** The subject of "<noun> file must contain exactly one <kind>", by the file's root kind. */
-const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture", surface: "A surface" };
-/** The declarations an import of the file may bind: all but an aggregate's own name and a concept, which is never imported. */
-const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate" && declaration.kind !== "concept");
+const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture", surface: "A surface", service: "A service" };
+/** The declarations an import of the file may bind: all but an aggregate's own name, a concept and a service, which are never imported. */
+export const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate" && declaration.kind !== "concept" && declaration.kind !== "service");
 /**
  * What a reference position takes, for the declarations of `kind`: `entity=` an entity, a `publish` function's `new` an
  * event, `on=` a command, a listing line of an owner's `events` section an event. A path that no file of the project
@@ -152,8 +157,8 @@ const importable = (file: DeclaredFile | undefined) => file?.declares.filter((de
  * is the position's: an event's unknown name in a `publish` is a failed `publish` check (`notes/spec/events-and-commands.md`,
  * "Errors"), and in a listing `MESH_UNKNOWN_EVENT`.
  */
-const referenceKind = (
-  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture" | "surface">,
+export const referenceKind = (
+  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture" | "surface" | "service">,
   declared: (from: string) => DeclaredFile | undefined,
   code = kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 ): ReferenceKind => ({
@@ -293,7 +298,7 @@ export function moduleOfFolder(folder: string): { module: string; bareUnderscore
  * command: where a tag and an offset are in the file, how an error is reported, the options an attribute line takes
  * (`shape`) and the checks on them (`checkShape`).
  */
-function attributeReaders(
+export function attributeReaders(
   source: string,
   file: string,
   diagnostics: Diagnostic[],
@@ -462,7 +467,7 @@ function attributeReaders(
  * field or `undefined` when the line is refused, since what a member line may name depends on what holds the block. Two
  * fields of one name are `MESH_DUPLICATE_INPUT`, whichever kind each is.
  */
-function readInputLines(
+export function readInputLines(
   holder: Tag,
   { readers, memberLine }: { readers: ReturnType<typeof attributeReaders>; memberLine: (line: Tag) => InputField | undefined },
 ): InputField[] {
@@ -495,7 +500,7 @@ function readInputLines(
  * option or as child lines, in that order) and its `when`. `scope` reads the scope options, so the `actions=` references
  * it returns are still unresolved: what holds the policy resolves them against its own actions.
  */
-function readPolicyLine(
+export function readPolicyLine(
   tag: Tag,
   { expr, scope, pos }: {
     expr: (a: Attr | undefined) => Expression;
@@ -750,7 +755,7 @@ const inlineDeclarationsOf = (declaredFile: (from: string) => DeclaredFile | und
  * own declaration takes (`ownKind`: its entity, its inline events and commands) bound again by an import is the same error.
  * A named import of an aggregate's name binds nothing either and goes to `duplicates`: the import check reports it.
  */
-function fileImports(
+export function fileImports(
   irImports: readonly IrImport[],
   file: string,
   ownKind: ReadonlyMap<string, DeclarationKind>,
@@ -807,8 +812,8 @@ function fileImports(
       // (`MESH_UNKNOWN_IMPORT`, R24a), and a use of the name reports nothing more, as for any name its file does not declare.
       const target = entry.namespace || entry.helper || entry.mesh ? undefined : declaredFile(entry.from);
       // A concept file binds nothing either: a concept is never imported (the import check reports it). Nor does a surface
-      // file, which nothing imports (the import check reports it).
-      if (target?.kind === "concept" || target?.kind === "surface" || target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
+      // file or a service file, which no file imports (the import check reports it, OD-12 for a service).
+      if (target?.kind === "concept" || target?.kind === "surface" || target?.kind === "service" || target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
         duplicates.add(name);
         continue;
       }
@@ -2331,6 +2336,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const declaredByPath = new Map<string, DeclaredFile>();
   const events: EventDeclaration[] = [];
   const commands: CommandDeclaration[] = [];
+  const services: Service[] = [];
   // The concept files, by the absolute path MX's scan names them by (`DelegatedTag.definedIn`, realpathed), filled before
   // any declaration is built, so a use resolves whatever the file order. A concept whose body has errors is entered too: a
   // use of it is MX's `MESH_TAG_FILE_ERROR`, never a "not read" `MESH_CONCEPT_PLACE`.
@@ -2477,6 +2483,11 @@ export function buildModel(project: ProjectDescription): BuildResult {
           (root.name === "event" ? events : commands).push(declaration);
           continue;
         }
+        // A service file (R4 to R6): built into `document.services`, never into an entity.
+        if (root.name === "service") {
+          services.push(buildService(root, ir.imports, input.source, file, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute))), importDetails, declared));
+          continue;
+        }
         if (root.name === "aggregate") {
           aggregates.push(buildAggregate(root, ir.imports, input.source, file, diagnostics, importDetails,
             normalizePath(relative(domainRoot, dirname(path.absolute))), declared, declaredNames, { events, commands }, propPositions));
@@ -2589,6 +2600,17 @@ export function buildModel(project: ProjectDescription): BuildResult {
     else firstAggregate.set(aggregate.fqn, aggregate.file);
   }
   if (events.length) document.events = events;
+  // Two services of one FQN (R7): one error at the later file. A service and an entity, event or command whose class names
+  // collide in one module meet at `MESH_EMIT_NAME` when code is generated, as an entity and an event do.
+  {
+    const firstService = new Map<string, string>();
+    for (const service of services) {
+      if (firstService.has(service.fqn))
+        diagnostics.push(error("MESH_DUPLICATE_ENTITY", `Duplicate service ${service.fqn}; first declared in ${firstService.get(service.fqn)}`, service.position));
+      else firstService.set(service.fqn, service.file);
+    }
+  }
+  if (services.length) document.services = services;
   // Concepts are written to one generated file each and exported from their module's barrel by name, so two concepts of
   // one FQN (a group folder's `concepts` beside its module's, R21) and a concept that shares its FQN with an entity, event
   // or command (`billing.Money`) are one error at the later file. Shadowing across modules stays silent (R12).
@@ -2644,17 +2666,29 @@ export function buildModel(project: ProjectDescription): BuildResult {
       );
     else identities.set(entity.fqn, entity.file);
   }
-  // The imports of every file that takes them: an entity file's, an aggregate file's and a surface file's.
+  // The imports of every file that takes them: an entity file's, an aggregate file's, a surface file's and a service file's.
   const sourceOf = (file: string) =>
     surfaceImports.find((owner) => owner.file === file)?.source ?? project.files.find((input) => resolveEntityFile(rootPath, input.file)?.file === file)!.source;
   const surfaceOwners = new Set(surfaceImports.map(({ file }) => file));
-  for (const entity of [...document.entities, ...aggregates, ...surfaceImports]) {
+  const serviceOwners = new Set(services.map(({ file }) => file));
+  const aggregateOwners = new Set(aggregates.map(({ file }) => file));
+  for (const entity of [...document.entities, ...aggregates, ...surfaceImports, ...services]) {
     for (const imported of entity.imports) {
       if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       // Nothing imports a surface file (R4, R5): neither the domain nor another surface.
       if (hasMeshExtension(imported.from) && (surfacePaths.has(target) || declaredByPath.get(target)?.kind === "surface")) {
         diagnostics.push(error("MESH_UNKNOWN_ENTITY", `${imported.from} is a surface file: ${surfaceOwners.has(entity.file) ? "a surface imports only files under the domain folder" : "the domain never imports a surface"}`, imported.position, "remove the import"));
+        continue;
+      }
+      // No file imports a service file (OD-12): a service calls entities, and the domain calls no service; application code does.
+      if (hasMeshExtension(imported.from) && declaredByPath.get(target)?.kind === "service") {
+        const name = declaredByPath.get(target)!.declares[0]?.name ?? "";
+        diagnostics.push(error("MESH_UNKNOWN_IMPORT",
+          serviceOwners.has(entity.file) ? `${imported.from} declares the service ${name}, and a service calls entities, not other services`
+          : surfaceOwners.has(entity.file) ? `${imported.from} declares the service ${name}, and a surface's lines name entities`
+          : `${imported.from} declares a service: ${aggregateOwners.has(entity.file) ? "an aggregate file" : "an entity file"} cannot import a service; call the service from application code`,
+          imported.position, "remove the import"));
         continue;
       }
       // What the imported file declares, for a named import to check its name against: an entity, event or command file's
@@ -2722,6 +2756,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   }
   resolveRelationships(document, inversePositions, throughPositions, diagnostics);
   resolveSurfaces(document, rootPath, pendingSurfaces, diagnostics, nearestName);
+  checkServices(document, diagnostics, nearestName);
   resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });

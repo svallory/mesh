@@ -40,7 +40,9 @@ export type PlainWhy =
   | "asks-policies"
   | "calls-entity"
   | "awaits-helper"
-  | "unsupported-parameter";
+  | "unsupported-parameter"
+  /** A function of a service file other than an operation's body (a policy's): a service function is never translated. */
+  | "service";
 
 /**
  * Replace `source.slice(from, to)` with `text` to turn the authored function into TypeScript: `&name` to `$self.name`,
