@@ -135,6 +135,8 @@ declare module "@meshfw/runtime" {
     readonly highest: number;
     /** Every position at or below it is final (committed, or never to commit); a reader past a short page moves no further. SQLite: `highest`. */
     readonly settled: number;
+    /** The hole record (per-event `events.keep`): each stored event name with rows deleted above `deletedThrough`, to the highest such position. Absent or `{}` when there is none. */
+    readonly holes?: Readonly<Record<string, number>>;
   }
 
   /** What a subscription filters on, stored with its row. */
