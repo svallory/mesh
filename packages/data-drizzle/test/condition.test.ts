@@ -92,6 +92,7 @@ describe("conditionSql", () => {
     expect(() => q(col("note", 1))).toThrow(FrameworkError);
     expect(() => q(col("nope"))).toThrow(FrameworkError);
     expect(() => q({ kind: "one", hop: { ...toCustomer, outer: "nope" }, value: col("name", 1) })).toThrow(FrameworkError);
+    expect(() => q({ kind: "count", hop: { ...toTags, through: "x" as never } })).toThrow("A hop's through must be an object { table, entry, exit }");
   });
 });
 

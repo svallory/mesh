@@ -282,6 +282,27 @@ test.each([
   });
 });
 
+// A path that follows an entity's own has-many twice is a joined route over one table: it builds as any other.
+test.each([
+  ["count :n of=&replies.replies", "integer", false],
+  ["sum :n of=&replies.replies.score", "integer", true],
+] as const)("a self-referencing path %s builds as %s", (line, type, nullable) => {
+  const source = `entity :Post
+  attributes
+    uuid :id primary-key
+    integer :score
+  relationships
+    belongs-to :parent entity=Post nullable
+    has-many :replies entity=Post
+  computed
+    ${line}
+  actions auto=[:read]
+`;
+  const result = buildModel({ root: "/project", files: [{ file: "talk/post.mesh.mx", source }] });
+  expect(result.diagnostics).toEqual([]);
+  expect(result.document!.entities[0]!.computed[0]).toMatchObject({ type, nullable });
+});
+
 // `of=` is a member reference. The string form is one build error, with the fix in the message.
 test.each([
   ["count", "lines", "of=&lines"],

@@ -320,6 +320,8 @@ test("rollup with hops is refused without joins, and for an empty list of hops, 
   await expect(operations.rollup({ ...query, hops: [] })).rejects.toThrow("A rollup's hops must be a non-empty list");
   await expect(operations.rollup({ ...query, key: undefined })).rejects.toThrow("A rollup with hops needs key");
   await expect(operations.rollup({ ...query, hops: [{}] as never })).rejects.toThrow("Each of a rollup's hops must be { hop: { table, column, outer, key } }");
+  await expect(operations.rollup({ ...query, hops: Array.from({ length: 65 }, () => courseHop) })).rejects.toThrow("A rollup crosses at most 64 relationships, and this one crosses 65");
+  await expect(operations.rollup({ ...query, hops: [{ hop: { ...courseHop.hop, through: "x" as never } }] })).rejects.toThrow("A hop's through must be an object { table, entry, exit }");
   for (const name of ["nope", "toString"]) {
     await expect(operations.rollup({ ...query, key: name })).rejects.toThrow(`Unknown column "${name}"`);
     await expect(operations.rollup({ ...query, value: name })).rejects.toThrow(`Unknown column "${name}"`);
