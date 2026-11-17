@@ -14,6 +14,7 @@ const one = (text: string) => pieces(text);
 
 const STARTS = (what: string) => `A raw query runs one select, with or values statement, and this one ${what}`;
 const SECOND = "A raw query runs one statement, and its text holds a second one after \";\"";
+const BOUND = "The raw query failed in the database while its values were bound, and SQLite's message can quote them: see the cause";
 const PARAMETER = (token: string) => `A raw query's text holds the parameter ${token}: every value goes in a \${…}, never in the text`;
 const INSIDE = (n: number) => `A raw query's \${…} number ${n} stands inside a quoted string, a quoted name or a comment, where it would not be bound: put it outside the quotes, as in lower(title) like \${pattern}`;
 
@@ -162,7 +163,7 @@ describe("rawQuery on a connection", () => {
     } finally { connection.close(); }
   });
 
-  test("a database error that quotes a value keeps the value out of the message and SQLite's message in the cause", () => {
+  test("a database error raised while the values are bound keeps the value out of the message and SQLite's message in the cause", () => {
     const connection = new Database(":memory:");
     try {
       connection.run("begin immediate");
@@ -170,11 +171,39 @@ describe("rawQuery on a connection", () => {
         let error: unknown;
         try { rawQuery(connection, { text, values: ["secret-ssn-123"] }); } catch (caught) { error = caught; }
         expect(error).toBeInstanceOf(FrameworkError);
-        expect((error as Error).message).toBe("The raw query failed in the database, with a message that quotes one of its values: see the cause");
+        expect((error as Error).message).toBe(BOUND);
         expect((error as Error).message).not.toContain("secret-ssn-123");
         expect(((error as Error).cause as Error).message).toContain("secret-ssn-123");
       }
       expect(connection.inTransaction).toBe(true);
+    } finally { connection.close(); }
+  });
+
+  test.each([
+    ["a float SQLite renders shorter", ["select json_extract('{\"a\":1}', ", ") as v"], 0.30000000000000004, ["0.30000000000000004", "0.3"]],
+    ["a float SQLite renders in its own notation", ["select json_extract('{\"a\":1}', ", ") as v"], 1e21, ["1e+21", "1.0e+21"]],
+    ["a string the SQL transforms", ["select json_extract('{}', upper(", ")) as v"], "secret-ssn", ["secret-ssn", "SECRET-SSN"]],
+    ["a part of a string the SQL cuts out", ["select json_extract('{}', substr(", ", 2)) as v"], "xsecret", ["secret"]],
+  ] as const)("a database error raised while the values are bound keeps every rendering of them out of the message: %s", (_name, text, value, renderings) => {
+    const connection = new Database(":memory:");
+    try {
+      connection.run("begin immediate");
+      let error: unknown;
+      try { rawQuery(connection, { text: [...text], values: [value] }); } catch (caught) { error = caught; }
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toBe(BOUND);
+      for (const rendering of renderings) expect((error as Error).message).not.toContain(rendering);
+      expect(((error as Error).cause as Error).message).toStartWith("bad JSON path");
+      expect(connection.inTransaction).toBe(true);
+    } finally { connection.close(); }
+  });
+
+  test("a database error raised while running a statement without values keeps SQLite's message", () => {
+    const connection = new Database(":memory:");
+    try {
+      connection.run("begin immediate");
+      expect(() => rawQuery(connection, { text: ["select json_extract('{}', 'nope') as v"], values: [] }))
+        .toThrow(new FrameworkError("The raw query failed in the database: bad JSON path: 'nope'"));
     } finally { connection.close(); }
   });
 

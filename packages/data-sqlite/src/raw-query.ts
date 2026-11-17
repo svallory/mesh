@@ -145,15 +145,15 @@ export function sqliteText(statement: RawStatement): string {
 }
 
 /**
- * E14's message: SQLite's own, unless it holds the text of one of the statement's values (`bad JSON path: '…'` quotes
- * the path it was given), when it is a fixed text and SQLite's message stays only in the cause. Conservative on
- * purpose: a short value such as `1` or `"a"` that happens to occur in the message also gives the fixed text.
+ * E14's message: SQLite's own when the error came before any value was bound (`prepare`: a syntax error, `no such
+ * table`), or when the statement has no values; otherwise a fixed text, and SQLite's message stays only in the cause.
+ * Matching the values' text in the message is not enough: SQLite renders a value its own way (`0.30000000000000004` as
+ * `'0.3'`, `1e21` as `'1.0e+21'`) and the SQL can transform it first (`upper(${v})`), so an error raised while the
+ * values are bound may always carry one.
  */
-function databaseMessage(message: string, values: readonly SQLQueryBindings[]): string {
-  const quotes = values.some((value) =>
-    (typeof value === "string" && value !== "") || typeof value === "number" || typeof value === "bigint" ? message.includes(String(value)) : false);
-  return quotes
-    ? "The raw query failed in the database, with a message that quotes one of its values: see the cause"
+function databaseMessage(message: string, bound: boolean): string {
+  return bound
+    ? "The raw query failed in the database while its values were bound, and SQLite's message can quote them: see the cause"
     : `The raw query failed in the database: ${message}`;
 }
 
@@ -175,6 +175,7 @@ export function rawQuery(connection: Database, statement: RawStatement, lex: (st
   const text = lex(statement);
   let prepared: Statement | undefined;
   let rows: Record<string, unknown>[];
+  let bound = false;
   connection.run("PRAGMA query_only = ON");
   try {
     // `prepare`, not `query`: `query` keeps every distinct text cached for the connection's life.
@@ -188,11 +189,12 @@ export function rawQuery(connection: Database, statement: RawStatement, lex: (st
     }
     // Per statement: the connection reads integers as numbers, which rounds one beyond 2^53.
     (prepared as unknown as { safeIntegers(on: boolean): void }).safeIntegers(true);
+    bound = values.length > 0;
     rows = prepared.all(...values) as Record<string, unknown>[];
   } catch (cause) {
     if (cause instanceof MeshError || coded(cause, "SQLITE_BUSY", "SQLITE_LOCKED")) throw cause;
     if (coded(cause, "SQLITE_READONLY")) throw new FrameworkError("A raw query cannot write: the database refused the statement as a write", { cause });
-    throw new FrameworkError(databaseMessage(cause instanceof Error ? cause.message : String(cause), values), { cause });
+    throw new FrameworkError(databaseMessage(cause instanceof Error ? cause.message : String(cause), bound), { cause });
   } finally {
     prepared?.finalize();
     connection.run("PRAGMA query_only = OFF");
