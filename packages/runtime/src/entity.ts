@@ -1,4 +1,4 @@
-import { Answer, answeringLayer, type Decision } from "./answer.ts";
+import { Answer, answeringLayer, capabilitiesOf, type Decision } from "./answer.ts";
 import type { DataLayer, DataOperations, Row } from "./data-layer.ts";
 import { failJoined } from "./compose.ts";
 import { FrameworkError } from "./errors.ts";
@@ -909,6 +909,7 @@ function probeLayer(base: DataLayer, question: Question): DataLayer {
     close(): Promise<void> {
       return Promise.reject(new FrameworkError("The layer of Mesh.checkPolicies is not closed: close the binding's own layer"));
     },
+    ...capabilitiesOf(base),
   });
 }
 

@@ -29,9 +29,17 @@ export function answeringLayer(layer: DataLayer): DataLayer {
     transaction: <T>(run: (tx: DataOperations) => Promise<T>) => layer.transaction(run),
     refuseIfFailed: () => layer.refuseIfFailed(),
     close: () => layer.close(),
+    // What the layer declares it honours (`whereFor` reads it before a read hands it a condition).
+    ...capabilitiesOf(layer),
   });
   answering.add(answer);
   return answer;
+}
+
+/** A wrapping layer carries the wrapped one's capability manifest, so a read on it may hand it a condition (`whereFor`). */
+export function capabilitiesOf(layer: DataLayer): { readonly capabilities?: unknown } {
+  const manifest = (layer as { readonly capabilities?: unknown }).capabilities;
+  return manifest === undefined ? {} : { capabilities: manifest };
 }
 
 /** True for a layer `answeringLayer` made. */

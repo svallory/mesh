@@ -34,8 +34,13 @@ export interface Emitted {
 }
 export const emittedNothing = (): Emitted => ({ expr: false, scope: false });
 
-/** A tree as one TypeScript expression of the scope `$s`. `bool` says the value sits where a boolean is required. */
-export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedNothing()): string {
+/**
+ * A tree as one TypeScript expression of the scope `$s`. `bool` says the value sits where a boolean is required.
+ * `rename` maps a helper's import name to the local the file imports it under (a condition's parameter taken from
+ * another entity's computed body, whose helpers the file imports under an alias).
+ */
+export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedNothing(), rename?: ReadonlyMap<string, string>): string {
+  const print = (node: ExprNode, b = false) => printTree(node, b, emitted, rename);
   switch (n.kind) {
     case "literal": return JSON.stringify(n.value);
     case "atom": return JSON.stringify(n.value);
@@ -47,7 +52,7 @@ export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedN
     case "member": {
       // Every access is `?.` except on the roots that are never null: a null anywhere in a chain gives null, as a left join does.
       const safe = n.object.kind === "var" && (n.object.name === "self" || !ROOTS.includes(n.object.name as (typeof ROOTS)[number]));
-      return `${printTree(n.object, false, emitted)}${access(n.name, n.optional || !safe)}`;
+      return `${print(n.object)}${access(n.name, n.optional || !safe)}`;
     }
     case "call": {
       emitted.expr = true;
@@ -59,7 +64,7 @@ export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedN
       // The right side of `&&`, `||` and `??` and both branches of `?:` are thunks, so what a guard rules out never runs.
       const lazy = lazyOperands(n.fn);
       const args = n.args.map((a, i) => {
-        const text = printTree(a, booleanArgs || (n.fn === "cond" && i === 0), emitted);
+        const text = print(a, booleanArgs || (n.fn === "cond" && i === 0));
         return lazy.includes(i) ? `() => ${text.startsWith("{") ? `(${text})` : text}` : text;
       });
       return `$.${n.fn}(${args.join(", ")})`;
@@ -67,10 +72,12 @@ export function printTree(n: ExprNode, bool = false, emitted: Emitted = emittedN
     case "helper": {
       emitted.expr = true;
       // Through `$.pure`: an imported function a translated expression calls must not return a promise.
-      const call = `$.pure(${n.name}(${n.args.map((a) => printTree(a, false, emitted)).join(", ")}), ${JSON.stringify(n.name)})`;
+      const [root, ...rest] = n.name.split(".");
+      const callee = [rename?.get(root!) ?? root, ...rest].join(".");
+      const call = `$.pure(${callee}(${n.args.map((a) => print(a)).join(", ")}), ${JSON.stringify(n.name)})`;
       return bool ? `$.asBool(${call})` : call;
     }
-    case "quantify": emitted.expr = true; return `$.${n.op}(${printTree(n.source, false, emitted)}, (${local(n.param)}: any) => ${printTree(n.body, true, emitted)})`;
+    case "quantify": emitted.expr = true; return `$.${n.op}(${print(n.source)}, (${local(n.param)}: any) => ${print(n.body, true)})`;
   }
 }
 

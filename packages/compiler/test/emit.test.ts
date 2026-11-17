@@ -285,6 +285,9 @@ test("relationship input uses the actual target key and never inherits its creat
   const key = list.attributes.find((attribute) => attribute.primaryKey)!;
   key.name = "code";
   key.default = "00000000-0000-4000-8000-000000000001";
+  // The fixture's `read :pending` filters on `self.list.id`, which no longer names the key: drop it, since a filter is
+  // lowered to SQL when the files are emitted and this edit of the model is not one the build would accept.
+  delete todo(document).actions.find((action) => action.name === "pending")!.filter;
   const input = entityInputs(todo(document), document).find((input) => input.name === "CreateTodoInput")!;
   const relation = input.fields.find((field) => field.attribute.name === "list")!;
   expect(relation.optional).toBe(false);

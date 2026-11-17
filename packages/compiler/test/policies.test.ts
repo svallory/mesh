@@ -470,9 +470,9 @@ describe("mesh explain lists each policy and where its checks run", () => {
     ]);
     expect(explainAction(entity(), "remove")!).toContain("  policies     none covers it: every call is forbidden (an action no policy covers is denied)");
   });
-  test("a read that fails with M10 runs no policy; a `when` and a load say what they do", () => {
+  test("a read with its own filter runs its policies before the query; a `when` and a load say what they do", () => {
     const filtered = entityOf(post("  policies\n    policy :all\n      authorize-if=() => true\n").replace("  actions auto=[:read]\n", "  actions auto=[:read]\n    read :titled\n      filter=() => &title !== null\n"));
-    expect(section(explainAction(filtered, "titled")!)).toEqual(["  policies     none run: the read's filter is the SQL evaluator's (M10), so every call fails before its policies are evaluated"]);
+    expect(section(explainAction(filtered, "titled")!)[0]).toBe("  policies     :all");
     const when = entityOf(MESH + post("  policies\n    policy :staff when=({ context }) => Mesh.isSystem(context)\n      authorize-if=() => true\n"));
     expect(section(explainAction(when, "publish")!)).toContain("               a policy whose when is false does not apply; with none applying, the call is forbidden");
     expect(section(explainAction(when, "read")!)).toContain("               a policy whose when is false does not apply; with none applying, the caller gets no rows");

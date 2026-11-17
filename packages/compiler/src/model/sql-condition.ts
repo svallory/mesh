@@ -56,6 +56,24 @@ const CLASS: Readonly<Record<AttributeType, ValueClass | "json">> = {
   uuid: "string", string: "string", enum: "string", integer: "integer", float: "float", decimal: "float",
   boolean: "boolean", date: "date", datetime: "date", timestamp: "date", json: "json",
 };
+/** How a stored value of `type` is compared in SQL; `json` is never compared. */
+export function valueClassOf(type: AttributeType): ValueClass | undefined {
+  const cls = CLASS[type];
+  return cls === "json" ? undefined : cls;
+}
+
+/** The tables a condition's hops reach (their FQNs), sorted. */
+export function hopTables(node: LiteralNode, into: Set<string> = new Set()): Set<string> {
+  switch (node.kind) {
+    case "call": node.args.forEach((arg) => hopTables(arg, into)); break;
+    case "one": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); hopTables(node.value, into); break;
+    case "some": case "every": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); hopTables(node.where, into); break;
+    case "count": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); if (node.where) hopTables(node.where, into); break;
+    case "first": into.add(node.hop.table); if (node.hop.through) into.add(node.hop.through.table); hopTables(node.where, into); hopTables(node.value, into); break;
+  }
+  return into;
+}
+
 const BOOLEAN_FNS = new Set(["eq", "ne", "isNull", "isNotNull", "lt", "lte", "gt", "gte", "and", "or", "not", "isTrue", "isFalse", "isSystem"]);
 
 interface Row { readonly depth: number; readonly entity: Entity }

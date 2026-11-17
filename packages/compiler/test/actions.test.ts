@@ -116,10 +116,10 @@ describe("actions view", () => {
       ["destroy", '"blog.Article#destroy"', "DestroyArticleInput", "destroyArticleInputSchema", "void"],
     ]);
     expect(view.runtimeValues).toEqual([
-      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "authorizer as $authorizer", "castInput as $castInput", "checkScope as $checkScope",
-      "checkUnchanged as $checkUnchanged", "entity as $entity", "failJoined as $failJoined", "guarded as $guarded", "loadRows as $loadRows",
-      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "writeCount as $writeCount"]);
-    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions"]);
+      "FrameworkError as $FrameworkError", "InvalidInputError as $InvalidInputError", "NO_FRAME as $NO_FRAME", "NotFoundError as $NotFoundError", "allOf as $allOf", "authorizer as $authorizer", "bindCondition as $bindCondition", "castInput as $castInput", "checkScope as $checkScope",
+      "checkUnchanged as $checkUnchanged", "entity as $entity", "guarded as $guarded", "loadRows as $loadRows",
+      "noteWrite as $noteWrite", "pinClock as $pinClock", "readOnlyRecord as $readOnlyRecord", "recordWrite as $recordWrite", "runAction as $runAction", "runCheck as $runCheck", "scope as $scope", "uuidv7 as $uuidv7", "wantsChanges as $wantsChanges", "whereFor as $whereFor", "writeCount as $writeCount"]);
+    expect(view.runtimeTypes).toEqual(["CastOutput as $CastOutput", "DataOperations as $DataOperations", "Issue as $Issue", "LoadOptions as $LoadOptions", "TableHandle as $TableHandle", "TableOf as $TableOf"]);
     expect(view.typesFromLiteral).toBe('"./article.types"');
     expect(view.validatorsFromLiteral).toBe('"./article.validators"');
     expect(view.schemaFromLiteral).toBe('"../../schema"');
@@ -197,13 +197,29 @@ describe("actions view", () => {
     expect(text).not.toContain("$policies.inside");
   });
 
-  test("a read selects every row; a read with filter or sort validates, then throws naming M10", () => {
+  test("a read selects every row; a read with its own filter binds it and hands it to the data layer as SQL", () => {
     const view = viewOf("Article");
     // The body lives in the reads table (`bindArticleReads`), which `tx` uses; the method evaluates the read's policies, then calls it.
     expect(view.readsBindName).toBe("bindArticleReads");
     const live = view.reads.find((m) => m.name === "live")!;
-    expect(live.unsupported).toBe('"blog.Article#live cannot run in this version: its filter is evaluated by the SQL evaluator, which arrives in M10"');
-    expect(live.statements).toEqual([]);
+    const returns = "(L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never)";
+    expect(live).toMatchObject({ unsupported: null, usesParsed: true, statements: [
+      "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
+      "const $clock = clock ?? $pinClock(options.clock);",
+      'const $s = $scope({ input: $readOnlyRecord(parsed as never, "blog.Article#live"), actor: $context.actor, context: $context }, { clock: $clock });',
+      // The filter's parameters are computed on the read's scope; one that folds to false or unknown runs no query.
+      'const $where = $allOf([$bindCondition($tableOf, $conditions["read.live.filter"], $s as never)]);',
+      `if ($where === false) return [] as unknown as ${returns};`,
+      "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, where: $whereFor(layer, $where), sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
+      `if (!parsed.load?.length) return $rows as unknown as ${returns};`,
+      `return (await $loadRows($loadPlan, "blog.Article", tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${returns};`,
+    ] });
+    // No hop: the table map is empty, and no read has a declared sort, so there is no `$sortClasses`.
+    expect(view.moduleLines).toEqual([
+      "/** The table of each entity the conditions of this file's reads reach, by FQN. */",
+      "const $tableOf: $TableOf = (fqn) => ({} as { readonly [fqn: string]: $TableHandle })[fqn]!;",
+    ]);
+    expect(view.expressionsValues).toEqual(["$conditions", "$expressions"]);
     const read = view.reads.find((m) => m.name === "read")!;
     expect(read).toMatchObject({ unsupported: null, usesParsed: true, statements: [
       "const $rows = (await tx.select(tables.articles, { filter: parsed.filter, sort: parsed.sort, limit: parsed.limit, offset: parsed.offset })) as Article[];",
@@ -217,12 +233,12 @@ describe("actions view", () => {
       contextParam: ", context?: unknown, clock?: () => $Date, policies?: boolean, cast?: $CastOutput<typeof readArticleInputSchema>" });
     // The read action asks for the load's policies (`true`); a caller's result is typed with `ArticleWith`, where the author may be null.
     expect(view.methods.filter((m) => m.isRead).map((m) => [m.name, m.readsCall, m.statements])).toEqual([
-      ["live", "$reads.live(input, context)", []],
+      ["live", "(await $reads.live(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
       ["load", "(await $reads.load(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []],
       ["read", "(await $reads.read(input, context, $clock, true, $parsed)) as unknown as (L extends unknown ? ArticleWith<ArticleLoadNames<L>>[] : never)", []]]);
     expect(view.methods.find((m) => m.name === "read")!.txReturnType).toBe("(L extends unknown ? ArticleTxWith<ArticleLoadNames<L>>[] : never)");
-    // A read's policies are a filter; the read the SQL evaluator must run fails in its body whatever they say.
-    expect(view.methods.find((m) => m.name === "live")!.preCheck).toEqual([]);
+    // A read's policies are a filter, evaluated before its own filter runs as SQL.
+    expect(view.methods.find((m) => m.name === "live")!.preCheck.at(-1)).toContain('$authorizer("blog.Article", "live"');
     const readMethod = view.methods.find((m) => m.name === "read")!;
     // The checks see the cast input, as a write's do (N2 of the review); an invalid input is reported as one, denied or not.
     expect(readMethod.preCheck.slice(4)).toEqual([
@@ -480,7 +496,8 @@ describe("the generated file", () => {
     expect(published.updatedAt).not.toBe(created.updatedAt);
     expect(typeof created.id).toBe("string");
     expect(await articles.read({})).toHaveLength(1);
-    await expect(articles.live({})).rejects.toBeInstanceOf(FrameworkError);
+    // The memory layer declares no capability: a condition is refused before it reaches a layer that would ignore it.
+    await expect(articles.live({})).rejects.toThrow("does not declare the conditions capability");
     await expect(articles.create({ title: "x", author: ada.id, typo: 1 })).rejects.toBeInstanceOf(InvalidInputError);
     await expect(articles.live({ typo: 1 })).rejects.toBeInstanceOf(InvalidInputError);
     await articles.destroy({ id: created.id });
@@ -488,6 +505,44 @@ describe("the generated file", () => {
     await expect(articles.rename({ id: created.id, title: "x" })).rejects.toBeInstanceOf(NotFoundError);
     expect(await articles.read({})).toEqual([]);
   });
+});
+
+describe("a read with its own filter and sort in a project with no relationship and no computed field", () => {
+  // No entity has a loader, so no `load.ts` is emitted: the read binds its condition without the load plan.
+  const lone = `entity :Note table="notes"
+  attributes
+    uuid :id primary-key
+    boolean :done default=false
+    integer :rank
+  actions auto=[:read]
+    create :add
+      input
+        &rank
+    read :open
+      filter=({ input }) => &done === false && &rank > input.above
+      input
+        integer :above
+      sort
+        desc &rank
+  policies
+    policy :anyone
+      authorize-if=() => true
+`;
+  test("emits no load.ts, reads no plan and type-checks", async () => {
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-lone-"));
+    roots.push(root);
+    const config = configOf(root);
+    const files = await generateFiles({ document: documentOf({ "notes/note.mesh.mx": lone }), config });
+    expect(files.some((file) => file.path.endsWith("load.ts"))).toBe(false);
+    const actions = files.find((file) => file.path.endsWith("note.actions.ts"))!.contents;
+    expect(actions).not.toContain("$loadPlan");
+    expect(actions).toContain('[{ column: "rank", class: "integer", desc: true }]');
+    await writeGeneratedFiles(files, config);
+    await writeFile(resolve(root, "generated/schema.ts"), "export const tables = { notes: { rows: new Map() } };\n");
+    await writeFile(resolve(root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
+    expect(await checkTypes(root, [...files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"]))
+      .toEqual({ code: 0, output: "" });
+  }, 30_000);
 });
 
 describe("explain", () => {

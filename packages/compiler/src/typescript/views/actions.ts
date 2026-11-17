@@ -3,12 +3,14 @@ import { isCheckGroup, type Action, type Always, type Atom, type Attribute, type
 import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-expressions.ts";
 import { filledKey } from "../../model/new-instance.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
+import { hopTables, valueClassOf } from "../../model/sql-condition.ts";
+import { sqlPositions } from "../../model/sql-required.ts";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { expressionIds, policySpecs } from "./expressions.ts";
 import { globalAlias, globalsImport, withoutStrings, type GlobalsImport } from "./globals.ts";
 import { hasLoader, loaderName } from "./load.ts";
-import { computedColumns, effectiveActions, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName } from "./inputs.ts";
+import { computedColumns, effectiveActions, queryColumns, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
 
 /**
@@ -55,6 +57,13 @@ export interface ActionsView {
   readonly schemaFromLiteral: string;
   /** The entity's expressions file as a quoted string literal, or `null` when it has no expression an action runs. */
   readonly expressionsFromLiteral: string | null;
+  /** What the file imports from the expressions file as values: `$expressions`, and `$conditions` when a read binds a condition (M10). */
+  readonly expressionsValues: readonly string[];
+  /**
+   * Module-level declarations printed after the imports, each line in full: `$tableOf` and `$sortClasses`, which a read
+   * with its own filter or sort uses (M10). Empty otherwise.
+   */
+  readonly moduleLines: readonly string[];
   /** The scope types the actions read the expressions with, from the expressions file, aliased `$Scope` and `$StoredScope`: `$blog$Post$Scope as $Scope`. */
   readonly scopeImports: readonly string[];
   /** The load file as a quoted string literal, imported for its plan (`loadPlan as $loadPlan`), or `null` when nothing here reads the plan. */
@@ -328,6 +337,10 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   let optionsUsed = false;
   let frameUsed = false;
   let readsLoad = false;
+  let conditionsUsed = false;
+  let readsClock = false;
+  let tableOfUsed = false;
+  let sortClassesUsed = false;
   const readBodies: ReadBody[] = [];
   const idOf = (expression: Expression): string => {
     const id = ids.get(expression);
@@ -400,10 +413,8 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         contextParam: loads ? `, context?: unknown, clock?: () => $Date, policies?: boolean${castParam}` : `, _context?: unknown, _clock?: () => $Date, _policies?: boolean${castParam}`,
         validator, returnType: txReturnType };
       // ---- policies (M8): a read's policies are a filter on the read (ADR-0022, lead ruling 2 of M8a) --------------
-      // A read the SQL evaluator must run (M10) fails in its body whatever the policies say, so they are not evaluated.
-      const unsupportedRead = Boolean(action.filter || action.sort);
-      if (!unsupportedRead) optionsUsed = true;
-      const preCheck = unsupportedRead ? [] : [
+      optionsUsed = true;
+      const preCheck = [
         "// pre-check: the read's policies, evaluated once before the read: a caller they do not admit gets no rows, never an error; a `Mesh.privileged` read skips them",
         "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
         "const $actor = $context.actor;",
@@ -413,25 +424,54 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         `const $parsed = await $castInput(layer, ${validator}, input);`,
         `if (!(await ${authorizerCall(action, covering)}.filter(layer, ${preScope("$parsed as never", where)}))) return [] as unknown as ${returnType};`,
       ];
-      const differs = loads && !unsupportedRead && tx.with !== `${recordName}With`;
-      const readsCall = !unsupportedRead ? `$reads.${name}(input, context, $clock, true, $parsed)` : loads ? `$reads.${name}(input, context)` : `$reads.${name}(input)`;
+      const differs = loads && tx.with !== `${recordName}With`;
+      const readsCall = `$reads.${name}(input, context, $clock, true, $parsed)`;
       // ---- end policies ----------------------------------------------------------------------------------------
-      const method = { ...base, inputType, generics, returnType, txReturnType, contextName: unsupportedRead && !loads ? "_context" : "context", notRun: notRun([]), unsupported: null, usesParsed: false,
+      const method = { ...base, inputType, generics, returnType, txReturnType, contextName: "context", notRun: notRun([]), unsupported: null, usesParsed: false,
         statements: [], isRead: true, seamTarget: null, readsCall: differs ? `(await ${readsCall}) as unknown as ${returnType}` : readsCall, preCheck };
-      if (unsupportedRead) {
-        runtime.add("FrameworkError");
-        runtime.add("failJoined");
-        const parts = [action.filter ? "filter" : null, action.sort ? "sort" : null].filter(Boolean).join(" and ");
-        readBodies.push({ ...body, contextParam: loads ? ", _context?: unknown" : "", usesParsed: false, unsupported: JSON.stringify(
-          `${entity.fqn}#${action.name} cannot run in this version: its ${parts} ${action.filter && action.sort ? "are" : "is"} evaluated by the SQL evaluator, which arrives in M10`), statements: [] });
-        return method;
-      }
-      // A filter or sort by a computed field or rollup is the SQL evaluator's job (M10): say so before touching the database.
+      // A caller's filter or sort by a computed field or rollup is refused before touching the database.
       // What the data layer gets is the filter less the computed fields given as `undefined`, which are left out.
       const computed = computedColumns(entity).map((column) => JSON.stringify(column.name));
       if (computed.length) runtime.add("rejectComputedQuery");
-      const query = ["filter", "sort", "limit", "offset"]
-        .map((name) => `${name}: ${name === "filter" && computed.length ? "$filter" : read("parsed", name)}`).join(", ");
+      // ---- SQL (M10): the read's own filter and sort run as SQL, beside the caller's filter, sort and paging ------
+      // The filter is bound (its parameters computed in memory on the read's scope) and handed over as `where`; a filter
+      // that folds to false or unknown returns no row without a query. The declared sort follows the caller's (O3) as `order`.
+      const declared = Boolean(action.filter || action.sort);
+      const sql: string[] = [];
+      let whereOption = "";
+      let order = `sort: ${read("parsed", "sort")}`;
+      if (declared) {
+        runtime.add("scope").add("readOnlyRecord").add("pinClock");
+        sql.push(
+          "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
+          // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
+          "const $clock = clock ?? $pinClock(options.clock);",
+          `const $s = $scope({ input: $readOnlyRecord(parsed as never, ${where}), actor: $context.actor, context: $context }, { clock: $clock });`,
+        );
+        if (action.filter) {
+          runtime.add("bindCondition").add("allOf").add("whereFor");
+          conditionsUsed = true;
+          sql.push(
+            `const $where = $allOf([$bindCondition($tableOf, $conditions[${JSON.stringify(`read.${action.name}.filter`)}], $s as never)]);`,
+            `if ($where === false) return [] as unknown as ${txReturnType};`,
+          );
+          whereOption = ", where: $whereFor(layer, $where)";
+        }
+        if (action.sort) {
+          runtime.add("orderOf");
+          sortClassesUsed = true;
+          const keys = action.sort.map((key, index) => {
+            const desc = key.direction === "desc";
+            const attribute = entity.attributes.find((a) => a.name === key.member.name);
+            if (attribute) return `{ column: ${JSON.stringify(attribute.name)}, class: ${JSON.stringify(valueClassOf(attribute.type) ?? "string")}, desc: ${desc} }`;
+            conditionsUsed = true;
+            return `{ literal: $conditions[${JSON.stringify(`read.${action.name}.sort.${index}`)}], desc: ${desc} }`;
+          });
+          order = `order: $orderOf($tableOf, ${read("parsed", "sort")}, $sortClasses, [${keys.join(", ")}], $s as never)`;
+        }
+        tableOfUsed = true;
+      }
+      const query = [`filter: ${computed.length ? "$filter" : read("parsed", "filter")}${whereOption}`, order, `limit: ${read("parsed", "limit")}`, `offset: ${read("parsed", "offset")}`].join(", ");
       const select = `await tx.select(${table}, { ${query} })`;
       if (loads) {
         // The names were validated before the transaction opened. The rows are read, then loaded in the same transaction.
@@ -440,17 +480,21 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
         planUsed = true;
         readsLoad = true;
       }
+      if (declared) readsClock = true;
       runtimeTypes.add("CastOutput");
-      readBodies.push({ ...body, unsupported: null, usesParsed: true,
+      readBodies.push({ ...body, contextParam: declared && !loads ? `, context?: unknown, clock?: () => $Date, _policies?: boolean${castParam}` : body.contextParam, unsupported: null, usesParsed: true,
         statements: [
           ...(computed.length ? [`const $filter = rejectComputedQuery(${JSON.stringify(entity.fqn)}, [${computed.join(", ")}], parsed);`] : []),
+          ...sql,
           ...(loads
             ? [
               `const $rows = (${select}) as ${recordName}[];`,
               `if (!parsed.load?.length) return $rows as unknown as ${txReturnType};`,
-              "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
-              // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
-              "const $clock = clock ?? $pinClock(options.clock);",
+              ...(declared ? [] : [
+                "const $context = (context ?? {}) as unknown as { [key: string]: unknown };",
+                // One instant per call: the caller's (a `privileged` read inside an action carries the action's), else this read's own.
+                "const $clock = clock ?? $pinClock(options.clock);",
+              ]),
               // From the read action, what the rows load runs the read policies of the entity it reaches.
               `return (await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, $rows, parsed.load, { actor: $context.actor, context: $context, clock: $clock, policies, frame })) as unknown as ${txReturnType};`,
             ]
@@ -894,6 +938,28 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     extraTypes.add(loadFunction.loadable).add(loadFunction.with);
     planUsed = true;
   }
+  // ---- SQL (M10): what the read bodies above bind their conditions with -------------------------------------------
+  // `$tableOf` resolves each entity a condition's hops reach to its table (the literals name them by FQN), and
+  // `$sortClasses` gives the class of each column a caller may sort by, for `orderOf`.
+  const moduleLines: string[] = [];
+  if (tableOfUsed) {
+    const reached = new Set<string>();
+    for (const place of sqlPositions(document, entity)) {
+      const lowered = place.lower();
+      if (lowered.ok) hopTables(lowered.lowered.tree, reached);
+    }
+    const entries = [...reached].sort().map((fqn) => `${JSON.stringify(fqn)}: ${tableAccess(document.entities.find((candidate) => candidate.fqn === fqn)!)}`);
+    runtimeTypes.add("TableHandle").add("TableOf");
+    moduleLines.push(`/** The table of each entity the conditions of this file's reads reach, by FQN. */`,
+      `const $tableOf: $TableOf = (fqn) => (${entries.length ? `{ ${entries.join(", ")} }` : "{}"} as { readonly [fqn: string]: $TableHandle })[fqn]!;`);
+  }
+  if (sortClassesUsed) {
+    runtimeTypes.add("ValueClass");
+    const columns = queryColumns(entity).filter((column) => !entity.computed.some((field) => field.name === column.name));
+    moduleLines.push("/** How each column a caller may sort by is stored, for the order a read with a declared sort hands the data layer. */",
+      `const $sortClasses: { readonly [name: string]: $ValueClass } = { ${columns.map((column) => `${propertyName(column.name)}: ${JSON.stringify(valueClassOf(column.type) ?? "string")}`).join(", ")} };`);
+  }
+  // ---- end SQL ------------------------------------------------------------------------------------------------------
   const view = {
     entityFile: entityFileComment(entity),
     hasActions: methods.length > 0,
@@ -908,7 +974,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     validatorImports: methods.map((method) => method.validator),
     validatorsFromLiteral: JSON.stringify(`./${entitySegment(entity)}.validators`),
     schemaFromLiteral: fromLiteral(entity, "schema"),
-    expressionsFromLiteral: usesExpressions ? JSON.stringify(`./${entitySegment(entity)}.expressions`) : null,
+    expressionsFromLiteral: usesExpressions || conditionsUsed ? JSON.stringify(`./${entitySegment(entity)}.expressions`) : null,
+    expressionsValues: [...(conditionsUsed ? ["$conditions"] : []), ...(usesExpressions ? ["$expressions"] : [])],
+    moduleLines,
     scopeImports: [...scopes].sort(compareCode),
     loadFromLiteral: planUsed ? fromLiteral(entity, "load") : null,
     loader: loadFunction,
@@ -920,7 +988,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     readOnlyMembers,
     methods,
     readsBindName: readBodies.length ? `bind${recordName}Reads` : null,
-    readsOptionsName: readsLoad ? "options" : "_options",
+    readsOptionsName: readsLoad || readsClock ? "options" : "_options",
     reads: readBodies,
   };
   // The template prints `$Object.freeze` and, around the methods and the load function, `$Promise` and `$Omit` itself.

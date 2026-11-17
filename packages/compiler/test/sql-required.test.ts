@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Diagnostic } from "@meshfw/model";
 import { capabilityDiagnostics } from "../src/capabilities.ts";
+import { explainAction } from "../src/typescript/explain.ts";
 import { FILES, invoice, project } from "./sql-fixture.ts";
 
 // Where SQL is required (a read's filter, a sort key, a read policy), what has no SQL form is a build error at the
@@ -127,5 +128,27 @@ describe("the capabilities a condition needs (MESH_CAPABILITY)", () => {
       `${built.source.indexOf("({ input }) => &customer.id")} the filter of read :r1 of billing.Invoice runs as SQL, and the data adapter "test" does not declare the conditions capability, so it would ignore the condition | Use a data adapter that declares conditions`,
       `${built.source.indexOf("&dueOn\n")} the sort of read :sorted of billing.Invoice runs as SQL, and the data adapter "test" does not declare the conditions capability, so it would ignore the order | Use a data adapter that declares conditions`,
     ]);
+  });
+});
+
+describe("mesh explain of a read with its own filter and sort", () => {
+  test("names what the one query carries and each relationship it crosses", () => {
+    const built = build(["({ actor }) => &customer.ownerId === actor.id && &lines.length > 1"], "    read :sorted\n      sort\n        desc &dueOn\n        asc &isLate\n");
+    const entity = built.entity("Invoice");
+    expect(explainAction(entity, "r0", built.document!)!.slice(1, 5)).toEqual([
+      "  strategy     one query: the read's filter and the caller's, the caller's sort, limit and offset over the table",
+      "               filter ({ actor }) => &customer.ownerId === actor.id && &lines.length > 1: runs as SQL, with the caller's filter and the policies",
+      "               a subquery per row through &customer.ownerId",
+      "               a subquery per row through &lines",
+    ]);
+    expect(explainAction(entity, "sorted", built.document!)!.slice(1, 4)).toEqual([
+      "  strategy     one query: the caller's filter, the caller's sort then the read's, limit and offset over the table",
+      "               sort desc &dueOn: runs as SQL, after the caller's sort keys; rows that tie on every key come in primary-key order",
+      "               sort asc &isLate: runs as SQL, after the caller's sort keys; rows that tie on every key come in primary-key order",
+    ]);
+    // Its policies run before the query, as any read's do.
+    expect(explainAction(entity, "r0", built.document!)).toContain("  policies     :open");
+    // A read with neither keeps its one line.
+    expect(explainAction(entity, "read", built.document!)![1]).toBe("  strategy     one query: the caller's filter, sort, limit and offset over the table");
   });
 });

@@ -66,3 +66,16 @@ export const $expressions = {
   {{ entry.key }}: {{ entry.code }},
   @end
 } as const;
+@if(conditions.length)
+
+/**
+ * The functions above that must run as SQL, as condition literals (M10): the tree the data adapter prints, and the
+ * parameters, computed in memory with the forms above and bound before the query.
+ */
+export const $conditions = {
+  @each(entry in conditions)
+  // {{ entry.comment }}
+  {{ entry.key }}: {{ entry.code }},
+  @end
+} as const;
+@end
