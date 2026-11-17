@@ -1,8 +1,9 @@
 // `query` of the generated `#mesh` (ADR-0087), end to end: a project built, generated with data-sqlite's real manifest
 // (so `rawSql` is true and `binding.ts` exports `query`), and run on a `:memory:` layer. The helpers import `query` from
 // the generated index, so the import cycle helper -> index -> binding -> domain -> entity -> helper is exercised, and the
-// entity file reaches a raw query only through them: a check, a computed field, a read policy and a write policy each
-// call one, and so do the seams and the two kinds of handler.
+// entity file reaches a raw query only through them: a check, a named check, an \`always\` check, a computed field, a read
+// policy and a write policy each call one (a write policy also asks a nested question whose policy calls one), and so do
+// the seams and the two kinds of handler.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ import { capabilities, createSchema, sqlite } from "../src/index.ts";
 
 const task = `import { Mesh } from "meshfw"
 import { TaskAdded } from "./task-added.mesh.mx"
-import { depthProbe, mayMove, mayRead, underItself } from "./task-helpers"
+import { alwaysProbe, depthProbe, mayMove, mayRead, mayRename, underItself } from "./task-helpers"
 
 entity :Task table="tasks"
   attributes
@@ -24,7 +25,12 @@ entity :Task table="tasks"
     string :parentId nullable
   computed
     integer :depth() { return depthProbe(&title) }
+  checks
+    check :notUnderItself that=async ({ input }) => !(await underItself(&id, input.parentId ?? null)) code="task.cycle.named" message="a task cannot go under itself or its descendant"
   actions auto=[:read]
+    always types=[:update]
+      validate
+        check :counted that=async () => await alwaysProbe() code="task.always" message="never refused"
     create :add
       input
         &title
@@ -36,8 +42,19 @@ entity :Task table="tasks"
         &parentId
       validate
         check :noCycle that=async ({ input }) => !(await underItself(&id, input.parentId ?? null)) code="task.cycle" message="a task cannot move under itself or its descendant"
+    update :reparent
+      input
+        &parentId
+      validate
+        check &notUnderItself
+    update :rename
+      input
+        &title
   policies
-    policy :adders actions=[&add]
+    policy :adders actions=[&add, &reparent]
+      authorize-if=() => true
+    policy :renamers actions=[&rename]
+      authorize-if=async ({ actor }) => await mayRename(actor.id)
       authorize-if=() => true
     policy :movers actions=[&move]
       authorize-if=async ({ actor }) => await mayMove(actor.id)
@@ -49,7 +66,8 @@ const added = `event :taskAdded
   string :id
 `;
 
-const helpers = `import { query } from "../../.mesh/index.ts";
+const helpers = `import { Mesh } from "@meshfw/runtime";
+import { query } from "../../.mesh/index.ts";
 
 /** True when \`task\` is \`newParent\` or one of its ancestors: a move under it would make a cycle. */
 export async function underItself(task: string, newParent: string | null): Promise<boolean> {
@@ -64,15 +82,45 @@ export async function underItself(task: string, newParent: string | null): Promi
   return rows.length > 0;
 }
 
-export const hooks: { checks: unknown[]; caught: unknown[] } = { checks: [], caught: [] };
+export const hooks: { checks: unknown[]; caught: unknown[]; always: unknown[]; inner: unknown[]; target: string } =
+  { checks: [], caught: [], always: [], inner: [], target: "" };
 
-/** The write policy of \`move\`: "broken" runs a statement the database rejects and catches it; anyone else reads and passes. */
+/**
+ * The write policy of \`move\`: "broken" runs a statement the database rejects and catches it; "misuse-tag" makes a plain
+ * call and "misuse-value" passes an unbindable value, each catching the refusal; "nested" asks whether "inner" may rename \`hooks.target\`; anyone
+ * else reads and passes.
+ */
 export async function mayMove(actor: string | undefined): Promise<boolean> {
   if (actor === "broken") {
     try { await query\`select * from no_such_table\`; } catch (error) { hooks.caught.push(error); }
     return false;
   }
+  if (actor === "misuse-tag") {
+    try { await (query as any)(["select 1"]); } catch (error) { hooks.caught.push(error); }
+    return true;
+  }
+  if (actor === "misuse-value") {
+    try { await query\`select \${undefined as never} as v\`; } catch (error) { hooks.caught.push(error); }
+    return true;
+  }
+  if (actor === "nested") {
+    const { Task } = await import("../../.mesh/domain/index.ts");
+    return await (Mesh.can as any)(Task.rename, { id: hooks.target, title: "renamed" }, { actor: { id: "inner" } });
+  }
   hooks.checks.push(await query\`select count(*) as n from tasks\`);
+  return true;
+}
+
+/** The write policy of \`rename\`: a raw query that reads, then one that fails and is caught; only "inner" passes. */
+export async function mayRename(actor: string | undefined): Promise<boolean> {
+  hooks.inner.push(await query\`select count(*) as n from tasks\`);
+  try { await query\`select * from no_such_table\`; } catch (error) { hooks.caught.push(error); }
+  return actor === "inner";
+}
+
+/** The \`always\` check of every update: reads the task count and passes. */
+export async function alwaysProbe(): Promise<boolean> {
+  hooks.always.push(await query\`select count(*) as n from tasks\`);
   return true;
 }
 
@@ -95,7 +143,7 @@ let dir: string;
 let mesh: any;
 let Task: any;
 let TaskAdded: any;
-let hooks: { checks: unknown[]; caught: unknown[] };
+let hooks: { checks: unknown[]; caught: unknown[]; always: unknown[]; inner: unknown[]; target: string };
 beforeAll(async () => {
   dir = await mkdtemp(join(import.meta.dir, ".scratch-raw-query-run-"));
   await Bun.write(join(dir, "src/domain/task-helpers.ts"), helpers);
@@ -233,6 +281,63 @@ describe("the generated #mesh exports query", () => {
       expect(answer).toBe(false);
       expect((hooks.caught[0] as Error).message).toBe("The raw query failed in the database: no such table: no_such_table");
       expect(await binding.run(() => mesh.query`select title from tasks where title = ${"after the question"}`)).toEqual([{ title: "after the question" }]);
+    });
+  });
+
+  test("a nested question's raw queries run on the inner probe: its policy's caught failure fails neither the question nor the caller's transaction", async () => {
+    await withBinding(async (binding) => {
+      const { b, c } = await chain(binding);
+      hooks.target = c.id;
+      hooks.caught.length = 0;
+      hooks.inner.length = 0;
+      const answer = await binding.transaction(async () => {
+        const allowed = await can(Task.move, { id: b.id, parentId: null }, { actor: { id: "nested" } });
+        await Task.add({ title: "after the nested question", parentId: null }, alice);
+        return allowed;
+      });
+      expect(answer).toBe(true);
+      expect((hooks.caught[0] as Error).message).toBe("The raw query failed in the database: no such table: no_such_table");
+      expect(hooks.inner).toEqual([[{ n: 3 }]]);
+      const titles = await binding.run(() => mesh.query`select title from tasks order by title`);
+      expect(titles).toEqual([{ title: "a" }, { title: "after the nested question" }, { title: "b" }, { title: "c" }]);
+    });
+  });
+
+  test("a misuse caught inside a question (a plain call, an unbindable value) leaves the caller's transaction committable", async () => {
+    await withBinding(async (binding) => {
+      const { b } = await chain(binding);
+      hooks.caught.length = 0;
+      const answers = await binding.transaction(async () => {
+        const allowed = [
+          await can(Task.move, { id: b.id, parentId: null }, { actor: { id: "misuse-tag" } }),
+          await can(Task.move, { id: b.id, parentId: null }, { actor: { id: "misuse-value" } }),
+        ];
+        await Task.add({ title: "after the misuse", parentId: null }, alice);
+        return allowed;
+      });
+      expect(answers).toEqual([true, true]);
+      expect((hooks.caught as Error[]).map((error) => [error instanceof FrameworkError, error.message])).toEqual([
+        [true, "query is a template tag: write query`select … ${value}`, never query(text); it was given an array that is not a template's strings"],
+        [true, "query: the value of ${…} number 1 is undefined, which cannot be bound: pass a string, a finite number, a bigint within 64 bits, a boolean, a valid Date or null"],
+      ]);
+      expect(await binding.run(() => mesh.query`select title from tasks where title = ${"after the misuse"}`)).toEqual([{ title: "after the misuse" }]);
+    });
+  });
+
+  test("a named check and an always check each run a raw query that joins the action", async () => {
+    await withBinding(async (binding) => {
+      const { a, c } = await chain(binding);
+      hooks.always.length = 0;
+      const refused = await binding.run(() => Task.reparent({ id: a.id, parentId: c.id }, alice)).catch((error: unknown) => error);
+      expect(refused).toBeInstanceOf(InvalidInputError);
+      expect((refused as InvalidInputError).issues.map((issue) => issue.code)).toEqual(["task.cycle.named"]);
+      const moved = await binding.transaction(async () => {
+        await Task.add({ title: "uncommitted", parentId: null }, alice);
+        return Task.reparent({ id: c.id, parentId: a.id }, alice);
+      });
+      expect(moved.parentId).toBe(a.id);
+      // the always check of each update counted the rows; the second saw the row added earlier in its transaction
+      expect(hooks.always).toEqual([[{ n: 3 }], [{ n: 4 }]]);
     });
   });
 
