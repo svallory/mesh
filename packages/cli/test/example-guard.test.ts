@@ -52,7 +52,7 @@ test("M1 test 3: verify-discovered blog validate script guards the committed tre
 }, 30_000);
 
 test.each(["types", "validators"])("M2 test 2: blog validate script rejects a planted stale %s file without writing", async (kind) => {
-  const dir = mkdtempSync(join(repo, ".m1-blog-guard-"));
+  const dir = mkdtempSync(join(repo, ".scratch-m1-blog-guard-"));
   try {
     for (const path of ["mesh.config.ts", "package.json", "src", ".mesh"]) {
       cpSync(join(example, path), join(dir, path), { recursive: true });
@@ -71,7 +71,7 @@ test.each(["types", "validators"])("M2 test 2: blog validate script rejects a pl
 
 /** A temporary copy of the example inside the workspace, sharing its installed packages. */
 function exampleCopy(): string {
-  const dir = mkdtempSync(join(repo, ".m2-blog-db-"));
+  const dir = mkdtempSync(join(repo, ".scratch-m2-blog-db-"));
   for (const path of ["mesh.config.ts", "package.json", "src", ".mesh"]) cpSync(join(example, path), join(dir, path), { recursive: true });
   symlinkSync(join(example, "node_modules"), join(dir, "node_modules"));
   return dir;

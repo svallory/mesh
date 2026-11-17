@@ -150,7 +150,7 @@ describe("a read policy that reads the record is refused until M10", () => {
   });
 
   test("a read policy that calls a helper which calls `Mesh.privileged` builds: the run time refuses the call", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-policy-helper-"));
     try {
       await mkdir(resolve(root, "blog"));
       await writeFile(resolve(root, "blog/helpers.ts"), 'import { Mesh } from "meshfw";\nimport { Post } from "#mesh/domain/blog";\nexport const big = () => Mesh.privileged(Post) !== null;\n');
@@ -245,7 +245,7 @@ describe("a read policy's condition that does not translate warns until M10", ()
   const rest = (types: string) => `    policy :rest types=[${types}]\n      authorize-if=() => true\n`;
   /** Build one Post beside a real `helpers.ts`, which an awaited helper needs to resolve. */
   async function withHelpers(run: (build: (policies: string) => ReturnType<typeof buildModel> & { source: string }) => void): Promise<void> {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-plain-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-policy-plain-"));
     try {
       await mkdir(resolve(root, "blog"));
       await writeFile(resolve(root, "blog/helpers.ts"), "export const staff = async (id: string) => id === \"a\";\nexport const known = (id: string) => id === \"a\";\n");
@@ -298,7 +298,7 @@ describe("a read policy's condition that does not translate warns until M10", ()
   });
 
   test("a policy that covers the loads of its entity names them", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-plain-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-policy-plain-"));
     try {
       // A Post reaches a Comment, so a caller's load of it runs the policy, through the auto read a load needs (`MESH_ON_LOAD`).
       const comment = { file: "blog/comment.mesh.mx", source: `entity :Comment\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n    create :add\n  policies\n    policy :p\n      authorize-if=${method}\n` };
@@ -371,7 +371,7 @@ describe("which checks read the record", () => {
   });
   test("a write's check that calls an imported function runs inside the transaction, even when the build translates it; a read policy's builds", async () => {
     // The function may read anything through `Mesh.privileged`, which reads in the running transaction.
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-policy-helper-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-policy-helper-"));
     try {
       await mkdir(resolve(root, "blog"));
       await writeFile(resolve(root, "blog/helpers.ts"), "export const isStaff = (actor: { staff?: boolean }) => actor.staff === true;\n");

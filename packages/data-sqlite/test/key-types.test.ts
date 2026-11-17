@@ -35,7 +35,7 @@ entity :Line table="lines"
 
 let dir: string;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".key-types-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-key-types-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["integer-key-fill"] }, options: { file: ":memory:" } },

@@ -185,7 +185,7 @@ export type Unreachable = [Actions, Reads];
 let dir: string;
 let app: any;
 beforeAll(async () => {
-  dir = await mkdtemp(join(import.meta.dir, ".modules-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-modules-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: ["aggregates"] }, options: { file: ":memory:" } },

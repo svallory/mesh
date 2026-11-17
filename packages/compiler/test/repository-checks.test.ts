@@ -8,7 +8,7 @@ import { checkDocsSamples, checkDrizzleImports, checkGeneratedImports, checkMxIm
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
-  const dir = mkdtempSync(join(root, ".m1-check-"));
+  const dir = mkdtempSync(join(root, ".scratch-check-"));
   try { run(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 

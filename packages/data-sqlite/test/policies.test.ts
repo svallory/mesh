@@ -193,8 +193,8 @@ let flippedDir: string;
 let app: any;
 let flippedApp: any;
 beforeAll(async () => {
-  dir = await generate(".policies-", SOURCES);
-  flippedDir = await generate(".policies-reversed-", Object.fromEntries(Object.entries(SOURCES).map(([name, source]) => [name, reversed(source)])));
+  dir = await generate(".scratch-policies-", SOURCES);
+  flippedDir = await generate(".scratch-policies-reversed-", Object.fromEntries(Object.entries(SOURCES).map(([name, source]) => [name, reversed(source)])));
   app = await project(dir);
   flippedApp = await project(flippedDir);
 });
@@ -601,7 +601,7 @@ entity :Item table="items"
   let loadsDir: string;
   let loads: any;
   beforeAll(async () => {
-    loadsDir = await generate(".policies-loads-", { shelf, item, keeper });
+    loadsDir = await generate(".scratch-policies-loads-", { shelf, item, keeper });
     loads = await project(loadsDir);
   });
   afterAll(async () => {
@@ -746,7 +746,7 @@ describe("imported functions in policies", () => {
   let shelfDir: string;
   let shelfApp: any;
   beforeAll(async () => {
-    shelfDir = await generate(".policies-shelf-", { shelf }, { "shelf-helpers.ts": shelfHelpers });
+    shelfDir = await generate(".scratch-policies-shelf-", { shelf }, { "shelf-helpers.ts": shelfHelpers });
     shelfApp = await project(shelfDir);
   });
   afterAll(async () => { if (shelfDir) await rm(shelfDir, { recursive: true, force: true }); });

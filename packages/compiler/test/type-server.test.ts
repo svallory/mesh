@@ -6,7 +6,7 @@ import { closeTypeServer } from "./type-server.ts";
 
 const roots: string[] = [];
 async function fixture(): Promise<string> {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-type-server-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-type-server-"));
   roots.push(root);
   return root;
 }

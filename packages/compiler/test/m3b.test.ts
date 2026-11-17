@@ -100,7 +100,7 @@ describe("json in an entity file (ADR-0069)", () => {
 
 /** Generate the files of one project and type-check them with the strictest flags. */
 async function generated(sources: Record<string, string>) {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-m3b-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-m3b-"));
   roots.push(root);
   const built = buildModel({ root, files: Object.entries(sources).map(([file, source]) => ({ file, source })) });
   expect(built.diagnostics).toEqual([]);
@@ -269,7 +269,7 @@ describe("a read's input", () => {
 
 describe("the data adapter's capabilities", () => {
   async function project(adapter: string, entity = "integer :seq primary-key") {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-cap-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-cap-"));
     roots.push(root);
     await mkdir(resolve(root, "src/domain"), { recursive: true });
     await writeFile(resolve(root, "src/domain/item.mesh.mx"), `entity :Item\n  attributes\n    ${entity}\n    string :name\n`);
@@ -302,7 +302,7 @@ describe("the data adapter's capabilities", () => {
 
   describe("count and max rollups call the data layer's aggregates", () => {
     async function rollupProject(adapter: string, computed: string) {
-      const root = await mkdtemp(resolve(import.meta.dir, "../mesh-cap-"));
+      const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-cap-"));
       roots.push(root);
       await mkdir(resolve(root, "src/domain"), { recursive: true });
       await writeFile(resolve(root, "src/domain/list.mesh.mx"), `import { Todo } from "./todo.mesh.mx"\nentity :List\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :todos entity=Todo\n  computed\n    ${computed}\n  actions auto=[:read]\n`);

@@ -48,7 +48,7 @@ const owner = `entity :Owner table="owners"
 let dir: string;
 beforeAll(async () => {
   // Inside the package, so the emitted file resolves this package's drizzle-orm.
-  dir = await mkdtemp(join(import.meta.dir, ".emitted-"));
+  dir = await mkdtemp(join(import.meta.dir, ".scratch-emitted-"));
   const config: ResolvedConfig = {
     root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"),
     data: { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } },

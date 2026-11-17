@@ -158,7 +158,7 @@ describe("the load generator", () => {
   });
 
   test("the generated load.ts and the files it imports type-check under the strictest flags", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-load-view-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-load-view-"));
     try {
       const document = documentOf();
       const emitted = configOf(root);

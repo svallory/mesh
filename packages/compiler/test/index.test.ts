@@ -109,7 +109,7 @@ export default { data: { kind: "data-adapter", name: "memory", build: "./none", 
 const descriptorConfig = `export default { data: { kind: "data-adapter", name: "remote", build: "./none", capabilities: { adapter: "remote", capabilities: [] }, options: {} } };\n`;
 
 async function generated(config = memoryConfig) {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-index-"));
   roots.push(root);
   const files = await generateFiles({ document: documentOf(), config: configOf(root, ".mesh") });
   await writeGeneratedFiles(files, configOf(root, ".mesh"));
@@ -185,7 +185,7 @@ describe("the generated index", () => {
   });
 
   test("an index for a domain without actions type-checks strictly", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-empty-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-index-empty-"));
     roots.push(root);
     const config = configOf(root, ".mesh");
     const files = await generateFiles({ document: documentOf({ "tag.mesh.mx": tag }), config });
@@ -246,7 +246,7 @@ describe("entity names never break the generated files", () => {
   const table = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 
   test("they build, type-check strictly and run", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-index-names-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-index-names-"));
     roots.push(root);
     const config = configOf(root, ".mesh");
     const generatedFiles = await generateFiles({ document: documentOf(files), config });

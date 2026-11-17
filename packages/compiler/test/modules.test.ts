@@ -207,7 +207,7 @@ describe("folder names as export names", () => {
   const open = (name: string) => `${entity(name)}  policies\n    policy :open\n      authorize-if=() => true\n`;
 
   test("folders named class and default build, type-check strictly, and are reachable as domain.class and domain.default", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-modules-reserved-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-modules-reserved-"));
     roots.push(root);
     const config = configOf(root, ".mesh");
     const files = await generateFiles({
@@ -300,7 +300,7 @@ describe("names across modules", () => {
   };
 
   test("a List at the root and in order-management/ and billing/ build, type-check strictly, and each writes its own table", async () => {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-modules-same-name-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-modules-same-name-"));
     roots.push(root);
     const config = configOf(root, ".mesh");
     const document = documentOf(project);

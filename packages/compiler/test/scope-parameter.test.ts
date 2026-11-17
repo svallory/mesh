@@ -26,7 +26,7 @@ ${computed}  actions auto=[:read]
 ${actions}`;
 
 async function generated(source: string) {
-  const root = await mkdtemp(resolve(import.meta.dir, "../mesh-scope-"));
+  const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-scope-"));
   roots.push(root);
   const built = buildModel({ root: "/p", files: [{ file: "task.mesh.mx", source }] });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);

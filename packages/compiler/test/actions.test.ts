@@ -337,7 +337,7 @@ ${actions}    create :add
 `;
   /** Build one Item beside a real `helpers.ts`, which the helper calls need to resolve. */
   async function withHelpers(run: (build: (actions: string) => ReturnType<typeof buildModel> & { source: string }) => void): Promise<void> {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-filter-plain-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-filter-plain-"));
     roots.push(root);
     await mkdir(resolve(root, "shop"));
     await writeFile(resolve(root, "shop/helpers.ts"), "export const big = (n: number | null) => (n ?? 0) > 1;\nexport const open = (record: { n: number | null }) => (record.n ?? 0) > 1;\n");
@@ -437,7 +437,7 @@ function memoryLayer(): DataLayer {
 
 describe("the generated file", () => {
   async function generated() {
-    const root = await mkdtemp(resolve(import.meta.dir, "../mesh-actions-"));
+    const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-actions-"));
     roots.push(root);
     const config = configOf(root);
     const files = await generateFiles({ document: documentOf(), config });

@@ -111,7 +111,7 @@ function samples(): Sample[] {
 test("every TypeScript sample on the Docs pages type-checks against the proposed API", () => {
   const found = samples();
   expect(found.length).toBeGreaterThan(15);
-  const dir = mkdtempSync(join(app, ".samples-"));
+  const dir = mkdtempSync(join(app, ".scratch-samples-"));
   const failures: string[] = [];
   let excerpts = 0;
   try {
