@@ -1,0 +1,8 @@
+import * as paid from "./invoice-paid.mesh.mx"
+import * as recorded from "./payment-recorded.mesh.mx"
+
+entity :Ledger
+  attributes
+    uuid :id primary-key
+  handlers
+    listen :receipt on=[paid.InvoicePaid, recorded.PaymentRecorded] value=async ({ event }) => { await event.id }

@@ -95,7 +95,9 @@ function section(into: string[], name: string, lines: readonly string[]): void {
  */
 export function explainAction(entity: Entity, actionName: string, document?: ModelDocument): string[] | undefined {
   const action: Action | undefined = effectiveActions(entity).find((candidate) => candidate.name === actionName);
-  if (!action) return undefined;
+  // A handler of the entity's `handlers` section is explained by its name when no action has it (a handler may share a
+  // name with an action, ruling D44, Q10; the action is the one explained then).
+  if (!action) return explainHandler(entity, actionName);
   const lines = [`${entity.fqn}#${action.name} (${action.kind})`];
   if (action.kind === "read") {
     const covering = policiesCovering(entity, action);
@@ -160,5 +162,25 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
     "afterWrite: inside the transaction, right after the row is written, before the steps after the write",
     "afterCommit: once, after the outermost transaction commits, with every change it made",
   ]);
+  return lines;
+}
+
+/**
+ * The plan of one handler of an owner's `handlers` section, as lines of text: the events it takes, the key its progress
+ * row is stored under, where its body runs, and the body, which is always plain code (`handler`), as a `run` step is.
+ */
+export function explainHandler(owner: Pick<Entity, "handlers">, name: string): string[] | undefined {
+  const handler = owner.handlers?.find((candidate) => candidate.name === name);
+  if (!handler) return undefined;
+  const lines = [`${handler.key} (${handler.kind} handler)`];
+  section(lines, "on", handler.events.map((event) => `${event.fqn} (${event.identifier})`));
+  section(lines, "progress", [
+    `stored under ${handler.key} in mesh_handler_progress; a new handler starts at the highest position, so it handles the events published from then on`,
+    ...(handler.renamedFrom ? [`renamed from ${handler.renamedFrom}: that handler's progress row moves to this one`] : []),
+  ]);
+  section(lines, "runs", [handler.kind === "process"
+    ? "inside the handler transaction, with its progress row: what it writes and its move past the event commit together, once per event"
+    : "outside any transaction, then its progress moves past the event: at least once, so a failure between the two runs it again"]);
+  section(lines, "body", [`${squash(handler.run.source)} (plain, ${handler.run.plain?.why ?? "handler"}: it gets { event, context })`]);
   return lines;
 }

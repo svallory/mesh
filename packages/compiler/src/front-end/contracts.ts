@@ -134,12 +134,13 @@ const isPlainIdentifier = (n: Node | null | undefined) =>
  * (`&list`) lowers to the forward `self.list`, which has the same shape as `billing.Invoice`: it is told apart by
  * identity (`membersOf`), since core sets no mark on it, and is no reference.
  */
-const isReference = (a: Attr | undefined): boolean => {
-  const n = node(a);
+const isReference = (a: Attr | undefined): boolean => isReferenceNode(node(a), membersOf(a));
+/** `isReference` for one node of an option, an item of a list, with the option's members (`membersOf`). */
+const isReferenceNode = (n: Node | null | undefined, members: ReadonlySet<unknown>): boolean => {
   if (isPlainIdentifier(n)) return true;
   const access = n as (Node & { object?: Node; property?: Node; computed?: boolean }) | null | undefined;
   return access?.type === "MemberExpression" && !access.computed && !access.extra?.mxTransaction
-    && !membersOf(a).has(access) && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
+    && !members.has(access) && isPlainIdentifier(access.object) && isPlainIdentifier(access.property);
 };
 /**
  * A dynamic option whose value is written inside a wrapper, `(x)`, `x!`, `x as T`, `x satisfies T` or `<T>x` (nested ones
@@ -277,6 +278,7 @@ const contracts: ContractMap = {
       policies: {},
       events: {},
       commands: {},
+      handlers: {},
     },
   }),
   // An owner's events and commands (`notes/spec/events-and-commands.md`, "Where a declaration lives"): inline declarations
@@ -296,8 +298,11 @@ const contracts: ContractMap = {
   aggregate: closed({
     parents: ["#root"],
     attributes: named(),
-    children: { root: { required: true }, entities: {}, events: {}, commands: {} },
+    children: { root: { required: true }, entities: {}, events: {}, commands: {}, handlers: {} },
   }),
+  // The lines that consume events (`notes/spec/events-and-commands.md`, "Where a declaration lives"): one per handler, of
+  // core's two kinds, `process` and `listen`. `project` is the event-sourcing extension's kind, not core's.
+  handlers: closed({ parents: ["entity", "aggregate"], children: children("process", "listen") }),
   // `root entity=Task`: the aggregate's root entity, a reference written bare as `belongs-to`'s `entity=` is.
   root: closed({
     parents: ["aggregate"],
@@ -650,6 +655,88 @@ for (const kind of ["asc", "desc"])
   contracts[kind] = closed({
     parents: ["sort"],
     attributes: { member: member(true) },
+  });
+/** What an `on=` of a handler line takes, for the shape messages of `handles`. */
+const HANDLES_SHAPE = "on must be an event in scope (`on=InvoicePaid`), a member of a namespace import (`on=billing.InvoicePaid`), or a list of them (`on=[InvoicePaid, billing.PaymentRecorded]`)";
+const HANDLES_WRAPPED = "on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=InvoicePaid`, `on=billing.InvoicePaid`)";
+/** Comments, which a list may hold between its items: they are no wrapper. */
+const COMMENTS = /\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
+type Item = Node & { start?: number; end?: number; object?: Node; property?: Node };
+/**
+ * A handler line names the events it takes in `on=`: one reference, or a non-empty list of references, each written bare
+ * (`notes/architecture/handlers-design.md`, rule H7). Which import each is, and whether it is an event, is the build's to
+ * resolve. MX strips a wrapper inside a list item as it does around a whole value, and keeps no span of the item as
+ * written, so an item's wrapper is found in the list's written text (`value.code`, whose offsets are the source's less
+ * `value.span.sourceStart`): the text between two items, comments aside, is one comma and whitespace, and the text after
+ * the last is whitespace and at most one comma. A wrapper written before an item is that item's; one after it (`!`,
+ * `as T`) is the item before the comma. MX's `ctx.fail` ends the pass, so a line reports its first bad item only.
+ */
+function handles(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
+  for (const call of calls) {
+    const a = get(call, "on");
+    if (!a) continue; // MX reports the missing required option
+    const n = node(a);
+    if (n?.type !== "ArrayExpression") {
+      if (!isReference(a)) ctx.fail(HANDLES_SHAPE, { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
+      else if (isWrapped(a)) ctx.fail(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
+      continue;
+    }
+    const items = (n.elements ?? []) as (Item | null)[];
+    if (items.length === 0) {
+      ctx.fail("on must list at least one event: `on=[InvoicePaid]`", { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
+      continue;
+    }
+    const members = membersOf(a);
+    const spanOf = (item: Item | null | undefined) =>
+      item && typeof item.start === "number" && typeof item.end === "number" ? { sourceStart: item.start, sourceEnd: item.end } : a.loc;
+    // A hole (`[A, , B]`) has no node, and is no reference.
+    const bad = items.find((item) => !item || !isReferenceNode(item, members));
+    if (bad !== undefined) {
+      ctx.fail(HANDLES_SHAPE, { at: spanOf(bad), code: "MESH_UNKNOWN_EVENT" });
+      continue;
+    }
+    const value = (a as Extract<Attr, { kind: "dynamic" }>).value;
+    const base = value.span?.sourceStart;
+    const code = value.code;
+    if (base === undefined || typeof code !== "string") continue;
+    const written = (item: Item) => code.slice(item.start! - base, item.end! - base);
+    // The written text of an item must be the item: the trigger splices of `Expr.code` would shift what follows them,
+    // and then no gap is read (a list of references holds none, so this never skips a real list).
+    const named = (item: Item) => item.type === "Identifier" ? item.name : `${item.object?.name}.${item.property?.name}`;
+    if (!(items as Item[]).every((item) => typeof item.start === "number" && typeof item.end === "number"
+      && written(item).replace(COMMENTS, "").replace(/\s+/g, "") === named(item))) continue;
+    const list = items as Item[];
+    const open = code.indexOf("[");
+    const close = code.lastIndexOf("]");
+    for (let index = 0; index <= list.length; index++) {
+      const from = index === 0 ? open + 1 : list[index - 1]!.end! - base;
+      const to = index === list.length ? close : list[index]!.start! - base;
+      const gap = code.slice(from, to).replace(COMMENTS, " ");
+      const comma = gap.indexOf(",");
+      const head = comma === -1 ? gap : gap.slice(0, comma);
+      const tail = comma === -1 ? "" : gap.slice(comma + 1);
+      // Before the first item there is no comma; between two there is one; after the last there is at most one.
+      const wrappedBefore = index > 0 && head.trim() !== "";
+      const wrappedAfter = index === 0 ? gap.trim() !== "" : index < list.length ? comma === -1 || tail.trim() !== "" : tail.trim() !== "";
+      if (wrappedBefore) { ctx.fail(HANDLES_WRAPPED, { at: spanOf(list[index - 1]), code: "MESH_UNKNOWN_EVENT" }); break; }
+      if (wrappedAfter) { ctx.fail(HANDLES_WRAPPED, { at: spanOf(list[Math.min(index, list.length - 1)]), code: "MESH_UNKNOWN_EVENT" }); break; }
+    }
+  }
+}
+for (const kind of ["process", "listen"] as const)
+  contracts[kind] = closed({
+    parents: ["handlers"],
+    attributes: {
+      // Required: a line with no name is MX's `MESH_MISSING_OPTION`, as for every declaration but an action (errors.md §12).
+      name: atom(true),
+      // One event reference or a list of them: `handles` checks the shape, the builder resolves each.
+      on: { type: "expression", required: true },
+      // The body: the line's default option, so `process :x [on=E] async ({ event }) { ... }` and `listen :x [on=E] =(...) => ...` set it.
+      value: fn(true),
+      // A former name of this handler in the same owner: its progress row moves to this one.
+      "renamed-from": atom(),
+    },
+    analyze: handles,
   });
 /**
  * The messages of the universal checks below. `params` is shared with the build's check of a concept use (`conceptUses`

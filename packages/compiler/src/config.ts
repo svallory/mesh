@@ -8,6 +8,7 @@ import { buildModel } from "./front-end/build.ts";
 import { hasMeshExtension, meshExtensionsText, meshGlob } from "./front-end/extensions.ts";
 import { isArchitectureFileName } from "./front-end/architecture-file.ts";
 import { capabilityDiagnostics, eventsDiagnostics } from "./capabilities.ts";
+import { handlersNotGenerated } from "./model/handlers.ts";
 import { error, positionAt, type BuildResult } from "./model/index.ts";
 import { absolutePath, canonicalFuturePath, confinedGlob, foreignAbsolute, inside, normalizePath, projectPath, resolveEntityFile, errorCode } from "./paths.ts";
 
@@ -375,7 +376,7 @@ export async function loadProject(config: ResolvedConfig): Promise<BuildResult> 
   });
   if (result.document) result.document.data = { name: config.data.name };
   const capabilities = result.document
-    ? [...capabilityDiagnostics(result.document, config.data), ...eventsDiagnostics(result.document, config, positionAt("", projectPath(config.root, config.configFile), 0), config.positions)]
+    ? [...capabilityDiagnostics(result.document, config.data), ...eventsDiagnostics(result.document, config, positionAt("", projectPath(config.root, config.configFile), 0), config.positions), ...handlersNotGenerated(result.document)]
     : [];
   return { document: diagnostics.length || capabilities.length ? null : result.document, diagnostics: [...diagnostics, ...result.diagnostics, ...capabilities] };
 }

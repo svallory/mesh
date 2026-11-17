@@ -33,6 +33,7 @@ export type PlainWhy =
   | "block-body"
   | "run-step"
   | "publish-step"
+  | "handler"
   | "unsupported-construct"
   | "reads-record-in-helper"
   | "uses-privileged"

@@ -1,0 +1,31 @@
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import { PayInvoice } from "./pay-invoice.mesh.mx"
+import { sendReceipt } from "./mailer"
+import { Mesh } from "meshfw"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    boolean :receiptSent default=false
+  actions auto=[:read]
+    update on=PayInvoice
+    update :markReceiptSent
+      input
+        uuid :id
+      do
+        set
+          &receiptSent=true
+  policies
+    policy :system actions=[&markReceiptSent]
+      authorize-if=({ context }) => Mesh.isSystem(context)
+  events
+    event :InvoiceVoided
+      uuid :invoiceId
+  handlers
+    listen :receipt [on=InvoicePaid renamed-from=:mailReceipt] async ({ event, context }) {
+      await sendReceipt({ idempotencyKey: event.id, invoiceId: event.payload.invoiceId })
+      await Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
+    }
+    process :voided [on=[InvoiceVoided, InvoicePaid]] ({ event, context }) {
+      return Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
+    }

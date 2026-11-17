@@ -74,6 +74,11 @@ export interface ConvertContext {
   /** A `publish` step is plain by form, and its value is checked: what it returns must be an event of the file (`MESH_PUBLISH`). */
   publishStep?: boolean;
   /**
+   * A handler body (a `process` or `listen` line of a `handlers` section): plain by form, and its scope roots are `event`
+   * and `context` only (`HANDLER_ROOTS`); a read of another root, a member or a transaction value is `MESH_HANDLER_SCOPE`.
+   */
+  handlerBody?: boolean;
+  /**
    * Identifiers a `publish` function names as the callee of a `new` it returns: `checkPublished` reports a name that is no
    * event as `MESH_PUBLISH` with the suggestion `entity=` gives, so neither the free-variable error nor a namespace
    * member's `MESH_UNKNOWN_ENTITY` reports it too.
@@ -88,6 +93,24 @@ const ROOTS = new Set(["self", "input", "actor", "context", "before"]);
  * under an alias such as `import { List as context }`), which stays the import everywhere outside the function.
  */
 export const SCOPE_NAMES: ReadonlySet<string> = ROOTS;
+/** The scope roots of a handler body: the event it handles and the context it runs with (`notes/architecture/handlers-design.md`, H12). */
+const HANDLER_ROOTS: ReadonlySet<string> = new Set(["event", "context"]);
+/** The roots of every other function a handler body cannot read: it runs for an event, with no record and no input. */
+const NOT_HANDLER_ROOTS: ReadonlySet<string> = new Set([...ROOTS].filter((name) => !HANDLER_ROOTS.has(name)));
+/** The scope roots of the function `ctx` is about: a handler body's, or every other function's. */
+const rootNames = (ctx: Pick<ConvertContext, "handlerBody">): ReadonlySet<string> => (ctx.handlerBody ? HANDLER_ROOTS : SCOPE_NAMES);
+const HANDLER_SCOPE = "a handler runs for an event, with no record, no input and no transaction value";
+/** `MESH_HANDLER_SCOPE` at `offset`, for a root (`self`), a member (`&x`) or a transaction value (`%.now`) a handler body reads. */
+function handlerScope(ctx: ConvertContext, what: string, offset: number): void {
+  const [message, fix] = what === "actor"
+    ? [`${HANDLER_SCOPE}: \`actor\` is not in its scope; it reads \`event\` and \`context\``, "read `context.actor`"]
+    : what.startsWith("&")
+      ? [`\`${what}\` reads a record, and a handler has none: it reads \`event\` and \`context\``, "read the event's payload (`event.payload`), or call an action of the entity"]
+      : what.startsWith("%.")
+        ? [`${HANDLER_SCOPE}: \`${what}\` is not in its scope; it reads \`event\` and \`context\``, "read when the event happened as `event.occurredAt`"]
+        : [`${HANDLER_SCOPE}: \`${what}\` is not in its scope; it reads \`event\` and \`context\``, "read the event's payload (`event.payload`), or call an action of the entity"];
+  ctx.report({ severity: "error", code: "MESH_HANDLER_SCOPE", message, position: ctx.at(offset), fix });
+}
 /** The globals a function may use. `structuredClone` is one: the expressions file binds it to `cloneValue`, which copies a read-only record. */
 const GLOBALS = new Set([
   "Math", "Number", "String", "Boolean", "Date", "JSON", "Array", "Object", "Map", "Set", "Promise",
@@ -197,7 +220,7 @@ function fixedKey(key: N | undefined, computed: boolean | undefined): string | u
   return undefined;
 }
 const isMeshImport = (name: string, ctx: ConvertContext, shadowed: (name: string) => boolean) =>
-  ctx.mesh?.has(name) === true && !shadowed(name) && !SCOPE_NAMES.has(name);
+  ctx.mesh?.has(name) === true && !shadowed(name) && !rootNames(ctx).has(name);
 /**
  * The members of the file's `Mesh` import that a read of it (`n`, an identifier that is that import) names, each with the
  * node that names it: the member it reads (`Mesh.isSystem`, `Mesh?.isSystem`, `Mesh["isSystem"]`), or each fixed key of an object pattern
@@ -237,7 +260,7 @@ function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: str
   if (TRANSACTION_MEMBERS.has(name)) return `write \`%.${name}\`, ${TRANSACTION_MEMBERS.get(name)!.what}, with no \`()\``;
   const locals = [...(ctx.mesh ?? [])];
   const local = locals.find((candidate) => isMeshImport(candidate, ctx, shadowed));
-  const hidden = local === undefined ? locals.find((candidate) => !SCOPE_NAMES.has(candidate)) : undefined;
+  const hidden = local === undefined ? locals.find((candidate) => !rootNames(ctx).has(candidate)) : undefined;
   if (MESH_FUNCTIONS.has(name)) {
     if (local !== undefined) return `write \`${meshCall(local, name, args)}\``;
     if (hidden !== undefined) return `write \`${meshCall(hidden, name, args)}\`, renaming the binding that hides \`${hidden}\` here`;
@@ -376,10 +399,13 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
   const bound = bindings(fn);
   const roots = new Set<string>();
   const entities = ctx.entities ?? new Set<string>();
+  const scopeRoots = rootNames(ctx);
+  // In a handler body another function's root (`self`) is reported as out of the handler's scope, not as a free variable.
   const known = (name: string) =>
-    bound.has(name) || ctx.imported.has(name) || entities.has(name) || SCOPE_NAMES.has(name) || GLOBALS.has(name);
+    bound.has(name) || ctx.imported.has(name) || entities.has(name) || scopeRoots.has(name) || GLOBALS.has(name)
+    || (ctx.handlerBody === true && NOT_HANDLER_ROOTS.has(name));
   /** Whether a free `name` read in `scope` is an entity the file names: no scope binds it and it is no scope name. */
-  const namesEntity = (name: string, scope: ReadonlySet<string>) => entities.has(name) && !scope.has(name) && !SCOPE_NAMES.has(name);
+  const namesEntity = (name: string, scope: ReadonlySet<string>) => entities.has(name) && !scope.has(name) && !scopeRoots.has(name);
   /**
    * Whether `n` names one entity: an entity's name (`Invoice`), or a member of an entity file's namespace import
    * (`billing.Invoice`) that the file declares. A namespace alias alone names a file, not an entity.
@@ -413,6 +439,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
           position: ctx.at(mark.span.sourceStart),
           fix: `write \`%.now\` for ${TRANSACTION_MEMBERS.get("now")!.what}, or \`%.today\` for ${TRANSACTION_MEMBERS.get("today")!.what}`,
         });
+      else if (ctx.handlerBody) handlerScope(ctx, `%.${mark.name}`, mark.span.sourceStart);
       else called.add(member.fn);
       return;
     }
@@ -441,6 +468,11 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     }
     // `&name`: the record's member, whatever the function names a local (`self`): its stand-in `self` is no variable.
     if (ctx.members?.has(n)) {
+      if (ctx.handlerBody) {
+        const member = ctx.members.get(n)!;
+        handlerScope(ctx, `&${member.name}`, member.span.sourceStart);
+        return;
+      }
       names.record = true;
       return;
     }
@@ -463,7 +495,9 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
       const property = parent && (parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") && key === "property" && !parent.computed;
       const objectKey = parent && (parent.type === "ObjectProperty" || parent.type === "ObjectMethod" || parent.type === "ClassMethod" || parent.type === "ClassProperty") && key === "key" && !parent.computed;
       const label = parent && /^(LabeledStatement|BreakStatement|ContinueStatement)$/.test(parent.type) && key === "label";
-      if (!property && !objectKey && !label && SCOPE_NAMES.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
+      if (!property && !objectKey && !label && scopeRoots.has(n.name!) && !scope.has(n.name!)) roots.add(n.name!);
+      if (!property && !objectKey && !label && ctx.handlerBody && NOT_HANDLER_ROOTS.has(n.name!) && !scope.has(n.name!) && n.start !== undefined)
+        handlerScope(ctx, n.name!, start(n));
       // The file's `Mesh` import, where no binding of the function hides it: the expressions file imports `Mesh` under
       // that name, as it imports a helper, and a member it reads is one of Mesh's functions.
       if (!property && !objectKey && !label && isMeshImport(n.name!, ctx, (name) => scope.has(name))) {
@@ -501,7 +535,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
         }
       }
       // A scope name is the root wherever no scope of the function binds it, so an import of that name is not named here.
-      if (!property && !objectKey && !label && !scope.has(n.name!) && !SCOPE_NAMES.has(n.name!)) {
+      if (!property && !objectKey && !label && !scope.has(n.name!) && !scopeRoots.has(n.name!)) {
         if (entities.has(n.name!)) names.entities.add(n.name!);
         if (ctx.events?.has(n.name!) || ctx.commands?.has(n.name!)) names.events.add(n.name!);
         if (ctx.helpers.has(n.name!)) {
@@ -557,7 +591,7 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
     if (n.type === "NewExpression" && !ctx.publishStep) {
       const written = writtenReference(n.callee as N);
       const rootName = written?.qualifier?.name ?? written?.name;
-      if (written && rootName !== undefined && ctx.events?.has(rootName) && !scope.has(rootName) && !SCOPE_NAMES.has(rootName) && ctx.eventReference?.(written).ok !== false)
+      if (written && rootName !== undefined && ctx.events?.has(rootName) && !scope.has(rootName) && !scopeRoots.has(rootName) && ctx.eventReference?.(written).ok !== false)
         ctx.report({
           severity: "warning",
           code: "MESH_EVENT_NOT_PUBLISHED",
@@ -605,7 +639,15 @@ function freeVariables(fn: N, ctx: ConvertContext, called: Set<string>, names: N
   const own = scopeNames(fn) ?? new Set<string>();
   walk(fn.body, fn, "body", own);
   for (const p of fn.params ?? []) walk(p, fn, "params", own);
-  return [...SCOPE_NAMES].filter((name) => roots.has(name));
+  // A handler body destructures its roots from its one parameter: a key naming another function's root is out of its scope.
+  const param = (fn.params as N[] | undefined)?.[0];
+  if (ctx.handlerBody && param?.type === "ObjectPattern")
+    for (const property of (param.properties ?? []) as N[]) {
+      const key = property.type === "ObjectProperty" && !property.computed ? property.key as N | undefined : undefined;
+      const name = key?.type === "Identifier" ? key.name : key?.type === "StringLiteral" ? String(key.value) : undefined;
+      if (name !== undefined && NOT_HANDLER_ROOTS.has(name)) handlerScope(ctx, name, start(key!));
+    }
+  return [...scopeRoots].filter((name) => roots.has(name));
 }
 
 /**
@@ -1205,7 +1247,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   };
   const plain = (e: Plain): { plain: PlainReason; privilegedCalls?: SourcePosition[]; askCalls?: SourcePosition[]; publishTargets?: PublishTarget[] } => {
     // A parameter Mesh does not translate (`(s) => ({ n: s.self.n })`) binds no scope name, so the parts cannot be read on their own.
-    const object = e.why === "unsupported-parameter" ? undefined : objectParts();
+    const object = e.why === "unsupported-parameter" || e.why === "handler" ? undefined : objectParts();
     return {
       plain: { why: e.why, detail: e.detail, position: ctx.at(start(e.node) || span.sourceStart), edits, roots: free, ...clocked, ...named, ...((object ? hasDifferingOperator(object.rest) : hasDifferingOperator(f.body)) ? { operators: true as const } : {}), ...(object?.parts.length ? { parts: object.parts } : {}), ...(f.type === "FunctionExpression" ? { method: true as const } : {}) },
       // A function that names `privileged` is always plain (`uses-privileged`), so only a plain one carries the calls.
@@ -1224,7 +1266,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   const single = !statements ? written
     : f.type === "FunctionExpression" && statements.length === 1 && statements[0]!.type === "ReturnStatement" ? (statements[0]!.argument as N | undefined)
     : undefined;
-  if (single && !ctx.runStep && !ctx.publishStep && unwrapped(single)?.type !== "ObjectExpression")
+  if (single && !ctx.runStep && !ctx.publishStep && !ctx.handlerBody && unwrapped(single)?.type !== "ObjectExpression")
     for (const value of names.values ?? [])
       ctx.report({
         severity: "error",
@@ -1236,6 +1278,7 @@ export function translate(fn: SyntaxNode, span: { sourceStart: number; sourceEnd
   try {
     if (ctx.runStep) throw new Plain("run-step", "a run step is plain code", f);
     if (ctx.publishStep) throw new Plain("publish-step", "a publish step is plain code", f);
+    if (ctx.handlerBody) throw new Plain("handler", "a handler is plain code", f);
     // A function that reads through `Mesh.privileged` or names an entity is plain code as a whole, whatever else it does: what
     // it reads is not an expression over the record, so its `await` or its comparisons are no reason to warn.
     if (called.has("privileged")) throw new Plain("uses-privileged", "reads through `Mesh.privileged`", f);
