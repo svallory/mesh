@@ -24,7 +24,8 @@ describe("the outbox's channel and advisory-lock key", () => {
   });
   test("the key is two non-negative int4s, fixed per channel and different between channels", () => {
     const key = outboxLockKey("mesh_outbox");
-    expect(outboxLockKey("mesh_outbox")).toEqual(key);
+    // Pinned: a web process and a worker on different Mesh versions must take the same key, or the reader skips rows.
+    expect(key).toEqual([1293931385, 417342324]);
     for (const part of key) expect(Number.isInteger(part) && part >= 0 && part <= 0x7fffffff).toBe(true);
     expect(outboxLockKey("mesh_outbox_c1")).not.toEqual(key);
   });

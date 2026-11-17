@@ -306,9 +306,10 @@ describeServer("transient errors in delivery on Postgres", () => {
       const logged: string[] = [];
       console.error = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
       const delivery = await binding.startDelivery();
+      let killed = 0;
       try {
         await publish(binding, delivering, 1);
-        for (let i = 0; i < 3; i++) { await killReaders(); await Bun.sleep(120); }
+        for (let i = 0; i < 3; i++) { killed += await killReaders(); await Bun.sleep(120); }
         await publish(binding, delivering, 2);
         const end = Date.now() + 10_000;
         while (seen.length < 2 && Date.now() < end) await Bun.sleep(50);
@@ -316,6 +317,8 @@ describeServer("transient errors in delivery on Postgres", () => {
         await delivery.stop();
         console.error = errors;
       }
+      // The loop did kill the delivery's read connection at least once while it delivered.
+      expect(killed).toBeGreaterThan(0);
       expect(seen).toEqual([1, 2]);
       expect(stopped).toEqual([]);
       expect(logged.filter((line) => line.includes("MESH_HANDLER_STOPPED"))).toEqual([]);

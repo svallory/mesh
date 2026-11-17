@@ -170,7 +170,7 @@ describeServer("the claim's row lock", () => {
       // The round goes on to event 2, whose handler transaction waits behind the takeover; then the takeover commits.
       await lockWaiter(database.admin);
       releaseTakeover.open();
-      await taking.done;
+      const takenGeneration = await taking.done;
       const first = await round;
       expect("error" in first && first.error).toBeInstanceOf(DatabaseBusyError);
       expect((first as { error: DatabaseBusyError }).error).toMatchObject({ reason: "serialization", retryable: true });
@@ -183,6 +183,8 @@ describeServer("the claim's row lock", () => {
       expect(runs).toBe(1);
       const [progress] = await layer.transaction((tx) => ops(tx).readHandlerProgress());
       expect(progress).toMatchObject({ name: "h", position: 1 });
+      // The stale side registered nothing under the taker's generation.
+      expect(progress!.generation).toBeLessThan(takenGeneration);
     } finally {
       releaseFirst.open();
     }
