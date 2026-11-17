@@ -208,6 +208,44 @@ describe("where a concept file may be (OD4, R10)", () => {
     ]);
   });
 
+  test.each([["empty", ""], ["comment-only", "// nothing\n"]])("an %s file in a `concepts` folder is case b at the file and MESH_TAG_FILE_ERROR at each use", (_, text) => {
+    const r = build({ [`${D}concepts/C.mesh.mx`]: text, [`${D}a.mesh.mx`]: ENTITY("A", "    C :c\n") });
+    expect(codes(r)).toEqual(["a.mesh.mx:4 MESH_TAG_FILE_ERROR", "concepts/C.mesh.mx:1 MESH_CONCEPT_PLACE"]);
+    expect(said(r)[1]).toBe(
+      "concepts/C.mesh.mx:1:0 MESH_CONCEPT_PLACE concepts/C.mesh.mx is in a `concepts` folder, so it declares one concept, and it declares nothing: write `concept :C` and its field lines, or move the file out of the folder",
+    );
+    // Unused, it is still refused, in the concept wording and never as an entity file.
+    expect(codes(build({ [`${D}concepts/C.mesh.mx`]: text }))).toEqual(["concepts/C.mesh.mx:1 MESH_CONCEPT_PLACE"]);
+  });
+
+  test("case a moves a lower-case file under the declared name, and R5 offers only the rename", () => {
+    expect(said(build({ [`${D}billing/money.mesh.mx`]: "concept :Money\n  integer :x\n" }))).toEqual([
+      "billing/money.mesh.mx:1:0 MESH_CONCEPT_PLACE A concept file sits directly in a folder named `concepts`, where Mesh finds it: move billing/money.mesh.mx to billing/concepts/Money.mesh.mx",
+      "billing/money.mesh.mx:1:8 MESH_CONCEPT_NAME billing/money.mesh.mx declares `concept :Money`: a concept's name is its file name, so rename the file Money.mesh.mx",
+    ]);
+  });
+
+  test.each([
+    ["_/concepts/Money.mesh.mx", "MESH_GROUP_NAME"],
+    ["bad.seg/concepts/Money.mesh.mx", "MESH_MODULE_NAME"],
+  ])("a concept in %s takes its module from the folder above, so a bad folder is %s", (path, code) => {
+    expect(codes(build({ [`${D}${path}`]: MONEY }))).toEqual([`${path}:1 ${code}`]);
+  });
+
+  test("a scan diagnostic about a concept file the build does not read is not reported", () => {
+    expect(said(build({ "src/concepts/string.mesh.mx": "concept :string\n  integer :x\n", [`${D}a.mesh.mx`]: ENTITY("A") }))).toEqual([]);
+    const ignored = build({ [`${D}concepts/string.mesh.mx`]: "concept :string\n  integer :x\n", [`${D}a.mesh.mx`]: ENTITY("A") }, { ignored: [`${D}concepts/string.mesh.mx`] });
+    expect(said(ignored)).toEqual([]);
+    expect(ignored.document).not.toBeNull();
+  });
+
+  test("a use of a concept with errors outside the domain root is MESH_TAG_FILE_ERROR, with the file's error named at 1:0", () => {
+    // MX fails the use before the build sees a tree, so case c cannot be reported; the file's own error says where it is.
+    const r = build({ "src/concepts/Far.mesh.mx": "concept :Near\n  integer :x\n", [`${D}a.mesh.mx`]: ENTITY("A", "    Far :f\n") });
+    expect(codes(r)).toEqual(["a.mesh.mx:1 MESH_CONCEPT_NAME", "a.mesh.mx:4 MESH_TAG_FILE_ERROR"]);
+    expect(said(r)[0]).toContain("(in `src/concepts/Far.mesh.mx`)");
+  });
+
   test("a use of a concept the build does not read is MESH_CONCEPT_PLACE at the use (case c)", () => {
     const outside = build({ "src/concepts/Far.mesh.mx": "concept :Far\n  integer :x\n", [`${D}a.mesh.mx`]: ENTITY("A", "    Far :f\n") });
     expect(said(outside)).toEqual([

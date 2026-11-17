@@ -29,7 +29,7 @@ export const CONCEPT_USE: Omit<CustomTag, "parseOptions" | "template"> = Object.
 }) as Omit<CustomTag, "parseOptions" | "template">;
 
 /** A concept's name, as its use is written: a PascalCase line head (R6). */
-const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
+export const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
 /** The field kinds a concept cannot hold yet: JSON keeps no `Date` (OD5). */
 const DATE_TYPES: ReadonlySet<string> = new Set(["date", "datetime", "timestamp"]);
 /** The one name no member may take (`PROTOTYPE_SETTING_NAME` in `build.ts`, which this file must not import). */
@@ -59,6 +59,19 @@ export const conceptFileLabel = (path: string): string => {
 const pascal = (name: string) => name.replace(/^_+/, "").split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join("");
 
 /**
+ * The fix for a declared name that is not the file's (R5), offering only names that are themselves legal (R6): write the
+ * file's name when it is PascalCase, rename the file when the declared name is, and both otherwise.
+ */
+function nameFix(declared: string, tagName: string): string {
+  const file = (name: string) => `${name}${MESH_EXTENSIONS[0]}`;
+  if (PASCAL_CASE.test(tagName))
+    return PASCAL_CASE.test(declared) ? `write \`concept :${tagName}\` or rename the file ${file(declared)}` : `write \`concept :${tagName}\``;
+  if (PASCAL_CASE.test(declared)) return `rename the file ${file(declared)}`;
+  const fixed = pascal(declared) || pascal(tagName) || "Name";
+  return `name the file ${file(fixed)} and write \`concept :${fixed}\``;
+}
+
+/**
  * Everything wrong with a concept file that its IR alone shows (R1, R5, R6, R18, R19, OD5, OD9). `tagName` is the name
  * MX gives the tag, the file name less its extension; `path` names the file in a message. Only the root, the name and the
  * fields are checked: the placement and the imports need the build's view of the project (`buildConcept`).
@@ -67,7 +80,18 @@ export function conceptFileProblems(body: readonly IrNode[], tagName: string, pa
   const roots = tagsOf(body);
   const root = roots[0];
   const label = conceptFileLabel(path);
-  if (!root) return [];
+  // A file with no root (empty, or comments only) is still a concept file to MX: refused, so each use is
+  // `MESH_TAG_FILE_ERROR` and never a clean use of a concept the build cannot index.
+  if (!root) {
+    const hint = PASCAL_CASE.test(tagName)
+      ? `write \`concept :${tagName}\` and its field lines`
+      : `write \`concept :Name\` and its field lines in a file named Name${MESH_EXTENSIONS[0]}`;
+    return [{
+      code: "MESH_CONCEPT_PLACE",
+      message: `${label} is in a \`concepts\` folder, so it declares one concept, and it declares nothing: ${hint}, or move the file out of the folder`,
+      offset: 0,
+    }];
+  }
   if (root.name !== "concept") {
     const declared = nameOf(root)?.name;
     const suggestion = pascal(declared ?? tagName) || "Name";
@@ -84,7 +108,7 @@ export function conceptFileProblems(body: readonly IrNode[], tagName: string, pa
   if (named && named.name !== tagName)
     problems.push({
       code: "MESH_CONCEPT_NAME",
-      message: `${label} declares \`concept :${named.name}\`: a concept's name is its file name, so write \`concept :${tagName}\` or rename the file ${named.name}${MESH_EXTENSIONS[0]}`,
+      message: `${label} declares \`concept :${named.name}\`: a concept's name is its file name, so ${nameFix(named.name, tagName)}`,
       offset: named.offset,
     });
   else if (named && !PASCAL_CASE.test(named.name)) {

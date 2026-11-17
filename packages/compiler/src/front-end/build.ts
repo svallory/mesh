@@ -44,7 +44,7 @@ import {
   type Step,
 } from "@meshfw/model";
 import { RELATIONSHIP_KINDS, SYNTAX_MESSAGES } from "./contracts.ts";
-import { conceptFileLabel, conceptFileProblems } from "./concept-file.ts";
+import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-file.ts";
 import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
@@ -1651,7 +1651,10 @@ function buildConcept(
     const written = folder === "" ? basename(file) : `${folder}/${basename(file)}`;
     const segments = folder === "" ? [] : folder.split("/");
     const above = segments.lastIndexOf("concepts");
-    const moved = above >= 0 ? [...segments.slice(0, above + 1), basename(file)].join("/") : [...segments, "concepts", basename(file)].join("/");
+    // Under the declared name when that is a legal concept name, so the moved file does not fail R5 or R6.
+    const declared = atomOf(attr(root, "name"))?.name;
+    const target = declared !== undefined && PASCAL_CASE.test(declared) ? `${declared}${MESH_EXTENSIONS[0]}` : basename(file);
+    const moved = above >= 0 ? [...segments.slice(0, above + 1), target].join("/") : [...segments, "concepts", target].join("/");
     fail("MESH_CONCEPT_PLACE", `A concept file sits directly in a folder named \`concepts\`, where Mesh finds it: move ${written} to ${moved}`, root);
   }
   for (const entry of irImports)
@@ -1953,7 +1956,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
       return path;
     }
   };
-  // A scan diagnostic (a concept file named like a Mesh tag) comes with every file the scan covers: reported once a build.
+  // A scan diagnostic (a concept file named like a Mesh tag) comes with every file the scan covers: reported once a build,
+  // and only about a file the build reads (OD4: a concept file outside the domain root, or excluded by `ignore`, is not
+  // the build's, and a use of one is case c of `MESH_CONCEPT_PLACE`).
   const scanReported = new Set<string>();
   for (const [i, input] of project.files.entries()) {
     const path = resolved[i];
@@ -1972,6 +1977,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ...parsed.diagnostics.map((d) => meshDiagnostic(d, path.file, otherFile)),
     );
     for (const d of parsed.scanDiagnostics) {
+      if (otherFile(d.file).kind !== "project") continue;
       const key = `${d.file}\0${d.message}`;
       if (scanReported.has(key)) continue;
       scanReported.add(key);
@@ -2024,8 +2030,8 @@ export function buildModel(project: ProjectDescription): BuildResult {
       continue;
     }
     // A file directly in a `concepts` folder is a concept file to MX, whatever it declares: one that declares something
-    // else is `MESH_CONCEPT_PLACE` (case b, the hook's own message) and is not built.
-    if (inConceptsFolder(path.absolute) && roots.length > 0) {
+    // else, or nothing at all, is `MESH_CONCEPT_PLACE` (case b, the hook's own message) and is not built.
+    if (inConceptsFolder(path.absolute)) {
       for (const problem of conceptFileProblems(ir.body, tagNameOfFile(path.absolute), path.absolute))
         diagnostics.push(error(problem.code, problem.message, positionAt(input.source, file, problem.offset)));
       continue;
