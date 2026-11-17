@@ -117,6 +117,8 @@ describe("otherFileResolver", () => {
     ["relative with a dot", "./todo.mesh.mx"],
     ["a Windows drive path", "C:/project/src/domain/todo.mesh.mx"],
     ["a UNC path", "//server/share/todo.mesh.mx"],
+    ["that is the root itself", "/project"],
+    ["that climbs back to the root", "/project/src/.."],
   ])("a path %s is named as given", (_, path) => {
     expect(resolveOther(path)).toEqual({ kind: "unread", name: path });
   });

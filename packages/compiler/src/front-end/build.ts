@@ -1288,8 +1288,9 @@ export type OtherFile =
  * Looks up a path MX gives in `IrDiagnostic.file` among the project's entity files (`sources`, keyed by absolute path
  * under `rootPath` as given). MX gives absolute paths with the directories realpathed, so a path under the root's
  * realpath is rebased onto the root as given (on macOS `/tmp` is `/private/tmp`). A path inside the root that is not a
- * project file is named project-relative; a path outside the root, a relative one (no known producer: MX would resolve
- * it against a cwd the build cannot know) and a foreign absolute one are named as given.
+ * project file is named project-relative. The root itself (it has no project-relative name), a path outside the root,
+ * a relative one (no known producer: MX would resolve it against a cwd the build cannot know) and a foreign absolute
+ * one are named as given.
  */
 export function otherFileResolver(
   rootPath: string,
@@ -1309,7 +1310,10 @@ export function otherFileResolver(
       : null;
     if (absolute === null) return { kind: "unread", name: given };
     const hit = sources.get(absolute);
-    return hit ? { kind: "project", ...hit } : { kind: "unread", name: normalizePath(relative(rootPath, absolute)) };
+    if (hit) return { kind: "project", ...hit };
+    // The root itself has no project-relative name (`relative` gives ""), so it is named as given.
+    const name = normalizePath(relative(rootPath, absolute));
+    return { kind: "unread", name: name === "" ? given : name };
   };
 }
 
