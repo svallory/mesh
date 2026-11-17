@@ -206,6 +206,7 @@ export interface DataOperations {
   renameFailures?: FailureOperations["renameFailures"];
   /** Delivery from several processes; see `MultiProcessOperations`. Mandatory only when the bus declares `multi-process`. */
   lockDeliveryState?: MultiProcessOperations["lockDeliveryState"];
+  readDeliveryStateUnlocked?: MultiProcessOperations["readDeliveryStateUnlocked"];
   writeKeep?: MultiProcessOperations["writeKeep"];
   lockHandlerProgress?: MultiProcessOperations["lockHandlerProgress"];
   readHandlerLeases?: MultiProcessOperations["readHandlerLeases"];
@@ -487,11 +488,18 @@ export type LockedDeliveryState = DeliveryState & { readonly keep: "until-delive
  * checks them at the start and calls none of them otherwise, so a single-mode project runs on a schema without the
  * multi-process table and columns. A `lock*` operation takes the row's lock for the rest of the transaction (`FOR
  * UPDATE`; a plain read on SQLite, whose one writer holds every lock already). Every transaction that locks
- * `mesh_outbox_state` locks it before any progress row.
+ * `mesh_outbox_state` locks it before any progress row; a handler transaction and a lease take lock only the progress
+ * row, and read the claim with `readDeliveryStateUnlocked`.
  */
 export interface MultiProcessOperations {
   /** `mesh_outbox_state` as `readDeliveryState` reads it, plus the recorded `keep`, under the row's lock. */
   lockDeliveryState(): Promise<LockedDeliveryState>;
+  /**
+   * `mesh_outbox_state` as `readDeliveryState` reads it (created first), without the row's lock: the claim check of a
+   * handler transaction and the clock of a lease take, which must not wait for, or hold up, another process's
+   * registration, deletion batch or handler transaction (`readDeliveryState` is `FOR UPDATE` on Postgres).
+   */
+  readDeliveryStateUnlocked(): Promise<DeliveryState>;
   /** Record the `keep` in force on `mesh_outbox_state` (written by the first multi-mode start if the row is absent). */
   writeKeep(keep: "until-delivered" | "all"): Promise<void>;
   /** One handler's progress row under its lock, with its lease; undefined when it has none. */

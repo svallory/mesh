@@ -52,14 +52,17 @@ function stateOf(row: Record<string, unknown>): DeliveryState {
   });
 }
 
-/** `mesh_outbox_state` under its row lock (created first), with the highest position, the database's clock and `extra` columns. */
-async function lockedState(query: Query, sequence: () => Promise<string>, extra = ""): Promise<Record<string, unknown>> {
+/**
+ * `mesh_outbox_state` (created first), with the highest position, the database's clock and `extra` columns, under its
+ * row lock unless `lock` is false. `ON CONFLICT DO NOTHING` takes no lock on a row that exists.
+ */
+async function lockedState(query: Query, sequence: () => Promise<string>, extra = "", lock = true): Promise<Record<string, unknown>> {
   const seq = await sequence();
   await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through) VALUES (1, 0) ON CONFLICT (id) DO NOTHING`);
   const [row] = await query(
     `SELECT deleted_through, COALESCE(generation, 0) AS generation, run_id, renewed_at, host, pid, started_at, clock_timestamp() AS now,
             (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${seq}) AS highest${extra}
-     FROM ${OUTBOX_STATE_TABLE} WHERE id = 1 FOR UPDATE`,
+     FROM ${OUTBOX_STATE_TABLE} WHERE id = 1${lock ? " FOR UPDATE" : ""}`,
   );
   return row!;
 }
@@ -197,10 +200,12 @@ const LEASE_COLUMNS = "name, kind, position, events::text AS events, generation,
  * The delivery operations of multi mode on Postgres (`MultiProcessOperations`): the process rows, the leases on the
  * progress rows, the subscription owners and the recorded `keep`, each in the running transaction. `lockDeliveryState`
  * and `lockHandlerProgress` take `FOR UPDATE` on their row, so a takeover, a handler transaction and a deletion batch
- * of other connections wait for each other; at `SERIALIZABLE` the side that waited fails with `40001` when the other
- * changed the row (a `DatabaseBusyError`, reason `serialization`) and never reads the row as it was. The pass's
- * `moveHandler` and `moveSubscription` are one conditional `UPDATE` each. Only a project whose bus declares
- * `multi-process` calls them; on a schema without the table and columns each fails with a `FrameworkError` naming
+ * of other connections wait for each other. `readDeliveryStateUnlocked` (a handler transaction's claim check, a lease
+ * take's clock) takes no lock, so a handler transaction holds only its progress row while the handler runs. At
+ * `SERIALIZABLE` the side that waited fails with `40001` when the other changed the row (a `DatabaseBusyError`, reason
+ * `serialization`) and never reads the row as it was. The pass's `moveHandler` and `moveSubscription` are one
+ * conditional `UPDATE` each. Only a project whose bus declares `multi-process` calls them; on a schema without the table
+ * and columns each fails with a `FrameworkError` naming
  * `mesh db push`.
  */
 export function multiProcessOperations(query: Query, sequence: () => Promise<string>): MultiProcessOperations {
@@ -210,6 +215,7 @@ export function multiProcessOperations(query: Query, sequence: () => Promise<str
       const row = await lockedState(query, sequence, ", keep");
       return Object.freeze({ ...stateOf(row), keep: (row.keep as "until-delivered" | "all" | null) ?? null }) satisfies LockedDeliveryState;
     }),
+    readDeliveryStateUnlocked: () => exec(async () => stateOf(await lockedState(query, sequence, "", false))),
     writeKeep: (keep) => exec(async () => {
       await query(`INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, keep) VALUES (1, 0, $1) ON CONFLICT (id) DO UPDATE SET keep = excluded.keep`, [keep]);
     }),

@@ -34,7 +34,7 @@ export function isMultiProcess(bus: EventBus | undefined): boolean {
 }
 
 const MULTI_OPERATIONS = [
-  "lockDeliveryState", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
+  "lockDeliveryState", "readDeliveryStateUnlocked", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
   "readProcesses", "writeProcess", "renewProcess", "deleteProcess", "readSubscriptionOwners", "writeSubscriptionOwner",
 ] as const satisfies readonly (keyof MultiProcessOperations)[];
 
@@ -261,7 +261,7 @@ export class MultiClaim implements ClaimStrategy {
       try {
         taken = await this.deliverer.layer.transaction(async (tx) => {
           const ops = multiOperations(tx);
-          const state = await ops.readDeliveryState();
+          const state = await ops.readDeliveryStateUnlocked();
           const row = await ops.lockHandlerProgress(name);
           if (!row) return undefined;
           this.#unions.set(name, this.#declaredList(row.events));
@@ -440,7 +440,7 @@ export class MultiClaim implements ClaimStrategy {
   /** The lease check of a handler transaction (rules L3, L4): the nil claim, then the locked row's run id and generation. */
   async #lease(ops: MultiOps, handler: RegisteredHandler, position: number): Promise<{ lease: HandlerLeaseRow; state: DeliveryState }> {
     this.deliverer.live();
-    const state = await ops.readDeliveryState();
+    const state = await ops.readDeliveryStateUnlocked();
     if (state.claim?.runId !== NIL_RUN_ID) {
       const claim = state.claim;
       throw this.deliverer.lose(claim && !lapsed(claim, state.now)

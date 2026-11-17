@@ -68,7 +68,7 @@ export function multiProcessConformance(makeLayer: () => Promise<DataLayer>, opt
   const checks: Record<string, () => Promise<void>> = {
     "every multi-process operation is a function of the transaction's operations": withLayer((layer) => layer.transaction(async (tx) => {
       for (const name of [
-        "lockDeliveryState", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
+        "lockDeliveryState", "readDeliveryStateUnlocked", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
         "readProcesses", "writeProcess", "renewProcess", "deleteProcess", "readSubscriptionOwners", "writeSubscriptionOwner",
       ] as const) assert(typeof (tx as Partial<Ops>)[name] === "function", `the transaction has no ${name}`);
     })),
@@ -92,6 +92,13 @@ export function multiProcessConformance(makeLayer: () => Promise<DataLayer>, opt
         assert(locked.keep === "until-delivered", "writeKeep moves the keep either way");
         assert(locked.claim?.runId === NIL && locked.claim.generation === 4 && locked.generation === 4, "writeKeep leaves the claim as it is");
         assert(locked.claim.host === null && locked.claim.pid === null && locked.claim.startedAt === null, "a claim written with host: null keeps no host");
+      });
+      await layer.transaction(async (tx) => {
+        const unlocked = await ops(tx).readDeliveryStateUnlocked();
+        const plain = await ops(tx).readDeliveryState();
+        assert(unlocked.deletedThrough === plain.deletedThrough && unlocked.highest === plain.highest && unlocked.generation === plain.generation && same(unlocked.claim, plain.claim),
+          "readDeliveryStateUnlocked reads the row readDeliveryState reads");
+        assert(unlocked.now instanceof Date && !("keep" in unlocked), "readDeliveryStateUnlocked carries the database's now and no keep");
       });
     }),
     "a lease round-trips: lockHandlerProgress and readHandlerLeases read what writeHandlerLease wrote, and readHandlerProgress the same row without it": withLayer(async (layer) => {
@@ -314,6 +321,59 @@ export function multiProcessConformance(makeLayer: () => Promise<DataLayer>, opt
       const state = await first.transaction((tx) => ops(tx).lockDeliveryState());
       assert(state.deletedThrough === top, `the batch deleted past the subscription's position ${top}, through ${state.deletedThrough}`);
       assert(later > top, "a later row has a higher position");
+    });
+    checks["[two connections] readDeliveryStateUnlocked takes no lock: a handler transaction holding its progress row does not hold up a registration's lockDeliveryState, nor waits for one"] = withTwo(async (first, second) => {
+      await first.transaction(async (tx) => {
+        await ops(tx).lockDeliveryState();
+        await ops(tx).writeHandlerLease({ name: "notify", kind: "process", position: 3, events: ["a.A"], generation: 1, runId: RUN_A });
+      });
+      // the handler transaction: the claim check (L3), the progress row locked and moved, then the handler runs
+      const handler = holding(first, async (o) => {
+        await o.readDeliveryStateUnlocked();
+        const row = await o.lockHandlerProgress("notify");
+        await o.writeHandlerLease({ ...row!, position: 7 });
+      });
+      await handler.held;
+      try {
+        const registration = settled(second.transaction(async (tx) => (await ops(tx).lockDeliveryState()).generation));
+        assert(!(await waits(registration)), "a lockDeliveryState waited for a handler transaction that read the state row with readDeliveryStateUnlocked");
+        const registered = await registration;
+        assert(registered.error === undefined, `the lockDeliveryState beside a handler transaction failed with ${String(registered.error)}`);
+      } finally {
+        handler.release();
+        await handler.done;
+      }
+      // the other way round: a registration holds the state row, and a handler transaction's claim check reads it
+      const registering = holding(second, async (o) => { await o.lockDeliveryState(); });
+      await registering.held;
+      try {
+        const read = settled(first.transaction((tx) => ops(tx).readDeliveryStateUnlocked()));
+        assert(!(await waits(read)), "readDeliveryStateUnlocked waited for another connection's lockDeliveryState");
+        const { value, error } = await read;
+        assert(error === undefined && value!.now instanceof Date && typeof value!.generation === "number", `readDeliveryStateUnlocked beside a lock failed with ${String(error)}`);
+      } finally {
+        registering.release();
+        await registering.done;
+      }
+      assert((await first.transaction((tx) => ops(tx).lockHandlerProgress("notify")))?.position === 7, "the handler transaction's move stands");
+    });
+    checks["[two connections] a deletion batch's moveSubscription concurrent with the subscription's ack moves nothing and never lowers the position"] = withTwo(async (first, second) => {
+      await first.transaction((tx) => ops(tx).writeSubscriptionOwner({ name: "feed", position: 3, filter: {}, open: true, generation: 0, runId: RUN_A }));
+      // the ack moves the row from 3 to 12 and holds it; the batch read 3 before it and waits
+      const ack = holding(first, async (o) => {
+        const row = (await o.readSubscriptionOwners()).find((each) => each.name === "feed")!;
+        await o.writeSubscriptionOwner({ name: row.name, position: 12, filter: row.filter, open: row.open, generation: row.generation, runId: row.runId });
+      });
+      await ack.held;
+      const batch = settled(second.transaction((tx) => ops(tx).moveSubscription("feed", 3, 9)));
+      assert(await waits(batch), "the batch's moveSubscription ran while the subscription's ack held the row");
+      ack.release();
+      await ack.done;
+      const { value, error } = await batch;
+      busyOrNothing(error, "the batch");
+      assert(error !== undefined || value === false, "the batch's moveSubscription moved a row the ack had moved since");
+      const after = (await second.transaction((tx) => ops(tx).readSubscriptionOwners())).find((each) => each.name === "feed");
+      assert(after?.position === 12 && after.runId === RUN_A, `the ack's position stands, got ${JSON.stringify(after)}`);
     });
   }
   const singleLayer = options.singleLayer;
