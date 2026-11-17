@@ -513,7 +513,8 @@ export interface DataLayer {
   /**
    * Optional. Calls `listener` after a transaction that appended to the outbox commits, in this process or in any other
    * on the same database, and never for a rollback. Best effort: a call can be late, repeated or, while the adapter
-   * reconnects, missed, so a bus that relies on it keeps a poll. Returns the unsubscribe. data-sqlite leaves it out.
+   * reconnects, missed, so a bus that relies on it keeps a poll. Returns the unsubscribe. data-postgres implements it
+   * with LISTEN/NOTIFY; data-sqlite leaves it out.
    */
   onAppended?(listener: () => void): () => void;
   /** Release the adapter's connection and other owned handles. Rejects while

@@ -8,6 +8,7 @@ import { deliveryOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
 import { appendEvent, deleteOutboxThrough, OutboxReader, outboxChannel, outboxLockKey, outboxSequence, type Appender, type Query } from "./outbox.ts";
+import { AppendedListeners } from "./wakeup.ts";
 
 /**
  * What this adapter supports beyond the mandatory set, as static data (ADR-0013). No `gapless-positions`: on Postgres
@@ -54,6 +55,17 @@ export interface PostgresLayer extends DataAdapter, DataLayer {
    * never below a row a read returned. Refused inside a transaction.
    */
   readOutbox: OutboxOperations["readOutbox"];
+  /**
+   * Calls `listener` after a transaction that appended to this layer's outbox commits, in this process or another
+   * (each appending transaction sends one `NOTIFY` on the channel `mesh_outbox`, which Postgres delivers after the
+   * commit and never after a rollback). The first listener starts a `LISTEN` on a connection Bun.SQL keeps for it
+   * (opening the pool if needed), the last unsubscribe stops it, and close() stops it while keeping the listeners, so
+   * it starts again when the layer opens again. Best effort: a `LISTEN` that fails is reported once with
+   * `console.error` and retried after 1 s, doubling to 30 s, while listeners remain; a dropped connection is reopened
+   * by Bun.SQL (which prints a line of its own for each attempt that fails while the server is down) and then wakes
+   * every listener; a listener that throws is reported and the others still run. A bus keeps its poll.
+   */
+  onAppended(listener: () => void): () => void;
 }
 
 /** Internal settings of one layer; `postgres()` uses the defaults. Not exported from the package: tests use it. */
@@ -123,7 +135,8 @@ export function databaseName(url: string | undefined): string | undefined {
   }
 }
 
-const SCHEMA_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
+/** At most 51 bytes, so the NOTIFY channel `mesh_outbox_<schema>` fits Postgres's 63-byte names. */
+const SCHEMA_NAME = /^[a-z_][a-z0-9_]{0,50}$/;
 
 function describeValue(value: unknown): string {
   if (typeof value === "string") return JSON.stringify(value);
@@ -140,7 +153,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   if (typeof options !== "object" || options === null || (options.url !== undefined && typeof options.url !== "string")) {
     throw new FrameworkError(`postgres requires { url }: a postgres:// URL string, or undefined while it is not configured; got ${describeValue(options)}`);
   }
-  if (tuning.schema !== undefined && !SCHEMA_NAME.test(tuning.schema)) throw new FrameworkError(`A test schema must be a lowercase identifier, not ${JSON.stringify(tuning.schema)}`);
+  if (tuning.schema !== undefined && !SCHEMA_NAME.test(tuning.schema)) throw new FrameworkError(`A test schema must be a lowercase identifier of at most 51 bytes (its NOTIFY channel mesh_outbox_<schema> must fit Postgres's 63), not ${JSON.stringify(tuning.schema)}`);
   const configured: PostgresOptions = Object.freeze({ url: options.url });
   const defaultWaitMs = tuning.waitMs ?? DEFAULT_WAIT_MS;
   const named = databaseName(configured.url);
@@ -148,8 +161,9 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   /** What messages name before a URL can be read. */
   const label = database ?? "postgres (no readable url)";
   let pool: BunSQL | undefined;
-  /** The key every appender of this layer's outbox holds shared until it ends (the reader rule). */
-  const lockKey = outboxLockKey(outboxChannel(tuning.schema));
+  /** The channel every appender of this layer's outbox notifies, and the key it holds shared until it ends (the reader rule). */
+  const channel = outboxChannel(tuning.schema);
+  const lockKey = outboxLockKey(channel);
   /** The outbox's sequence, resolved on the first outbox call; forgotten by close(). */
   let sequenceName: string | undefined;
   let reader = new OutboxReader(lockKey);
@@ -167,16 +181,29 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     return configured.url;
   };
 
-  /** The pool, made on first use: one connection for the running transaction, two more for the outbox reader and LISTEN. */
+  /**
+   * The pool, made on first use: one connection for the running transaction and one for the outbox reader. The
+   * `LISTEN` is not in it: Bun.SQL's `listen()` opens a dedicated connection of its own (shared by every `listen()` of
+   * this pool), so a third pool connection would serve nothing.
+   */
   const open = (): BunSQL => {
     if (pool) return pool;
     const target = url("postgres");
     // Bun's connect timeout is in seconds and 30 by default; bounded by the layer's lock wait, a connect that never
     // answers ends soon after the job that asked for it gave up (`reserveWithin`), so close() is not held by it.
-    try { pool = new BunSQL(target, { max: 3, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
+    try { pool = new BunSQL(target, { max: 2, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
     catch (cause) { throw mapPostgresError(cause, label, "connect"); }
+    // Listeners kept across close() listen again on the new pool.
+    appended.resume();
     return pool;
   };
+
+  /** The wake-ups: one `LISTEN` on the layer's channel while a listener is registered. */
+  const appended = new AppendedListeners(async (onNotify, onListen) => {
+    const current = open();
+    try { return await current.listen(channel, () => { onNotify(); }, onListen); }
+    catch (cause) { throw mapPostgresError(cause, label, "connect"); }
+  });
 
   /** Runs one statement of a running transaction, mapping its failure and recording it, since Postgres has aborted the transaction. */
   const statement = (conn: Connection, failed: (cause: unknown) => void) => async <T>(run: () => T | Promise<T>): Promise<T> => {
@@ -215,7 +242,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       const { db } = conn;
       const query: Query = async (text, params) => { guard(); return await run(() => conn.reserved.unsafe(text, params as unknown[] | undefined)); };
       const sequence = async () => sequenceName ??= await outboxSequence(query);
-      const appender: Appender = { query, key: lockKey, sequence, prepared: false };
+      const appender: Appender = { query, key: lockKey, channel, sequence, prepared: false };
       const entities = refuseJsonFilters(drizzleOperations({
         dialect: postgresDialect,
         table: entityTable,
@@ -316,10 +343,12 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       return read;
     },
     refuseIfFailed: () => queue.refuseIfFailed(),
+    onAppended: (listener) => appended.add(listener),
     async close() {
       const { running, queued } = queue.counts();
       if (running || queued) throw new FrameworkError(`Cannot close Postgres data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
       await reading;
+      await appended.stop();
       const closing = pool;
       pool = undefined;
       readConnection?.release();

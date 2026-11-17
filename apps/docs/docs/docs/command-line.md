@@ -24,7 +24,7 @@ mesh <command> [options]
 | `mesh build --check` | The guard: rebuilds in memory, writes nothing, fails on any difference with what is committed |
 | `mesh inspect [entity]` | Prints the model as JSON, with the source position of every declaration. `entity` may be shortened to the fewest qualifiers that pick one entity |
 | `mesh explain <entity> <action>` | Prints the plan that action's handler follows. `entity` may be shortened the same way |
-| `mesh db push [--force]` | Pushes the schema straight to the database. Development only. The SQLite adapter adds this command; a change that would lose data needs `--force`. An adapter's command never takes a core command's word |
+| `mesh db push [--force]` | Pushes the schema straight to the database. Development only. Both SQL adapters, SQLite and Postgres, add this command; a change that would lose data needs `--force`, and on Postgres a `public` schema that holds objects the project does not declare is refused. An adapter's command never takes a core command's word |
 | `mesh migrate generate [--allow <change>]` | Writes a SQL migration into `migrations/` |
 | `mesh migrate apply` | Applies the migrations that have not been applied |
 | `mesh events forget <name>` | Drops the progress row of a handler, or the row of a subscription, that no longer runs, so it stops holding outbox rows; see [events forget](#events-forget) |
