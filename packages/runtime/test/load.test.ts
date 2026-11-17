@@ -960,6 +960,19 @@ describe("a has-many through a link entity", () => {
         .rejects.toThrow("count :courseRollup of=&courses on Student reaches Enrollment, whose read policy reads the record");
       expect(calls).toEqual([]);
     });
+    test("a far entity whose read policy reads the record is refused too, behind an open link, before any query", async () => {
+      const { tx, calls, handle } = data();
+      const base = school(handle);
+      const literal: ConditionLiteral<unknown> = { what: "policy :credited authorize-if", entity: "Course",
+        tree: { kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "id", class: "string" }, { kind: "value", value: "c11", class: "string" }] }, params: () => [] };
+      const record: PolicySpec = { name: "credited", when: null, checks: [{ kind: "authorize-if", check: "() => &id", record: true,
+        run: (() => { throw new Error("folded, never run"); }) as never, sql: () => literal as never }] };
+      const open: PolicySpec = { name: "p", when: null, checks: [{ kind: "authorize-if", check: "() => true", record: false, run: (() => true) as never }] };
+      const policed = { ...base, Enrollment: { ...base.Enrollment!, reads: [open] }, Course: { ...base.Course!, reads: [record] } } as LoadPlan;
+      await expect(loadRows(policed, "Student", tx, [{ id: "s1" }], ["courseRollup"], { policies: true }))
+        .rejects.toThrow("count :courseRollup of=&courses on Student reaches Course, whose read policy reads the record");
+      expect(calls).toEqual([]);
+    });
   });
 
   describe("loadInto", () => {

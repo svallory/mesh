@@ -440,6 +440,19 @@ describe("rollups and bodies", () => {
     })]);
   });
 
+  test("a rollup over a through whose far entity alone has a read policy that reads the record is refused, naming it", () => {
+    const result = school({
+      student: computed("count :courseCount of=&courses"),
+      enrollment: enrollment(undefined, "  actions auto=[:read]\n  policies\n    policy :open types=[:read]\n      authorize-if=({ actor }) => actor.id !== null\n"),
+      course: course("  policies\n    policy :credited types=[:read]\n      authorize-if=() => &credits > 0\n"),
+    });
+    expect(result.diagnostics.map(brief)).toEqual([expect.objectContaining({
+      code: "MESH_NOT_IMPLEMENTED",
+      message: "count :courseCount reaches app.Course, whose read policy :credited reads the record; a rollup restricted row by row arrives with M10's SQL rollups, and only a count or max over one has-many or has-one runs under such a policy now",
+      at: "app/student.mesh.mx:9:4",
+    })]);
+  });
+
   test("a body reads the list of far records, and needs the relationship alone", () => {
     const result = school({ student: computed("integer :courseCount() { return &courses.length }\n    integer :heavy() { return &courses.filter((c) => c.credits > 5).length }") });
     expect(result.diagnostics).toEqual([]);
