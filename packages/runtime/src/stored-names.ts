@@ -43,10 +43,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+/** What a value that is no event name is, for the message (`value` is never a non-blank string). */
 function kindOf(value: unknown): string {
   if (value === null) return "null";
+  if (value === undefined) return "undefined";
   if (Array.isArray(value)) return "an array";
-  if (typeof value === "string") return "an empty string";
+  if (typeof value === "string") return value === "" ? "an empty string" : "a blank string";
   return typeof value === "object" ? "an object" : `a ${typeof value}`;
 }
 

@@ -37,6 +37,8 @@ describe("renamedMap", () => {
     ["a class instance", new Map([["a", "b"]]), "`events.renamed` must be an object"],
     ["a number value", { "billing.InvoicePaid": 3 }, "`events.renamed` maps \"billing.InvoicePaid\" to a number: each value names a declared event"],
     ["an empty value", { "billing.InvoicePaid": "" }, "`events.renamed` maps \"billing.InvoicePaid\" to an empty string: each value names a declared event"],
+    ["a blank value", { "billing.InvoicePaid": "  " }, "`events.renamed` maps \"billing.InvoicePaid\" to a blank string: each value names a declared event"],
+    ["an undefined value", { "billing.InvoicePaid": undefined }, "`events.renamed` maps \"billing.InvoicePaid\" to undefined: each value names a declared event"],
     ["an empty key", { "": "finance.InvoicePaid" }, "`events.renamed` has an empty key: each key is a former event FQN"],
     ["a declared key", { "finance.InvoicePaid": "audit.Viewed" }, "`events.renamed` maps \"finance.InvoicePaid\", which is a declared event: each key is a former FQN that no event declares now"],
     ["an unknown value", { "billing.InvoicePaid": "finance.InvoicePayed" }, "`events.renamed` maps \"billing.InvoicePaid\" to \"finance.InvoicePayed\", which is no declared event; the project declares audit.InvoiceVoided, audit.Viewed, billing.v2.InvoiceVoided, finance.InvoicePaid"],

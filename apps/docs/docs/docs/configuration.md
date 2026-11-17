@@ -173,7 +173,7 @@ events: {
 
 [Events](./events.md#delivering-from-several-processes) says what changes.
 
-The build checks the section: a project that declares an event with no `bus`, a `bus` that is not an event-bus descriptor (a manifest naming the adapter and its capabilities from the closed list, and a `create` function), a `requires` entry that is no capability, a `renamed` that is not an object of names, whose key is a declared event or whose value names no declared event or more than one, any other field, a `keep` that is neither value, or a `load` that is not a function fails it with `MESH_EVENTS_CONFIG`; `bind(layer, { events })` refuses a bad `renamed` with the same message. The build reads the bus's manifest and never starts it. [Events](./events.md) explains the outbox, the bus, handlers and the events module.
+The build checks the section: a project that declares an event with no `bus`, a `bus` that is not an event-bus descriptor (a manifest naming the adapter and its capabilities from the closed list, and a `create` function), a `requires` entry that is no capability, a `renamed` that is not an object of names, whose key is a declared event or whose value names no declared event or more than one, a non-empty `renamed` in a project that declares no event, any other field, a `keep` that is neither value, or a `load` that is not a function fails it with `MESH_EVENTS_CONFIG`, each problem reported. When the domain declares an event, `bind(layer, { events })` checks `renamed` too and throws the first of those problems as `EventsConfigError`. The build reads the bus's manifest and never starts it. [Events](./events.md) explains the outbox, the bus, handlers and the events module.
 
 ## Enabling extensions
 
