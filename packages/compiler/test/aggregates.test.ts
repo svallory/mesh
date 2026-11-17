@@ -167,6 +167,34 @@ describe("the aggregate in the model", () => {
   });
 });
 
+describe("the aggregate's owner sections", () => {
+  test("an inline command of the aggregate is answered by an entity's `on=`", () => {
+    const result = build({
+      "work/task-aggregate.mesh.mx": aggregate({ sections: "  commands\n    command :ReopenTask\n      uuid :id\n" }),
+      ...QUIET,
+      "work/task.mesh.mx": 'import { ReopenTask } from "./task-aggregate.mesh.mx"\nentity :Task\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n    update on=ReopenTask\n',
+    });
+    expect(errors(result)).toEqual([]);
+    const task = result.document!.entities.find((e) => e.name === "Task")!;
+    expect(task.actions.find((a) => a.name === "reopenTask")!.command).toMatchObject({ fqn: "work.ReopenTask" });
+  });
+
+  test("a listing repeated through an alias, and an inline name taken twice, name the aggregate (R9b)", () => {
+    const result = build({
+      "work/task-aggregate.mesh.mx": aggregate({
+        imports: 'import { Task } from "./task.mesh.mx"\nimport { Dependency } from "./dependency.mesh.mx"\nimport * as talk from "./comment.mesh.mx"\nimport { TaskReopened as R } from "./reopened.mesh.mx"\nimport * as r from "./reopened.mesh.mx"\n',
+        sections: "  events\n    R\n    r.TaskReopened\n    event :Closed\n  commands\n    command :Closed\n",
+      }),
+      "work/reopened.mesh.mx": "event :TaskReopened\n  uuid :taskId\n",
+      ...QUIET,
+    });
+    expect(errors(result)).toEqual([
+      at(13, 4, "MESH_DUPLICATE_MEMBER", "r.TaskReopened is listed twice in the events section of work.TaskAggregate", "remove one"),
+      at(16, 4, "MESH_DUPLICATE_ENTITY", "Duplicate name Closed in work/task-aggregate.mesh.mx: the event Closed and the command Closed would be one class name work.Closed", "rename one"),
+    ]);
+  });
+});
+
 describe("what a root or a part line may name", () => {
   test.each([
     ["the root listed as a part (OD4b)", "    Task\n", "", [at(5, 4, "MESH_AGGREGATE_PART", "work.Task is the root of work.TaskAggregate, so it is not one of its parts", "remove the line")]],
@@ -322,7 +350,7 @@ describe("aggregate owners publish (R13)", () => {
   test("the root and every part publish the aggregate's event; a third entity is MESH_PUBLISH, naming the aggregate with its root and parts", () => {
     expect(errors(build({ "work/other.mesh.mx": OTHER }))).toEqual([
       ["work/other.mesh.mx", 8, 26, "MESH_PUBLISH", "`TaskReopened` is work.TaskReopened, which work.TaskAggregate (root work.Task, parts work.Dependency, work.Comment) lists in its `events` section, and work.Other is not one of its owners: an action publishes only events its owner lists, or events no owner lists",
-        "list it in the `events` section of work.Other, or publish it from an action of work.TaskAggregate (root work.Task, parts work.Dependency, work.Comment)"],
+        "list it in the `events` section of work.Other, or publish it from an action of the root or a part of work.TaskAggregate (root work.Task, parts work.Dependency, work.Comment)"],
     ]);
   });
 
@@ -355,6 +383,28 @@ describe("aggregate owners publish (R13)", () => {
       ["work.TaskAggregate", "part", 7], ["work.DependencyAggregate", "root", 4], ["work.Talk", "part", 6],
     ]);
     expect(of("work.Task").map((m) => [m.aggregate, m.role])).toEqual([["work.TaskAggregate", "root"], ["work.DependencyAggregate", "part"]]);
+  });
+
+  test("an event with a file of its own that the aggregate lists: the root and the parts publish it, a third entity is refused", () => {
+    const own = 'import { TaskReopened } from "./task-reopened.mesh.mx"\n';
+    const swap = (source: string) => source.replace(REOPENED, own);
+    const project = {
+      "work/task-reopened.mesh.mx": "event :TaskReopened\n  uuid :taskId\n",
+      "work/task-aggregate.mesh.mx": aggregate({ imports: 'import { Task } from "./task.mesh.mx"\nimport { Dependency } from "./dependency.mesh.mx"\nimport * as talk from "./comment.mesh.mx"\n' + own, sections: "  events\n    TaskReopened\n" }),
+      "work/task.mesh.mx": swap(TASK), "work/dependency.mesh.mx": swap(DEPENDENCY), "work/comment.mesh.mx": swap(COMMENT),
+    };
+    const members = build(project);
+    expect(errors(members)).toEqual([]);
+    expect(members.document!.aggregates![0]!.events).toEqual([expect.objectContaining({ fqn: "work.TaskReopened" })]);
+    expect(errors(build({ ...project, "work/other.mesh.mx": swap(OTHER) })).map((d) => [d[0], d[3]])).toEqual([["work/other.mesh.mx", "MESH_PUBLISH"]]);
+  });
+
+  test("a root line that names no entity admits nothing for that entity; the parts still publish", () => {
+    const result = build({ "work/task-aggregate.mesh.mx": aggregate({ imports: 'import { Dependency } from "./dependency.mesh.mx"\nimport * as talk from "./comment.mesh.mx"\n' }) });
+    expect(errors(result).map((d) => [d[0], d[3]])).toEqual([
+      ["work/task-aggregate.mesh.mx", "MESH_UNKNOWN_ENTITY"],
+      ["work/task.mesh.mx", "MESH_PUBLISH"],
+    ]);
   });
 
   test("not checked when a file did not parse (R16, OD14)", () => {

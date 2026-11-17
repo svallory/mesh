@@ -66,7 +66,7 @@ export function checkPublishSteps(
         diagnostics.push(error("MESH_PUBLISH",
           `\`${target.identifier}\` is ${fqn}, which ${listers} ${one ? "lists in its" : "list in their"} \`events\` section, and ${entity.fqn} is not one of its owners: an action publishes only events its owner lists, or events no owner lists`,
           target.position,
-          `list it in the \`events\` section of ${entity.fqn}, or publish it from an action of ${one ? listers : `one of ${listers}`}`));
+          `list it in the \`events\` section of ${entity.fqn}, or publish it from an action of ${one ? allowed.publishers[0] : `one of ${allowed.publishers.join(", ")}`}`));
       }
     }
   };

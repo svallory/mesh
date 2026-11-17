@@ -32,16 +32,21 @@ export function ownersOf(document: ModelDocument): Owners {
 /**
  * Whether an action of the entity `entityFqn` may publish the event `eventFqn`: the entity is one of the event's owners,
  * or the root or a part of an aggregate that owns it (`membership`, `aggregatesOf`), or the event has no owner. `owners`
- * lists every owner otherwise, entities by FQN and aggregates as a message names them.
+ * lists every owner otherwise, entities by FQN and aggregates as a message names them, and `publishers` what may publish
+ * for each, in the same order: an entity, or the root or a part of an aggregate.
  */
 export function mayPublish(
   owners: Owners,
   membership: (entityFqn: string) => readonly AggregateMembership[],
   entityFqn: string,
   eventFqn: string,
-): { ok: true } | { ok: false; owners: string[] } {
+): { ok: true } | { ok: false; owners: string[]; publishers: string[] } {
   const entry = owners.get(eventFqn);
   if (!entry || entry.entities.has(entityFqn)) return { ok: true };
   if (membership(entityFqn).some(({ aggregate }) => entry.aggregates.has(aggregate))) return { ok: true };
-  return { ok: false, owners: [...entry.entities, ...entry.aggregates.values()].sort() };
+  // An aggregate has no actions: what may publish its event is its root or one of its parts.
+  const listed = [...entry.entities].map((fqn) => [fqn, fqn] as const)
+    .concat([...entry.aggregates.values()].map((label) => [label, `the root or a part of ${label}`] as const))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return { ok: false, owners: listed.map(([owner]) => owner), publishers: listed.map(([, publisher]) => publisher) };
 }
