@@ -5,10 +5,11 @@ import { forgetSubscription, listSubscriptions, markNoDeliver, setDeliveryTiming
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, ForbiddenError, FrameworkError,
-  HandlerOptionError, HandlerStoppedError, SubscriptionOverflowError, type StoppedHandler,
+  HandlerLostError, HandlerOptionError, HandlerStoppedError, SubscriptionOverflowError, type StoppedHandler,
 } from "./errors.ts";
 import { publishEvent, type EventRecord, type EventsConfig, type EventsModule } from "./events.ts";
 import type { ActionContext } from "./index.ts";
+import { multiProcessChecks, type MultiProcessFixture } from "./bus-multi-process.ts";
 
 /**
  * The event-bus conformance suite (spec, Events and commands, "The event-bus contract", "Conformance"), and `testBus`, the
@@ -34,7 +35,9 @@ const PAGE = 100;
 /**
  * A bus that does what every bus must and nothing more: a round feeds each handler from its own cursor, in position
  * order, through core's retry path, then each subscription from its own cursor, then runs the deletion pass. After
- * `start()` a round runs at once, after each commit that published in this process, and every `pollMs`.
+ * `start()` a round runs at once, after each commit that published in this process, and every `pollMs`. A handler this
+ * process no longer holds (`MESH_HANDLER_LOST`, delivery from several processes) ends for the round and is not reported;
+ * the other handlers go on. It declares `multi-process` when `capabilities` lists it.
  */
 export function testBus(options: TestBusOptions = {}): EventBus {
   const capabilities = Object.freeze([...(options.capabilities ?? ["ordered-delivery", "replay", "subscribe"])]);
@@ -54,17 +57,22 @@ export function testBus(options: TestBusOptions = {}): EventBus {
       const round = async (): Promise<void> => {
         const stopped: StoppedHandler[] = [];
         for (const handler of core.handlers) {
-          let cursor = await core.position(handler);
-          handled: for (;;) {
-            const page = await core.rows(cursor, PAGE);
-            for (const row of page.rows) {
-              if (core.lists(handler, row)) {
-                const stop = await core.retry(handler, row, retryDelays);
-                if (stop) { stopped.push(stop); break handled; }
+          try {
+            let cursor = await core.position(handler);
+            handled: for (;;) {
+              const page = await core.rows(cursor, PAGE);
+              for (const row of page.rows) {
+                if (core.lists(handler, row)) {
+                  const stop = await core.retry(handler, row, retryDelays);
+                  if (stop) { stopped.push(stop); break handled; }
+                }
+                cursor = row.position;
               }
-              cursor = row.position;
+              if (page.rows.length < PAGE) break;
             }
-            if (page.rows.length < PAGE) break;
+          } catch (error) {
+            // This process no longer holds the handler (multi-process): that handler ends for the round, unreported.
+            if (!(error instanceof HandlerLostError)) throw error;
           }
         }
         for (const subscription of core.subscriptions()) {
@@ -129,6 +137,11 @@ export interface BusConformanceFixture {
   frame(): AsyncFrame;
   /** The bus under test, built with the suite's retry schedule and polling interval. */
   bus(settings: { readonly retryDelays: readonly number[]; readonly pollMs: number }): EventBus;
+  /**
+   * Delivery from several processes: file databases and worker processes. The "multi-process" group runs when this is
+   * set and the bus declares `multi-process`; `makeLayer` then returns databases built for such a bus too.
+   */
+  readonly multiProcess?: MultiProcessFixture;
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -379,7 +392,9 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       assert(state.deletedThrough === (world.keep === "all" ? 0 : 3), `deleted through ${state.deletedThrough}`);
     });
 
-    add("a row whose name matches no declared event stops every handler there, and is never deleted", async (world) => {
+    // Single mode only: in delivery from several processes a handler's union keeps the events an earlier registration
+    // listed, so a row of one of them yields the handler instead (rule R2(b)); the group "multi-process" checks that.
+    if (!declares.has("multi-process")) add("a row whose name matches no declared event stops every handler there, and is never deleted", async (world) => {
       const before = world.bind({ handlers: { process: { a: world.recorder("a", [Alpha]), b: world.recorder("b", [Beta]) } } });
       await before.deliver();
       const [, renamed] = await world.publish(before, [Alpha, 1], [Beta, 2], [Alpha, 3]);
@@ -654,6 +669,9 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       try { for (let i = 0; i < 3; i++) await after.deliver(); } finally { console.warn = warn; }
       const reports = lines.filter((line) => line.includes('"gone"'));
       assert(reports.length === 1 && reports[0]!.includes("mesh events forget gone"), `reports: ${JSON.stringify(lines)}`);
+      // In delivery from several processes a row is an orphan only when no live process registers it (rule K5).
+      const why = declares.has("multi-process") ? "is registered by no live process" : "is not registered by this deliverer";
+      assert(reports[0]!.includes(why), `the report says the handler ${why}: ${reports[0]}`);
     });
 
     // ---- replay ----
@@ -871,7 +889,8 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         await (await subscribe(binding, { name: "s" }, () => {})).close();
       });
 
-      add("subscribe in a process whose database another process's live claim holds is a FrameworkError naming it, and writes no row", async (world) => {
+      // Single mode only: a subscription opens in every process that delivers from several processes (rule S1).
+      if (!declares.has("multi-process")) add("subscribe in a process whose database another process's live claim holds is a FrameworkError naming it, and writes no row", async (world) => {
         setDeliveryTiming({ lapseMs: 150 });
         const binding = world.bind({});
         await world.layer.transaction(async (tx) => {
@@ -937,6 +956,10 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         assert(cause instanceof DelivererLostError, `the stream ended with ${String(cause)}`);
       });
     }
+  }
+  if (declares.has("multi-process") && fixture.multiProcess) {
+    const multi = fixture.multiProcess;
+    Object.assign(checks, multiProcessChecks({ ...multi, makeLayer: () => fixture.makeLayer(), frame: () => fixture.frame() }, () => fixture.bus({ retryDelays: [0, 0], pollMs: 20 })));
   }
   return checks;
 }

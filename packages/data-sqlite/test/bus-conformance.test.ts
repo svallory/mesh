@@ -16,6 +16,9 @@ import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 import { sqliteWith } from "../src/layer.ts";
 import { openPolicies } from "./open-policy.ts";
+import { MULTI_CAPABILITIES } from "./multi-capabilities.ts";
+import { buildSchemas } from "./multi-schema.ts";
+import { spawnWorker } from "./spawn-worker.ts";
 
 const invoice = `import { InvoicePaid } from "./invoice-paid.mesh.mx"
 entity :Invoice table="invoices"
@@ -135,4 +138,37 @@ describe("data-sqlite's claim", () => {
       await layer.close();
     }
   }, 30_000);
+});
+
+describe("bus conformance with testBus declaring multi-process, memory and file databases", () => {
+  let multi: Record<string, TableHandle>;
+  let remove: () => Promise<void>;
+  const dirs: string[] = [];
+  beforeAll(async () => { ({ multi, remove } = await buildSchemas()); });
+  afterAll(async () => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); await remove(); });
+  const fileLayer = async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "mesh-multi-bus-"));
+    dirs.push(scratch);
+    const file = join(scratch, "app.db");
+    const layer = sqlite({ file });
+    await createSchema(layer, multi);
+    return { file, layer };
+  };
+  const checks = busConformance({
+    async makeLayer() {
+      const layer = sqlite({ file: ":memory:" });
+      await createSchema(layer, multi);
+      return layer;
+    },
+    frame: () => new AsyncLocalStorage(),
+    bus: ({ retryDelays, pollMs }) => testBus({ capabilities: MULTI_CAPABILITIES, retryDelays, pollMs }),
+    multiProcess: {
+      makeFileLayer: fileLayer,
+      spawn: (file, scenario, args = []) => spawnWorker(join(import.meta.dir, "multi-worker.ts"), file, scenario, args),
+    },
+  });
+  test("the multi-process group runs", () => {
+    expect(Object.keys(checks).filter((name) => name.startsWith("[multi-process]")).length).toBeGreaterThan(10);
+  });
+  for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
 });

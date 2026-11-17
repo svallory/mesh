@@ -20,20 +20,20 @@ export interface EventMetadata {}
  */
 export type ContextArgument = {} extends ActionContext ? [context?: ActionContext] : [context: ActionContext];
 
-export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError, EventsConfigError, HandlerOptionError, DelivererTakenError, DelivererLostError, SubscriptionOverflowError, HandlerStoppedError } from "./errors.ts";
+export { MeshError, InvalidInputError, NotFoundError, ForbiddenError, FrameworkError, DatabaseBusyError, EventsDeletedError, CursorAheadError, EventUndeclaredError, EventsConfigError, HandlerOptionError, DelivererTakenError, DelivererLostError, HandlerLostError, SubscriptionOverflowError, HandlerStoppedError } from "./errors.ts";
 export type { ClaimHolder, DatabaseBusyOptions, DatabaseBusyReason, StoppedHandler, DenialReason, Issue, IssueSource, MeshErrorOptions, PolicyCheck, PolicyDenial } from "./errors.ts";
 export { parseInput } from "./input.ts";
 export { DECLARATION, checkFields, fqnOf, type Declaration, type Declared } from "./declarations.ts";
 export { dispatchCommand, type ActionResult, type CommandAction } from "./dispatch.ts";
 export { jsonValue, type JsonContext } from "./json.ts";
 export type { StandardSchemaV1 } from "./standard-schema.ts";
-export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryState, HandlerProgressRow, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, SubscriptionFilter, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
+export type { Row, Key, TableHandle, Scalar, Comparison, Filter, Sort, Query, DataOperations, DataLayer, DelivererClaim, DeliveryOperations, DeliveryProcessRow, DeliveryState, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState, MultiProcessOperations, OutboxAppend, OutboxOperations, OutboxPage, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions } from "./data-layer.ts";
 export { SQL_FUNCTION_ARITY, allOf, bindCondition, hasHop, orderOf, whereFor } from "./condition.ts";
 export type { Bound, Condition, ConditionLiteral, ConditionNode, DeclaredKey, Hop, LiteralNode, Mark, OrderKey, ParamNode, SqlFunction, TableOf, ValueClass, Where } from "./condition.ts";
 export { CAPABILITIES, defineCapabilities, validateCapabilityManifest } from "./capabilities.ts";
 export type { Capability, CapabilityManifest } from "./capabilities.ts";
 export { uuidv7 } from "./uuid.ts";
-export { CORE_TABLES, CORE_TABLE_NAMES, HANDLER_PROGRESS_TABLE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor } from "./core-tables.ts";
+export { CORE_TABLES, CORE_TABLE_NAMES, DELIVERY_PROCESS_TABLE, HANDLER_PROGRESS_TABLE, MULTI_PROCESS_CORE, OUTBOX_STATE_TABLE, OUTBOX_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor } from "./core-tables.ts";
 export type { CoreColumn, CoreColumnType, CoreTable } from "./core-tables.ts";
 export type { DataAdapter } from "./data-adapter.ts";
 export { defineConfig, type MeshConfig, type ExtensionDescriptor } from "./config.ts";

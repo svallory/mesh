@@ -285,10 +285,15 @@ export class EventUndeclaredError extends MeshError {
   /** The row's position. */
   readonly position: number;
 
-  constructor(eventName: string, position: number, options?: MeshErrorOptions) {
+  /**
+   * `declaredBy`, in delivery from several processes: a live process whose build declares the event (`pid 4242 on host
+   * api-1`), named for a subscription that ends at the row, since that process can open it.
+   */
+  constructor(eventName: string, position: number, options?: MeshErrorOptions & { readonly declaredBy?: string }) {
     super(
       `The outbox row at position ${position} names the event ${eventName}, which the project no longer declares (it moved or was renamed). `
-        + "The read stops here rather than skip it: move the declaration back until its rows are delivered",
+        + "The read stops here rather than skip it: move the declaration back until its rows are delivered"
+        + (options?.declaredBy === undefined ? "" : `; a process whose build declares ${eventName} (${options.declaredBy}) can open this subscription`),
       options,
     );
     this.eventName = eventName;
@@ -338,6 +343,11 @@ export interface ClaimHolder {
   readonly lapsesAt: Date;
   /** True when the holder is another binding, or another round, of this process. */
   readonly thisProcess: boolean;
+  /**
+   * True when the claim is the nil claim of delivery from several processes: the database is delivered by processes
+   * whose bus declares `multi-process`, and no single process holds it (`pid` and `host` are null then).
+   */
+  readonly multiProcess: boolean;
 }
 
 /**
@@ -354,11 +364,15 @@ export class DelivererTakenError extends MeshError {
   constructor(holder: ClaimHolder, options?: MeshErrorOptions) {
     const who = holder.thisProcess
       ? `Another binding or round of this process delivers this database's events: ${holder.database} is claimed by this process (pid ${holder.pid ?? "unknown"}, renewed ${Math.round(holder.renewedAgoMs / 1000)} s ago). One binding per process per database delivers at a time.`
-      : `Another process delivers this database's events: ${holder.database} is claimed by pid ${holder.pid ?? "unknown"} on host ${holder.host ?? "unknown"} `
-        + `(started ${holder.startedAt ? clockTime(holder.startedAt) : "at an unknown time"}, renewed ${Math.round(holder.renewedAgoMs / 1000)} s ago). One process delivers per database.`;
+      : holder.multiProcess
+        ? `Another process delivers this database's events: ${holder.database} is delivered from several processes (multi-process; renewed ${Math.round(holder.renewedAgoMs / 1000)} s ago). One process delivers per database unless the bus declares multi-process.`
+        : `Another process delivers this database's events: ${holder.database} is claimed by pid ${holder.pid ?? "unknown"} on host ${holder.host ?? "unknown"} `
+          + `(started ${holder.startedAt ? clockTime(holder.startedAt) : "at an unknown time"}, renewed ${Math.round(holder.renewedAgoMs / 1000)} s ago). One process delivers per database.`;
     const fix = holder.thisProcess
       ? "\n  fix: Stop the other delivery first (`await delivery.stop()`, `disconnect()`, or await the running `deliver()`), or bind this one without delivering."
-      : `\n  fix: Stop that process first, or connect this one without delivering: \`await connect({ deliver: false })\`. If that process has died, its claim lapses at ${clockTime(holder.lapsesAt)}.`;
+      : holder.multiProcess
+        ? "\n  fix: Configure the same bus as those processes, such as localBus({ processes: \"many\" }), or stop them first."
+        : `\n  fix: Stop that process first, or connect this one without delivering: \`await connect({ deliver: false })\`. If that process has died, its claim lapses at ${clockTime(holder.lapsesAt)}.`;
     super(who + fix, options);
     this.lapsesAt = holder.lapsesAt;
     this.holder = Object.freeze({ ...holder });
@@ -378,6 +392,29 @@ export class DelivererLostError extends MeshError {
   constructor(database: string, reason: string, options?: MeshErrorOptions) {
     super(`This process lost the claim to deliver ${database}'s events: ${reason}. Its handlers and subscriptions stopped; the process now holding the claim delivers, and nothing was handled twice or deleted after the loss`, options);
     this.database = database;
+  }
+}
+
+/**
+ * This process no longer holds the handler's lease (`MESH_HANDLER_LOST`), in delivery from several processes: another
+ * process took the handler over (`reason` `"taken"`), or this process yielded it at a row of an event another build of the
+ * handler lists and this build does not (`"pending"`), so a process whose build lists it takes the handler over. The call
+ * recorded nothing. A bus ends that handler in this instance until it is back in `core.handlers`: never a failure, never
+ * reported, no retry. Not retryable: the same call fails the same way until the lease comes back.
+ */
+export class HandlerLostError extends MeshError {
+  readonly code = "MESH_HANDLER_LOST";
+  /** The handler's name. */
+  readonly handler: string;
+  readonly reason: "taken" | "pending";
+  /** The position of the row the call was for (0 for a `position` call). */
+  readonly position: number;
+
+  constructor(handler: string, reason: "taken" | "pending", position: number, detail: string, options?: MeshErrorOptions) {
+    super(detail, options);
+    this.handler = handler;
+    this.reason = reason;
+    this.position = position;
   }
 }
 

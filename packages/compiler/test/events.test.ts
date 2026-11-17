@@ -365,6 +365,20 @@ describe("the bus at build time (MESH_EVENTS_CONFIG, MESH_CAPABILITY)", () => {
       { code: "MESH_CAPABILITY", message: "events.requires lists the bus capability replay, and mesh.config.ts sets no events.bus to declare it" },
     ]);
   });
+
+  test("requires: multi-process on the local bus names its option in the fix; on another bus the fix stays generic; localBus({ processes: \"many\" }) declares it", () => {
+    const local = (capabilities: readonly string[]) => ({ manifest: { adapter: "local", capabilities }, create: () => { throw new Error("never started"); } }) as never;
+    const fixes = (events: object) => eventsDiagnostics(declared(), { data: data([]), events: events as never }, at).map(({ code, message, fix }) => ({ code, message, fix }));
+    expect(fixes({ bus: local(["ordered-delivery", "replay", "subscribe"]), requires: ["multi-process"] })).toEqual([
+      { code: "MESH_CAPABILITY", message: "events.requires lists multi-process, and the event bus \"local\" does not declare it", fix: "Use localBus({ processes: \"many\" }), or remove it from events.requires" },
+    ]);
+    expect(fixes({ bus: bus(["ordered-delivery"]), requires: ["multi-process"] })).toEqual([
+      { code: "MESH_CAPABILITY", message: "events.requires lists multi-process, and the event bus \"fake\" does not declare it", fix: "Use a bus that declares multi-process, or remove it from events.requires" },
+    ]);
+    // the local bus's other capabilities keep the generic fix
+    expect(fixes({ bus: local(["ordered-delivery"]), requires: ["replay"] })[0]!.fix).toBe("Use a bus that declares replay, or remove it from events.requires");
+    expect(fixes({ bus: local(["ordered-delivery", "replay", "subscribe", "multi-process"]), requires: ["multi-process"] })).toEqual([]);
+  });
 });
 
 describe("what is generated", () => {

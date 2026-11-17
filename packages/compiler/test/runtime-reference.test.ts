@@ -30,7 +30,7 @@ test("every documented runtime instance/type satisfies the emitted real declarat
       "OutboxPage", "SubscriptionFilter", "LiveSubscription", "BusCore", "HandlerTools", "Handler", "Delivery", "SubscribeQuery", "Subscription", "SubscriptionProgress",
       "EventMetadata", "EventRecord", "MetadataFunction", "ReadEventsQuery", "ReadEventsPage", "ActionContext", "Issue", "PolicyCheck", "MeshError",
       "InvalidInputError", "NotFoundError", "ForbiddenError", "FrameworkError", "DatabaseBusyError", "EventsDeletedError", "CursorAheadError",
-      "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError",
+      "EventUndeclaredError", "EventsConfigError", "HandlerOptionError", "ClaimHolder", "DelivererTakenError", "DelivererLostError", "HandlerLostError",
       "SubscriptionOverflowError", "StoppedHandler", "HandlerStoppedError",
     ]);
     // Check every documented member. Real errors additionally expose entity/key;

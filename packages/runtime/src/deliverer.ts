@@ -7,13 +7,14 @@ import type {
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, FrameworkError,
-  HandlerOptionError, SubscriptionOverflowError, type ClaimHolder, type StoppedHandler,
+  HandlerLostError, HandlerOptionError, SubscriptionOverflowError, type ClaimHolder, type StoppedHandler,
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
   PerDatabase, causedIn, describe, loadEvents, onPublished, recordOf, rows, sameKey, type EventClass, type EventRecord, type EventsConfig, type EventsModule,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
+import { MultiClaim, ackOwned, declarerOf, forgetOwned, isMultiProcess, multiOperations, openOwned } from "./multi-process.ts";
 
 /**
  * Core's deliverer (spec, Events and commands, "The deliverer", "Handlers", "Retention", "`subscribe`"): the claim in
@@ -38,9 +39,10 @@ const DEFAULT_TIMING = Object.freeze({
   maxQueue: 10_000,
 });
 /** How long a renewal that met a transient error other than a lock wait waits before its next try (after one at once). */
-const RENEW_RETRY_MS = 500;
+export const RENEW_RETRY_MS = 500;
 export type DeliveryTiming = { -readonly [K in keyof typeof DEFAULT_TIMING]: number };
-const timing: DeliveryTiming = { ...DEFAULT_TIMING };
+/** The numbers in force; the multi-process strategy (`multi-process.ts`) reads them too. */
+export const timing: DeliveryTiming = { ...DEFAULT_TIMING };
 
 /** Change the deliverer's internal numbers, for tests only (`@meshfw/runtime/testing`); `null` restores the defaults. */
 export function setDeliveryTiming(changes: Partial<DeliveryTiming> | null): void {
@@ -48,19 +50,21 @@ export function setDeliveryTiming(changes: Partial<DeliveryTiming> | null): void
 }
 
 /** This process run's id: drawn once, never the pid (containers run every process as pid 1). */
-const RUN_ID: string = crypto.randomUUID();
-const STARTED_AT = new Date();
-const PID: number | null = typeof (globalThis as { process?: { pid?: unknown } }).process?.pid === "number" ? (globalThis as unknown as { process: { pid: number } }).process.pid : null;
+export const RUN_ID: string = crypto.randomUUID();
+export const STARTED_AT = new Date();
+/** The run id of the nil claim: the database is delivered from several processes, and no single process claims it. */
+export const NIL_RUN_ID = "00000000-0000-0000-0000-000000000000";
+export const PID: number | null = typeof (globalThis as { process?: { pid?: unknown } }).process?.pid === "number" ? (globalThis as unknown as { process: { pid: number } }).process.pid : null;
 
 /** A row a deliverer reads from `mesh_handler_progress` and the handler as the events module declares it. */
-interface DeclaredHandler {
+export interface DeclaredHandler {
   readonly registered: RegisteredHandler;
   readonly handler: Handler;
   readonly renamedFrom: string | undefined;
 }
 
 /** What core keeps per database in this process. */
-interface DatabaseState {
+export interface DatabaseState {
   /** The database's name, for messages: `layer.database`, else `the database`. */
   readonly name: string;
   /** The deliverer of this process holding (or taking) the claim on this database, if any. */
@@ -107,7 +111,7 @@ const DELIVERY_OPERATIONS = [
 ] as const satisfies readonly (keyof DeliveryOperations)[];
 
 /** The delivery operations of a transaction; a `FrameworkError` when the data adapter lacks them. */
-function operations(tx: DataOperations): DeliveryOperations {
+export function operations(tx: DataOperations): DeliveryOperations {
   for (const name of DELIVERY_OPERATIONS)
     if (typeof tx[name] !== "function")
       throw new FrameworkError(`The data layer's transactions have no ${name}: delivering events needs a data adapter with the delivery operations (DeliveryOperations in @meshfw/runtime)`);
@@ -119,14 +123,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** True when the claim has not been renewed for the lapse time, by the database's clock. */
-function lapsed(claim: DelivererClaim, now: Date): boolean {
+export function lapsed(claim: DelivererClaim, now: Date): boolean {
   return now.getTime() - claim.renewedAt.getTime() >= timing.lapseMs;
 }
 
-function holderOf(database: string, claim: DelivererClaim, now: Date): ClaimHolder {
+export function holderOf(database: string, claim: DelivererClaim, now: Date): ClaimHolder {
   return {
     database, pid: claim.pid, host: claim.host, startedAt: claim.startedAt, renewedAgoMs: Math.max(0, now.getTime() - claim.renewedAt.getTime()),
-    lapsesAt: new Date(claim.renewedAt.getTime() + timing.lapseMs), thisProcess: claim.runId === RUN_ID,
+    lapsesAt: new Date(claim.renewedAt.getTime() + timing.lapseMs), thisProcess: claim.runId === RUN_ID, multiProcess: claim.runId === NIL_RUN_ID,
   };
 }
 
@@ -135,7 +139,7 @@ function takenHere(db: DatabaseState, holder: Deliverer | undefined): DelivererT
   const renewedAt = holder?.renewedAt ?? Date.now();
   return new DelivererTakenError({
     database: db.name, pid: PID, host: null, startedAt: STARTED_AT, renewedAgoMs: Math.max(0, Date.now() - renewedAt),
-    lapsesAt: new Date(renewedAt + timing.lapseMs), thisProcess: true,
+    lapsesAt: new Date(renewedAt + timing.lapseMs), thisProcess: true, multiProcess: false,
   });
 }
 
@@ -247,7 +251,7 @@ export function handlerStart(
  * behind one interface so delivery from several processes can replace it. `SingleClaim` is the one claim per database
  * of the spec's "The deliverer".
  */
-interface ClaimStrategy {
+export interface ClaimStrategy {
   /** The generation a subscription row opened in this process is written under. */
   readonly generation: number;
   /** Claim and register in one transaction; starts the renewals. Resolves with the deleted-through position it read. */
@@ -260,14 +264,27 @@ interface ClaimStrategy {
   handlers(): readonly RegisteredHandler[];
   /** What `core.lists` answers. */
   lists(handler: RegisteredHandler, row: OutboxRow): boolean;
-  /** In the handler transaction: the fence, then the progress row; null when `row` is handled already. */
+  /**
+   * Before any transaction of a `runHandler` (`row`) or `position` call (no row), for a handler core registered: throws
+   * what the call rejects with at once (single mode: an undeclared row, a row the handler does not list).
+   */
+  enter(handler: RegisteredHandler, row: OutboxRow | undefined): void;
+  /** In the handler transaction: the fence, then the progress row; null when `row` is handled already, or not this handler's. */
   fenceHandler(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<HandlerProgressRow | null>;
+  /** In the handler transaction, after a `process` body: move the row `fenceHandler` returned to `position`. */
+  writeProgress(ops: DeliveryOperations, progress: HandlerProgressRow, position: number): Promise<void>;
   /** The short transaction that closes a `listen` handler's run: the fence again, then the position moves to `row`. */
   settleListen(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<void>;
-  /** After `runHandler` rejected with `error`, outside its transaction. */
-  afterReject(handler: RegisteredHandler, error: unknown): Promise<void>;
+  /** After `runHandler` rejected with `error`, outside its transaction; resolves with the error to reject with instead, if any. */
+  afterReject(handler: RegisteredHandler, error: unknown): Promise<unknown>;
   /** In each deletion batch's transaction: the fence; the state the batch computes from. */
   fenceBatch(ops: DeliveryOperations): Promise<DeliveryState>;
+  /** The events the batch that `fenceBatch` just fenced counts as declared: a reader never moves over a row of any other. */
+  passDeclared(): ReadonlySet<string>;
+  /** In a deletion batch: every progress row, as `holds`, `moveHandler` and `isOrphan` read them. */
+  readHandlers(ops: DeliveryOperations): Promise<readonly HandlerProgressRow[]>;
+  /** In a deletion batch: every subscription row, as `moveSubscription` and `isOrphan` read them. */
+  readSubscriptions(ops: DeliveryOperations): Promise<readonly SubscriptionProgressRow[]>;
   /** True for a progress row this instance delivers, which the deletion pass may move. */
   holds(row: HandlerProgressRow): boolean;
   /** The deletion pass's move of a handler this instance holds; resolves with the row as it stands. */
@@ -278,8 +295,11 @@ interface ClaimStrategy {
   deletes(state: DeliveryState): boolean;
   /** True for a row the orphan report names: a handler no live registration holds, a subscription not open here for the orphan age. */
   isOrphan(row: HandlerProgressRow | SubscriptionProgressRow, state: DeliveryState): boolean;
-  /** `resumeHandler(name)`: the handler to hand the bus instance, if this instance delivers it. */
-  resume(name: string): Promise<RegisteredHandler | undefined>;
+  /**
+   * `resumeHandler(name)`: undefined for a handler this instance does not register; else the handler, and whether to hand
+   * it to the bus instance's `resumeHandler` (false when the strategy resumed it itself).
+   */
+  resume(name: string): Promise<{ readonly handler: RegisteredHandler; readonly forBus: boolean } | undefined>;
   /** Release the claim where it is still this instance's; a lock failure is ignored, any other unless `quiet`. */
   release(quiet: boolean): Promise<void>;
 }
@@ -291,7 +311,7 @@ const held = (state: DeliveryState, position: number) => Math.max(0, state.highe
  * One bus instance and the claims it delivers under: made by `startDelivery()` (one claim, until `stop()`) or kept by a
  * binding's `deliver()` rounds (a claim per round), until the claim is lost. What touches the claim is its strategy's.
  */
-class Deliverer {
+export class Deliverer {
   readonly db: DatabaseState;
   readonly bus: EventBus;
   readonly keep: "until-delivered" | "all";
@@ -316,7 +336,7 @@ class Deliverer {
     this.bus = checkedBus(config.bus);
     this.keep = config.keep ?? "until-delivered";
     this.declared = [...events.keys()].sort();
-    this.strategy = new SingleClaim(this);
+    this.strategy = isMultiProcess(this.bus) ? new MultiClaim(this) : new SingleClaim(this);
     const self = this;
     this.core = Object.freeze({
       rows: (after: number, limit: number) => self.read(after, limit),
@@ -344,6 +364,11 @@ class Deliverer {
   live(): void {
     if (this.lost) throw this.lost;
     if (!this.holding) throw new FrameworkError("The bus called into core while its instance holds no claim: a bus calls core only between start() and stop(), or during deliver()");
+  }
+
+  /** The names of every handler registered for the current claim, in name order. */
+  registeredNames(): readonly string[] {
+    return [...this.#handlers.keys()];
   }
 
   /** Claim and register through the strategy (spec, "The claim", "Registration"); this instance then holds the claim. */
@@ -401,6 +426,7 @@ class Deliverer {
   async position(handler: RegisteredHandler): Promise<number> {
     this.live();
     this.#entry(handler);
+    this.strategy.enter(handler, undefined);
     const row = await this.layer.transaction(async (tx) => (await operations(tx).readHandlerProgress()).find((each) => each.name === handler.name));
     if (!row) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
     return row.position;
@@ -431,21 +457,19 @@ class Deliverer {
     try {
       await this.#run(handler, row);
     } catch (error) {
-      await this.strategy.afterReject(handler, error);
-      throw error;
+      throw (await this.strategy.afterReject(handler, error)) ?? error;
     }
   }
 
   async #run(handler: RegisteredHandler, row: OutboxRow): Promise<void> {
     this.live();
     const entry = this.#entry(handler);
+    this.strategy.enter(handler, row);
     const eventClass = this.events.get(row.name);
-    if (!eventClass) throw new EventUndeclaredError(row.name, row.position);
-    if (!handler.events.includes(row.name))
-      throw new FrameworkError(`runHandler was handed the ${row.name} at position ${row.position} for the handler ${JSON.stringify(handler.name)}, which does not list it: a bus hands a handler only the rows core.lists says it lists`);
-    const record = recordOf(row, eventClass);
+    // Delivery from several processes: a row this build does not declare is judged in the fence; it never reaches a body.
+    const record = eventClass ? recordOf(row, eventClass) : undefined;
     const label = `the ${handler.kind} handler ${handler.name}`;
-    const run = (context: ActionContext) => (entry.handler as Handler).run(record, { context });
+    const run = (context: ActionContext) => (entry.handler as Handler).run(record!, { context });
     if (handler.kind === "process") {
       await handlerScope(this.binding, label, row.id, true, async () => {
         const progress = await this.layer.transaction(async (tx) => {
@@ -453,14 +477,14 @@ class Deliverer {
           if (found) causedIn(tx, row.id);
           return found;
         });
-        if (!progress) return;
+        if (!progress || !record) return;
         await run(this.#context(record));
-        await this.layer.transaction((tx) => operations(tx).writeHandlerProgress({ ...progress, position: row.position }));
+        await this.layer.transaction((tx) => this.strategy.writeProgress(operations(tx), progress, row.position));
       });
       return;
     }
     const progress = await this.layer.transaction((tx) => this.strategy.fenceHandler(operations(tx), handler, row));
-    if (!progress) return;
+    if (!progress || !record) return;
     const context = this.#context(record);
     await handlerScope(this.binding, label, row.id, false, () => Promise.resolve(run(context)));
     await this.layer.transaction((tx) => this.strategy.settleListen(operations(tx), handler, row));
@@ -468,7 +492,8 @@ class Deliverer {
 
   /**
    * Core's retry path: `runHandler`, then again after each delay while the error is retryable. Resolves with null once
-   * handled, else with the stop to report (at once for `retryable: false`). Busy and lost reject and are not a try.
+   * handled, else with the stop to report (at once for `retryable: false`). Busy, a lost claim and a lost handler lease
+   * reject and are not a try.
    */
   async retry(handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]): Promise<StoppedHandler | null> {
     if (!Array.isArray(delays) || delays.some((delay) => typeof delay !== "number" || !(delay >= 0)))
@@ -478,7 +503,7 @@ class Deliverer {
         await this.runHandler(handler, row);
         return null;
       } catch (error) {
-        if (error instanceof DatabaseBusyError || error instanceof DelivererLostError) throw error;
+        if (error instanceof DatabaseBusyError || error instanceof DelivererLostError || error instanceof HandlerLostError) throw error;
         if (this.lost) throw this.lost;
         if (!isRetryable(error) || attempt >= delays.length)
           return Object.freeze({ handler: handler.name, position: row.position, event: row.name, cause: error });
@@ -496,7 +521,6 @@ class Deliverer {
    */
   async deletionPass(): Promise<void> {
     this.live();
-    const declared = new Set(this.declared);
     let cursor: number | null | undefined;
     let last: { state: DeliveryState; handlers: readonly HandlerProgressRow[]; subscriptions: readonly SubscriptionProgressRow[] } | undefined;
     for (let guard = 0; guard < 100_000; guard++) {
@@ -505,7 +529,7 @@ class Deliverer {
         const snapshot = await this.layer.transaction(async (tx) => {
           const ops = operations(tx);
           const state = await this.strategy.fenceBatch(ops);
-          return { state, handlers: await ops.readHandlerProgress(), subscriptions: await ops.readSubscriptionProgress() };
+          return { state, handlers: await this.strategy.readHandlers(ops), subscriptions: await this.strategy.readSubscriptions(ops) };
         });
         const movers = [...snapshot.handlers.filter((row) => this.strategy.holds(row)), ...snapshot.subscriptions].map((row) => row.position);
         cursor = movers.length === 0 ? null : Math.max(snapshot.state.deletedThrough, Math.min(...movers));
@@ -515,8 +539,9 @@ class Deliverer {
       const outcome = await this.layer.transaction(async (tx) => {
         const ops = operations(tx);
         const state = await this.strategy.fenceBatch(ops);
-        const handlers = await ops.readHandlerProgress();
-        const subscriptions = await ops.readSubscriptionProgress();
+        const declared = this.strategy.passDeclared();
+        const handlers = await this.strategy.readHandlers(ops);
+        const subscriptions = await this.strategy.readSubscriptions(ops);
         const end = page === null || from === null ? null : page.rows.length === timing.batch ? page.rows.at(-1)!.position : Math.max(page.settled, page.rows.at(-1)?.position ?? from);
         /** The position a reader at `position` moves to over the page's rows it passes (`passes`), stopping at an undeclared row. */
         const moved = (position: number, passes: (row: OutboxRow) => boolean): number => {
@@ -568,7 +593,7 @@ class Deliverer {
     };
     for (const row of handlers) {
       if (!this.strategy.isOrphan(row, state) || !due(`handler:${row.name}`)) continue;
-      console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is not registered by this deliverer, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
+      console.warn(`Mesh: the handler ${JSON.stringify(row.name)} is ${this.strategy instanceof MultiClaim ? "registered by no live process" : "not registered by this deliverer"}, and its progress row, at position ${row.position}, holds ${held(state, row.position)} outbox rows. If it was removed or renamed without renamedFrom, drop it with \`mesh events forget ${row.name}\` or forgetHandler(${JSON.stringify(row.name)})`);
     }
     if (this.keep !== "until-delivered") return;
     for (const row of subscriptions) {
@@ -692,6 +717,30 @@ class SingleClaim implements ClaimStrategy {
     return handler.events.includes(row.name) || !this.deliverer.events.has(row.name);
   }
 
+  enter(handler: RegisteredHandler, row: OutboxRow | undefined): void {
+    if (row === undefined) return;
+    if (!this.deliverer.events.has(row.name)) throw new EventUndeclaredError(row.name, row.position);
+    if (!handler.events.includes(row.name))
+      throw new FrameworkError(`runHandler was handed the ${row.name} at position ${row.position} for the handler ${JSON.stringify(handler.name)}, which does not list it: a bus hands a handler only the rows core.lists says it lists`);
+  }
+
+  writeProgress(ops: DeliveryOperations, progress: HandlerProgressRow, position: number): Promise<void> {
+    return ops.writeHandlerProgress({ ...progress, position });
+  }
+
+  #declared: ReadonlySet<string> | undefined;
+  passDeclared(): ReadonlySet<string> {
+    return this.#declared ??= new Set(this.deliverer.declared);
+  }
+
+  readHandlers(ops: DeliveryOperations): Promise<readonly HandlerProgressRow[]> {
+    return ops.readHandlerProgress();
+  }
+
+  readSubscriptions(ops: DeliveryOperations): Promise<readonly SubscriptionProgressRow[]> {
+    return ops.readSubscriptionProgress();
+  }
+
   /** In the running transaction: go on only while the claim is this instance's; otherwise the instance is lost. */
   async #checkGeneration(ops: DeliveryOperations): Promise<DeliveryState> {
     this.deliverer.live();
@@ -724,8 +773,8 @@ class SingleClaim implements ClaimStrategy {
     if (current.position < row.position) await ops.writeHandlerProgress({ ...current, position: row.position });
   }
 
-  afterReject(): Promise<void> {
-    return Promise.resolve();
+  afterReject(): Promise<unknown> {
+    return Promise.resolve(undefined);
   }
 
   fenceBatch(ops: DeliveryOperations): Promise<DeliveryState> {
@@ -757,8 +806,9 @@ class SingleClaim implements ClaimStrategy {
     return !this.deliverer.db.subscriptions.has(row.name) && state.now.getTime() - row.seenAt.getTime() > timing.orphanAgeMs;
   }
 
-  resume(name: string): Promise<RegisteredHandler | undefined> {
-    return Promise.resolve(this.#registered.find((each) => each.name === name));
+  resume(name: string): Promise<{ readonly handler: RegisteredHandler; readonly forBus: boolean } | undefined> {
+    const handler = this.#registered.find((each) => each.name === name);
+    return Promise.resolve(handler && { handler, forBus: true });
   }
 
   async release(quiet: boolean): Promise<void> {
@@ -937,7 +987,7 @@ class OpenSubscription implements LiveSubscription {
   readonly handle: Subscription;
 
   constructor(readonly db: DatabaseState, readonly layer: DataLayer, readonly events: ReadonlyMap<string, EventClass>, readonly name: string,
-    readonly filter: SubscriptionFilter, position: number, readonly callback: (event: EventRecord) => unknown) {
+    readonly filter: SubscriptionFilter, position: number, readonly callback: (event: EventRecord) => unknown, readonly multiProcess = false) {
     this.cursor = position;
     this.#handed = position;
     this.#acked = position;
@@ -957,7 +1007,11 @@ class OpenSubscription implements LiveSubscription {
     for (const row of page.rows) {
       if (row.position <= this.cursor) continue;
       const eventClass = this.events.get(row.name);
-      if (!eventClass) { this.end(new EventUndeclaredError(row.name, row.position)); return; }
+      if (!eventClass) {
+        const declaredBy = this.multiProcess ? declarerOf(this.db, row.name) : undefined;
+        this.end(new EventUndeclaredError(row.name, row.position, declaredBy === undefined ? undefined : { declaredBy }));
+        return;
+      }
       this.cursor = row.position;
       if (!matches(this.filter, row)) continue;
       this.#queue.push(recordOf(row, eventClass));
@@ -984,6 +1038,7 @@ class OpenSubscription implements LiveSubscription {
     if (position > this.#handed)
       throw new FrameworkError(`ack(${position}) is above the highest position handed to the callback of the subscription ${JSON.stringify(this.name)}, ${this.#handed}: acknowledge only what it has processed`);
     const moved = await this.layer.transaction(async (tx) => {
+      if (this.multiProcess) return ackOwned(multiOperations(tx), this.db.name, this.name, position);
       const ops = operations(tx);
       const state = await ops.readDeliveryState();
       const row = (await ops.readSubscriptionProgress()).find((each) => each.name === this.name);
@@ -1015,6 +1070,12 @@ class OpenSubscription implements LiveSubscription {
     // the loss is often noticed inside a transaction that is about to roll back, where a write would join it.
     if (error instanceof DelivererLostError) { this.#closing = Promise.resolve(); this.#settle(error); return; }
     this.#closing = this.layer.transaction(async (tx) => {
+      if (this.multiProcess) {
+        const ops = multiOperations(tx);
+        const row = (await ops.readSubscriptionOwners()).find((each) => each.name === this.name);
+        if (row?.open) await ops.writeSubscriptionOwner({ name: row.name, position: row.position, filter: row.filter, open: false, generation: row.generation, runId: row.runId });
+        return;
+      }
       const ops = operations(tx);
       const row = (await ops.readSubscriptionProgress()).find((each) => each.name === this.name);
       // Closing writes seenAt, the database's now (left out), from which a closed row's age is measured.
@@ -1045,11 +1106,13 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
   const db = databases.get(layer);
   if (db.subscriptions.has(name))
     throw new FrameworkError(`A subscription named ${JSON.stringify(name)} is open in this process already: two readers acknowledging under one row would pass each other's rows`);
-  const placeholder = new OpenSubscription(db, layer, events, name, filter, 0, callback);
+  const multiProcess = isMultiProcess(checkedBus(config.bus));
+  const placeholder = new OpenSubscription(db, layer, events, name, filter, 0, callback, multiProcess);
   placeholder.opening = true;
   db.subscriptions.set(name, placeholder);
   try {
     const position = await layer.transaction(async (tx) => {
+      if (multiProcess) return openOwned(multiOperations(tx), name, filter, after);
       const ops = operations(tx);
       const state = await ops.readDeliveryState();
       if (state.claim !== null && state.claim.runId !== RUN_ID && !lapsed(state.claim, state.now))
@@ -1069,7 +1132,7 @@ export async function subscribe(binding: Binding, query: SubscribeQuery, callbac
       await ops.writeSubscriptionProgress({ name, position: start, filter, open: true, generation });
       return start;
     });
-    const subscription = new OpenSubscription(db, layer, events, name, filter, position, callback);
+    const subscription = new OpenSubscription(db, layer, events, name, filter, position, callback, multiProcess);
     if (db.subscriptions.get(name) === placeholder) db.subscriptions.delete(name);
     if (placeholder.ended) {
       // Delivery stopped, or the claim was lost, while the row was being written: the stream ends as it would have.
@@ -1093,8 +1156,12 @@ function liveUnder(state: DeliveryState, generation: number): boolean {
 
 /** `forgetHandler(name)` of `#mesh`: drop an orphaned handler's progress row; refuses one the live deliverer registered. */
 export async function forgetHandler(binding: Binding, name: string): Promise<void> {
-  const { layer } = bindingParts(binding);
+  const { layer, config } = bindingParts(binding);
   if (typeof name !== "string" || name === "") throw new FrameworkError(`forgetHandler takes a handler's name, and was given ${describe(name)}`);
+  if (isMultiProcess(config?.bus)) {
+    await forgetOwned(layer, name, "handler", "forgetHandler");
+    return;
+  }
   await layer.transaction(async (tx) => {
     const ops = operations(tx);
     const state = await ops.readDeliveryState();
@@ -1129,10 +1196,14 @@ export async function listSubscriptions(binding: Binding): Promise<readonly Subs
 
 /** `forgetSubscription(name)` of `#mesh`: drop a subscription's row; refuses one that is open in this process. */
 export async function forgetSubscription(binding: Binding, name: string): Promise<void> {
-  const { layer } = bindingParts(binding);
+  const { layer, config } = bindingParts(binding);
   if (typeof name !== "string" || name === "") throw new FrameworkError(`forgetSubscription takes a subscription's name, and was given ${describe(name)}`);
   if (databases.get(layer).subscriptions.has(name))
     throw new FrameworkError(`forgetSubscription: the subscription ${JSON.stringify(name)} is open in this process; close it first`);
+  if (isMultiProcess(config?.bus)) {
+    await forgetOwned(layer, name, "subscription", "forgetSubscription");
+    return;
+  }
   await layer.transaction(async (tx) => {
     const ops = operations(tx);
     const state = await ops.readDeliveryState();
@@ -1155,9 +1226,12 @@ export async function resumeHandler(binding: Binding, name: string): Promise<voi
   const deliverer = deliveryOf(binding).started;
   if (!deliverer || deliverer.lost)
     throw new FrameworkError(`resumeHandler(${JSON.stringify(name)}) was called on a binding whose delivery is not started in this process: it resumes a handler the running bus stopped. A stopped handler also resumes at the next start (connect() or startDelivery()) and in the next deliver() round`);
-  const handler = await deliverer.strategy.resume(name);
-  if (!handler)
-    throw new FrameworkError(`resumeHandler: no handler named ${JSON.stringify(name)} is registered by this deliverer; it registers ${deliverer.core.handlers.map((each) => JSON.stringify(each.name)).join(", ") || "none"}`);
+  const resumed = await deliverer.strategy.resume(name);
+  if (!resumed)
+    throw new FrameworkError(`resumeHandler: no handler named ${JSON.stringify(name)} is registered by this deliverer; it registers ${deliverer.registeredNames().map((each) => JSON.stringify(each)).join(", ") || "none"}`);
+  // Delivery from several processes: a handler this process yielded or does not hold was resumed by the strategy.
+  if (!resumed.forBus) return;
+  const handler = resumed.handler;
   if (typeof deliverer.instance.resumeHandler !== "function")
     throw new FrameworkError(`resumeHandler: the bus ${JSON.stringify(deliverer.bus.manifest.adapter)} cannot resume a handler while it runs (its instance has no resumeHandler); restart delivery to resume it`);
   deliverer.instance.resumeHandler(handler);
@@ -1174,10 +1248,13 @@ export interface Forgotten {
  * `mesh events forget <name>`, outside the deliverer's process: drops the handler's or the subscription's row of that
  * name. A handler registered under the live claim's generation, and a subscription whose `open` flag is set under it,
  * are refused; a flag set under a lapsed or older generation is a crash's leftover. A name held by both tables is
- * refused, naming both.
+ * refused, naming both. With `multiProcess` (the project's bus declares `multi-process`, as its configuration says, never
+ * probed from the schema), a handler a live process row registers and a subscription open under a live process row are
+ * refused instead.
  */
-export async function forgetByName(layer: DataLayer, name: string): Promise<Forgotten> {
+export async function forgetByName(layer: DataLayer, name: string, options?: { readonly multiProcess?: boolean }): Promise<Forgotten> {
   if (typeof name !== "string" || name === "") throw new FrameworkError("mesh events forget takes a handler's or a subscription's name");
+  if (options?.multiProcess === true) return forgetOwned(layer, name, "either", "mesh events forget");
   return layer.transaction(async (tx) => {
     const ops = operations(tx);
     const state = await ops.readDeliveryState();

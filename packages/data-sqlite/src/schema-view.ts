@@ -2,7 +2,7 @@ import { relative } from "node:path";
 import { EmitError, type EmitInput } from "@meshfw/compiler";
 import type { AttributeType, Entity, SourcePosition } from "@meshfw/model";
 import { sqliteNameKey, sqliteNameProblem } from "./identifiers.ts";
-import { coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
+import { DELIVERY_PROCESS_TABLE, coreTablesFor, type CoreColumnType, type CoreTable } from "@meshfw/runtime";
 
 /**
  * What `schema.ts.jig` renders: the Drizzle SQLite table of every entity, the
@@ -15,7 +15,7 @@ export interface SchemaView {
   readonly builders: readonly string[];
   /**
    * One table per entity, sorted by entity name, module and file; then, when the project declares an event, core's
-   * `mesh_outbox` and `mesh_outbox_state`.
+   * tables (`coreTablesFor`), with the multi-process table and columns when the configured bus declares `multi-process`.
    */
   readonly tables: readonly TableView[];
 }
@@ -145,7 +145,7 @@ function tableView(entity: Entity): TableView {
 }
 
 /** The schema view of the whole model. Pure and synchronous; a model it cannot store is an `EmitError`. */
-export function schemaView({ document }: EmitInput): SchemaView {
+export function schemaView({ document, config }: EmitInput): SchemaView {
   const sorted = [...document.entities].sort((a, b) =>
     compare(a.name, b.name) || compare(a.module, b.module) || compare(a.file, b.file));
   const tables: TableView[] = [];
@@ -162,11 +162,15 @@ export function schemaView({ document }: EmitInput): SchemaView {
     tableOwners.set(sqliteNameKey(entity.table), entity);
     tables.push(view);
   }
-  for (const core of coreTablesFor(document)) {
+  // Delivery from several processes adds a table and three columns, only when the configured bus declares it.
+  const multiProcess = config.events?.bus?.manifest.capabilities.includes("multi-process") === true;
+  for (const core of coreTablesFor(document, { multiProcess })) {
     const entity = tableOwners.get(sqliteNameKey(core.name));
     if (entity) {
       fail("MESH_SCHEMA_DUPLICATE_TABLE",
-        `Entity ${describe(entity)} uses the SQLite table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
+        core.name === DELIVERY_PROCESS_TABLE
+          ? `Entity ${describe(entity)} uses the SQLite table "${entity.table}", which is Mesh's own once the project's bus declares multi-process: it holds the processes that deliver`
+          : `Entity ${describe(entity)} uses the SQLite table "${entity.table}", which is Mesh's own once the project declares an event: it holds the outbox`,
         entity.position, 'Set table="..." on the entity to another name');
     }
     tables.push(coreTableView(core));

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ATTRIBUTE_TYPES, type ModelDocument } from "@meshfw/model";
 import { EmitError, buildModel, generateFiles, type EmitInput, type ResolvedConfig } from "@meshfw/compiler";
+import { CORE_TABLES, CORE_TABLE_NAMES, DELIVERY_PROCESS_TABLE, MULTI_PROCESS_CORE, coreTablesFor, type BusCapability } from "@meshfw/runtime";
+import { testBus } from "@meshfw/runtime/testing";
 import build, { SQLITE_COLUMNS, schemaGenerator, schemaView } from "../src/build.ts";
 
 const config: ResolvedConfig = {
@@ -201,5 +203,75 @@ export const tables = {
   }),
 };
 `);
+  });
+});
+
+describe("the multi-process core tables", () => {
+  const event = "event :Paid\n  integer :n\n";
+  const account = "entity :Account table=\"accounts\"\n  attributes\n    uuid :id primary-key\n";
+  const bus = (capabilities: readonly BusCapability[]) => testBus({ capabilities });
+  const MULTI: readonly BusCapability[] = ["ordered-delivery", "replay", "subscribe", "multi-process"];
+  const withBus = (emit: EmitInput, capabilities: readonly BusCapability[] | undefined): EmitInput =>
+    ({ document: emit.document, config: capabilities === undefined ? config : { ...config, events: { bus: bus(capabilities) } } });
+
+  test("coreTablesFor without multiProcess returns CORE_TABLES as before; with it, the three columns are added and the process table follows", () => {
+    const project = { events: [{}] };
+    expect(coreTablesFor(project)).toEqual(CORE_TABLES);
+    expect(coreTablesFor(project, { multiProcess: false })).toEqual(CORE_TABLES);
+    expect(coreTablesFor({ events: [] }, { multiProcess: true })).toEqual([]);
+    expect(coreTablesFor({}, { multiProcess: true })).toEqual([]);
+    const multi = coreTablesFor(project, { multiProcess: true });
+    expect(multi.map((core) => core.name)).toEqual([...CORE_TABLES.map((core) => core.name), DELIVERY_PROCESS_TABLE]);
+    const columns = (name: string) => multi.find((core) => core.name === name)!.columns.map((column) => `${column.name}:${column.type}${column.nullable ? "?" : ""}`);
+    expect(columns("mesh_outbox")).toEqual(CORE_TABLES[0]!.columns.map((column) => `${column.name}:${column.type}${column.nullable ? "?" : ""}`));
+    expect(columns("mesh_outbox_state").at(-1)).toBe("keep:string?");
+    expect(columns("mesh_handler_progress").at(-1)).toBe("run_id:uuid?");
+    expect(columns("mesh_subscription_progress").at(-1)).toBe("run_id:uuid?");
+    expect(columns(DELIVERY_PROCESS_TABLE)).toEqual(["run_id:uuid", "renewed_at:timestamp", "host:string?", "pid:integer?", "started_at:timestamp?", "keep:string", "handlers:json", "declared:json"]);
+    // CORE_TABLES itself is untouched, and so is the set of names whose entity data operations are refused
+    expect(CORE_TABLES.map((core) => core.name)).toEqual(["mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress"]);
+    expect(CORE_TABLE_NAMES.has(DELIVERY_PROCESS_TABLE)).toBe(false);
+    expect(MULTI_PROCESS_CORE.tables.map((core) => core.name)).toEqual([DELIVERY_PROCESS_TABLE]);
+  });
+
+  test("schema.ts is byte-identical with no bus, a single-process bus, and localBus's capabilities; a multi-process bus adds the table and columns only", async () => {
+    const emit = input({ "account.mesh.mx": account, "paid.mesh.mx": event });
+    const render = async (capabilities: readonly BusCapability[] | undefined) =>
+      (await generateFiles(withBus(emit, capabilities), build)).find((file) => file.path === ".mesh/schema.ts")!.contents;
+    const none = await render(undefined);
+    expect(await render(["ordered-delivery", "replay", "subscribe"])).toBe(none);
+    expect(await render(["ordered-delivery"])).toBe(none);
+    expect(none).not.toContain("mesh_delivery_process");
+    expect(none).not.toContain("run_id: text(\"run_id\"),\n  }),\n  mesh_subscription_progress");
+    const multi = await render(MULTI);
+    expect(multi).not.toBe(none);
+    expect(multi).toContain(`mesh_delivery_process: _meshSqlite("mesh_delivery_process", {
+    run_id: text("run_id").notNull().primaryKey(),
+    renewed_at: integer("renewed_at", { mode: "timestamp_ms" }).notNull(),
+    host: text("host"),
+    pid: integer("pid"),
+    started_at: integer("started_at", { mode: "timestamp_ms" }),
+    keep: text("keep").notNull(),
+    handlers: text("handlers", { mode: "json" }).notNull(),
+    declared: text("declared", { mode: "json" }).notNull(),
+  }),`);
+    const view = schemaView(withBus(emit, MULTI));
+    expect(view.tables.map((table) => table.entity)).toEqual(["Account", "mesh_outbox", "mesh_outbox_state", "mesh_handler_progress", "mesh_subscription_progress", "mesh_delivery_process"]);
+    expect(view.tables.find((table) => table.entity === "mesh_handler_progress")!.columns.at(-1)).toMatchObject({ key: "run_id", builder: "text", notNull: false });
+    // with no event declared, a multi-process bus adds nothing either
+    const plain = input({ "account.mesh.mx": account });
+    expect(schemaView(withBus(plain, MULTI)).tables.map((table) => table.entity)).toEqual(["Account"]);
+  });
+
+  test("an entity whose table is mesh_delivery_process is MESH_SCHEMA_DUPLICATE_TABLE only in a project whose bus declares multi-process", () => {
+    const clash = "entity :Proc table=\"mesh_delivery_process\"\n  attributes\n    uuid :id primary-key\n";
+    const emit = input({ "proc.mesh.mx": clash, "paid.mesh.mx": event });
+    const error = emitError(() => schemaView(withBus(emit, MULTI)));
+    expect(error.diagnostic).toMatchObject({ code: "MESH_SCHEMA_DUPLICATE_TABLE", message: expect.stringContaining("once the project's bus declares multi-process") });
+    expect(schemaView(withBus(emit, ["ordered-delivery", "replay", "subscribe"])).tables.map((table) => table.entity)).toContain("Proc");
+    expect(schemaView(withBus(emit, undefined)).tables.map((table) => table.entity)).toContain("Proc");
+    // the letter case is SQLite's, as for the outbox's tables
+    const upper = input({ "proc.mesh.mx": clash.replace("mesh_delivery_process", "MESH_DELIVERY_PROCESS"), "paid.mesh.mx": event });
+    expect(emitError(() => schemaView(withBus(upper, MULTI))).diagnostic.code).toBe("MESH_SCHEMA_DUPLICATE_TABLE");
   });
 });

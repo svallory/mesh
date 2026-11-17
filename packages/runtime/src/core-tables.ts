@@ -46,6 +46,11 @@ export const OUTBOX_STATE_TABLE = "mesh_outbox_state";
 export const HANDLER_PROGRESS_TABLE = "mesh_handler_progress";
 /** One row per named subscription: its acknowledged position, filter, `seen_at`, `open` flag and generation. */
 export const SUBSCRIPTION_PROGRESS_TABLE = "mesh_subscription_progress";
+/**
+ * Multi mode only (the bus declares `multi-process`): one row per process that delivers, keyed by its run id and renewed
+ * by the database's clock, with its `keep`, its handlers and their lists, and the events its build declares.
+ */
+export const DELIVERY_PROCESS_TABLE = "mesh_delivery_process";
 
 const column = (name: string, type: CoreColumnType, options: Partial<Omit<CoreColumn, "name" | "type">> = {}): CoreColumn =>
   Object.freeze({ name, type, nullable: false, primaryKey: false, neverReuse: false, ...options });
@@ -95,7 +100,44 @@ export const CORE_TABLES: readonly CoreTable[] = Object.freeze([
 /** The names of every core table, needed or not: no entity data operation reaches one. */
 export const CORE_TABLE_NAMES: ReadonlySet<string> = new Set(CORE_TABLES.map((core) => core.name));
 
-/** The core tables a project needs: the outbox's when it declares an event, none otherwise. */
-export function coreTablesFor(project: { readonly events?: readonly unknown[] }): readonly CoreTable[] {
-  return project.events?.length ? CORE_TABLES.filter((core) => core.needs === "events") : [];
+/**
+ * What delivery from several processes adds (the bus declares `multi-process`): the process table, and a column on three
+ * existing tables, the recorded `keep` on `mesh_outbox_state` and the holder's or owner's run id on each progress row. Not
+ * part of `CORE_TABLES`, so a project whose bus does not declare it keeps its schema byte for byte.
+ */
+export const MULTI_PROCESS_CORE: { readonly tables: readonly CoreTable[]; readonly columns: Readonly<Record<string, readonly CoreColumn[]>> } = Object.freeze({
+  tables: Object.freeze([
+    table(DELIVERY_PROCESS_TABLE, [
+      column("run_id", "uuid", { primaryKey: true }),
+      column("renewed_at", "timestamp"),
+      column("host", "string", { nullable: true }),
+      column("pid", "integer", { nullable: true }),
+      column("started_at", "timestamp", { nullable: true }),
+      column("keep", "string"),
+      column("handlers", "json"),
+      column("declared", "json"),
+    ]),
+  ]),
+  columns: Object.freeze({
+    [OUTBOX_STATE_TABLE]: Object.freeze([column("keep", "string", { nullable: true })]),
+    [HANDLER_PROGRESS_TABLE]: Object.freeze([column("run_id", "uuid", { nullable: true })]),
+    [SUBSCRIPTION_PROGRESS_TABLE]: Object.freeze([column("run_id", "uuid", { nullable: true })]),
+  }),
+});
+
+/**
+ * The core tables a project needs: the outbox's when it declares an event, none otherwise; with `multiProcess` (its bus
+ * declares `multi-process`), `CORE_TABLES` with `MULTI_PROCESS_CORE`'s columns added and its tables after them.
+ */
+export function coreTablesFor(project: { readonly events?: readonly unknown[] }, options?: { readonly multiProcess?: boolean }): readonly CoreTable[] {
+  if (!project.events?.length) return [];
+  const needed = CORE_TABLES.filter((core) => core.needs === "events");
+  if (options?.multiProcess !== true) return needed;
+  return [
+    ...needed.map((core) => {
+      const added = MULTI_PROCESS_CORE.columns[core.name];
+      return added ? table(core.name, [...core.columns, ...added]) : core;
+    }),
+    ...MULTI_PROCESS_CORE.tables,
+  ];
 }
