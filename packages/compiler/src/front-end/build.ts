@@ -37,6 +37,7 @@ import {
   type SourcePosition,
   type Step,
 } from "@meshfw/model";
+import { RELATIONSHIP_KINDS } from "./contracts.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, scopeReachOf } from "./expression.ts";
@@ -1208,7 +1209,7 @@ export function meshDiagnostic(d: MxDiagnostic, file: string): Diagnostic {
     code: d.code ?? "MESH_SYNTAX",
     message: d.message,
     position: { file, line: d.line, column: d.column, offset: d.offset },
-    fix: staticFileFix(d),
+    fix: staticFileFix(d) ?? relationshipValueFix(d),
   };
 }
 
@@ -1227,6 +1228,22 @@ export function staticFileFix(d: Pick<MxDiagnostic, "code" | "message">): string
   if (construct === "if")
     return "a Mesh file has no conditionals; put the condition on the line it conditions, as `when=` on a policy or a check, or inside its expression";
   return null;
+}
+
+/**
+ * MX reports a relationship line with a default value (`belongs-to=:List :list`, the syntax-v3 form, or the unspaced name
+ * `belongs-to=:list`) as the unknown option `value`. Since the operator's ruling of 2026-10-08 a relationship is
+ * `kind :name entity=Identifier`. MX owns the message, so this is a `fix:` line beside it, as `staticFileFix` is. The fix
+ * keeps `<name>` and `<Entity>` as placeholders: the atom after `=` may be either (`belongs-to=:list entity=List`).
+ */
+// Matches MX's wording since alpha.31; the corpus golden pins it (`test/mesh-corpus.test.ts`, the old-relationship fixture).
+const RELATIONSHIP_VALUE = new RegExp(`^\`(${RELATIONSHIP_KINDS.join("|")})\`: unknown option \`value\``);
+export function relationshipValueFix(d: Pick<MxDiagnostic, "code" | "message">): string | null {
+  if (d.code !== "MESH_UNKNOWN_OPTION") return null;
+  const kind = RELATIONSHIP_VALUE.exec(d.message)?.[1];
+  return kind === undefined
+    ? null
+    : `a relationship takes no value after \`=\`: write its name after a space and its entity as an option, \`${kind} :<name> entity=<Entity>\``;
 }
 
 /** Parse with closed MX contracts, then project the static tree without executing it. */
