@@ -346,7 +346,7 @@ Delivery registers the handlers each time it starts. With P the position a handl
 
 ## Running the deliverer
 
-One process per database delivers: it holds the database's **claim**, a row in `mesh_outbox_state`. A second process that tries to deliver fails with `DelivererTakenError` (`MESH_DELIVERER_TAKEN`), which names the holder (its host, pid and start time, and how long ago it renewed the claim) and `lapsesAt`, when a crashed holder's claim may be taken over. How a process delivers depends on how it connects:
+One process per database delivers, unless the bus declares `multi-process` (`localBus({ processes: "many" })`): it holds the database's **claim**, a row in `mesh_outbox_state`. A second process that tries to deliver fails with `DelivererTakenError` (`MESH_DELIVERER_TAKEN`), which names the holder (its host, pid and start time, and how long ago it renewed the claim) and `lapsesAt`, when a crashed holder's claim may be taken over. How a process delivers depends on how it connects:
 
 | Call | What it does |
 |:--|:--|
@@ -378,7 +378,7 @@ The running deliverer renews its claim every 5 seconds, whatever the bus; a clai
 
 ## `localBus`
 
-`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter, for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay` and `subscribe`; it does not declare `dead-letters`, so `onFailure: "skip"` is refused. Its options are all optional:
+`localBus(options?)`, from `@meshfw/bus-local`, is the first event bus. It runs in the deliverer's process on any data adapter, for development, tests and an application that runs in one process, and declares `ordered-delivery`, `replay` and `subscribe`, and `multi-process` too with `processes: "many"`; it does not declare `dead-letters`, so `onFailure: "skip"` is refused. Its options are all optional:
 
 | Option | Default | What it does |
 |:--|:--|:--|
@@ -386,6 +386,7 @@ The running deliverer renews its claim every 5 seconds, whatever the bus; a clai
 | `retryDelays` | `[100, 1000, 10000]` after start; `[0, 0, 0]` in `deliver()` rounds | The wait in milliseconds before each retry of a failing handler; when they are used up, the handler stops. A value you set applies to both |
 | `maxQueue` | `10000` | How many events a live subscription may have waiting for its callback before it ends with `SubscriptionOverflowError` |
 | `onStopped` | writes the error with `console.error` | After start, the function called with the `HandlerStoppedError` each time a handler stops, in place of the default report; see "A stopped handler" below |
+| `processes` | `"one"` | How many processes may deliver the database: `"one"`, one deliverer per database; `"many"`, several at once, each handler held by one of them at a time and taken over by another when its holder stops renewing (the bus then declares `multi-process`) |
 
 ```ts "mesh.config.ts"
 import { localBus } from "@meshfw/bus-local";
@@ -409,7 +410,7 @@ export default defineConfig({
 });
 ```
 
-`pollInterval` and each delay are whole milliseconds, at most 2147483647 (about 24.8 days, the longest wait a timer keeps); `pollInterval` is at least 1. A wrong option, such as a `pollInterval` of 0, a negative delay or an `onStopped` that is not a function, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
+`pollInterval` and each delay are whole milliseconds, at most 2147483647 (about 24.8 days, the longest wait a timer keeps); `pollInterval` is at least 1. A wrong option, such as a `pollInterval` of 0, a negative delay, an `onStopped` that is not a function or a `processes` other than `"one"` or `"many"`, is a `FrameworkError` when `localBus()` is called, which is when `mesh.config.ts` loads.
 
 **Rounds.** Each round feeds every handler from its own progress row, in position order, one event at a time, then every live subscription from its own position, then deletes what every reader has passed. Once delivery is started (`connect()` or `startDelivery()`), a round runs at once, after each transaction in this process that published commits, and every `pollInterval`. Creating the bus starts nothing, and `disconnect()` or `delivery.stop()` waits for the running round and leaves no timer behind.
 
@@ -593,6 +594,7 @@ Whether a retry makes sense is on the error. Every Mesh error carries `retryable
 | `EventsConfigError` | `MESH_EVENTS_CONFIG` | `false` | The `events` configuration is not valid, or the events module exports handlers while no bus is set |
 | `HandlerOptionError` | `MESH_HANDLER_OPTION` | `false` | A handler lists something other than an event class of the project, asks for `onFailure: "skip"` without `dead-letters`, or has a `renamedFrom` that names a registered handler or that two handlers name |
 | `DelivererTakenError` | `MESH_DELIVERER_TAKEN` | `true` | Another process or binding holds the claim, or a `deliver()` overlapped a round. Names the `holder` and `lapsesAt`. Stop the other process, or connect this one with `{ deliver: false }` |
+| `HandlerLostError` | `MESH_HANDLER_LOST` | `false` | With a bus that declares `multi-process`, this process no longer holds the handler: another process took it over (`reason` `"taken"`), or this process gave it up at an event another build of the handler lists and this one does not (`"pending"`). Names the `handler` and the `position`. A bus ends that handler in this process and reports nothing |
 | `DelivererLostError` | `MESH_DELIVERER_LOST` | `false` | This process no longer holds the claim: another process took it over after it lapsed, or a renewal updated no row, stayed blocked by a lock past the lapse, or kept failing with another transient database error (core retries it, at once and then every 500 ms) until the lapse. This process's delivery stopped |
 | `HandlerStoppedError` | `MESH_HANDLER_STOPPED` | `false` | `deliver()` when handlers stopped in the round; names them in `stopped` |
 | `SubscriptionOverflowError` | `MESH_SUBSCRIPTION_OVERFLOW` | `true` | A subscription's queue passed the bus's `maxQueue` (10 000 events by default); reopen it |

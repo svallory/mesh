@@ -24,7 +24,7 @@ const paid = `event :InvoicePaid
   integer :n
 `;
 
-export const MULTI_CAPABILITIES = ["ordered-delivery", "replay", "subscribe", "multi-process"] as const;
+import { MULTI_CAPABILITIES } from "./multi-capabilities.ts";
 
 /** Build both schemas; resolves with their tables and a function that deletes the scratch directory. */
 export async function buildSchemas(): Promise<{ single: Record<string, TableHandle>; multi: Record<string, TableHandle>; remove(): Promise<void> }> {

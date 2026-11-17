@@ -285,10 +285,15 @@ export class EventUndeclaredError extends MeshError {
   /** The row's position. */
   readonly position: number;
 
-  constructor(eventName: string, position: number, options?: MeshErrorOptions) {
+  /**
+   * `declaredBy`, in delivery from several processes: a live process whose build declares the event (`pid 4242 on host
+   * api-1`), named for a subscription that ends at the row, since that process can open it.
+   */
+  constructor(eventName: string, position: number, options?: MeshErrorOptions & { readonly declaredBy?: string }) {
     super(
       `The outbox row at position ${position} names the event ${eventName}, which the project no longer declares (it moved or was renamed). `
-        + "The read stops here rather than skip it: move the declaration back until its rows are delivered",
+        + "The read stops here rather than skip it: move the declaration back until its rows are delivered"
+        + (options?.declaredBy === undefined ? "" : `; a process whose build declares ${eventName} (${options.declaredBy}) can open this subscription`),
       options,
     );
     this.eventName = eventName;

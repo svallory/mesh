@@ -1,7 +1,11 @@
 // Delivery from several processes, the parts that need no database: MESH_HANDLER_LOST, the several-processes wording of
-// MESH_DELIVERER_TAKEN, and testBus ending a handler another process holds for the round without reporting it.
+// MESH_DELIVERER_TAKEN, testBus ending a handler another process holds for the round without reporting it, and the
+// choice of the claim strategy by the bus's manifest over a fake data layer.
 import { describe, expect, test } from "bun:test";
-import { DelivererTakenError, HandlerLostError, MeshError, type BusCore, type ClaimHolder } from "@meshfw/runtime";
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  DelivererTakenError, FrameworkError, HandlerLostError, MeshError, bindDomain, type BusCapability, type BusCore, type ClaimHolder, type DataLayer,
+} from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 
 describe("HandlerLostError", () => {
@@ -63,5 +67,63 @@ describe("testBus and a handler this process no longer holds", () => {
   test("testBus declares multi-process when its capabilities list it, and not by default", () => {
     expect(testBus().manifest.capabilities).toEqual(["ordered-delivery", "replay", "subscribe"]);
     expect(testBus({ capabilities: ["ordered-delivery", "multi-process"] }).manifest.capabilities).toEqual(["ordered-delivery", "multi-process"]);
+  });
+});
+
+describe("the strategy follows the bus's manifest (rule M1), and multi mode needs the multi-process operations (rule M4)", () => {
+  /** A layer whose transactions have the single-mode delivery operations only, each recording its call. */
+  function layerWithout(missing: readonly string[] = []) {
+    const calls: string[] = [];
+    const state = { deletedThrough: 0, highest: 0, generation: 0, claim: null, now: new Date() };
+    const tx: Record<string, unknown> = {};
+    for (const name of ["readDeliveryState", "writeClaim", "renewClaim", "releaseClaim", "readHandlerProgress", "writeHandlerProgress", "deleteHandlerProgress",
+      "readSubscriptionProgress", "writeSubscriptionProgress", "deleteSubscriptionProgress", "firstOutboxRow",
+      "lockDeliveryState", "writeKeep", "lockHandlerProgress", "readHandlerLeases", "writeHandlerLease", "moveHandler", "moveSubscription",
+      "readProcesses", "writeProcess", "renewProcess", "deleteProcess", "readSubscriptionOwners", "writeSubscriptionOwner"]) {
+      if (missing.includes(name)) continue;
+      tx[name] = async () => {
+        calls.push(name);
+        if (name === "readDeliveryState" || name === "lockDeliveryState") return { ...state, keep: null };
+        if (name.startsWith("read")) return [];
+        return true;
+      };
+    }
+    const layer = {
+      database: `fake #${Math.random()}`,
+      transaction: async <T>(run: (ops: never) => Promise<T>) => run(tx as never),
+      refuseIfFailed: () => false,
+      close: async () => {},
+    } as unknown as DataLayer;
+    return { layer, calls };
+  }
+  const bind = (layer: DataLayer, capabilities: readonly BusCapability[]) =>
+    bindDomain({}, layer, { events: { bus: testBus({ capabilities }), load: async () => ({}) } }, new AsyncLocalStorage() as never);
+
+  test("a bus without multi-process delivers in single mode: no multi-process operation is called", async () => {
+    const { layer, calls } = layerWithout();
+    // the fake keeps no state, so the round loses its claim at the deletion pass; only the calls matter here
+    await bind(layer, ["ordered-delivery"]).deliver().catch(() => undefined);
+    expect(calls).toContain("readDeliveryState");
+    expect(calls.filter((name) => ["lockDeliveryState", "writeProcess", "readProcesses", "lockHandlerProgress"].includes(name))).toEqual([]);
+  });
+
+  test("a bus with multi-process locks mesh_outbox_state, writes the nil claim and its process row", async () => {
+    const { layer, calls } = layerWithout();
+    await bind(layer, ["ordered-delivery", "multi-process"]).deliver().catch(() => undefined);
+    expect(calls.slice(0, 4)).toEqual(["lockDeliveryState", "writeClaim", "readProcesses", "writeProcess"]);
+  });
+
+  test("a multi-mode start on a data layer that lacks one of them is a FrameworkError naming it, before anything is written", async () => {
+    for (const missing of ["lockDeliveryState", "writeProcess", "writeSubscriptionOwner"]) {
+      const { layer, calls } = layerWithout([missing]);
+      const error = await bind(layer, ["ordered-delivery", "multi-process"]).deliver().then(() => undefined, (thrown: unknown) => thrown);
+      expect(error).toBeInstanceOf(FrameworkError);
+      expect((error as Error).message).toBe(`The data layer's transactions have no ${missing}: delivering events from several processes needs a data adapter with the multi-process delivery operations (MultiProcessOperations in @meshfw/runtime)`);
+      expect(calls).toEqual([]);
+    }
+    // a layer without the single-mode ones gets their own message first
+    const { layer } = layerWithout(["readDeliveryState"]);
+    const error = await bind(layer, ["ordered-delivery", "multi-process"]).deliver().then(() => undefined, (thrown: unknown) => thrown);
+    expect((error as Error).message).toStartWith("The data layer's transactions have no readDeliveryState: delivering events needs a data adapter with the delivery operations");
   });
 });

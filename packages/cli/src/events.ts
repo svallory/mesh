@@ -13,7 +13,9 @@ function isDataLayer(value: unknown): value is DataLayer {
  * `mesh events forget <name>` (spec, Events and commands, "Retention"): drops the progress row of a handler that was
  * removed or renamed, or the row of a subscription whose client is not coming back, from the database the project's
  * `mesh.config.ts` configures. It runs outside the deliverer's process, so it reads the live claim: a handler the live
- * deliverer registered and a subscription open under it are refused (`forgetByName` in `@meshfw/runtime`).
+ * deliverer registered and a subscription open under it are refused (`forgetByName` in `@meshfw/runtime`). When the
+ * configured bus declares `multi-process`, it reads the live process rows instead: a handler one registers and a
+ * subscription open under one are refused.
  */
 export async function runEvents(args: readonly string[], root: string, io: Io): Promise<number> {
   const [, verb, name, ...rest] = args;
@@ -35,7 +37,9 @@ export async function runEvents(args: readonly string[], root: string, io: Io): 
       return 1;
     }
     layer = data;
-    const forgotten = await forgetByName(layer, name);
+    // The mode comes from the configuration, never from the schema (a failed probe would abort a Postgres transaction).
+    const multiProcess = loaded.config.events?.bus?.manifest.capabilities.includes("multi-process") === true;
+    const forgotten = await forgetByName(layer, name, { multiProcess });
     io.stdout(`forgot the ${forgotten.kind} ${forgotten.name}, which was at position ${forgotten.position}\n`);
     return 0;
   } catch (cause) {

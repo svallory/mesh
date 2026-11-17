@@ -79,7 +79,10 @@ export function eventsDiagnostics(document: ModelDocument, config: { readonly da
           "Set events.bus to a bus that declares it, or remove it from events.requires"));
       } else if (!(bus.manifest.capabilities as readonly string[]).includes(name)) {
         diagnostics.push(error("MESH_CAPABILITY", `events.requires lists ${name}, and the event bus "${bus.manifest.adapter}" does not declare it`, at,
-          `Use a bus that declares ${name}, or remove it from events.requires`));
+          // The local bus declares multi-process when it is made for several processes: the fix names its option.
+          name === "multi-process" && bus.manifest.adapter === "local"
+            ? "Use localBus({ processes: \"many\" }), or remove it from events.requires"
+            : `Use a bus that declares ${name}, or remove it from events.requires`));
       }
     } else if (!data.includes(name)) {
       diagnostics.push(error("MESH_CAPABILITY", `events.requires lists ${name}, and the data adapter "${config.data.name}" does not declare it`, at,

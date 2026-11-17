@@ -966,6 +966,38 @@ describe("mesh events forget", () => {
     expect(await rows()).toEqual({ handlers: ["both", "running"], subscriptions: ["both", "open"] });
   }, 60_000);
 
+  test("in a project whose bus declares multi-process, it refuses what a live process row registers or keeps open, and drops a crash's leftovers", async () => {
+    const dir = await project();
+    await writeFile(join(dir, "mesh.config.ts"), CONFIG_FILE.replace("testBus() } };", 'testBus({ capabilities: ["ordered-delivery", "replay", "subscribe", "multi-process"] }) } };')
+      .replace("testBus(): import", "testBus(options?: object): import"));
+    expect(await mesh(dir, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
+    const app = await import(join(dir, ".mesh/index.ts"));
+    expect(Object.keys(app.tables)).toContain("mesh_delivery_process");
+    const data = await import(Bun.resolveSync("@meshfw/data-sqlite", root));
+    const layer = data.sqlite({ file: join(dir, "app.db") }) as FileLayer;
+    await data.createSchema(layer, app.tables);
+    const LIVE = "00000000-0000-4000-8000-00000000000a";
+    const GONE = "00000000-0000-4000-8000-00000000000b";
+    await layer.transaction(async (tx) => {
+      await tx.writeProcess!({ runId: LIVE, host: "api-1", pid: 4242, startedAt: null, keep: "until-delivered", handlers: { running: ["billing.InvoicePaid"] }, declared: ["billing.InvoicePaid"] });
+      await tx.writeHandlerLease!({ name: "running", kind: "process", position: 4, events: ["billing.InvoicePaid"], generation: 2, runId: LIVE });
+      await tx.writeHandlerLease!({ name: "removed", kind: "listen", position: 2, events: ["billing.InvoicePaid"], generation: 5, runId: GONE });
+      await tx.writeSubscriptionOwner!({ name: "open", position: 5, filter: {}, open: true, generation: 0, runId: LIVE });
+      await tx.writeSubscriptionOwner!({ name: "crashed", position: 6, filter: {}, open: true, generation: 0, runId: GONE });
+    });
+    await layer.close();
+    const running = await mesh(dir, "events", "forget", "running");
+    expect(running.code).toBe(1);
+    expect(running.stderr).toContain('events forget failed: The handler "running" is registered by a live process (pid 4242 on host api-1), so its progress is not dropped. Remove it from the events module and restart every process first');
+    const open = await mesh(dir, "events", "forget", "open");
+    expect(open.code).toBe(1);
+    expect(open.stderr).toContain('events forget failed: The subscription "open" is open in a live process (pid 4242 on host api-1); close it there first');
+    // the lease and the owner name a process with no row: a crash's leftovers
+    expect(await mesh(dir, "events", "forget", "removed")).toEqual({ code: 0, stdout: "forgot the handler removed, which was at position 2\n", stderr: "" });
+    expect(await mesh(dir, "events", "forget", "crashed")).toEqual({ code: 0, stdout: "forgot the subscription crashed, which was at position 6\n", stderr: "" });
+    expect((await mesh(dir, "events", "forget", "nobody")).stderr).toContain('No handler and no subscription named "nobody" has a row in this database');
+  }, 60_000);
+
   test("a usage mistake is exit 2 and touches nothing", async () => {
     const dir = await project();
     expect(await mesh(dir, "events")).toEqual({ code: 2, stdout: "", stderr: "Missing events command; use mesh events forget <name>\n" });
