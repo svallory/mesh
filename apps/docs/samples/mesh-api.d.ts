@@ -162,6 +162,8 @@ declare module "@meshfw/runtime" {
     /** `runHandler`, retried after each of `delays` while the error is retryable; resolves with null once handled, or with the stop to report. */
     retry(handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]): Promise<StoppedHandler | null>;
     isRetryable(error: unknown): boolean;
+    /** For a handler with `onFailure: "skip"` whose retries are used up: copy the event into `mesh_outbox_failures` and move its progress to it, in one transaction. */
+    setAside(handler: RegisteredHandler, row: OutboxRow, error: unknown): Promise<void>;
     subscriptions(): readonly LiveSubscription[];
     /** Core's deletion pass, by `keep`; a bus calls it after each round. */
     deletionPass(): Promise<void>;

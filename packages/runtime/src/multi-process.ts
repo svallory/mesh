@@ -4,7 +4,7 @@ import type {
   MultiProcessOperations, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow,
 } from "./data-layer.ts";
 import {
-  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, operations, registrationOf, renamedFilter, timing,
+  NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, handlerStart, holderOf, lapsed, moveFailures, operations, registrationOf, renamedFilter, timing,
   type ClaimStrategy, type DatabaseState, type DeclaredHandler, type Deliverer, type Forgotten,
 } from "./deliverer.ts";
 import { NO_RENAMES } from "./stored-names.ts";
@@ -186,7 +186,10 @@ export class MultiClaim implements ClaimStrategy {
         if (former !== undefined && formerRow) progress.set(former, formerRow);
         const start = await handlerStart(entry, progress, registration, this.deliverer.renamed);
         logs.push(...start.logs);
-        if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
+        if (start.former !== undefined) {
+          await ops.deleteHandlerProgress(start.former);
+          await moveFailures(tx, start.former, name);
+        }
         // The union only grows here; a row taken over by renamedFrom starts from this build's list, since no live build lists the old one.
         const events = own ? union(this.#declaredList(own.events), start.row.events) : start.row.events;
         await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });
@@ -378,7 +381,10 @@ export class MultiClaim implements ClaimStrategy {
         const message = error instanceof Error ? error.message : String(error);
         throw this.deliverer.lose(`the renamedFrom move of the handler ${JSON.stringify(name)} from ${JSON.stringify(former)}, made once no live process registered ${JSON.stringify(former)}, was refused: ${message}`);
       }
-      if (start.former !== undefined) await ops.deleteHandlerProgress(start.former);
+      if (start.former !== undefined) {
+        await ops.deleteHandlerProgress(start.former);
+        await moveFailures(tx, start.former, name);
+      }
       const events = own ? union(this.#declaredList(own.events), start.row.events) : start.row.events;
       await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });
       this.#unions.set(name, events);
@@ -477,6 +483,11 @@ export class MultiClaim implements ClaimStrategy {
       if ((await ops.firstOutboxRow(blocked - 1, blocked + 1, stored([name]), either)) !== null) { event = name; break; }
     }
     throw this.#yield(handler, lease, blocked, event);
+  }
+
+  /** A `retryFailed` transaction's fence: the nil claim and the handler's lease, as a handler transaction checks them. */
+  async fenceReplay(delivery: DeliveryOperations, handler: RegisteredHandler): Promise<void> {
+    await this.#lease(multiOperations(delivery), handler, 0);
   }
 
   async writeProgress(delivery: DeliveryOperations, progress: HandlerProgressRow, position: number): Promise<void> {

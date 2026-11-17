@@ -137,6 +137,17 @@ export interface BusCore {
   retry(handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]): Promise<StoppedHandler | null>;
   /** Whether a retry of a handler that threw `error` makes sense: its own `retryable`, true for an error that sets none. */
   isRetryable(error: unknown): boolean;
+  /**
+   * Set `row` aside for `handler`, a handler whose `onFailure` is `"skip"`, once its retries are used up or its error
+   * says `retryable: false` (spec, "Handler failures"): in one transaction fenced as a handler transaction is, core copies
+   * the event whole into `mesh_outbox_failures` with `error` and moves the handler's progress to the row; then it reports
+   * the set-aside once, and the bus goes on with the next row. Resolves at once when the handler has passed the row
+   * already. Rejects with `MESH_EVENT_UNDECLARED` for a row no declared event matches (never set aside: the handler stops
+   * there), `MESH_DATABASE_BUSY`, `MESH_DELIVERER_LOST`, `MESH_HANDLER_LOST`, or a `FrameworkError` for a misuse (a
+   * handler whose `onFailure` is `"stop"`, a busy or lost error handed as `error`, a row the handler does not list or
+   * that would skip a listed row). Calling it is what a bus that declares `dead-letters` promises.
+   */
+  setAside(handler: RegisteredHandler, row: OutboxRow, error: unknown): Promise<void>;
   /** The subscriptions open on this database in this process, now. */
   subscriptions(): readonly LiveSubscription[];
   /** Core's deletion pass, by `keep`, in batches; takes no position. A bus calls it after each round. */

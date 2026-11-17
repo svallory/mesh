@@ -14,12 +14,14 @@ describeServer("bus conformance with testBus, Postgres", () => {
   const checks = busConformance({
     makeLayer: () => database.freshLayer(),
     frame: () => new AsyncLocalStorage(),
-    bus: ({ retryDelays, pollMs }) => testBus({ retryDelays, pollMs }),
+    // dead-letters asked for, so the suite's dead-letters group runs on Postgres's failure operations.
+    bus: ({ retryDelays, pollMs }) => testBus({ capabilities: ["ordered-delivery", "replay", "subscribe", "dead-letters"], retryDelays, pollMs }),
   });
-  test("every check runs under both keep values", () => {
+  test("every check runs under both keep values, the dead-letters group included", () => {
     const names = Object.keys(checks);
     expect(names.filter((name) => name.startsWith("[keep: until-delivered]")).length).toBe(names.length / 2);
     expect(names.some((name) => name.includes("subscribe:"))).toBe(true);
+    expect(names.filter((name) => name.includes("dead letters:")).length).toBeGreaterThan(20);
   });
   for (const [name, check] of Object.entries(checks)) test(name, check, 60_000);
 });

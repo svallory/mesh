@@ -1,7 +1,7 @@
 import type { BusCore, EventBus, EventBusInstance, Handler, HandlerKind, KindHandler, LiveSubscription, Registration, RegisteredHandler } from "./bus.ts";
 import { checkedBus } from "./bus.ts";
 import type {
-  DataLayer, DataOperations, DelivererClaim, DeliveryOperations, DeliveryState, HandlerProgressRow, Key, OutboxPage, OutboxRow,
+  DataLayer, DataOperations, DelivererClaim, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, Key, OutboxPage, OutboxRow,
   SubscriptionFilter, SubscriptionProgressRow,
 } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
@@ -76,12 +76,15 @@ export interface DatabaseState {
   readonly subscriptions: Map<string, OpenSubscription>;
   /** When each orphan was last reported in this process (`Date.now()`), by `handler:<name>` or `subscription:<name>`. */
   readonly reported: Map<string, number>;
+  /** The handlers a `retryFailed` call runs for now in this process: a second call for one of them is refused. */
+  readonly retrying: Set<string>;
 }
 const databases = new PerDatabase<DatabaseState>((layer) => ({
   name: typeof layer.database === "string" && layer.database !== "" ? layer.database : "the database",
   deliverer: undefined,
   subscriptions: new Map(),
   reported: new Map(),
+  retrying: new Set(),
 }));
 
 /** What each binding delivers: the started deliverer, the one its `deliver()` rounds reuse, and whether it was connected with `deliver: false`. */
@@ -119,6 +122,35 @@ export function operations(tx: DataOperations): DeliveryOperations {
     if (typeof tx[name] !== "function")
       throw new FrameworkError(`The data layer's transactions have no ${name}: delivering events needs a data adapter with the delivery operations (DeliveryOperations in @meshfw/runtime)`);
   return tx as DataOperations & DeliveryOperations;
+}
+
+const FAILURE_OPERATIONS = ["writeFailure", "readFailures", "deleteFailure", "renameFailures"] as const satisfies readonly (keyof FailureOperations)[];
+
+/**
+ * The dead-letter operations of a transaction (`FailureOperations`); a `FrameworkError` naming the first one the data
+ * adapter lacks and `why` they are needed. Not part of `operations()`: an adapter without them delivers every project
+ * that has no handler with `onFailure: "skip"`.
+ */
+export function failureOperations(tx: DataOperations | DeliveryOperations, why: string): FailureOperations {
+  for (const name of FAILURE_OPERATIONS)
+    if (typeof (tx as Partial<FailureOperations>)[name] !== "function")
+      throw new FrameworkError(`The data layer's transactions have no ${name}: ${why}, which needs a data adapter with the dead-letter operations (FailureOperations in @meshfw/runtime)`);
+  return tx as unknown as FailureOperations;
+}
+
+/**
+ * In a registration transaction that moves the `renamedFrom` row `from` to `to`: the handler's set-aside events move
+ * with it, so none is left under a name no handler registers. An adapter without the dead-letter operations holds none.
+ */
+export async function moveFailures(tx: DataOperations | DeliveryOperations, from: string, to: string): Promise<void> {
+  const renameFailures = (tx as Partial<FailureOperations>).renameFailures;
+  if (typeof renameFailures === "function") await renameFailures.call(tx, from, to);
+}
+
+/** A handler's error as a failure row stores it: its string `code` (null for none) and its message. */
+function failureError(error: unknown): FailureRow["error"] {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  return Object.freeze({ code: typeof code === "string" ? code : null, message: error instanceof Error ? error.message : String(error) });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -195,10 +227,6 @@ export function declaredHandlers(module: EventsModule, bus: EventBus, events: Re
         throw new HandlerOptionError(name, `${where} has onFailure ${JSON.stringify(onFailure)}: it is "stop" (the default) or "skip"`);
       if (onFailure === "skip" && !capabilities.has("dead-letters"))
         throw new HandlerOptionError(name, `${where} has onFailure "skip", which needs the bus's dead-letters, and the bus ${bus.manifest.adapter} does not declare it: no event is ever skipped without a record`);
-      // Dead letters (mesh_outbox_failures, core's skip path, retryFailed) are not built yet: a bus that declares
-      // dead-letters would otherwise get stop behaviour silently. The type keeps "skip" gated on dead-letters.
-      if (onFailure === "skip")
-        throw new HandlerOptionError(name, `${where} has onFailure "skip", and dead-letter handling is not built yet: no event can be set aside with a record. Leave onFailure out (it defaults to "stop")`);
       const renamedFrom = handler.renamedFrom;
       if (renamedFrom !== undefined && (typeof renamedFrom !== "string" || renamedFrom.trim() === ""))
         throw new HandlerOptionError(name, `${where} has renamedFrom ${describe(renamedFrom)}: it must be the handler's former name`);
@@ -328,6 +356,11 @@ export interface ClaimStrategy {
   writeProgress(ops: DeliveryOperations, progress: HandlerProgressRow, position: number): Promise<void>;
   /** The short transaction that closes a `listen` handler's run: the fence again, then the position moves to `row`. */
   settleListen(ops: DeliveryOperations, handler: RegisteredHandler, row: OutboxRow): Promise<void>;
+  /**
+   * In a `retryFailed` transaction, before a set-aside event is replayed or removed: the fence alone (the claim's
+   * generation, or the handler's lease), with no position check, since a set-aside event is below the progress row.
+   */
+  fenceReplay(ops: DeliveryOperations, handler: RegisteredHandler): Promise<void>;
   /** After `runHandler` rejected with `error`, outside its transaction; resolves with the error to reject with instead, if any. */
   afterReject(handler: RegisteredHandler, error: unknown): Promise<unknown>;
   /** In each deletion batch's transaction: the fence; the state the batch computes from. */
@@ -403,6 +436,7 @@ export class Deliverer {
       lists: (handler: RegisteredHandler, row: OutboxRow) => self.strategy.lists(handler, renamedRow(row, self.renamed)),
       runHandler: (handler: RegisteredHandler, row: OutboxRow) => self.runHandler(handler, row),
       retry: (handler: RegisteredHandler, row: OutboxRow, delays: readonly number[]) => self.retry(handler, row, delays),
+      setAside: (handler: RegisteredHandler, row: OutboxRow, error: unknown) => self.setAside(handler, row, error),
       isRetryable,
       // A subscription still writing its row (opening) is not fed: its first read is rows(start), once the row commits.
       subscriptions: () => [...self.db.subscriptions.values()].filter((subscription) => !subscription.ended && !subscription.opening),
@@ -443,6 +477,10 @@ export class Deliverer {
   async claim(declared: readonly DeclaredHandler[]): Promise<void> {
     if (this.db.deliverer !== undefined && this.db.deliverer !== this) throw takenHere(this.db, this.db.deliverer);
     if (this.holding) throw takenHere(this.db, this);
+    // A handler that sets events aside needs the dead-letter operations: an adapter without them fails the start, not
+    // the first set-aside.
+    const skipping = declared.find((entry) => entry.registered.onFailure === "skip");
+    if (skipping) await this.layer.transaction(async (tx) => { failureOperations(tx, `the handler ${JSON.stringify(skipping.registered.name)} has onFailure "skip"`); });
     this.db.deliverer = this;
     try {
       this.#readHead = await this.strategy.register(declared);
@@ -500,11 +538,16 @@ export class Deliverer {
     return row.position;
   }
 
-  #entry(handler: RegisteredHandler): DeclaredHandler {
+  #entry(handler: RegisteredHandler, what = "runHandler"): DeclaredHandler {
     const entry = this.#handlers.get(handler?.name);
     if (!entry || entry.registered !== handler)
-      throw new FrameworkError(`runHandler was handed ${typeof handler?.name === "string" ? `the handler ${JSON.stringify(handler.name)}, which is not` : "a value that is not"} one core registered for this claim: a bus feeds the handlers of core.handlers`);
+      throw new FrameworkError(`${what} was handed ${typeof handler?.name === "string" ? `the handler ${JSON.stringify(handler.name)}, which is not` : "a value that is not"} one core registered for this claim: a bus feeds the handlers of core.handlers`);
     return entry;
+  }
+
+  /** The handler registered for the current claim under `name`, if any. */
+  registered(name: string): RegisteredHandler | undefined {
+    return this.#handlers.get(name)?.registered;
   }
 
   /** The context the handler runs with: what the events module's `context(event)` returns, else `{ system: true }`. */
@@ -581,6 +624,93 @@ export class Deliverer {
         await sleep(delays[attempt]!);
         if (this.lost) throw this.lost;
       }
+    }
+  }
+
+  /**
+   * `core.setAside` (spec, "Handler failures"): for a handler with `onFailure: "skip"` whose retries are used up (or whose
+   * error says `retryable: false`), copy `row` whole into `mesh_outbox_failures` with the error and move the handler's
+   * progress to it, in one transaction fenced as a handler transaction is; then warn once. Resolves at once when the
+   * handler has passed the row already. A row no declared event matches is never set aside (`MESH_EVENT_UNDECLARED`),
+   * and a busy database, a lost claim or a lost lease is never a handler's failure.
+   */
+  async setAside(handler: RegisteredHandler, row: OutboxRow, error: unknown): Promise<void> {
+    this.live();
+    this.#entry(handler, "core.setAside");
+    if (handler.onFailure !== "skip")
+      throw new FrameworkError(`core.setAside was handed the handler ${JSON.stringify(handler.name)}, whose onFailure is ${JSON.stringify(handler.onFailure)}: a bus sets aside only a handler with onFailure "skip"`);
+    for (const kind of [DatabaseBusyError, DelivererLostError, HandlerLostError])
+      if (error instanceof kind)
+        throw new FrameworkError(`core.setAside was handed ${(error as { code: string }).code} as the failure: ${kind === DatabaseBusyError ? "a busy database ends the round" : kind === DelivererLostError ? "a lost claim ends the instance" : "a lost lease ends the handler in this process"} and is never a handler's failure`);
+    row = renamedRow(row, this.renamed);
+    if (!this.events.has(row.name)) throw new EventUndeclaredError(row.name, row.position);
+    if (!handler.events.includes(row.name))
+      throw new FrameworkError(`core.setAside was handed the ${row.name} at position ${row.position} for the handler ${JSON.stringify(handler.name)}, which does not list it: a bus sets aside only a row the handler failed on`);
+    let set: boolean;
+    try {
+      this.strategy.enter(handler, row);
+      set = await this.layer.transaction(async (tx) => {
+        const ops = operations(tx);
+        const failures = failureOperations(tx, `the handler ${JSON.stringify(handler.name)} has onFailure "skip"`);
+        const progress = await this.strategy.fenceHandler(ops, handler, row);
+        if (!progress) return false;
+        // The declared (mapped) name is stored: two former FQNs may map to one event, and the map is idempotent.
+        await failures.writeFailure({ ...row, handler: handler.name, error: failureError(error) });
+        await this.strategy.writeProgress(ops, progress, row.position);
+        return true;
+      });
+    } catch (thrown) {
+      throw (await this.strategy.afterReject(handler, thrown)) ?? thrown;
+    }
+    if (set)
+      console.warn(`Mesh: the handler ${JSON.stringify(handler.name)} set aside the event ${row.name} at position ${row.position} after: ${failureError(error).message}. It is kept in mesh_outbox_failures; retryFailed(${JSON.stringify(handler.name)}) replays it`);
+  }
+
+  /**
+   * One set-aside event replayed by `retryFailed` (DL7): null once handled and its failure row removed (or when the row
+   * was removed meanwhile), else the error it failed with, the row kept. A `process` handler's body runs in the
+   * transaction that removes the row, so a throw keeps both; a `listen` handler's body runs first, then a short fenced
+   * transaction removes the row. Busy, a lost claim and a lost lease reject.
+   */
+  async replay(handler: RegisteredHandler, failure: FailureRow): Promise<"handled" | "gone" | { readonly cause: unknown }> {
+    this.live();
+    const entry = this.#entry(handler, "retryFailed");
+    this.strategy.enter(handler, undefined);
+    const name = this.declaredName(failure.name);
+    const eventClass = this.events.get(name);
+    if (!eventClass) return { cause: new EventUndeclaredError(name, failure.position) };
+    if (!handler.events.includes(name))
+      return { cause: new FrameworkError(`retryFailed(${JSON.stringify(handler.name)}): the set-aside event at position ${failure.position} is ${name}, which the handler no longer lists; list it again, or delete the failure row`) };
+    const why = `retryFailed(${JSON.stringify(handler.name)}) replays set-aside events`;
+    const label = `the ${handler.kind} handler ${handler.name}`;
+    try {
+      const record = recordOf({ ...failure, name }, eventClass);
+      const run = (context: ActionContext) => (entry.handler as Handler).run(record, { context });
+      if (handler.kind === "process" || entry.kind !== undefined) {
+        return await handlerScope(this.binding, label, failure.id, true, async () => {
+          const removed = await this.layer.transaction(async (tx) => {
+            await this.strategy.fenceReplay(operations(tx), handler);
+            causedIn(tx, failure.id);
+            return failureOperations(tx, why).deleteFailure(failure.failure);
+          });
+          if (!removed) return "gone" as const;
+          await run(this.#context(record));
+          return "handled" as const;
+        }, entry.kind);
+      }
+      await this.layer.transaction((tx) => this.strategy.fenceReplay(operations(tx), handler));
+      const context = this.#context(record);
+      await handlerScope(this.binding, label, failure.id, false, () => Promise.resolve(run(context)));
+      // The guard and the claim mean no other run of this row overlaps: a row already gone was removed by hand.
+      await this.layer.transaction(async (tx) => {
+        await this.strategy.fenceReplay(operations(tx), handler);
+        await failureOperations(tx, why).deleteFailure(failure.failure);
+      });
+      return "handled";
+    } catch (error) {
+      if (error instanceof DatabaseBusyError || error instanceof DelivererLostError || error instanceof HandlerLostError) throw error;
+      if (this.lost) throw this.lost;
+      return { cause: error };
     }
   }
 
@@ -719,6 +849,7 @@ class SingleClaim implements ClaimStrategy {
         const start = await handlerStart(entry, progress, registration, this.deliverer.renamed);
         if (start.former !== undefined) {
           await ops.deleteHandlerProgress(start.former);
+          await moveFailures(tx, start.former, entry.registered.name);
           progress.delete(start.former);
         }
         logs.push(...start.logs);
@@ -850,6 +981,10 @@ class SingleClaim implements ClaimStrategy {
     const current = (await ops.readHandlerProgress()).find((each) => each.name === handler.name);
     if (!current) throw new FrameworkError(`The handler ${JSON.stringify(handler.name)} has no progress row: it was forgotten while registered`);
     if (current.position < row.position) await ops.writeHandlerProgress({ ...current, position: row.position });
+  }
+
+  async fenceReplay(ops: DeliveryOperations): Promise<void> {
+    await this.#checkGeneration(ops);
   }
 
   afterReject(): Promise<unknown> {
@@ -1327,6 +1462,89 @@ export async function resumeHandler(binding: Binding, name: string): Promise<voi
   if (typeof deliverer.instance.resumeHandler !== "function")
     throw new FrameworkError(`resumeHandler: the bus ${JSON.stringify(deliverer.bus.manifest.adapter)} cannot resume a handler while it runs (its instance has no resumeHandler); restart delivery to resume it`);
   deliverer.instance.resumeHandler(handler);
+}
+
+/** What `retryFailed(name)` resolves with. */
+export interface RetryFailedResult {
+  /** How many set-aside events were handled and removed. */
+  readonly handled: number;
+  /** The first one that failed again, which stays with every later one; null when none failed. */
+  readonly failed: StoppedHandler | null;
+}
+
+/** The set-aside events `retryFailed` reads at a time. */
+const REPLAY_PAGE = 100;
+
+/**
+ * `retryFailed(name)` of `#mesh` (spec, Events and commands, "Handler failures"; design DL7, DL8): run the handler
+ * `name` once on each of its set-aside events, in position order, removing each row as it is handled; stop at the first
+ * that fails again (or that the handler no longer lists, or that no declared event matches) and resolve with it as
+ * `failed`, keeping it and every later row. Runs only where delivery may run, under this process's claim: the started
+ * delivery's when there is one, else a claim taken for the call (`MESH_DELIVERER_TAKEN` while another process holds it);
+ * with a bus that declares `multi-process`, only while this process holds the handler's lease (`MESH_HANDLER_LOST`).
+ * A second call for the same handler while one runs in this process is refused.
+ */
+export async function retryFailed(binding: Binding, name: string): Promise<RetryFailedResult> {
+  if (typeof name !== "string" || name === "") throw new FrameworkError(`retryFailed takes a handler's name, and was given ${describe(name)}`);
+  const { config } = bindingParts(binding);
+  const delivery = deliveryOf(binding);
+  if (config?.bus === undefined || delivery.noDeliver)
+    throw new FrameworkError("retryFailed was called in a process that does not deliver (connected with { deliver: false }, or bound with no bus): call it in the deliverer's process");
+  if (!checkedBus(config.bus).manifest.capabilities.includes("dead-letters"))
+    throw new FrameworkError(`retryFailed was called, and the bus ${config.bus.manifest.adapter} does not declare dead-letters: no event is set aside without it`);
+  const { layer, events, module } = await prepare(binding, "retryFailed");
+  const db = databases.get(layer);
+  const started = delivery.started && !delivery.started.lost ? delivery.started : undefined;
+  let declared: DeclaredHandler[] | undefined;
+  if (!started) {
+    declared = declaredHandlers(module, checkedBus(config.bus), events);
+    if (!declared.some((entry) => entry.registered.name === name))
+      throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): the events module registers no handler named ${JSON.stringify(name)}; its handlers are ${declared.map((entry) => entry.registered.name).join(", ") || "none"}`);
+  } else if (!started.registered(name)) {
+    throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): the events module registers no handler named ${JSON.stringify(name)}; its handlers are ${started.registeredNames().join(", ") || "none"}`);
+  }
+  if (db.retrying.has(name))
+    throw new FrameworkError(`retryFailed(${JSON.stringify(name)}) is already running in this process: two runs would handle one set-aside event twice`);
+  db.retrying.add(name);
+  try {
+    let deliverer = started;
+    let claimed = false;
+    if (!deliverer) {
+      if (delivery.round || db.deliverer) throw takenHere(db, db.deliverer);
+      if (!delivery.rounds || delivery.rounds.lost) delivery.rounds = new Deliverer(binding, layer, events, config, module);
+      deliverer = delivery.rounds;
+      await deliverer.claim(declared!);
+      claimed = true;
+    }
+    let failed = false;
+    try {
+      // Delivery from several processes: only the process holding the handler's lease runs it.
+      const handler = deliverer.strategy.handlers().find((each) => each.name === name);
+      if (!handler)
+        throw new HandlerLostError(name, "taken", 0, `retryFailed(${JSON.stringify(name)}): this process does not hold the handler's lease; another process delivers it, or none does until a process takes it over. Call it where the handler is held`);
+      let handled = 0;
+      let cursor: { position: number; failure: number } | null = null;
+      for (;;) {
+        const after: { position: number; failure: number } | null = cursor;
+        const page: readonly FailureRow[] = await layer.transaction((tx) => failureOperations(tx, `retryFailed(${JSON.stringify(name)}) reads set-aside events`).readFailures(name, after, REPLAY_PAGE));
+        for (const failure of page) {
+          const outcome = await deliverer.replay(handler, failure);
+          if (typeof outcome === "object")
+            return Object.freeze({ handled, failed: Object.freeze({ handler: name, position: failure.position, event: deliverer.declaredName(failure.name), cause: outcome.cause }) });
+          if (outcome === "handled") handled++;
+          cursor = { position: failure.position, failure: failure.failure };
+        }
+        if (page.length < REPLAY_PAGE) return Object.freeze({ handled, failed: null });
+      }
+    } catch (error) {
+      failed = true;
+      throw deliverer.lost ?? error;
+    } finally {
+      if (claimed) await deliverer.release(failed);
+    }
+  } finally {
+    db.retrying.delete(name);
+  }
 }
 
 /** What `mesh events forget` dropped. */
