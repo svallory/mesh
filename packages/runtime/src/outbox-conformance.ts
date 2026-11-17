@@ -270,13 +270,18 @@ function failures(tx: DataOperations): FailureOperations {
   return tx as DataOperations & FailureOperations;
 }
 
-/** The retention operations of a transaction, asserted present together. */
-function retention(tx: DataOperations): RetentionOperations {
-  const names = ["firstOutboxRowSince", "deleteOutboxRows", "writeHoles"] as const;
-  const present = names.filter((name) => typeof tx[name] === "function");
-  assert(present.length === names.length, `the transaction's operations have ${present.join(", ") || "none"} of ${names.join(", ")} (RetentionOperations): an adapter has all three or none`);
+/**
+ * The retention operations of a transaction that a check needs, asserted present: a keep period needs only
+ * `firstOutboxRowSince`, the per-event form all three (`retentionOperations` in core asks for each by its form).
+ */
+function retention(tx: DataOperations, names: readonly (keyof RetentionOperations)[] = ["firstOutboxRowSince"]): RetentionOperations {
+  const missing = names.filter((name) => typeof tx[name] !== "function");
+  assert(missing.length === 0, `the transaction's operations lack ${missing.join(", ")} (RetentionOperations)`);
   return tx as DataOperations & RetentionOperations;
 }
+
+/** The retention operations of a per-event keep: all three. */
+const perEventRetention = (tx: DataOperations) => retention(tx, ["firstOutboxRowSince", "deleteOutboxRows", "writeHoles"]);
 
 /** The hole record as a read reports it: an absent one is no hole. */
 const holesIn = (holes: Readonly<Record<string, number>> | undefined) => JSON.stringify(Object.entries(holes ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -394,7 +399,7 @@ export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): R
         await tx.appendEvent!(outboxRow(2, { name: "a.Two", occurredAt: new Date(base + 5000) })),
         await tx.appendEvent!(outboxRow(3, { name: "a.One", occurredAt: new Date(base + 5000) })),
       ]) as [number, number, number];
-      const first = (after: number, names?: readonly string[]) => layer.transaction((tx) => retention(tx).firstOutboxRowSince(after, p3, new Date(base), names));
+      const first = (after: number, names?: readonly string[]) => layer.transaction((tx) => perEventRetention(tx).firstOutboxRowSince(after, p3, new Date(base), names));
       assert((await first(0, ["a.Two"])) === p2, "a.Two's first young row is row 2");
       assert((await first(p1, ["a.One"])) === p3, "after is exclusive with names too");
       assert((await first(0, ["a.Three"])) === null, "a name no row has finds none");
@@ -412,7 +417,7 @@ export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): R
       });
       const [p1, p2, p3, p4, p5, p6] = positions as [number, number, number, number, number, number];
       const del = (after: number, through: number, names: readonly string[], since: Date | null, limit: number) =>
-        layer.transaction((tx) => retention(tx).deleteOutboxRows(after, through, names, since, limit));
+        layer.transaction((tx) => perEventRetention(tx).deleteOutboxRows(after, through, names, since, limit));
       const left = async () => (await layer.readOutbox!(0, 100)).rows.map((row) => row.position);
       let result = await del(p1, p5, ["a.One"], new Date(base), 10);
       assert(result.deleted === 1 && JSON.stringify(result.highest) === JSON.stringify({ "a.One": p5 }), `after exclusive, since inclusive: row 3 is younger, row 5 goes; got ${JSON.stringify(result)}`);
@@ -432,18 +437,18 @@ export function retentionConformance(makeLayer: () => Promise<OutboxFixture>): R
       assert(holesIn((await state()).holes) === "[]", `a new database has no hole; got ${holesIn((await state()).holes)}`);
       assert(holesIn((await layer.readOutbox!(0, 10)).holes) === "[]", "a new database's page has no hole");
       const [p] = await layer.transaction(async (tx) => [await tx.appendEvent!(outboxRow(1))]);
-      await layer.transaction((tx) => retention(tx).writeHoles({ "a.One": 7, "billing.InvoicePaid": 9 }));
+      await layer.transaction((tx) => perEventRetention(tx).writeHoles({ "a.One": 7, "billing.InvoicePaid": 9 }));
       assert((await state()).holes !== undefined, "readDeliveryState reports the hole record once it is written");
       assert(holesIn((await state()).holes) === JSON.stringify([["a.One", 7], ["billing.InvoicePaid", 9]]), `got ${holesIn((await state()).holes)}`);
       const page = await layer.readOutbox!(0, 10);
       assert(holesIn(page.holes) === JSON.stringify([["a.One", 7], ["billing.InvoicePaid", 9]]) && page.rows.length === 1 && page.rows[0]!.position === p, `the page reports the record with its rows; got ${holesIn(page.holes)}`);
-      await layer.transaction((tx) => retention(tx).writeHoles({ "a.One": 8 }));
+      await layer.transaction((tx) => perEventRetention(tx).writeHoles({ "a.One": 8 }));
       assert(holesIn((await layer.readOutbox!(0, 10)).holes) === JSON.stringify([["a.One", 8]]), "a write replaces the record whole");
-      await layer.transaction((tx) => retention(tx).writeHoles({}));
+      await layer.transaction((tx) => perEventRetention(tx).writeHoles({}));
       assert(holesIn((await state()).holes) === "[]" && holesIn((await layer.readOutbox!(0, 10)).holes) === "[]", "{} clears it");
-      await rejects(() => layer.transaction(async (tx) => { await retention(tx).writeHoles({ "a.One": 3 }); throw new Error("rolled back"); }), (error) => error instanceof Error && error.message === "rolled back", "the write's transaction was to roll back");
+      await rejects(() => layer.transaction(async (tx) => { await perEventRetention(tx).writeHoles({ "a.One": 3 }); throw new Error("rolled back"); }), (error) => error instanceof Error && error.message === "rolled back", "the write's transaction was to roll back");
       assert(holesIn((await layer.readOutbox!(0, 10)).holes) === "[]", "a rolled-back write leaves the record as it was");
-      await layer.transaction((tx) => retention(tx).writeHoles({ "a.One": 3 }));
+      await layer.transaction((tx) => perEventRetention(tx).writeHoles({ "a.One": 3 }));
       await layer.transaction((tx) => tx.deleteOutboxThrough!(p!));
       assert(holesIn((await layer.readOutbox!(0, 10)).holes) === JSON.stringify([["a.One", 3]]), "deleteOutboxThrough leaves the record: core prunes it");
     }),
