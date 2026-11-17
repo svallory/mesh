@@ -1,13 +1,15 @@
 ---
-title: "0085. MX discovers a dialect's tags from declared folders (target design)"
-description: "Decision record 0085: a dialect manifest declares tag directories, extensions, sidecars and reserved tags; MX names a tag by its file name. A target design, not built. Status: Accepted (DOM-07)."
+title: "0085. MX discovers a dialect's tags from declared folders"
+description: "Decision record 0085: a dialect manifest declares tag directories, extensions, sidecars and reserved tags; MX names a tag by its file name. Built for concept files (ADR-0092). Status: Accepted (DOM-07)."
 ---
 
-# 0085. MX discovers a dialect's tags from declared folders (target design)
+# 0085. MX discovers a dialect's tags from declared folders
 
 ## Status
 
-Accepted as a target design. Nothing is built. Row: DOM-07.
+Accepted. Row: DOM-07.
+
+> **Amendment, 2026-11-17 (built).** MX's side shipped in `0.1.0-alpha.18` (the manifest keys, the scan, `Dialect.tagFile` and `DelegatedTag.definedIn`; Mesh pins alpha.37), and Mesh's side is built for concept files ([ADR-0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md)): `meshfw`'s manifest declares `tagDirs: ["concepts"]` and `sidecars: false`, and Mesh's hook turns a concept file into a contract. One deviation: MX's `lowerSource` does not scan by itself, so the compiler runs MX's scan and passes its map as `customTags`, the option this record rejected; ADR-0092 records why and where it is removed.
 
 > **Amendment, 2026-10-17:** a project's concept never takes the name of a concept Mesh ships: such a file is `MESH_RESERVED_TAG` at the project's file, as for any reserved Mesh tag. A nearer `concepts/` folder may declare a concept with the name of one in a farther folder: the nearer one wins for the files under it, with no message, as for every tag MX discovers.
 
@@ -51,4 +53,4 @@ Concepts ([ADR-0080](./0080-aggregates-and-concepts.md)) wait for it. No existin
 
 ## Action items
 
-- [ ] MX lead: the manifest keys and the hook (with the MX dialect squad).
+- [x] MX lead: the manifest keys and the hook (with the MX dialect squad), shipped in MX `0.1.0-alpha.18` (Mesh pins alpha.37); Mesh's side built 2026-11-17 ([ADR-0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md)).

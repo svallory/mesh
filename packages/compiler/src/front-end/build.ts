@@ -1,4 +1,4 @@
-import { lowerSource } from "@mxlang/core";
+import { lowerSource, scanCached, type CustomTag, type TargetLookup } from "@mxlang/core";
 import { basename, dirname, relative, resolve } from "node:path";
 import { realpathSync, statSync } from "node:fs";
 import {
@@ -27,6 +27,7 @@ import {
   type ValidateItem,
   type CommandDeclaration,
   type Computed,
+  type ConceptDeclaration,
   type Diagnostic,
   type Entity,
   type EventDeclaration,
@@ -42,7 +43,10 @@ import {
   type SourcePosition,
   type Step,
 } from "@meshfw/model";
-import { RELATIONSHIP_KINDS } from "./contracts.ts";
+import { RELATIONSHIP_KINDS, SYNTAX_MESSAGES } from "./contracts.ts";
+import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-file.ts";
+import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
+import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
@@ -94,6 +98,8 @@ import {
  * is accepted and generated code works with it.
  */
 export const PROTOTYPE_SETTING_NAME = "__proto__";
+/** The top-level nodes of a lowered file. */
+type IrBody = NonNullable<ReturnType<typeof lowerSource>["ir"]>["body"];
 /** An entity import as MX parsed it (`Import.from`/`names`); never re-parsed. */
 interface ParsedImport {
   names: string[];
@@ -110,7 +116,7 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-type DeclarationKind = "entity" | "event" | "command" | "aggregate";
+type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept";
 /**
  * What a file of the project declares: its root line's kind, and every declaration by the name an import of it binds (the
  * root's, as Mesh converts it: `entity :todo` declares `Todo`), the root's first, then each inline event and command of
@@ -121,9 +127,9 @@ interface DeclaredFile {
   kind: DeclarationKind;
   declares: { kind: DeclarationKind; name: string }[];
 }
-const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate"]);
-/** The declarations an import of the file may bind: all but an aggregate's own name. */
-const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate");
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept"]);
+/** The declarations an import of the file may bind: all but an aggregate's own name and a concept, which is never imported. */
+const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate" && declaration.kind !== "concept");
 /**
  * What a reference position takes, for the declarations of `kind`: `entity=` an entity, a `publish` function's `new` an
  * event, `on=` a command, a listing line of an owner's `events` section an event. A path that no file of the project
@@ -132,7 +138,7 @@ const importable = (file: DeclaredFile | undefined) => file?.declares.filter((de
  * "Errors"), and in a listing `MESH_UNKNOWN_EVENT`.
  */
 const referenceKind = (
-  kind: Exclude<DeclarationKind, "aggregate">,
+  kind: Exclude<DeclarationKind, "aggregate" | "concept">,
   declared: (from: string) => DeclaredFile | undefined,
   code = kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 ): ReferenceKind => ({
@@ -658,7 +664,8 @@ function fileImports(
       // A named import of the aggregate its file declares binds nothing too: the import check reports it
       // (`MESH_UNKNOWN_IMPORT`, R24a), and a use of the name reports nothing more, as for any name its file does not declare.
       const target = entry.namespace || entry.helper || entry.mesh ? undefined : declaredFile(entry.from);
-      if (target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
+      // A concept file binds nothing either: a concept is never imported (the import check reports it).
+      if (target?.kind === "concept" || target?.declares.some((declaration) => declaration.kind === "aggregate" && declaration.name === (entry.imported?.[index] ?? name))) {
         duplicates.add(name);
         continue;
       }
@@ -1095,6 +1102,8 @@ function buildEntity(
     });
     const attributes = (section: Tag) => {
       for (const tag of tags(section.children)) {
+        // A concept use (`Money :total`) is reported by `conceptUses` and builds no member yet.
+        if (tag.definedIn !== undefined) continue;
         const on = attr(tag, "on");
         const field: Attribute = {
           ...shape(tag),
@@ -1577,6 +1586,8 @@ function buildDeclarationBody(
   const fields: Field[] = [];
   const names = new Set<string>();
   for (const tag of tags(root.children)) {
+    // A concept use (`Money :total`) is reported by `conceptUses` and builds no field yet.
+    if (tag.definedIn !== undefined) continue;
     for (const key of FIELD_OPTIONS_REFUSED) {
       const refused = attr(tag, key);
       if (refused)
@@ -1605,6 +1616,124 @@ function buildDeclarationBody(
   };
 }
 
+/** The name MX gives the tag of a file: its file name less the longest Mesh extension (the file `Money` of `concepts/` names the tag `Money`). */
+export function tagNameOfFile(path: string): string {
+  const name = basename(path);
+  const extension = [...MESH_EXTENSIONS].sort((a, b) => b.length - a.length).find((each) => name.endsWith(each));
+  return extension ? name.slice(0, -extension.length) : name;
+}
+/** Whether a file sits directly in a folder named `concepts`, where MX finds concept files (R10). */
+export const inConceptsFolder = (path: string): boolean => basename(dirname(path)) === "concepts";
+
+/**
+ * A concept file (`concept :Money` and its field lines; `notes/spec/other-file-kinds.md`, "Concept files"; ruling D36).
+ * What its IR alone shows is checked by `conceptFileProblems`, the concept hook's own check, so a problem MX also reports
+ * through a use is reported once. Then what only the build sees: where the file sits (`MESH_CONCEPT_PLACE`, case a), its
+ * imports (none), its module, and the field lines, read as an event's are, with the options that concern storage or
+ * creation refused. `folder` is the file's folder below the domain root; the module is the folder above `concepts`.
+ */
+function buildConcept(
+  root: Tag,
+  body: IrBody,
+  irImports: readonly IrImport[],
+  source: string,
+  file: string,
+  absolute: string,
+  diagnostics: Diagnostic[],
+  folder: string,
+): ConceptDeclaration {
+  const { at, pos, fail, shape, checkShape } = attributeReaders(source, file, diagnostics);
+  for (const problem of conceptFileProblems(body, tagNameOfFile(absolute), absolute))
+    fail(problem.code, problem.message, at(problem.offset));
+  if (!inConceptsFolder(absolute)) {
+    // Into the `concepts` folder above it when there is one (a file in `concepts/finance/`: MX's scan is not recursive,
+    // R10), else into a new one beside it.
+    const written = folder === "" ? basename(file) : `${folder}/${basename(file)}`;
+    const segments = folder === "" ? [] : folder.split("/");
+    const above = segments.lastIndexOf("concepts");
+    // Under the declared name when that is a legal concept name, so the moved file does not fail R5 or R6.
+    const declared = atomOf(attr(root, "name"))?.name;
+    const target = declared !== undefined && PASCAL_CASE.test(declared) ? `${declared}${MESH_EXTENSIONS[0]}` : basename(file);
+    const moved = above >= 0 ? [...segments.slice(0, above + 1), target].join("/") : [...segments, "concepts", target].join("/");
+    fail("MESH_CONCEPT_PLACE", `A concept file sits directly in a folder named \`concepts\`, where Mesh finds it: move ${written} to ${moved}`, root);
+  }
+  for (const entry of irImports)
+    fail("MESH_UNKNOWN_IMPORT", "A concept file takes no import: its fields are attribute types and concepts", at(entry.span.sourceStart), "remove the import");
+  const { module, bareUnderscore } = moduleOfFolder(inConceptsFolder(absolute) ? normalizePath(dirname(folder)) : folder);
+  if (bareUnderscore)
+    fail("MESH_GROUP_NAME", `Group folder "_" has no name; write "_" followed by a name, such as "_services"`, root);
+  for (const segment of module ? module.split("/") : []) {
+    if (!/^[A-Za-z0-9_-]+$/.test(segment))
+      fail("MESH_MODULE_NAME", `Module segment ${JSON.stringify(segment)} must contain only letters, digits, - or _`, root);
+  }
+  const name = atomOf(attr(root, "name"))?.name ?? tagNameOfFile(absolute);
+  const fields: Field[] = [];
+  for (const tag of tags(root.children)) {
+    // A concept use inside a concept (`Money :net`) is reported by `conceptUses` and builds no field yet.
+    if (tag.definedIn !== undefined) continue;
+    for (const key of FIELD_OPTIONS_REFUSED) {
+      const refused = attr(tag, key);
+      if (refused)
+        fail("MESH_UNKNOWN_OPTION", `\`${key}\` is not an option of a field of a concept: a field has no row behind it, so it takes the options that constrain a value (\`nullable\`, \`values\`, \`min\`, \`max\`, \`match\`) and none that concern storage or creation`, at(attrOffset(refused)), `remove \`${key}\``);
+    }
+    const field = shape(tag);
+    checkShape({ ...field, default: undefined });
+    // Two fields of one name and a `__proto__` field are `conceptFileProblems`'; `optional` is `checkFieldOptions`'.
+    const { name: fieldName, type, nullable, values, min, max, match, position } = field;
+    fields.push({ name: fieldName, type, nullable, ...(values ? { values } : {}), ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(match ? { match } : {}), position });
+  }
+  return {
+    name,
+    fqn: [...module.split("/").filter(Boolean), name].join("."),
+    file,
+    module,
+    fields,
+    position: pos(root),
+  };
+}
+
+/** The concept a use's head names, by the absolute path MX's scan gave it (`DelegatedTag.definedIn`). */
+interface ConceptEntry {
+  readonly name: string;
+  readonly fqn: string;
+  readonly file: string;
+}
+/**
+ * Every concept use of a file (`Money :total`: a tag MX resolved from a concept file, `definedIn` set), at any depth. A
+ * contract a tag file gives carries no `analyze` hook and `afterLower` sees no tag parameters, so the one universal check
+ * of `contracts.ts` that MX does not make itself on such a call, tag parameters (`Money|x| :total`), is made here, in its
+ * words (R22); MX refuses a tag variable, a bound option and a name that is no atom from the use's contract. A use of a concept file the build does not read (outside the domain
+ * root, or excluded by \`ignore\`) is `MESH_CONCEPT_PLACE`. Any other use is `MESH_NOT_IMPLEMENTED`: concept files build
+ * and generate, and a concept-typed member comes next.
+ */
+function conceptUses(
+  body: IrBody,
+  source: string,
+  file: string,
+  diagnostics: Diagnostic[],
+  conceptAt: (path: string) => ConceptEntry | undefined,
+  outside: (path: string) => string,
+  domainLabel: string,
+): void {
+  const at = (offset: number) => positionAt(source, file, offset);
+  const visit = (tag: Tag) => {
+    if (tag.definedIn !== undefined) {
+      const head = at(tag.nameSpan?.sourceStart ?? 0);
+      const before = diagnostics.length;
+      if (tag.params.length || tag.var) diagnostics.push(error("MESH_SYNTAX", SYNTAX_MESSAGES.params, head));
+      if (diagnostics.length === before) {
+        const entry = conceptAt(tag.definedIn);
+        if (!entry)
+          diagnostics.push(error("MESH_CONCEPT_PLACE", `${tag.name} is declared in ${outside(tag.definedIn)}, which the build does not read (outside the domain root ${domainLabel}, or excluded by \`ignore\`): move it into a \`concepts\` folder under the domain root`, head));
+        else
+          diagnostics.push(error("MESH_NOT_IMPLEMENTED", `\`${tag.name}\` is the concept ${entry.fqn}, and a concept-typed member is not built yet: a concept file builds and generates its type and schema, but no attribute or field can hold a concept so far`, head));
+      }
+    }
+    for (const child of tags(tag.children ?? [])) visit(child);
+  };
+  for (const tag of tags(body)) visit(tag);
+}
+
 /**
  * The compiler's one MX call (`lowerSource`) with Mesh's dialect, which carries the closed
  * contracts, the tag rules and the strictness (rejection on). It never throws; every problem is a positioned diagnostic.
@@ -1612,11 +1741,38 @@ function buildDeclarationBody(
  * when the file name is absolute and its nearest `package.json` is found (MX 0.1.0-alpha.34), so a build fails on a
  * clash exactly where the editor reports it. A diagnostic of the parsed file carries no file name, so the caller
  * positions it in the project-relative file.
+ *
+ * The concepts in scope come from MX's scan (`scanCached`): the tag files of the `concepts` folders up the file's folders,
+ * nearest first, which the manifest's `tagDirs` names. `lowerSource` does not scan by itself, so the compiler passes the
+ * scan's map as `customTags` (a deviation from ADR-0085's chosen option, recorded in ADR-0092; this is the one place to
+ * remove it once MX scans for a dialect's `tagDirs`). A file not on disk scans to an empty map. `extraTags`, merged over
+ * the scan, serves a caller that lowers text under a path with no `concepts` folder (the docs fence checks).
  */
-export function parseEntitySource(source: string, file: string) {
-  return lowerSource(source, file, {
+/**
+ * The targets the scan runs under: none. `ScanOptions.targets` tells a host's module file from a tag template; a Mesh
+ * file is data, compiled under no host, and a concept file is no template, so every question gets the empty answer.
+ */
+const NO_TARGETS: TargetLookup = Object.freeze({
+  hasTarget: () => false,
+  targetNames: () => [],
+  target: () => undefined,
+  defaultTarget: () => "data",
+  fromPackage: () => undefined,
+  attrTagSources: () => [],
+  hostValues: () => [],
+  hostTarget: () => undefined,
+  hostOf: () => undefined,
+  hostFilterKey: () => undefined,
+  moduleSegments: () => [],
+});
+export function parseEntitySource(source: string, file: string, extraTags?: Readonly<Record<string, CustomTag>>) {
+  const scan = scanCached(file, { targets: NO_TARGETS });
+  const customTags = extraTags ? { ...scan.customTags, ...extraTags } : scan.customTags;
+  const lowered = lowerSource(source, file, {
     dialect: MESH_DIALECT,
+    ...(Object.keys(customTags).length > 0 ? { customTags } : {}),
   });
+  return { ...lowered, scanDiagnostics: scan.diagnostics ?? [] };
 }
 
 /** One diagnostic MX's `lowerSource` reports (`IrDiagnostic`), as Mesh's own. */
@@ -1651,6 +1807,21 @@ export function meshDiagnostic(
       position: { file: other.file, line: d.line, column: d.column, offset: offsetAt(other.source, d.line, d.column) },
     };
   return { ...base, message: `${d.message} (in \`${other.name}\`)`, position: { file, line: 1, column: 0, offset: 0 } };
+}
+
+/**
+ * A diagnostic of MX's scan (`ScanDiagnostic`) as one `lowerSource` reports, for `meshDiagnostic`: its file and its line
+ * and column there. Its code is MX's and not yet renamed (the dialect renames only `lowerSource`'s), so it goes through
+ * `MX_TO_MESH_CODES` here. A concept file named like a Mesh tag (`MX_RESERVED_TAG`, R14) is `MESH_RESERVED_TAG` in Mesh's
+ * words; the reserved tag keeps its meaning.
+ */
+export function scanDiagnostic(d: ReturnType<typeof scanCached>["diagnostics"][number]): MxDiagnostic {
+  const code = d.code === undefined ? undefined : (MX_TO_MESH_CODES as Record<string, string>)[d.code] ?? d.code;
+  const name = tagNameOfFile(d.file);
+  const message = d.code === "MX_RESERVED_TAG" && hasMeshExtension(d.file)
+    ? `${name} is a Mesh tag, so a concept file cannot take its name: rename ${conceptFileLabel(d.file)} and its \`concept :${name}\` line`
+    : d.message;
+  return { severity: d.severity ?? "warning", code, message, line: d.line, column: d.column, offset: -1, file: d.file } as MxDiagnostic;
 }
 
 /** Where an MX diagnostic's `file` lands: a project entity file (its project-relative path and text), or a name for the message. */
@@ -1774,6 +1945,21 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const declaredByPath = new Map<string, DeclaredFile>();
   const events: EventDeclaration[] = [];
   const commands: CommandDeclaration[] = [];
+  // The concept files, by the absolute path MX's scan names them by (`DelegatedTag.definedIn`, realpathed), filled before
+  // any declaration is built, so a use resolves whatever the file order. A concept whose body has errors is entered too: a
+  // use of it is MX's `MESH_TAG_FILE_ERROR`, never a "not read" `MESH_CONCEPT_PLACE`.
+  const conceptIndex = new Map<string, ConceptEntry>();
+  const realPath = (path: string) => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return path;
+    }
+  };
+  // A scan diagnostic (a concept file named like a Mesh tag) comes with every file the scan covers: reported once a build,
+  // and only about a file the build reads (OD4: a concept file outside the domain root, or excluded by `ignore`, is not
+  // the build's, and a use of one is case c of `MESH_CONCEPT_PLACE`).
+  const scanReported = new Set<string>();
   for (const [i, input] of project.files.entries()) {
     const path = resolved[i];
     if (!path) {
@@ -1790,6 +1976,13 @@ export function buildModel(project: ProjectDescription): BuildResult {
     diagnostics.push(
       ...parsed.diagnostics.map((d) => meshDiagnostic(d, path.file, otherFile)),
     );
+    for (const d of parsed.scanDiagnostics) {
+      if (otherFile(d.file).kind !== "project") continue;
+      const key = `${d.file}\0${d.message}`;
+      if (scanReported.has(key)) continue;
+      scanReported.add(key);
+      diagnostics.push(meshDiagnostic(scanDiagnostic(d), path.file, otherFile));
+    }
     if (!parsed.ir) continue;
     parsedFiles.push({ input, path, ir: parsed.ir });
     // The root line decides what the file declares (`notes/spec/file-kinds.md`): its kind, and the names of the roots of that kind,
@@ -1799,11 +1992,17 @@ export function buildModel(project: ProjectDescription): BuildResult {
     const roots = tags(parsed.ir.body);
     const kind = DECLARING_ROOTS.has(roots[0]?.name ?? "") ? roots[0]!.name as DeclarationKind : "entity";
     const named = (tag: Tag) => atomOf(attr(tag, "name"))?.name ?? [];
+    if (kind === "concept") {
+      const name = atomOf(attr(roots[0]!, "name"))?.name ?? tagNameOfFile(path.absolute);
+      const folder = normalizePath(relative(domainRoot, dirname(path.absolute)));
+      const module = moduleOfFolder(inConceptsFolder(path.absolute) ? normalizePath(dirname(folder)) : folder).module;
+      conceptIndex.set(realPath(path.absolute), { name, fqn: [...module.split("/").filter(Boolean), name].join("."), file: path.file });
+    }
     const ofKind = roots.filter((root) => root.name === kind);
     declaredByPath.set(resolve(rootPath, path.file), {
       kind,
       declares: [
-        ...ofKind.flatMap(named).map((name) => ({ kind, name: kind === "aggregate" ? name : classNameOf(name) })),
+        ...ofKind.flatMap(named).map((name) => ({ kind, name: kind === "aggregate" || kind === "concept" ? name : classNameOf(name) })),
         ...(kind === "entity" || kind === "aggregate" ? ofKind : []).flatMap((root) =>
           tags(root.children).filter((section) => section.name === "events" || section.name === "commands").flatMap((section) =>
             tags(section.children).filter((line) => line.name === (section.name === "events" ? "event" : "command"))
@@ -1811,10 +2010,32 @@ export function buildModel(project: ProjectDescription): BuildResult {
       ],
     });
   }
+  const concepts: ConceptDeclaration[] = [];
+  const domainLabel = normalizePath(relative(rootPath, domainRoot)) || ".";
+  const outside = (path: string) => {
+    const other = otherFile(path);
+    return other.kind === "project" ? other.file : other.name;
+  };
   for (const { input, path, ir } of parsedFiles) {
     const file = path.file;
     const declared = (from: string) => declaredByPath.get(resolve(rootPath, dirname(file), from));
     const roots = tags(ir.body);
+    conceptUses(ir.body, input.source, file, diagnostics, (definedIn) => conceptIndex.get(realPath(definedIn)), outside, domainLabel);
+    if (roots[0]?.name === "concept") {
+      try {
+        concepts.push(buildConcept(roots[0], ir.body, ir.imports, input.source, file, path.absolute, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute)))));
+      } catch (cause) {
+        diagnostics.push(error("MESH_MODEL_SHAPE", cause instanceof Error ? cause.message : String(cause), positionAt(input.source, file, roots[0].nameSpan.sourceStart)));
+      }
+      continue;
+    }
+    // A file directly in a `concepts` folder is a concept file to MX, whatever it declares: one that declares something
+    // else, or nothing at all, is `MESH_CONCEPT_PLACE` (case b, the hook's own message) and is not built.
+    if (inConceptsFolder(path.absolute)) {
+      for (const problem of conceptFileProblems(ir.body, tagNameOfFile(path.absolute), path.absolute))
+        diagnostics.push(error(problem.code, problem.message, positionAt(input.source, file, problem.offset)));
+      continue;
+    }
     if (roots.length !== 1)
       diagnostics.push(
         error(
@@ -1881,6 +2102,26 @@ export function buildModel(project: ProjectDescription): BuildResult {
     else firstAggregate.set(aggregate.fqn, aggregate.file);
   }
   if (events.length) document.events = events;
+  // Concepts are written to one generated file each and exported from their module's barrel by name, so two concepts of
+  // one FQN (a group folder's `concepts` beside its module's, R21) and a concept that shares its FQN with an entity, event
+  // or command (`billing.Money`) are one error at the later file. Shadowing across modules stays silent (R12).
+  concepts.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  {
+    const claimed = new Map<string, { kind: string; file: string }>();
+    const later: { kind: string; fqn: string; file: string; position: SourcePosition }[] = [
+      ...concepts.map((concept) => ({ kind: "concept", ...concept })),
+      ...(concepts.length ? [...events.map((e) => ({ kind: "event", ...e })), ...commands.map((c) => ({ kind: "command", ...c }))] : []),
+    ];
+    if (concepts.length) for (const entity of document.entities) later.push({ kind: "entity", fqn: entity.fqn, file: entity.file, position: entity.position });
+    later.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0) || (a.kind === "concept" ? -1 : 0));
+    for (const declaration of later) {
+      const first = claimed.get(declaration.fqn);
+      if (first && (first.kind === "concept" || declaration.kind === "concept"))
+        diagnostics.push(error("MESH_DUPLICATE_ENTITY", `Duplicate name ${declaration.fqn}: ${first.kind} in ${first.file} and ${declaration.kind} in ${declaration.file}`, declaration.position));
+      else if (!first) claimed.set(declaration.fqn, declaration);
+    }
+  }
+  if (concepts.length) document.concepts = concepts;
   if (commands.length) document.commands = commands;
   if (aggregates.length) document.aggregates = aggregates;
   // The declaration a reference resolved to, now that every event and command is built: `from` is the import's path from the
@@ -1922,6 +2163,12 @@ export function buildModel(project: ProjectDescription): BuildResult {
       // What the imported file declares, for a named import to check its name against: an entity, event or command file's
       // root, and each event and command an entity file's owner sections declare inline.
       const declared = builtFiles.has(target) ? declaredByPath.get(target) : undefined;
+      // A concept is never imported: its use is a line head, found in the nearest `concepts` folder (R9).
+      if (hasMeshExtension(imported.from) && declaredByPath.get(target)?.kind === "concept") {
+        const concept = declaredByPath.get(target)!.declares[0]?.name ?? tagNameOfFile(target);
+        diagnostics.push(error("MESH_UNKNOWN_IMPORT", `${concept} is a concept, and a concept is never imported: write \`${concept} :price\` and Mesh finds it in the nearest \`concepts\` folder`, imported.position, "remove the import"));
+        continue;
+      }
       if (hasMeshExtension(imported.from) && declared?.declares.length) {
         // An aggregate's own name is no value and binds nothing: only what the file declares besides it is importable.
         const importableNames = [...new Set(importable(declared)!.map(({ name }) => `\`${name}\``))];
@@ -1997,6 +2244,17 @@ export function buildModel(project: ProjectDescription): BuildResult {
         document.entities[0]?.position ?? positionAt("", "mesh.config.ts", 0),
       ),
     );
+  // One problem reached more than one way is reported once: a concept file's own error comes with its parse, with each
+  // use MX lowers (the hook's copy, positioned in the concept file) and from `buildConcept`.
+  const seenDiagnostics = new Set<string>();
+  const unique = diagnostics.filter((d) => {
+    const key = `${d.position.file}\0${d.position.offset}\0${d.code}\0${d.message}`;
+    if (seenDiagnostics.has(key)) return false;
+    seenDiagnostics.add(key);
+    return true;
+  });
+  diagnostics.length = 0;
+  diagnostics.push(...unique);
   diagnostics.sort((a, b) =>
     a.position.file.localeCompare(b.position.file) ||
     a.position.line - b.position.line ||

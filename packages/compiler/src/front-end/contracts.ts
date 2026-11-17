@@ -49,6 +49,17 @@ const fn = (required = false): CustomTagAttribute => ({
   required,
 });
 const named = () => ({ name: atom(true) });
+/**
+ * A field parent: a tag whose children are field lines (`attributes`, `event`, `command`, `concept`). It admits a concept
+ * use (`Money :total`), whose name no contract can list in advance (a concept is a tag file MX finds by its file name,
+ * `concept-file.ts`), so it declares no `children` (ruling D36, OD3). Each field kind's `parents` keeps a misplaced known
+ * line an error (`MESH_PARENT_NOT_ALLOWED`), and MX keeps a tagless `&title` one (`MESH_UNKNOWN_TAG`). Every change to one
+ * of these contracts builds it through this helper, so `children` stays absent.
+ */
+export const fieldParent = (def: CustomTag): CustomTag => {
+  const { children: _open, ...rest } = closed(def);
+  return rest;
+};
 const children = (...names: readonly string[]) =>
   Object.fromEntries(names.map((name) => [name, { repeatable: true }]));
 /**
@@ -259,22 +270,26 @@ const contracts: ContractMap = {
   }),
   // An event and a command are files of their own (M6), or declared inline in an owner's section: the line declares one,
   // and its children are field lines, written as attribute lines are (`uuid :invoiceId`). The field kinds are the
-  // attribute types, whose contracts also list these two as parents; `default`, `unique`, `primary-key`, `on` and `value`
+  // attribute types, whose contracts list these two as parents (the two are field parents, `fieldParent`); `default`, `unique`, `primary-key`, `on` and `value`
   // are not options of a field, which the builder reports as `MESH_UNKNOWN_OPTION` (a contract is per tag, so it cannot
   // tell a field from an attribute).
-  event: closed({
+  event: fieldParent({
     parents: ["#root", "events"],
     attributes: named(),
-    children: children(...ATTRIBUTE_TYPES),
   }),
-  command: closed({
+  command: fieldParent({
     parents: ["#root", "commands"],
     attributes: named(),
-    children: children(...ATTRIBUTE_TYPES),
   }),
-  attributes: closed({
+  attributes: fieldParent({
     parents: ["entity"],
-    children: children(...ATTRIBUTE_TYPES),
+  }),
+  // A concept file (`notes/spec/other-file-kinds.md`, "Concept files"; ADR-0080): `concept :Money`, then one field line
+  // per field, written as an event's. The root takes only the name. MX finds the file in a `concepts` folder and turns
+  // it into the contract of a concept use through the dialect's `tagFile` hook (`concept-file.ts`).
+  concept: fieldParent({
+    parents: ["#root"],
+    attributes: named(),
   }),
   relationships: closed({
     parents: ["entity"],
@@ -425,7 +440,7 @@ const contracts: ContractMap = {
 };
 for (const type of ATTRIBUTE_TYPES)
   contracts[type] = closed({
-    parents: ["attributes", "input", "computed", "event", "command"],
+    parents: ["attributes", "input", "computed", "event", "command", "concept"],
     attributes: {
       ...named(),
       ...options(type),
@@ -528,6 +543,16 @@ for (const kind of ["asc", "desc"])
     parents: ["sort"],
     attributes: { member: member(true) },
   });
+/**
+ * The messages of the universal checks below. `params` is shared with the build's check of a concept use (`conceptUses`
+ * in `build.ts`): a tag file's contract carries no `analyze` hook, and the dialect's `afterLower` sees no call's tag
+ * parameters, so the build makes that check there, in the same words.
+ */
+export const SYNTAX_MESSAGES = Object.freeze({
+  params: "tag parameters and variable bindings are not entity declarations",
+  bound: "bound options are not entity declarations",
+  name: "a declaration needs one atom name",
+});
 // E1's function/array checks accept dynamic unknowns by design. This static
 // dialect requires the written shape, not a runtime value of a compatible type.
 for (const contract of Object.values(contracts)) {
@@ -535,14 +560,14 @@ for (const contract of Object.values(contracts)) {
   contract.analyze = (calls, ctx) => {
     for (const call of calls) {
       if (call.params.length || call.var)
-        ctx.fail("tag parameters and variable bindings are not entity declarations", { at: call.loc, code: "MESH_SYNTAX" });
+        ctx.fail(SYNTAX_MESSAGES.params, { at: call.loc, code: "MESH_SYNTAX" });
       for (const [key, declaration] of Object.entries(
         contract.attributes ?? {},
       )) {
         const a = get(call, key);
         if (!a) continue;
         if (a.kind === "bound")
-          ctx.fail("bound options are not entity declarations", { at: a.loc, code: "MESH_SYNTAX" });
+          ctx.fail(SYNTAX_MESSAGES.bound, { at: a.loc, code: "MESH_SYNTAX" });
         const n = node(a);
         if (
           declaration.type === "function" &&
@@ -556,7 +581,7 @@ for (const contract of Object.values(contracts)) {
           declaration.type === "mesh:Atom" &&
           !(a.kind === "static" && a.node?.type === "mesh:Atom")
         )
-          ctx.fail("a declaration needs one atom name", { at: a.loc, code: "MESH_NAME" });
+          ctx.fail(SYNTAX_MESSAGES.name, { at: a.loc, code: "MESH_NAME" });
         if (["auto", "types", "values"].includes(key)) {
           if (n?.type !== "ArrayExpression")
             ctx.fail(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });

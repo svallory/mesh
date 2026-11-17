@@ -1,11 +1,12 @@
 import { posix, relative } from "node:path";
-import type { Entity, SourcePosition } from "@meshfw/model";
+import type { ConceptDeclaration, Entity, SourcePosition } from "@meshfw/model";
 import { emitError } from "../emit-error.ts";
 import type { EmitInput } from "../emit.ts";
 import { compareText, orderedEntities } from "../emitters/order.ts";
 import { hasLoader, loaderName } from "./load.ts";
 import { hasTxLoadable } from "./types.ts";
 import { className, declarationFile, declarationsOf, type Declaration } from "./declarations.ts";
+import { conceptFile, conceptSchemaName, conceptTypeName, conceptsOf } from "./concepts.ts";
 import { DOMAIN_FOLDER, entityInputs, entitySegment, filterTypeName, hasRead, modulePath, moduleSpecifier, namespaceName, sortTypeName, typeName } from "./inputs.ts";
 
 /**
@@ -29,6 +30,8 @@ export interface ModuleView {
   readonly entities: readonly ModuleEntity[];
   /** One entry per event and command of the module, events first, each in the order of its file path. Empty when the module declares none. */
   readonly declarations: readonly ModuleDeclaration[];
+  /** One entry per concept of the module, in the order of its file path. Empty when the module declares none. */
+  readonly concepts: readonly ModuleConcept[];
   /** One namespace per subfolder that has a barrel, by folder name. */
   readonly namespaces: readonly ModuleNamespace[];
 }
@@ -38,6 +41,16 @@ export interface ModuleDeclaration {
   /** The class's name, e.g. `InvoicePaid`. */
   readonly name: string;
   /** The file that defines it, quoted, e.g. `"./invoicePaid.event"`. */
+  readonly fromLiteral: string;
+}
+
+/** The export of one concept of the module: its type and its schema (ADR-0092). */
+export interface ModuleConcept {
+  /** The concept's type, e.g. `Money`. */
+  readonly name: string;
+  /** Its Zod schema, e.g. `moneySchema`. */
+  readonly schema: string;
+  /** The file that defines both, quoted, e.g. `"./money.concept"`. */
   readonly fromLiteral: string;
 }
 
@@ -65,16 +78,17 @@ export interface ModuleNamespace {
   readonly fromLiteral: string;
 }
 
-/** The modules that hold an entity, each with its entities in the fixed entity order; the modules by path. */
-export function modulesOf(entities: readonly Entity[], declarations: readonly Declaration[] = []): { module: string; entities: Entity[]; declarations: Declaration[]; position: SourcePosition }[] {
-  const byModule = new Map<string, { entities: Entity[]; declarations: Declaration[]; position: SourcePosition }>();
+/** The modules that hold an entity, an event, a command or a concept, each with its entities in the fixed entity order; the modules by path. */
+export function modulesOf(entities: readonly Entity[], declarations: readonly Declaration[] = [], concepts: readonly ConceptDeclaration[] = []): { module: string; entities: Entity[]; declarations: Declaration[]; concepts: ConceptDeclaration[]; position: SourcePosition }[] {
+  const byModule = new Map<string, { entities: Entity[]; declarations: Declaration[]; concepts: ConceptDeclaration[]; position: SourcePosition }>();
   const moduleOf = (module: string, position: SourcePosition) => {
     let found = byModule.get(module);
-    if (!found) byModule.set(module, (found = { entities: [], declarations: [], position }));
+    if (!found) byModule.set(module, (found = { entities: [], declarations: [], concepts: [], position }));
     return found;
   };
   for (const entity of entities) moduleOf(entity.module, entity.position).entities.push(entity);
   for (const declaration of declarations) moduleOf(declaration.module, declaration.position).declarations.push(declaration);
+  for (const concept of concepts) moduleOf(concept.module, concept.position).concepts.push(concept);
   return [...byModule].sort(([a], [b]) => compareText(a, b)).map(([module, members]) => ({ module, ...members, position: members.entities[0]?.position ?? members.position }));
 }
 
@@ -85,6 +99,7 @@ export interface BarrelFolder {
   readonly module: string;
   readonly entities: Entity[];
   readonly declarations: Declaration[];
+  readonly concepts: ConceptDeclaration[];
   readonly children: BarrelFolder[];
   /** Where an error about the folder points: its first entity, or the first entity below it. */
   position: SourcePosition;
@@ -94,12 +109,12 @@ export interface BarrelFolder {
 const NOWHERE: SourcePosition = Object.freeze({ file: "mesh.config.ts", line: 1, column: 1, offset: 0 });
 
 /** Every folder that gets a barrel, by path: each module, each folder above one, and the domain root. */
-export function barrelFolders(entities: readonly Entity[], declarations: readonly Declaration[] = []): BarrelFolder[] {
+export function barrelFolders(entities: readonly Entity[], declarations: readonly Declaration[] = [], concepts: readonly ConceptDeclaration[] = []): BarrelFolder[] {
   const folders = new Map<string, BarrelFolder>();
   const folder = (module: string, position: SourcePosition): BarrelFolder => {
     let found = folders.get(module);
     if (!found) {
-      found = { module, entities: [], declarations: [], children: [], position };
+      found = { module, entities: [], declarations: [], concepts: [], children: [], position };
       folders.set(module, found);
       if (module !== "") {
         const parent = module.includes("/") ? module.slice(0, module.lastIndexOf("/")) : "";
@@ -108,13 +123,14 @@ export function barrelFolders(entities: readonly Entity[], declarations: readonl
     }
     return found;
   };
-  for (const { module, entities: members, declarations: declared, position } of modulesOf(entities, declarations)) {
+  for (const { module, entities: members, declarations: declared, concepts: held, position } of modulesOf(entities, declarations, concepts)) {
     const found = folder(module, position);
     found.entities.push(...members);
     found.declarations.push(...declared);
+    found.concepts.push(...held);
     found.position = position;
   }
-  if (!folders.has("")) folders.set("", { module: "", entities: [], declarations: [], children: [], position: NOWHERE });
+  if (!folders.has("")) folders.set("", { module: "", entities: [], declarations: [], concepts: [], children: [], position: NOWHERE });
   for (const found of folders.values()) found.children.sort((a, b) => compareText(a.module, b.module));
   return [...folders.values()].sort((a, b) => compareText(a.module, b.module));
 }
@@ -124,7 +140,7 @@ export function barrelFolders(entities: readonly Entity[], declarations: readonl
  * subfolders whose names normalise alike, a generated type and either) are `MESH_EMIT_NAME` naming both:
  * an entity by FQN, a folder by its path in the project.
  */
-export function moduleView(input: EmitInput, module: string, entities: readonly Entity[], children: readonly BarrelFolder[] = [], declarations: readonly Declaration[] = []): ModuleView {
+export function moduleView(input: EmitInput, module: string, entities: readonly Entity[], children: readonly BarrelFolder[] = [], declarations: readonly Declaration[] = [], concepts: readonly ConceptDeclaration[] = []): ModuleView {
   const { document, config } = input;
   const folderName = (path: string) => relative(config.root, posix.join(config.domainRoot, path)).replace(/\\/g, "/") || ".";
   const owners = new Map<string, string>();
@@ -165,6 +181,13 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
     claim(name, `${declaration.kind} ${declaration.fqn}`, declaration.position);
     return { name, fromLiteral: JSON.stringify(`./${entitySegment(declaration)}${declarationFile(declaration)}`) };
   });
+  const exportedConcepts = concepts.map((concept): ModuleConcept => {
+    const name = conceptTypeName(concept);
+    const schema = conceptSchemaName(concept);
+    claim(name, `concept ${concept.fqn}`, concept.position);
+    claim(schema, `the schema ${schema} of concept ${concept.fqn}`, concept.position);
+    return { name, schema, fromLiteral: JSON.stringify(conceptFile(concept)) };
+  });
   const namespaces = children.map((child): ModuleNamespace => {
     const segment = child.module.slice(child.module.lastIndexOf("/") + 1);
     const name = namespaceName(segment);
@@ -174,17 +197,18 @@ export function moduleView(input: EmitInput, module: string, entities: readonly 
   return {
     module,
     specifier: moduleSpecifier(module),
-    description: module === "" ? "the domain root" : `${entities.length || declarations.length ? "module" : "folder"} ${JSON.stringify(module)}`,
+    description: module === "" ? "the domain root" : `${entities.length || declarations.length || concepts.length ? "module" : "folder"} ${JSON.stringify(module)}`,
     entities: exported,
     declarations: exportedDeclarations,
+    concepts: exportedConcepts,
     namespaces,
   };
 }
 
 /** Every barrel's view with the path of its file below the output folder (`domain/sales/billing/index.ts`), folders by path. */
 export function moduleViews(input: EmitInput): { path: string; view: ModuleView }[] {
-  return barrelFolders(orderedEntities(input.document), declarationsOf(input.document)).map(({ module, entities, declarations, children, position }) => ({
+  return barrelFolders(orderedEntities(input.document), declarationsOf(input.document), conceptsOf(input.document)).map(({ module, entities, declarations, concepts, children, position }) => ({
     path: module === "" ? `${DOMAIN_FOLDER}/index.ts` : `${modulePath(module, position)}/index.ts`,
-    view: moduleView(input, module, entities, children, declarations),
+    view: moduleView(input, module, entities, children, declarations, concepts),
   }));
 }

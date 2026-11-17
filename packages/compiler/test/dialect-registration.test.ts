@@ -80,11 +80,12 @@ test("the module is built JavaScript Node can load, and no TypeScript ships besi
   const dist = join(cli, "dist");
   expect(readdirSync(dist)).toEqual(["dialect.js"]);
   const load = Bun.spawnSync(
-    ["node", "--input-type=module", "-e", `const m = await import(${JSON.stringify(join(dist, "dialect.js"))}); console.log(JSON.stringify([m.default.id, m.default.name, m.default.tagRules, m.default.table.valueTriggers[0].id, Object.keys(m.default.nodeTypes)]))`],
+    ["node", "--input-type=module", "-e", `const m = await import(${JSON.stringify(join(dist, "dialect.js"))}); console.log(JSON.stringify([m.default.id, m.default.name, m.default.tagRules, m.default.table.valueTriggers[0].id, Object.keys(m.default.nodeTypes), typeof m.default.tagFile]))`],
     { stdout: "pipe", stderr: "pipe" },
   );
   expect(load.stderr.toString()).toBe("");
-  expect(JSON.parse(load.stdout.toString())).toEqual(["mesh", "Mesh", "none", "atom-value", ["Atom", "Member"]]);
+  // `tagFile`, the concept hook MX runs for a concept file (`front-end/concept-file.ts`), ships in the module.
+  expect(JSON.parse(load.stdout.toString())).toEqual(["mesh", "Mesh", "none", "atom-value", ["Atom", "Member"], "function"]);
   // The tarball: the dialect build and the sources, but never the dialect's TypeScript entry.
   const pack = Bun.spawnSync(["bun", "pm", "pack", "--dry-run"], { cwd: cli, stdout: "pipe", stderr: "pipe" });
   const packed = (pack.stdout.toString() + pack.stderr.toString()).split("\n").filter((line) => line.startsWith("packed "));
@@ -112,6 +113,15 @@ test("the build refuses a manifest whose extensions drift from MESH_EXTENSIONS",
   const renamed = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
   expect(renamed.exitCode).toBe(1);
   expect(renamed.stderr.toString()).toContain('mx.dialect.id must be "mesh"');
+  // Concept files are found in `concepts` folders only, and no `.tag.ts` there is loaded (ruling D36).
+  manifest.mx.dialect.id = "mesh";
+  for (const [key, value, said] of [["tagDirs", ["concepts", "tags"], "mx.dialect.tagDirs"], ["sidecars", true, "mx.dialect.sidecars"]] as const) {
+    const drifted = { ...manifest, mx: { dialect: { ...manifest.mx.dialect, [key]: value } } };
+    writeFileSync(join(copy, "package.json"), JSON.stringify(drifted));
+    const run = Bun.spawnSync(["bun", "scripts/build-dialect.ts"], { cwd: copy, stdout: "pipe", stderr: "pipe" });
+    expect(run.exitCode, key).toBe(1);
+    expect(run.stderr.toString()).toContain(said);
+  }
 }, 30_000);
 
 // Repository scans read `dist/dialect.js` while tests run (the mx rule covers what the CLI ships), so the build never
@@ -148,16 +158,19 @@ test("the build replaces dist/dialect.js by a rename: dist/ is never removed, th
 }, 30_000);
 
 // The manifest closes Mesh files to the project (since MX 0.1.0-alpha.21): `mxConfigTags: false` takes `mx.tags` and
-// `mx.contracts` away, `tagDirs: []` closes `tags/`, and `reservedTags` names the vocabulary so a project cannot redefine it.
+// `mx.contracts` away, `tagDirs: ["concepts"]` opens only `concepts/` (concept files, ruling D36) and closes `tags/`,
+// `sidecars: false` loads no `.tag.ts` there, and `reservedTags` names the vocabulary so a project cannot redefine it.
 // https://github.com/svallory/mx docs: apps/docs/docs/custom-tags/dialects.md ("mxConfigTags", "The manifest fields", "Reserved names").
 const manifest = async () => (await Bun.file(join(cli, "package.json")).json()).mx.dialect;
 
-test("the manifest reserves exactly the contracts' keys, closes the project's config and the tags/ directory", async () => {
+test("the manifest reserves exactly the contracts' keys, closes the project's config and the tags/ directory, opens concepts/", async () => {
   const dialect = await manifest();
   expect([...dialect.reservedTags].sort()).toEqual(Object.keys(contracts).sort());
+  expect(dialect.reservedTags).toContain("concept");
   expect(new Set(dialect.reservedTags).size).toBe(dialect.reservedTags.length);
   expect(dialect.mxConfigTags).toBe(false);
-  expect(dialect.tagDirs).toEqual([]);
+  expect(dialect.tagDirs).toEqual(["concepts"]);
+  expect(dialect.sidecars).toBe(false);
   // The dialect module carries the same vocabulary.
   expect(Object.keys(MESH_DIALECT.contracts ?? {}).sort()).toEqual(Object.keys(contracts).sort());
 });
@@ -207,7 +220,8 @@ test("a project definition named like a Mesh tag never replaces Mesh's contract"
 
 // MX reports `MX_RESERVED_TAG` (`MESH_RESERVED_TAG` through the dialect's `diagnosticCodes`) for a project's `mx.tags` entry, tag file
 // or `mx.contracts` key only in the tools' project scan (the language server, `checkDialectFile`), which this repository does not run. What the compiler's path reaches is a `customTags`
-// entry handed to `lowerSource` for a file routed to the dialect: the one place in `packages/` that passes `customTags` on purpose.
+// entry handed to `lowerSource` for a file routed to the dialect. Besides this test, `parseEntitySource` passes `customTags` on purpose: the concepts MX's
+// scan finds (a concept file named like a Mesh tag is the scan's `MX_RESERVED_TAG`, which the build reports as `MESH_RESERVED_TAG`, `test/concepts.test.ts`).
 test("a customTags entry that names a Mesh vocabulary key is MESH_RESERVED_TAG, naming the dialect", () => {
   const root = project("reserved", { meshfw: "*" });
   const file = join(root, "domain/todo.mesh.mx");

@@ -60,6 +60,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0091](./0091-delivery-from-several-processes.md) decides how events are delivered from several processes on one database (M9): a lease per handler on its progress row, a registered union that only `mesh events adopt` shrinks, and a row per delivering process. It amends 0079.
 
+[Record 0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md) builds concept files on the discovery of 0085: `concepts` folders that MX scans, a hook that turns each file into a contract, the scan passed to `lowerSource` by the compiler (a deviation from 0085's chosen option), open field parents, and a type and a schema generated per concept. It amends 0080 and 0085.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -131,18 +133,19 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0077](./0077-surfaces-and-file-kinds.md) | A `surface` file lists what an audience may reach; the root tag decides a file's kind; fields fail closed | Accepted | operator |
 | [0078](./0078-services-and-where-effects-go.md) | Effects are split three ways; services follow Vernon's definition; `uses`; the service shape is decided after 1.0, and the handler kinds cover publish-subscribe | Accepted; both items decided 2026-10-17; amended 2026-11-14: how to read the illustration and item 5 (how `uses` is enforced is decided with the service construct) | operator |
 | [0079](./0079-commands-events-and-the-outbox.md) | Commands and events are files; `publish` writes to a core outbox built in M6; no `after-commit` step | Accepted, amended 2026-11-17: one process delivers per database in single mode; several in multi mode (0091) | operator |
-| [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted | operator; one lead note on DOM-31, for operator review |
+| [0080](./0080-aggregates-and-concepts.md) | An aggregate is a file; `concept` is a value object; a repository is a pattern | Accepted, amended 2026-11-17: concept files built (0092) | operator; one lead note on DOM-31, for operator review |
 | [0081](./0081-event-sourcing-and-cqrs-are-extensions.md) | Event sourcing and CQRS are two extensions | Accepted | operator |
 | [0082](./0082-named-checks-and-mixins.md) | Named checks in a `checks` section; `mixin` files with `use`; step files dropped | Accepted | operator; lead reading for DOM-33 |
 | [0083](./0083-names-for-the-new-constructs.md) | The name-clash table is accepted for the port | Accepted | operator |
 | [0084](./0084-architecture-rules-are-core.md) | Architecture rules are core, in `architecture.mesh.mx`; when they are built is decided | Accepted; the open item is decided | operator |
-| [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders (target design) | Accepted | operator with MX |
+| [0085](./0085-tag-discovery-for-dialect-tags.md) | MX discovers a dialect's tags from declared folders | Accepted, amended 2026-11-17: MX's side shipped, Mesh's built with a deviation (0092) | operator with MX |
 | [0086](./0086-entity-values-privileged-barrels-and-fqns.md) | Entity values, `Mesh.privileged`, barrels and fully qualified names: generated code follows modules | Accepted, amended 2026-10-13: `Mesh` without `now` and `today` (PRJ-22, SYN-29) | operator |
 | [0087](./0087-raw-sql-escape-hatch.md) | The raw-SQL escape hatch: a read-only `query` function exported by `#mesh` before 1.0 (Option E), with Ash's `fragment` left to M10 | Accepted by the lead for Option E, pending the operator (2026-11-17); questions 1, 7 and 14 open | operator; lead for Option E |
 | [0088](./0088-translated-conditions-cross-the-data-layer-as-bound-trees.md) | Translated conditions cross the data layer as bound condition trees | Accepted (lead ruling D32, pending operator review) | lead, delegated |
 | [0089](./0089-postgres-adapter.md) | Postgres adapter: serializable transactions, transient errors and SQLite's order | Accepted (lead ruling D30, pending operator review) | lead, delegated |
 | [0090](./0090-line-rules-report-meshs-codes.md) | Line rules report Mesh's codes and positions, carried by a generated wrapper over Zod's own checks | Accepted (lead ruling D38, pending operator review) | lead, delegated |
 | [0091](./0091-delivery-from-several-processes.md) | Delivery from several processes: a lease per handler, the union shrunk only by `mesh events adopt`, process rows | Accepted (lead ruling D31, pending operator review) | lead, delegated |
+| [0092](./0092-concepts-are-found-by-mx-and-stored-as-one-json-value.md) | Concepts are found by MX's scan, generated as a type and a schema, and stored as one JSON value | Accepted (lead ruling D36, pending operator review) | lead, delegated |
 
 ## Superseded records
 

@@ -8,6 +8,8 @@ const defaults: Record<string, string> = { entity: "entity :Sample", create: "cr
 export function coverageProject(tag: string, option: string | undefined, example: string) {
   // An event or a command is the root of a file of its own: the example is the whole file.
   if (tag === "event" || tag === "command") return { root: "/project", files: [{ file: "docs/sample.mesh.mx", source: `${example}\n  uuid :id\n` }] };
+  // A concept is the root of a file of its own, directly in a `concepts` folder and named after it, with one field line.
+  if (tag === "concept") return { root: "/project", files: [{ file: "docs/concepts/Sample.mesh.mx", source: `${example}\n  uuid :id\n` }] };
   // An aggregate is the root of a file of its own: Sample is its root, and Line, tied to Sample by its one belongs-to, its part.
   if (tag === "aggregate" || tag === "root" || tag === "entities") {
     const lines = tag === "aggregate" ? [example, "  root entity=Sample"]

@@ -255,10 +255,10 @@ describe("the relationship fix line", () => {
       ["MESH_UNKNOWN_OPTION", unknownValue("has-many"), fixFor("has-many"), 10, 12],
     ]);
   });
-  test("an old relationship line in an event is MESH_TAG_NOT_ALLOWED with no fix", () => {
+  test("an old relationship line in an event is MESH_PARENT_NOT_ALLOWED with no fix", () => {
     const found = buildModel({ root: "/project", files: [{ file: "moved.mesh.mx", source: "event :Moved\n  uuid :id\n  belongs-to=:List :list\n" }] })
       .diagnostics.map((d) => [d.code, d.fix, d.position.line]);
-    expect(found).toEqual([["MESH_TAG_NOT_ALLOWED", null, 3]]);
+    expect(found).toEqual([["MESH_PARENT_NOT_ALLOWED", null, 3]]);
   });
   test("the legal relationship lines lower with no diagnostic", () => {
     expect(report(relationship("belongs-to :list entity=List\n    has-many :items entity=Item\n    has-one :profile entity=Profile"))).toEqual([]);
