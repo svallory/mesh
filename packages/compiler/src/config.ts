@@ -269,7 +269,7 @@ export async function loadConfig(projectRoot: string): Promise<ConfigResult> {
 function checkEvents(events: unknown, at: (field: string) => Diagnostic["position"], diagnostics: Diagnostic[]): void {
   const fail = (field: string, message: string, fix: string) => diagnostics.push(error("MESH_EVENTS_CONFIG", message, at(field), fix));
   if (!record(events)) {
-    fail("events", "Configuration field `events` must be an object", "Set events: { bus, load, keep, requires }; bus is needed once an event is declared");
+    fail("events", "Configuration field `events` must be an object", "Set events: { bus, load, keep, requires, renamed }; bus is needed once an event is declared");
     return;
   }
   for (const [key, value] of Object.entries(events)) {

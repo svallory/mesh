@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { loadConfig } from "../src/index.ts";
+import { loadConfig, loadProject } from "../src/index.ts";
 import { keyed } from "./v4.ts";
 
 const data = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: "app.db" } } as const;
@@ -153,7 +153,7 @@ describe("the events key", () => {
 
   test("not an object", async () => {
     for (const value of ["null", "\"all\"", "[]", "() => ({})"]) {
-      expect(await codes(value), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "Configuration field `events` must be an object", fix: "Set events: { bus, load, keep, requires }; bus is needed once an event is declared" }]);
+      expect(await codes(value), value).toEqual([{ code: "MESH_EVENTS_CONFIG", message: "Configuration field `events` must be an object", fix: "Set events: { bus, load, keep, requires, renamed }; bus is needed once an event is declared" }]);
     }
   });
 
@@ -204,6 +204,23 @@ describe("the events key", () => {
     const empty = await loadConfig(await withEvents("{ renamed: {} }"));
     expect([empty.diagnostics, empty.config!.events]).toEqual([[], { renamed: {} }]);
     expect(Object.hasOwn((await loadConfig(await withEvents("{}"))).config!, "positions")).toBe(false);
+  });
+
+  test("a renamed that names no declared event is refused by the build at the renamed key, not at the file start", async () => {
+    const root = await project("", { "src/domain/billing/invoice-paid.mesh.mx": "event :InvoicePaid\n  uuid :invoiceId\n" },
+      `{\n  domain: "src/domain",\n  output: ".mesh",\n  data: ${JSON.stringify(data)},\n  events: {\n    bus: ${bus('["ordered-delivery"]')},\n    renamed: { "a.B": "Nope" },\n  },\n}`);
+    const loaded = await loadConfig(root);
+    expect(loaded.diagnostics).toEqual([]);
+    const built = await loadProject(loaded.config!);
+    const source = await readFile(resolve(root, "mesh.config.ts"), "utf8");
+    const line = source.split("\n").findIndex((text) => text.trimStart().startsWith("renamed:")) + 1;
+    expect(built.document).toBeNull();
+    // Columns count from 0 (positionAt): the key sits after four spaces.
+    expect(built.diagnostics.map(({ code, message, position }) => ({ code, message, file: position?.file, line: position?.line, column: position?.column }))).toEqual([{
+      code: "MESH_EVENTS_CONFIG", file: "mesh.config.ts", line, column: 4,
+      message: "`events.renamed` maps \"a.B\" to \"Nope\", which is no declared event; the project declares billing.InvoicePaid",
+    }]);
+    expect(source.slice(built.diagnostics[0]!.position!.offset)).toStartWith("renamed: {");
   });
 
   test("renamed of the wrong shape: not an object, a value that is no name, an empty key; every problem is reported", async () => {
