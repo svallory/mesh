@@ -30,7 +30,7 @@ Each `expose` line names one entity the audience may reach, under the name it se
 
 Fields fail closed. Only the members `fields=` lists leave through the surface: an attribute, a `belongs-to` (its key column leaves, `listId`, never the related record) or a computed field. `fields=:all` lets every one of those leave. With no `fields=`, nothing does: not even the primary key. A `has-many` or a `has-one` cannot be listed, since a related record does not leave through a surface; expose that entity on a line of its own.
 
-The same rule holds for what a read takes. A read listed on a surface refuses a `filter` key (at any depth of `and` and `or`), a `sort` key or a `load` name outside the line before the action runs, so no policy runs and no row is read: it throws `InvalidInputError` with one issue per name, each with the code `not_exposed` and the path of the name (`["filter", "notes"]`, `["sort", 0]`). Without that, a caller who may see only `id` and `title` could recover any other field one comparison at a time. The generated input type is narrowed the same way, so such a call is also a type error.
+The same rule holds for what a read takes. A read listed on a surface refuses a `filter` key (at any depth of `and` and `or`), a `sort` key or a `load` name outside the line before the action runs, so no policy runs and no row is read: it throws `InvalidInputError` with one issue per name, each with the code `not_exposed` and the path of the name (`["filter", "listId"]`, `["sort", 0]`). Without that, a caller who may see only `id` and `title` could recover any other field one comparison at a time. The generated input type is narrowed the same way, so such a call is also a type error.
 
 A computed field that `fields=` lists leaves only when it is loaded: a read loads it when the caller's `load` names it, and `load` through a surface takes only the listed computed fields. A write action's result has what its own `load=` step loads, and the surface keeps the listed part of it.
 
@@ -103,8 +103,8 @@ await serve({
 ```
 
 ```text
-{"jsonrpc":"2.0","id":1,"method":"todos.read","params":{"filter":{"notes":{"eq":"x"}}}}
-{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"invalid_input","data":{"issues":[{"code":"not_exposed","path":["filter","notes"],…}]}}}
+{"jsonrpc":"2.0","id":1,"method":"todos.read","params":{"filter":{"listId":{"eq":"x"}}}}
+{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"invalid_input","data":{"issues":[{"code":"not_exposed","path":["filter","listId"],…}]}}}
 ```
 
-No method has a `params` schema: the action casts its own input, so a bad input, or a filter by a field the line does not list, is the action's `InvalidInputError`, which your `error` function maps like any other. An action the line does not list has no method and is answered `-32601`. To match an existing protocol, pass `name`: `surfaceMethods(surface, { name: (exposed, action) => `${action}_${exposed}` })`. Two actions that get one name, or a name that starts with `rpc.` (which JSON-RPC 2.0 reserves, so `expose :rpc` needs a `name`), make `surfaceMethods` throw `FrameworkError` when the table is built. The table is plain data, so you can add methods of your own beside it: `methods: { ...surfaceMethods(surface), ping: { run: () => "pong" } }`.
+No method has a `params` schema: the action casts its own input, so a bad input, or a filter by a field the line does not list, is the action's `InvalidInputError`, which your `error` function maps like any other. An action the line does not list has no method and is answered `-32601`. To match an existing protocol, pass `name`: `` surfaceMethods(surface, { name: (exposed, action) => `${action}_${exposed}` }) ``. Two actions that get one name, or a name that starts with `rpc.` (which JSON-RPC 2.0 reserves, so `expose :rpc` needs a `name`), make `surfaceMethods` throw `FrameworkError` when the table is built. The table is plain data, so you can add methods of your own beside it: `methods: { ...surfaceMethods(surface), ping: { run: () => "pong" } }`.
