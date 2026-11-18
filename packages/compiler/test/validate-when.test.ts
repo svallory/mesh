@@ -238,7 +238,7 @@ describe("a `when` line in `validate`: what is refused", () => {
 
   test("a `check` under a step `when`, one and two levels deep", () => {
     const source = sendWith(`        ${ok("a")}\n`, `        when=() => &version > 0\n          ${ok("bad")}\n          when=() => true\n            ${ok("deeper")}\n`);
-    const message = "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`, `lock`";
+    const message = "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`";
     expect(said(source)).toEqual([`11:10 MESH_TAG_NOT_ALLOWED ${message}`, `13:12 MESH_TAG_NOT_ALLOWED ${message}`]);
   });
 

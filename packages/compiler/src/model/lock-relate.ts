@@ -97,7 +97,8 @@ export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic
           report("MESH_LOCK_MEMBER", `&${member} is an input of ${action.kind} :${action.name} of ${entity.fqn}, and ${owns} owns it: the caller sends \`${field}\`, and the lock writes &${member}`,
             at, `remove \`&${member}\` from \`input\``);
         if (name === field)
-          report("MESH_DUPLICATE_INPUT", `Input ${field} conflicts with the one ${owns} adds`, at, "rename the argument");
+          report("MESH_DUPLICATE_INPUT", `Input ${field} conflicts with the one ${owns} adds`, at,
+            input.kind === "member" ? `remove \`&${field}\` from \`input\`, or rename the attribute` : "rename the argument");
       }
       // A destroy's `set` is `MESH_DESTROY_STEP` already.
       if (action.kind === "update")

@@ -57,6 +57,10 @@ describe("the lock line's syntax (MX)", () => {
   test("under `validate` it is MESH_TAG_NOT_ALLOWED", () => {
     expect(built("    update :edit\n      validate\n        lock &version\n").diagnostics.map((d) => d.code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
   });
+  test("under a `validate` `when` and under a `check` it is MESH_TAG_NOT_ALLOWED", () => {
+    expect(built("    update :edit\n      validate\n        when=() => true\n          lock &version\n").diagnostics.map((d) => d.code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
+    expect(built('    update :edit\n      validate\n        check :fresh that=() => true code="f" message="f"\n          lock &version\n').diagnostics.map((d) => d.code)).toEqual(["MESH_TAG_NOT_ALLOWED"]);
+  });
   test("`optional` stays a command field's option everywhere else", () => {
     expect(built("    update :edit\n      input\n        integer :n optional\n").diagnostics.map((d) => d.code)).toEqual(["MESH_UNKNOWN_OPTION"]);
   });
@@ -125,15 +129,40 @@ describe("MESH_DUPLICATE_INPUT", () => {
     expect(found(built("    update :edit\n      input\n        integer :expectedVersion nullable\n      do\n        lock &version\n").diagnostics)).toEqual([
       ["MESH_DUPLICATE_INPUT", 15, 8, "Input expectedVersion conflicts with the one `lock &version` (line 17) adds"],
     ]);
+    expect(built("    update :edit\n      input\n        integer :expectedVersion nullable\n      do\n        lock &version\n").diagnostics.map((d) => d.fix)).toEqual(["rename the argument"]);
+  });
+  test("a member input named like the field the lock adds: the fix names the member, not an argument", () => {
+    const source = note("    update :edit\n      input\n        &expectedVersion\n      do\n        lock &version\n").replace("    integer :maybe nullable\n", "    integer :maybe nullable\n    integer :expectedVersion nullable\n");
+    const diagnostics = buildModel({ root: "/p", files: [{ file: "note.mesh.mx", source }, { file: "line.mesh.mx", source: line }] }).diagnostics;
+    expect(diagnostics.map((d) => [d.code, d.position.line, d.message, d.fix])).toEqual([
+      ["MESH_DUPLICATE_INPUT", 16, "Input expectedVersion conflicts with the one `lock &version` (line 18) adds", "remove `&expectedVersion` from `input`, or rename the attribute"],
+    ]);
   });
 });
 
 describe("legal neighbours", () => {
-  test("a lock in `always types=[:update, :destroy]`, on a declared and an auto destroy", () => {
-    const document = clean("    always types=[:update, :destroy]\n      do\n        lock &version optional\n    update :edit\n").entities[0]!;
-    const covered = [...document.actions, { kind: "destroy" as const, name: "destroy", do: [] }];
-    expect(derivedInputs(document, covered[0]!).map((f) => [f.name, f.required, f.nullable])).toEqual([["expectedVersion", false, true]]);
-    expect(derivedInputs(document, document.actions.find((a) => a.name === "edit")!)).toHaveLength(1);
+  test("a lock in `always types=[:update, :destroy]` reaches a declared update and the auto update and destroy", async () => {
+    const source = note("    always types=[:update, :destroy]\n      do\n        lock &version\n    update :edit\n").replace("actions auto=[:create, :read]", "actions auto=[:create, :read, :update, :destroy]");
+    const result = buildModel({ root: "/p", files: [{ file: "note.mesh.mx", source }, { file: "line.mesh.mx", source: line }] });
+    expect(found(result.diagnostics)).toEqual([]);
+    const entity = result.document!.entities[0]!;
+    const fields = (action: { kind: "update" | "destroy"; name: string }) => derivedInputs(entity, { ...action, do: [] }).map((f) => [f.name, f.required, f.nullable]);
+    expect(fields({ kind: "update", name: "edit" })).toEqual([["expectedVersion", true, false]]);
+    expect(fields({ kind: "update", name: "update" })).toEqual([["expectedVersion", true, false]]);
+    expect(fields({ kind: "destroy", name: "destroy" })).toEqual([["expectedVersion", true, false]]);
+    const files = new Map((await generateFiles({ document: result.document!, config: configOf("/p") })).map((file) => [file.path, file.contents]));
+    const actions = files.get("generated/domain/note.actions.ts")!;
+    const slice = (name: string, next?: string) => actions.slice(actions.indexOf(`"Note#${name}"`), next ? actions.indexOf(`"Note#${next}"`) : undefined);
+    const names = [...actions.matchAll(/"Note#(\w+)"/g)].map((m) => m[1]!).filter((n, i, all) => all.indexOf(n) === i);
+    const body = (name: string) => slice(name, names[names.indexOf(name) + 1]);
+    for (const name of ["edit", "update", "destroy"]) expect(body(name)).toContain("if (parsed.expectedVersion !== $before.version)");
+    expect(body("update")).toContain("$changes.version = $record.version = $before.version + 1;");
+    expect(body("edit")).toContain("$changes.version = $record.version = $before.version + 1;");
+    expect(body("destroy")).toContain("selectByKeyForUpdate(");
+    expect(body("destroy")).not.toContain("$before.version + 1");
+    const types = files.get("generated/domain/note.types.ts")!;
+    for (const input of ["EditNoteInput", "UpdateNoteInput", "DestroyNoteInput"])
+      expect(types).toMatch(new RegExp(`export type ${input} = \\{[^}]*expectedVersion: number;`));
   });
   test("an action with no lock has no derived field", () => {
     const entity = clean("    update :edit\n      input\n        &body\n").entities[0]!;
@@ -186,6 +215,9 @@ describe("a command answering a locked action (MESH_COMMAND_INPUT)", () => {
   test("without expectedVersion it is refused, with it it builds, and an optional lock needs none", () => {
     expect(answered("")).toEqual([["MESH_COMMAND_INPUT", expect.stringContaining("`expectedVersion`, which `lock &version` adds")]]);
     expect(answered("  integer :expectedVersion\n")).toEqual([]);
+    expect(answered("  integer :expectedVersion nullable\n").map(([code]) => code)).toEqual(["MESH_COMMAND_INPUT"]);
+    expect(answered("  integer :expectedVersion optional\n").map(([code]) => code)).toEqual(["MESH_COMMAND_INPUT"]);
+    expect(answered("  string :expectedVersion\n").map(([code]) => code)).toEqual(["MESH_COMMAND_INPUT"]);
     expect(answered("", true)).toEqual([]);
   });
 });
@@ -221,7 +253,7 @@ describe("generated code", () => {
   test("the update compares after the record-reading policies and before validate, and bumps before the write", async () => {
     const actions = await generated();
     const edit = actions.slice(actions.indexOf('"Note#edit"'), actions.indexOf('"Note#drop"'));
-    const order = ["$policies.inside(", "if (parsed.expectedVersion !== $before.version)", "const $issues", "$changes.version = $record.version = $before.version + 1;", "tx.updateByKey("].map((text) => edit.indexOf(text));
+    const order = ["$policies.inside(", "if (parsed.expectedVersion !== $before.version)", "const $issues", '$expressions["edit.step.1.set.body"]', "$changes.version = $record.version = $before.version + 1;", "tx.updateByKey("].map((text) => edit.indexOf(text));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(edit).toContain('label: "lock",');
