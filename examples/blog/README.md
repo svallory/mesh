@@ -17,7 +17,7 @@ bun run test         # mesh build --check, then bun test against an in-memory da
 
 ## What is here
 
-- [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the Post declaration. It covers all ten attribute types, relationships, computed fields, action inputs, validation, steps, a filtered and sorted read, `on:load`, and policies, with `&name` member references in every position. [`user.mesh.mx`](src/domain/blog/user.mesh.mx) and [`comment.mesh.mx`](src/domain/blog/comment.mesh.mx) are the imported entities.
+- [`src/domain/blog/post.mesh.mx`](src/domain/blog/post.mesh.mx) is the Post declaration. It covers all ten attribute types (two of them, `insertedAt` and `updatedAt`, through Mesh's `Timestamps` mixin), relationships, computed fields, action inputs, validation, steps, a filtered and sorted read, `on:load`, and policies, with `&name` member references in every position. [`user.mesh.mx`](src/domain/blog/user.mesh.mx) and [`comment.mesh.mx`](src/domain/blog/comment.mesh.mx) are the imported entities.
 - [`src/context.ts`](src/context.ts) declares the action context: a required `actor`, so every call passes `{ actor }` ([`test/context.check.ts`](test/context.check.ts) checks that leaving it out does not compile).
 - [`src/main.ts`](src/main.ts) is the program: `connect()`, the calls, `disconnect()`.
 - [`test/blog.test.ts`](test/blog.test.ts) binds its own `sqlite({ file: ":memory:" })` with `createSchema(db, tables)` and `bind(db)`, makes its calls inside that binding's `run`, and covers the M2 acceptance tests.

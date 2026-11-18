@@ -169,11 +169,11 @@ export const createPostInputSchema = $ruled(
     title: {
       too_small: {
         code: "too_short",
-        source: { file: "src/domain/blog/post.mesh.mx", line: 7, column: 5 },
+        source: { file: "src/domain/blog/post.mesh.mx", line: 9, column: 5 },
       },
       too_big: {
         code: "too_long",
-        source: { file: "src/domain/blog/post.mesh.mx", line: 7, column: 5 },
+        source: { file: "src/domain/blog/post.mesh.mx", line: 9, column: 5 },
       },
     },
   },
