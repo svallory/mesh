@@ -647,7 +647,7 @@ describe("the outbox", () => {
   test("readEvents with no binding in scope and none connected throws", async () => {
     const error = await failure(app.readEvents());
     expect(error).toBeInstanceOf(FrameworkError);
-    expect(error.message).toStartWith("readEvents was called while not connected");
+    expect((error as FrameworkError).message).toStartWith("readEvents was called while not connected");
   });
 
   test("dispatch runs the action whose on= names the command's class, with the command's fields as its input", async () => {
