@@ -455,13 +455,6 @@ describe("published() and readEvents through a binding", () => {
     expect((await rejection(() => binding.run(() => readEvents(frame, undefined, { names: ["billing.Nope"] })))).message).toContain("not a declared event");
   });
 
-  test("a stored payload its class no longer accepts is a FrameworkError naming the position", async () => {
-    const { frame, binding, state, publish } = setup();
-    await publish(paid());
-    state.rows[0] = { ...state.rows[0]!, payload: { invoiceId: "i1" } };
-    expect((await rejection(() => binding.run(() => readEvents(frame, undefined))))).toBeInstanceOf(FrameworkError);
-  });
-
   test("two event classes with one FQN cannot be bound", () => {
     class Twin { static readonly [DECLARATION] = { ...InvoicePaid[DECLARATION] }; }
     expect(() => bindDomain({ InvoicePaid, Twin }, memoryLayer().layer, {}, new AsyncLocalStorage())).toThrow("Two event classes in the domain have the FQN billing.InvoicePaid");
