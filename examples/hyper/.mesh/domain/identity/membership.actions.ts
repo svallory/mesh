@@ -239,14 +239,14 @@ export function bindMembership(
               label: "collaboratorActive",
               code: "collaborator.active",
               message: "the collaborator is retired",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 38, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 32, column: 9 },
               that: $expressions["grant.check.collaboratorActive.that"],
             });
             await $runCheck($issues, $checks, {
               label: "noneActive",
               code: "membership.none-active",
               message: "the collaborator already has an active membership; change its role instead",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 43, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 37, column: 9 },
               that: $expressions["grant.check.noneActive.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -260,7 +260,7 @@ export function bindMembership(
               const $value = await $expressions["grant.step.0.set.grantedAt"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &grantedAt (src/domain/identity/membership.mesh.mx:50:22) produced no value, and grantedAt is required",
+                  "set &grantedAt (src/domain/identity/membership.mesh.mx:44:22) produced no value, and grantedAt is required",
                 );
               $changes.grantedAt = $record.grantedAt = $value;
             }
@@ -268,7 +268,7 @@ export function bindMembership(
               const $value = await $expressions["grant.step.0.set.grantedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &grantedBy (src/domain/identity/membership.mesh.mx:51:22) produced no value, and the relationship grantedBy is required",
+                  "set &grantedBy (src/domain/identity/membership.mesh.mx:45:22) produced no value, and the relationship grantedBy is required",
                 );
               $changes.grantedById = $record.grantedById = $value;
             }
@@ -305,7 +305,7 @@ export function bindMembership(
                     entity: "identity.Membership",
                     action: "grant",
                     key: { id: $written.id },
-                    at: "src/domain/identity/membership.mesh.mx:52:17",
+                    at: "src/domain/identity/membership.mesh.mx:46:17",
                   },
                   $event,
                   $context,
@@ -410,6 +410,21 @@ export function bindMembership(
             ) as unknown as $StoredScope<ChangeRoleMembershipInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/identity/membership.mesh.mx:63): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/identity/membership.mesh.mx", line: 63, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -424,38 +439,22 @@ export function bindMembership(
               label: "roleChanges",
               code: "membership.unchanged",
               message: "the member already has that role",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 59, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 52, column: 9 },
               that: $expressions["changeRole.check.roleChanges.that"],
             });
             await $runCheck($issues, $checks, {
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 64, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 57, column: 9 },
               that: $expressions["changeRole.check.lastOwner.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 26, column: 5 },
-              that: $expressions["changeRole.check.versionMatches.that"],
-              details: $expressions["changeRole.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
             if ($Object.hasOwn(parsed, "role") && parsed.role !== undefined)
               $changes.role = $record.role = parsed.role;
-            // do: the steps run in written order, each seeing the record as the ones before it left it
-            {
-              const $value = await $expressions["changeRole.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/identity/membership.mesh.mx:72:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -498,7 +497,7 @@ export function bindMembership(
                     entity: "identity.Membership",
                     action: "changeRole",
                     key: { id: $written.id },
-                    at: "src/domain/identity/membership.mesh.mx:73:17",
+                    at: "src/domain/identity/membership.mesh.mx:64:17",
                   },
                   $event,
                   $context,
@@ -603,6 +602,21 @@ export function bindMembership(
             ) as unknown as $StoredScope<RevokeMembershipInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/identity/membership.mesh.mx:76): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/identity/membership.mesh.mx", line: 76, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -617,37 +631,22 @@ export function bindMembership(
               label: "ownerRemains",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 80, column: 9 },
+              source: { file: "src/domain/identity/membership.mesh.mx", line: 70, column: 9 },
               that: $expressions["revoke.check.ownerRemains.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/membership.mesh.mx", line: 26, column: 5 },
-              that: $expressions["revoke.check.versionMatches.that"],
-              details: $expressions["revoke.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.state = $record.state = "revoked";
             {
-              const $value = await $expressions["revoke.step.0.set.revokedAt"]($s);
+              const $value = await $expressions["revoke.step.1.set.revokedAt"]($s);
               $changes.revokedAt = $record.revokedAt = $value === undefined ? null : $value;
             }
             {
-              const $value = await $expressions["revoke.step.0.set.revokedBy"]($s);
+              const $value = await $expressions["revoke.step.1.set.revokedBy"]($s);
               $changes.revokedById = $record.revokedById = $value === undefined ? null : $value;
             }
-            {
-              const $value = await $expressions["revoke.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/identity/membership.mesh.mx:91:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -681,7 +680,7 @@ export function bindMembership(
               ),
             });
             {
-              const $event = await $expressions["revoke.step.1.publish"]($after);
+              const $event = await $expressions["revoke.step.2.publish"]($after);
               await frame.plain(() =>
                 $publishEvent(
                   tx,
@@ -690,7 +689,7 @@ export function bindMembership(
                     entity: "identity.Membership",
                     action: "revoke",
                     key: { id: $written.id },
-                    at: "src/domain/identity/membership.mesh.mx:92:17",
+                    at: "src/domain/identity/membership.mesh.mx:81:17",
                   },
                   $event,
                   $context,

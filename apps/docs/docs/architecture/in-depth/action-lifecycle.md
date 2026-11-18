@@ -44,7 +44,7 @@ What `self` holds depends on where a function runs ([ADR-0053](../decisions/0053
 ```text
 enter -> cast -> plan -> pre-check ->
   [ transaction opens -> read with lock (or build the new record)
-    -> policy checks that read the record -> validate -> apply the input
+    -> policy checks that read the record -> lock -> validate -> apply the input
     -> do -> data layer -> run [after=:write] ]
   -> commit -> after commit
 ```
@@ -55,7 +55,7 @@ enter -> cast -> plan -> pre-check ->
 | 2 | Cast | Only members and arguments listed in `input` pass, in one input object; values are cast and checked against their line's rules (`min`, `max`, `match`). On a create every accepted field that is required and has no default must be sent; on an update none must. An unknown field is an error, not dropped. | Attribute types |
 | 3 | Plan | The generated function follows the plan fixed at build time (below). | Steps |
 | 4 | Pre-check | Policy checks that need no stored record run first. | Authorizer slot |
-| 5 | Transaction | Opens, and runs in the order below: the row read with a write lock (a create builds its new record instead), the policy checks that read the record, `validate`, the member inputs applied, the `do` steps. | Policy checks |
+| 5 | Transaction | Opens, and runs in the order below: the row read with a write lock (a create builds its new record instead), the policy checks that read the record, the `lock` comparison when one reaches the action ([ADR-0100](../decisions/0100-the-lock-step.md)), `validate`, the member inputs applied, the `do` steps; a locked update writes its version plus 1 with the row. | Policy checks |
 | 6 | Data layer | Calls go through the one data-layer contract; an atomic update is one statement. A create fills each attribute from input, then from its default, then from the column default; an update sends only the keys the call provided; a destroy returns `void` and raises `NotFoundError` when its key names no row. | Data layer |
 | 7 | Commit | The transaction closes. | none in v1 |
 | 8 | After commit | The typed result, with anything named by `load`, or a classed error. | Tracer |

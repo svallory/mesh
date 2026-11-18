@@ -76,49 +76,29 @@ export const $expressions = {
     const $self = $s.self;
     return (({ actor }) => responsibleFor($self.task.assignments, actor.id))($s);
   },
-  // check :cancelable that, translated (src/domain/execution/run.mesh.mx:52:16)
+  // check :cancelable that, translated (src/domain/execution/run.mesh.mx:51:16)
   "cancel.check.cancelable.that": ($s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>) =>
     $.eq($s.self.state, "running"),
-  // check :versionMatches that, translated (src/domain/execution/run.mesh.mx:57:16)
-  "cancel.check.versionMatches.that": (
-    $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
-  ) =>
-    $.or($.isNull($s.input?.expectedVersion), () =>
-      $.eq($s.input?.expectedVersion, $s.self.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/execution/run.mesh.mx:60:19)
-  "cancel.check.versionMatches.details": (
-    $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
-  ) => {
-    const $self = $s.self;
-    return (({ input }) => ({
-      expectedVersion: input.expectedVersion,
-      actualVersion: $self.version,
-    }))($s);
-  },
-  // set &endedAt, translated (src/domain/execution/run.mesh.mx:65:20)
-  "cancel.step.0.set.endedAt": ($s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>) =>
+  // set &endedAt, translated (src/domain/execution/run.mesh.mx:59:20)
+  "cancel.step.1.set.endedAt": ($s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>) =>
     $.now($s),
-  // set &cancelReason, translated (src/domain/execution/run.mesh.mx:66:25)
-  "cancel.step.0.set.cancelReason": (
+  // set &cancelReason, translated (src/domain/execution/run.mesh.mx:60:25)
+  "cancel.step.1.set.cancelReason": (
     $s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>,
   ) => $s.input?.reason,
-  // set &version, translated (src/domain/execution/run.mesh.mx:67:20)
-  "cancel.step.0.set.version": ($s: $execution$Run$StoredScope<$execution$Run$CancelRunInput>) =>
-    $.add($s.self.version, 1),
-  // set &state, translated (src/domain/execution/run.mesh.mx:74:18)
+  // set &state, translated (src/domain/execution/run.mesh.mx:67:18)
   "settle.step.0.set.state": ($s: $execution$Run$StoredScope<$execution$Run$SettleRunInput>) =>
     $s.input?.result,
-  // set &endedAt, translated (src/domain/execution/run.mesh.mx:75:20)
+  // set &endedAt, translated (src/domain/execution/run.mesh.mx:68:20)
   "settle.step.0.set.endedAt": ($s: $execution$Run$StoredScope<$execution$Run$SettleRunInput>) =>
     $.now($s),
-  // set &version, translated (src/domain/execution/run.mesh.mx:76:20)
+  // set &version, translated (src/domain/execution/run.mesh.mx:69:20)
   "settle.step.0.set.version": ($s: $execution$Run$StoredScope<$execution$Run$SettleRunInput>) =>
     $.add($s.self.version, 1),
-  // policy :membersRead authorize-if, translated (src/domain/execution/run.mesh.mx:79:20)
+  // policy :membersRead authorize-if, translated (src/domain/execution/run.mesh.mx:72:20)
   "policy.membersRead.authorize-if.0": ($s: $execution$Run$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:81:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:74:20)
   "policy.isMember.authorize-if.0": (
     $s: $execution$Run$NewScope<
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
@@ -126,7 +106,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:83:20)
+  // policy :ownerOrMember authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:76:20)
   "policy.ownerOrMember.authorize-if.0": (
     $s: $execution$Run$NewScope<
       $SharedInput<$execution$Run$StartRunInput | $execution$Run$CancelRunInput>
@@ -135,14 +115,14 @@ export const $expressions = {
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner", "member"])))($s);
   },
-  // policy :runCanceler authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:85:20)
+  // policy :runCanceler authorize-if, plain (awaits-helper) (src/domain/execution/run.mesh.mx:78:20)
   "policy.runCanceler.authorize-if.0": (
     $s: $execution$Run$CheckScope<$execution$Run$CancelRunInput>,
   ) => {
     return (async ({ self, actor, context }) =>
       Mesh.isSystem(context) || (await cancelsRunOf(self, actor.id)))($s);
   },
-  // policy :internal authorize-if, translated (src/domain/execution/run.mesh.mx:87:20)
+  // policy :internal authorize-if, translated (src/domain/execution/run.mesh.mx:80:20)
   "policy.internal.authorize-if.0": (
     $s: $execution$Run$CheckScope<$execution$Run$SettleRunInput>,
   ) => $.isSystem($s.context),

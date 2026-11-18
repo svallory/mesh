@@ -43,6 +43,7 @@ Ash examples follow [Ash features](../research/ash-features.md), section 12; the
 | `update :publish do ... end` | `update :publish` | [ADR-0052](../decisions/0052-actions-auto-and-on-load.md) |
 | `argument :paid_at, :utc_datetime` | `input` section: `datetime :paidAt` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | `change set_attribute(:state, :published)` | `do` then `set` then `&state=:published` | [ADR-0053](../decisions/0053-validate-then-do.md) |
+| `change optimistic_lock(:version)` | `do` then `lock &version` | [ADR-0100](../decisions/0100-the-lock-step.md) |
 | `validate present(:title)` | `string :title` is required by default; `input` takes `&title` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | a custom validation module with a message | `check :label [ that=fn code=... message=... ]` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | resource-level `changes` and `validations` | `always types=[...]` under `actions` | [ADR-0053](../decisions/0053-validate-then-do.md) |
@@ -238,6 +239,9 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `listen.renamed-from` | `listen :mailed [on=Paid renamed-from=:sent] ({ event }) { return event.id }` | `listen.renamed-from` | on main |
 | `load` | `load=[&lines]` | `load` | on main |
 | `load.value` | `load=[&lines]` | `load.value` | on main |
+| `lock` | `lock &version` | `lock` | on main |
+| `lock.member` | `lock &version` | `lock.member` | on main |
+| `lock.optional` | `lock &version optional` | `lock.optional` | on main |
 | `max` | `max :total of=&lines.dueOn` | `max` | on main |
 | `max.filter` | `max :total of=&lines.dueOn filter=(line) => line.dueOn < %.today` | `max.filter` | on main |
 | `max.name` | `max :total of=&lines.dueOn` | `max.name` | on main |

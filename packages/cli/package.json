@@ -63,6 +63,7 @@
         "load",
         "run",
         "publish",
+        "lock",
         "filter",
         "sort",
         "policies",

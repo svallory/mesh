@@ -1019,6 +1019,51 @@ describe("rules together, and the version rule on the other entities", () => {
       expect(codes(await issuesOf(call(1)))).toContain("expected-version");
     }
   }));
+
+  // `lock &version optional` compares before `validate` and reports a stale call alone (ADR-0100), as the spec checks the
+  // version first (PROTOCOL.md:111, :210): each call below is stale and also breaks another rule of its action.
+  test("on the entities that lock their version, a stale call is reported alone, before the other rules", () => within(async (w) => {
+    const machine = await Machine.register({ name: "laptop" }, as(w.alice));
+    const reference = await session(w, "s-1", "desktop");
+    const run = await Run.start({ task: w.task.id }, as(w.bot));
+    const stale = [
+      async () => {
+        await Collaborator.update({ id: w.alice.id, name: "a2" }, as(w.alice));
+        return Collaborator.update({ id: w.alice.id, kind: "agent", expectedVersion: 1 }, as(w.alice));
+      },
+      async () => {
+        await Membership.changeRole({ id: w.memberships.bob.id, role: "owner" }, as(w.alice));
+        return Membership.changeRole({ id: w.memberships.bob.id, role: "owner", expectedVersion: 1 }, as(w.alice));
+      },
+      async () => {
+        await Machine.retire({ id: machine.id, reason: "old" }, as(w.alice));
+        return Machine.update({ id: machine.id, platform: "p", expectedVersion: 1 }, as(w.alice));
+      },
+      async () => {
+        await SessionReference.redact({ id: reference.id, reason: "private" }, as(w.alice));
+        return SessionReference.setAvailability({ id: reference.id, availability: "partial", expectedVersion: 1 }, as(w.bot));
+      },
+      async () => {
+        await Run.cancel({ id: run.id, reason: "stop" }, as(w.alice));
+        return Run.cancel({ id: run.id, reason: "again", expectedVersion: 1 }, as(w.alice));
+      },
+      async () => {
+        const attempt = await started(w, await running(w));
+        await Attempt.abandon({ id: attempt.id }, as(w.bot));
+        return Attempt.finish({ id: attempt.id, result: "succeeded", expectedVersion: 1 }, as(w.bot));
+      },
+    ];
+    for (const call of stale) expect(codes(await issuesOf(call()))).toEqual(["expected-version"]);
+  }));
+
+  test("expected-version guards Run and Attempt too, and a write bumps by one", () => within(async (w) => {
+    const run = await Run.start({ task: w.task.id }, as(w.bot));
+    await refused(Run.cancel({ id: run.id, reason: "stop", expectedVersion: 2 }, as(w.alice)), "expected-version");
+    expect((await Run.cancel({ id: run.id, reason: "stop", expectedVersion: 1 }, as(w.alice))).version).toBe(2);
+    const attempt = await started(w, await running(w));
+    await refused(Attempt.reportStopped({ id: attempt.id, reason: "x", expectedVersion: attempt.version + 1 }, as(w.bot)), "expected-version");
+    expect((await Attempt.reportStopped({ id: attempt.id, reason: "x", expectedVersion: attempt.version }, as(w.bot))).version).toBe(attempt.version + 1);
+  }));
 });
 
 // A translated check reads a value not sent as null, so `input.x ?? &x` cannot tell "sent null" from "not sent".

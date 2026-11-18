@@ -1,6 +1,7 @@
 import type { Action, Diagnostic, Entity, Field, ModelDocument } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { inputOptional } from "./input-optional.ts";
+import { derivedInputs } from "./derived-input.ts";
 
 type InputType = Pick<Field, "type" | "nullable" | "values" | "concept">;
 
@@ -17,7 +18,7 @@ interface ActionInput {
 /**
  * The inputs an action takes: the key that selects the row of an update or a destroy, then each input line. A field is
  * optional when its attribute or argument is nullable or has a default, and every member input of an update or a destroy
- * is optional (a caller sends the ones it changes); this is the rule the generated input type applies
+ * is optional (a caller sends the ones it changes); then the fields a step adds (`derivedInputs`). This is the rule the generated input type applies
  * (`inputOptional`, shared with `entityInputs` in `typescript/views/inputs.ts`). An input that names no attribute or `belongs-to` is another check's
  * error and is left out here.
  */
@@ -40,6 +41,9 @@ function inputsOf(entity: Entity, action: Action): ActionInput[] {
     else if (shape.keyType) value = { type: shape.keyType, nullable: shape.nullable };
     inputs.push({ name, shape: value, required: !optional, what: `\`${name}\`` });
   }
+  // The fields a step adds (`expectedVersion` for `lock &version`) are input like the written ones.
+  for (const field of derivedInputs(entity, action))
+    inputs.push({ name: field.name, shape: { type: "integer", nullable: field.nullable }, required: field.required, what: `\`${field.name}\`, which \`lock &${field.step.member.name}\` adds` });
   return inputs;
 }
 

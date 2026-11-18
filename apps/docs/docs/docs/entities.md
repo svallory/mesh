@@ -633,7 +633,7 @@ entity :Membership
 
 #### A version number that refuses a stale update
 
-Mesh has no version construct. A `version` attribute, one `check` and one `set` give an update that refuses to overwrite what the caller has not seen:
+`lock &version` in an update's or a destroy's `do` gives an action that refuses to overwrite what the caller has not seen:
 
 ```mx "src/domain/notes/note.mesh.mx"
 entity :Note
@@ -646,20 +646,15 @@ entity :Note
     update :edit
       input
         &body
-        integer :expectedVersion nullable
-      validate
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the note changed since you read it"
-          details=() => ({ currentVersion: &version })
-        ]
       do
-        set
-          &version=() => &version + 1
+        lock &version
 ```
 
-`expectedVersion` is an argument, so it is checked and never stored. A caller that sends it and has fallen behind gets an `InvalidInputError` whose issue has the code `expected-version` and `details.currentVersion`, and nothing is written; a caller that leaves it out always wins. `&version` in the check is the stored version, because a check sees the record before the input. The step runs after every check has passed, so a refused update does not bump the version. Every update reads the row under the write lock before it writes it, so two callers that send the same `expectedVersion` cannot both succeed.
+The lock adds an input field, `expectedVersion` (`expected` and the member's name), which the caller must send and which is never stored. Right after the row is read under the write lock, and after the policies that read the record, a value other than the stored `version` fails the call with an `InvalidInputError` whose one issue has the label `lock`, the code `expected-version` and `details` `{ expectedVersion, actualVersion }`; no check runs and nothing is written, so a stale caller is told only that it is stale. An update that passes writes `version` plus 1 with its row; the steps before the write see the stored value. A destroy compares and deletes. Two callers that send the same `expectedVersion` cannot both succeed, since the row stays locked until the write. The failure is not retryable: the caller reads the record again.
+
+`lock &version optional` makes the field optional and nullable: a call that leaves it out is not compared and still adds 1. An `always` block can carry the lock for every update and destroy it covers, `always types=[:update, :destroy]`; a block whose scope can reach a create is refused, since a create has no stored version. The member is a required `integer` attribute other than the key (`MESH_LOCK_MEMBER`), the lock owns its write, so the member as an input or the target of a `set` in a locked update is `MESH_LOCK_MEMBER` too, and an authored input named `expectedVersion` is `MESH_DUPLICATE_INPUT`. A lock in a create, under a step `when`, or reaching one action twice is `MESH_LOCK_STEP`.
+
+When the version must be reported among the other rules, or compared with another record's version, write it by hand: a `version` attribute, an `integer :expectedVersion nullable` argument, a check (`that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version`, `code="expected-version"`) and `set &version=() => &version + 1` in `do`. That check runs in declaration order with the others, and its step runs after every check passed, so a refused update does not bump the version.
 
 #### A check that reads a related record
 
@@ -733,6 +728,7 @@ Steps run top to bottom after validation, on the record with the member inputs a
 | `when=cond` | Runs the nested steps only when the condition holds |
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
 | `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other entities' actions |
+| `lock &version` | An optimistic lock on an update or a destroy: the caller's `expectedVersion` must be the stored `version`, compared before the checks; an update writes it plus 1 ([A version number that refuses a stale update](#a-version-number-that-refuses-a-stale-update)) |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 

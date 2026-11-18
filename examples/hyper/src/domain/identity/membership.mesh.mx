@@ -23,12 +23,6 @@ entity :Membership table="memberships"
       code="membership.active"
       message="the membership is revoked"
     ]
-    check :versionMatches [
-      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-      code="expected-version"
-      message="the record is at another version; read it again and retry"
-      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-    ]
   actions auto=[:read]
     create :grant
       input
@@ -53,7 +47,6 @@ entity :Membership table="memberships"
     update :changeRole
       input
         &role
-        integer :expectedVersion nullable
       validate
         check &membershipActive
         check :roleChanges [
@@ -66,15 +59,12 @@ entity :Membership table="memberships"
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
-        check &versionMatches
       do
-        set
-          &version=() => &version + 1
+        lock &version optional
         publish=({ self, before }) => new MembershipRoleChanged({ collaboratorId: self.collaboratorId, oldRole: before.role, newRole: &role })
     update :revoke
       input
         string :reason nullable
-        integer :expectedVersion nullable
       validate
         check &membershipActive
         check :ownerRemains [
@@ -82,13 +72,12 @@ entity :Membership table="memberships"
           code="membership.last-owner"
           message="the workspace would have no owner; grant another owner first"
         ]
-        check &versionMatches
       do
+        lock &version optional
         set
           &state=:revoked
           &revokedAt=() => %.now
           &revokedBy=({ actor }) => actor.id
-          &version=() => &version + 1
         publish=({ self, input, actor }) => new MembershipRevoked({ collaboratorId: self.collaboratorId, reason: input.reason ?? null, revokedBy: actor.id })
   policies
     policy :membersRead types=[:read]

@@ -23,12 +23,6 @@ entity :SessionReference table="session_references"
       code="session.not-redacted"
       message="the session is redacted and cannot be changed"
     ]
-    check :versionMatches [
-      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-      code="expected-version"
-      message="the record is at another version; read it again and retry"
-      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-    ]
   actions auto=[:read]
     create :record
       input
@@ -57,7 +51,6 @@ entity :SessionReference table="session_references"
         &availability
         &location
         string :reason nullable
-        integer :expectedVersion nullable
       validate
         check &notRedacted
         check :availabilityKept [
@@ -65,22 +58,18 @@ entity :SessionReference table="session_references"
           code="session.availability"
           message="availability is complete, partial or unavailable; redact with redact"
         ]
-        check &versionMatches
       do
-        set
-          &version=() => &version + 1
+        lock &version optional
     update :redact
       input
         string :reason min=1
-        integer :expectedVersion nullable
       validate
         check &notRedacted
-        check &versionMatches
       do
+        lock &version optional
         set
           &availability=:redacted
           &location=null
-          &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

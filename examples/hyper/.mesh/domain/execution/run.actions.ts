@@ -393,6 +393,21 @@ export function bindRun(
             ) as unknown as $StoredScope<CancelRunInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/run.mesh.mx:56): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/execution/run.mesh.mx", line: 56, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -400,37 +415,22 @@ export function bindRun(
               label: "cancelable",
               code: "run.cancelable",
               message: "the run is not running",
-              source: { file: "src/domain/execution/run.mesh.mx", line: 51, column: 9 },
+              source: { file: "src/domain/execution/run.mesh.mx", line: 50, column: 9 },
               that: $expressions["cancel.check.cancelable.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/run.mesh.mx", line: 56, column: 9 },
-              that: $expressions["cancel.check.versionMatches.that"],
-              details: $expressions["cancel.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.state = $record.state = "canceled";
             {
-              const $value = await $expressions["cancel.step.0.set.endedAt"]($s);
+              const $value = await $expressions["cancel.step.1.set.endedAt"]($s);
               $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
             }
             {
-              const $value = await $expressions["cancel.step.0.set.cancelReason"]($s);
+              const $value = await $expressions["cancel.step.1.set.cancelReason"]($s);
               $changes.cancelReason = $record.cancelReason = $value === undefined ? null : $value;
             }
-            {
-              const $value = await $expressions["cancel.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/run.mesh.mx:67:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(tx, $writes, tables.runs, $key, $before, "execution.Run#cancel");
             const $stored = await tx.updateByKey(tables.runs, $key, $changes);
@@ -528,7 +528,7 @@ export function bindRun(
               const $value = await $expressions["settle.step.0.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/execution/run.mesh.mx:74:18) produced no value, and state is required",
+                  "set &state (src/domain/execution/run.mesh.mx:67:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
@@ -540,7 +540,7 @@ export function bindRun(
               const $value = await $expressions["settle.step.0.set.version"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &version (src/domain/execution/run.mesh.mx:76:20) produced no value, and version is required",
+                  "set &version (src/domain/execution/run.mesh.mx:69:20) produced no value, and version is required",
                 );
               $changes.version = $record.version = $value;
             }

@@ -530,6 +530,10 @@
             {
               "title": "0099. Handlers in entity files",
               "path": "/architecture/decisions/0099-handlers-in-entity-files/"
+            },
+            {
+              "title": "0100. The lock step",
+              "path": "/architecture/decisions/0100-the-lock-step/"
             }
           ]
         },

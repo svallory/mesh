@@ -3,7 +3,6 @@
 // Mesh's own imports carry a `$`, and so do the globals it uses (from `$globals.ts`), so that no entity name can shadow them.
 
 import {
-  FrameworkError as $FrameworkError,
   InvalidInputError as $InvalidInputError,
   NO_FRAME as $NO_FRAME,
   NotFoundError as $NotFoundError,
@@ -448,6 +447,21 @@ export function bindMachine(
             ) as unknown as $StoredScope<UpdateMachineInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/machine.mesh.mx:52): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/execution/machine.mesh.mx", line: 52, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -458,28 +472,12 @@ export function bindMachine(
               source: { file: "src/domain/execution/machine.mesh.mx", line: 23, column: 5 },
               that: $expressions["update.check.machineActive.that"],
             });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 28, column: 5 },
-              that: $expressions["update.check.versionMatches.that"],
-              details: $expressions["update.check.versionMatches.details"],
-            });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
             if ($Object.hasOwn(parsed, "platform") && parsed.platform !== undefined)
               $changes.platform = $record.platform = parsed.platform;
-            // do: the steps run in written order, each seeing the record as the ones before it left it
-            {
-              const $value = await $expressions["update.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/machine.mesh.mx:61:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -593,6 +591,21 @@ export function bindMachine(
             ) as unknown as $StoredScope<RetireMachineInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/machine.mesh.mx:64): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/execution/machine.mesh.mx", line: 64, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -608,30 +621,15 @@ export function bindMachine(
               label: "machineIdle",
               code: "machine.idle",
               message: "an attempt on this machine is reported running",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 68, column: 9 },
+              source: { file: "src/domain/execution/machine.mesh.mx", line: 58, column: 9 },
               that: $expressions["retire.check.machineIdle.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/machine.mesh.mx", line: 28, column: 5 },
-              that: $expressions["retire.check.versionMatches.that"],
-              details: $expressions["retire.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.state = $record.state = "retired";
-            {
-              const $value = await $expressions["retire.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/machine.mesh.mx:77:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             $unloadFrom($loadPlan, "execution.Machine", $record);
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,

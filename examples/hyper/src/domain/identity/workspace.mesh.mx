@@ -32,23 +32,16 @@ entity :Workspace table="workspaces"
     update :rename
       input
         string :name min=1
-        integer :expectedVersion nullable
       validate
         check :workspaceActive [
           that=() => &state === :active
           code="workspace.active"
           message="the workspace has moved; it can no longer be changed"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
       do
+        lock &version optional
         set
           &name=({ input }) => input.name
-          &version=() => &version + 1
         publish=({ before, input }) => new WorkspaceRenamed({ oldName: before.name, newName: input.name })
   policies
     policy :membersRead types=[:read]

@@ -327,6 +327,21 @@ export function bindWorkspace(
             ) as unknown as $StoredScope<RenameWorkspaceInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/identity/workspace.mesh.mx:42): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/identity/workspace.mesh.mx", line: 42, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -334,32 +349,17 @@ export function bindWorkspace(
               label: "workspaceActive",
               code: "workspace.active",
               message: "the workspace has moved; it can no longer be changed",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 37, column: 9 },
+              source: { file: "src/domain/identity/workspace.mesh.mx", line: 36, column: 9 },
               that: $expressions["rename.check.workspaceActive.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/workspace.mesh.mx", line: 42, column: 9 },
-              that: $expressions["rename.check.versionMatches.that"],
-              details: $expressions["rename.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              const $value = await $expressions["rename.step.0.set.name"]($s);
+              const $value = await $expressions["rename.step.1.set.name"]($s);
               $changes.name = $record.name = $value === undefined ? null : $value;
             }
-            {
-              const $value = await $expressions["rename.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/identity/workspace.mesh.mx:51:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -390,7 +390,7 @@ export function bindWorkspace(
               self: $readOnlyRecord($written, "identity.Workspace#rename"),
             });
             {
-              const $event = await $expressions["rename.step.1.publish"]($after);
+              const $event = await $expressions["rename.step.2.publish"]($after);
               await frame.plain(() =>
                 $publishEvent(
                   tx,
@@ -399,7 +399,7 @@ export function bindWorkspace(
                     entity: "identity.Workspace",
                     action: "rename",
                     key: { id: $written.id },
-                    at: "src/domain/identity/workspace.mesh.mx:52:17",
+                    at: "src/domain/identity/workspace.mesh.mx:45:17",
                   },
                   $event,
                   $context,

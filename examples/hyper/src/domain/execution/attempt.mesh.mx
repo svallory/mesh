@@ -33,12 +33,6 @@ entity :Attempt table="attempts"
       code="attempt.running"
       message="the attempt has ended"
     ]
-    check :versionMatches [
-      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-      code="expected-version"
-      message="the record is at another version; read it again and retry"
-      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-    ]
   actions auto=[:read]
     create :start
       input
@@ -89,7 +83,6 @@ entity :Attempt table="attempts"
         json :outputs
         json :evidence
         json :error
-        integer :expectedVersion nullable
       validate
         check &running
         check :error [
@@ -103,13 +96,12 @@ entity :Attempt table="attempts"
           message="an evidence reference does not exist"
           details=async ({ input }) => ({ missing: await missingEvidenceOf(input.evidence ?? []) })
         ]
-        check &versionMatches
       do
+        lock &version optional
         set
           &state=({ input }) => input.result
           &endedAt=() => %.now
           &outcome=({ input }) => attemptOutcome({ outputs: input.outputs, evidence: input.evidence, error: input.error })
-          &version=() => &version + 1
         run [after=:write] ({ self, input, context }) {
           const [run] = await Mesh.privileged(Run).read({ filter: { id: { eq: self.runId } } });
           if (run && settlesRun(run.state, input.result, input.error))
@@ -118,29 +110,25 @@ entity :Attempt table="attempts"
     update :reportStopped
       input
         string :reason min=1
-        integer :expectedVersion nullable
       validate
         check &running
-        check &versionMatches
       do
+        lock &version optional
         set
           &state=:stopped
           &endedAt=() => %.now
           &outcome=({ input }) => attemptOutcome({ reason: input.reason })
-          &version=() => &version + 1
     update :abandon
       input
         string :note nullable
-        integer :expectedVersion nullable
       validate
         check &running
-        check &versionMatches
       do
+        lock &version optional
         set
           &state=:abandoned
           &endedAt=() => %.now
           &outcome=({ input }) => attemptOutcome({ note: input.note })
-          &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

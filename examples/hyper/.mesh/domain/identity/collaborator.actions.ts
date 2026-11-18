@@ -226,7 +226,7 @@ export function bindCollaborator(
               label: "nameUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 36, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 30, column: 9 },
               that: $expressions["register.check.nameUnique.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -268,7 +268,7 @@ export function bindCollaborator(
                     entity: "identity.Collaborator",
                     action: "register",
                     key: { id: $written.id },
-                    at: "src/domain/identity/collaborator.mesh.mx:42:17",
+                    at: "src/domain/identity/collaborator.mesh.mx:36:17",
                   },
                   $event,
                   $context,
@@ -373,6 +373,21 @@ export function bindCollaborator(
             ) as unknown as $StoredScope<UpdateCollaboratorInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/identity/collaborator.mesh.mx:54): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/identity/collaborator.mesh.mx", line: 54, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -387,38 +402,22 @@ export function bindCollaborator(
               label: "kindImmutable",
               code: "collaborator.kind-immutable",
               message: "a collaborator keeps its kind",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 50, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 43, column: 9 },
               that: $expressions["update.check.kindImmutable.that"],
             });
             await $runCheck($issues, $checks, {
               label: "nameStaysUnique",
               code: "collaborator.name-unique",
               message: "another active collaborator has that name",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 55, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 48, column: 9 },
               that: $expressions["update.check.nameStaysUnique.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 24, column: 5 },
-              that: $expressions["update.check.versionMatches.that"],
-              details: $expressions["update.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
             if ($Object.hasOwn(parsed, "name") && parsed.name !== undefined)
               $changes.name = $record.name = parsed.name;
-            // do: the steps run in written order, each seeing the record as the ones before it left it
-            {
-              const $value = await $expressions["update.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:63:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -461,7 +460,7 @@ export function bindCollaborator(
                     entity: "identity.Collaborator",
                     action: "update",
                     key: { id: $written.id },
-                    at: "src/domain/identity/collaborator.mesh.mx:64:17",
+                    at: "src/domain/identity/collaborator.mesh.mx:55:17",
                   },
                   $event,
                   $context,
@@ -566,6 +565,21 @@ export function bindCollaborator(
             ) as unknown as $StoredScope<RetireCollaboratorInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/identity/collaborator.mesh.mx:67): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/identity/collaborator.mesh.mx", line: 67, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -580,29 +594,14 @@ export function bindCollaborator(
               label: "lastOwner",
               code: "membership.last-owner",
               message: "the workspace would have no owner; grant another owner first",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 71, column: 9 },
+              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 61, column: 9 },
               that: $expressions["retire.check.lastOwner.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/identity/collaborator.mesh.mx", line: 24, column: 5 },
-              that: $expressions["retire.check.versionMatches.that"],
-              details: $expressions["retire.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.state = $record.state = "retired";
-            {
-              const $value = await $expressions["retire.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/identity/collaborator.mesh.mx:80:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -636,7 +635,7 @@ export function bindCollaborator(
               ),
             });
             {
-              const $event = await $expressions["retire.step.1.publish"]($after);
+              const $event = await $expressions["retire.step.2.publish"]($after);
               await frame.plain(() =>
                 $publishEvent(
                   tx,
@@ -645,7 +644,7 @@ export function bindCollaborator(
                     entity: "identity.Collaborator",
                     action: "retire",
                     key: { id: $written.id },
-                    at: "src/domain/identity/collaborator.mesh.mx:81:17",
+                    at: "src/domain/identity/collaborator.mesh.mx:70:17",
                   },
                   $event,
                   $context,
