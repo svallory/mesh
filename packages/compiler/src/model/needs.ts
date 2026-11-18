@@ -1,3 +1,4 @@
+import { includerTagger } from "./includers.ts";
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Expression, ExprNode, ModelDocument, SourcePosition } from "@meshfw/model";
 import { actionExpressions } from "./action-expressions.ts";
@@ -85,7 +86,9 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
       }
     return [...needs].sort();
   };
+  const tagIncluder = includerTagger(diagnostics);
   for (const entity of document.entities) {
+    tagIncluder(entity);
     for (const computed of entity.computed) {
       if (!computed.body) continue;
       computed.needs = needsOf(entity, computed.body, `&${computed.name}`, computed.position);
@@ -123,4 +126,5 @@ export function computeNeeds(document: ModelDocument, diagnostics: Diagnostic[])
     };
     for (const name of edges.keys()) walk(name, []);
   }
+  tagIncluder();
 }

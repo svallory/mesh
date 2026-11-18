@@ -1,3 +1,4 @@
+import { includerTagger } from "../model/includers.ts";
 import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, ModelDocument, Relationship, SourcePosition, Through } from "@meshfw/model";
 import { entitiesByFile, keyHolderOf } from "../model/key-holder.ts";
@@ -152,7 +153,9 @@ export function resolveRelationships(
 
   // The through relationships whose entry was chosen: the key they enter the link by is known, whatever their exit.
   const entered = new Set<Relationship>();
+  const tagIncluder = includerTagger(diagnostics);
   for (const entity of document.entities) {
+    tagIncluder(entity);
     for (const relation of entity.relationships) {
       const target = targetOf(entity, relation);
       if (!target) continue;
@@ -180,11 +183,14 @@ export function resolveRelationships(
       if (relation.through) exitOf(entity, relation, relation.through, holder, target, entry);
     }
   }
+  tagIncluder();
 
   // A has-one is at most one row for the key it follows, so a has-many of the same entity cannot follow that key too
   // (ADR-0045). Two has-one over one key are accepted. A relationship whose key was not found has its own error above
   // and shares nothing.
+  const tagFollowers = includerTagger(diagnostics);
   for (const entity of document.entities) {
+    tagFollowers(entity);
     // A through shares the key it enters the link by once that entry is chosen, even when its exit has an error of its
     // own: the shared entry is a separate cause. A through refused or unresolved shares nothing.
     const followers = entity.relationships.filter(
@@ -225,4 +231,5 @@ export function resolveRelationships(
       );
     }
   }
+  tagFollowers();
 }

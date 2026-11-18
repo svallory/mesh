@@ -99,7 +99,7 @@ describe("the contracts", () => {
     ["another option on a part", "  root entity=Task\n  entities\n    Dep link=:a\n", [[5, 8, "error", "MESH_UNKNOWN_OPTION", "`Dep` (inline contract): unknown option `link`"]]],
     ["a child under a part", "  root entity=Task\n  entities\n    Dep\n      uuid :x\n", [[6, 6, "error", "MESH_TAG_NOT_ALLOWED", "`Dep` (inline contract): `uuid` is not allowed here; allowed children: none"]]],
     ["a part line under the root", "  root entity=Task\n    Dep\n", [[4, 4, "error", "MESH_UNKNOWN_TAG", "`Dep` is not a known tag in the `mesh` dialect"]]],
-    ["an entities section under an entity", null, [[5, 2, "error", "MESH_TAG_NOT_ALLOWED", "`entity`: `entities` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"]]],
+    ["an entities section under an entity", null, [[5, 2, "error", "MESH_TAG_NOT_ALLOWED", "`entity`: `entities` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`, `use`"]]],
   ])("MX refuses %s", (_label, body, expected) => {
     const source = body === null ? 'import { Task } from "./task.mesh.mx"\nentity :X\n  attributes\n    uuid :id primary-key\n  entities\n' : HEAD + body;
     expect(lowered(source)).toEqual(expected);

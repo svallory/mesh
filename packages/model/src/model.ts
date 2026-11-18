@@ -55,6 +55,12 @@ export interface Import {
    * module nor an entity file. It binds `Mesh` alone, or its alias.
    */
   mesh?: true;
+  /**
+   * Present (true) when the import binds a mixin: a project's mixin file (`import { Audited } from "../shared/audited.mesh.mx"`).
+   * A mixin is no value and no file a generator imports: its declarations are already members of the entity that uses it.
+   * An import that has it never has `helper` or `mesh`.
+   */
+  mixin?: true;
   position: SourcePosition;
 }
 /** Authored function text; no translation or evaluation during model building. */

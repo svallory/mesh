@@ -1,3 +1,4 @@
+import { includerTagger } from "./includers.ts";
 import type { Action, Diagnostic, Entity, Field, ModelDocument } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { inputOptional } from "./input-optional.ts";
@@ -86,7 +87,9 @@ function describeType(field: InputType): string {
 export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[], complete = true): void {
   const commands = new Map((document.commands ?? []).map((command) => [command.fqn, command] as const));
   const answers = new Map<string, { entity: Entity; action: Action }>();
+  const tagIncluder = includerTagger(diagnostics);
   for (const entity of document.entities) {
+    tagIncluder(entity);
     for (const action of entity.actions) {
       const ref = action.command;
       if (!ref) continue;
@@ -136,6 +139,7 @@ export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[]
             ref.position, `add the field \`${input.name}\` to the command, or make the input optional`));
     }
   }
+  tagIncluder();
   for (const command of complete ? document.commands ?? [] : [])
     if (!answers.has(command.fqn))
       diagnostics.push({ ...error("MESH_COMMAND_UNANSWERED",

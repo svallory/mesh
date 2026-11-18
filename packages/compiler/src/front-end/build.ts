@@ -81,6 +81,7 @@ import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import { checkServices } from "../model/services.ts";
 import { aggregateNamesOf, checkArchitecture, DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
+import { mergeIncluders, tagIncluder } from "../model/includers.ts";
 import { buildService } from "./services.ts";
 import {
   atomForwards,
@@ -133,7 +134,7 @@ interface ImportProblem {
   offset: number;
   fix?: string;
 }
-export type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture" | "surface" | "service";
+export type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "concept" | "architecture" | "surface" | "service" | "mixin";
 /**
  * What a file of the project declares: its root line's kind, and every declaration by the name an import of it binds (the
  * root's, as Mesh converts it: `entity :todo` declares `Todo`), the root's first, then each inline event and command of
@@ -143,14 +144,16 @@ export type DeclarationKind = "entity" | "event" | "command" | "aggregate" | "co
  * whose root is `surface`, and every file of the surfaces folder, declares nothing either: `{ kind: "surface", declares: [] }`.
  * A service file declares its service, `{ kind: "service", declares: [{ kind: "service", name: "Work" }] }`: recorded so the
  * import check can name it, never a name an import binds (a service file is imported by no file of the domain, OD-12).
+ * A mixin file declares its mixin under the name as written (`mixin :Audited` declares `Audited`; no class-name conversion,
+ * since nothing is generated from a mixin): an import binds it, and only a `use mixin=` line reads it.
  */
 export interface DeclaredFile {
   kind: DeclarationKind;
   declares: { kind: DeclarationKind; name: string }[];
 }
-const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture", "surface", "service"]);
+const DECLARING_ROOTS: ReadonlySet<string> = new Set(["entity", "event", "command", "aggregate", "concept", "architecture", "surface", "service", "mixin"]);
 /** The subject of "<noun> file must contain exactly one <kind>", by the file's root kind. */
-const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture", surface: "A surface", service: "A service" };
+const ROOT_NOUN: Readonly<Record<string, string>> = { entity: "An entity", event: "An event", command: "A command", aggregate: "An aggregate", architecture: "An architecture", surface: "A surface", service: "A service", mixin: "A mixin" };
 /** The declarations an import of the file may bind: all but an aggregate's own name, a concept and a service, which are never imported. */
 export const importable = (file: DeclaredFile | undefined) => file?.declares.filter((declaration) => declaration.kind !== "aggregate" && declaration.kind !== "concept" && declaration.kind !== "service");
 /**
@@ -161,7 +164,7 @@ export const importable = (file: DeclaredFile | undefined) => file?.declares.fil
  * "Errors"), and in a listing `MESH_UNKNOWN_EVENT`.
  */
 export const referenceKind = (
-  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture" | "surface" | "service">,
+  kind: Exclude<DeclarationKind, "aggregate" | "concept" | "architecture" | "surface" | "service" | "mixin">,
   declared: (from: string) => DeclaredFile | undefined,
   code = kind === "entity" ? "MESH_UNKNOWN_ENTITY" : kind === "command" ? "MESH_UNKNOWN_COMMAND" : "MESH_PUBLISH",
 ): ReferenceKind => ({
@@ -546,8 +549,24 @@ interface ExpressionScope {
 }
 
 /**
- * One place an entity's lines are read from: today only the entity's own file. `at` turns an offset of `source` into a
- * position, so a source whose text is not the entity's file reports where its own lines are.
+ * A project mixin's lines, ready to be read into each entity that uses it (`notes/spec/other-file-kinds.md`, "Mixin
+ * files"). The file is lowered once, with its own folder's concepts; its lines are read once per includer.
+ */
+export interface MixinSource {
+  /** The name as written (`mixin :Audited`): what an import binds and what messages call it. */
+  name: string;
+  /** The `mixin` line. */
+  root: Tag;
+  /** Its file's text, for slicing function text and positions. */
+  source: string;
+  /** Its file, project-relative. */
+  file: string;
+}
+
+/**
+ * One place an entity's lines are read from: the entity's own file, or a mixin one of its `use` lines includes. `at`
+ * turns an offset of `source` into a position, so a source whose text is not the entity's file reports where its own
+ * lines are.
  */
 interface LineSource {
   /** The root line's section children. */
@@ -555,7 +574,36 @@ interface LineSource {
   source: string;
   at: (offset: number) => SourcePosition;
   scope: ExpressionScope;
+  /** Set for a mixin's lines: its name, the `use` line that includes it (where a clash involving it is reported) and the mixin. */
+  use?: { name: string; position: SourcePosition; mixin: MixinSource };
 }
+
+/** The scope of a mixin's lines: a mixin file takes no import, so its functions see only `&members`, the roots and globals. */
+const NO_REFERENCES: ReferenceScope = { imports: new Map<string, Import>(), duplicates: new Set<string>() };
+const MIXIN_SCOPE: ExpressionScope = {
+  helpers: new Map<string, string>(),
+  imported: new Set<string>(),
+  entities: new Set<string>(),
+  namespaces: new Set<string>(),
+  events: new Set<string>(),
+  commands: new Set<string>(),
+  duplicates: new Set<string>(),
+  mesh: new Set<string>(),
+  references: { entity: NO_REFERENCES, event: NO_REFERENCES, command: NO_REFERENCES },
+};
+
+/**
+ * What `use mixin=` takes: a name an import binds to a mixin. A path no file of the project answers matches, as in
+ * `referenceKind`: the import itself is reported, so the `use` line reports nothing more (R9). A name bound to anything else
+ * is `MESH_UNKNOWN_IMPORT` (ruling D37, OD7).
+ */
+const mixinKind = (declared: (from: string) => DeclaredFile | undefined): ReferenceKind => ({
+  noun: "mixin",
+  declares: (from) => hasMeshExtension(from) && (declared(from)?.kind ?? "mixin") === "mixin",
+  names: (from) => declared(from)?.declares.filter((d) => d.kind === "mixin").map((d) => d.name),
+  kindOf: (from, name) => importable(declared(from))?.find((d) => d.name === name)?.kind,
+  code: "MESH_UNKNOWN_IMPORT",
+});
 
 /**
  * The lines of an owner's `handlers` section (`notes/architecture/handlers-design.md`, rules H5 to H11): each a `process`
@@ -783,7 +831,8 @@ export function fileImports(
         identifiers: i.names,
         ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
         from: i.from,
-        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
+        // A project mixin file binds a mixin: no value and no helper, read only by a `use mixin=` line (`Import.mixin`).
+        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? (declaredFile(i.from)?.kind === "mixin" ? { mixin: true as const } : {}) : { helper: true as const }),
         ...(i.namespace ? { namespace: true as const } : {}),
         position: at(i.offset),
       };
@@ -845,6 +894,7 @@ export function fileImports(
 const boundToOf = (bindings: readonly { entry: Import; index: number; name: string }[], declaredFile: (from: string) => DeclaredFile | undefined) => {
   const boundKinds = (entry: Import, index: number): readonly DeclarationKind[] => {
     if (entry.helper || entry.mesh) return [];
+    if (entry.mixin) return ["mixin"];
     const target = declaredFile(entry.from);
     if (!target) return ["entity"];
     if (entry.namespace) return [...new Set(target.declares.map(({ kind }) => kind))];
@@ -876,7 +926,11 @@ function buildEntity(
   declaredFile: (from: string) => DeclaredFile | undefined,
   declaredNames: Map<CommandRef | DeclarationRef, string>,
   inline: { events: EventDeclaration[]; commands: CommandDeclaration[] },
+  mixinOf: (from: string, exported: string) => MixinSource | undefined = () => undefined,
+  includersOf: Map<string, Set<string>> = new Map(),
 ): Entity {
+  /** Where this entity's diagnostics start: a check for one already reported looks no further back (another includer's are its own). */
+  const entityFrom = diagnostics.length;
   const { at, pos, fail, opt } = attributeReaders(source, file, diagnostics);
   const sections = tags(root.children);
   const section = (name: string) => sections.find((t) => t.name === name);
@@ -974,7 +1028,9 @@ function buildEntity(
   const memberKind = memberKindOf(declaredFile);
   // Each namespace import's alias: a function reads `billing.Invoice` as it reads an imported `Invoice`, and calls
   // `h.isStaff(...)` as it calls an imported `isStaff(...)`.
-  const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace).map(({ name }) => name));
+  const namespaces = new Set(bindings.filter(({ entry }) => entry.namespace && !entry.mixin).map(({ name }) => name));
+  // A mixin is no value: a function that reads its name reads a free variable (R22).
+  const mixinNames = new Set(bindings.filter(({ entry }) => entry.mixin).map(({ name }) => name));
   // `Mesh` under the entity's own name would give one name two meanings in a function of the file.
   for (const entry of entity.imports)
     if (entry.mesh && entry.identifiers.includes(entity.name))
@@ -986,7 +1042,7 @@ function buildEntity(
     at,
     scope: {
       helpers: helperImports,
-      imported: new Set([...importNames.keys(), ...duplicates, ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
+      imported: new Set([...[...importNames.keys()].filter((name) => !mixinNames.has(name)), ...duplicates, ...ownEvents.map(({ name }) => name), ...ownCommands.map(({ name }) => name)]),
       entities,
       namespaces,
       events,
@@ -996,8 +1052,39 @@ function buildEntity(
       references: { entity: references, event: eventReferences, command: commandReferences },
     },
   };
-  /** Every line source of the entity, in reading order: the entity's own first. */
+  /** Every line source of the entity, in reading order: the entity's own first, then each mixin in the order of its `use` line. */
   const sources: LineSource[] = [own];
+  // `use mixin=Audited` (`notes/spec/entity.md`, "`use`: including a mixin"): each line names a mixin an import binds, whose
+  // lines are read below as if they were written in this file, after the entity's own lines of each kind (R16, ruling
+  // D37 OD2). A name no import binds to a mixin is `MESH_UNKNOWN_IMPORT` (R9); a path no file answers, or a mixin file
+  // that did not parse, reports nothing more. The same mixin twice is one error at the later line (R15).
+  const mixinReferences: ReferenceScope = { imports: importNames, duplicates, own: [], self };
+  const usesKind = mixinKind(declaredFile);
+  for (const tag of sections) {
+    if (tag.name !== "use") continue;
+    const written = writtenReference(nodeOf(attr(tag, "mixin")));
+    if (!written) continue; // no `mixin=` (`checkUseOptions`), or no reference (the contract's hook)
+    const resolved = resolveReference(written, mixinReferences, usesKind);
+    if (!resolved.ok) {
+      if ("code" in resolved) fail(resolved.code, resolved.message, at(resolved.offset), resolved.fix);
+      continue;
+    }
+    const mixin = mixinOf(resolved.from, resolved.declared);
+    if (!mixin) continue;
+    if (sources.some((src) => src.use?.mixin === mixin)) {
+      fail("MESH_DUPLICATE_MEMBER", `Duplicate use of the mixin ${mixin.name}: this entity already uses it`, tag, "remove this line");
+      continue;
+    }
+    sources.push({
+      sections: tags(mixin.root.children),
+      source: mixin.source,
+      at: (offset) => positionAt(mixin.source, mixin.file, offset),
+      scope: MIXIN_SCOPE,
+      use: { name: mixin.name, position: pos(tag), mixin },
+    });
+    if (!includersOf.has(mixin.file)) includersOf.set(mixin.file, new Set());
+    includersOf.get(mixin.file)!.add(entity.fqn);
+  }
   // The checks the `checks` section declares, by name (the first of a name; a second is a duplicate member, below), and
   // every check name that counts as a member of the entity, named or inline, with where it is written.
   const namedChecks = new Map<string, Check>();
@@ -1020,8 +1107,9 @@ function buildEntity(
   });
   // The actions whose name the author wrote, as against one named after its command.
   const authorNamed = new Set<Action>();
-  /** Where each `auto` member is, in the order of `entity.auto`. */
+  /** Where each `auto` member is, in the order of `entity.auto`, and the line source whose `auto=` lists it. */
   const autoPositions: SourcePosition[] = [];
+  const autoSources: LineSource[] = [];
   /**
    * The readers of one line source, by section kind: each reads one section line of `src` into the entity, with positions,
    * function text and references taken from `src`, and writes into the state above, which every source shares.
@@ -1062,7 +1150,7 @@ function buildEntity(
           duplicates: src.scope.duplicates,
           mesh: src.scope.mesh,
           report: (d) => {
-            if (!diagnostics.some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
+            if (!diagnostics.slice(entityFrom).some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
           },
           ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : step === "handler" ? { handlerBody: true } : step === "rollup-filter" ? { rowParameter: true } : {}),
         },
@@ -1455,10 +1543,21 @@ function buildEntity(
       for (const type of listed) {
         entity.auto.push(type);
         autoPositions.push(pos(actionSection));
+        autoSources.push(src);
       }
-      const onLoad = attr(actionSection, "on:load");
+      // The entity that uses a mixin chooses the read that loads it and the cap of its reads (R18, ruling D37 OD8): a
+      // mixin's `actions` line takes `auto=` alone.
+      for (const option of src.use ? ["on:load", "max-limit"] : []) {
+        const written = attr(actionSection, option);
+        if (written)
+          fail("MESH_UNKNOWN_OPTION", option === "on:load"
+            ? "`on:load` is not an option of a mixin's `actions`: the entity that uses the mixin chooses the read that loads it"
+            : "`max-limit` is not an option of a mixin's `actions`: the entity that uses the mixin caps its own reads",
+          optionAt(written), `move \`${option}=\` to the entity's \`actions\` line`);
+      }
+      const onLoad = src.use ? undefined : attr(actionSection, "on:load");
       if (onLoad) entity.onLoad = checkRef(readMember(onLoad, at), "actions");
-      const cap = attr(actionSection, "max-limit");
+      const cap = src.use ? undefined : attr(actionSection, "max-limit");
       if (cap) {
         const max = valueOf(cap);
         const where = optionAt(cap);
@@ -1551,10 +1650,16 @@ function buildEntity(
   // Read by kind, in `SECTION_KINDS` order, and within a kind source by source: every source's checks are read before any
   // `validate` looks one up.
   const sourceReaders = new Map(sources.map((src) => [src, readersFor(src)] as const));
+  /** The mixin line source each member came from; a member of the entity's own lines is not in it. */
+  const originOf = new Map<object, LineSource>();
+  const memberLists = () => [entity.attributes, entity.relationships, entity.computed, entity.actions, entity.policies, checkMembers] as readonly object[][];
   for (const kind of SECTION_KINDS)
     for (const src of sources) {
       const line = src.sections.find((t) => t.name === kind);
-      if (line) sourceReaders.get(src)![kind](line);
+      if (!line) continue;
+      const before = memberLists().map((list) => list.length);
+      sourceReaders.get(src)![kind](line);
+      if (src.use) memberLists().forEach((list, index) => list.slice(before[index]).forEach((member) => originOf.set(member, src)));
     }
   Object.assign(entity, ownerSections(section, {
     file, self, owner: entity.fqn, ownNames: [[entity.name, "entity"]], source, diagnostics, module,
@@ -1566,10 +1671,11 @@ function buildEntity(
     ...entity.relationships,
     ...entity.computed,
     ...entity.actions,
-    ...entity.auto.map((name, index) => ({
-      name,
-      position: autoPositions[index]!,
-    })),
+    ...entity.auto.map((name, index) => {
+      const member = { name, position: autoPositions[index]!, auto: true as const };
+      if (autoSources[index]?.use) originOf.set(member, autoSources[index]!);
+      return member;
+    }),
     ...entity.policies,
     ...checkMembers.sort((a, b) => a.sourceIndex - b.sourceIndex || a.position.offset - b.position.offset),
   ];
@@ -1584,8 +1690,40 @@ function buildEntity(
     return action?.command && !authorNamed.has(action) ? action : undefined;
   };
   const isCheck = (member: unknown) => checkMembers.includes(member as (typeof checkMembers)[number]);
+  /** Of two members' line sources, the one read later: a mixin's `use` line is where a clash involving it is reported (R14). */
+  const later = (a: LineSource | undefined, b: LineSource | undefined) => (sources.indexOf(a ?? own) > sources.indexOf(b ?? own) ? a : b) ?? own;
+  /**
+   * A name a mixin brings in that the entity, or another mixin it uses, also takes (R14, R26; ruling D37 OD6): one error at
+   * the (later) `use` line, the one place in the entity's file that can fix it, whether or not a check is involved.
+   */
+  const mixinClash = (member: (typeof members)[number], holder: (typeof members)[number], mine: LineSource | undefined, theirs: LineSource | undefined) => {
+    const name = member.name;
+    if (mine?.use && theirs?.use) {
+      const [first, second] = sources.indexOf(theirs) < sources.indexOf(mine) ? [theirs, mine] : [mine, theirs];
+      fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${name}: the mixins ${first.use!.name} and ${second.use!.name} both declare it`,
+        second.use!.position, "rename it in one of the mixins, or use only one of them");
+      return;
+    }
+    const [mixinSide, ownSide] = mine?.use ? [member, holder] : [holder, member];
+    const mixin = (mine?.use ? mine : theirs)!.use!;
+    if ("auto" in mixinSide)
+      fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${name}: the mixin ${mixin.name} generates it with auto=, and ${entity.name} generates or declares it too`,
+        mixin.position, "auto" in ownSide ? `remove :${name} from one of the two \`auto=\` lists` : `rename the entity's own :${name}, or stop using ${mixin.name}`);
+    else
+      fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${name}: the mixin ${mixin.name} declares it, and so does ${entity.name}`,
+        mixin.position, `remove or rename the entity's own :${name}, or stop using ${mixin.name}`);
+  };
   for (const member of members) {
     if (names.has(member.name)) {
+      const holder = holders.get(member.name)!;
+      const mine = originOf.get(member);
+      const theirs = originOf.get(holder);
+      // Two members of one name from one mixin are the mixin's own mistake, reported in its file (R25), as below.
+      if ((mine || theirs) && mine !== theirs) {
+        mixinClash(member, holder, mine, theirs);
+        names.add(member.name);
+        continue;
+      }
       const taken = fromCommand(member) ?? fromCommand(holders.get(member.name));
       // Checks come last in the list, so a repeat that involves a check is reported at the check (the later one of two).
       const fix = !isCheck(member) ? undefined
@@ -1691,13 +1829,15 @@ function buildEntity(
     );
   for (const relation of entity.relationships)
     if (relation.keyColumn && names.has(relation.keyColumn)) {
-      // A check named like the key column is the check's mistake: it is reported there.
+      // A check named like the key column is the check's mistake: it is reported there. When either side came from a
+      // mixin, the clash is reported at the (later) `use` line, as every clash involving a mixin is (R14).
       const holder = holders.get(relation.keyColumn);
+      const mixin = originOf.get(relation) !== originOf.get(holder!) ? later(originOf.get(relation), originOf.get(holder!)).use : undefined;
       fail(
         "MESH_DUPLICATE_MEMBER",
         `Generated key column ${relation.keyColumn} conflicts with a declared member`,
-        isCheck(holder) ? holder!.position : relation.position,
-        isCheck(holder) ? "rename the check" : undefined,
+        mixin ? mixin.position : isCheck(holder) ? holder!.position : relation.position,
+        mixin ? undefined : isCheck(holder) ? "rename the check" : undefined,
       );
     }
   return entity;
@@ -2435,6 +2575,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
   // any declaration is built, so a use resolves whatever the file order. A concept whose body has errors is entered too: a
   // use of it is MX's `MESH_TAG_FILE_ERROR`, never a "not read" `MESH_CONCEPT_PLACE`.
   const conceptIndex = new Map<string, ConceptEntry>();
+  // The project's mixin files that parsed, by absolute path (R1, R9), and the entities that use each, by its file (R19).
+  const mixinsByPath = new Map<string, MixinSource>();
+  const includersOf = new Map<string, Set<string>>();
   const realPath = (path: string) => {
     try {
       return realpathSync(path);
@@ -2477,6 +2620,11 @@ export function buildModel(project: ProjectDescription): BuildResult {
     // inline, in written order, by class name: an import takes those too.
     const roots = tags(parsed.ir.body);
     const kind = DECLARING_ROOTS.has(roots[0]?.name ?? "") ? roots[0]!.name as DeclarationKind : "entity";
+    // A mixin file (R1): its lines are read into each entity that uses it, unless the file did not parse, in which case a
+    // `use` of it reports nothing more than the parse error (R9).
+    const mixinName = kind === "mixin" ? atomOf(attr(roots[0]!, "name"))?.name : undefined;
+    if (mixinName !== undefined && !parsed.diagnostics.some((d) => d.severity === "error"))
+      mixinsByPath.set(resolve(rootPath, path.file), { name: mixinName, root: roots[0]!, source: input.source, file: path.file });
     const named = (tag: Tag) => atomOf(attr(tag, "name"))?.name ?? [];
     if (kind === "concept") {
       const name = atomOf(attr(roots[0]!, "name"))?.name ?? tagNameOfFile(path.absolute);
@@ -2489,7 +2637,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     declaredByPath.set(resolve(rootPath, path.file), {
       kind,
       declares: [
-        ...ofKind.flatMap(named).map((name) => ({ kind, name: kind === "aggregate" || kind === "concept" ? name : classNameOf(name) })),
+        ...ofKind.flatMap(named).map((name) => ({ kind, name: kind === "aggregate" || kind === "concept" || kind === "mixin" ? name : classNameOf(name) })),
         ...(kind === "entity" || kind === "aggregate" ? ofKind : []).flatMap((root) =>
           tags(root.children).filter((section) => section.name === "events" || section.name === "commands").flatMap((section) =>
             tags(section.children).filter((line) => line.name === (section.name === "events" ? "event" : "command"))
@@ -2524,11 +2672,16 @@ export function buildModel(project: ProjectDescription): BuildResult {
     const other = otherFile(path);
     return other.kind === "project" ? other.file : other.name;
   };
+  // A mixin's concept uses resolve before any entity is built, since each includer reads the mixin's lines (R29: against the
+  // `concepts` folder nearest the mixin's file, the same for every includer).
+  const isMixinFile = (ir: (typeof parsedFiles)[number]["ir"]) => tags(ir.body)[0]?.name === "mixin";
+  for (const { input, path, ir } of parsedFiles)
+    if (isMixinFile(ir)) conceptUses(ir.body, input.source, path.file, diagnostics, (definedIn) => conceptIndex.get(realPath(definedIn)), outside, domainLabel);
   for (const { input, path, ir } of parsedFiles) {
     const file = path.file;
     const declared = (from: string) => declaredByPath.get(resolve(rootPath, dirname(file), from));
     const roots = tags(ir.body);
-    conceptUses(ir.body, input.source, file, diagnostics, (definedIn) => conceptIndex.get(realPath(definedIn)), outside, domainLabel);
+    if (!isMixinFile(ir)) conceptUses(ir.body, input.source, file, diagnostics, (definedIn) => conceptIndex.get(realPath(definedIn)), outside, domainLabel);
     if (roots[0]?.name === "concept") {
       try {
         concepts.push(buildConcept(roots[0], ir.body, ir.imports, input.source, file, path.absolute, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute)))));
@@ -2571,6 +2724,16 @@ export function buildModel(project: ProjectDescription): BuildResult {
       }
       // A second root that is a surface is the duplicate reported above, and is not read.
       if (root.name === "surface") continue;
+      // A mixin is read in each entity that uses it, never on its own (R21, ruling D37 OD10). Its file takes no import
+      // (R12, OD3): what its lines name must be the includer's own members. A second root is the duplicate above.
+      if (root.name === "mixin") {
+        if (root === roots[0])
+          for (const entry of ir.imports)
+            diagnostics.push(error("MESH_UNKNOWN_IMPORT",
+              "A mixin file takes no import: its lines are read in each entity that uses it, and what they name must be the entity's own members",
+              positionAt(input.source, file, entry.span.sourceStart), "remove the import"));
+        continue;
+      }
       try {
         if (root.name === "event" || root.name === "command") {
           const declaration = buildDeclaration(root, ir.imports, input.source, file, diagnostics, normalizePath(relative(domainRoot, dirname(path.absolute))));
@@ -2587,6 +2750,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             normalizePath(relative(domainRoot, dirname(path.absolute))), declared, declaredNames, { events, commands }, propPositions));
           continue;
         }
+        const before = diagnostics.length;
         document.entities.push(
           buildEntity(
             root,
@@ -2602,8 +2766,15 @@ export function buildModel(project: ProjectDescription): BuildResult {
             declared,
             declaredNames,
             { events, commands },
+            (from, exported) => {
+              const mixin = mixinsByPath.get(resolve(rootPath, dirname(file), from));
+              // A name the file does not declare is the import check's `MESH_UNKNOWN_IMPORT` (R11): nothing is read.
+              return mixin?.name === exported ? mixin : undefined;
+            },
+            includersOf,
           ),
         );
+        tagIncluder(diagnostics, before, document.entities.at(-1)!);
       } catch (cause) {
         diagnostics.push(
           error(
@@ -2747,7 +2918,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
     for (const [refs, list] of [[owner.events, events], [owner.commands, commands], [owner.handlers?.flatMap((handler) => handler.events), events]] as const)
       for (const ref of refs ?? []) ref.fqn = declarationAt(owner, ref, list)?.fqn ?? "";
   // The files whose root was built: a file that failed to build says nothing about what an import of it may name.
-  const builtFiles = new Set([...document.entities, ...events, ...commands, ...aggregates].map(({ file }) => resolve(rootPath, file)));
+  const builtFiles = new Set([...[...document.entities, ...events, ...commands, ...aggregates].map(({ file }) => resolve(rootPath, file)), ...mixinsByPath.keys()]);
   const identities = new Map<string, string>();
   for (const entity of document.entities) {
     if (identities.has(entity.fqn))
@@ -2883,6 +3054,9 @@ export function buildModel(project: ProjectDescription): BuildResult {
         document.entities[0]?.position ?? positionAt("", "mesh.config.ts", 0),
       ),
     );
+  // A mistake in a project mixin's lines is found once per entity that uses it: one report, naming the includers that
+  // have it unless all of them do (R19).
+  mergeIncluders(diagnostics, includersOf);
   // One problem reached more than one way is reported once: a concept file's own error comes with its parse, with each
   // use MX lowers (the hook's copy, positioned in the concept file) and from `buildConcept`.
   const seenDiagnostics = new Set<string>();

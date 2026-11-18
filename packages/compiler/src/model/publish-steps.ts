@@ -1,3 +1,4 @@
+import { includerTagger } from "./includers.ts";
 import type { Diagnostic, Entity, Expression, ModelDocument, SourcePosition, Step } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
 import { mayPublish, ownersOf } from "./owners.ts";
@@ -80,7 +81,9 @@ export function checkPublishSteps(
         step.position, "write it after the steps that run before the write, so the order on the page is the order it runs in"), severity: "warning" });
     });
   };
+  const tagIncluder = includerTagger(diagnostics);
   for (const entity of document.entities) {
+    tagIncluder(entity);
     for (const action of entity.actions) {
       check(action.do, `${entity.fqn}#${action.name}`);
       owned(entity, action.do);
@@ -90,4 +93,5 @@ export function checkPublishSteps(
       owned(entity, block.do);
     });
   }
+  tagIncluder();
 }

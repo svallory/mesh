@@ -88,7 +88,7 @@ describe("the publishes section", () => {
     ["an option on the section", `${EVENTS}surface :admin\n  publishes all\n`, ["MESH_UNKNOWN_OPTION", 4, 12, "`publishes`: accepts no options"]],
     ["two sections", `${EVENTS}surface :admin\n  publishes\n    TaskCompleted\n  publishes\n`, ["MESH_REPEATED_CHILD", 6, 2, "`surface`: `publishes` may not be repeated"]],
     ["a section under expose", `${EVENTS}surface :admin\n  expose :tasks entity=billing.Invoice\n    publishes\n`, ["MESH_TAG_NOT_ALLOWED", 5, 4, "`expose`: `publishes` is not allowed here; allowed children: `action`"]],
-    ["a section in an entity file", "entity :Task\n  attributes\n    uuid :id primary-key\n  publishes\n", ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `publishes` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"]],
+    ["a section in an entity file", "entity :Task\n  attributes\n    uuid :id primary-key\n  publishes\n", ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `publishes` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`, `use`"]],
   ])("%s", (_, source, expected) => expect(mx(source)).toEqual([expected]));
   test("the publish step is another tag, unaffected", () => {
     const task = 'import { TaskCompleted } from "./task-completed.mesh.mx"\nentity :Task\n  attributes\n    uuid :id primary-key\n  actions\n    update :complete\n      do\n        publish=() => new TaskCompleted({ taskId: &id })\n';
@@ -104,7 +104,7 @@ describe("what changes for entity files", () => {
   });
   test("an expose line in an entity is not allowed there", () => {
     expect(mx("entity :Task\n  attributes\n    uuid :id primary-key\n  expose :x entity=Task\n", "/project/src/domain/task.mesh.mx")).toEqual([
-      ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `expose` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"],
+      ["MESH_TAG_NOT_ALLOWED", 4, 2, "`entity`: `expose` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`, `use`"],
     ]);
   });
   test("a `surface` root lowers in any file: where it may sit is the builder's (MESH_SURFACE_PATH)", () => {

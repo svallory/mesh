@@ -69,7 +69,7 @@ describe("refused shapes", () => {
     ["an option uses does not take", operation("uses entity=Task actions=[:read] reads=[:x]"), ["MESH_UNKNOWN_OPTION", 8, 37, "`uses`: unknown option `reads`"]],
     ["uses outside an operation", `${HEAD}service :Work\n  uses entity=Task actions=[:read]\n`, ["MESH_TAG_NOT_ALLOWED", 7, 2, "`service`: `uses` is not allowed here; allowed children: `operation`, `policies`"]],
     ["an operation at the root of the file", "operation :a\n", ["MESH_PARENT_NOT_ALLOWED", 1, 0, "`operation` must be inside `service`; found at the top level"]],
-    ["an operation in an entity", "entity :T\n  operation :a\n", ["MESH_TAG_NOT_ALLOWED", 2, 2, "`entity`: `operation` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"]],
+    ["an operation in an entity", "entity :T\n  operation :a\n", ["MESH_TAG_NOT_ALLOWED", 2, 2, "`entity`: `operation` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`, `use`"]],
     ["a service with no name", `${HEAD}service\n  operation :a\n    uses entity=Task actions=[:read]\n    run() {}\n`, ["MESH_MISSING_OPTION", 6, 0, "`service`: missing required option `name`"]],
   ])("%s", (_, source, expected) => expect(mx(source)).toEqual([expected]));
 });
