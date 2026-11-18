@@ -847,14 +847,14 @@ export function fileImports(
   /** Whether the file may import Mesh's mixins: an entity file includes them with `use mixin=`, no other file does. */
   mixins = false,
 ) {
-  const parsed = readImports(irImports);
-  if (!mixins)
-    parsed.imports = parsed.imports.filter((entry) => {
-      if (entry.from !== MESHFW_MIXINS) return true;
-      fail("MESH_UNKNOWN_IMPORT", `"${MESHFW_MIXINS}" gives an entity file Mesh's mixins, which it includes with \`use mixin=Name\`, and this file includes none`, at(entry.offset), "remove the import");
-      parsed.refused.push(...entry.names);
-      return false;
-    });
+  // A file that includes no mixin refuses "meshfw/mixins" by its path, before its form or names are read: the form or name
+  // advice would lead to this refusal.
+  const offMixins = mixins ? [] : irImports.filter((entry) => entry.from === MESHFW_MIXINS);
+  const parsed = readImports(offMixins.length ? irImports.filter((entry) => !offMixins.includes(entry)) : irImports);
+  for (const entry of offMixins) {
+    fail("MESH_UNKNOWN_IMPORT", `"${MESHFW_MIXINS}" gives an entity file Mesh's mixins, which it includes with \`use mixin=Name\`, and this file includes none`, at(entry.span.sourceStart), "remove the import");
+    parsed.refused.push(...(entry.names ?? []).map((name) => name.local));
+  }
   for (const problem of parsed.problems) {
     // An import of the architecture file in a form readImports refuses (type-only, default, side-effect) is the R8 error
     // too: the form advice would point to a named import, which R8 refuses as well, of a file that declares nothing.

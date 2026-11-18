@@ -119,6 +119,14 @@ describe("importing from \"meshfw/mixins\" (R10)", () => {
     });
     expect(found(built)).toEqual([["MESH_UNKNOWN_IMPORT", "notes/notes.mesh.mx:1:0", "\"meshfw/mixins\" gives an entity file Mesh's mixins, which it includes with `use mixin=Name`, and this file includes none"]]);
   });
+  test("in a file that includes no mixin, the path is refused before the form or the names (I4)", () => {
+    const aggregate = (imports: string) => build({
+      "notes/note.mesh.mx": note(""),
+      "notes/notes.mesh.mx": `${imports}import { Note } from "./note.mesh.mx"\n\naggregate :Notes\n  root entity=Note\n`,
+    });
+    for (const imports of ['import * as m from "meshfw/mixins"\n', 'import { Nope } from "meshfw/mixins"\n'])
+      expect(found(aggregate(imports))).toEqual([["MESH_UNKNOWN_IMPORT", "notes/notes.mesh.mx:1:0", "\"meshfw/mixins\" gives an entity file Mesh's mixins, which it includes with `use mixin=Name`, and this file includes none"]]);
+  });
 });
 
 describe("positions (R20, ruling D37 OD5)", () => {
