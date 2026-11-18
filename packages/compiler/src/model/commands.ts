@@ -13,6 +13,8 @@ interface ActionInput {
   required: boolean;
   /** What the message calls it when it is required and missing. */
   what: string;
+  /** Set on the list a `relate` adds: no command field fits it, whatever its type. */
+  list?: string;
 }
 
 /**
@@ -42,11 +44,12 @@ function inputsOf(entity: Entity, action: Action): ActionInput[] {
     inputs.push({ name, shape: value, required: !optional, what: `\`${name}\`` });
   }
   // The fields a step adds (`expectedVersion` for `lock &version`) are input like the written ones.
-  // A relate's list fits no command field: its shape is unknown (`null`), which the type check skips, and it is optional.
+  // A relate's list fits no command field (a command field is one value, the list holds rows): it is optional, so a
+  // command leaves it out, and `checkCommands` refuses a field named like it (`list`).
   for (const field of derivedInputs(entity, action))
     inputs.push(field.source === "lock"
       ? { name: field.name, shape: { type: "integer", nullable: field.nullable }, required: field.required, what: `\`${field.name}\`, which \`lock &${field.step.member.name}\` adds` }
-      : { name: field.name, shape: null, required: false, what: `\`${field.name}\`, which \`relate &${field.step.relationship.name}\` adds` });
+      : { name: field.name, shape: null, required: false, what: `\`${field.name}\`, which \`relate &${field.step.relationship.name}\` adds`, list: field.step.relationship.name });
   return inputs;
 }
 
@@ -78,7 +81,7 @@ function describeType(field: InputType): string {
  * - `MESH_COMMAND_UNANSWERED` (a warning): a command no action answers, reported at the command, unless a file of the
  *   project could not be read (`complete` false): the action that answers it may be in that file;
  * - `MESH_COMMAND_INPUT`: a field that is no input, a required input absent or optional in the command, or a field whose
- *   values do not fit the input's type, reported at `on=`. The row-selecting key counts as an input.
+ *   values do not fit the input's type, reported at `on=`, and a field named like the list a `relate` adds (no command field fits a list). The row-selecting key counts as an input.
  */
 export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[], complete = true): void {
   const commands = new Map((document.commands ?? []).map((command) => [command.fqn, command] as const));
@@ -105,6 +108,12 @@ export function checkCommands(document: ModelDocument, diagnostics: Diagnostic[]
           diagnostics.push(error("MESH_COMMAND_INPUT",
             `Command ${ref.fqn} has the field \`${field.name}\`, which is no input of ${entity.fqn}#${action.name}: every field of the command is an input of the action it answers`,
             ref.position, `add \`&${field.name}\` or an argument \`${field.name}\` to the input of the action, or remove the field`));
+          continue;
+        }
+        if (input.list !== undefined) {
+          diagnostics.push(error("MESH_COMMAND_INPUT",
+            `Command ${ref.fqn} has the field \`${field.name}\`, which \`relate &${input.list}\` takes as a list of rows, and a list fits no command field`,
+            ref.position, `remove the field \`${field.name}\` from the command: an action that answers it leaves the list out and changes no child`));
           continue;
         }
         const optional = input.required && (field.nullable || field.optional === true);

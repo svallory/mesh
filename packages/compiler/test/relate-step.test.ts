@@ -305,10 +305,17 @@ describe("legal neighbours", () => {
 });
 
 describe("a command answering a relating action", () => {
-  test("needs no field for the list, and may not pass one of another type unnoticed", () => {
-    const command = { file: "rename-album.mesh.mx", source: "command :RenameAlbum\n  uuid :id\n  string :title\n" };
-    const result = buildModel({ root: "/p", files: [...files("    update on=RenameAlbum\n      input\n        &title\n      do\n        relate &tracks create=:add\n").map((file) => file.file === "album.mesh.mx" ? { ...file, source: `import { RenameAlbum } from "./rename-album.mesh.mx"\n${file.source}` } : file), command] });
-    expect(found(result.diagnostics)).toEqual([]);
+  const answering = (fields: string) => buildModel({ root: "/p", files: [...files("    update on=RenameAlbum\n      input\n        &title\n      do\n        relate &tracks create=:add\n").map((file) => file.file === "album.mesh.mx" ? { ...file, source: `import { RenameAlbum } from "./rename-album.mesh.mx"\n${file.source}` } : file), { file: "rename-album.mesh.mx", source: `command :RenameAlbum\n  uuid :id\n  string :title\n${fields}` }] });
+  test("needs no field for the list", () => {
+    expect(found(answering("").diagnostics)).toEqual([]);
+  });
+  test("may not have a field named like the list, whatever its type", () => {
+    for (const line of ["  string :tracks\n", "  integer :tracks nullable\n", "  json :tracks\n"]) {
+      const diagnostics = answering(line).diagnostics.filter((d) => d.code === "MESH_COMMAND_INPUT");
+      expect(diagnostics.map((d) => d.message)).toEqual([
+        "Command RenameAlbum has the field `tracks`, which `relate &tracks` takes as a list of rows, and a list fits no command field",
+      ]);
+    }
   });
 });
 
