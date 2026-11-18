@@ -74,6 +74,8 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 
 [Record 0098](./0098-retention-rules-dead-letters-and-the-rename-map.md) decides the rename map (`events.renamed`), dead letters (`onFailure: "skip"` sets an event aside in `mesh_outbox_failures` through `core.setAside`, and `retryFailed(name)` replays them in order), keep periods in whole days, per-event keep with holes, and trace context as a project recipe. It amends 0079.
 
+[Record 0099](./0099-handlers-in-entity-files.md) decides the `handlers` section of an entity or aggregate file: `process` and `listen` lines with `on=` and a body of `{ event, context }`, generated into `<owner>.handlers.ts`, keyed `<owner FQN>.<name>`, and registered by every binding that delivers beside the events module's handlers; events leave the application through an outlet over `subscribe`.
+
 ## Current records
 
 | ADR | Decision | Status | Deciders |
@@ -164,6 +166,7 @@ Records 0077 to 0085 hold the rulings of the [domain concepts study](../research
 | [0096](./0096-rollups-run-as-one-grouped-query-per-route.md) | Rollups run as one grouped query per route: the `rollup` operation, joined routes over the hops of conditions, each record once | Accepted (lead ruling D33, pending operator review) | lead, delegated |
 | [0097](./0097-the-service-construct.md) | The service construct: a file of operations, each with its `uses` lines, enforced at run time | Proposed (lead ruling D42, pending operator review) | lead, delegated |
 | [0098](./0098-retention-rules-dead-letters-and-the-rename-map.md) | Retention rules, dead letters and the rename map: `mesh_outbox_failures` in every event project, `core.setAside`, `retryFailed` in order | Accepted in part (lead ruling D45, pending operator review) | lead, delegated |
+| [0099](./0099-handlers-in-entity-files.md) | Handlers in entity files: a `handlers` section of `process` and `listen` lines, generated into `<owner>.handlers.ts`, keyed `<owner FQN>.<name>` and registered beside the events module's; events leave through an outlet over `subscribe` | Accepted (lead ruling D44, pending operator review) | lead, delegated |
 
 ## Superseded records
 

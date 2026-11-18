@@ -31,6 +31,7 @@ It copies the generator templates into your project:
   declaration.ts.jig
   expressions.ts.jig
   globals.ts.jig
+  handlers.ts.jig
   index.ts.jig
   load.ts.jig
   module.ts.jig
@@ -93,6 +94,8 @@ The keyword is `import type` when the functions take only types from a module (a
 ## Concepts in the views
 
 A project that declares a [service](./services.md) renders two more templates once per service: `service.ts.jig` with a `ServiceView` (the value's `name` and `valueLocal`, its `entries`, one printed function per body and policy function, and its `operations`, each with its `key`, `nameLiteral`, `schemaLocal`, `inputLocal`, printed `policies` and `uses`, and `body`; the shipped template ends each entry with `satisfies $OperationSpec`, without which an operation named like an `Object.prototype` member, `toString`, fails type checking) and `service-inputs.ts.jig` with a `ServiceInputsView` (one entry per operation in `inputs`: its `typeName`, `constName`, `members` and `fields`, as the types and validators views print an action's input). `ModuleView.services` lists the services a module's barrel exports.
+
+A project with a [`handlers` section](./events.md#handlers-in-an-entity-file) renders `handlers.ts.jig` once per entity or aggregate whose section has a line, with a `HandlersView`: `ownerFile` and `ownerFqn`, the imports (`runtimeValues`, `helperImports`, `entityImports`, `classImports`, `entityNamespaces` and `globals`, each as the services view prints them), and `processHandlers` and `listenHandlers`, each entry a `keyLiteral`, an `atLiteral` (where the line is written), an `eventsLiteral`, the body's `scopeType` and its printed `code`, and `renamedFromLiteral` (`null` without one). `BindingView.handlerModules` lists the files the binding imports (`fromLiteral`, `local`) and `handlersLiteral` the array it hands to `mergeHandlers`; an override of `binding.ts.jig` written before sections must pass it to `bindDomain`, or the section handlers are never registered.
 
 A project that declares a concept gets one more template, `concept.ts.jig`, rendered once per concept with a `ConceptView`: its `name` and `schema`, its `fields` (each a `key`, a printed `type` and a printed `zod` expression), `json` and `globals` as the validators view has them, and `typeImports`, one entry per concept a field holds (`type` as `Money as $Money$concept`, `schema` as `moneySchema as $Money$schema`, and `fromLiteral`). The views that print a concept member list the concepts they need the same way: `ValidatorsView.concepts` (the schemas) and `DeclarationView.concepts` (the types and schemas) for `validators.ts.jig` and `declaration.ts.jig`, and the types view adds each concept to its `imports`. `ModuleView.concepts` lists the concepts a module's barrel exports. An override of one of these templates written before concepts must print those imports, or its file fails type checking at the first concept member.
 

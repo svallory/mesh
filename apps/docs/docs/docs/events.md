@@ -266,7 +266,7 @@ export default defineConfig({
 
 ## Handlers
 
-A handler is a function of your application that gets every event it lists, after the event's transaction commits. The events module exports them under `handlers`, by kind, each under its name:
+A handler is a function of your application that gets every event it lists, after the event's transaction commits. It is written in one of two places: in the events module, which exports them under `handlers`, by kind, each under its name, or in a `handlers` section of the entity file whose actions it calls (see [Handlers in an entity file](#handlers-in-an-entity-file)). Both are registered and delivered the same way. In the events module:
 
 ```ts "src/events.ts"
 import { Mesh } from "meshfw";
@@ -343,6 +343,44 @@ Delivery registers the handlers each time it starts. With P the position a handl
 | The same events as last time | It resumes at P |
 | Events removed from its list | Their rows are passed from then on |
 | Events added to its list | The added events are handled from P on, so no row it had not passed is lost; the start logs them |
+
+## Handlers in an entity file
+
+An entity file, or an aggregate file, may hold one `handlers` section. Each line is a handler of one of the two kinds, its name, `on=` with the events it takes, and its body:
+
+```mx "src/domain/billing/invoice.mesh.mx"
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import * as pay from "./payment-recorded.mesh.mx"
+import { sendReceipt } from "./mailer"
+import { Mesh } from "meshfw"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    boolean :receiptSent default=false
+  actions auto=[:read]
+    update :markReceiptSent
+      do
+        set
+          &receiptSent=true
+  policies
+    policy :system actions=[&markReceiptSent]
+      authorize-if=({ context }) => Mesh.isSystem(context)
+  handlers
+    listen :receipt [on=InvoicePaid] async ({ event, context }) {
+      await sendReceipt({ idempotencyKey: event.id, invoiceId: event.payload.invoiceId })
+      await Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
+    }
+    process :settle [on=[InvoicePaid, pay.PaymentRecorded]] =({ event, context }) => Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
+```
+
+- `on=` is one event the file imports or declares, or a list of them; a namespace member (`pay.PaymentRecorded`) works as in a listing line. A name that is no event in scope is `MESH_UNKNOWN_EVENT`, one event listed twice `MESH_OPTION_VALUE`.
+- The body is plain TypeScript and gets one object, `{ event, context }`: `event` is the `EventRecord` of one of the listed events, so `event.payload` is typed by their union, and `context` is what the events module's `context(event)` returns, `{ system: true }` by default. A body has no record, no input and no transaction instant: reading `self`, `input`, `actor`, `before`, a member `&x`, `%.now` or `%.today` is `MESH_HANDLER_SCOPE` (`context.actor` and `event.occurredAt` are what it reads instead). It calls the actions of its own entity and of the ones the file imports, and the helpers the file imports; a writing handler needs a policy that admits its context, as in the events module.
+- A handler's name is unique in its section, across both kinds (`MESH_DUPLICATE_MEMBER`), and may be the name of an attribute or an action of the entity. It is registered under its key, `<owner FQN>.<name>` (`billing.Invoice.receipt`), the name of its row in `mesh_handler_progress`, which `resumeHandler`, `retryFailed` and `mesh events forget` take.
+- `renamed-from=:mailReceipt` is `renamedFrom` for a section handler: the row of the former handler of the same entity, `billing.Invoice.mailReceipt`, moves to the new key. A handler moved to another entity, or from the events module into a section, has a new key and starts from now; the old row stays as an orphan until `mesh events forget` drops it.
+- `onFailure` is `"stop"`: the option comes with [Setting an event aside](#setting-an-event-aside) to sections later.
+
+The build writes `<entity>.handlers.ts` beside the entity's other generated files, and the generated `bind` hands every such file to the binding, so a project with only section handlers needs no `events.load`. The build checks the configured bus's `ordered-delivery` at each handler line (`MESH_CAPABILITY`). When delivery starts, the section handlers are checked with the events module's: a module handler named like a section handler's key, or a `renamedFrom` across the two that names a handler still registered or that both name, is `HandlerOptionError` (`MESH_HANDLER_OPTION`), and the message says where each is written. `mesh explain <entity> <handler>` prints a handler's events, key, where it runs and its body.
 
 ## Running the deliverer
 

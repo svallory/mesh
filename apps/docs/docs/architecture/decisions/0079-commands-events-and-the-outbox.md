@@ -5,6 +5,8 @@ description: "Decision record 0079: `command` and `event` files, `on=`, `publish
 
 # 0079. Commands and events are files; `publish` writes to a core outbox; M6 builds it
 
+> **Amendment, 2026-11-17 (handlers in entity files).** "Handlers are registered in TypeScript", in the amendment of 2026-10-17 below, holds for the events module; a handler may now also be declared in a `handlers` section of an entity or aggregate file, which the build generates and the generated `bind` registers beside the module's, keyed `<owner FQN>.<name>` ([ADR-0099](./0099-handlers-in-entity-files.md)).
+
 > **Amendment, 2026-11-17 (retention rules and dead letters).** The per-event setting that the amendment of 2026-10-12 and 2026-10-13 below leaves for later, and the dead letters and rename map it did not name, are decided in [ADR-0098](./0098-retention-rules-dead-letters-and-the-rename-map.md).
 
 > **Amendment, 2026-11-17 (delivery from several processes).** "One process delivers per database in M6", in the amendment of 2026-10-17 below, holds in M6 and in single mode after it. A project whose bus declares `multi-process` delivers from several processes at once, each handler held by one process at a time through a lease on its progress row ([ADR-0091](./0091-delivery-from-several-processes.md)); in such a project every delivering process deletes, by the `keep` recorded in `mesh_outbox_state`.
