@@ -1,13 +1,21 @@
 import { InvoicePaid } from "./invoice-paid.mesh.mx"
 import { control, record } from "./record"
+import { Mesh } from "meshfw"
 
 entity :Archive
   attributes
     uuid :id primary-key
   actions
     create :file
+    create :refuse
+      validate
+        check :never that=() => false code="never" message="An archive is never refused into"
+  policies
+    policy :system actions=[&refuse]
+      authorize-if=({ context }) => Mesh.isSystem(context)
   handlers
     listen :file [on=InvoicePaid] async ({ event, context }) {
       record(`archive ${event.position}`)
       if (control.archive) await Archive.file({}, context)
+      if (control.invalid) await Archive.refuse({}, context)
     }

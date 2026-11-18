@@ -1,6 +1,6 @@
 import { InvoicePaid } from "./invoice-paid.mesh.mx"
 import { ReceiptSent } from "./receipt-sent.mesh.mx"
-import { record } from "./record"
+import { record, where } from "./record"
 import { Mesh } from "meshfw"
 
 entity :Invoice
@@ -28,8 +28,10 @@ entity :Invoice
   handlers
     process :sendReceipt [on=InvoicePaid] async ({ event, context }) {
       record(`process ${event.position} ${event.name} ${JSON.stringify(context)}`)
+      where("process")
       await Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
     }
     listen :trace [on=[InvoicePaid, ReceiptSent]] ({ event }) {
+      where("listen")
       record(`listen ${event.position} ${event.name} ${event.causedBy === null ? "-" : "caused"}`)
     }
