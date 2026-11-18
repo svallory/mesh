@@ -18,7 +18,12 @@ const CASTS: Readonly<Record<ValueClass, string>> = Object.freeze({
  * column beside it (`CASE WHEN c THEN $1 ELSE $2 END`, `COALESCE($1, $2)`) is never inferred as text; a date is bound
  * as its ISO text. `length` is `char_length` of the operand as text (code points, as SQLite counts), division casts to `double precision`, and the order is
  * pinned to SQLite's: nulls as the smallest value (`NULLS FIRST` ascending, `NULLS LAST` descending) and strings by
- * code point (`COLLATE "C"`), whatever the database's collation.
+ * code point (`COLLATE "C"`), whatever the database's collation. A policy guard raises by casting its marker to
+ * `int` (ADR-0046, option B): the cast fails the statement with SQLSTATE 22P02 (`invalid input syntax for type
+ * integer: "<marker>"`), so nothing is installed in the user's database. `raised` accepts an error whose `errno` is that
+ * SQLSTATE (Bun's `PostgresError`), never a wrapper such as Drizzle's `DrizzleQueryError`, whose message echoes the bound
+ * parameters; `guardDenialOf` walks to the wrapped error itself. The message text is not matched, since the server may
+ * write it in another language; the marker and its nonce are what identify the guard.
  */
 export const postgresDialect: SqlDialect = Object.freeze({
   param(value: Scalar, kind: ValueClass): SQL {
@@ -32,4 +37,9 @@ export const postgresDialect: SqlDialect = Object.freeze({
   divide: (a: SQL, b: SQL): SQL => sql`(${a}::double precision / nullif(${b}, 0))`,
   nulls: (desc: boolean): SQL => desc ? sql`nulls last` : sql`nulls first`,
   collate: (key: SQL, kind: ValueClass): SQL => kind === "string" ? sql`${key} collate "C"` : key,
+  raise: (marker: SQL): SQL => sql`((${marker})::int = 0)`,
+  raised(error: unknown): string | undefined {
+    const { errno, message } = (typeof error === "object" && error !== null ? error : {}) as { errno?: unknown; message?: unknown };
+    return errno === "22P02" && typeof message === "string" ? message : undefined;
+  },
 });

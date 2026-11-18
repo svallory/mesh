@@ -14,7 +14,7 @@ import { AppendedListeners } from "./wakeup.ts";
  * What this adapter supports beyond the mandatory set, as static data (ADR-0013). No `gapless-positions`: on Postgres
  * it would cost a lock held from the first publish to the commit.
  */
-export const capabilities: CapabilityManifest = defineCapabilities("postgres", ["aggregates", "integer-key-fill", "conditions", "joins"]);
+export const capabilities: CapabilityManifest = defineCapabilities("postgres", ["aggregates", "integer-key-fill", "conditions", "joins", "policy-guards"]);
 
 // A type alias, not an interface, so it satisfies `DataAdapter.options` (an index signature).
 export type PostgresOptions = { readonly url: string | undefined };
