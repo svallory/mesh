@@ -2,6 +2,7 @@ import type { Action, Always, Diagnostic, Entity, ModelDocument, Step } from "@m
 import { error } from "./diagnostics.ts";
 import { lockField, lockOf, locksIn, relatesOf, type LockStep, type RelateStep } from "./derived-input.ts";
 import { alwaysCovers } from "./policies.ts";
+import { mixinOfLine } from "./includers.ts";
 import { entitiesByFile, keyHolderOf } from "./key-holder.ts";
 
 const key = (step: { position: { file: string; line: number; column: number } }) => `${step.position.file}:${step.position.line}:${step.position.column}`;
@@ -111,9 +112,13 @@ export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic
       }
       // A destroy's `set` is `MESH_DESTROY_STEP` already.
       if (action.kind === "update")
-        for (const set of [...blocks.flatMap((block) => setsOf(block.do, member)), ...setsOf(action.do, member)])
-          report("MESH_LOCK_MEMBER", `\`set &${member}\` in ${action.kind} :${action.name} of ${entity.fqn} writes the version that ${owns(set)} owns: the lock adds 1 on every write`,
-            set, "remove the `set` line");
+        for (const set of [...blocks.flatMap((block) => setsOf(block.do, member).map((found) => ({ ...found, mixin: mixinOfLine(block) }))), ...setsOf(action.do, member)]) {
+          // A `set` a mixin's `always` block brings in (the shipped `Versioned` bumps `&version`, positioned at its `use`
+          // line) names the mixin: its line is not the includer's to remove (ruling D43 OD6).
+          const mixin = "mixin" in set ? set.mixin : undefined;
+          report("MESH_LOCK_MEMBER", `\`set &${member}\` ${mixin ? `of the mixin ${mixin}, ` : ""}in ${action.kind} :${action.name} of ${entity.fqn}${mixin ? "," : ""} writes the version that ${owns(set)} owns: the lock adds 1 on every write`,
+            set, mixin ? `stop using ${mixin} and declare \`integer :${member} default=1\` in the entity: the lock keeps the version itself` : "remove the `set` line");
+        }
     }
   }
 }

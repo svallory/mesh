@@ -273,7 +273,7 @@ describe("other files and meshfw/architecture (R19)", () => {
       ["todo/paid.mesh.mx", 1, 0, "MESH_UNKNOWN_IMPORT", "An event file takes no import: its fields are attribute lines, whose kinds are attribute types", "remove the import"],
     ]);
     expect(brief(build({ "todo/list.mesh.mx": `import { z } from "zod"\n${LIST}` }).diagnostics)).toEqual([
-      ["todo/list.mesh.mx", 1, 0, "MESH_UNKNOWN_IMPORT", 'The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh\'s own functions (`import { Mesh } from "meshfw"`)', null],
+      ["todo/list.mesh.mx", 1, 0, "MESH_UNKNOWN_IMPORT", 'The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh\'s own functions (`import { Mesh } from "meshfw"`) or "meshfw/mixins" for Mesh\'s mixins (`import { Timestamps } from "meshfw/mixins"`)', null],
     ]);
   });
 });

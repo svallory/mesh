@@ -1,0 +1,4 @@
+mixin :Timestamps
+  attributes
+    timestamp :insertedAt on=:create
+    timestamp :updatedAt on=:update

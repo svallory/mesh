@@ -5,6 +5,7 @@ import type { IrDiagnostic } from "@mxlang/core";
 import type { CustomTag } from "@mxlang/core";
 import { parseEntitySource } from "../src/front-end/build.ts";
 import { CONCEPT_USE } from "../src/front-end/concept-file.ts";
+import { SHIPPED_MIXIN_NAMES, shippedMixinText } from "../src/front-end/shipped-mixins.ts";
 import { SCRATCH_PREFIX, isScratchPath } from "./scan-skip.ts";
 
 // ADR-0043: only packages declaring tag contracts may mention MX; extensions join in M6.
@@ -347,6 +348,10 @@ const v4LineReference = (prefix: string) => /^[\t ]*$/.test(prefix) || /^[\t ]*(
 // A service's `operation :name` lines are its members: a service policy names them (`actions=[&retire]`).
 const V4_MEMBER_SECTIONS = new Set(["attributes", "relationships", "computed", "actions", "policies", "service"]);
 
+/** The members each mixin of `"meshfw/mixins"` declares, read from its file: a section's lines, `kind :name`. */
+const SHIPPED_MEMBERS: ReadonlyMap<string, readonly string[]> = new Map(SHIPPED_MIXIN_NAMES.map((name) =>
+  [name, [...shippedMixinText(name)!.source.matchAll(/^ {4}[a-z][\w-]*\s+:(\w+)/gm)].map((match) => match[1]!)]));
+
 function invalidMembersInV4(source: string): string | null {
   const masked = source.replace(V4_TOKENS, (token) => /^["'`/]/.test(token)
     ? token.replace(/[^\r\n]/g, " ") : token);
@@ -375,7 +380,10 @@ function invalidMembersInV4(source: string): string | null {
     // An entity may name its own type in a relationship with no import (M7).
     const own = /^entity\s+:(\w+)/.exec(text);
     if (own) imports.add(own[1]!);
-    if (/^mixin\s+:\w+/.test(text) || /^use\s+mixin\s*=/.test(text)) membersElsewhere = true;
+    // `use mixin=Timestamps`: a shipped mixin's members are known here; any other mixin is in another fence.
+    const used = /^use\s+mixin\s*=\s*(\w+)\s*$/.exec(text)?.[1];
+    if (used && SHIPPED_MEMBERS.has(used)) for (const member of SHIPPED_MEMBERS.get(used)!) members.add(member);
+    else if (/^mixin\s+:\w+/.test(text) || /^use\s+mixin\s*=/.test(text)) membersElsewhere = true;
     const namedImport = /^import\s*\{([^}]+)\}/.exec(text);
     if (namedImport) for (const entry of namedImport[1]!.split(",")) {
       const local = /^\s*\w+(?:\s+as\s+(\w+))?\s*$/.exec(entry);

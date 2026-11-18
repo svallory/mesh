@@ -281,9 +281,9 @@ describe("imports of a mixin (R9, R11, R12, R21, R22)", () => {
     const entity = build({ ...AUDITED_PROJECT, "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    uuid :id primary-key\n",
       "billing/invoice.mesh.mx": invoice("", "  use mixin=Customer\n", `${IMPORT}import { Customer } from "./customer.mesh.mx"\n`) });
     expect(errors(entity)).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:4:12", "Customer is not an imported mixin."]]);
-    // A refused import is reported once, at the import: Mesh's own mixins from "meshfw/mixins" are not built yet.
-    const shipped = build({ "billing/invoice.mesh.mx": invoice("", "  use mixin=Timestamps\n", 'import { Timestamps } from "meshfw/mixins"\n') });
-    expect(errors(shipped).map((d) => d.slice(0, 2))).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:1:0"]]);
+    // A refused import is reported once, at the import (a package path no file answers).
+    const refused = build({ "billing/invoice.mesh.mx": invoice("", "  use mixin=Timestamps\n", 'import { Timestamps } from "mixins"\n') });
+    expect(errors(refused).map((d) => d.slice(0, 2))).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:1:0"]]);
     expect(errors(build({ ...AUDITED_PROJECT, "billing/invoice.mesh.mx": invoice("", "  use mixin=Invoice\n") }))).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:3:12", "Invoice is not an imported mixin: the file declares Invoice as an entity."]]);
   });
   test("a namespace alias alone names the file, not its mixin", () => {

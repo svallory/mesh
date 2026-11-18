@@ -195,6 +195,8 @@ entity :Post
     timestamp :updatedAt on=:update
 ```
 
+The last two lines are what Mesh's [`Timestamps` mixin](./mixins.md#meshs-mixins) holds: `import { Timestamps } from "meshfw/mixins"` and `use mixin=Timestamps` under the entity line declare them.
+
 ### The types
 
 | Tag | TypeScript | What it holds |
@@ -656,7 +658,7 @@ The lock adds an input field, `expectedVersion` (`expected` and the member's nam
 
 `lock &version optional` makes the field optional and nullable: a call that leaves it out is not compared and still adds 1. An `always` block can carry the lock for every update and destroy it covers, `always types=[:update, :destroy]`; a block whose scope can reach a create is refused, since a create has no stored version. The member is a required `integer` attribute other than the key (`MESH_LOCK_MEMBER`), the lock owns its write, so the member as an input or the target of a `set` in a locked update is `MESH_LOCK_MEMBER` too, and an authored input named `expectedVersion` is `MESH_DUPLICATE_INPUT`. A lock in a create, under a step `when`, or reaching one action twice is `MESH_LOCK_STEP`.
 
-When the version must be reported among the other rules, or compared with another record's version, write it by hand: a `version` attribute, an `integer :expectedVersion nullable` argument, a check (`that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version`, `code="expected-version"`) and `set &version=() => &version + 1` in `do`. That check runs in declaration order with the others, and its step runs after every check passed, so a refused update does not bump the version.
+When the version must be reported among the other rules, or compared with another record's version, write it by hand: a `version` attribute, an `integer :expectedVersion nullable` argument, a check (`that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version`, `code="expected-version"`) and `set &version=() => &version + 1` in `do`. That check runs in declaration order with the others, and its step runs after every check passed, so a refused update does not bump the version. Mesh's [`Versioned` mixin](./mixins.md#meshs-mixins) keeps the attribute and the bump for every update: an entity that uses it writes only the argument and the check, and drops its own `version` attribute (`MESH_DUPLICATE_MEMBER`) and its own `set &version` (`MESH_DUPLICATE_SET`). `Versioned` does not combine with `lock &version`: its bump is a `set` of the locked member (`MESH_LOCK_MEMBER`).
 
 #### A check that reads a related record
 

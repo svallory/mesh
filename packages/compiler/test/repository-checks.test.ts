@@ -541,6 +541,20 @@ test("Docs MX samples: a mixin file is a complete fence, and its `&name`s, like 
   });
 });
 
+test("Docs MX samples: an entity that uses a shipped mixin has that mixin's members, and only those", () => {
+  temporary((dir) => {
+    const note = (use: string, key: string) => `\`\`\`mx "src/domain/notes/note.mesh.mx"\nimport { Timestamps, Versioned } from "meshfw/mixins"\n\nentity :Note\n${use}  attributes\n    uuid :id primary-key\n  actions\n    read :recent\n      sort\n        desc &${key}\n\`\`\`\n`;
+    writeFileSync(join(dir, "note.md"), note("  use mixin=Timestamps\n", "insertedAt"));
+    expect(checkDocsSyntaxV4(dir)).toMatchObject({ checked: 1, errors: [] });
+    writeFileSync(join(dir, "note.md"), note("  use mixin=Versioned\n", "version"));
+    expect(checkDocsSyntaxV4(dir)).toMatchObject({ checked: 1, errors: [] });
+    writeFileSync(join(dir, "note.md"), note("  use mixin=Timestamps\n", "insertedOn"));
+    expect(checkDocsSyntaxV4(dir).errors.join("\n")).toContain("&insertedOn is not a declared member of this entity");
+    writeFileSync(join(dir, "note.md"), note("  use mixin=Versioned\n", "insertedAt"));
+    expect(checkDocsSyntaxV4(dir).errors.join("\n")).toContain("&insertedAt is not a declared member of this entity");
+  });
+});
+
 test("Docs MX samples: a surface file is a complete fence, parsed as authored", () => {
   temporary((dir) => {
     const surface = (line: string) => `\`\`\`mx "src/surfaces/public/public.mesh.mx"\nimport { Todo } from "../../domain/todo/todo.mesh.mx"\n\nsurface :public\n  expose :todos entity=Todo ${line}\n    action :read\n\`\`\`\n`;

@@ -1,0 +1,8 @@
+mixin :Versioned
+  attributes
+    integer :version default=1
+  actions
+    always types=[:update]
+      do
+        set
+          &version=() => &version + 1

@@ -1,0 +1,26 @@
+import { Timestamps, Versioned } from "meshfw/mixins"
+
+entity :Note
+  use mixin=Timestamps
+  use mixin=Versioned
+  attributes
+    uuid :id primary-key
+    string :body
+  actions auto=[:read]
+    create :make
+      input
+        &body
+    update :edit
+      input
+        &body
+        integer :expectedVersion nullable
+      validate
+        check :versionMatches [
+          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
+          code="expected-version"
+          message="the note is at another version; read it again and retry"
+          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
+        ]
+  policies
+    policy :open
+      authorize-if=() => true
