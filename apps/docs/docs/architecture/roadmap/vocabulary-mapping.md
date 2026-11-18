@@ -44,7 +44,7 @@ Ash examples follow [Ash features](../research/ash-features.md), section 12; the
 | `argument :paid_at, :utc_datetime` | `input` section: `datetime :paidAt` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | `change set_attribute(:state, :published)` | `do` then `set` then `&state=:published` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | `change optimistic_lock(:version)` | `do` then `lock &version` | [ADR-0100](../decisions/0100-the-lock-step.md) |
-| `change manage_relationship(:tracks, type: :direct_control)` | `do` then `relate &tracks create=:add update=:rename destroy=:remove` (the related entity's own actions, named) | [ADR-0100](../decisions/0100-the-lock-step.md#amendment-2026-11-17-the-relate-step) |
+| `change manage_relationship(:tracks, type: :direct_control)` | `do` then `relate &tracks create=:add update=:rename destroy=:remove` (the related entity's own actions, named; a key that names no current child is refused as `not_related`, not created) | [ADR-0100](../decisions/0100-the-lock-step.md#amendment-2026-11-17-the-relate-step) |
 | `validate present(:title)` | `string :title` is required by default; `input` takes `&title` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | a custom validation module with a message | `check :label [ that=fn code=... message=... ]` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | resource-level `changes` and `validations` | `always types=[...]` under `actions` | [ADR-0053](../decisions/0053-validate-then-do.md) |
