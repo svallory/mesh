@@ -6,6 +6,7 @@ import { conditionSql, hopLink, type ConditionSqlOptions, type SqlDialect } from
 export { columnOf, filterCondition, selectOptions, whereOf, type DrizzleSelect } from "./query.ts";
 export { classOfNode, conditionSql, hopLink, orderSql, type ConditionSqlOptions, type SqlDialect } from "./condition.ts";
 export { serialTransactions, type Deadline, type SerialTransactions, type TransactionDriver } from "./transactions.ts";
+export { ClaimRowOrder } from "./claim-row.ts";
 
 /** Dialect-specific query builders; shared validation and key semantics stay here.
  * Both synchronous and asynchronous Drizzle drivers can implement these calls.

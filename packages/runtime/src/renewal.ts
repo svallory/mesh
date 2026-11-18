@@ -22,33 +22,60 @@ export class RenewalUnsettled extends Error {}
 
 /** One strategy's renewals: each raced against its lapse, and the last adapter statement, for `release` to wait on. */
 export class Renewals {
-  /** The adapter's last renewal statement (not core's race), settled either way, and the time core gave it up. */
-  #last: { readonly settled: Promise<void>; readonly until: number } = { settled: Promise.resolve(), until: 0 };
+  /** The adapter's last renewal statement (not core's race), settled either way, and the time core gives it up. */
+  #last: { settled: Promise<void>; until: number } = { settled: Promise.resolve(), until: 0 };
 
   /**
-   * `renewal` raced against `deadline` (a `Date.now()` time) plus the grace: rejects with `RenewalUnsettled` when it is
-   * still unsettled then.
+   * The renewal `start` issues, raced against `deadline` (a `Date.now()` time) plus the grace: rejects with
+   * `RenewalUnsettled` when it is still unsettled then. `start` gets the `onHeld` of `DataLayer.renewClaim`: while the
+   * adapter says the renewal waits for the layer's own transaction holding the claim's row, core's deadline is off,
+   * and it then counts to the moved deadline the adapter gives, which `moved` hears of.
    */
-  async race(renewal: Promise<boolean>, deadline: number): Promise<boolean> {
-    // `release` waits for the statement itself, which may outlive the race below, until core gives it up.
-    this.#last = { settled: renewal.then(() => undefined, () => undefined), until: deadline + RENEW_GRACE_MS };
+  async race(start: (onHeld: (deadline: Promise<number>) => void) => Promise<boolean>, deadline: number, moved?: (deadline: number) => void): Promise<boolean> {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const expired = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { reject(new RenewalUnsettled()); }, Math.max(0, deadline - Date.now()) + RENEW_GRACE_MS);
-    });
+    let done = false;
+    let expire!: (error: RenewalUnsettled) => void;
+    const expired = new Promise<never>((_, reject) => { expire = reject; });
+    const last = { settled: Promise.resolve(), until: deadline + RENEW_GRACE_MS };
+    const arm = (at: number) => {
+      clearTimeout(timer);
+      last.until = at + RENEW_GRACE_MS;
+      timer = setTimeout(() => { expire(new RenewalUnsettled()); }, Math.max(0, at - Date.now()) + RENEW_GRACE_MS);
+    };
+    arm(deadline);
+    const onHeld = (later: Promise<number>) => {
+      if (done) return;
+      clearTimeout(timer);
+      timer = undefined;
+      last.until = Number.POSITIVE_INFINITY;
+      void later.then((at) => { if (done) return; moved?.(at); arm(at); });
+    };
+    const renewal = start(onHeld);
+    // `release` waits for the statement itself, which may outlive the race below, until core gives it up.
+    last.settled = renewal.then(() => undefined, () => undefined);
+    this.#last = last;
     try { return await Promise.race([renewal, expired]); }
-    finally { clearTimeout(timer); renewal.catch(() => undefined); }
+    finally { done = true; clearTimeout(timer); renewal.catch(() => undefined); }
   }
 
   /**
    * Resolves once the last renewal statement settled, or once core gave it up: a release run beside a renewal still
    * waiting on the row lock could fail on that lock (or as a serialization failure) and leave the claim or the row to
    * lapse instead of going at once, while a statement that never answers must not hold the release, and stop, for good.
+   * While the renewal waits for the layer's own transaction there is no bound: that transaction ends first.
    */
   async settled(): Promise<void> {
-    const { settled, until } = this.#last;
+    const last = this.#last;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([settled, new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, until - Date.now())); })]);
+    const bound = () => new Promise<void>((resolve) => {
+      const tick = () => {
+        const left = last.until - Date.now();
+        if (left <= 0) { resolve(); return; }
+        timer = setTimeout(tick, Number.isFinite(left) ? left : 50);
+      };
+      tick();
+    });
+    await Promise.race([last.settled, bound()]);
     clearTimeout(timer);
   }
 }

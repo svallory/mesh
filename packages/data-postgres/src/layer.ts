@@ -2,7 +2,7 @@ import { SQL as BunSQL, type ReservedSQL } from "bun";
 import { count, getTableColumns, getTableName, is, max, sql, SQL as DrizzleSQL, type Column, type SQL } from "drizzle-orm";
 import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
 import { PgJsonb, PgTable, type PgColumn } from "drizzle-orm/pg-core";
-import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
+import { ClaimRowOrder, drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
 import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { deliveryOperations, failureOperations, multiProcessOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
@@ -229,6 +229,13 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     }
   };
 
+  /**
+   * The order between `renewClaim` and this layer's transactions on the claim's row (mesh-yd0i): a transaction takes
+   * the row (`readDeliveryState`'s `FOR UPDATE`, a write of the claim) only once no renewal is in flight, and holds it
+   * until it ends; a renewal waits for that transaction in the process, not in the database, so it neither counts that
+   * wait toward the lapse nor makes the transaction fail with `40001`.
+   */
+  const claimOrder = new ClaimRowOrder();
   const queue = serialTransactions<Connection>({
     health: () => undefined,
     async acquire(deadline: Deadline): Promise<Connection> {
@@ -239,6 +246,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       return { reserved, db: drizzle({ client: reserved as unknown as BunSQL }), waitMs: defaultWaitMs, broken: false };
     },
     release(conn) {
+      claimOrder.end();
       if (conn.broken) void Promise.resolve().then(() => conn.reserved.close()).catch(() => { /* already gone */ });
       else conn.reserved.release();
     },
@@ -285,7 +293,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
         ...entities,
         appendEvent: (row) => appendEvent(appender, row),
         deleteOutboxThrough: async (position) => deleteOutboxThrough(query, await sequence(), position),
-        ...deliveryOperations(query, sequence, holesColumn),
+        ...deliveryOperations(query, sequence, holesColumn, () => claimOrder.take()),
         ...failureOperations(query),
         ...multiProcessOperations(query, sequence, holesColumn),
       } satisfies DataOperations);
@@ -339,8 +347,8 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
    * reserved on the first renewal and kept until close() or until it breaks. One renewal at a time, each one autocommit
    * `UPDATE` at the server's default isolation after a `SET lock_timeout` to the time left before its deadline, so the
    * only wait it can meet is a lock on its own row (for a process row a release, or a peer deleting the row once it
-   * lapsed; for the claim every transaction that read `mesh_outbox_state` `FOR UPDATE`, this layer's handler
-   * transactions included, or a takeover). At read committed a renewal that waited re-reads the row the holder left, so
+   * lapsed; for the claim another connection's transaction that read `mesh_outbox_state` `FOR UPDATE`, a takeover
+   * among them, since this layer's own wait in the process through `claimOrder`). At read committed a renewal that waited re-reads the row the holder left, so
    * a takeover that moved the generation makes it update no row. A renewal still running `RENEW_ABANDON_MS` past its
    * deadline is given up (`abandonRenewal`): `renewals` counts the renewals given up, so the given-up one, should it
    * ever go on, never installs or keeps a connection.
@@ -392,14 +400,17 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     return statement(query);
   };
   const noSequence = () => Promise.reject(new FrameworkError("A renewal reads no sequence"));
-  /** One renewal on the renewal connection, outside the queue, given up `RENEW_ABANDON_MS` past `deadline`. */
-  const renewOutside = (method: string, statement: (query: Query) => Promise<boolean>, deadline: number): Promise<boolean> => {
+  /**
+   * One renewal on the renewal connection, outside the queue, given up `RENEW_ABANDON_MS` past its deadline. `turn`
+   * (the claim's: `ClaimRowOrder`) runs once the renewals before it are done and may move the deadline.
+   */
+  const renewOutside = (method: string, statement: (query: Query) => Promise<boolean>, given: number, turn?: (deadline: number) => Promise<number>): Promise<boolean> => {
     // The row lock it may wait for can be this transaction's own (a release in it, or the state row it read), which
     // holds until it ends.
     if (queue.insideTransaction()) {
       return Promise.reject(new FrameworkError(`${method} cannot run inside a transaction of this layer: it renews on a connection of its own, which may wait for a lock this transaction holds`));
     }
-    const run = renewing.then(() => new Promise<boolean>((resolve, reject) => {
+    const run = renewing.then(async () => (turn ? turn(given) : given)).then((deadline) => new Promise<boolean>((resolve, reject) => {
       const timer = setTimeout(() => {
         abandonRenewal();
         reject(new DatabaseBusyError(label, 0, {
@@ -436,8 +447,10 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     },
     renewProcess: (runId, lapseMs, options) =>
       renewOutside("renewProcess", (query) => multiProcessOperations(query, noSequence, holesColumn).renewProcess(runId, lapseMs), options.deadline),
-    renewClaim: (runId, generation, options) =>
-      renewOutside("renewClaim", (query) => deliveryOperations(query, noSequence, holesColumn).renewClaim(runId, generation), options.deadline),
+    renewClaim: (runId, generation, options) => claimOrder.renew(
+      (turn) => renewOutside("renewClaim", (query) => deliveryOperations(query, noSequence, holesColumn).renewClaim(runId, generation), options.deadline, turn),
+      options.onHeld,
+    ),
     refuseIfFailed: () => queue.refuseIfFailed(),
     onAppended: (listener) => appended.add(listener),
     async close() {

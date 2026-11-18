@@ -371,7 +371,7 @@ export class MultiClaim implements ClaimStrategy {
       : layer.transaction((tx) => multiOperations(tx).renewProcess(RUN_ID, timing.lapseMs), { waitMs: Math.max(1, deadline - Date.now()) });
     // A real deadline from issue time: a renewal still unsettled when the row lapses (a connection that never answers,
     // a queue that never reaches it) is given up, whatever it does afterwards.
-    return this.#renewals.race(renewal, deadline);
+    return this.#renewals.race(() => renewal, deadline);
   }
 
   /**

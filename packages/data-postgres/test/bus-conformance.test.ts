@@ -39,8 +39,8 @@ describeServer("renewClaim on Postgres, outside the layer's queue", () => {
     bareLayer: () => bare.freshLayer(),
     sibling: async (layer) => database.sibling(layer as PostgresLayer),
   });
-  test("every check runs, the held-row one included", () => {
-    expect(Object.keys(checks).length).toBe(4);
+  test("every check runs, the held-row and held-queue ones included", () => {
+    expect(Object.keys(checks).length).toBe(7);
   });
   for (const [name, check] of Object.entries(checks)) test(name, check, 60_000);
 });

@@ -71,12 +71,18 @@ async function lockedState(query: Query, sequence: () => Promise<string>, holes:
   return row!;
 }
 
-/** The delivery operations over `query` (the running transaction's statements); `sequence` resolves the outbox's sequence. */
-export function deliveryOperations(query: Query, sequence: () => Promise<string>, holes: HolesColumn = new HolesColumn()): DeliveryOperations & RetentionOperations {
+/**
+ * The delivery operations over `query` (the running transaction's statements); `sequence` resolves the outbox's sequence.
+ * `claimRow`, when given, runs before the first statement of each operation that takes the claim's row (the state row
+ * read `FOR UPDATE`, a write of the claim): the layer orders its claim renewal outside the queue with them there
+ * (`ClaimRowOrder`; mesh-yd0i).
+ */
+export function deliveryOperations(query: Query, sequence: () => Promise<string>, holes: HolesColumn = new HolesColumn(), claimRow?: () => Promise<void>): DeliveryOperations & RetentionOperations {
   const exec = <T>(statement: () => Promise<T>) => withTables(statement);
+  const onRow = <T>(statement: () => Promise<T>) => exec(async () => { await claimRow?.(); return statement(); });
   return {
-    readDeliveryState: () => exec(async () => stateOf(await lockedState(query, sequence, holes))),
-    writeClaim: (claim) => exec(async () => {
+    readDeliveryState: () => onRow(async () => stateOf(await lockedState(query, sequence, holes))),
+    writeClaim: (claim) => onRow(async () => {
       await query(
         `INSERT INTO ${OUTBOX_STATE_TABLE} (id, deleted_through, run_id, generation, renewed_at, host, pid, started_at)
          VALUES (1, 0, $1, $2, clock_timestamp(), $3, $4, $5::text::timestamptz)
@@ -85,9 +91,9 @@ export function deliveryOperations(query: Query, sequence: () => Promise<string>
         [claim.runId, claim.generation, claim.host === undefined ? hostname() : claim.host, claim.pid, iso(claim.startedAt)],
       );
     }),
-    renewClaim: (runId, generation) => exec(async () =>
+    renewClaim: (runId, generation) => onRow(async () =>
       (await query(`UPDATE ${OUTBOX_STATE_TABLE} SET renewed_at = clock_timestamp() WHERE id = 1 AND run_id = $1 AND generation = $2`, [runId, generation])).count === 1),
-    releaseClaim: (runId, generation) => exec(async () =>
+    releaseClaim: (runId, generation) => onRow(async () =>
       (await query(
         `UPDATE ${OUTBOX_STATE_TABLE} SET run_id = NULL, renewed_at = NULL, host = NULL, pid = NULL, started_at = NULL WHERE id = 1 AND run_id = $1 AND generation = $2`,
         [runId, generation],

@@ -589,6 +589,17 @@ export interface MultiProcessOperations {
   writeSubscriptionOwner(row: Omit<SubscriptionProgressRow, "seenAt"> & { readonly seenAt?: Date; readonly runId: string | null }): Promise<void>;
 }
 
+/** What `DataLayer.renewClaim` takes. */
+export interface ClaimRenewalOptions {
+  /** The time the claim lapses (`Date.now()` clock): a lock wait on another connection ends there. */
+  readonly deadline: number;
+  /**
+   * Called when the renewal waits for this layer's own transaction holding the claim's row, with the deadline it then
+   * counts to: the given one moved by the time it waited.
+   */
+  readonly onHeld?: (deadline: Promise<number>) => void;
+}
+
 /** What `DataLayer.transaction` takes beside its callback. */
 export interface TransactionOptions {
   /**
@@ -673,16 +684,23 @@ export interface DataLayer {
   renewProcess?(runId: string, lapseMs: number, options: { readonly deadline: number }): Promise<boolean>;
   /**
    * Optional. `DeliveryOperations.renewClaim` outside the transaction queue (single mode's claim renewal, spec "The
-   * claim"; mesh-yd0i), with the same contract as `renewProcess`: one autocommit statement on a connection of its own,
-   * matching the run id and the generation; a lock wait on the claim's row ends at `deadline` with `DatabaseBusyError`;
-   * refused inside a transaction of this layer; settles soon after `deadline` even when its connection stops answering.
-   * Core renews the claim through it when the layer has it, with the time the claim lapses as the deadline; without it,
-   * through `transaction`. The claim's row is the one every handler transaction and deletion batch locks first (on
-   * Postgres `readDeliveryState` reads it `FOR UPDATE`; on SQLite every transaction holds the one write lock), so the
-   * renewal still waits for those, this layer's included, but no longer behind the queue's other transactions.
-   * data-postgres has it; data-sqlite has it for a file database.
+   * claim"; mesh-yd0i): one autocommit statement on a connection of its own, matching the run id and the generation;
+   * refused inside a transaction of this layer; settles soon after its deadline even when its connection stops
+   * answering. Core renews the claim through it when the layer has it, with the time the claim lapses as the deadline;
+   * without it, through `transaction`.
+   *
+   * Unlike `renewProcess`, the claim's row is one this layer's own transactions take (on Postgres every handler
+   * transaction, deletion batch and state-reading `#mesh` call reads it `FOR UPDATE`; on SQLite every transaction holds
+   * the one write lock), so the layer orders the renewal with them in the process: a transaction of the layer takes the
+   * row only once no renewal is in flight, and a renewal waits for the layer's transaction that holds the row without
+   * counting that wait toward its deadline, which then moves by the time waited (no other process can take the claim
+   * while this layer holds its row, since a takeover needs the same lock). The adapter tells core of such a wait through
+   * `onHeld`, with the moved deadline to come. In the database the renewal then waits only for other connections' locks,
+   * until its deadline, and then rejects with `DatabaseBusyError`; it never waits behind the queue's other transactions,
+   * and it never makes a transaction of this layer fail. data-postgres has it; data-sqlite has it for a file database.
+   * `claimRenewalConformance` in `@meshfw/runtime/testing` checks it.
    */
-  renewClaim?(runId: string, generation: number, options: { readonly deadline: number }): Promise<boolean>;
+  renewClaim?(runId: string, generation: number, options: ClaimRenewalOptions): Promise<boolean>;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

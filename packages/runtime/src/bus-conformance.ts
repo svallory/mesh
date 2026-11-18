@@ -1,5 +1,5 @@
 import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind, type KindHandler, type Registration } from "./bus.ts";
-import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
+import type { ClaimRenewalOptions, DataLayer, DataOperations, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { forgetSubscription, listSubscriptions, markNoDeliver, retryFailed, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
@@ -203,20 +203,6 @@ async function rejection(run: () => Promise<unknown>): Promise<unknown> {
   return undefined;
 }
 const ops = (tx: DataOperations) => tx as DataOperations & DeliveryOperations;
-/**
- * `run` made again while it fails with a `DatabaseBusyError` of reason `serialization`, for a check's own transaction
- * on the claim's row (a read of the state, another process's takeover): a renewal outside the queue (`renewClaim`)
- * updates that row beside it, and on Postgres at `SERIALIZABLE` the transaction that waited for it then fails, as
- * another process's would.
- */
-async function serialized<T>(run: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try { return await run(); } catch (error) {
-      if (!(error instanceof DatabaseBusyError && error.reason === "serialization") || attempt >= 20) throw error;
-    }
-  }
-}
-
 /** One database, its bindings and what their handlers saw. */
 interface World {
   readonly layer: DataLayer;
@@ -270,9 +256,9 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
               return positions;
             }));
           },
-          state: () => serialized(() => layer.transaction(async (tx) => ({
+          state: () => layer.transaction(async (tx) => ({
             state: await ops(tx).readDeliveryState(), handlers: await ops(tx).readHandlerProgress(), subscriptions: await ops(tx).readSubscriptionProgress(),
-          }))),
+          })),
           async outbox() {
             const out: OutboxRow[] = [];
             let after = (await layer.readOutbox!(0, 1)).deletedThrough;
@@ -709,10 +695,10 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       await start(world, binding);
       await world.publish(publisher, [Alpha, 1]);
       await until(() => positions(world, "h").length === 1, "the started deliverer handles the event of a deliver: false binding");
-      await serialized(() => world.layer.transaction(async (tx) => {
+      await world.layer.transaction(async (tx) => {
         const { generation } = await ops(tx).readDeliveryState();
         await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000bb", generation: generation + 1, host: null, pid: null, startedAt: null });
-      }));
+      });
       const [p] = await world.publish(publisher, [Alpha, 2]);
       await sleep(150);
       assert(positions(world, "h").length === 1, "a replaced deliverer handled an event");
@@ -726,10 +712,10 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       setDeliveryTiming({ renewMs: 30 });
       const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha]) } } });
       await start(world, binding);
-      await serialized(() => world.layer.transaction(async (tx) => {
+      await world.layer.transaction(async (tx) => {
         const { generation } = await ops(tx).readDeliveryState();
         await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000cc", generation, host: null, pid: null, startedAt: null });
-      }));
+      });
       await sleep(120);
       const other = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha]) } } });
       const taken = await rejection(() => other.deliver());
@@ -744,15 +730,16 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       });
       /** The claim's age by the database's clock. */
       const claimAge = async (layer: DataLayer) => {
-        const state = await serialized(() => layer.transaction((tx) => ops(tx).readDeliveryState()));
+        const state = await layer.transaction((tx) => ops(tx).readDeliveryState());
         return state.claim === null ? Number.POSITIVE_INFINITY : state.now.getTime() - state.claim.renewedAt.getTime();
       };
 
-      // mesh-yd0i: the layer's queue is held for twice the lapse, as a round's or an application's transaction waiting on
-      // another connection's locks holds it (the layer counts `waitMs` from the front of its queue, and on Postgres per
-      // lock). Through `transaction` the renewal waited behind it past the lapse. A layer with `renewClaim` renews outside
-      // the queue, so the claim stays renewed while everything else waits. A layer without it (memory SQLite) has
-      // nothing to check here.
+      // mesh-yd0i: the layer's queue is held for twice the lapse, as an application's transaction waiting on another
+      // connection's locks holds it (the layer counts `waitMs` from the front of its queue, and on Postgres per lock).
+      // Through `transaction` the renewal waited behind it past the lapse. A layer with `renewClaim` renews outside the
+      // queue, so the claim stays renewed while everything else waits. The hold here is core's side of the queue (the
+      // adapter's own queue and its order with its transactions are `claimRenewalConformance`'s); a layer without the
+      // method (memory SQLite) has nothing to check here.
       add("a claim renewal never waits behind the layer's other transactions: the queue held for twice the lapse loses nothing", async (world) => {
         if (typeof world.layer.renewClaim !== "function") return;
         setDeliveryTiming({ renewMs: 30, lapseMs: 400 });
@@ -810,6 +797,81 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const error = lost as unknown;
         assert(error instanceof DelivererLostError && /renewal of the claim was still unsettled when the claim lapsed/.test(error.message), String(error));
         assert(took < 300 + 30 + 500, `lost within the lapse and the grace, after ${took} ms`);
+      });
+
+      // The other side of mesh-yd0i: a transaction of this process that holds the claim's row (here a handler's, whose
+      // body runs inside it) past the lapse. No other process can take the claim while it holds the row, so the
+      // renewal waits for it and the deliverer stays, on every layer, as it did when the renewal went through the queue.
+      add("a handler transaction that holds the claim's row past the lapse loses nothing: no other process can take the claim meanwhile", async (world) => {
+        setDeliveryTiming({ renewMs: 30, lapseMs: 300 });
+        let lost: unknown;
+        let handled = false;
+        const slow = world.recorder("h", [Alpha], { run: async () => { await sleep(700); handled = true; } });
+        const binding = bindDomain(FULL, world.layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: slow } } }) } }, world.frame);
+        await start(world, binding);
+        await sleep(60);
+        await world.publish(binding, [Alpha, 1]);
+        await until(() => handled, "the slow handler finished", 5000);
+        await sleep(150);
+        assert(lost === undefined, `a handler transaction held past the lapse lost the claim: ${String(lost)}`);
+        const age = await claimAge(world.layer);
+        assert(age < 300, `the claim was renewed once the handler's transaction ended, age ${age} ms`);
+      });
+
+      // A renewal beside the layer's own transactions must not fail them: on Postgres at SERIALIZABLE a handler
+      // transaction whose FOR UPDATE on the state row waited for the renewal failed with 40001 once it committed, a
+      // retryable DatabaseBusyError that ended the round, about once per renewal under steady load.
+      add("a claim renewal fails none of the layer's own transactions: rounds under steady load with renewals every 30 ms see no DatabaseBusyError", async (world) => {
+        setDeliveryTiming({ renewMs: 30, lapseMs: 400 });
+        const busy: unknown[] = [];
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          transaction: (async (run, options) => {
+            try { return await world.layer.transaction(run, options); }
+            catch (error) { if (error instanceof DatabaseBusyError) busy.push(error); throw error; }
+          }) as DataLayer["transaction"],
+        });
+        let lost: unknown;
+        let handled = 0;
+        const handler = world.recorder("h", [Alpha], { run: async () => { await sleep(3); handled++; } });
+        const binding = bindDomain(FULL, layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: handler } } }) } }, world.frame);
+        await start(world, binding);
+        let n = 0;
+        for (const end = Date.now() + 800; Date.now() < end;) {
+          await world.publish(binding, [Alpha, ++n], [Alpha, ++n]);
+          await sleep(10);
+        }
+        await until(() => handled === n, `every one of the ${n} events was handled`, 10_000);
+        assert(lost === undefined, `the claim was lost under load: ${String(lost)}`);
+        assert(busy.length === 0, `${busy.length} transactions of the layer failed beside the renewal: ${busy.slice(0, 3).map(String).join("; ")}`);
+      });
+
+      // `release` waits for a renewal in flight (`Renewals.settled`): released beside it, the release could wait on the
+      // claim's row lock or fail and leave the claim to lapse instead of going at once.
+      add("stop() during a claim renewal outside the queue waits for it, then releases the claim at once", async (world) => {
+        if (typeof world.layer.renewClaim !== "function") return;
+        setDeliveryTiming({ renewMs: 30, lapseMs: 1000 });
+        let slow = false;
+        let pending: Promise<boolean> | undefined;
+        let settledAt = 0;
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          renewClaim: (runId: string, generation: number, options: ClaimRenewalOptions) => {
+            if (!slow) return world.layer.renewClaim!(runId, generation, options);
+            pending = sleep(300).then(() => world.layer.renewClaim!(runId, generation, options)).finally(() => { settledAt = Date.now(); });
+            return pending;
+          },
+        });
+        const binding = bindDomain(FULL, layer, { events: { bus: world.bus, keep: world.keep, load: async () => ({ handlers: { process: { h: world.recorder("h", [Alpha]) } } }) } }, world.frame);
+        const delivery = await binding.startDelivery();
+        await sleep(60);
+        slow = true;
+        await until(() => pending !== undefined, "a slow renewal was issued", 2000);
+        await delivery.stop();
+        const stoppedAt = Date.now();
+        assert(settledAt > 0 && settledAt <= stoppedAt, "stop() resolved before the renewal in flight settled");
+        const { state } = await world.state();
+        assert(state.claim === null, `stop() released the claim at once, found ${JSON.stringify(state.claim)}`);
       });
     }
 
@@ -1583,10 +1645,10 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const binding = world.bind({});
         await start(world, binding);
         const subscription: Subscription = await subscribe(binding, { name: "s" }, () => {});
-        await serialized(() => world.layer.transaction(async (tx) => {
+        await world.layer.transaction(async (tx) => {
           const { generation } = await ops(tx).readDeliveryState();
           await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000dd", generation: generation + 1, host: null, pid: null, startedAt: null });
-        }));
+        });
         const cause = await Promise.race([subscription.done, sleep(2000).then(() => "timeout")]);
         assert(cause instanceof DelivererLostError, `the stream ended with ${String(cause)}`);
       });

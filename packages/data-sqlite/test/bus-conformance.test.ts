@@ -96,6 +96,7 @@ describe("renewClaim on a file database, outside the layer's queue", () => {
   const checks = claimRenewalConformance(() => make(true), {
     bareLayer: () => make(false),
     sibling: async (layer) => sqlite({ file: fileOf(layer) }),
+    everyTransactionTakesTheRow: true,
   });
   test("a memory database has no renewal outside its queue, a file database has one", async () => {
     const memory = sqlite({ file: ":memory:" });
@@ -105,8 +106,8 @@ describe("renewClaim on a file database, outside the layer's queue", () => {
       expect(typeof file.renewClaim).toBe("function");
     } finally { await memory.close(); await file.close(); }
   });
-  test("every check runs, the held-row one included", () => {
-    expect(Object.keys(checks).length).toBe(4);
+  test("every check runs, the held-row ones included", () => {
+    expect(Object.keys(checks).length).toBe(6);
   });
   for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
 });
