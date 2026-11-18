@@ -148,6 +148,19 @@ describe("positions (R20, ruling D37 OD5)", () => {
     ]);
     expect(result.diagnostics[0]!.fix).toBe("remove this `&version=`: the mixin Versioned sets &version in every action its `always` block covers");
   });
+  test("Versioned and the entity's own covering `always` block setting &version: reported at the entity's member, naming Versioned (R28)", () => {
+    // Versioned's block sorts after the entity's own, so it is the later write, and its line is the `use` line.
+    const declared = build({ "notes/note.mesh.mx": note(BOTH, "    always actions=[&edit]\n      do\n        set\n          &version=() => 10\n    update :edit\n") });
+    expect(found(declared)).toEqual([
+      ["MESH_DUPLICATE_SET", "notes/note.mesh.mx:13:10", "&version is already set in update :edit of notes.Note by the `always` block of the mixin Versioned (line 5), and a member is set once per action"],
+    ]);
+    expect(declared.diagnostics[0]!.fix).toBe("remove this `&version=`: the mixin Versioned sets &version in every action its `always` block covers");
+    // A block covering the generated update, with its set under a step `when`.
+    const auto = build({ "notes/note.mesh.mx": note(BOTH, "    always types=[:update]\n      do\n        when=() => true\n          set\n            &version=() => 5\n") });
+    expect(found(auto)).toEqual([
+      ["MESH_DUPLICATE_SET", "notes/note.mesh.mx:14:12", "&version is already set in update :update of notes.Note by the `always` block of the mixin Versioned (line 5), and a member is set once per action"],
+    ]);
+  });
   test("Versioned and `lock &version`: MESH_LOCK_MEMBER at the `use` line, naming Versioned, once (ruling D43 OD6)", () => {
     const result = build({ "notes/note.mesh.mx": note(BOTH, "    update :edit\n      do\n        lock &version\n    update :touch\n      do\n        lock &version optional\n") });
     expect(found(result)).toEqual([

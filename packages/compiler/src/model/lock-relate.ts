@@ -112,12 +112,13 @@ export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic
       }
       // A destroy's `set` is `MESH_DESTROY_STEP` already.
       if (action.kind === "update")
-        for (const set of [...blocks.flatMap((block) => setsOf(block.do, member).map((found) => ({ ...found, mixin: mixinOfLine(block) }))), ...setsOf(action.do, member)]) {
-          // A `set` a mixin's `always` block brings in (the shipped `Versioned` bumps `&version`, positioned at its `use`
-          // line) names the mixin: its line is not the includer's to remove (ruling D43 OD6).
-          const mixin = "mixin" in set ? set.mixin : undefined;
-          report("MESH_LOCK_MEMBER", `\`set &${member}\` ${mixin ? `of the mixin ${mixin}, ` : ""}in ${action.kind} :${action.name} of ${entity.fqn}${mixin ? "," : ""} writes the version that ${owns(set)} owns: the lock adds 1 on every write`,
-            set, mixin ? `stop using ${mixin} and declare \`integer :${member} default=1\` in the entity: the lock keeps the version itself` : "remove the `set` line");
+        for (const set of [...blocks.flatMap((block) => setsOf(block.do, member).map((found) => ({ ...found, mixin: mixinOfLine(block) }))), ...setsOf(action.do, member).map((found) => ({ ...found, mixin: undefined }))]) {
+          // A `set` a mixin's `always` block brings in names the mixin. A shipped mixin's line (`Versioned` bumps
+          // `&version`, positioned at its `use` line) is not the includer's to remove, so the fix is to stop using it
+          // (ruling D43 OD6); a project mixin's line is in its own file, where removing the `set` line is the fix.
+          const mixin = set.mixin;
+          report("MESH_LOCK_MEMBER", `\`set &${member}\` ${mixin ? `of the mixin ${mixin.name}, ` : ""}in ${action.kind} :${action.name} of ${entity.fqn}${mixin ? "," : ""} writes the version that ${owns(set)} owns: the lock adds 1 on every write`,
+            set, mixin?.shipped ? `stop using ${mixin.name} and declare \`integer :${member} default=1\` in the entity: the lock keeps the version itself` : "remove the `set` line");
         }
     }
   }

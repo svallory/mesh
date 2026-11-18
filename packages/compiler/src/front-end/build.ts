@@ -1619,7 +1619,7 @@ function buildEntity(
             ...body(tag, true),
             position: pos(tag),
           };
-          if (src.use) markFromMixin(block, src.use.name);
+          if (src.use) markFromMixin(block, src.use.name, src.use.mixin.shipped === true);
           entity.always.push(block);
           continue;
         }

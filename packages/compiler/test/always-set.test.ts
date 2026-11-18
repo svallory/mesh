@@ -38,9 +38,6 @@ describe("a member set by a covering `always` block and by the action (R28)", ()
     ]);
   });
   test("reported once at a write that several actions reach", () => {
-    const result = build({ "notes/note.mesh.mx": note(`    always actions=[&a, &b]\n      do\n        set\n          &body=() => "x"\n${BUMP}    update :a\n    update :b\n`) });
-    // The second block sets `version`, which no other write sets; the first block and the second set different members.
-    expect(said(result)).toEqual([]);
     const both = build({ "notes/note.mesh.mx": note(`${BUMP}    always actions=[&a, &b]\n      do\n        set\n          &version=() => 9\n    update :a\n    update :b\n`) });
     expect(said(both)).toEqual([
       "notes/note.mesh.mx:14:10 MESH_DUPLICATE_SET &version is already set in update :a of notes.Note by the `always` block at line 7, and a member is set once per action",
@@ -56,9 +53,22 @@ describe("a member set by a covering `always` block and by the action (R28)", ()
     ]);
     expect(fixes(result)).toEqual(["remove this `&version=`: the mixin Bumped sets &version in every action its `always` block covers"]);
   });
+  test("an entity's own covering block and a project mixin's block: reported at the entity's own member, naming the mixin", () => {
+    // The mixin's block sorts after the entity's own (OD2), so it is the later write; the line to edit is the entity's.
+    const result = build({
+      "shared/bumped.mesh.mx": "mixin :Bumped\n  actions\n    always types=[:update]\n      do\n        set\n          &version=() => &version + 1\n",
+      "notes/note.mesh.mx": `import { Bumped } from "../shared/bumped.mesh.mx"\n${note("    always actions=[&edit]\n      do\n        set\n          &version=() => 10\n    update :edit\n").replace("entity :Note\n", "entity :Note\n  use mixin=Bumped\n")}`,
+    });
+    expect(said(result)).toEqual([
+      "notes/note.mesh.mx:12:10 MESH_DUPLICATE_SET &version is already set in update :edit of notes.Note by the `always` block of the mixin Bumped (shared/bumped.mesh.mx:3), and a member is set once per action",
+    ]);
+    expect(fixes(result)).toEqual(["remove this `&version=`: the mixin Bumped sets &version in every action its `always` block covers"]);
+  });
   test("legal neighbours", () => {
-    // The action sets it and no block covering the action does; the block sets another member; a create the block does
-    // not cover sets it; two sets of one member in two `when` branches of the action are the action's own.
+    // The action sets it and no block covering the action does; the block sets another member; two blocks that cover the
+    // same actions set different members; a create the block does not cover sets it; two sets of one member in two `when`
+    // branches of the action are the action's own.
+    expect(said(build({ "notes/note.mesh.mx": note(`    always actions=[&a, &b]\n      do\n        set\n          &body=() => "x"\n${BUMP}    update :a\n    update :b\n`) }))).toEqual([]);
     expect(said(build({ "notes/note.mesh.mx": note(`${BUMP}    create :make\n      input\n        &body\n      do\n        set\n          &version=() => 1\n    update :edit\n      input\n        &body\n`) }))).toEqual([]);
     expect(said(build({ "notes/note.mesh.mx": note(`    always types=[:update]\n      do\n        set\n          &body=() => "x"\n    update :edit\n      do\n        set\n          &version=() => 2\n`) }))).toEqual([]);
     expect(said(build({ "notes/note.mesh.mx": note(`    always actions=[&other]\n      do\n        set\n          &version=() => 2\n    update :edit\n      do\n        set\n          &version=() => 3\n    update :other\n`) }))).toEqual([]);

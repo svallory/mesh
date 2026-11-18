@@ -341,6 +341,19 @@ describe("a lock step in a mixin's `always` block (ADR-0100, design 5.6: a line 
   });
 });
 
+describe("a project mixin's `set` of the member an includer's lock owns", () => {
+  test("MESH_LOCK_MEMBER in the mixin's file names the mixin, and the fix removes the `set` line", () => {
+    const result = build({
+      "shared/bumped.mesh.mx": "mixin :Bumped\n  actions\n    always types=[:update]\n      do\n        set\n          &version=() => &version + 1\n",
+      "billing/invoice.mesh.mx": invoice("    update :pay\n      do\n        lock &version\n", "  use mixin=Bumped\n", 'import { Bumped } from "../shared/bumped.mesh.mx"\n')
+        .replace("    decimal :amount min=0\n", "    integer :version default=1\n"),
+    });
+    expect(result.diagnostics.map((d) => [d.code, `${d.position.file}:${d.position.line}:${d.position.column}`, d.message, d.fix])).toEqual([["MESH_LOCK_MEMBER", "shared/bumped.mesh.mx:6:10",
+      "`set &version` of the mixin Bumped, in update :pay of billing.Invoice, writes the version that `lock &version` (billing/invoice.mesh.mx:10) owns: the lock adds 1 on every write",
+      "remove the `set` line"]]);
+  });
+});
+
 describe("generated code", () => {
   test("a mixin function's comment in the expressions file names the mixin's file", async () => {
     const result = build({ "shared/audited.mesh.mx": "mixin :Audited\n  computed\n    integer :twice() { return &amount * 2 }\n", "billing/invoice.mesh.mx": invoice() });
