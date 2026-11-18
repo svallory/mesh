@@ -540,26 +540,25 @@ The callback never runs inside a transaction, and an error ends only its own sub
 
 ## Sending published events to Redis
 
-Another application that follows your events reads them from a broker, not from your database. `@meshfw/redis-outlet` is an extension that sends them to a [Redis stream](https://redis.io/docs/latest/develop/data-types/streams/): `redisOutlet(binding, options)` opens a [live subscription](#live-subscriptions) named `outlet:redis:<stream>` in the delivering process and copies each committed event whose name is in `events` to the stream, then acknowledges it. Only the events you list leave the application, so pass the `publishes` of a [surface](./surfaces.md#what-it-sends-out-publishes), the events that surface's audience may follow; every other row is acknowledged without being sent. The outlet takes a `Binding`, so the process binds its own layer and starts delivery with `startDelivery()` (`connect()` keeps its binding to itself):
+Another application that follows your events reads them from a broker, not from your database. `@meshfw/redis-outlet` is an extension that sends them to a [Redis stream](https://redis.io/docs/latest/develop/data-types/streams/): `redisOutlet(binding, options)` opens a [live subscription](#live-subscriptions) named `outlet:redis:<stream>` in the delivering process and copies each committed event whose name is in `events` to the stream, then acknowledges it. Only the events you list leave the application, so pass the `publishes` of a [surface](./surfaces.md#what-it-sends-out-publishes), the events that surface's audience may follow; every other row is acknowledged without being sent. The outlet takes a `Binding`, so the process binds its own layer and starts delivery with `startDelivery()` (`connect()` keeps its binding to itself). That makes this process the database's deliverer, the one that runs your handlers, so it must bind with the project's whole configuration, as `connect()` would: with `events: { bus }` alone, the handlers of your events module would not be registered and would become orphans, and a second process that calls `connect()` would get `DelivererTakenError`. Pass the config itself:
 
 ```ts "src/outlet.ts"
 import { bind } from "#mesh";
 import { surface } from "#mesh/surfaces/public";
-import { localBus } from "@meshfw/bus-local";
-import { sqlite } from "@meshfw/data-sqlite";
 import { redisOutlet } from "@meshfw/redis-outlet";
+import config from "../mesh.config.ts";
 
 const url = process.env.REDIS_URL;
 if (!url) throw new Error("REDIS_URL is not set: the Redis server the outlet sends to");
 
-const layer = sqlite({ file: "app.db" });
-const binding = bind(layer, { events: { bus: localBus() } });
+// The project's own data layer, events (bus, load, keep, renamed) and seams: the same handlers connect() registers.
+const binding = bind(config.data, { events: config.events, seams: config.seams });
 const delivery = await binding.startDelivery();
 const outlet = await redisOutlet(binding, { url, stream: "public:events", events: surface.publishes, maxLength: 1_000_000 });
 // ... at shutdown
 await outlet.close();
 await delivery.stop();
-await layer.close();
+await config.data.close();
 ```
 
 | Option | What it is |
