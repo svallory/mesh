@@ -22,6 +22,8 @@ export async function spawnWorker(script: string, file: string, scenario: string
     pid: child.pid,
     // process.kill, not child.kill: Bun's subprocess.kill maps SIGSTOP and SIGCONT to Linux's numbers on macOS (1.4.2).
     kill: (signal) => { try { process.kill(child.pid, signal); } catch { /* exited already */ } },
+    // State T in `ps`: kill(SIGSTOP) returns once the signal is queued, not once the process stopped.
+    stopped: () => Bun.spawnSync(["ps", "-o", "stat=", "-p", String(child.pid)]).stdout.toString().trim().startsWith("T"),
     output: () => text,
     done,
   };
