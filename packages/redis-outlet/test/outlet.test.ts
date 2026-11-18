@@ -233,11 +233,12 @@ describeServer("redisOutlet against Redis", () => {
     }
   }, 15_000);
 
-  test("an overflow reopens the subscription under its name once Redis answers, after a back-off while nothing was acknowledged", async () => {
+  test("an overflow while Redis is away reopens the subscription under its name once Redis answers PING", async () => {
     const proxy = redisProxy(redisUrl!);
     try {
       // maxQueue 2 with every row in one page: each reopen is fed the whole backlog above the acknowledged position at
-      // once and overflows again, so the outlet keeps reopening, waiting longer each time, and never ends on its own.
+      // once and overflows again, so the outlet keeps reopening and never ends on its own. The gap between the first two
+      // overflows here is the PING retry's wait as much as the reopen back-off, which the test after this one pins.
       const { binding, paid } = await freshBinding(project(), { maxQueue: 2 });
       const stream = key("overflow");
       const overflows: number[] = [];
@@ -265,6 +266,29 @@ describeServer("redisOutlet against Redis", () => {
     } finally {
       proxy.stop();
     }
+  }, 15_000);
+
+  test("with Redis up, a backlog larger than maxQueue reopens after a back-off that doubles, never in a tight loop", async () => {
+    // Redis answers throughout, so the waits between overflows can come only from the reopen back-off: every reopen is
+    // fed the whole backlog above position 0 in one page and overflows before it acknowledges anything.
+    const { binding, paid } = await freshBinding(project(), { maxQueue: 2 });
+    for (let i = 0; i < 4; i++) await paid();
+    const overflows: number[] = [];
+    const errors: unknown[] = [];
+    const outlet = await redisOutlet(binding, {
+      url: redisUrl!, stream: key("backoff"), events: [PAID], maxLength: 1000, after: 0,
+      onError: (e) => { errors.push(e); if (e instanceof SubscriptionOverflowError) overflows.push(Date.now()); },
+    });
+    await until(async () => {
+      await binding.deliver().catch(() => undefined);
+      return overflows.length >= 3;
+    }, "three overflows", 8000);
+    expect(errors.every((e) => e instanceof SubscriptionOverflowError)).toBe(true);
+    expect(overflows[1]! - overflows[0]!).toBeGreaterThanOrEqual(900);
+    expect(overflows[2]! - overflows[1]!).toBeGreaterThanOrEqual(1900);
+    await outlet.close();
+    expect(await outlet.done).toBeNull();
+    expect(await position(binding, outlet.name)).toBe(0);
   }, 15_000);
 
   test("under started delivery the bus feeds it, and the delivery's stop ends it with null and closes the client", async () => {
