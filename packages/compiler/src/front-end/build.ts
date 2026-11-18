@@ -56,7 +56,7 @@ import { PASCAL_CASE, conceptFileLabel, conceptFileProblems } from "./concept-fi
 import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
-import { architectureFileText, isArchitectureFileName, readArchitectureFile } from "./architecture-file.ts";
+import { MESHFW_ARCHITECTURE, architectureFileText, isArchitectureFileName, readArchitectureFile } from "./architecture-file.ts";
 import { MESHFW_MIXINS, SHIPPED_MIXIN_NAMES, shippedMixinText } from "./shipped-mixins.ts";
 import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, entityCallsOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
@@ -197,8 +197,8 @@ function readImports(imports: readonly IrImport[]): {
     // `from` and `names` are optional in MX's types and present on every authored import; a missing one is the same import-form error.
     const names = entry.names ?? [];
     const from = entry.from ?? "";
-    // A package other than "meshfw" and "meshfw/mixins" is refused by its path below, whatever its form: the form advice is
-    // for a relative import and those two.
+    // A package path the file's kind does not take never reaches here: `fileImports` refuses it by its path first, whatever
+    // its form, so the form advice is for a relative import and the packages the kind takes.
     const formed = from === MESHFW || from === MESHFW_MIXINS || from.startsWith("./") || from.startsWith("../");
     const typeOnly = entry.typeOnly || names.some((name) => name.typeOnly);
     // `import * as billing from …`: one namespace binding and nothing else, from a file of the project.
@@ -280,13 +280,6 @@ function readImports(imports: readonly IrImport[]): {
         });
         continue;
       }
-    } else if (!from.startsWith("./") && !from.startsWith("../")) {
-      problems.push({
-        code: "MESH_UNKNOWN_IMPORT",
-        message: `The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh's own functions (\`import { Mesh } from "meshfw"\`) or "${MESHFW_MIXINS}" for Mesh's mixins (\`import { ${SHIPPED_MIXIN_NAMES[0]} } from "${MESHFW_MIXINS}"\`)`,
-        offset,
-      });
-      continue;
     }
     result.push({
       names: names.map((name) => name.local),
@@ -829,6 +822,55 @@ function ownerSections(
 const inlineDeclarationsOf = (declaredFile: (from: string) => DeclaredFile | undefined, self: string) =>
   (declaredFile(self)?.declares ?? []).filter((declaration) => declaration.kind === "event" || declaration.kind === "command");
 
+/** Whether an import's path names a package: anything but a relative path (`./`, `../`), `"/abs"` and `"node:fs"` included. */
+const isPackagePath = (from: string) => !from.startsWith("./") && !from.startsWith("../");
+/**
+ * The package paths a kind of file takes, and the refusal of every other one (`notes/spec/imports-and-scope.md`, "Paths"):
+ * a file imports code only from the project and Mesh, and each kind takes only the Mesh packages it has a use for. A
+ * refused path is `MESH_UNKNOWN_IMPORT` at the import, whatever its form, and the names it binds bind nothing.
+ */
+export interface PackageRule {
+  paths: readonly string[];
+  refusal: (from: string) => { message: string; fix?: string };
+}
+const PACKAGE_TEXT: Readonly<Record<string, string>> = {
+  [MESHFW]: `"${MESHFW}" for Mesh's own functions (\`import { Mesh } from "${MESHFW}"\`)`,
+  [MESHFW_MIXINS]: `"${MESHFW_MIXINS}" for Mesh's mixins (\`import { ${SHIPPED_MIXIN_NAMES[0]} } from "${MESHFW_MIXINS}"\`)`,
+};
+/** The refusal of a package path that names what the file may import instead: a relative path, or one of `paths`. */
+const relativeOr = (paths: readonly string[]) => ({
+  message: `The import path must be relative (start with ./ or ../)${paths.length ? `, or be ${paths.map((path) => PACKAGE_TEXT[path]).join(" or ")}` : ""}`,
+});
+/** "meshfw/architecture" anywhere but the architecture file, which reads its own imports (`readArchitectureFile`). */
+const ARCHITECTURE_PACKAGE = {
+  message: `"${MESHFW_ARCHITECTURE}" gives Mesh's presets to the architecture file (${architectureFileText}), the one file that imports it`,
+  fix: "remove the import",
+};
+/** "meshfw/mixins" in a file other than an entity file: only an entity includes a mixin. */
+const MIXINS_PACKAGE = {
+  message: `"${MESHFW_MIXINS}" gives an entity file Mesh's mixins, which it includes with \`use mixin=Name\`, and this file includes none`,
+  fix: "remove the import",
+};
+/** An entity file takes "meshfw" (`Mesh`) and "meshfw/mixins" (Mesh's mixins). */
+export const ENTITY_PACKAGES: PackageRule = {
+  paths: [MESHFW, MESHFW_MIXINS],
+  refusal: (from) => (from === MESHFW_ARCHITECTURE ? ARCHITECTURE_PACKAGE : relativeOr(ENTITY_PACKAGES.paths)),
+};
+/** A service file takes "meshfw" alone (OD-12). */
+export const SERVICE_PACKAGES: PackageRule = {
+  paths: [MESHFW],
+  refusal: (from) => (from === MESHFW_ARCHITECTURE ? ARCHITECTURE_PACKAGE : from === MESHFW_MIXINS ? MIXINS_PACKAGE : relativeOr(SERVICE_PACKAGES.paths)),
+};
+/** An aggregate file takes no package: its handlers call actions of the entities it imports (OD7). */
+const AGGREGATE_PACKAGES: PackageRule = {
+  paths: [],
+  refusal: (from) => from === MESHFW_ARCHITECTURE ? ARCHITECTURE_PACKAGE
+    : from === MESHFW_MIXINS ? MIXINS_PACKAGE
+    : { message: `An aggregate file imports only ${meshExtensionsText} files: its handlers call actions of the entities it imports, not ${from === MESHFW ? "`Mesh`" : "a package"}`, fix: "remove the import" },
+};
+/** A file that takes no package; a surface file refuses every import but a `.mesh.mx` one before `fileImports` reads them. */
+const NO_PACKAGES: PackageRule = { paths: [], refusal: () => relativeOr([]) };
+
 /**
  * The imports of an entity or an aggregate file (`readImports`), as the model records them, and the names they bind. Each
  * name goes to the import that binds it. A name bound twice is `MESH_DUPLICATE_IMPORT` at the second binding, which binds
@@ -844,15 +886,16 @@ export function fileImports(
   declaredFile: (from: string) => DeclaredFile | undefined,
   at: (offset: number) => SourcePosition,
   fail: (code: string, message: string, at: SourcePosition, fix?: string) => void,
-  /** Whether the file may import Mesh's mixins: an entity file includes them with `use mixin=`, no other file does. */
-  mixins = false,
+  /** The package paths the file's kind takes (`PackageRule`); every other one is refused by its path. */
+  packages: PackageRule = NO_PACKAGES,
 ) {
-  // A file that includes no mixin refuses "meshfw/mixins" by its path, before its form or names are read: the form or name
-  // advice would lead to this refusal.
-  const offMixins = mixins ? [] : irImports.filter((entry) => entry.from === MESHFW_MIXINS);
-  const parsed = readImports(offMixins.length ? irImports.filter((entry) => !offMixins.includes(entry)) : irImports);
-  for (const entry of offMixins) {
-    fail("MESH_UNKNOWN_IMPORT", `"${MESHFW_MIXINS}" gives an entity file Mesh's mixins, which it includes with \`use mixin=Name\`, and this file includes none`, at(entry.span.sourceStart), "remove the import");
+  // A package path the kind does not take is refused by its path, before its form or names are read: the form or name
+  // advice would lead to this refusal. `from` is optional in MX's types and present on every authored import.
+  const offPath = irImports.filter((entry) => isPackagePath(entry.from ?? "") && !packages.paths.includes(entry.from ?? ""));
+  const parsed = readImports(offPath.length ? irImports.filter((entry) => !offPath.includes(entry)) : irImports);
+  for (const entry of offPath) {
+    const { message, fix } = packages.refusal(entry.from ?? "");
+    fail("MESH_UNKNOWN_IMPORT", message, at(entry.span.sourceStart), fix);
     parsed.refused.push(...(entry.names ?? []).map((name) => name.local));
   }
   for (const problem of parsed.problems) {
@@ -1017,7 +1060,7 @@ function buildEntity(
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>([...inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse(), [entity.name, "entity"]]);
-  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail, true);
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail, ENTITY_PACKAGES);
   entity.imports = imports;
   const pending: {
     ref: MemberRef;
@@ -1933,12 +1976,13 @@ function buildAggregate(
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>(inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse());
-  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
   // An aggregate file imports Mesh files only: its handler bodies, its only functions, call actions of the entities it
-  // imports, and a helper or `Mesh` stays out until a ruling admits one (handlers PR 1, deviation 7).
-  const refused = imports.filter((entry) => entry.helper || entry.mesh);
+  // imports, and a helper, `Mesh` or another package stays out until a ruling admits one (handlers PR 1, deviation 7).
+  // A package path is refused by `fileImports` (`AGGREGATE_PACKAGES`), a helper here.
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail, AGGREGATE_PACKAGES);
+  const refused = imports.filter((entry) => entry.helper);
   for (const entry of refused)
-    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: its handlers call actions of the entities it imports, not ${entry.mesh ? "`Mesh`" : "a helper"}`, entry.position, "remove the import");
+    fail("MESH_UNKNOWN_IMPORT", `An aggregate file imports only ${meshExtensionsText} files: its handlers call actions of the entities it imports, not a helper`, entry.position, "remove the import");
   const aggregate: Aggregate = {
     name,
     fqn,

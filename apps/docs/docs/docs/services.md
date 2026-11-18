@@ -37,7 +37,7 @@ service :Lists
       authorize-if=({ actor }) => actor != null
 ```
 
-The body reads `input` (the cast input), `actor` and `context`, free or destructured, and `%.now` and `%.today`, the transaction's instant. A service has no record, so there is no `self`, no `before` and no `&name` in any of its functions (`MESH_EXPR_FREE_VARIABLE`). It may import entity files, helper modules and `Mesh` from `"meshfw"`; it may not import an event, a command or another service file (`MESH_UNKNOWN_IMPORT`), and an entity file may not import a service. An operation declares no output: what it returns is its result, typed by what the body returns.
+The body reads `input` (the cast input), `actor` and `context`, free or destructured, and `%.now` and `%.today`, the transaction's instant. A service has no record, so there is no `self`, no `before` and no `&name` in any of its functions (`MESH_EXPR_FREE_VARIABLE`). It may import entity files, helper modules and `Mesh` from `"meshfw"`, its one package: any other package path, `"meshfw/mixins"` and `"meshfw/architecture"` included, is `MESH_UNKNOWN_IMPORT`. It may not import an event, a command or another service file (`MESH_UNKNOWN_IMPORT`), and an entity file may not import a service. An operation declares no output: what it returns is its result, typed by what the body returns.
 
 A `service` line takes no `attributes`, `relationships`, `computed`, `checks` or `actions` (`MESH_TAG_NOT_ALLOWED`), an operation at least one `uses` line and one `run` (`MESH_MISSING_CHILD`), and a `uses` line an imported entity and a non-empty list of atoms naming its actions, `auto=` ones included (`MESH_UNKNOWN_ACTION` for one the entity does not have).
 

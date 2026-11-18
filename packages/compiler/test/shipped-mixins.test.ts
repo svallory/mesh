@@ -227,7 +227,7 @@ describe("generated code", () => {
   });
 });
 
-describe("the import paths of an entity file (closes `mesh-imports-any-package` with the architecture file)", () => {
+describe("the import paths of an entity file", () => {
   // One row per spec path and form (`notes/spec/imports-and-scope.md`, "Import paths"), in an entity file of a project on
   // disk, so a helper path resolves.
   const root = mkdtempSync(join(tmpdir(), "mesh-import-paths-"));
@@ -235,6 +235,8 @@ describe("the import paths of an entity file (closes `mesh-imports-any-package` 
   mkdirSync(join(root, "x"), { recursive: true });
   writeFileSync(join(root, "x/x.helpers.ts"), "export const h = () => 1;\n");
   const X = "entity :X\n  attributes\n    uuid :id primary-key\n";
+  // "meshfw/architecture" is the architecture file's alone: an entity file is told so (`import-paths.test.ts` has the other kinds).
+  const ARCHITECTURE = '"meshfw/architecture" gives Mesh\'s presets to the architecture file (architecture.mesh.mx), the one file that imports it';
   const OTHER = 'The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh\'s own functions (`import { Mesh } from "meshfw"`) or "meshfw/mixins" for Mesh\'s mixins (`import { Timestamps } from "meshfw/mixins"`)';
   test.each([
     ['import { X } from "./x.mesh.mx"', []],
@@ -246,9 +248,9 @@ describe("the import paths of an entity file (closes `mesh-imports-any-package` 
     ['import * as M from "meshfw"', ["MESH_IMPORT_FORM", 'import `Mesh` by name: "meshfw" gives an entity file the named export `Mesh` alone']],
     ['import { Timestamps, Versioned } from "meshfw/mixins"', []],
     ['import Timestamps from "meshfw/mixins"', ["MESH_IMPORT_FORM", 'import a mixin by name: "meshfw/mixins" gives the named exports `Timestamps` and `Versioned`']],
-    ['import { MeshRecommended } from "meshfw/architecture"', ["MESH_UNKNOWN_IMPORT", OTHER]],
-    ['import * as a from "meshfw/architecture"', ["MESH_UNKNOWN_IMPORT", OTHER]],
-    ['import a from "meshfw/architecture"', ["MESH_UNKNOWN_IMPORT", OTHER]],
+    ['import { MeshRecommended } from "meshfw/architecture"', ["MESH_UNKNOWN_IMPORT", ARCHITECTURE]],
+    ['import * as a from "meshfw/architecture"', ["MESH_UNKNOWN_IMPORT", ARCHITECTURE]],
+    ['import a from "meshfw/architecture"', ["MESH_UNKNOWN_IMPORT", ARCHITECTURE]],
     ['import { x } from "meshfw/other"', ["MESH_UNKNOWN_IMPORT", OTHER]],
     ['import { z } from "zod"', ["MESH_UNKNOWN_IMPORT", OTHER]],
     // I4: a package path is refused by its path before its form.
