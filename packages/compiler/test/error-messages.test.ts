@@ -120,7 +120,7 @@ describe("`for` and `if` in an entity file say what to write (mesh-for-pipe-mess
   });
 
   // MX alpha.32: every authored form is the one error at the construct. An `else` or `else-if` that follows an `if` is folded
-  // into that `if`'s error, so the error is on the `if`.
+  // into that `if`'s error, so the error is on the `if`. MX alpha.38 closed the last form, `else if(x)` after an `if`.
   test.each([
     ["if(x)", "  if(x)\n", "if", 4, 2],
     ["if|x|=a", "  if|x|=a\n", "if", 4, 2],
@@ -129,7 +129,31 @@ describe("`for` and `if` in an entity file say what to write (mesh-for-pipe-mess
     ["for|x|(y)", "  for|x|(y)\n", "for", 4, 2],
     ["if=true then else(x)", "  if=true\n  else(x)\n", "if", 4, 2],
     ["if=true then else-if(x)", "  if=true\n  else-if(x)\n", "if", 4, 2],
+    // Until MX alpha.38 this form also gave MX_INTERNAL_ERROR at 1:0 ("`<if>` condition carries no span").
+    ["if=true then else if(x)", "  if=true\n  else if(x)\n", "if", 4, 2],
   ])("directly under entity, authored as %s: one MESH_STRUCTURAL_CONSTRUCT with the fix (MX alpha.32)", (_, body, construct, line, column) => {
+    const result = build(keyed + body);
+    expect(result.document).toBeNull();
+    expect(result.diagnostics).toHaveLength(1);
+    const d = result.diagnostics[0]!;
+    expect(d).toMatchObject({
+      severity: "error",
+      code: "MESH_STRUCTURAL_CONSTRUCT",
+      message: `Mesh files are static, so they do not evaluate \`${construct}\``,
+      fix: construct === "for" ? FOR : IF,
+    });
+    expect([d.position.line, d.position.column]).toEqual([line, column]);
+  });
+
+  // The argument forms the bead mesh-if-args-construct names, one level down: under `attributes` and in an action's `validate`.
+  test.each([
+    ["if(x) under attributes", "    if(x)\n", "if", 4, 4],
+    ["if=true then else if(x) under attributes", "    if=true\n    else if(x)\n", "if", 4, 4],
+    ["for(x) under attributes", "    for(x)\n", "for", 4, 4],
+    ["if(x) in a validate", "  actions\n    create :c\n      validate\n        if(x)\n", "if", 7, 8],
+    ["if=true then else if(x) in a validate", "  actions\n    create :c\n      validate\n        if=true\n        else if(x)\n", "if", 7, 8],
+    ["for(x) in a validate", "  actions\n    create :c\n      validate\n        for(x)\n", "for", 7, 8],
+  ])("authored as %s: one MESH_STRUCTURAL_CONSTRUCT with the fix", (_, body, construct, line, column) => {
     const result = build(keyed + body);
     expect(result.document).toBeNull();
     expect(result.diagnostics).toHaveLength(1);
