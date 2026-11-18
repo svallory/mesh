@@ -100,10 +100,21 @@ describe("relateRows", () => {
     ]);
   });
 
-  test("an item whose key is undefined is a new item", async () => {
-    const { spec, calls } = recorded([]);
-    await relateRows(spec, [{ id: undefined, name: "x" }]);
-    expect(calls).toEqual([`create {"name":"x"}`]);
+  test("an item whose key is undefined is a new item, handed on without the key", async () => {
+    const created: Row[] = [];
+    const spec: RelateSpec<Row, string> = {
+      where: "music.Album#tracks", field: "tracks", key: "id", uuidKey: true, source,
+      current: async () => [],
+      create: async (item) => { created.push(item); },
+    };
+    const item = { id: undefined, name: "x" };
+    await relateRows(spec, [item]);
+    expect(created).toHaveLength(1);
+    // The child's strict input refuses an unknown key even when its value is undefined: the key must be gone.
+    expect("id" in created[0]!).toBe(false);
+    expect(created[0]).toEqual({ name: "x" });
+    // The caller's item is not changed.
+    expect("id" in item).toBe(true);
   });
 
   test("a failing call rejects with its own error, and stops the rest", async () => {

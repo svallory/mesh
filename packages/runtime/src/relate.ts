@@ -43,7 +43,8 @@ export interface RelateSpec<Item extends Row, K extends string> {
  *   `update` for each keyed item (in list order), `create` for each new item (in list order). A function that is absent
  *   is not called: without `destroy` a child the list leaves out is kept, without `update` a keyed item keeps its child.
  *
- * An item holding `spec.key` is a `KeyedItem`, any other a `NewItem`: the parent's cast has already checked each against
+ * An item holding `spec.key` is a `KeyedItem`, any other a `NewItem` (handed to `create` without the key, even an
+ * undefined one): the parent's cast has already checked each against
  * its schema, which is what the casts below rest on. A keyed item reaches `update` with the key as stored. A failed call rejects with its own error, unchanged.
  */
 export async function relateRows<Item extends Row, const K extends string>(spec: RelateSpec<Item, K>, items: readonly Item[] | undefined): Promise<void> {
@@ -60,7 +61,10 @@ export async function relateRows<Item extends Row, const K extends string>(spec:
   const fresh: New[] = [];
   for (const [index, item] of items.entries()) {
     if (!(spec.key in item) || item[spec.key] === undefined) {
-      fresh.push(item as unknown as New);
+      // `{ id: undefined, name }` is a new item by its type and its schema, and Zod keeps the undefined key: drop it, or
+      // the child's strict input refuses it as an unknown key.
+      const { [spec.key]: _key, ...rest } = item;
+      fresh.push(rest as unknown as New);
       continue;
     }
     const sent = item[spec.key];
