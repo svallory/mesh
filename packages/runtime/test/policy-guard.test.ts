@@ -107,6 +107,23 @@ describe("guard: what the statement checks", () => {
     expect(auth.guard(scope, tableOf)!.checks).toEqual([{ kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "authorId", class: "string" }, { kind: "value", value: "u1", class: "string" }] }]);
   });
 
+  test("a value its column cannot hold gives no guard (null): the write takes its read path; other bind errors pass through", async () => {
+    const owner = (params: (scope: never) => readonly unknown[]): Check => ({
+      ...row("authorize-if", "owner", false),
+      sql: literal({ kind: "call", fn: "eq", args: [{ kind: "column", depth: 0, name: "authorId", class: "string" }, { kind: "param", index: 0, class: "string" }] }, params),
+    });
+    for (const id of [5, ["u1"], {}]) {
+      const auth = authorizer("blog.Post", "destroy", [policy("owner", [owner((scope: { actor: { id: unknown } }) => [scope.actor.id])])]);
+      const scope = { actor: { id } };
+      await auth.before(layer, scope);
+      expect(auth.guard(scope, tableOf)).toBeNull();
+    }
+    // Parameters that are not a list are a stale build, not a value the caller gave.
+    const broken = authorizer("blog.Post", "destroy", [policy("owner", [owner(() => "u1" as never)])]);
+    await broken.before(layer, {});
+    expect(() => broken.guard({}, tableOf)).toThrow(FrameworkError);
+  });
+
   test("a record-reading check with no sql, or a when that reads the record, is a stale build", async () => {
     const bare: Check = { kind: "authorize-if", check: "owner", record: true, run: () => true };
     const auth = authorizer("blog.Post", "destroy", [policy("owner", [bare])]);

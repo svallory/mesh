@@ -1,9 +1,10 @@
 import { isCheckGroup, isExpression, type Action, type Atom, type Check, type Literal, type Entity, type ModelDocument, type Step, type ValidateItem } from "@meshfw/model";
 import { policyConditions, sqlPositions } from "../model/sql-required.ts";
-import { checksOf, isEmptyGroup } from "../model/action-expressions.ts";
+import { isEmptyGroup } from "../model/action-expressions.ts";
 import { policiesCovering, policyExpressions, readsRecord } from "../model/policies.ts";
 import { alwaysFor, conceptData, stepsFor } from "./views/actions.ts";
 import { effectiveActions } from "./views/inputs.ts";
+import { destroyStrategy } from "./strategy.ts";
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -59,14 +60,16 @@ function checkLines(items: readonly ValidateItem[], depth: number, into: string[
  * Each policy that covers the action, with each of its functions and where it runs (lead ruling 1 of M8a): a
  * function that reads only `actor`, `context` and `input` runs once before the transaction opens; one that reads the
  * record runs inside it, before validate. A read's policies are a filter: one that reads the record is folded into the
- * query as a condition on each row (M10). With none, every call is forbidden.
+ * query as a condition on each row (M10); on a guarded destroy (`guarded` true), one that reads the record runs in the
+ * delete statement (ADR-0046, option B). With none, every call is forbidden.
  */
-function policyLines(entity: Entity, action: Action): string[] {
+function policyLines(entity: Entity, action: Action, guarded = false): string[] {
   const covering = policiesCovering(entity, action);
   if (covering.length === 0) return ["none covers it: every call is forbidden (an action no policy covers is denied)"];
   const record = action.kind === "read" ? "folded into the query: a row is returned only when it holds"
     : action.kind === "create" ? "inside the transaction, on the new instance before the input, before validate"
-      : "inside the transaction, on the locked row, before validate";
+      : guarded ? "in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, on a data layer without the guarded delete, or when a value it compares with a column does not fit the column"
+        : "inside the transaction, on the locked row, before validate";
   const early = action.kind === "read" ? "before the query, once: a caller it does not admit gets no rows" : "before the transaction, once";
   const lines: string[] = [];
   for (const policy of covering) {
@@ -91,9 +94,11 @@ function section(into: string[], name: string, lines: readonly string[]): void {
 /**
  * The plan the generated handler of one action follows, as lines of text (`mesh explain <entity> <action>`).
  * Language neutral and plain: the phases are the ones the handler is written in, and every update is a read followed
- * by a write (ADR-0072: the atomic one-statement update waits until after 1.0). Returns `undefined` for an unknown action.
+ * by a write (ADR-0072: the atomic one-statement update waits until after 1.0). A destroy's strategy comes from
+ * `destroyStrategy`, as the generated action's does, so `capabilities` is the data adapter's: without them (or without
+ * the model) no destroy runs as a guarded delete. Returns `undefined` for an unknown action.
  */
-export function explainAction(entity: Entity, actionName: string, document?: ModelDocument): string[] | undefined {
+export function explainAction(entity: Entity, actionName: string, document?: ModelDocument, capabilities: readonly string[] = []): string[] | undefined {
   const action: Action | undefined = effectiveActions(entity).find((candidate) => candidate.name === actionName);
   // A handler of the entity's `handlers` section is explained by its name when no action has it (a handler may share a
   // name with an action, ruling D44, Q10; the action is the one explained then).
@@ -141,17 +146,15 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
   stepLines(stepsAt(all, false), 0, steps, false, literal);
   const afterWrite: string[] = [];
   stepLines(stepsAt(all, true), 0, afterWrite, true, literal);
-  const recordPolicy = policiesCovering(entity, action).some((policy) => policyExpressions(policy).some(({ expression }) => readsRecord(expression, action.kind === "read" ? "read" : "write")));
-  const reads = action.kind === "update" || checksOf(blocks.flatMap((block) => block.validate)).length > 0 || all.length > 0 || recordPolicy;
+  const destroy = action.kind === "destroy" ? destroyStrategy(document, entity, action, capabilities) : undefined;
   const strategy = action.kind === "create" ? "one insert; nothing is read first"
     : action.kind === "update" ? "read-then-write: every update reads the row under the write lock, checks it, changes it, then writes it"
-      : reads ? "read-then-write: the body can see the stored record, so the row is read under the lock before it is deleted"
-        : "one delete by key; nothing in the body can see the record, so the row is not read (with an afterWrite or afterCommit seam registered it is read under the lock first, so the seam gets `before`)";
+      : destroy!.reason;
   // Printed only when the action has an `on=`: the command it answers, by its FQN, with the identifier the file writes.
   if (action.command) section(lines, "answers", [`command ${action.command.fqn} (on=${action.command.identifier}): \`dispatch\` of an instance runs this action with the command's fields as its input`]);
   section(lines, "strategy", [strategy]);
   section(lines, "input", action.input.map((field) => (field.kind === "argument" ? `${field.name} (argument, not stored)` : `&${field.ref.name}`)));
-  section(lines, "policies", policyLines(entity, action));
+  section(lines, "policies", policyLines(entity, action, destroy?.strategy === "guarded"));
   section(lines, "checks", checks);
   section(lines, "steps", steps);
   // Printed only when the action has one: the steps that run after the row is written, inside the transaction.

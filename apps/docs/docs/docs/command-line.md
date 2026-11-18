@@ -110,7 +110,7 @@ todo.Todo#complete (update)
 
 Each line names a phase of the generated handler:
 
-- **`strategy`** says how many statements the action runs. A create is one insert. Every update reads the row first, under the write lock, and then writes it; a destroy reads only when a check or step can see the record. The plan is fixed at build time.
+- **`strategy`** says how many statements the action runs. A create is one insert. Every update reads the row first, under the write lock, and then writes it; a destroy reads only when a check, step or policy can see the record, and a destroy whose policies read the record is one delete that checks them in the statement when they translate to SQL and the data adapter declares `policy-guards`. The plan is fixed at build time.
 - **`input`** lists what the caller may send: members, and arguments marked `(argument, not stored)`.
 - **`checks`** are the `check`s that run, in order, with each one's `code`. A check from an `always` block is marked `always:` and runs first. A `when` or `details` is shown beside the check that carries it. A `when` line in `validate` is shown once, with the checks it guards indented under it.
 - **`steps`** are the `set`, `when`, `load` and `run` steps in written order; a nested step is indented under its `when`.

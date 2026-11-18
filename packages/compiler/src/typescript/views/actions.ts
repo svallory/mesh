@@ -3,7 +3,7 @@ import { isCheckGroup, isExpression, type Action, type Always, type Atom, type A
 import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-expressions.ts";
 import { filledKey } from "../../model/new-instance.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
-import { hopTables, valueClassOf } from "../../model/sql-condition.ts";
+import { hopTables, lowerCondition, valueClassOf } from "../../model/sql-condition.ts";
 import { policyConditions, sqlPositions } from "../../model/sql-required.ts";
 import { emitError } from "../emit-error.ts";
 import { conceptByFqn } from "./concepts.ts";
@@ -13,6 +13,7 @@ import { globalAlias, globalsImport, withoutStrings, type GlobalsImport } from "
 import { hasLoader, loaderName } from "./load.ts";
 import { callerComputed, effectiveActions, queryColumns, entityInputs, entityLocal, entityPath, entitySegment, loadGenerics, propertyName, takesLoad, typeName, type PlannedInput } from "./inputs.ts";
 import { entityFileComment, txLoadTypes } from "./types.ts";
+import { dataCapabilities, destroyStrategy } from "../strategy.ts";
 
 /**
  * What `actions.ts.jig` renders for one entity: `bind<Entity>(layer, options)`, returning one
@@ -355,7 +356,7 @@ function createHead(lines: readonly { column: string; value: string }[], pending
 }
 
 /** The actions view of one entity. Pure and synchronous; a model it cannot render is an `EmitError`. */
-export function actionsView({ document }: EmitInput, entity: Entity): ActionsView {
+export function actionsView({ document, config }: EmitInput, entity: Entity): ActionsView {
   const recordName = typeName(entity.name, entity.position);
   const key = entity.attributes.find((a) => a.primaryKey)!;
   const inputs = entityInputs(entity, document);
@@ -363,6 +364,9 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   const table = tableAccess(entity);
   const loader = hasLoader(entity);
   const ids = expressionIds(entity);
+  const capabilities = dataCapabilities(config);
+  /** The record-reading policy checks a guarded destroy's statement evaluates (ADR-0046, option B), over every action. */
+  const guardedChecks = new Set<Expression>();
   const runtime = new Set<string>();
   const runtimeTypes = new Set<string>();
   const extraTypes = new Set<string>();
@@ -387,13 +391,15 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
   };
   // ---- policies (M8): what the pre-check and the in-transaction phase print ---------------------
   /** `$authorizer("blog.Post", "publish", [...])`: the policies that cover the action, each function with where it runs (`record`). */
-  const authorizerCall = (action: Action, covering: readonly Policy[]): string => {
+  const authorizerCall = (action: Action, covering: readonly Policy[], guarded: ReadonlySet<Expression> = new Set()): string => {
     runtime.add("authorizer");
     const specs = policySpecs(covering, (expression) => {
       usesExpressions = true;
       return idOf(expression);
     }, action.kind === "read" ? "read" : "write", (expression) => {
-      // A read policy that reads the record is folded into the query: its condition literal, read when the policy runs.
+      // A read policy that reads the record is folded into the query: its condition literal, read when the policy runs;
+      // a guarded destroy's record-reading check carries the literal its guard binds. Any other write check has none.
+      if (action.kind !== "read" && !guarded.has(expression)) return undefined;
       conditionsUsed = true;
       return `() => $conditions[${JSON.stringify(ids.get(expression)!)}]`;
     });
@@ -609,6 +615,18 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     // Does the call need the stored row? An update always reads it (every update is read then write, ADR-0072);
     // a destroy reads it only when something in its body can see it.
     const reads = action.kind === "update" || checks.length > 0 || steps.length > 0 || recordPolicies.length > 0;
+    // A destroy whose only reason to read is record-reading policy checks that translate runs as one guarded delete when
+    // the data adapter declares policy-guards (ADR-0046, option B): the read path above stays in the generated code for a
+    // seam that wants `before`, a permission question, a data layer without the guarded delete and a value the checks
+    // compare with a column that the column cannot hold.
+    const strategy = action.kind === "destroy" ? destroyStrategy(document, entity, action, capabilities) : undefined;
+    const guarded = strategy?.strategy === "guarded";
+    const guardedSet = new Set(strategy?.guarded.map(({ expression }) => expression) ?? []);
+    if (guarded) {
+      for (const expression of guardedSet) guardedChecks.add(expression);
+      tableOfUsed = true;
+      runtime.add("wantsChanges");
+    }
     // The columns a `set` step assigns: a create may fill a required column from one (D04), from the top level of the body.
     const setColumns = new Set<string>();
     for (const step of steps)
@@ -900,7 +918,7 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     optionsUsed = true;
     const seamTarget = `{ entity: ${JSON.stringify(entity.fqn)}, action: ${JSON.stringify(action.name)} }`;
     emit("// seam: afterWrite runs here, inside the transaction, before the steps marked after=:write; application code, so what it calls resolves with plain values");
-    emit(`await frame.plain(() => $recordWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context));`);
+    emit(`await frame.plain(() => $recordWrite(tx, options.seams, ${seamTarget}, ${action.kind === "create" ? "null" : guarded ? "$seen ?? null" : reads ? "$before" : "$before ?? null"}, ${writes ? "$stored" : "null"}, parsed, context));`);
     let result = "$stored";
     // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
     if (hasAfterWrite(steps)) {
@@ -973,7 +991,34 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
     if (used.plan) planUsed = true;
     if (used.options) optionsUsed = true;
 
-    const statements = ["// transaction: opens here; what follows commits together or not at all", ...prelude, ...head, ...afterHead, ...body];
+    const opening = "// transaction: opens here; what follows commits together or not at all";
+    let statements = [opening, ...prelude, ...head, ...afterHead, ...body];
+    if (guarded) {
+      // The read path, built as for any read-first destroy, runs inside the `if`; the guarded delete in the `else`.
+      const [, keyLine, ...readHead] = head;
+      const written = body.indexOf("$noteWrite(tx);");
+      const notFound = `throw new $NotFoundError(${JSON.stringify(entity.fqn)}, ${KEY});`;
+      statements = [
+        opening,
+        ...prelude,
+        "// plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, the data layer has no guarded delete, or a value the checks compare with a column is one the column cannot hold (the guard is then null)",
+        keyLine!,
+        "let $seen: $Record | undefined;",
+        "const $guard = $wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded ? null : $policies.guard($preScope, $tableOf);",
+        "if ($guard === null) {",
+        "// read the row under the write lock, run the policies on it in memory, then delete it",
+        ...readHead,
+        ...afterHead,
+        ...body.slice(0, written),
+        "$seen = $before;",
+        "} else {",
+        "// one delete: it fails as forbidden inside the database when the checks that read the record deny, and deletes nothing",
+        `const $deleted = $guard === undefined ? await tx.deleteByKey(${table}, ${KEY}) : await $policies.statement(() => tx.deleteByKeyGuarded!(${table}, ${KEY}, $guard));`,
+        `if (!$deleted) ${notFound}`,
+        "}",
+        ...body.slice(written),
+      ];
+    }
     // ---- policies (M8): the pre-check, before the transaction opens -------------------------------------------
     const preCheck = [
       "// pre-check: every policy that covers the action must pass; the checks that read only actor, context and input run here, once, before any seam, so a denial writes nothing, takes no lock and runs no seam",
@@ -981,8 +1026,11 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       "const $actor = $context.actor;",
       // the instant of the transaction the call joins, else its own, pinned on its first read.
       "const $clock = frame.clock(options.clock);",
-      `const $policies = ${authorizerCall(action, covering)};`,
-      `await $policies.before(layer, ${preScope("parsed", where)});`,
+      `const $policies = ${authorizerCall(action, covering, guardedSet)};`,
+      // A guarded destroy binds its guard on the scope the pre-check saw.
+      ...(guarded
+        ? [`const $preScope = ${preScope("parsed", where)};`, "await $policies.before(layer, $preScope);"]
+        : [`await $policies.before(layer, ${preScope("parsed", where)});`]),
     ];
     // ---- end policies ------------------------------------------------------------------------------------------
     // The working copy of the record is declared only when something reads it.
@@ -1027,10 +1075,14 @@ export function actionsView({ document }: EmitInput, entity: Entity): ActionsVie
       const lowered = place.lower();
       if (lowered.ok) hopTables(lowered.lowered.tree, reached);
     }
+    for (const expression of guardedChecks) {
+      const lowered = lowerCondition(document, entity, expression, { mode: "write" });
+      if (lowered.ok) hopTables(lowered.lowered.tree, reached);
+    }
     if (callerComputedUsed) for (const field of callerFields) if (field.kind === "translated") hopTables(field.lowered.tree, reached);
     const entries = [...reached].sort().map((fqn) => `${JSON.stringify(fqn)}: ${tableAccess(document.entities.find((candidate) => candidate.fqn === fqn)!)}`);
     runtimeTypes.add("TableHandle").add("TableOf");
-    moduleLines.push(`/** The table of each entity the conditions of this file's reads reach, by FQN. */`,
+    moduleLines.push(`/** The table of each entity the conditions of this file's reads${guardedChecks.size ? " and guarded deletes" : ""} reach, by FQN. */`,
       `const $tableOf: $TableOf = (fqn) => (${entries.length ? `{ ${entries.join(", ")} }` : "{}"} as { readonly [fqn: string]: $TableHandle })[fqn]!;`);
   }
   // Both maps end in `as const`: a key named like a member of Object (`toString`) would otherwise take that member's type
