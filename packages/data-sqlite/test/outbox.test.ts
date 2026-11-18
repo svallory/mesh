@@ -232,6 +232,24 @@ describe("data-sqlite's outbox", () => {
       await createSchema(layer, { invoices: tables.invoices! });
       await expect(layer.readOutbox(0, 10)).rejects.toThrow("mesh db push");
       await expect(layer.transaction((tx) => tx.appendEvent!(outboxRow(1)))).rejects.toThrow("mesh db push");
+      // The same rewrite on the outbox delete and on core's delivery operations, each naming its own tables.
+      const refusal = (work: Promise<unknown>) => work.then(() => undefined, (error: unknown) => error as Error);
+      const deleted = await refusal(layer.transaction((tx) => tx.deleteOutboxThrough!(0)));
+      expect(deleted).toBeInstanceOf(FrameworkError);
+      expect(deleted!.message).toStartWith("The outbox table mesh_outbox does not exist in this database: prepare the schema with `mesh db push`");
+      const state = await refusal(layer.transaction((tx) => tx.readDeliveryState!()));
+      expect(state).toBeInstanceOf(FrameworkError);
+      expect(state!.message).toStartWith("The deliverer's tables (mesh_outbox_state with the claim, mesh_handler_progress, mesh_subscription_progress, mesh_outbox_failures) do not exist in this database: prepare the schema with `mesh db push`");
+    } finally { await layer.close(); }
+  });
+
+  test.each([["not a Date", "2026-01-01"], ["an invalid Date", new Date("nope")]])("an outbox row whose occurredAt is %s is refused", async (_, occurredAt) => {
+    const layer = sqlite({ file: ":memory:" });
+    try {
+      await createSchema(layer, tables);
+      await expect(layer.transaction((tx) => tx.appendEvent!({ ...outboxRow(1), occurredAt: occurredAt as Date })))
+        .rejects.toThrow(new FrameworkError("An outbox row's occurredAt must be a valid Date"));
+      expect((await layer.readOutbox(0, 10)).rows).toEqual([]);
     } finally { await layer.close(); }
   });
 

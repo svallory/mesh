@@ -184,6 +184,15 @@ describe("MESH_SCHEMA_* build errors", () => {
     });
   });
 
+  // A column name is an attribute's, which is ASCII; a table= is any text, so only a table can differ in a non-ASCII letter.
+  test("SQLite folds ASCII letters only: tables that differ in a non-ASCII letter's case are distinct", () => {
+    const view = schemaView(input({
+      "a/post.mesh.mx": 'entity :Post table="ärger"\n  attributes\n    uuid :id primary-key\n',
+      "b/note.mesh.mx": 'entity :Note table="ÄRGER"\n  attributes\n    uuid :id primary-key\n',
+    }));
+    expect(view.tables.map((table) => table.nameLiteral).sort()).toEqual(['"ärger"', '"ÄRGER"'].sort());
+  });
+
   test("same-named entities in two modules build when their tables differ: nothing is exported under the entity name", () => {
     const view = schemaView(input({
       "sales/post.mesh.mx": 'entity :Post table="sales_posts"\n  attributes\n    uuid :id primary-key\n',
