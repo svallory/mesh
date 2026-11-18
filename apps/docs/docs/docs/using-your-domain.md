@@ -194,7 +194,7 @@ await Todo.complete({ id: "00000000-0000-4000-8000-0000000000aa" }, { actor: ali
 await disconnect();
 ```
 
-**One statement or two.** A create is always one `INSERT`. An update is a read followed by a write: the action reads the row under the write lock, runs the checks on it, applies the steps, and writes the result, all in one transaction. Because a transaction holds the lock until it commits, two callers cannot both pass a check on the same stored row, which is what makes the [version recipe](./entities.md#a-version-number-that-refuses-a-stale-update) safe. A destroy reads the row only when its checks or steps can see it; `Todo.rename` is one read and one write, and a destroy with no `validate` or `do` is one `DELETE`. `mesh explain` prints which one an action is.
+**One statement or two.** A create is always one `INSERT`. An update is a read followed by a write: the action reads the row under the write lock, runs the checks on it, applies the steps, and writes the result, all in one transaction. Because a transaction holds the lock until it commits, two callers cannot both pass a check on the same stored row, which is what makes the [`lock` step](./entities.md#a-version-number-that-refuses-a-stale-update) safe: it compares the caller's version with the locked row. A destroy reads the row only when its checks or steps can see it (a `lock` is one of its steps, so a locked destroy always reads it); `Todo.rename` is one read and one write, and a destroy with no `validate` or `do` is one `DELETE`. `mesh explain` prints which one an action is.
 
 ### Destroy
 
