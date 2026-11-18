@@ -7,7 +7,7 @@ description: "Decision record 0099: an entity or aggregate file may hold one `ha
 
 ## Status
 
-Accepted (lead ruling D44, pending operator review). The `handlers` section is built: its syntax, checks and model (handlers design PR 1), and the generated files and their registration (PR 2). The Redis outlet (PR 3) is not built yet. Amends [ADR-0079](./0079-commands-events-and-the-outbox.md), whose amendment of 2026-10-17 says "handlers are registered in TypeScript": they may now also be declared in a `.mesh.mx` file.
+Accepted (lead ruling D44, pending operator review). The `handlers` section is built: its syntax, checks and model came first, then the generated files and their registration. The Redis outlet (decision 6) is not built yet. Amends [ADR-0079](./0079-commands-events-and-the-outbox.md), whose amendment of 2026-10-17 says "handlers are registered in TypeScript": they may now also be declared in a `.mesh.mx` file.
 
 ## Date
 
@@ -19,7 +19,7 @@ lead, delegated: ruling D44 of 2026-11-17 takes every recommendation of the revi
 
 ## Context
 
-The events specification placed handlers in a separate `handlers` section of the `.mesh.mx` files, "after 1.0; until then handlers are registered in TypeScript", and wrote nothing more about it: no line form, scope or name rule. Until this record a project wrote every handler in its events module (`src/events.ts`, loaded by `events.load`), away from the entity whose events it handles and whose actions it calls. The same bead asked for broker adapters and fan-out across machines; delivery from several processes on one Postgres database is the `multi-process` capability, built by its own units, so this record decides only what reaches handlers from a `.mesh.mx` file and how events leave for other applications.
+The events specification placed handlers in a separate `handlers` section of the `.mesh.mx` files, "after 1.0; until then handlers are registered in TypeScript", and wrote nothing more about it: no line form, scope or name rule. Until this record a project wrote every handler in its events module (`src/events.ts`, loaded by `events.load`), away from the entity whose events it handles and whose actions it calls. The same request asked for broker adapters and fan-out across machines; delivery from several processes on one Postgres database is the `multi-process` capability, built by its own units, so this record decides only what reaches handlers from a `.mesh.mx` file and how events leave for other applications.
 
 ## Decision
 
