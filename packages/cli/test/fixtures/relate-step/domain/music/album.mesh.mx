@@ -1,0 +1,31 @@
+import { Track } from "./track.mesh.mx"
+entity :Album
+  attributes
+    uuid :id primary-key
+    string :title
+  relationships
+    has-many :tracks entity=Track
+  computed
+    count :trackCount of=&tracks
+  actions auto=[:read]
+    create :make
+      input
+        &title
+      do
+        relate &tracks create=:add
+    update :edit
+      input
+        &title
+      validate
+        check :fewTracks that=() => &trackCount <= 2 code="few-tracks" message="an album keeps at most two tracks"
+      do
+        relate &tracks create=:add update=:rename destroy=:remove
+    update :keep
+      do
+        relate &tracks create=:add
+    update :pick
+      do
+        relate &tracks destroy=:remove
+  policies
+    policy :open types=[:read, :create, :update]
+      authorize-if=() => true

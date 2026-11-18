@@ -64,6 +64,7 @@
         "run",
         "publish",
         "lock",
+        "relate",
         "filter",
         "sort",
         "policies",

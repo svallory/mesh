@@ -729,6 +729,7 @@ Steps run top to bottom after validation, on the record with the member inputs a
 | `load=[&customer]` | Loads relationships or computed fields onto the returned record; writes nothing |
 | `run(…) { }` | Plain code inside the transaction; `self`, `before`, `input` and the records reached through them are read-only in it (a change throws, so use `set`); it can call other entities' actions |
 | `lock &version` | An optimistic lock on an update or a destroy: the caller's `expectedVersion` must be the stored `version`, compared before the checks; an update writes it plus 1 ([A version number that refuses a stale update](#a-version-number-that-refuses-a-stale-update)) |
+| `relate &tracks create=:add update=:rename destroy=:remove` | Makes the rows of a has-many follow a list the caller sends, after the action's own row is written, through the related entity's own actions ([Changing the rows of a has-many](#changing-the-rows-of-a-has-many)) |
 
 The larger example below shows `set`, `when` and `load`. For the work a field assignment cannot express, use `run`:
 
@@ -792,6 +793,38 @@ run [after=:write] ({ self, context }) {
 ```
 
 An application may open the same kind of transaction itself; see [several actions in one transaction](./using-your-domain.md#several-actions-in-one-transaction).
+
+#### Changing the rows of a has-many
+
+`relate` takes the children of a record as a list in the action's input and makes the has-many's rows match it:
+
+```mx "src/domain/music/album.mesh.mx"
+import { Track } from "./track.mesh.mx"
+
+entity :Album
+  attributes
+    uuid :id primary-key
+    string :title
+  relationships
+    has-many :tracks entity=Track
+  actions auto=[:read]
+    update :edit
+      input
+        &title
+      do
+        relate &tracks create=:add update=:rename destroy=:remove
+```
+
+Each option names an action of the related entity: `create=` a create that takes the `belongs-to` back to this entity (`&album`), `update=` an update, `destroy=` a destroy that requires nothing but the key. At least one is written, and each mode is on only when its option is. The step adds an optional input field named like the relationship, `tracks`, a list whose items are either a new item, the fields `create=` takes less `&album` (`{ name: "Encore" }`; taken only with `create=`), or a keyed item, the key plus the fields `update=` takes (`{ id, name: "Intro (live)" }`; the key alone without `update=`; taken only with `update=` or `destroy=`, since without them an item cannot name a child to keep). An item the list does not take is refused when the call casts its input. An item is checked when the call casts its input, so a bad field is reported at its path, `["tracks", 1, "name"]`, with its own line rule's code.
+
+After the action's own row is written, in written order among the steps that run after the write, the relate reads the current children the caller may read (the related entity's read policies run, as for `load=[&tracks]`), then calls `destroy=` for each one the list leaves out, `update=` for each keyed item and `create=` for each new item (filling `&album`), in that order. Each call is an ordinary call of the related entity's action with the caller's context, so its own checks, policies, steps and events run; a call that fails rolls the whole action back, and the caller gets that call's error as it is. The action returns its row read again by key.
+
+- A call that leaves `tracks` out changes no child. An empty list with `destroy=` destroys every child the caller may read; without `destroy=` a child the list leaves out is kept.
+- A keyed item whose key is no current child's (another album's, or one the caller cannot read) is the issue `not_related` at `["tracks", i, "id"]`, a key given twice the issue `duplicate`; they are reported together, before any call. A `uuid` key matches in any letter case.
+- A child the caller cannot read is never destroyed.
+- The action's own policies and `validate` checks run before the write, so they see the children as they were: a check over `count :trackCount of=&tracks` counts the old rows. Limit the list on the input instead: `check :few [ that=({ input }) => input.tracks == null || input.tracks.length <= 20 ... ]`.
+
+`relate` is written directly under the `do` of a create or an update, one line per relationship. The build refuses (`MESH_RELATE_STEP`) a line with no option, one under `when` or in an `always` block, one in a destroy, a second line for the same relationship, and a member that is not a has-many or that goes `through=` a link entity. An option that names no action of the related entity is `MESH_UNKNOWN_ACTION`; one that names an action of another kind, a create that does not take the `belongs-to` back (the generated `auto=` create takes none), a create or update that has a `relate` of its own, or a destroy that requires an input besides the key (a required argument, or a lock that is not `optional`) is `MESH_RELATE_ACTION`. An input of the action named like the relationship is `MESH_DUPLICATE_INPUT`. A project that has exported its generators (`mesh export generators`) exports them again to use `relate`: the actions and validators templates gained the parts it prints.
 
 ### Reads: filter and sort
 

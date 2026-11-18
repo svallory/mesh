@@ -517,7 +517,9 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       } else map.set(field.name, { ...attributeTy(field as unknown as Attribute) });
     }
     // A field a step adds (`expectedVersion` for `lock &version`) is typed as an argument of its type is.
-    for (const field of derivedInputs(entity, action)) map.set(field.name, { c: "number", nullable: field.nullable, int: true });
+    // A relate's list is `any` (the typer has no list type for input), so `input.tracks.length` types and builds.
+    for (const field of derivedInputs(entity, action))
+      map.set(field.name, field.source === "lock" ? { c: "number", nullable: field.nullable, int: true } : { c: "any", nullable: true });
     return map;
   };
   /** The names a check reads as `input.x` that are no member input: the arguments and the fields a step adds. */

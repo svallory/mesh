@@ -1,7 +1,8 @@
 import type { Action, Always, Diagnostic, Entity, ModelDocument, Step } from "@meshfw/model";
 import { error } from "./diagnostics.ts";
-import { lockField, locksIn, type LockStep } from "./derived-input.ts";
+import { lockField, lockOf, locksIn, relatesOf, type LockStep, type RelateStep } from "./derived-input.ts";
 import { alwaysCovers } from "./policies.ts";
+import { entitiesByFile, keyHolderOf } from "./key-holder.ts";
 
 const key = (step: { position: { file: string; line: number; column: number } }) => `${step.position.file}:${step.position.line}:${step.position.column}`;
 const article = (word: string) => (/^[aeiou]/.test(word) ? "an" : "a");
@@ -34,9 +35,14 @@ function setsOf(steps: readonly Step[], member: string): { position: Step["posit
  *   lock reaches; a `set` of it reaches an update the lock reaches;
  * - `MESH_DUPLICATE_INPUT`: an authored input is named like the field the lock adds (`expectedVersion`).
  *
+ * And those of the `relate` step (the builder refuses one under a step `when`, in an `always` block and with no option),
+ * `checkRelates` below.
+ *
  * Called by `buildModel` after the relationships are resolved and before `checkCommands`, which reads the derived field.
  */
-export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic[]): void {
+export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic[], nearestName: (name: string, candidates: Iterable<string>) => string | undefined = () => undefined): void {
+  const byFile = entitiesByFile(document);
+  for (const entity of document.entities) checkRelates(entity, byFile, diagnostics, nearestName);
   for (const entity of document.entities) {
     const reported = new Set<string>();
     const report = (code: string, message: string, at: { position: Step["position"] }, fix: string) => {
@@ -105,6 +111,112 @@ export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic
         for (const set of [...blocks.flatMap((block) => setsOf(block.do, member)), ...setsOf(action.do, member)])
           report("MESH_LOCK_MEMBER", `\`set &${member}\` in ${action.kind} :${action.name} of ${entity.fqn} writes the version that ${owns} owns: the lock adds 1 on every write`,
             set, "remove the `set` line");
+    }
+  }
+}
+
+type ActionLike = Pick<Action, "kind" | "name" | "input" | "do" | "position">;
+/** The declared actions of an entity, then its generated (`auto=`) ones, which take no input and have no step. */
+const actionsOf = (entity: Entity): ActionLike[] => [
+  ...entity.actions,
+  ...entity.auto.map((kind) => ({ kind, name: kind as string, input: [], do: [], position: entity.position })),
+];
+const atoms = (names: readonly string[]) => names.map((name) => `:${name}`).join(", ");
+
+/** What a related member is when it is no has-many, for `MESH_RELATE_STEP`; undefined when it is one or names nothing (`MESH_UNKNOWN_MEMBER` is the builder's). */
+function notHasMany(entity: Entity, name: string): { what: string; fix: string } | undefined {
+  const relation = entity.relationships.find((candidate) => candidate.name === name);
+  if (relation?.kind === "belongs-to") return { what: "a belongs-to", fix: `set a belongs-to with \`set &${name}=...\`` };
+  if (relation?.kind === "has-one") return { what: "a has-one", fix: "call its target's action from a `run [after=:write]` step" };
+  if (relation) return undefined;
+  if (entity.attributes.some((attribute) => attribute.name === name)) return { what: "an attribute", fix: `write it with \`set &${name}=...\`` };
+  if (entity.computed.some((field) => field.name === name)) return { what: "a computed field", fix: "relate a has-many of the entity" };
+  return undefined;
+}
+
+/**
+ * The rules of the `relate` step that need the model (ADR-0100, "The relate step"), each at its position:
+ *
+ * - `MESH_RELATE_STEP`: a relate in a destroy; the same relationship related twice by one action (at the later line); a
+ *   member that is no has-many, or a has-many `through=` a link entity;
+ * - `MESH_UNKNOWN_ACTION`: `create=`, `update=` or `destroy=` names no action of the related entity;
+ * - `MESH_RELATE_ACTION`: it names an action of another kind; the create takes no input of the inverse `belongs-to`; the
+ *   create or update has a `relate` of its own; the destroy takes a required input besides the key;
+ * - `MESH_DUPLICATE_INPUT`: an authored input is named like the relationship (the field the relate adds).
+ *
+ * A has-many whose inverse the build could not resolve carries its own error and is skipped here.
+ */
+function checkRelates(entity: Entity, byFile: ReadonlyMap<string, Entity>, diagnostics: Diagnostic[], nearestName: (name: string, candidates: Iterable<string>) => string | undefined): void {
+  for (const action of entity.actions) {
+    const relates = action.do.filter((step): step is RelateStep => step.kind === "relate");
+    if (!relates.length) continue;
+    if (action.kind === "destroy") {
+      for (const step of relates)
+        diagnostics.push(error("MESH_RELATE_STEP", `destroy :${action.name} of ${entity.fqn} has a \`relate\` step, and a destroy writes no row its children could point to`, step.position, "remove the `relate` line"));
+      continue;
+    }
+    const seen = new Map<string, RelateStep>();
+    for (const step of relates) {
+      const name = step.relationship.name;
+      const first = seen.get(name);
+      if (first) {
+        diagnostics.push(error("MESH_RELATE_STEP", `${action.kind} :${action.name} of ${entity.fqn} relates &${name} twice (line ${first.position.line} and line ${step.position.line}): one list decides the rows`, step.position, "remove one of them"));
+        continue;
+      }
+      seen.set(name, step);
+      for (const input of action.input)
+        if (input.kind === "argument" && input.name === name)
+          diagnostics.push(error("MESH_DUPLICATE_INPUT", `Input ${name} conflicts with the one \`relate &${name}\` (line ${step.position.line}) adds`, input.position, "rename the argument"));
+      const wrong = notHasMany(entity, name);
+      if (wrong) {
+        diagnostics.push(error("MESH_RELATE_STEP", `\`relate &${name}\`: &${name} is ${wrong.what} of ${entity.fqn}, and \`relate\` manages the rows of a has-many`, step.relationship.position, wrong.fix));
+        continue;
+      }
+      const relation = entity.relationships.find((candidate) => candidate.name === name && candidate.kind === "has-many");
+      if (!relation) continue;
+      if (relation.through) {
+        diagnostics.push(error("MESH_RELATE_STEP", `\`relate &${name}\`: &${name} goes through a link entity (through=${relation.through.entity.identifier}), and \`relate\` manages the rows of a has-many without one`, step.relationship.position, `call ${relation.through.entity.identifier}'s actions from a \`run [after=:write]\` step`));
+        continue;
+      }
+      const target = keyHolderOf(byFile, entity, relation);
+      if (!relation.inverse || !target) continue;
+      const actions = actionsOf(target);
+      for (const option of ["create", "update", "destroy"] as const) {
+        const ref = step[option];
+        if (!ref) continue;
+        const named = actions.find((candidate) => candidate.name === ref.name);
+        const ofKind = actions.filter((candidate) => candidate.kind === option).map((candidate) => candidate.name);
+        if (!named) {
+          const near = nearestName(ref.name, actions.map((candidate) => candidate.name));
+          diagnostics.push(error("MESH_UNKNOWN_ACTION", `:${ref.name} is not an action of ${target.fqn}: \`${option}=\` names one of its ${option} actions${ofKind.length ? ` (${atoms(ofKind)})` : ", and it has none"}.${near === undefined ? "" : ` Did you mean :${near}?`}`, ref.position));
+          continue;
+        }
+        if (named.kind !== option) {
+          diagnostics.push(error("MESH_RELATE_ACTION", `\`${option}=:${ref.name}\` names ${named.kind} :${ref.name} of ${target.fqn}, and \`${option}=\` names ${option === "update" ? "an" : "a"} ${option} action`, ref.position,
+            ofKind.length ? `name ${option === "update" ? "an" : "a"} ${option} action of ${target.fqn} (${atoms(ofKind)})` : `declare ${option === "update" ? "an" : "a"} ${option} action on ${target.fqn}`));
+          continue;
+        }
+        const own = relatesOf(named)[0];
+        if (option !== "destroy" && own) {
+          diagnostics.push(error("MESH_RELATE_ACTION", `${named.kind} :${named.name} of ${target.fqn} has its own \`relate &${own.relationship.name}\` (line ${own.position.line}), and an item of \`relate &${name}\` cannot carry a list of its own`, ref.position, `name an action of ${target.fqn} without a \`relate\` step`));
+          continue;
+        }
+        if (option === "create" && !named.input.some((input) => input.kind === "member" && input.ref.name === relation.inverse)) {
+          const auto = !target.actions.includes(named as Action);
+          diagnostics.push(error("MESH_RELATE_ACTION", `create :${named.name} of ${target.fqn} takes no &${relation.inverse}, so \`relate &${name}\` cannot attach the rows it creates to ${entity.fqn}`, ref.position,
+            auto ? `declare a create on ${target.fqn} that takes \`&${relation.inverse}\` and name it` : `add \`&${relation.inverse}\` to the \`input\` of create :${named.name}`));
+          continue;
+        }
+        if (option === "destroy") {
+          const argument = named.input.find((input) => input.kind === "argument" && !input.nullable && input.default === undefined);
+          const lock = lockOf(target, named);
+          const takes = argument && argument.kind === "argument" ? `\`${argument.name}\``
+            : lock && lock.step.optional !== true ? `\`${lock.field}\`, which \`lock &${lock.step.member.name}\` adds` : undefined;
+          if (takes)
+            diagnostics.push(error("MESH_RELATE_ACTION", `destroy :${named.name} of ${target.fqn} takes ${takes}, and \`relate &${name}\` destroys a child with its key alone`, ref.position,
+              argument ? "name a destroy that takes only the key" : "name a destroy that takes only the key, or make the lock `optional`"));
+        }
+      }
     }
   }
 }

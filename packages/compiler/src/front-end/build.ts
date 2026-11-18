@@ -925,7 +925,7 @@ function buildEntity(
   entity.imports = imports;
   const pending: {
     ref: MemberRef;
-    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter" | "check" | "lock";
+    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter" | "check" | "lock" | "relate";
   }[] = [];
   const checkRef = (
     ref: MemberRef,
@@ -1167,9 +1167,9 @@ function buildEntity(
       const block = tags(holder.children).find((t) => t.name === "validate");
       return block ? validateLines(block, new Map()) : [];
     };
-    /** The steps under a `do` or, `nested`, under a step `when`. */
-    const steps = (holder: Tag, nested = false): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag, nested) ?? []);
-    const buildStep = (tag: Tag, nested: boolean): Step | undefined => {
+    /** The steps under an action's `do`, under a step `when` (`nested`), or under an `always` block's `do` (`always`). */
+    const steps = (holder: Tag, nested = false, always = false): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag, nested, always) ?? []);
+    const buildStep = (tag: Tag, nested: boolean, always: boolean): Step | undefined => {
         const position = pos(tag);
         const assigned = new Set<string>();
         if (tag.name === "set")
@@ -1224,7 +1224,7 @@ function buildEntity(
           return {
             kind: "when",
             condition: expr(attr(tag, "value")),
-            steps: steps(tag, true),
+            steps: steps(tag, true, always),
             position,
           };
         if (tag.name === "load")
@@ -1255,6 +1255,32 @@ function buildEntity(
           }
           return { kind: "lock", member, ...(opt(tag, "optional") === true ? { optional: true as const } : {}), position };
         }
+        // `relate &tracks create=:add ...` (ADR-0100, "The relate step"). Written only at the top level of an action's own
+        // `do`: under a step `when` the list would be taken on some calls and dropped on others, and in an `always` block it
+        // would add a list input to every action the block covers. The relationship's kind, the actions the options name
+        // and every rule that needs another entity are `checkLockRelate`'s (`model/lock-relate.ts`).
+        if (tag.name === "relate") {
+          const relationship = checkRef(readMember(attr(tag, "member"), at), "relate");
+          if (nested || always) {
+            fail("MESH_RELATE_STEP", nested
+              ? "a `relate` step under `when` would take the list on some calls and drop it on others: it is written directly under the action's own `do`"
+              : `a \`relate\` step in an \`always\` block would add a \`${relationship.name}\` input to every action the block covers: it is written directly under the action's own \`do\``,
+              tag, nested ? `move \`relate &${relationship.name}\` out of the \`when\`` : `move \`relate &${relationship.name}\` to the \`do\` of the action it belongs to`);
+            return undefined;
+          }
+          const named: { create?: MemberRef; update?: MemberRef; destroy?: MemberRef } = {};
+          for (const option of ["create", "update", "destroy"] as const) {
+            const value = attr(tag, option);
+            const atom = value ? atomOf(value) : undefined;
+            if (value && atom) named[option] = { name: atom.name, position: at(attrOffset(value)) };
+          }
+          if (!named.create && !named.update && !named.destroy) {
+            fail("MESH_RELATE_STEP", `\`relate &${relationship.name}\` names no action: \`create=\`, \`update=\` and \`destroy=\` name the actions of the related entity it calls`, tag,
+              "add `create=:<a create action of the related entity>`");
+            return undefined;
+          }
+          return { kind: "relate", relationship, ...named, position };
+        }
         // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a `check` under a step `when`
         // (`do` itself does not take one).
         if (tag.name === "check") {
@@ -1266,9 +1292,9 @@ function buildEntity(
         }
         throw new Error(`Unexpected step ${tag.name}`);
     };
-    const body = (holder: Tag) => {
+    const body = (holder: Tag, always = false) => {
       const block = tags(holder.children).find((t) => t.name === "do");
-      return { validate: checks(holder), do: block ? steps(block) : [] };
+      return { validate: checks(holder), do: block ? steps(block, false, always) : [] };
     };
     const types = (a: Attr) =>
       atomList(a).map((value): ActionType => {
@@ -1444,7 +1470,7 @@ function buildEntity(
         if (tag.name === "always") {
           entity.always.push({
             ...scope(tag),
-            ...body(tag),
+            ...body(tag, true),
             position: pos(tag),
           } satisfies Always);
           continue;
@@ -2827,7 +2853,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   checkServices(document, diagnostics, nearestName);
   resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
-  checkLockRelate(document, diagnostics);
+  checkLockRelate(document, diagnostics, nearestName);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });
   computeNeeds(document, diagnostics);
   checkLifecycleLimits(document, diagnostics, {

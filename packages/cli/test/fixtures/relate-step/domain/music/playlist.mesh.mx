@@ -1,0 +1,16 @@
+import { Entry } from "./entry.mesh.mx"
+entity :Playlist
+  attributes
+    integer :id primary-key
+    string :name
+  relationships
+    has-many :entries entity=Entry
+  actions auto=[:read]
+    create :make
+      input
+        &name
+      do
+        relate &entries create=:add
+  policies
+    policy :open types=[:read, :create]
+      authorize-if=() => true

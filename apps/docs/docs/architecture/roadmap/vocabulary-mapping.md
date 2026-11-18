@@ -44,6 +44,7 @@ Ash examples follow [Ash features](../research/ash-features.md), section 12; the
 | `argument :paid_at, :utc_datetime` | `input` section: `datetime :paidAt` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | `change set_attribute(:state, :published)` | `do` then `set` then `&state=:published` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | `change optimistic_lock(:version)` | `do` then `lock &version` | [ADR-0100](../decisions/0100-the-lock-step.md) |
+| `change manage_relationship(:tracks, type: :direct_control)` | `do` then `relate &tracks create=:add update=:rename destroy=:remove` (the related entity's own actions, named; a key that names no current child is refused as `not_related`, not created) | [ADR-0100](../decisions/0100-the-lock-step.md#amendment-2026-11-17-the-relate-step) |
 | `validate present(:title)` | `string :title` is required by default; `input` takes `&title` | [ADR-0067](../decisions/0067-members-imports-input-static-files.md) |
 | a custom validation module with a message | `check :label [ that=fn code=... message=... ]` | [ADR-0053](../decisions/0053-validate-then-do.md) |
 | resource-level `changes` and `validations` | `always types=[...]` under `actions` | [ADR-0053](../decisions/0053-validate-then-do.md) |
@@ -63,7 +64,7 @@ Grouped by why. Row numbers refer to section 3.
 - **Ash's aggregates are Mesh's rollups.** Mesh's `aggregate` is the domain-driven design one, a file naming a root entity and its parts ([ADR-0080](../decisions/0080-aggregates-and-concepts.md)).
 - **Not planned**: generic actions (55), manual actions (61), `NewType` and embedded resources (35), `bypass` and policy groups (97, rejected because a passing bypass fails open and depends on order), a policy solver.
 - **Before 1.0, milestone not assigned** (operator, 2026-10-18; [roadmap](./roadmap.md), section 5): many-to-many and join resources (40), written as a `has-many` with `through=` naming the link entity ([ADR-0070](../decisions/0070-has-many-via.md), amended 2026-11-14 and 2026-11-16; built, the `has-many.through` row of section 3; the link is an ordinary entity, and Ash's join-resource options are not planned), and, not built, a raw query (103, 104; [ADR-0087](../decisions/0087-raw-sql-escape-hatch.md), Option E, accepted by the lead on 2026-11-17 pending the operator: `query` from `#mesh`, called from application code and helpers; a fragment inside translated expressions is M10's to decide). Until that ruling this page listed the first as not planned and the second as after v1.
-- **After v1**: identities beyond `unique` on one attribute (78, 79), upserts (62), bulk actions (63), multitenancy as an extension (12, 109), `relate` for managing related records (47), other hooks (71; there is no `after-commit` step, [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)).
+- **After v1**: identities beyond `unique` on one attribute (78, 79), upserts (62), bulk actions (63), multitenancy as an extension (12, 109), other hooks (71; there is no `after-commit` step, [ADR-0079](../decisions/0079-commands-events-and-the-outbox.md)).
 - **Not scheduled**: the resource options of row 6, preparations (9, 70, 72), pipelines (11, 76), temporal resources (13), `uuid_v7` and integer keys (16, 17), `update_default` (24), `description`, `sensitive`, `source` (26), selection and filterability options (28, 29), arrays (34), relationship options (42 to 46), action options (50, 58, 64, 65, 77), field policies (98), access types (99), `authorize_unless` and `forbid_unless` (94), calculation options and arguments (83, 84), aggregate options (88), `^ref` (108).
 - **Replaced by something different**: `public?` (22, replaced by a surface's `fields`, [ADR-0077](../decisions/0077-surfaces-and-file-kinds.md)), `require_atomic?` (59, inferred), `code_interface` (7, generated functions), `data_layer` and `authorizers` (3, 5, configuration or core).
 
@@ -242,6 +243,11 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `lock` | `lock &version` | `lock` | on main |
 | `lock.member` | `lock &version` | `lock.member` | on main |
 | `lock.optional` | `lock &version optional` | `lock.optional` | on main |
+| `relate` | `relate &lines create=:add update=:rename destroy=:remove` | `relate` | on main |
+| `relate.member` | `relate &lines create=:add` | `relate.member` | on main |
+| `relate.create` | `relate &lines create=:add` | `relate.create` | on main |
+| `relate.update` | `relate &lines update=:rename` | `relate.update` | on main |
+| `relate.destroy` | `relate &lines destroy=:remove` | `relate.destroy` | on main |
 | `max` | `max :total of=&lines.dueOn` | `max` | on main |
 | `max.filter` | `max :total of=&lines.dueOn filter=(line) => line.dueOn < %.today` | `max.filter` | on main |
 | `max.name` | `max :total of=&lines.dueOn` | `max.name` | on main |

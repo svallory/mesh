@@ -3,11 +3,12 @@ import { alwaysCovers } from "./policies.ts";
 
 /**
  * The input fields Mesh adds to an action because a step asks for one, written nowhere in its `input` section (ADR-0100):
- * `lock &version` adds `expectedVersion`. They are not stored in `Action.input`, which holds what the author wrote; every
+ * `lock &version` adds `expectedVersion`, and `relate &tracks` a list named like its relationship, `tracks`. They are not stored in `Action.input`, which holds what the author wrote; every
  * consumer of an action's input (the input view, the command check, the expression typer, `mesh explain`) appends
  * `derivedInputs` to it.
  */
 export type LockStep = Extract<Step, { kind: "lock" }>;
+export type RelateStep = Extract<Step, { kind: "relate" }>;
 
 /** `expected` + the member name with its first letter upper-cased: `version` gives `expectedVersion`. */
 export const lockField = (member: string): string => `expected${member[0]!.toUpperCase()}${member.slice(1)}`;
@@ -29,19 +30,37 @@ export function lockOf(entity: Pick<Entity, "always">, action: Pick<Action, "kin
   return step ? { step, field: lockField(step.member.name) } : undefined;
 }
 
-/** One input field a step adds: its name, the step, and whether a call must give it (not nullable) or may leave it out (nullable). */
-export interface DerivedField {
-  name: string;
-  source: "lock";
-  step: LockStep;
-  required: boolean;
-  nullable: boolean;
+/**
+ * The `relate` steps of an action's own `do`, in written order: the only place one is read (the builder refuses one under
+ * a step `when` or in an `always` block, `checkLockRelate` one in a destroy or a read).
+ */
+export function relatesOf(action: Pick<Action, "kind" | "do">): RelateStep[] {
+  if (action.kind !== "create" && action.kind !== "update") return [];
+  return action.do.filter((step): step is RelateStep => step.kind === "relate");
 }
 
-/** The derived input fields of an action, in the order its input type lists them after the authored ones: the lock's. */
+/**
+ * One input field a step adds: its name, the step, and whether a call must give it (not nullable) or may leave it out
+ * (nullable). A relate's list is always optional and never nullable: a call that leaves it out changes no child.
+ */
+export type DerivedField =
+  | { name: string; source: "lock"; step: LockStep; required: boolean; nullable: boolean }
+  | { name: string; source: "relate"; step: RelateStep; required: false; nullable: false };
+
+/**
+ * The derived input fields of an action, in the order its input type lists them after the authored ones: the lock's,
+ * then one per `relate` in written order (a second relate of one relationship is refused, `MESH_RELATE_STEP`, and adds
+ * no second field).
+ */
 export function derivedInputs(entity: Pick<Entity, "always">, action: Pick<Action, "kind" | "name" | "do">): DerivedField[] {
+  const fields: DerivedField[] = [];
   const lock = lockOf(entity, action);
-  if (!lock) return [];
-  const optional = lock.step.optional === true;
-  return [{ name: lock.field, source: "lock", step: lock.step, required: !optional, nullable: optional }];
+  if (lock) {
+    const optional = lock.step.optional === true;
+    fields.push({ name: lock.field, source: "lock", step: lock.step, required: !optional, nullable: optional });
+  }
+  for (const step of relatesOf(action))
+    if (!fields.some((field) => field.name === step.relationship.name))
+      fields.push({ name: step.relationship.name, source: "relate", step, required: false, nullable: false });
+  return fields;
 }

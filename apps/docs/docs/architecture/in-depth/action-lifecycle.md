@@ -45,7 +45,7 @@ What `self` holds depends on where a function runs ([ADR-0053](../decisions/0053
 enter -> cast -> plan -> pre-check ->
   [ transaction opens -> read with lock (or build the new record)
     -> policy checks that read the record -> lock -> validate -> apply the input
-    -> do -> data layer -> run [after=:write] ]
+    -> do -> data layer -> run [after=:write], publish, relate ]
   -> commit -> after commit
 ```
 
@@ -56,7 +56,7 @@ enter -> cast -> plan -> pre-check ->
 | 3 | Plan | The generated function follows the plan fixed at build time (below). | Steps |
 | 4 | Pre-check | Policy checks that need no stored record run first. | Authorizer slot |
 | 5 | Transaction | Opens, and runs in the order below: the row read with a write lock (a create builds its new record instead), the policy checks that read the record, the `lock` comparison when one reaches the action ([ADR-0100](../decisions/0100-the-lock-step.md)), `validate`, the member inputs applied, the `do` steps; a locked update writes its version plus 1 with the row. | Policy checks |
-| 6 | Data layer | Calls go through the one data-layer contract; an atomic update is one statement. A create fills each attribute from input, then from its default, then from the column default; an update sends only the keys the call provided; a destroy returns `void` and raises `NotFoundError` when its key names no row. | Data layer |
+| 6 | Data layer | Calls go through the one data-layer contract; an atomic update is one statement. A create fills each attribute from input, then from its default, then from the column default; an update sends only the keys the call provided; a destroy returns `void` and raises `NotFoundError` when its key names no row. After the write, still in the transaction, the steps marked `after=:write`, the `publish` steps and the `relate` steps run in written order; a `relate` makes a has-many's rows follow the caller's list through the related entity's own actions, with the caller's context ([ADR-0100](../decisions/0100-the-lock-step.md#amendment-2026-11-17-the-relate-step)). | Data layer |
 | 7 | Commit | The transaction closes. | none in v1 |
 | 8 | After commit | The typed result, with anything named by `load`, or a classed error. | Tracer |
 
