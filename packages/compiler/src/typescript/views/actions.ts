@@ -2,6 +2,7 @@ import { dirname, relative } from "node:path";
 import { isCheckGroup, isExpression, type Action, type Always, type Atom, type Attribute, type Check, type Entity, type Expression, type Literal, type ModelDocument, type Policy, type SourcePosition, type Step, type ValidateItem } from "@meshfw/model";
 import { checksOf, isEmptyGroup, validateExpressions } from "../../model/action-expressions.ts";
 import { filledKey } from "../../model/new-instance.ts";
+import { lockOf } from "../../model/derived-input.ts";
 import { alwaysCovers, policiesCovering, policyExpressions, readsRecord } from "../../model/policies.ts";
 import { hopTables, lowerCondition, valueClassOf } from "../../model/sql-condition.ts";
 import { policyConditions, sqlPositions } from "../../model/sql-required.ts";
@@ -675,7 +676,7 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
       const seen = checks.length > 0 || steps.length > 0;
       const accepted = new Map<string, { value: string; given: string }>();
       for (const field of input.fields) {
-        if (inputArgument(action, field.attribute.name)) continue;
+        if (field.derived || inputArgument(action, field.attribute.name)) continue;
         const column = columnOf(entity, field.attribute.name, field.attribute.position).name;
         const value = read("parsed", field.attribute.name);
         const present = given(field.attribute.name);
@@ -735,7 +736,7 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
         // the stored record, as the checks see it; the accepted input is applied after them
         head.push(...(writes ? ["const $changes: $Partial<$Record> = {};"] : []), "const $record: $Record = { ...$before };");
         for (const field of input.fields.slice(1)) {
-          if (field.query || inputArgument(action, field.attribute.name)) continue;
+          if (field.query || field.derived || inputArgument(action, field.attribute.name)) continue;
           const column = columnOf(entity, field.attribute.name, field.attribute.position);
           const value = read("parsed", field.attribute.name);
           applied.push(`if (${given(field.attribute.name)}) ${writes ? `${read("$changes", column.name)} = ` : ""}${read("$record", column.name)} = ${value};`);
@@ -752,6 +753,23 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
       emit("await $policies.inside($checkScope($s));");
     }
     // ---- end policies ------------------------------------------------------------------------------------------
+
+    // lock (ADR-0100): the caller's version against the stored one, after the policies that read the record and before
+    // validate, reported alone; the row is locked, so it cannot change before the write. The issue's label is `lock`, not
+    // null: a null label is a cast's (shape) issue, and a stale version is a content failure.
+    const lock = lockOf(entity, action);
+    if (lock) {
+      const member = lock.step.member.name;
+      const sent = read("parsed", lock.field);
+      const stored = read("$before", member);
+      const line = `${lock.step.position.file}:${lock.step.position.line}`;
+      const source = `{ file: ${JSON.stringify(lock.step.position.file)}, line: ${lock.step.position.line}, column: ${lock.step.position.column + 1} }`;
+      const message = `\`the record changed since it was read: ${member} is \${${stored}}, and the call expected \${${sent}}\``;
+      runtime.add("InvalidInputError");
+      emit(`// lock &${member} (${line}): the caller must have read the stored ${member}; the row is locked, so it cannot change before the write`);
+      emit(`if (${lock.step.optional ? `${sent} != null && ` : ""}${sent} !== ${stored})`);
+      emit(`  throw new $InvalidInputError([{ label: "lock", code: "expected-version", path: [${JSON.stringify(lock.field)}], message: ${message}, source: ${source}, details: { ${propertyName(lock.field)}: ${sent}, ${propertyName(`actual${lock.field.slice("expected".length)}`)}: ${stored} } }]);`);
+    }
 
     // validate
     if (checks.length > 0) {
@@ -899,6 +917,8 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
       emit(`const $stored = await tx.insert(${table}, $changes);`);
     } else if (action.kind === "update") {
       for (const attribute of stamped) { used.now = true; emit(`${read("$changes", attribute.name)} = $now;`); }
+      // The lock writes its member: the stored value plus 1, after every step before the write (which saw the stored one).
+      if (lock) emit(`${read("$changes", lock.step.member.name)} = ${read("$record", lock.step.member.name)} = ${read("$before", lock.step.member.name)} + 1;`);
       if (used.scope) {
         // A call a function made before this write may have changed this very row; the action must not write after deciding on a stale copy.
         runtime.add("writeCount");
@@ -1201,9 +1221,9 @@ export function hasAfterWrite(steps: readonly Step[]): boolean {
   return steps.some((step) => step.kind === "publish" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
 }
 
-/** True when something among the steps runs before the write: a `set`, a `load`, a plain `run`, or a `when` holding one. */
+/** True when something among the steps runs before the write: a `set`, a `load`, a plain `run`, or a `when` holding one (a `lock` runs before `validate`, at its own point). */
 function hasBeforeWrite(steps: readonly Step[]): boolean {
-  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "publish" ? false : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
+  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "publish" || step.kind === "lock" ? false : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
 }
 
 /** True when `name` is a typed input argument of the action, which is not stored. */

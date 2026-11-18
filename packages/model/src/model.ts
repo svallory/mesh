@@ -220,6 +220,12 @@ export type Step = (
    * [after=:write]` steps.
    */
   | { kind: "publish"; fn: Expression }
+  /**
+   * `lock &version`: an optimistic lock. The caller's `expectedVersion` must equal the stored member, compared right after
+   * the record-reading policies and before `validate`; an update writes the member plus 1. Only at the top level of a
+   * `do` that reaches updates and destroys alone. `optional`: a call without the field is not compared.
+   */
+  | { kind: "lock"; member: MemberRef; optional?: true }
 ) & { position: SourcePosition };
 /** The command an action answers (`on=PayInvoice`): the model's record of it, for `dispatch`, `explain` and the checks. */
 export interface CommandRef {

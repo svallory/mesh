@@ -73,6 +73,7 @@ import { resolveRelationships } from "./relationships.ts";
 import { checkLifecycleLimits } from "../model/lifecycle-limits.ts";
 import { checkSqlRequired } from "../model/sql-required.ts";
 import { checkCommands } from "../model/commands.ts";
+import { checkLockRelate } from "../model/lock-relate.ts";
 import { checkPublishSteps } from "../model/publish-steps.ts";
 import { aggregatesOf, resolveAggregates } from "../model/aggregates.ts";
 import { classNameOf, isClassName } from "../model/class-name.ts";
@@ -924,7 +925,7 @@ function buildEntity(
   entity.imports = imports;
   const pending: {
     ref: MemberRef;
-    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter" | "check";
+    scope: "input" | "sort" | "load" | "set" | "actions" | "expression" | "filter" | "check" | "lock";
   }[] = [];
   const checkRef = (
     ref: MemberRef,
@@ -1166,9 +1167,9 @@ function buildEntity(
       const block = tags(holder.children).find((t) => t.name === "validate");
       return block ? validateLines(block, new Map()) : [];
     };
-    /** The steps under a `do` or a `when`. */
-    const steps = (holder: Tag): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag) ?? []);
-    const buildStep = (tag: Tag): Step | undefined => {
+    /** The steps under a `do` or, `nested`, under a step `when`. */
+    const steps = (holder: Tag, nested = false): Step[] => tags(holder.children).flatMap((tag) => buildStep(tag, nested) ?? []);
+    const buildStep = (tag: Tag, nested: boolean): Step | undefined => {
         const position = pos(tag);
         const assigned = new Set<string>();
         if (tag.name === "set")
@@ -1223,7 +1224,7 @@ function buildEntity(
           return {
             kind: "when",
             condition: expr(attr(tag, "value")),
-            steps: steps(tag),
+            steps: steps(tag, true),
             position,
           };
         if (tag.name === "load")
@@ -1243,13 +1244,24 @@ function buildEntity(
         // an event that owners list and the action's owner does not, needs every entity built (`checkPublishSteps`).
         if (tag.name === "publish")
           return { kind: "publish", fn: expr(attr(tag, "value"), "expression", "publish"), position };
+        // `lock &version` (ADR-0100). The `when` contract takes the steps `do` takes, so MX admits one under a step `when`;
+        // a lock that guards some calls and not others is no lock, so it is refused there and dropped. The member's kind
+        // and every rule that needs the actions it reaches are `checkLockRelate`'s (`model/lock-relate.ts`).
+        if (tag.name === "lock") {
+          const member = checkRef(readMember(attr(tag, "member"), at), "lock");
+          if (nested) {
+            fail("MESH_LOCK_STEP", "a `lock` step under `when` would guard some calls and not others: it is written directly under `do`", tag, `move \`lock &${member.name}\` out of the \`when\``);
+            return undefined;
+          }
+          return { kind: "lock", member, ...(opt(tag, "optional") === true ? { optional: true as const } : {}), position };
+        }
         // The `when` contract serves a step and a `when` in `validate` alike, so MX admits a `check` under a step `when`
         // (`do` itself does not take one).
         if (tag.name === "check") {
           // A reference is still a use of its check: refused here, it is not also reported unused.
           const reference = attr(tag, "member");
           if (reference && !attr(tag, "name")) usedChecks.add(readMember(reference, at).name);
-          fail("MESH_TAG_NOT_ALLOWED", "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`", tag);
+          fail("MESH_TAG_NOT_ALLOWED", "`when` in `do`: `check` is not allowed here; allowed children: `set`, `when`, `load`, `run`, `publish`, `lock`", tag);
           return undefined;
         }
         throw new Error(`Unexpected step ${tag.name}`);
@@ -2815,6 +2827,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   checkServices(document, diagnostics, nearestName);
   resolveAggregates(document, propPositions, diagnostics, nearestName);
   resolveRollups(document, rollups, diagnostics);
+  checkLockRelate(document, diagnostics);
   checkExpressions(document, diagnostics, { demotionOf, copyOf: copyExpression });
   computeNeeds(document, diagnostics);
   checkLifecycleLimits(document, diagnostics, {

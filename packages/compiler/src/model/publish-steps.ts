@@ -17,9 +17,10 @@ const publishesOnly = (step: Step): boolean => step.kind === "publish" || (step.
  * A step that runs before the action's row is written: a `set`, a `load`, a `run` with no `after=`, and a `when`, whose
  * condition is read before the write. A `when` that holds only `publish` steps is left out: its condition is read before
  * the write, but all it guards runs after it, so a `publish` written ahead of it still runs in the order on the page. This
- * is the spec's way of publishing one of several events (Claim `:end`, "What Hyper needs"), one `when=` per outcome.
+ * is the spec's way of publishing one of several events (Claim `:end`, "What Hyper needs"), one `when=` per outcome. A
+ * `lock` writes nothing of its own before the write (it compares before `validate`, wherever it is written).
  */
-const runsBeforeWrite = (step: Step): boolean => !publishesOnly(step) && !(step.kind === "run" && step.after === "write");
+const runsBeforeWrite = (step: Step): boolean => !publishesOnly(step) && !(step.kind === "run" && step.after === "write") && step.kind !== "lock";
 
 /** The steps in written order, a `when` before the steps it holds. */
 function flatten(steps: readonly Step[]): Step[] {

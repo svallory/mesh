@@ -192,7 +192,7 @@ const options = (type: string) => ({
   // The builder refuses either on a line with none of the three (`checkRuleText` in `build.ts`).
   ...(["string", "integer", "float", "decimal"].includes(type) ? { message: text(), code: text() } : {}),
 });
-const steps = children("set", "when", "load", "run", "publish");
+const steps = children("set", "when", "load", "run", "publish", "lock");
 const body = { validate: {}, do: {} };
 /** The action types that take `validate` and `do`. A read writes nothing, so it has no step to run and no write for a check to guard: its contract leaves both out, and either under a read is `MESH_TAG_NOT_ALLOWED`. */
 const WRITE_TYPES = ACTION_TYPES.filter((type) => type !== "read");
@@ -568,6 +568,12 @@ const contracts: ContractMap = {
           ctx.fail("this value is no function: a `publish` raises the event its function returns, as in `publish=() => new InvoicePaid({ ... })`", { at: a.loc, code: "MESH_PUBLISH" });
       }
     },
+  }),
+  // `lock &version`: an optimistic lock (ADR-0100). The member is the whole line; a value after it is MX's `MESH_SYNTAX`,
+  // and `optional` lets a call leave the version out. Under a step `when` the builder refuses it (`MESH_LOCK_STEP`).
+  lock: closed({
+    parents: ["do", "when"],
+    attributes: { member: member(true), optional: flag() },
   }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
   sort: closed({ parents: ["read"], children: children("asc", "desc") }),

@@ -20,6 +20,7 @@ import { checksOf } from "./action-expressions.ts";
 import { newInstanceComputed, newInstanceGaps, newInstanceMembers } from "./new-instance.ts";
 import { alwaysCovers, policyCovers } from "./policies.ts";
 import { rollupRoute } from "./rollup-operation.ts";
+import { derivedInputs } from "./derived-input.ts";
 
 /**
  * Types every translated expression across the whole model (M4, ADR-0012 option A).
@@ -515,8 +516,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
         map.set(field.ref.name, a ? { ...attributeTy(a), nullable: a.nullable || action.kind === "update" } : { c: "any", nullable: false });
       } else map.set(field.name, { ...attributeTy(field as unknown as Attribute) });
     }
+    // A field a step adds (`expectedVersion` for `lock &version`) is typed as an argument of its type is.
+    for (const field of derivedInputs(entity, action)) map.set(field.name, { c: "number", nullable: field.nullable, int: true });
     return map;
   };
+  /** The names a check reads as `input.x` that are no member input: the arguments and the fields a step adds. */
+  const argumentsOf = (entity: Entity, action: Pick<Action, "kind" | "name" | "input" | "do">) =>
+    new Set([...action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : [])), ...derivedInputs(entity, action).map((field) => field.name)]);
 
   function steps(list: Step[], entity: Entity, scope: Scope): void {
     for (const step of list) {
@@ -599,10 +605,10 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   /** A `validate` list without the named checks it uses by reference (typed per covered action below), its `when` lines kept. */
   const withoutReferences = (items: readonly ValidateItem[]): ValidateItem[] =>
     items.flatMap((item): ValidateItem[] => isCheckGroup(item) ? [{ ...item, lines: withoutReferences(item.lines) }] : item.reference ? [] : [item]);
-  /** The action as a referrer of a named check: it takes its declared inputs and, on an update or a destroy, the key. */
-  const referrerOf = (entity: Entity, action: Pick<Action, "kind" | "name" | "input">, through = ""): Referrer => {
+  /** The action as a referrer of a named check: it takes its declared inputs, the fields its steps add and, on an update or a destroy, the key. */
+  const referrerOf = (entity: Entity, action: Pick<Action, "kind" | "name" | "input" | "do">, through = ""): Referrer => {
     const key = action.kind === "update" || action.kind === "destroy" ? entity.attributes.filter((a) => a.primaryKey).map((a) => a.name) : [];
-    const takes = new Set([...key, ...action.input.map((field) => (field.kind === "member" ? field.ref.name : field.name))]);
+    const takes = new Set([...key, ...action.input.map((field) => (field.kind === "member" ? field.ref.name : field.name)), ...derivedInputs(entity, action).map((field) => field.name)]);
     return { who: `${action.kind} :${action.name}`, through, lacks: (name) => !takes.has(name) };
   };
   const copy = (e: Expression): Expression => options.copyOf ? options.copyOf(e) : structuredClone(e);
@@ -654,12 +660,12 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       if (filter && last) visit(filter, { ...base, locals: new Map([[filter.param, { c: "record", nullable: false, entity: last }]]) }, true);
     }
     for (const action of entity.actions) {
-      const scope: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action) };
+      const scope: Scope = { ...base, beforeNullable: action.kind === "create", args: argumentsOf(entity, action), inputs: inputsOf(entity, action) };
       if (action.filter) visit(action.filter, scope, true);
       blocks(entity, action.validate, action.do, scope, action.kind === "create" ? [action] : [], referrerOf(entity, action));
     }
     // The actions an `always` block can cover: the declared ones and the generated (`auto`) ones, which take no input.
-    const every = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, input: [] as Action["input"] }))];
+    const every = [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, input: [] as Action["input"], do: [] as Action["do"] }))];
     for (const block of entity.always) {
       const named = block.actions?.map((ref) => entity.actions.find((a) => a.name === ref.name)?.kind);
       const covers: (string | undefined)[] = block.types ?? named ?? ["create"];
@@ -688,7 +694,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       diagnostics.length = kept;
       for (const [index, action] of covered.entries()) {
         const copies = pristine[index]!;
-        const own: Scope = { ...base, beforeNullable: action.kind === "create", args: new Set(action.input.flatMap((field) => (field.kind === "argument" ? [field.name] : []))), inputs: inputsOf(entity, action as Action) };
+        const own: Scope = { ...base, beforeNullable: action.kind === "create", args: argumentsOf(entity, action), inputs: inputsOf(entity, action as Action) };
         blocks(entity, copies, [], own, action.kind === "create" ? [action] : [], referrerOf(entity, action, ` through the \`always\` block at line ${block.position.line}`));
       }
     }

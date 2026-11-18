@@ -238,6 +238,9 @@ The `optional` rows are command field lines, tested in a command file with an an
 | `listen.renamed-from` | `listen :mailed [on=Paid renamed-from=:sent] ({ event }) { return event.id }` | `listen.renamed-from` | on main |
 | `load` | `load=[&lines]` | `load` | on main |
 | `load.value` | `load=[&lines]` | `load.value` | on main |
+| `lock` | `lock &version` | `lock` | on main |
+| `lock.member` | `lock &version` | `lock.member` | on main |
+| `lock.optional` | `lock &version optional` | `lock.optional` | on main |
 | `max` | `max :total of=&lines.dueOn` | `max` | on main |
 | `max.filter` | `max :total of=&lines.dueOn filter=(line) => line.dueOn < %.today` | `max.filter` | on main |
 | `max.name` | `max :total of=&lines.dueOn` | `max.name` | on main |

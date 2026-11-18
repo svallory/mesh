@@ -63,7 +63,8 @@ export function coverageProject(tag: string, option: string | undefined, example
     { file: "docs/change.mesh.mx", source: `command :Change\n  uuid :id\n  ${example}\n` },
     { file: "docs/sample.mesh.mx", source: `import { Change } from "./change.mesh.mx"\nentity :Sample\n  attributes\n    uuid :id primary-key\n    ${tag} :field${tag === "enum" ? " values=[:draft, :sent]" : ""}\n  actions\n    update on=Change\n      input\n        &field\n` },
   ] };
-  const attributes = node("attributes", [node("uuid :id primary-key"), node("string :title"), node("boolean :done")]);
+  // A lock guards an update or a destroy and counts in a required integer: under `update :work`, on Sample's `version`.
+  const attributes = node("attributes", [node("uuid :id primary-key"), node("string :title"), node("boolean :done"), ...(tag === "lock" ? [node("integer :version default=1")] : [])]);
   // A `has-one` example follows Line's only `belongs-to` back, which a `has-many` beside it could not follow too (`MESH_HAS_ONE_SHARED_KEY`).
   const relationships = node("relationships", tag === "has-one" ? [] : [node("has-many :lines entity=Line")]);
   // `&custom` is a read, which `on:load=`, a policy and a sort can name; an `always` block's `actions=` names no read
@@ -77,7 +78,7 @@ export function coverageProject(tag: string, option: string | undefined, example
   let parent = ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number]) && option === "value" ? "computed" : contracts[tag]!.parents![0]!;
   while (parent !== "#root") {
     chain.unshift(parent);
-    parent = contracts[parent]!.parents![0]!;
+    parent = tag === "lock" && parent === "do" ? "update" : contracts[parent]!.parents![0]!;
   }
   let current = root;
   for (const name of chain.slice(1, -1)) {

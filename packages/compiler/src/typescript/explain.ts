@@ -5,6 +5,7 @@ import { policiesCovering, policyExpressions, readsRecord } from "../model/polic
 import { alwaysFor, conceptData, stepsFor } from "./views/actions.ts";
 import { effectiveActions } from "./views/inputs.ts";
 import { destroyStrategy } from "./strategy.ts";
+import { derivedInputs, lockOf } from "../model/derived-input.ts";
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -40,6 +41,8 @@ function stepLines(steps: readonly Step[], depth: number, into: string[], after 
       stepLines(step.steps, depth + 1, into, after, literal);
     } else if (step.kind === "load") into.push(`${pad}load ${step.members.map((member) => `&${member.name}`).join(", ")}`);
     else if (step.kind === "publish") into.push(`${pad}publish ${squash(step.fn.source)} (plain, ${step.fn.plain?.why ?? "publish-step"}: it raises the event after the write)`);
+    // A lock is printed with the checks, where it runs (`lockLine`).
+    else if (step.kind === "lock") continue;
     else into.push(`${pad}run ${squash(step.fn.source)}`);
   }
 }
@@ -135,6 +138,10 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
   }
   const blocks = [...alwaysFor(entity, action).map((block) => ({ validate: block.validate, steps: block.do, always: true })), { validate: action.validate, steps: action.do, always: false }];
   const checks: string[] = [];
+  // The lock compares before every check, after the policies that read the record (ADR-0100).
+  const lock = lockOf(entity, action);
+  if (lock)
+    checks.push(`lock &${lock.step.member.name}: the caller's ${lock.field}${lock.step.optional ? ", when it sends one," : ""} must be the stored ${lock.step.member.name}, compared before the checks and reported alone (expected-version)${action.kind === "update" ? `; the write adds 1 to ${lock.step.member.name}` : ""}`);
   for (const block of blocks) checkLines(block.validate, 0, checks, block.always ? "always: " : "");
   const all = stepsFor(action, blocks.flatMap((block) => block.steps));
   // A concept member's literal is printed as the generated action assigns it; without the model, as written.
@@ -153,7 +160,10 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
   // Printed only when the action has an `on=`: the command it answers, by its FQN, with the identifier the file writes.
   if (action.command) section(lines, "answers", [`command ${action.command.fqn} (on=${action.command.identifier}): \`dispatch\` of an instance runs this action with the command's fields as its input`]);
   section(lines, "strategy", [strategy]);
-  section(lines, "input", action.input.map((field) => (field.kind === "argument" ? `${field.name} (argument, not stored)` : `&${field.ref.name}`)));
+  section(lines, "input", [
+    ...action.input.map((field) => (field.kind === "argument" ? `${field.name} (argument, not stored)` : `&${field.ref.name}`)),
+    ...derivedInputs(entity, action).map((field) => `${field.name} (from lock &${field.step.member.name}${field.required ? "" : ", optional"}, not stored)`),
+  ]);
   section(lines, "policies", policyLines(entity, action, destroy?.strategy === "guarded"));
   section(lines, "checks", checks);
   section(lines, "steps", steps);

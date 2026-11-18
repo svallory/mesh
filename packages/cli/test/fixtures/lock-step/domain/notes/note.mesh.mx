@@ -1,0 +1,36 @@
+entity :Note
+  attributes
+    uuid :id primary-key
+    string :body nullable
+    boolean :sealed default=false
+    integer :version default=1
+  actions auto=[:read]
+    create :make
+      input
+        &body
+    update :edit
+      input
+        &body
+      validate
+        check :hasBody that=({ input }) => input.body != null code="body" message="an edit needs a body"
+      do
+        lock &version
+    update :touch
+      input
+        &body
+      do
+        lock &version optional
+    update :seal
+      do
+        set
+          &sealed=true
+    destroy :drop
+      do
+        lock &version
+  policies
+    policy :open types=[:read, :create]
+      authorize-if=() => true
+    policy :anyone actions=[&touch, &seal]
+      authorize-if=() => true
+    policy :unsealed actions=[&edit, &drop]
+      authorize-if=() => !&sealed

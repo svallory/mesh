@@ -10,6 +10,7 @@ import {
   type SourcePosition,
 } from "@meshfw/model";
 import { inputOptional } from "../../model/input-optional.ts";
+import { derivedInputs } from "../../model/derived-input.ts";
 import { lowerComputed, type Lowered } from "../../model/sql-condition.ts";
 import { emitError } from "../emit-error.ts";
 import { pathSegment } from "../emitters/order.ts";
@@ -73,6 +74,8 @@ export interface PlannedField {
   reference?: Entity;
   /** Set on the fields every read takes from its caller (`load` only when the entity has something to load); their type and schema are not an attribute's. */
   query?: QueryField;
+  /** Set on a field a step adds (`derivedInputs`): `expectedVersion` for `lock &version`. It is typed as an argument is and never applied to the record. */
+  derived?: "lock";
 }
 /** A stored column a caller may filter and sort by. */
 export interface QueryColumn {
@@ -320,6 +323,15 @@ export function entityInputs(
         attribute: field,
         optional,
         ...(reference ? { reference } : {}),
+      });
+    }
+    for (const field of derivedInputs(entity, action)) {
+      if (fields.some((f) => f.attribute.name === field.name))
+        throw emitError("MESH_DUPLICATE_INPUT", `Input ${field.name} conflicts with the row selector`, field.step.position);
+      fields.push({
+        attribute: { name: field.name, type: "integer", nullable: field.nullable, position: field.step.position },
+        optional: !field.required,
+        derived: field.source,
       });
     }
     if (action.kind === "read")
