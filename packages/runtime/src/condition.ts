@@ -205,6 +205,13 @@ function fold(fn: SqlFunction, args: readonly Condition[]): Condition {
 }
 
 /**
+ * `bindCondition`'s refusal of a parameter value its column or position cannot hold without a conversion (a number
+ * compared with a text column, a list, an object). A `FrameworkError`, so a read that binds a caller's filter or a
+ * policy's condition fails as before; a guarded write catches it and takes its read path, where the check runs in memory.
+ */
+export class UnfitParameterError extends FrameworkError {}
+
+/**
  * Compute the literal's parameters on `scope` (inside `mark` when given: the authorizer passes
  * `(run) => frame.marked("policy :<name> of <entity>", run)`), turn `undefined` into `null`, check each value against
  * its class (a value the database would convert is refused, so SQL never answers differently from memory), put the
@@ -223,9 +230,9 @@ export function bindCondition<S>(tableOf: TableOf, literal: ConditionLiteral<S>,
   const checked = (v: unknown, cls: ValueClass, source: string, side: Side): Value => {
     if (!fits(v, cls)) {
       const refused = "the database would convert it, so Mesh refuses it";
-      if (side?.column) throw new FrameworkError(`${what} compares ${side.column} (${cls}) with ${described(v)} from ${source}: ${refused}`);
+      if (side?.column) throw new UnfitParameterError(`${what} compares ${side.column} (${cls}) with ${described(v)} from ${source}: ${refused}`);
       const a = `a${cls === "integer" ? "n" : ""} ${cls}`;
-      throw new FrameworkError(`${what} needs ${a}${side ? ` for ${side.position}` : ""} and got ${described(v)} from ${source}: ${refused}`);
+      throw new UnfitParameterError(`${what} needs ${a}${side ? ` for ${side.position}` : ""} and got ${described(v)} from ${source}: ${refused}`);
     }
     return value(v as Scalar, cls);
   };

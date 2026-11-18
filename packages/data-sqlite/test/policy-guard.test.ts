@@ -280,13 +280,17 @@ const outcome = async (call: () => Promise<unknown>) => {
     throw error;
   }
 };
-/** The same call through the guarded delete and through the read path (an afterWrite seam), each on a fresh database. */
-async function bothPaths(call: (mesh: any) => Promise<unknown>, table: string) {
+/**
+ * The same call through the guarded delete and through the read path (an afterWrite seam), each on a fresh database.
+ * With `readsFirst`, the call without a seam is expected to take the read path too.
+ */
+async function bothPaths(call: (mesh: any) => Promise<unknown>, table: string, options: { readsFirst?: boolean } = {}) {
   const guarded = await seeded();
   const read = await seeded({ seams: { afterWrite() {} } });
   try {
     const result = { guarded: await outcome(() => call(guarded.mesh)), read: await outcome(() => call(read.mesh)) };
-    expect(guarded.counts.locked).toBe(0);
+    if (options.readsFirst) expect(guarded.counts.guarded).toBe(0);
+    else expect(guarded.counts.locked).toBe(0);
     expect(read.counts.guarded).toBe(0);
     expect(await guarded.rows(table)).toEqual(await read.rows(table));
     return { ...result, rows: await guarded.rows(table), guardedCounts: guarded.counts };
@@ -336,6 +340,15 @@ describe("a guarded destroy", () => {
     const result = await bothPaths((mesh) => mesh.destroyNote({ id: id(1) }, nobody), "notes");
     expect(result.guarded).toEqual(result.read);
     expect((result.guarded as any).forbidden.breakdown).toEqual([{ policy: "mine", kind: "authorize-if", check: "({ actor }) => &owner.id === actor.id", result: null, decisive: true }]);
+  });
+
+  test("an actor value that does not fit the column is decided on the read path: forbidden, never a bind refusal (R2)", async () => {
+    for (const actorId of [5, [id(91)], {}]) {
+      const result = await bothPaths((mesh) => mesh.destroyNote({ id: id(1) }, { actor: { id: actorId } }), "notes", { readsFirst: true });
+      expect(result.guarded).toEqual(result.read);
+      expect(result).toMatchObject({ rows: [id(1), id(2)], guardedCounts: { locked: 1, guarded: 0 } });
+      expect((result.guarded as any).forbidden.breakdown).toEqual([{ policy: "mine", kind: "authorize-if", check: "({ actor }) => &owner.id === actor.id", result: false, decisive: true }]);
+    }
   });
 
   test("a guard with no check left (the record policy's when is false) runs a plain delete by key", async () => {

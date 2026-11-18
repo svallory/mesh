@@ -1,6 +1,6 @@
 import { Answer, answers } from "./answer.ts";
 import { failJoined } from "./compose.ts";
-import { bindCondition, type Bound, type Condition, type ConditionLiteral, type Mark, type TableOf, type Where } from "./condition.ts";
+import { bindCondition, UnfitParameterError, type Bound, type Condition, type ConditionLiteral, type Mark, type TableOf, type Where } from "./condition.ts";
 import type { DataLayer, WriteGuard } from "./data-layer.ts";
 import type { ActionFrame } from "./entity.ts";
 import { ForbiddenError, FrameworkError, PolicyGuardDenial, guardCountMismatch, type PolicyCheck } from "./errors.ts";
@@ -100,10 +100,12 @@ export interface Authorizer {
   /**
    * After `before`, for a write that runs as one statement (ADR-0046, option B): every check that reads the record, of
    * every policy that applies, bound on `scope` (the pre-check's scope: actor, context, input, clock), with which of
-   * them decide and how; undefined when no applying policy has one (`before` then decided). Throws a `FrameworkError`
-   * when one of them has no `sql`, or when a policy's `when` reads the record (the build never guards such a write).
+   * them decide and how; undefined when no applying policy has one (`before` then decided); null when a value one of
+   * them compares with a column is one the column cannot hold (`UnfitParameterError`): the write then takes its read
+   * path, whose in-memory check gives the decision and breakdown SQL cannot. Throws a `FrameworkError` when one of them
+   * has no `sql`, or when a policy's `when` reads the record (the build never guards such a write).
    */
-  guard(scope: object, tableOf: TableOf): WriteGuard | undefined;
+  guard(scope: object, tableOf: TableOf): WriteGuard | undefined | null;
   /**
    * Run the guarded write. A `PolicyGuardDenial` it throws becomes the decision: its results are recorded as `inside`
    * would have recorded them and the same `ForbiddenError` is thrown. A denial whose results admit the call is a
@@ -291,7 +293,7 @@ export function authorizer(entity: string, action: string, policies: readonly Po
   const stale = (policy: PolicySpec) => new FrameworkError(`${entity}#${action}: policy :${policy.name} has a check that reads the record and no SQL condition; the generated actions are out of date, rebuild the project`);
   return Object.freeze({
     get answering(): boolean { return answering; },
-    guard(scope: object, tableOf: TableOf): WriteGuard | undefined {
+    guard(scope: object, tableOf: TableOf): WriteGuard | undefined | null {
       const checks: Bound[] = [];
       const specs: PolicyCheckSpec[] = [];
       const entries: { readonly forbid: readonly number[]; readonly authorize: readonly number[] | null }[] = [];
@@ -305,7 +307,13 @@ export function authorizer(entity: string, action: string, policies: readonly Po
         const index = new Map<PolicyCheckSpec, number>();
         for (const check of reading) {
           if (!check.sql) throw stale(policy);
-          index.set(check, checks.push(bindCondition(tableOf, check.sql(), scope as never)) - 1);
+          let bound: Bound;
+          try { bound = bindCondition(tableOf, check.sql(), scope as never); }
+          catch (error) {
+            if (error instanceof UnfitParameterError) return null;
+            throw error;
+          }
+          index.set(check, checks.push(bound) - 1);
           specs.push(check);
         }
         const authorizes = policy.checks.filter((check) => check.kind === "authorize-if");

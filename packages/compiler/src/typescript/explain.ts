@@ -68,7 +68,7 @@ function policyLines(entity: Entity, action: Action, guarded = false): string[] 
   if (covering.length === 0) return ["none covers it: every call is forbidden (an action no policy covers is denied)"];
   const record = action.kind === "read" ? "folded into the query: a row is returned only when it holds"
     : action.kind === "create" ? "inside the transaction, on the new instance before the input, before validate"
-      : guarded ? "in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete"
+      : guarded ? "in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, on a data layer without the guarded delete, or when a value it compares with a column does not fit the column"
         : "inside the transaction, on the locked row, before validate";
   const early = action.kind === "read" ? "before the query, once: a caller it does not admit gets no rows" : "before the transaction, once";
   const lines: string[] = [];

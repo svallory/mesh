@@ -617,7 +617,8 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
     const reads = action.kind === "update" || checks.length > 0 || steps.length > 0 || recordPolicies.length > 0;
     // A destroy whose only reason to read is record-reading policy checks that translate runs as one guarded delete when
     // the data adapter declares policy-guards (ADR-0046, option B): the read path above stays in the generated code for a
-    // seam that wants `before`, a permission question and a data layer without the guarded delete.
+    // seam that wants `before`, a permission question, a data layer without the guarded delete and a value the checks
+    // compare with a column that the column cannot hold.
     const strategy = action.kind === "destroy" ? destroyStrategy(document, entity, action, capabilities) : undefined;
     const guarded = strategy?.strategy === "guarded";
     const guardedSet = new Set(strategy?.guarded.map(({ expression }) => expression) ?? []);
@@ -1000,10 +1001,11 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
       statements = [
         opening,
         ...prelude,
-        "// plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, or the data layer has no guarded delete",
+        "// plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, the data layer has no guarded delete, or a value the checks compare with a column is one the column cannot hold (the guard is then null)",
         keyLine!,
         "let $seen: $Record | undefined;",
-        "if ($wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded) {",
+        "const $guard = $wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded ? null : $policies.guard($preScope, $tableOf);",
+        "if ($guard === null) {",
         "// read the row under the write lock, run the policies on it in memory, then delete it",
         ...readHead,
         ...afterHead,
@@ -1011,7 +1013,6 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
         "$seen = $before;",
         "} else {",
         "// one delete: it fails as forbidden inside the database when the checks that read the record deny, and deletes nothing",
-        "const $guard = $policies.guard($preScope, $tableOf);",
         `const $deleted = $guard === undefined ? await tx.deleteByKey(${table}, ${KEY}) : await $policies.statement(() => tx.deleteByKeyGuarded!(${table}, ${KEY}, $guard));`,
         `if (!$deleted) ${notFound}`,
         "}",

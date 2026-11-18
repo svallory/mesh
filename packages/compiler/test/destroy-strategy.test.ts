@@ -191,11 +191,11 @@ describe("mesh explain", () => {
 
   test("a guarded destroy says the delete checks the policies, and where each check runs", () => {
     const lines = explainAction(entity("Note"), "byOwner", document, GUARDS)!;
-    expect(section(lines, "strategy")).toEqual(["one delete by key with the policies in the statement: the checks that read the record (:owner) run inside the delete, which fails as forbidden when they deny (ADR-0046, option B); with an afterWrite or afterCommit seam registered, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete, the row is read under the lock first and the policies run in memory"]);
+    expect(section(lines, "strategy")).toEqual(["one delete by key with the policies in the statement: the checks that read the record (:owner) run inside the delete, which fails as forbidden when they deny (ADR-0046, option B); with an afterWrite or afterCommit seam registered, under Mesh.checkPolicies or Mesh.can, on a data layer without the guarded delete, or when a value a check compares with a column is one the column cannot hold, the row is read under the lock first and the policies run in memory"]);
     expect(section(lines, "policies").slice(0, 3)).toEqual([
       ":owner",
-      "  authorize-if ({ actor }) => &ownerId === actor.id: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete",
-      "  forbid-if () => &locked: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, or on a data layer without the guarded delete",
+      "  authorize-if ({ actor }) => &ownerId === actor.id: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, on a data layer without the guarded delete, or when a value it compares with a column does not fit the column",
+      "  forbid-if () => &locked: in the delete statement: a denial raises forbidden (ADR-0046 B); read under the lock first when a seam wants before, under Mesh.checkPolicies or Mesh.can, on a data layer without the guarded delete, or when a value it compares with a column does not fit the column",
     ]);
   });
 
@@ -256,9 +256,9 @@ describe("the generated files", () => {
     expect(body).toContain('sql: () => $conditions["policy.owner.authorize-if.0"]');
     expect(body).toContain('sql: () => $conditions["policy.owner.forbid-if.0"]');
     expect(body).toContain("await $policies.before(layer, $preScope);");
-    expect(body).toContain("if ($wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded) {");
+    expect(body.replace(/\s+/g, " ")).toContain("const $guard = $wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded ? null : $policies.guard($preScope, $tableOf);");
+    expect(body).toContain("if ($guard === null) {");
     expect(body).toContain("await $policies.inside($checkScope($s));");
-    expect(body).toContain("const $guard = $policies.guard($preScope, $tableOf);");
     expect(body).toContain("tx.deleteByKeyGuarded!(tables.note, $key, $guard)");
     expect(body).toContain("$seen ?? null");
     // A check that is not guarded carries no literal: the actor-only one of another destroy.

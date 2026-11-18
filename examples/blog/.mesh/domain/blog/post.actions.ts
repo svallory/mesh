@@ -458,10 +458,14 @@ export function bindPost(
         (tx) =>
           frame.within(tx, $clock, "blog.Post#archive", async () => {
             // transaction: opens here; what follows commits together or not at all
-            // plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, or the data layer has no guarded delete
+            // plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, the data layer has no guarded delete, or a value the checks compare with a column is one the column cannot hold (the guard is then null)
             const $key = { id: parsed.id };
             let $seen: $Record | undefined;
-            if ($wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded) {
+            const $guard =
+              $wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded
+                ? null
+                : $policies.guard($preScope, $tableOf);
+            if ($guard === null) {
               // read the row under the write lock, run the policies on it in memory, then delete it
               const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
                 | $Record
@@ -495,7 +499,6 @@ export function bindPost(
               $seen = $before;
             } else {
               // one delete: it fails as forbidden inside the database when the checks that read the record deny, and deletes nothing
-              const $guard = $policies.guard($preScope, $tableOf);
               const $deleted =
                 $guard === undefined
                   ? await tx.deleteByKey(tables.posts, $key)
@@ -661,10 +664,14 @@ export function bindPost(
         (tx) =>
           frame.within(tx, $clock, "blog.Post#destroy", async () => {
             // transaction: opens here; what follows commits together or not at all
-            // plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, or the data layer has no guarded delete
+            // plan: the policy checks that read the record are checked by the delete statement itself (ADR-0046, option B); the row is read under the lock first only when a seam wants `before`, a permission question asks, the data layer has no guarded delete, or a value the checks compare with a column is one the column cannot hold (the guard is then null)
             const $key = { id: parsed.id };
             let $seen: $Record | undefined;
-            if ($wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded) {
+            const $guard =
+              $wantsChanges(options.seams) || $policies.answering || !tx.deleteByKeyGuarded
+                ? null
+                : $policies.guard($preScope, $tableOf);
+            if ($guard === null) {
               // read the row under the write lock, run the policies on it in memory, then delete it
               const $before = (await tx.selectByKeyForUpdate(tables.posts, $key)) as
                 | $Record
@@ -698,7 +705,6 @@ export function bindPost(
               $seen = $before;
             } else {
               // one delete: it fails as forbidden inside the database when the checks that read the record deny, and deletes nothing
-              const $guard = $policies.guard($preScope, $tableOf);
               const $deleted =
                 $guard === undefined
                   ? await tx.deleteByKey(tables.posts, $key)
