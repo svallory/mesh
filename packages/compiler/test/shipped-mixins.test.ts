@@ -176,7 +176,9 @@ describe("positions (R20, ruling D37 OD5)", () => {
     ]);
     expect(result.diagnostics[0]!.fix).toBe("stop using Versioned and declare `integer :version default=1` in the entity: the lock keeps the version itself");
   });
-  test("legal neighbours: Versioned with an expected-version check, and a `set &version` in a create the block does not cover", () => {
+  test("legal neighbours: Versioned with an expected-version check, a `set &version` in a create the block does not cover, and a lock in a destroy", () => {
+    // The block covers updates only: a destroy's lock compares the version the updates bump.
+    expect(found(build({ "notes/note.mesh.mx": note(BOTH, "    destroy :drop\n      do\n        lock &version\n") }))).toEqual([]);
     expect(found(build({ "notes/note.mesh.mx": note(BOTH, `    create :make
       input
         &body
