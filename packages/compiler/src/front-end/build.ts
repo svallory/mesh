@@ -1153,6 +1153,7 @@ function buildEntity(
             if (!diagnostics.slice(entityFrom).some((x) => x.code === d.code && x.position.file === d.position.file && x.position.offset === d.position.offset)) diagnostics.push(d);
           },
           ...(step === "run" ? { runStep: true } : step === "publish" ? { publishStep: true } : step === "handler" ? { handlerBody: true } : step === "rollup-filter" ? { rowParameter: true } : {}),
+          ...(src.use ? { mixin: true } : {}),
         },
       );
     const authoredMember = (line: Tag) =>

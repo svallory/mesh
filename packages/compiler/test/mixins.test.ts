@@ -306,7 +306,12 @@ describe("imports of a mixin (R9, R11, R12, R21, R22)", () => {
     // Two includers have the same mistake: one report, naming neither.
     const inside = build({ ...AUDITED_PROJECT, "shared/audited.mesh.mx": "mixin :Audited\n  computed\n    boolean :staff() { return isStaff() }\n",
       "billing/quote.mesh.mx": invoice().replace("entity :Invoice", "entity :Quote") });
-    expect(errors(inside).map((d) => [...d.slice(0, 2), d[2]!.split(" is not defined")[0]])).toEqual([["MESH_EXPR_FREE_VARIABLE", "shared/audited.mesh.mx:3:30", "`isStaff`"]]);
+    expect(inside.diagnostics.map((d) => [d.code, `${d.position.file}:${d.position.line}:${d.position.column}`, d.message, d.fix])).toEqual([["MESH_EXPR_FREE_VARIABLE", "shared/audited.mesh.mx:3:30",
+      "`isStaff` is not defined here: a function in a mixin file may use its parameters, `&members`, the transaction's `%.now` and `%.today` and JavaScript's globals, and a mixin file takes no import",
+      "write this function in the entity that uses the mixin, which can import it"]]);
+    // `Mesh` in a mixin: the fix does not tell the author to import it, which R12 refuses.
+    const mesh = build({ ...AUDITED_PROJECT, "shared/audited.mesh.mx": "mixin :Audited\n  computed\n    integer :len() { const x = Mesh; return 1 }\n" });
+    expect(mesh.diagnostics.map((d) => [d.code, d.fix])).toEqual([["MESH_EXPR_FREE_VARIABLE", "a mixin file cannot import `Mesh`: write this function in the entity that uses the mixin, which can"]]);
   });
 });
 

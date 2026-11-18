@@ -91,6 +91,11 @@ export interface ConvertContext {
    */
   noHelpers?: boolean;
   /**
+   * The function is one of a mixin's lines (mixins design, R12): a mixin file takes no import, so the free-variable message
+   * and fix say what its functions can read and send what needs `Mesh` or a helper to the entity instead.
+   */
+  mixin?: boolean;
+  /**
    * A function of a service file (services design, section 5.1): plain by position, `why` `service` (an operation's body
    * is a `run` step too, and `runStep` comes first). A service function is never a tree, so the model's type pass has
    * nothing to do for one; `tsc` checks it in the generated file.
@@ -265,8 +270,12 @@ function meshReads(n: N, parent: N | undefined, key: string | undefined, ctx: Co
     return name === undefined ? [] : [{ local: n.name!, name, at }];
   });
 }
-const FREE_VARIABLE = (name: string, ctx: Pick<ConvertContext, "handlerBody" | "noHelpers">) =>
-  ctx.noHelpers
+const FREE_VARIABLE = (name: string, ctx: Pick<ConvertContext, "handlerBody" | "noHelpers" | "mixin">) =>
+  ctx.mixin
+    ? ctx.handlerBody
+      ? `\`${name}\` is not defined here: a handler in a mixin file may use its \`event\` and \`context\` and its own locals, and a mixin file takes no import`
+      : `\`${name}\` is not defined here: a function in a mixin file may use its parameters, \`&members\`, the transaction's ${TRANSACTION_LIST} and JavaScript's globals, and a mixin file takes no import`
+  : ctx.noHelpers
     ? `\`${name}\` is not defined here: a handler in an aggregate file may use its \`event\` and \`context\`, its own locals and the entities the file imports`
     : ctx.handlerBody
       ? `\`${name}\` is not defined here: a handler may use its \`event\` and \`context\`, its own locals, imported helpers, its own entity and the imported ones, and Mesh's functions through \`Mesh\`, imported from "meshfw"`
@@ -280,6 +289,11 @@ const FREE_VARIABLE = (name: string, ctx: Pick<ConvertContext, "handlerBody" | "
 function freeVariableFix(name: string, ctx: ConvertContext, shadowed: (name: string) => boolean, args?: string): string {
   // A bare `now` or `today` is the transaction's.
   if (TRANSACTION_MEMBERS.has(name)) return ctx.handlerBody ? "read when the event happened as `event.occurredAt`" : `write \`%.${name}\`, ${TRANSACTION_MEMBERS.get(name)!.what}, with no \`()\``;
+  // A mixin file imports no helper and no `Mesh`: a function that needs one belongs in the entity, which may import it.
+  if (ctx.mixin)
+    return MESH_FUNCTIONS.has(name) || name === "Mesh"
+      ? "a mixin file cannot import `Mesh`: write this function in the entity that uses the mixin, which can"
+      : ctx.handlerBody ? "read it from `event` or `context`, or write this handler in the entity that uses the mixin" : "write this function in the entity that uses the mixin, which can import it";
   // An aggregate file imports no helper and no `Mesh`: what its handler needs from one, an action of an entity does.
   if (ctx.noHelpers)
     return MESH_FUNCTIONS.has(name) || name === "Mesh"
