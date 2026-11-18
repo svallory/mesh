@@ -117,6 +117,8 @@ describe("a service file", () => {
     'import { z } from "zod"',
     'import z from "zod"',
     'import * as z from "zod"',
+    'import "zod"',
+    'import type { Z } from "zod"',
     'import { Mesh } from "@meshfw/runtime"',
   ])("refuses another package with a message that names only meshfw: %s", (line) => {
     expect(found({ ...DOMAIN, [WORK_FILE]: service(line) })).toEqual([[WORK_FILE, 1, 0, "MESH_UNKNOWN_IMPORT", SERVICE_PACKAGE, null]]);

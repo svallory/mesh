@@ -228,7 +228,7 @@ describe("generated code", () => {
 });
 
 describe("the import paths of an entity file", () => {
-  // One row per spec path and form (`notes/spec/imports-and-scope.md`, "Import paths"), in an entity file of a project on
+  // One row per spec path and form (`notes/spec/imports-and-scope.md`, "Paths"), in an entity file of a project on
   // disk, so a helper path resolves.
   const root = mkdtempSync(join(tmpdir(), "mesh-import-paths-"));
   afterAll(() => rmSync(root, { recursive: true, force: true }));
