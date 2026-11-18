@@ -15,10 +15,14 @@ import { loadConfig, loadProject } from "../src/index.ts";
 import { handlersNotGenerated } from "../src/model/handlers.ts";
 import { explainAction, explainHandler } from "../src/typescript/explain.ts";
 
-/** The fixture project, on disk so that the helper import (`./mailer`) resolves: `billing/` holds every file. */
+/**
+ * The fixture project, on disk so that the helper import (`./mailer`) resolves: `billing/` holds every file. Sorted, as
+ * `loadConfig` sorts a project's files: `readdirSync` returns the file system's order (creation order on APFS, hash order
+ * on ext4), and the model lists entities in input order, so an unsorted scan makes every order-sensitive assertion flaky.
+ */
 const ROOT = new URL("./fixtures/handlers/", import.meta.url).pathname;
 const FIXTURES: Readonly<Record<string, string>> = Object.fromEntries(
-  readdirSync(`${ROOT}billing`).filter((name) => name.endsWith(".mesh.mx")).map((name) => [`billing/${name}`, readFileSync(`${ROOT}billing/${name}`, "utf8")]),
+  readdirSync(`${ROOT}billing`).filter((name) => name.endsWith(".mesh.mx")).sort().map((name) => [`billing/${name}`, readFileSync(`${ROOT}billing/${name}`, "utf8")]),
 );
 const INVOICE = FIXTURES["billing/invoice.mesh.mx"]!;
 /** The fixture project with some files replaced (`null` leaves one out). */
@@ -345,9 +349,9 @@ describe("the configuration", () => {
   test("a bus that does not declare ordered-delivery is `MESH_CAPABILITY` at each handler line, an aggregate's included", () => {
     const document = build().document!;
     expect(brief(eventsDiagnostics(document, { data: data as never, events: { bus: bus(["replay"]) } }, at))).toEqual([
-      ["billing/ledger.mesh.mx", 8, 4, "error", "MESH_CAPABILITY", "Handler billing.Ledger.receipt needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the event bus \"probe\" does not declare it", "Use a bus that declares ordered-delivery, such as localBus()"],
       ["billing/invoice.mesh.mx", 25, 4, "error", "MESH_CAPABILITY", "Handler billing.Invoice.receipt needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the event bus \"probe\" does not declare it", "Use a bus that declares ordered-delivery, such as localBus()"],
       ["billing/invoice.mesh.mx", 29, 4, "error", "MESH_CAPABILITY", "Handler billing.Invoice.voided needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the event bus \"probe\" does not declare it", "Use a bus that declares ordered-delivery, such as localBus()"],
+      ["billing/ledger.mesh.mx", 8, 4, "error", "MESH_CAPABILITY", "Handler billing.Ledger.receipt needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the event bus \"probe\" does not declare it", "Use a bus that declares ordered-delivery, such as localBus()"],
       ["billing/billing.mesh.mx", 10, 4, "error", "MESH_CAPABILITY", "Handler billing.Billing.close needs the bus's ordered-delivery, since a handler's progress is kept by position only, and the event bus \"probe\" does not declare it", "Use a bus that declares ordered-delivery, such as localBus()"],
     ]);
     expect(eventsDiagnostics(document, { data: data as never, events: { bus: bus(["ordered-delivery", "replay"]) } }, at)).toEqual([]);
