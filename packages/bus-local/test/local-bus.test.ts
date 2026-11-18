@@ -688,6 +688,40 @@ describe("started delivery", () => {
     }
   });
 
+  // Spec, Events and commands: a subscription's errors end only that subscription, and MESH_DATABASE_BUSY ends the
+  // round, which the next one retries. A busy or lost read of a subscription's rows is the round's, never the reader's.
+  test("a busy database or a lost claim while a subscription's rows are read ends the round, not the subscription; a failed read ends it", async () => {
+    const live = (name: string) => {
+      const state = { name, cursor: 0, filter: {}, ended: false, endedWith: undefined as unknown, fed: 0 };
+      return Object.assign(state, {
+        feed: async () => { state.fed++; },
+        end: (error: unknown) => { state.ended = true; state.endedWith = error; },
+      });
+    };
+    const page = { rows: [], deletedThrough: 0, highest: 0, settled: 0 };
+    const busy = new DatabaseBusyError("db", 0);
+    const lostClaim = new DelivererLostError("db", "another process claimed the database");
+    const deleted = Object.assign(new Error("the events after 0 were deleted"), { code: "MESH_EVENTS_DELETED" });
+    for (const failure of [busy, lostClaim]) {
+      const subscription = live("s");
+      let passes = 0;
+      const core = fakeCore({ subscriptions: () => [subscription], rows: async () => { throw failure; }, deletionPass: async () => { passes++; } });
+      expect(await rejection(createLocalBus(undefined).create(core, { keep: "until-delivered" }).deliver())).toBe(failure);
+      expect([subscription.ended, passes]).toEqual([false, 0]);
+    }
+    // The legal neighbour: a read that fails for the reader ends that subscription with its error, and the round goes on.
+    const failing = live("gone");
+    const fine = live("fine");
+    let passes = 0;
+    const core = fakeCore({
+      subscriptions: () => [failing, fine],
+      rows: async () => { if (!failing.ended) throw deleted; return page; },
+      deletionPass: async () => { passes++; },
+    });
+    await createLocalBus(undefined).create(core, { keep: "until-delivered" }).deliver();
+    expect([failing.ended, failing.endedWith, fine.ended, fine.fed, passes]).toEqual([true, deleted, false, 1, 1]);
+  });
+
   test("a subscription whose queue passes maxQueue ends with MESH_SUBSCRIPTION_OVERFLOW", async () => {
     const { layer, binding } = await open(localBus({ maxQueue: 2, pollInterval: 20 }), {});
     let release!: () => void;
