@@ -635,13 +635,18 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   }, 30_000);
 
   // `loadAdapterBuild` checks that a generator's templateDir is an absolute path, not that its template is there; the
-  // read then fails inside the export, and `runExport` reports it at .mesh-generators with the error's code.
+  // read then fails inside the export, and `runExport` reports it at .mesh-generators with the error's code. Only the
+  // code, the location and the exit are pinned: the advice `runExport` appends ("fix the permissions of
+  // .mesh-generators/") is known to be wrong for a missing template, and errors.md files a template that cannot be read
+  // as MESH_TEMPLATE_READ naming the template; a follow-up bead for `runExport` owns that change.
   test("an adapter template that cannot be read fails the export with its code, before anything is written", async () => {
     const root = await project();
     await mkdir(join(root, "empty"));
     await writeFile(join(root, "adapter.ts"), `export default { generators: [{ name: "ghost", template: "ghost.ts.jig", templateDir: ${JSON.stringify(join(root, "empty"))}, requires: [], views: () => [] }] };\n`);
-    expect(await run(root, "export", "generators")).toEqual({ code: 1, stdout: "",
-      stderr: ".mesh-generators:1:1 error MESH_CLI Export failed (ENOENT); fix the permissions of .mesh-generators/ and export again\n1 error, 0 warnings\n" });
+    const result = await run(root, "export", "generators");
+    expect({ code: result.code, stdout: result.stdout }).toEqual({ code: 1, stdout: "" });
+    expect(result.stderr).toStartWith(".mesh-generators:1:1 error MESH_CLI Export failed (ENOENT)");
+    expect(result.stderr).toEndWith("\n1 error, 0 warnings\n");
     expect(existsSync(join(root, ".mesh-generators"))).toBe(false);
   }, 30_000);
 
