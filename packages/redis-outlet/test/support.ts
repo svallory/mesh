@@ -123,3 +123,9 @@ export async function until(check: () => boolean | Promise<boolean>, what: strin
     await sleep(10);
   }
 }
+
+/** How many connections the outlet of `stream` holds on the server: those named `outlet:redis:<stream>` (`CLIENT LIST`). */
+export async function outletConnections(client: RedisClient, stream: string): Promise<number> {
+  const list = String(await client.send("CLIENT", ["LIST"]));
+  return list.split("\n").filter((line) => line.includes(` name=outlet:redis:${stream} `)).length;
+}

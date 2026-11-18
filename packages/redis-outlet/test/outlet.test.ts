@@ -9,7 +9,7 @@ import type { RedisClient } from "bun";
 import { FrameworkError, SubscriptionOverflowError, listSubscriptions, readEvents } from "@meshfw/runtime";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { redisOutlet, type RedisOutletOptions } from "../src/index.ts";
-import { builtProject, describeServer, entries, freshBinding, redis, redisUrl, streamKey, until } from "./support.ts";
+import { builtProject, describeServer, entries, freshBinding, outletConnections, redis, redisUrl, streamKey, until } from "./support.ts";
 import { redisProxy } from "./proxy.ts";
 
 const project = builtProject();
@@ -129,8 +129,11 @@ describeServer("redisOutlet against Redis", () => {
     expect(JSON.parse(sent[0]!.fields.payload!)).toEqual({ invoiceId: first, amount: 42, paidAt: event!.occurredAt.toISOString() });
     // The last row, an InvoicePaid, was acknowledged, and with it every skipped InvoiceDrafted below it.
     await until(async () => (await position(binding, outlet.name)) === page.highest, "the outlet acknowledged the last row");
+    expect(await outletConnections(client, stream)).toBe(1);
     await outlet.close();
     expect(await outlet.done).toBeNull();
+    // close() closed the outlet's client: the server no longer lists its connection.
+    await until(async () => (await outletConnections(client, stream)) === 0, "the outlet's connection is closed");
   });
 
   test("skipped rows are acknowledged every 100, and the outbox deletes them under until-delivered", async () => {
@@ -193,6 +196,8 @@ describeServer("redisOutlet against Redis", () => {
     expect(errors).toEqual([new FrameworkError(message)]);
     expect(await position(newer.binding, outlet.name)).toBe(0);
     expect(await entries(client, stream)).toEqual([kept!]);
+    // The stop closed the client without close().
+    await until(async () => (await outletConnections(client, stream)) === 0, "the stopped outlet's connection is closed");
     // close() after the end does nothing more.
     await outlet.close();
   });
@@ -300,8 +305,11 @@ describeServer("redisOutlet against Redis", () => {
       const outlet = await redisOutlet(binding, { url: redisUrl!, stream, events: [PAID], maxLength: 1000 });
       await paid();
       await until(async () => (await entries(client, stream)).length === 1, "the started bus fed the outlet");
+      expect(await outletConnections(client, stream)).toBe(1);
       await delivery.stop();
       expect(await outlet.done).toBeNull();
+      // The delivery's stop closed the client without close().
+      await until(async () => (await outletConnections(client, stream)) === 0, "the outlet's connection is closed");
       await outlet.close();
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -334,7 +342,7 @@ describeServer("redisOutlet against Redis", () => {
     await second.close();
   });
 
-  test("under binding.deliver() only, a process that closes its outlet exits: nothing outlives the handle", async () => {
+  test("under binding.deliver() only, a process that closes its outlet exits: no timer outlives the handle", async () => {
     const worker = Bun.spawn([process.execPath, join(import.meta.dir, "exit-worker.ts"), project().root, redisUrl!, key("exit")], { stdout: "pipe", stderr: "pipe" });
     const exited = await Promise.race([worker.exited, Bun.sleep(8000).then(() => "still running")]);
     if (exited === "still running") worker.kill();

@@ -280,7 +280,9 @@ class Outlet {
 
   /** The client is opened without reconnecting on its own or queueing offline, so a call fails at once while Redis is away. */
   async #connected(): Promise<void> {
-    if (!this.client.connected) await this.client.connect();
+    if (this.client.connected) return;
+    await this.client.connect();
+    await nameConnection(this.client, this.name);
   }
 
   #report(error: unknown): void {
@@ -362,13 +364,22 @@ class Outlet {
   }
 }
 
+/**
+ * Name the connection after the subscription (`CLIENT SETNAME`), so `CLIENT LIST` on the server shows which outlet holds
+ * it. A connection name takes no space or control character, so each of those in the stream key is written as `_`.
+ */
+async function nameConnection(client: RedisClient, name: string): Promise<void> {
+  await client.send("CLIENT", ["SETNAME", name.replace(/[^\x21-\x7e]/g, "_")]);
+}
+
 /** A client that answered PING. Every failure, Bun's refusal of the URL in the constructor included, is a `FrameworkError`. */
-async function connectedClient(url: string): Promise<RedisClient> {
+async function connectedClient(url: string, name: string): Promise<RedisClient> {
   let client: RedisClient | undefined;
   try {
     client = new RedisClient(url, { autoReconnect: false, enableOfflineQueue: false });
     await client.connect();
     await client.send("PING", []);
+    await nameConnection(client, name);
     return client;
   } catch (cause) {
     client?.close();
@@ -386,7 +397,7 @@ async function connectedClient(url: string): Promise<RedisClient> {
 export async function redisOutlet(binding: Binding, options: RedisOutletOptions): Promise<RedisOutlet> {
   const settings = checked(options);
   checkDeclared(binding, settings.events);
-  const client = await connectedClient(settings.url);
+  const client = await connectedClient(settings.url, `outlet:redis:${settings.stream}`);
   const outlet = new Outlet(binding, settings, client);
   try {
     await outlet.open(settings.after);

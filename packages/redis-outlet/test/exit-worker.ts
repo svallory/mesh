@@ -1,7 +1,8 @@
 // The second process of the outlet's exit test: binds a fresh database of the built project (argv[2]) with localBus,
 // opens an outlet to argv[3] on the stream argv[4], publishes one InvoicePaid, runs one `deliver()` round, waits until
 // the entry is in the stream, closes the outlet and the layer, and prints how many entries it saw. It must then exit
-// on its own: a timer or a client the outlet left open would keep it running.
+// on its own: a timer the outlet left running would keep it alive. (Bun's RedisClient does not keep a process alive, so
+// this cannot see a client left open; outlet.test.ts checks that on the server, through the connection's name.)
 import { join } from "node:path";
 import { RedisClient } from "bun";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
