@@ -177,7 +177,7 @@ export const redactSessionReferenceInputSchema = $ruled(
     reason: {
       too_small: {
         code: "too_short",
-        source: { file: "src/domain/execution/session-reference.mesh.mx", line: 74, column: 9 },
+        source: { file: "src/domain/execution/session-reference.mesh.mx", line: 65, column: 9 },
       },
     },
   },

@@ -261,7 +261,7 @@ export function bindSessionReference(
               message: "the agent profile is not a collaborator",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 42,
+                line: 36,
                 column: 9,
               },
               that: $expressions["record.check.agentProfileExists.that"],
@@ -272,7 +272,7 @@ export function bindSessionReference(
               message: "the machine is retired; report the host by a new name",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 47,
+                line: 41,
                 column: 9,
               },
               that: $expressions["record.check.machineRetired.that"],
@@ -296,7 +296,7 @@ export function bindSessionReference(
               const $value = await $expressions["record.step.0.set.recordedBy"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:54:23) produced no value, and the relationship recordedBy is required",
+                  "set &recordedBy (src/domain/execution/session-reference.mesh.mx:48:23) produced no value, and the relationship recordedBy is required",
                 );
               $changes.recordedById = $record.recordedById = $value;
             }
@@ -393,6 +393,25 @@ export function bindSessionReference(
             ) as unknown as $StoredScope<SetAvailabilitySessionReferenceInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/session-reference.mesh.mx:62): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: {
+                    file: "src/domain/execution/session-reference.mesh.mx",
+                    line: 62,
+                    column: 9,
+                  },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -413,22 +432,10 @@ export function bindSessionReference(
               message: "availability is complete, partial or unavailable; redact with redact",
               source: {
                 file: "src/domain/execution/session-reference.mesh.mx",
-                line: 63,
+                line: 56,
                 column: 9,
               },
               that: $expressions["setAvailability.check.availabilityKept.that"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: {
-                file: "src/domain/execution/session-reference.mesh.mx",
-                line: 26,
-                column: 5,
-              },
-              that: $expressions["setAvailability.check.versionMatches.that"],
-              details: $expressions["setAvailability.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // the input: the member inputs the caller sent, applied now that the checks have passed
@@ -436,16 +443,8 @@ export function bindSessionReference(
               $changes.availability = $record.availability = parsed.availability;
             if ($Object.hasOwn(parsed, "location") && parsed.location !== undefined)
               $changes.location = $record.location = parsed.location;
-            // do: the steps run in written order, each seeing the record as the ones before it left it
-            {
-              const $value = await $expressions["setAvailability.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/session-reference.mesh.mx:71:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -561,6 +560,25 @@ export function bindSessionReference(
             ) as unknown as $StoredScope<RedactSessionReferenceInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/session-reference.mesh.mx:69): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: {
+                    file: "src/domain/execution/session-reference.mesh.mx",
+                    line: 69,
+                    column: 9,
+                  },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -575,31 +593,12 @@ export function bindSessionReference(
               },
               that: $expressions["redact.check.notRedacted.that"],
             });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: {
-                file: "src/domain/execution/session-reference.mesh.mx",
-                line: 26,
-                column: 5,
-              },
-              that: $expressions["redact.check.versionMatches.that"],
-              details: $expressions["redact.check.versionMatches.details"],
-            });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.availability = $record.availability = "redacted";
             $changes.location = $record.location = null;
-            {
-              const $value = await $expressions["redact.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/session-reference.mesh.mx:83:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,

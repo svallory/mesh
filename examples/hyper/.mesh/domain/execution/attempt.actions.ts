@@ -266,35 +266,35 @@ export function bindAttempt(
               label: "claimer",
               code: "attempt.claimer",
               message: "the claim on the task is no longer the actor's; claim it again to report",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 54, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 48, column: 9 },
               that: $expressions["start.check.claimer.that"],
             });
             await $runCheck($issues, $checks, {
               label: "runRunning",
               code: "attempt.run-running",
               message: "the run is not running",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 59, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 53, column: 9 },
               that: $expressions["start.check.runRunning.that"],
             });
             await $runCheck($issues, $checks, {
               label: "stepIdle",
               code: "attempt.step-idle",
               message: "an attempt of this step is already running",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 64, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 58, column: 9 },
               that: $expressions["start.check.stepIdle.that"],
             });
             await $runCheck($issues, $checks, {
               label: "sessionExists",
               code: "attempt.session",
               message: "the session reference does not exist",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 69, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 63, column: 9 },
               that: $expressions["start.check.sessionExists.that"],
             });
             await $runCheck($issues, $checks, {
               label: "machineRetired",
               code: "machine.retired",
               message: "the machine is retired; report the host by a new name",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 74, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 68, column: 9 },
               that: $expressions["start.check.machineRetired.that"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
@@ -314,7 +314,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.performer"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &performer (src/domain/execution/attempt.mesh.mx:81:22) produced no value, and the relationship performer is required",
+                  "set &performer (src/domain/execution/attempt.mesh.mx:75:22) produced no value, and the relationship performer is required",
                 );
               $changes.performerId = $record.performerId = $value;
             }
@@ -323,7 +323,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.task"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &task (src/domain/execution/attempt.mesh.mx:82:17) produced no value, and the relationship task is required",
+                  "set &task (src/domain/execution/attempt.mesh.mx:76:17) produced no value, and the relationship task is required",
                 );
               $changes.taskId = $record.taskId = $value;
             }
@@ -339,7 +339,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.number"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &number (src/domain/execution/attempt.mesh.mx:83:19) produced no value, and number is required",
+                  "set &number (src/domain/execution/attempt.mesh.mx:77:19) produced no value, and number is required",
                 );
               $changes.number = $record.number = $value;
             }
@@ -355,7 +355,7 @@ export function bindAttempt(
               const $value = await $expressions["start.step.0.set.delegator"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &delegator (src/domain/execution/attempt.mesh.mx:84:22) produced no value, and the relationship delegator is required",
+                  "set &delegator (src/domain/execution/attempt.mesh.mx:78:22) produced no value, and the relationship delegator is required",
                 );
               $changes.delegatorId = $record.delegatorId = $value;
             }
@@ -462,6 +462,21 @@ export function bindAttempt(
             ) as unknown as $StoredScope<FinishAttemptInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/attempt.mesh.mx:100): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/execution/attempt.mesh.mx", line: 100, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -476,52 +491,37 @@ export function bindAttempt(
               label: "error",
               code: "attempt.error",
               message: "only a failed attempt reports an error",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 95, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 88, column: 9 },
               that: $expressions["finish.check.error.that"],
             });
             await $runCheck($issues, $checks, {
               label: "evidence",
               code: "attempt.evidence",
               message: "an evidence reference does not exist",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 100, column: 9 },
+              source: { file: "src/domain/execution/attempt.mesh.mx", line: 93, column: 9 },
               that: $expressions["finish.check.evidence.that"],
               details: $expressions["finish.check.evidence.details"],
-            });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 36, column: 5 },
-              that: $expressions["finish.check.versionMatches.that"],
-              details: $expressions["finish.check.versionMatches.details"],
             });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             {
-              const $value = await $expressions["finish.step.0.set.state"]($s);
+              const $value = await $expressions["finish.step.1.set.state"]($s);
               if ($value === undefined || $value === null)
                 throw new $FrameworkError(
-                  "set &state (src/domain/execution/attempt.mesh.mx:109:18) produced no value, and state is required",
+                  "set &state (src/domain/execution/attempt.mesh.mx:102:18) produced no value, and state is required",
                 );
               $changes.state = $record.state = $value;
             }
             {
-              const $value = await $expressions["finish.step.0.set.endedAt"]($s);
+              const $value = await $expressions["finish.step.1.set.endedAt"]($s);
               $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
             }
             {
-              const $value = await $expressions["finish.step.0.set.outcome"]($s);
+              const $value = await $expressions["finish.step.1.set.outcome"]($s);
               $changes.outcome = $record.outcome = $value === undefined ? null : $value;
             }
-            {
-              const $value = await $expressions["finish.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/attempt.mesh.mx:112:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -554,7 +554,7 @@ export function bindAttempt(
                 "execution.Attempt#finish",
               ),
             });
-            await $expressions["finish.step.1.run"]($after);
+            await $expressions["finish.step.2.run"]($after);
             // the result: the row as the steps after the write left it, read again by key
             const $result = await tx.selectByKey(tables.attempts, { id: $stored.id });
             if ($result === undefined)
@@ -639,6 +639,21 @@ export function bindAttempt(
             ) as unknown as $StoredScope<ReportStoppedAttemptInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/attempt.mesh.mx:116): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/execution/attempt.mesh.mx", line: 116, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -649,34 +664,19 @@ export function bindAttempt(
               source: { file: "src/domain/execution/attempt.mesh.mx", line: 31, column: 5 },
               that: $expressions["reportStopped.check.running.that"],
             });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 36, column: 5 },
-              that: $expressions["reportStopped.check.versionMatches.that"],
-              details: $expressions["reportStopped.check.versionMatches.details"],
-            });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.state = $record.state = "stopped";
             {
-              const $value = await $expressions["reportStopped.step.0.set.endedAt"]($s);
+              const $value = await $expressions["reportStopped.step.1.set.endedAt"]($s);
               $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
             }
             {
-              const $value = await $expressions["reportStopped.step.0.set.outcome"]($s);
+              const $value = await $expressions["reportStopped.step.1.set.outcome"]($s);
               $changes.outcome = $record.outcome = $value === undefined ? null : $value;
             }
-            {
-              const $value = await $expressions["reportStopped.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/attempt.mesh.mx:130:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,
@@ -776,6 +776,21 @@ export function bindAttempt(
             ) as unknown as $StoredScope<AbandonAttemptInput>;
             // policies: the checks that read the record run here, on the locked row (on a create, the new instance before the input), before validate, so a caller who may not run the action is told so and never which check their input fails
             await $policies.inside($checkScope($s));
+            // lock &version (src/domain/execution/attempt.mesh.mx:127): the caller must have read the stored version; the row is locked, so it cannot change before the write
+            if (parsed.expectedVersion != null && parsed.expectedVersion !== $before.version)
+              throw new $InvalidInputError([
+                {
+                  label: "lock",
+                  code: "expected-version",
+                  path: ["expectedVersion"],
+                  message: `the record changed since it was read: version is ${$before.version}, and the call expected ${parsed.expectedVersion}`,
+                  source: { file: "src/domain/execution/attempt.mesh.mx", line: 127, column: 9 },
+                  details: {
+                    expectedVersion: parsed.expectedVersion,
+                    actualVersion: $before.version,
+                  },
+                },
+              ]);
             // validate: every check runs, and every failed check is reported together
             const $issues: $Issue[] = [];
             const $checks = $checkScope($s);
@@ -786,34 +801,19 @@ export function bindAttempt(
               source: { file: "src/domain/execution/attempt.mesh.mx", line: 31, column: 5 },
               that: $expressions["abandon.check.running.that"],
             });
-            await $runCheck($issues, $checks, {
-              label: "versionMatches",
-              code: "expected-version",
-              message: "the record is at another version; read it again and retry",
-              source: { file: "src/domain/execution/attempt.mesh.mx", line: 36, column: 5 },
-              that: $expressions["abandon.check.versionMatches.that"],
-              details: $expressions["abandon.check.versionMatches.details"],
-            });
             if ($issues.length > 0) throw new $InvalidInputError($issues);
             // do: the steps run in written order, each seeing the record as the ones before it left it
             $changes.state = $record.state = "abandoned";
             {
-              const $value = await $expressions["abandon.step.0.set.endedAt"]($s);
+              const $value = await $expressions["abandon.step.1.set.endedAt"]($s);
               $changes.endedAt = $record.endedAt = $value === undefined ? null : $value;
             }
             {
-              const $value = await $expressions["abandon.step.0.set.outcome"]($s);
+              const $value = await $expressions["abandon.step.1.set.outcome"]($s);
               $changes.outcome = $record.outcome = $value === undefined ? null : $value;
             }
-            {
-              const $value = await $expressions["abandon.step.0.set.version"]($s);
-              if ($value === undefined || $value === null)
-                throw new $FrameworkError(
-                  "set &version (src/domain/execution/attempt.mesh.mx:143:20) produced no value, and version is required",
-                );
-              $changes.version = $record.version = $value;
-            }
             // data layer
+            $changes.version = $record.version = $before.version + 1;
             // a call made before this write must not have changed this row: the checks and steps above decided on the row as read
             await $checkUnchanged(
               tx,

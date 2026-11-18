@@ -166,7 +166,7 @@ export const retireMachineInputSchema = $ruled(
     reason: {
       too_small: {
         code: "too_short",
-        source: { file: "src/domain/execution/machine.mesh.mx", line: 64, column: 9 },
+        source: { file: "src/domain/execution/machine.mesh.mx", line: 55, column: 9 },
       },
     },
   },

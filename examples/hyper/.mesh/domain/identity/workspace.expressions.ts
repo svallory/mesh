@@ -75,37 +75,16 @@ export const $expressions = {
         firstOwnerId: input.firstOwner ?? actor.id,
       }))($s);
   },
-  // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:38:16)
+  // check :workspaceActive that, translated (src/domain/identity/workspace.mesh.mx:37:16)
   "rename.check.workspaceActive.that": (
     $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :versionMatches that, translated (src/domain/identity/workspace.mesh.mx:43:16)
-  "rename.check.versionMatches.that": (
-    $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
-  ) =>
-    $.or($.isNull($s.input?.expectedVersion), () =>
-      $.eq($s.input?.expectedVersion, $s.self.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/workspace.mesh.mx:46:19)
-  "rename.check.versionMatches.details": (
-    $s: $identity$Workspace$CheckScope<$identity$Workspace$RenameWorkspaceInput>,
-  ) => {
-    const $self = $s.self;
-    return (({ input }) => ({
-      expectedVersion: input.expectedVersion,
-      actualVersion: $self.version,
-    }))($s);
-  },
-  // set &name, translated (src/domain/identity/workspace.mesh.mx:50:17)
-  "rename.step.0.set.name": (
+  // set &name, translated (src/domain/identity/workspace.mesh.mx:44:17)
+  "rename.step.1.set.name": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ) => $s.input?.name,
-  // set &version, translated (src/domain/identity/workspace.mesh.mx:51:20)
-  "rename.step.0.set.version": (
-    $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
-  ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:52:17)
-  "rename.step.1.publish": (
+  // publish, plain (publish-step) (src/domain/identity/workspace.mesh.mx:45:17)
+  "rename.step.2.publish": (
     $s: $identity$Workspace$StoredScope<$identity$Workspace$RenameWorkspaceInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
     const WorkspaceRenamed: typeof $identity$WorkspaceRenamed$class =
@@ -113,10 +92,10 @@ export const $expressions = {
     return (({ before, input }) =>
       new WorkspaceRenamed({ oldName: before.name, newName: input.name }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:55:20)
+  // policy :membersRead authorize-if, translated (src/domain/identity/workspace.mesh.mx:48:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Workspace$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:57:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:50:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Workspace$CheckScope<
       $SharedInput<
@@ -126,7 +105,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:59:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/workspace.mesh.mx:52:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $identity$Workspace$CheckScope<
       $SharedInput<

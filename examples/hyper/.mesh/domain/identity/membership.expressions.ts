@@ -72,27 +72,27 @@ export type $identity$Membership$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // check :collaboratorActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:39:16)
+  // check :collaboratorActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:33:16)
   "grant.check.collaboratorActive.that": (
     $s: $identity$Membership$NewScope<$identity$Membership$GrantMembershipInput>,
   ) => {
     return (async ({ input }) => await collaboratorActiveOf(input.collaborator))($s);
   },
-  // check :noneActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:44:16)
+  // check :noneActive that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:38:16)
   "grant.check.noneActive.that": (
     $s: $identity$Membership$NewScope<$identity$Membership$GrantMembershipInput>,
   ) => {
     return (async ({ input }) => await noActiveMembershipOf(input.collaborator))($s);
   },
-  // set &grantedAt, translated (src/domain/identity/membership.mesh.mx:50:22)
+  // set &grantedAt, translated (src/domain/identity/membership.mesh.mx:44:22)
   "grant.step.0.set.grantedAt": (
     $s: $identity$Membership$Scope<$identity$Membership$GrantMembershipInput>,
   ) => $.now($s),
-  // set &grantedBy, translated (src/domain/identity/membership.mesh.mx:51:22)
+  // set &grantedBy, translated (src/domain/identity/membership.mesh.mx:45:22)
   "grant.step.0.set.grantedBy": (
     $s: $identity$Membership$Scope<$identity$Membership$GrantMembershipInput>,
   ) => $s.actor?.id,
-  // publish, plain (publish-step) (src/domain/identity/membership.mesh.mx:52:17)
+  // publish, plain (publish-step) (src/domain/identity/membership.mesh.mx:46:17)
   "grant.step.1.publish": (
     $s: $identity$Membership$Scope<$identity$Membership$GrantMembershipInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -110,7 +110,7 @@ export const $expressions = {
   "changeRole.check.membershipActive.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:60:16)
+  // check :roleChanges that, translated (src/domain/identity/membership.mesh.mx:53:16)
   "changeRole.check.roleChanges.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) =>
@@ -118,7 +118,7 @@ export const $expressions = {
       $.coalesce($s.input?.role, () => $s.self.role),
       $s.self.role,
     ),
-  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:65:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:58:16)
   "changeRole.check.lastOwner.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
   ) => {
@@ -130,28 +130,7 @@ export const $expressions = {
           (input.role ?? $self.role) !== "owner",
       ))($s);
   },
-  // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:27:12)
-  "changeRole.check.versionMatches.that": (
-    $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
-  ) =>
-    $.or($.isNull($s.input?.expectedVersion), () =>
-      $.eq($s.input?.expectedVersion, $s.self.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:30:15)
-  "changeRole.check.versionMatches.details": (
-    $s: $identity$Membership$CheckScope<$identity$Membership$ChangeRoleMembershipInput>,
-  ) => {
-    const $self = $s.self;
-    return (({ input }) => ({
-      expectedVersion: input.expectedVersion,
-      actualVersion: $self.version,
-    }))($s);
-  },
-  // set &version, translated (src/domain/identity/membership.mesh.mx:72:20)
-  "changeRole.step.0.set.version": (
-    $s: $identity$Membership$StoredScope<$identity$Membership$ChangeRoleMembershipInput>,
-  ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/membership.mesh.mx:73:17)
+  // publish, plain (publish-step) (src/domain/identity/membership.mesh.mx:64:17)
   "changeRole.step.1.publish": (
     $s: $identity$Membership$StoredScope<$identity$Membership$ChangeRoleMembershipInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -169,7 +148,7 @@ export const $expressions = {
   "revoke.check.membershipActive.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :ownerRemains that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:81:16)
+  // check :ownerRemains that, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:71:16)
   "revoke.check.ownerRemains.that": (
     $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
   ) => {
@@ -178,37 +157,16 @@ export const $expressions = {
       $s,
     );
   },
-  // check :versionMatches that, translated (src/domain/identity/membership.mesh.mx:27:12)
-  "revoke.check.versionMatches.that": (
-    $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
-  ) =>
-    $.or($.isNull($s.input?.expectedVersion), () =>
-      $.eq($s.input?.expectedVersion, $s.self.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/membership.mesh.mx:30:15)
-  "revoke.check.versionMatches.details": (
-    $s: $identity$Membership$CheckScope<$identity$Membership$RevokeMembershipInput>,
-  ) => {
-    const $self = $s.self;
-    return (({ input }) => ({
-      expectedVersion: input.expectedVersion,
-      actualVersion: $self.version,
-    }))($s);
-  },
-  // set &revokedAt, translated (src/domain/identity/membership.mesh.mx:89:22)
-  "revoke.step.0.set.revokedAt": (
+  // set &revokedAt, translated (src/domain/identity/membership.mesh.mx:79:22)
+  "revoke.step.1.set.revokedAt": (
     $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
   ) => $.now($s),
-  // set &revokedBy, translated (src/domain/identity/membership.mesh.mx:90:22)
-  "revoke.step.0.set.revokedBy": (
+  // set &revokedBy, translated (src/domain/identity/membership.mesh.mx:80:22)
+  "revoke.step.1.set.revokedBy": (
     $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
   ) => $s.actor?.id,
-  // set &version, translated (src/domain/identity/membership.mesh.mx:91:20)
-  "revoke.step.0.set.version": (
-    $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
-  ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/membership.mesh.mx:92:17)
-  "revoke.step.1.publish": (
+  // publish, plain (publish-step) (src/domain/identity/membership.mesh.mx:81:17)
+  "revoke.step.2.publish": (
     $s: $identity$Membership$StoredScope<$identity$Membership$RevokeMembershipInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
     const MembershipRevoked: typeof $identity$MembershipRevoked$class =
@@ -220,10 +178,10 @@ export const $expressions = {
         revokedBy: actor.id,
       }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:95:20)
+  // policy :membersRead authorize-if, translated (src/domain/identity/membership.mesh.mx:84:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Membership$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:97:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:86:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Membership$NewScope<
       $SharedInput<
@@ -235,7 +193,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:99:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/membership.mesh.mx:88:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $identity$Membership$NewScope<
       $SharedInput<

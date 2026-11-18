@@ -25,12 +25,6 @@ entity :Machine table="machines"
       code="machine.active"
       message="the machine is retired"
     ]
-    check :versionMatches [
-      that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-      code="expected-version"
-      message="the record is at another version; read it again and retry"
-      details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-    ]
   actions auto=[:read]
     create :register
       input
@@ -52,17 +46,13 @@ entity :Machine table="machines"
     update :update
       input
         &platform
-        integer :expectedVersion nullable
       validate
         check &machineActive
-        check &versionMatches
       do
-        set
-          &version=() => &version + 1
+        lock &version optional
     update :retire
       input
         string :reason min=1
-        integer :expectedVersion nullable
       validate
         check &machineActive
         check :machineIdle [
@@ -70,11 +60,10 @@ entity :Machine table="machines"
           code="machine.idle"
           message="an attempt on this machine is reported running"
         ]
-        check &versionMatches
       do
+        lock &version optional
         set
           &state=:retired
-          &version=() => &version + 1
   policies
     policy :membersRead types=[:read]
       authorize-if=({ actor, context }) => Mesh.isSystem(context) || actor.role != null

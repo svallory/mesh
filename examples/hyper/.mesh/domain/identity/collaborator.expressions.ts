@@ -63,13 +63,13 @@ export type $identity$Collaborator$NewScope<I = unknown> = $Omit<
 };
 
 export const $expressions = {
-  // check :nameUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:37:16)
+  // check :nameUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:31:16)
   "register.check.nameUnique.that": (
     $s: $identity$Collaborator$NewScope<$identity$Collaborator$RegisterCollaboratorInput>,
   ) => {
     return (async ({ input }) => await nameFreeOf(input.name, null))($s);
   },
-  // publish, plain (publish-step) (src/domain/identity/collaborator.mesh.mx:42:17)
+  // publish, plain (publish-step) (src/domain/identity/collaborator.mesh.mx:36:17)
   "register.step.0.publish": (
     $s: $identity$Collaborator$Scope<$identity$Collaborator$RegisterCollaboratorInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -82,39 +82,18 @@ export const $expressions = {
   "update.check.collaboratorActive.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:51:16)
+  // check :kindImmutable that, translated (src/domain/identity/collaborator.mesh.mx:44:16)
   "update.check.kindImmutable.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => $.or($.isNull($s.input?.kind), () => $.eq($s.input?.kind, $s.self.kind)),
-  // check :nameStaysUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:56:16)
+  // check :nameStaysUnique that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:49:16)
   "update.check.nameStaysUnique.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => {
     const $self = $s.self;
     return (async ({ input }) => await nameFreeOf(input.name ?? $self.name, $self.id))($s);
   },
-  // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:25:12)
-  "update.check.versionMatches.that": (
-    $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
-  ) =>
-    $.or($.isNull($s.input?.expectedVersion), () =>
-      $.eq($s.input?.expectedVersion, $s.self.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:28:15)
-  "update.check.versionMatches.details": (
-    $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
-  ) => {
-    const $self = $s.self;
-    return (({ input }) => ({
-      expectedVersion: input.expectedVersion,
-      actualVersion: $self.version,
-    }))($s);
-  },
-  // set &version, translated (src/domain/identity/collaborator.mesh.mx:63:20)
-  "update.step.0.set.version": (
-    $s: $identity$Collaborator$StoredScope<$identity$Collaborator$UpdateCollaboratorInput>,
-  ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/collaborator.mesh.mx:64:17)
+  // publish, plain (publish-step) (src/domain/identity/collaborator.mesh.mx:55:17)
   "update.step.1.publish": (
     $s: $identity$Collaborator$StoredScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
@@ -127,46 +106,25 @@ export const $expressions = {
   "retire.check.collaboratorActive.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
   ) => $.eq($s.self.state, "active"),
-  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:72:16)
+  // check :lastOwner that, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:62:16)
   "retire.check.lastOwner.that": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
   ) => {
     const $self = $s.self;
     return (async ({}) => await retireKeepsAnOwnerOf($self.id))($s);
   },
-  // check :versionMatches that, translated (src/domain/identity/collaborator.mesh.mx:25:12)
-  "retire.check.versionMatches.that": (
-    $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
-  ) =>
-    $.or($.isNull($s.input?.expectedVersion), () =>
-      $.eq($s.input?.expectedVersion, $s.self.version),
-    ),
-  // check :versionMatches details, plain (unsupported-construct) (src/domain/identity/collaborator.mesh.mx:28:15)
-  "retire.check.versionMatches.details": (
-    $s: $identity$Collaborator$CheckScope<$identity$Collaborator$RetireCollaboratorInput>,
-  ) => {
-    const $self = $s.self;
-    return (({ input }) => ({
-      expectedVersion: input.expectedVersion,
-      actualVersion: $self.version,
-    }))($s);
-  },
-  // set &version, translated (src/domain/identity/collaborator.mesh.mx:80:20)
-  "retire.step.0.set.version": (
-    $s: $identity$Collaborator$StoredScope<$identity$Collaborator$RetireCollaboratorInput>,
-  ) => $.add($s.self.version, 1),
-  // publish, plain (publish-step) (src/domain/identity/collaborator.mesh.mx:81:17)
-  "retire.step.1.publish": (
+  // publish, plain (publish-step) (src/domain/identity/collaborator.mesh.mx:70:17)
+  "retire.step.2.publish": (
     $s: $identity$Collaborator$StoredScope<$identity$Collaborator$RetireCollaboratorInput>,
   ): $DomainEvent | $Promise<$DomainEvent> => {
     const CollaboratorRetired: typeof $identity$CollaboratorRetired$class =
       $identity$CollaboratorRetired$class;
     return (({ input }) => new CollaboratorRetired({ reason: input.reason ?? null }))($s);
   },
-  // policy :membersRead authorize-if, translated (src/domain/identity/collaborator.mesh.mx:84:20)
+  // policy :membersRead authorize-if, translated (src/domain/identity/collaborator.mesh.mx:73:20)
   "policy.membersRead.authorize-if.0": ($s: $identity$Collaborator$CheckScope<unknown>) =>
     $.or($.isSystem($s.context), () => $.isNotNull($s.actor?.role)),
-  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:86:20)
+  // policy :isMember authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:75:20)
   "policy.isMember.authorize-if.0": (
     $s: $identity$Collaborator$NewScope<
       $SharedInput<
@@ -178,7 +136,7 @@ export const $expressions = {
   ) => {
     return (async ({ actor, context }) => Mesh.isSystem(context) || (await memberOf(actor.id)))($s);
   },
-  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:88:20)
+  // policy :ownerOnly authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:77:20)
   "policy.ownerOnly.authorize-if.0": (
     $s: $identity$Collaborator$NewScope<
       $SharedInput<
@@ -190,7 +148,7 @@ export const $expressions = {
     return (async ({ actor, context }) =>
       Mesh.isSystem(context) || (await roleIn(actor.id, ["owner"])))($s);
   },
-  // policy :collaboratorSelfOrOwner authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:90:20)
+  // policy :collaboratorSelfOrOwner authorize-if, plain (awaits-helper) (src/domain/identity/collaborator.mesh.mx:79:20)
   "policy.collaboratorSelfOrOwner.authorize-if.0": (
     $s: $identity$Collaborator$CheckScope<$identity$Collaborator$UpdateCollaboratorInput>,
   ) => {
