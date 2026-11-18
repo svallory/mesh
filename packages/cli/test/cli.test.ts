@@ -104,6 +104,16 @@ describe("M1 test 3: guard differences", () => {
     expect(await run(root, "build", "--check")).toEqual({ code: 1, stdout: "", stderr: `${file}:1:1 error MESH_CLI Generated file is missing; run mesh build and commit the generated tree\n1 error, 0 warnings\n` });
     expect(await Bun.file(join(root, file)).exists()).toBe(false);
   }, 30_000);
+  // `mesh build` refuses this earlier, in the writer's preflight (MESH_WRITE_PATH); `--check` writes nothing, so the guard does.
+  test("a directory where a generated file belongs fails mesh build --check and is left in place", async () => {
+    const root = await builtProject();
+    await rm(join(root, file));
+    await mkdir(join(root, file));
+    await writeFile(join(root, file, "keep.txt"), "keep me");
+    // The directory, and each file in it, which no build produces.
+    expect(await run(root, "build", "--check")).toEqual({ code: 1, stdout: "", stderr: `${file}:1:1 error MESH_CLI Expected a generated file, found a directory; delete or move it and rebuild\n${file}/keep.txt:1:1 error MESH_CLI File is not produced by the build; delete or move it out of the output directory\n2 errors, 0 warnings\n` });
+    expect(await readFile(join(root, file, "keep.txt"), "utf8")).toBe("keep me");
+  }, 30_000);
   test("M1 test 3: a stray file fails both build and guard and is never deleted", async () => {
     const root = await builtProject();
     await mkdir(join(root, "generated/.old"));
@@ -621,6 +631,17 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
     await writeFile(join(root, "adapter.ts"), "export const nothing = 1;\n");
     expect(await run(root, "export", "generators")).toEqual({ code: 1, stdout: "",
       stderr: 'mesh.config.ts:1:1 error MESH_ADAPTER_BUILD the data adapter\'s build entry "./adapter.ts" has no default export of an AdapterBuild object\n  fix: Use a data adapter whose build entry default-exports { generators, commands }\n1 error, 0 warnings\n' });
+    expect(existsSync(join(root, ".mesh-generators"))).toBe(false);
+  }, 30_000);
+
+  // `loadAdapterBuild` checks that a generator's templateDir is an absolute path, not that its template is there; the
+  // read then fails inside the export, and `runExport` reports it at .mesh-generators with the error's code.
+  test("an adapter template that cannot be read fails the export with its code, before anything is written", async () => {
+    const root = await project();
+    await mkdir(join(root, "empty"));
+    await writeFile(join(root, "adapter.ts"), `export default { generators: [{ name: "ghost", template: "ghost.ts.jig", templateDir: ${JSON.stringify(join(root, "empty"))}, requires: [], views: () => [] }] };\n`);
+    expect(await run(root, "export", "generators")).toEqual({ code: 1, stdout: "",
+      stderr: ".mesh-generators:1:1 error MESH_CLI Export failed (ENOENT); fix the permissions of .mesh-generators/ and export again\n1 error, 0 warnings\n" });
     expect(existsSync(join(root, ".mesh-generators"))).toBe(false);
   }, 30_000);
 

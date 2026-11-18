@@ -51,7 +51,10 @@ test("M1 test 3: verify-discovered blog validate script guards the committed tre
   expect(validate(example)).toEqual({ code: 0, stderr: "$ mesh build --check\n0 errors, 0 warnings\n" });
 }, 30_000);
 
-test.each(["types", "validators"])("M2 test 2: blog validate script rejects a planted stale %s file without writing", async (kind) => {
+// One planted file is enough: the guard compares every generated file the same way, and a hand edit is pinned file by
+// file in `cli.test.ts` ("M1 test 3: guard differences"). This case shows the example's own script runs that guard.
+test("M2 test 2: blog validate script rejects a planted stale types file without writing", async () => {
+  const kind = "types";
   const dir = mkdtempSync(join(repo, ".scratch-m1-blog-guard-"));
   try {
     for (const path of ["mesh.config.ts", "package.json", "src", ".mesh"]) {
