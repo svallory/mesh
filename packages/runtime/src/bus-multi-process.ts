@@ -336,8 +336,12 @@ export function multiProcessChecks(
       for (const lease of await ops(tx).readHandlerLeases()) await ops(tx).lockHandlerProgress(lease.name);
       return true;
     })();
+    // `kill` returns once the signal is queued, not once the worker stopped: on a loaded machine the worker can run on
+    // past both probes and stop holding a lock. So the probes start only once `ps` shows it stopped (state T).
+    const stopped = () => Bun.spawnSync(["ps", "-o", "stat=", "-p", String(worker.pid)]).stdout.toString().trim().startsWith("T");
     for (let attempt = 0; attempt < 50; attempt++) {
       worker.kill("SIGSTOP");
+      for (const end = Date.now() + 1000; !stopped() && Date.now() < end;) await sleep(5);
       await sleep(10);
       const probe = () => ctx.layer.transaction(free, { waitMs: 30 }).catch(() => false);
       if (await probe() && (await sleep(20), await probe())) return;
