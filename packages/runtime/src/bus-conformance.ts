@@ -1073,7 +1073,7 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
           assert(error instanceof FrameworkError && error.message.startsWith("retryFailed was called in a process that does not deliver"), `got ${String(error)}`);
         }
         const unknown = await rejection(() => retryFailed(world.bind(module), "nobody"));
-        assert(unknown instanceof FrameworkError && unknown.message.includes('no handler named "nobody"') && unknown.message.includes("its handlers are h"), `got ${String(unknown)}`);
+        assert(unknown instanceof FrameworkError && unknown.message.includes('no handler named "nobody"') && unknown.message.includes("the handlers are h"), `got ${String(unknown)}`);
         const { state } = await world.state();
         await world.layer.transaction((tx) => ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-00000000f00d", generation: state.generation + 1, host: "elsewhere", pid: 4242, startedAt: null }));
         const taken = await rejection(() => retryFailed(world.bind(module), "h"));

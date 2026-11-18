@@ -1,0 +1,13 @@
+import * as paid from "./invoice-paid.mesh.mx"
+import * as recorded from "./payment-recorded.mesh.mx"
+import { sendReceipt } from "./mailer"
+
+entity :Ledger
+  attributes
+    uuid :id primary-key
+  handlers
+    listen :receipt on=[paid.InvoicePaid, recorded.PaymentRecorded] value=async ({ event }) => { await sendReceipt({ idempotencyKey: event.id, invoiceId: event.payload.invoiceId }) }
+    listen :total [on=recorded.PaymentRecorded] async () {
+      const amount: number = event.payload.amount
+      await sendReceipt({ idempotencyKey: `${amount}`, invoiceId: event.payload.invoiceId })
+    }

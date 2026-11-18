@@ -97,7 +97,7 @@ export interface NamedInTypes {
 const NOTHING: NamedInTypes = { roots: [], values: [], types: [] };
 
 /** The whole function of one expression: `(s: Scope) => ...`. */
-export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING, emitted: Emitted = emittedNothing(), returns = ""): string {
+export function printExpression(e: Expression, scopeType: string, boolean: boolean, async = false, entities: EntityLocals = NO_ENTITIES, inTypes: NamedInTypes = NOTHING, emitted: Emitted = emittedNothing(), returns = "", rootNames: readonly string[] = ROOTS): string {
   // The parameter is `_$s` unless the printed body reads it: an unused parameter fails `noUnusedParameters`.
   // `returns` is the return type a function must have (a `publish` step: `DomainEvent | Promise<DomainEvent>`).
   const withScope = (body: string) => `(${emitted.scope ? SCOPE : `_${SCOPE}`}: ${scopeType})${returns ? `: ${returns}` : ""} => ${body}`;
@@ -111,7 +111,8 @@ export function printExpression(e: Expression, scopeType: string, boolean: boole
   const fn = async && !/^\s*async\b/.test(authored) ? `async ${authored}` : authored;
   // The scope names the function reads without its parameters binding them: the front end found the ones read as values
   // in the syntax tree, `typeNames` the ones read only in a type.
-  const roots = ROOTS.filter((name) => plain.roots.includes(name) || inTypes.roots.includes(name));
+  // `rootNames` are the roots the scope holds, in the order a function binds them: a handler body's are `event` and `context`.
+  const roots = rootNames.filter((name) => plain.roots.includes(name) || inTypes.roots.includes(name));
   // What Mesh's own edits read, under names the authored text does not spell, so no local or parameter of the author's
   // (`self`, `$`, `$s`) hides them: `&name` reads the record (`$self.name`), and `%.now` and `%.today` call the functions
   // a translated expression calls (`$now()`), so a plain function and a translated one read one instant, a fresh

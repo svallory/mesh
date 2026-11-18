@@ -768,7 +768,7 @@ export async function forgetOwned(layer: DataLayer, name: string, kind: "handler
     if (handler) {
       const registrant = processes.find((each) => Object.hasOwn(each.handlers, name));
       if (registrant)
-        throw new FrameworkError(cap(`the handler ${JSON.stringify(name)} is registered by a live process (${who(registrant)}), so its progress is not dropped. Remove it from the events module and restart every process first`));
+        throw new FrameworkError(cap(`the handler ${JSON.stringify(name)} is registered by a live process (${who(registrant)}), so its progress is not dropped. Remove it from the events module or from the handlers section of its entity file (then rebuild) and restart every process first`));
       await ops.deleteHandlerProgress(name);
       return { kind: "handler" as const, name, position: handler.position };
     }

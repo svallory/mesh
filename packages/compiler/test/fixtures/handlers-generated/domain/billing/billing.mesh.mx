@@ -1,0 +1,12 @@
+import { Invoice } from "./invoice.mesh.mx"
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+
+aggregate :Billing
+  root entity=Invoice
+  events
+    event :BillingClosed
+      uuid :invoiceId
+  handlers
+    process :close [on=[InvoicePaid, BillingClosed]] ({ event, context }) {
+      return Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
+    }

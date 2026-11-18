@@ -1,0 +1,3 @@
+event :PaymentRecorded
+  uuid :invoiceId
+  integer :amount

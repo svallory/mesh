@@ -11,7 +11,7 @@ import {
 } from "./errors.ts";
 import { bindingParts, handlerScope, insideTransaction, type Binding } from "./entity.ts";
 import {
-  PerDatabase, causedIn, describe, holeError, keepDays, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule, type Keep, type KeepRules,
+  PerDatabase, causedIn, describe, holeError, keepDays, kindOf, loadEvents, onPublished, recordOf, renamedClause, renamedPage, renamedRow, rows, sameKey, storedKindProblem, type EventClass, type EventRecord, type EventsConfig, type EventsModule, type Keep, type KeepRules, type SectionHandlers,
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
 import { NO_RENAMES, storedNamesOf, storedToDeclared } from "./stored-names.ts";
@@ -224,16 +224,28 @@ function sortedUnique(names: readonly string[]): string[] {
  * domain's event classes. A handler of a kind an extension contributes is checked by its kind (`check`) after its shape
  * and before core's option checks, so the kind's own message wins (ADR-0094).
  */
-export function declaredHandlers(module: EventsModule, bus: EventBus, events: ReadonlyMap<string, EventClass>): DeclaredHandler[] {
+export function declaredHandlers(module: EventsModule, bus: EventBus, events: ReadonlyMap<string, EventClass>, section?: SectionHandlers): DeclaredHandler[] {
   const capabilities = new Set<string>(bus.manifest.capabilities);
   const out: DeclaredHandler[] = [];
   const seen = new Map<string, string>();
+  // Where each declared name comes from: the events module, or the `.mesh.mx` line of a section handler (H19).
+  const sources = new Map<string, string>();
   const keys = ["process", "listen", ...Object.keys(module.handlers ?? {}).filter((key) => key !== "process" && key !== "listen")];
-  for (const kind of keys) {
-    for (const [name, handler] of Object.entries(module.handlers?.[kind] ?? {})) {
+  // The events module's handlers first, then the sections' (`process` and `listen` only), through the same checks.
+  const groups: [kind: string, handlers: Readonly<Record<string, Handler>> | undefined, fromSection: boolean][] = [
+    ...keys.map((kind) => [kind, module.handlers?.[kind], false] as [string, Readonly<Record<string, Handler>> | undefined, boolean]),
+    ["process", section?.process, true], ["listen", section?.listen, true],
+  ];
+  const sourceOf = (name: string, fromSection: boolean) => (fromSection ? section?.at[name] ?? "a handlers section" : "the events module");
+  for (const [kind, group, fromSection] of groups) {
+    for (const [name, handler] of Object.entries(group ?? {})) {
       const where = `The ${kind} handler ${JSON.stringify(name)}`;
-      if (seen.has(name)) throw new HandlerOptionError(name, `${where} has the name of a ${seen.get(name)} handler: a handler's name is unique across every kind, since it keys the handler's progress row`);
+      if (seen.has(name)) {
+        const both = sources.get(name) !== "the events module" || fromSection ? ` (one in ${sources.get(name)}, one in ${sourceOf(name, fromSection)})` : "";
+        throw new HandlerOptionError(name, `${where} has the name of a ${seen.get(name)} handler: a handler's name is unique across every kind, since it keys the handler's progress row${both}`);
+      }
       seen.set(name, kind);
+      sources.set(name, sourceOf(name, fromSection));
       if (typeof handler !== "object" || handler === null) throw new FrameworkError(`${where} is ${describe(handler)}: it must be a handler, Mesh.handler({ events, run })`);
       if (typeof handler.run !== "function") throw new FrameworkError(`${where} has no run function: a handler is Mesh.handler({ events: [...], run: (event, { context }) => ... })`);
       if (!Array.isArray(handler.events) || handler.events.length === 0)
@@ -267,14 +279,18 @@ export function declaredHandlers(module: EventsModule, bus: EventBus, events: Re
       out.push({ registered: Object.freeze({ name, kind, events: sorted, onFailure }), handler, renamedFrom, ...(contributed ? { kind: contributed } : {}) });
     }
   }
+  // The renames run over both sources: the messages name where each handler is written once a section handler is involved.
+  const named = (...names: string[]) => (names.some((each) => sources.get(each) !== "the events module") ? ` (${names.map((each) => `${each} in ${sources.get(each)}`).join(", ")})` : "");
   const formers = new Map<string, string>();
   for (const { registered: { name }, renamedFrom } of out) {
     if (renamedFrom === undefined) continue;
-    if (seen.has(renamedFrom))
-      throw new HandlerOptionError(name, `The handler ${JSON.stringify(name)} has renamedFrom ${JSON.stringify(renamedFrom)}, a handler the events module still registers: a running handler's progress is never taken over. Remove the option, or the old handler`);
+    if (seen.has(renamedFrom)) {
+      const sourced = named(name, renamedFrom);
+      throw new HandlerOptionError(name, `The handler ${JSON.stringify(name)} has renamedFrom ${JSON.stringify(renamedFrom)}, a handler ${sourced ? "still registered" : "the events module still registers"}: a running handler's progress is never taken over. Remove the option, or the old handler${sourced}`);
+    }
     const other = formers.get(renamedFrom);
     if (other !== undefined)
-      throw new HandlerOptionError(name, `The handlers ${JSON.stringify(other)} and ${JSON.stringify(name)} both have renamedFrom ${JSON.stringify(renamedFrom)}: one progress row cannot move to two names`);
+      throw new HandlerOptionError(name, `The handlers ${JSON.stringify(other)} and ${JSON.stringify(name)} both have renamedFrom ${JSON.stringify(renamedFrom)}: one progress row cannot move to two names${named(other, name)}`);
     formers.set(renamedFrom, name);
   }
   return out.sort((a, b) => (a.registered.name < b.registered.name ? -1 : a.registered.name > b.registered.name ? 1 : 0));
@@ -1205,25 +1221,25 @@ function requireDatabase(layer: DataLayer, what: string): void {
 
 /** What a binding needs to deliver, checked: its layer, event classes, configuration with a bus, and the events module. */
 async function prepare(binding: Binding, what: string) {
-  const { layer, events, config } = bindingParts(binding);
+  const { layer, events, config, section } = bindingParts(binding);
   if (config?.bus === undefined)
     throw new FrameworkError(`${what} was called on a binding with no event bus: configure events: { bus: localBus() } in mesh.config.ts, or pass it to bind(layer, { events })`);
   if (insideTransaction(binding)) throw new FrameworkError(`${what} was called inside a transaction: delivery runs its own transactions, so call it outside any`);
   checkedBus(config.bus);
   requireDatabase(layer, what);
   const module = await loadEvents(config);
-  return { layer, events, config, module };
+  return { layer, events, config, module, section };
 }
 
 /** `binding.deliver()`: one round (spec, "Ways to run"). */
 export async function deliverRound(binding: Binding): Promise<void> {
   const delivery = deliveryOf(binding);
   if (delivery.started) throw new FrameworkError("deliver() was called on a binding whose delivery is started: startDelivery() (or connect()) delivers on its own; stop it first");
-  const { layer, events, config, module } = await prepare(binding, "deliver()");
+  const { layer, events, config, module, section } = await prepare(binding, "deliver()");
   const db = databases.get(layer);
   if (delivery.round || db.deliverer) throw takenHere(db, db.deliverer);
   const round = (async () => {
-    const declared = declaredHandlers(module, checkedBus(config.bus), events);
+    const declared = declaredHandlers(module, checkedBus(config.bus), events, section);
     if (!delivery.rounds || delivery.rounds.lost) delivery.rounds = new Deliverer(binding, layer, events, config, module);
     const deliverer = delivery.rounds;
     await deliverer.claim(declared);
@@ -1246,10 +1262,10 @@ export async function deliverRound(binding: Binding): Promise<void> {
 export async function startDelivery(binding: Binding): Promise<Delivery> {
   const delivery = deliveryOf(binding);
   if (delivery.started) throw takenHere(databases.get(bindingParts(binding).layer), delivery.started);
-  const { layer, events, config, module } = await prepare(binding, "startDelivery()");
+  const { layer, events, config, module, section } = await prepare(binding, "startDelivery()");
   const db = databases.get(layer);
   if (delivery.round || db.deliverer) throw takenHere(db, db.deliverer);
-  const declared = declaredHandlers(module, checkedBus(config.bus), events);
+  const declared = declaredHandlers(module, checkedBus(config.bus), events, section);
   const deliverer = new Deliverer(binding, layer, events, config, module);
   await deliverer.claim(declared);
   delivery.started = deliverer;
@@ -1554,7 +1570,7 @@ export async function forgetHandler(binding: Binding, name: string): Promise<voi
     const row = (await ops.readHandlerProgress()).find((each) => each.name === name);
     if (!row) throw new FrameworkError(`forgetHandler: no handler named ${JSON.stringify(name)} has a progress row`);
     if (liveUnder(state, row.generation))
-      throw new FrameworkError(`forgetHandler: the handler ${JSON.stringify(name)} is registered by the live deliverer, so its progress is not dropped. Remove it from the events module and restart first`);
+      throw new FrameworkError(`forgetHandler: the handler ${JSON.stringify(name)} is registered by the live deliverer, so its progress is not dropped. Remove it from the events module or from the handlers section of its entity file (then rebuild) and restart first`);
     await ops.deleteHandlerProgress(name);
   });
 }
@@ -1651,16 +1667,16 @@ export async function retryFailed(binding: Binding, name: string): Promise<Retry
     throw new FrameworkError("retryFailed was called in a process that does not deliver (connected with { deliver: false }, or bound with no bus): call it in the deliverer's process");
   if (!checkedBus(config.bus).manifest.capabilities.includes("dead-letters"))
     throw new FrameworkError(`retryFailed was called, and the bus ${config.bus.manifest.adapter} does not declare dead-letters: no event is set aside without it`);
-  const { layer, events, module } = await prepare(binding, "retryFailed");
+  const { layer, events, module, section } = await prepare(binding, "retryFailed");
   const db = databases.get(layer);
   const started = delivery.started && !delivery.started.lost ? delivery.started : undefined;
   let declared: DeclaredHandler[] | undefined;
   if (!started) {
-    declared = declaredHandlers(module, checkedBus(config.bus), events);
+    declared = declaredHandlers(module, checkedBus(config.bus), events, section);
     if (!declared.some((entry) => entry.registered.name === name))
-      throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): the events module registers no handler named ${JSON.stringify(name)}; its handlers are ${declared.map((entry) => entry.registered.name).join(", ") || "none"}`);
+      throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): no handler named ${JSON.stringify(name)} is registered (by the events module or a handlers section); the handlers are ${declared.map((entry) => entry.registered.name).join(", ") || "none"}`);
   } else if (!started.registered(name)) {
-    throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): the events module registers no handler named ${JSON.stringify(name)}; its handlers are ${started.registeredNames().join(", ") || "none"}`);
+    throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): no handler named ${JSON.stringify(name)} is registered (by the events module or a handlers section); the handlers are ${started.registeredNames().join(", ") || "none"}`);
   }
   if (db.retrying.has(name))
     throw new FrameworkError(`retryFailed(${JSON.stringify(name)}) is already running in this process: two runs would handle one set-aside event twice`);
@@ -1733,7 +1749,7 @@ export async function forgetByName(layer: DataLayer, name: string, options?: { r
       throw new FrameworkError(`The name ${JSON.stringify(name)} is held by a handler's progress row and by a subscription's row: forget each from the application, with forgetHandler(${JSON.stringify(name)}) or forgetSubscription(${JSON.stringify(name)})`);
     if (handler) {
       if (liveUnder(state, handler.generation))
-        throw new FrameworkError(`The handler ${JSON.stringify(name)} is registered by the live deliverer (generation ${handler.generation}), so its progress is not dropped. Remove it from the events module and restart the deliverer first`);
+        throw new FrameworkError(`The handler ${JSON.stringify(name)} is registered by the live deliverer (generation ${handler.generation}), so its progress is not dropped. Remove it from the events module or from the handlers section of its entity file (then rebuild) and restart the deliverer first`);
       await ops.deleteHandlerProgress(name);
       return { kind: "handler", name, position: handler.position };
     }

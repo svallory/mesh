@@ -1,7 +1,7 @@
 // The `handlers` section of an entity or an aggregate file: `notes/architecture/handlers-design.md`, PR 1 (rules H1 to
 // H15, ruling D44). A line declares a handler of core's two kinds, `process` or `listen`, keyed `<owner FQN>.<name>`, with
-// the events its `on=` names and a body that is plain code of `{ event, context }`. Nothing is generated from it yet: the
-// project shell reports each line `MESH_NOT_IMPLEMENTED` until the handlers are generated and registered.
+// the events its `on=` names and a body that is plain code of `{ event, context }`. What is generated from it (PR 2) is in
+// `handlers-generated.test.ts`.
 import { afterEach, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -12,7 +12,6 @@ import type { EventBus } from "@meshfw/runtime";
 import { eventsDiagnostics } from "../src/capabilities.ts";
 import { buildModel, parseEntitySource } from "../src/front-end/build.ts";
 import { loadConfig, loadProject } from "../src/index.ts";
-import { handlersNotGenerated } from "../src/model/handlers.ts";
 import { explainAction, explainHandler } from "../src/typescript/explain.ts";
 
 /**
@@ -359,19 +358,11 @@ describe("the configuration", () => {
     const none = build({ "billing/invoice.mesh.mx": withHandlers(""), "billing/ledger.mesh.mx": null, "billing/billing.mesh.mx": null }).document!;
     expect(eventsDiagnostics(none, { data: data as never, events: { bus: bus([]) } }, at)).toEqual([]);
   });
-  test("until handlers are generated, each line is `MESH_NOT_IMPLEMENTED`, so the build fails instead of building handlers that never run", () => {
-    expect(brief(handlersNotGenerated(build({ "billing/billing.mesh.mx": null, "billing/ledger.mesh.mx": null }).document!))).toEqual([
-      ["billing/invoice.mesh.mx", 25, 4, "error", "MESH_NOT_IMPLEMENTED", "handlers are not generated yet: listen :receipt would build and never run; they arrive with the next release", "register the handler in the events module (`src/events.ts`) for now"],
-      ["billing/invoice.mesh.mx", 29, 4, "error", "MESH_NOT_IMPLEMENTED", "handlers are not generated yet: process :voided would build and never run; they arrive with the next release", "register the handler in the events module (`src/events.ts`) for now"],
-    ]);
-    expect(handlersNotGenerated(build({ "billing/invoice.mesh.mx": withHandlers(""), "billing/ledger.mesh.mx": null, "billing/billing.mesh.mx": null }).document!)).toEqual([]);
-  });
-
   const roots: string[] = [];
   afterEach(async () => {
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
   });
-  test("the project shell reports both, and gives no document", async () => {
+  test("the project shell reports the capability at the line; with a bus that declares ordered-delivery the project builds", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "mesh-handlers-"));
     roots.push(root);
     await mkdir(resolve(root, "src/domain/billing"), { recursive: true });
@@ -385,8 +376,14 @@ describe("the configuration", () => {
     expect(built.document).toBeNull();
     expect(built.diagnostics.map((d) => [d.position.file, d.position.line, d.code])).toEqual([
       ["src/domain/billing/ledger.mesh.mx", 8, "MESH_CAPABILITY"],
-      ["src/domain/billing/ledger.mesh.mx", 8, "MESH_NOT_IMPLEMENTED"],
     ]);
+    // The temporary MESH_NOT_IMPLEMENTED of PR 1 is gone: with ordered-delivery the handlers are built and generated.
+    await writeFile(resolve(root, "mesh.config.ts"), `export default ${JSON.stringify({ ...config, events: { bus: { manifest: { adapter: "probe", capabilities: ["ordered-delivery"] }, create: "() => ({})" } } }).replace('"() => ({})"', "() => ({})")}`);
+    const ordered = await loadConfig(root);
+    expect(ordered.diagnostics).toEqual([]);
+    const fine = await loadProject(ordered.config!);
+    expect(fine.diagnostics).toEqual([]);
+    expect(fine.document!.entities.find((entity) => entity.name === "Ledger")!.handlers!.map((handler) => handler.key)).toEqual(["billing.Ledger.receipt"]);
   });
 });
 

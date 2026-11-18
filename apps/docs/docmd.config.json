@@ -526,6 +526,10 @@
             {
               "title": "0098. Retention rules, dead letters and the rename map",
               "path": "/architecture/decisions/0098-retention-rules-dead-letters-and-the-rename-map/"
+            },
+            {
+              "title": "0099. Handlers in entity files",
+              "path": "/architecture/decisions/0099-handlers-in-entity-files/"
             }
           ]
         },
