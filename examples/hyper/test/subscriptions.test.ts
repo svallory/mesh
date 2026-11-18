@@ -142,16 +142,17 @@ test("unsubscribe ends only its own stream and keeps the connection and other su
 });
 
 // `src/rpc/errors.ts` maps a cursor above the log's head for events.read or events.subscribe; the read side is
-// `events.test.ts`. A reconnecting client with a cursor past the head gets -32602 on `after`, and no stream is left open.
-test("a subscription after the log's head is refused CursorAheadError, wired as -32602 on after, and opens no stream", async () => {
+// `events.test.ts`. This calls the deliverer and the mapping function directly: the registered `events.subscribe`
+// method and serve's `error` option are not run here. The refused cursor is the first one past the head.
+test("a subscription after the log's head is refused CursorAheadError, which wireError maps to -32602 on after, and opens no stream", async () => {
   const client = await connect();
   await subscribe(client, 0);
   const head = (await core.rows(0, 1_000)).highest;
   const before = core.subscriptions().map((entry) => entry.name);
   // As the server runs a method: inside the binding.
-  const error = await binding.run(() => openSubscription({ after: head + 5 }, connection)).catch((caught: unknown) => caught);
+  const error = await binding.run(() => openSubscription({ after: head + 1 }, connection)).catch((caught: unknown) => caught);
   expect(error).toBeInstanceOf(CursorAheadError);
-  const wired = wireError(error, { method: "events.subscribe", id: 1, params: { after: head + 5 } } as unknown as Call);
+  const wired = wireError(error, { method: "events.subscribe", id: 1, params: { after: head + 1 } } as unknown as Call);
   expect(wired).toMatchObject({ code: -32602, message: "invalid_params", data: { phase: "shape", failures: [{ check: "schema", details: { path: ["after"], head } }] } });
   expect(core.subscriptions().map((entry) => entry.name)).toEqual(before);
   // The legal neighbour: a cursor at the head opens a stream.
