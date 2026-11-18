@@ -43,6 +43,10 @@ entity :Doc table="docs"
       input
         &ownerId
         &title
+    create :claim
+      input
+        &ownerId
+        &title
     update :edit
       input
         &title
@@ -80,6 +84,8 @@ entity :Doc table="docs"
     policy :sketchers actions=[&sketch] when=({ input }) => input.title !== "nope"
       authorize-if=() => true
       forbid-if=({ actor }) => actor.id === "mallory"
+    policy :claimers actions=[&claim]
+      authorize-if=({ actor }) => &locked === false && actor.id === "alice"
     policy :owner actions=[&edit, &remove]
       authorize-if=({ actor }) => &ownerId === actor.id
     policy :blocklist actions=[&edit]
@@ -467,6 +473,12 @@ describe("checks that read only the caller and the input: decided before any tra
     try {
       await compare(world, (d) => d.Doc.sketch, { ownerId: "alice", title: "nope" }, alice, 0,
         denied(entry("sketchers", "when", "({ input }) => input.title !== \"nope\"", false, true)));
+      // The call's own error says why: no covering policy applied, and it names them, with no open-policy hint.
+      const called = await outcome(world.binding.run(() => domain.Doc.sketch({ ownerId: "alice", title: "nope" }, alice)));
+      const error = (called as { error: ForbiddenError }).error;
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect([error.reason, error.policies]).toEqual(["not-applied", ["sketchers"]]);
+      expect(error.message).toBe("Doc#sketch is forbidden: policy :sketchers covers it, but the `when` of each was false for this call, so none applies, and a call no policy applies to is denied");
       await compare(world, (d) => d.Doc.sketch, { ownerId: "alice", title: "fine" }, alice, 0, allowed(
         entry("sketchers", "authorize-if", "() => true", true, true),
         entry("sketchers", "forbid-if", "({ actor }) => actor.id === \"mallory\"", false, false),
@@ -525,6 +537,16 @@ describe("checks that read the record: decided on the stored row, in a transacti
       await compare(world, (d) => d.Doc.edit, { id: ids.plain, title: "renamed" }, blocked, 0, denied(entry("blocklist", "forbid-if", BLOCKLIST, true, true)));
       await compare(world, (d) => d.Doc.remove, { id: ids.plain }, bob, 1, denied(entry("owner", "authorize-if", OWNER, false, true)));
       await compare(world, (d) => d.Doc.remove, { id: ids.plain }, alice, 1, allowed(entry("owner", "authorize-if", OWNER, true, true)));
+    } finally { await world.db.close(); }
+  });
+
+  test("on a create, a check that reads the record is decided on the new instance, in a transaction that is rolled back", async () => {
+    const world = await fresh();
+    try {
+      // `&locked` is the new instance's default (false); were the record missing, it would be unknown and deny alice.
+      const CLAIMERS = "({ actor }) => &locked === false && actor.id === \"alice\"";
+      await compare(world, (d) => d.Doc.claim, { ownerId: "alice", title: "mine" }, alice, 1, allowed(entry("claimers", "authorize-if", CLAIMERS, true, true)));
+      await compare(world, (d) => d.Doc.claim, { ownerId: "bob", title: "mine" }, bob, 1, denied(entry("claimers", "authorize-if", CLAIMERS, false, true)));
     } finally { await world.db.close(); }
   });
 

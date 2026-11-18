@@ -525,6 +525,7 @@ export function policiesSuite(adapter: DomainAdapter): void {
   describe("what a caller loads runs the read policies of the entity it reaches", () => {
     const shelf = `import { Keeper } from "./keeper.mesh.mx"
 import { Item } from "./item.mesh.mx"
+import { Vault } from "./vault.mesh.mx"
 
 entity :Shelf table="shelves"
   attributes
@@ -532,6 +533,7 @@ entity :Shelf table="shelves"
     string :name
   relationships
     belongs-to :keeper entity=Keeper
+    belongs-to :vault entity=Vault nullable
     has-many :items entity=Item
   computed
     count :itemCount of=&items
@@ -541,6 +543,7 @@ entity :Shelf table="shelves"
       input
         &name
         &keeper
+        &vault
     update :show
       do
         load=[&items, &keeper, &itemCount]
@@ -592,12 +595,25 @@ entity :Item table="items"
     policy :badged types=[:read] when=({ context }) => context.badge === true
       authorize-if=() => true
 `;
+    // Vault has policies, none covering a read (MESH_LOAD_NO_POLICY): a caller's load of it gives nothing, whoever calls.
+    const vault = `entity :Vault table="vaults"
+  attributes
+    uuid :id primary-key
+    string :label
+  actions auto=[:read]
+    create :open
+      input
+        &label
+  policies
+    policy :writers types=[:create]
+      authorize-if=() => true
+`;
     const member = { actor: { id: "member" } };
     const load = ["items", "keeper", "itemCount", "topRank"] as const;
     let loadsDir: string;
     let loads: any;
     beforeAll(async () => {
-      loadsDir = await generate(".scratch-policies-loads-", { shelf, item, keeper });
+      loadsDir = await generate(".scratch-policies-loads-", { shelf, item, keeper, vault });
       loads = await project(loadsDir);
     });
     afterAll(async () => {
@@ -607,7 +623,8 @@ entity :Item table="items"
       const db = await adapter.layer(loads.tables);
       const mesh = callsOf(loads.bind(db), loads.domain);
       const hired = await mesh.hireKeeper({ name: "Kay" }, alice);
-      const made = await mesh.makeShelf({ name: "Top", keeper: hired.id }, alice);
+      const opened = await mesh.openVault({ label: "V" }, alice);
+      const made = await mesh.makeShelf({ name: "Top", keeper: hired.id, vault: opened.id }, alice);
       for (const rank of [3, 7]) await mesh.addItem({ rank, shelf: made.id }, alice);
       return { db, mesh, made };
     }
@@ -623,6 +640,10 @@ entity :Item table="items"
         expect(seen.items.map((row: { rank: number }) => row.rank).sort()).toEqual([3, 7]);
         const [badged] = await mesh.readShelf({ load }, { ...member, badge: true });
         expect(badged).toMatchObject({ keeper: { name: "Kay" }, itemCount: 2 });
+        // A target whose policies cover no read loads for no caller, badge or not; privileged reads still see it.
+        for (const caller of [alice, member, { ...member, badge: true }]) expect((await mesh.readShelf({ load: ["vault"] }, caller))[0].vault).toBeNull();
+        const [vaulted] = await mesh.transaction(() => privilegedOf(loads.domain.Shelf).read({ load: ["vault"] }, alice));
+        expect(vaulted.vault).toMatchObject({ label: "V" });
         // A caller the read's own policy admits, loading what it may not read, gets no error.
         expect(await mesh.readShelf({ load: ["items"] }, anonymous)).toEqual([expect.objectContaining({ items: [] })]);
       } finally { await db.close(); }
