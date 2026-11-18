@@ -3,58 +3,20 @@
 // should have been kept from running. The project is built by the real `mesh` command, type-checked by tsc under the
 // strictest flags, and run on SQLite in memory.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { mesh, project as sharedProject, repo, removeProjects } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/lazy-guards/domain");
-const projects: string[] = [];
 
-const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
-const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
-`;
-const PACKAGE = {
-  name: "lazy-guards", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
-
-/** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "lazy-guards-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
-
-function mesh(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
+const project = () => sharedProject({ prefix: "lazy-guards-", name: "lazy-guards", domain: fixture });
 
 let root: string;
 beforeAll(async () => {
   root = await project();
   expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 type Row = Record<string, unknown>;
 type Call = (input: Record<string, unknown>, context: object) => Promise<Row>;

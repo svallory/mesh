@@ -2,12 +2,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { chmod, link, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename, lstat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { RESERVED_COMMAND_WORDS, stableJsonStringify } from "@meshfw/compiler";
 import { defineConfig } from "../src/index.ts";
 import { runCli } from "../src/cli.ts";
+import { linkPackages as linkWorkspace, repo } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const projects: string[] = [];
 let command: string;
 let buildDir: string;
@@ -35,15 +35,8 @@ afterEach(async () => {
   for (const root of projects.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
-// Bun's isolated linker keeps workspace dependencies at each package, not at
-// the root. Link the packages explicitly for a real external project fixture.
-async function linkPackages(root: string): Promise<void> {
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-}
+// A real external project needs only the build packages: no adapter is linked.
+const linkPackages = (root: string) => linkWorkspace(root, ["compiler", "model", "runtime"]);
 
 async function project(config = true): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "mesh-cli-project-"));

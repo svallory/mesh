@@ -4,21 +4,13 @@
 // policy that denies it to all but its own keeper. Nothing in the generated tree may be named after the bare entity name
 // next to the other entity's: the build, tsc, the run and `mesh inspect` all tell the two apart by FQN.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ForbiddenError } from "@meshfw/runtime";
+import { mesh, project as sharedProject, repo, removeProjects } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/same-name/domain");
-const projects: string[] = [];
 
-// The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
-// stricter flags; the generated code reads only `data` and its `name`.
-const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
-const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
-`;
 /** The project's `src/context.ts`: `context` and `actor` are typed by it, so a function reads only what it declares. */
 const CONTEXT = `import "@meshfw/runtime";
 
@@ -28,10 +20,6 @@ declare module "@meshfw/runtime" {
   }
 }
 `;
-const PACKAGE = {
-  name: "same-name", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
 /** Type-level checks through the specifiers: each module's List is its own, and a.List's `mirror` is b's record. */
 const CHECK = `import { List, loadListFields, type ListLoadable } from "#mesh/domain/a";
 import { List as BList } from "#mesh/domain/b";
@@ -45,37 +33,7 @@ export const notA: List = null as unknown as BList;
 export const loader: typeof loadListFields = loadListFields;
 `;
 
-/** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "mesh-same-name-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "context.ts"), CONTEXT);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  await writeFile(join(root, "check.ts"), CHECK);
-  // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  // The adapter's own dependencies (its query library and zod), as a project that installs it has them: the generated
-  // schema and validators import them from the project.
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
-
-function mesh(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
+const project = () => sharedProject({ prefix: "mesh-same-name-", name: "same-name", domain: fixture, files: { "context.ts": CONTEXT, "check.ts": CHECK } });
 
 async function denial(call: Promise<unknown>): Promise<ForbiddenError> {
   const error = await call.then(() => undefined, (cause: unknown) => cause);
@@ -88,9 +46,7 @@ beforeAll(async () => {
   root = await project();
   expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 describe("two entities named List in modules a and b", () => {
   test("build writes one set of files per module, and each barrel exports its own List", async () => {

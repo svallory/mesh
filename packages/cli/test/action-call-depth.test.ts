@@ -4,51 +4,15 @@
 // loop makes each of them recurse without end. The project is built by the real `mesh` command on the SQLite adapter,
 // type-checked by tsc under the strictest flags, and run on SQLite in memory.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { FrameworkError, NotFoundError } from "@meshfw/runtime";
+import { mesh, project as sharedProject, repo, removeProjects } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/action-call-depth/domain");
-const projects: string[] = [];
 const CAP = 1_000;
 
-const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
-const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
-`;
-const PACKAGE = {
-  name: "action-call-depth", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
-
-/** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "action-call-depth-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
-
-function mesh(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
+const project = () => sharedProject({ prefix: "action-call-depth-", name: "action-call-depth", domain: fixture });
 
 async function rejection<E>(call: Promise<unknown>, type: new (...args: never[]) => E): Promise<E> {
   const error = await call.then(() => undefined, (cause: unknown) => cause);
@@ -61,9 +25,7 @@ beforeAll(async () => {
   root = await project();
   expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 interface NodeRow { id: string; name: string; touched: boolean; parentId: string | null }
 type Call = (input: Record<string, unknown>, context: object) => Promise<NodeRow>;

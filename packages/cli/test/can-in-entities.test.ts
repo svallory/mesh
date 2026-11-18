@@ -6,24 +6,16 @@
 // project is built by the real `mesh` command on the SQLite adapter, type-checked by tsc under the strictest flags, and
 // run on SQLite in memory with a clock that advances on every read.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { ForbiddenError, FrameworkError, InvalidInputError, NotFoundError, type Decision } from "@meshfw/runtime";
+import { mesh, project as sharedProject, repo, removeProjects } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/can-in-entities/domain");
-const projects: string[] = [];
 // How many times the catching helper asks while a cyclic ledger is ground, with the error that sticks to the outermost question.
 const GRIND_ACTION = 130;
 const GRIND_OUTSIDE = 64;
 
-// The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
-// stricter flags; the generated code reads only `data` and its `name`.
-const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
-const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
-`;
 /** The project's `src/context.ts`: `context` and `actor` are typed by it, so a function reads only what it declares. */
 const CONTEXT = `import "@meshfw/runtime";
 
@@ -34,40 +26,8 @@ declare module "@meshfw/runtime" {
   }
 }
 `;
-const PACKAGE = {
-  name: "can-in-entities", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
 
-/** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "can-in-entities-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "context.ts"), CONTEXT);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  // The adapter's own dependencies (its query library and zod), as a project that installs it has them.
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
-
-function mesh(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
+const project = () => sharedProject({ prefix: "can-in-entities-", name: "can-in-entities", domain: fixture, files: { "context.ts": CONTEXT } });
 
 async function rejection<E>(call: Promise<unknown>, type: new (...args: never[]) => E): Promise<E> {
   const error = await call.then(() => undefined, (cause: unknown) => cause);
@@ -82,9 +42,7 @@ beforeAll(async () => {
   // reads no record, so Mesh evaluates it in memory before the query (where SQL is required, a block body is an error).
   expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 
