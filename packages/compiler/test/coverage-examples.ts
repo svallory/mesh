@@ -9,6 +9,8 @@ const defaults: Record<string, string> = { entity: "entity :Sample", create: "cr
 export function coverageProject(tag: string, option: string | undefined, example: string) {
   // An event or a command is the root of a file of its own: the example is the whole file.
   if (tag === "event" || tag === "command") return { root: "/project", files: [{ file: "docs/sample.mesh.mx", source: `${example}\n  uuid :id\n` }] };
+  // A mixin is the root of a file of its own, whose body is a section: `uuid` is no child of `mixin`.
+  if (tag === "mixin") return { root: "/project", files: [{ file: "docs/sample.mesh.mx", source: `${example}\n  attributes\n    uuid :x\n` }] };
   // A concept is the root of a file of its own, directly in a `concepts` folder and named after it, with one field line.
   if (tag === "concept") return { root: "/project", files: [{ file: "docs/concepts/Sample.mesh.mx", source: `${example}\n  uuid :id\n` }] };
   // An aggregate is the root of a file of its own: Sample is its root, and Line, tied to Sample by its one belongs-to, its part.
@@ -58,6 +60,11 @@ export function coverageProject(tag: string, option: string | undefined, example
       { file: "docs/line.mesh.mx", source: "entity :Line\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n" },
     ] };
   }
+  // A `use` that includes a mixin sits under Sample, which imports the project mixin beside it, `Stamp`.
+  if (tag === "use") return { root: "/project", files: [
+    { file: "docs/stamp.mesh.mx", source: "mixin :Stamp\n  attributes\n    string :note\n" },
+    { file: "docs/sample.mesh.mx", source: `import { Stamp } from "./stamp.mesh.mx"\nentity :Sample\n  ${example}\n  attributes\n    uuid :id primary-key\n  actions auto=[:read]\n` },
+  ] };
   // The kind's contract is shared, but `optional` is legal only on a command's field. Keep the table cell as authored.
   if (option === "optional" && ATTRIBUTE_TYPES.includes(tag as typeof ATTRIBUTE_TYPES[number])) return { root: "/project", files: [
     { file: "docs/change.mesh.mx", source: `command :Change\n  uuid :id\n  ${example}\n` },

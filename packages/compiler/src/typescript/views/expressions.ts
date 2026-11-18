@@ -368,8 +368,8 @@ export function expressionsView({ document, config }: EmitInput, entity: Entity,
   // and the events and commands its owner sections declare inline.
   const targets = new Map<string, Entity>();
   const namespaceTargets = new Map<string, Entity[]>();
-  for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh).flatMap((entry) => entry.identifiers)])) {
-    const imported = entity.imports.find((entry) => !entry.helper && !entry.mesh && entry.identifiers.includes(local));
+  for (const local of new Set([entity.name, ...entity.imports.filter((entry) => !entry.helper && !entry.mesh && !entry.mixin).flatMap((entry) => entry.identifiers)])) {
+    const imported = entity.imports.find((entry) => !entry.helper && !entry.mesh && !entry.mixin && entry.identifiers.includes(local));
     const file = imported ? posix.normalize(posix.join(dirname(entity.file), imported.from)) : entity.file;
     const name = imported ? imported.imported?.[imported.identifiers.indexOf(local)] ?? local : entity.name;
     const target = document.entities.find((candidate) => candidate.file === file && (imported?.namespace || candidate.name === name));
@@ -384,7 +384,8 @@ export function expressionsView({ document, config }: EmitInput, entity: Entity,
   const eventNamespaces = new Map<string, Declaration[]>();
   for (const target of declared) if (target.file === entity.file) eventTargets.set(className(target), target);
   for (const entry of entity.imports) {
-    if (entry.helper || entry.mesh) continue;
+    // A mixin is no value: its declarations are already the entity's members, so nothing is imported for it.
+    if (entry.helper || entry.mesh || entry.mixin) continue;
     const file = posix.normalize(posix.join(dirname(entity.file), entry.from));
     const inFile = declared.filter((candidate) => candidate.file === file);
     if (entry.namespace) {
@@ -507,7 +508,7 @@ export function expressionsView({ document, config }: EmitInput, entity: Entity,
     usesExpr ||= emittedHere.expr;
     return {
       key: JSON.stringify(id),
-      comment: `${comment} (${entity.file}:${position.line}:${position.column + 1})`.replace(/[\r\n\u2028\u2029]/g, " "),
+      comment: `${comment} (${position.file}:${position.line}:${position.column + 1})`.replace(/[\r\n\u2028\u2029]/g, " "),
       code: `{ what: ${JSON.stringify(subject)}, entity: ${JSON.stringify(rows)}, tree: ${stableJsonStringify(lowered.lowered.tree)}, params: (${emittedHere.scope ? "$s" : "_$s"}: ${scope}) => [${params.join(", ")}] }`,
     };
   };

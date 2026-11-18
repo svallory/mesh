@@ -5,6 +5,8 @@ import { alwaysCovers } from "./policies.ts";
 import { entitiesByFile, keyHolderOf } from "./key-holder.ts";
 
 const key = (step: { position: { file: string; line: number; column: number } }) => `${step.position.file}:${step.position.line}:${step.position.column}`;
+/** `line N` when the cited line is in the reported diagnostic's file, `file:N` when it is not (a mixin's line, read in an includer). */
+const lineOf = (cited: { file: string; line: number }, reportedIn: { file: string }) => cited.file === reportedIn.file ? `line ${cited.line}` : `${cited.file}:${cited.line}`;
 const article = (word: string) => (/^[aeiou]/.test(word) ? "an" : "a");
 
 /** What a locked member is when it is no required integer attribute, for `MESH_LOCK_MEMBER`; undefined when it is one or names nothing (`MESH_UNKNOWN_MEMBER` is the builder's). */
@@ -89,27 +91,28 @@ export function checkLockRelate(document: ModelDocument, diagnostics: Diagnostic
       ];
       const first = reaching[0];
       if (!first) continue;
-      const where = (entry: { step: LockStep; block?: Always }) => `line ${entry.step.position.line}${entry.block ? ` through the \`always\` block at line ${entry.block.position.line}` : ""}`;
+      const where = (entry: { step: LockStep; block?: Always }, from: { file: string }) =>
+        `${lineOf(entry.step.position, from)}${entry.block ? ` through the \`always\` block at ${lineOf(entry.block.position, from)}` : ""}`;
       for (const later of reaching.slice(1))
-        report("MESH_LOCK_STEP", `${action.kind} :${action.name} of ${entity.fqn} has two \`lock\` steps (${where(first)} and ${where(later)}): an action compares one version`,
+        report("MESH_LOCK_STEP", `${action.kind} :${action.name} of ${entity.fqn} has two \`lock\` steps (${where(first, later.step.position)} and ${where(later, later.step.position)}): an action compares one version`,
           later.step, "remove one of them");
       const member = first.step.member.name;
       const field = lockField(member);
-      const owns = `\`lock &${member}\` (line ${first.step.position.line})`;
+      const owns = (from: { position: { file: string } }) => `\`lock &${member}\` (${lineOf(first.step.position, from.position)})`;
       for (const input of action.input) {
         const name = input.kind === "member" ? input.ref.name : input.name;
         const at = input.kind === "member" ? input.ref : input;
         if (input.kind === "member" && name === member)
-          report("MESH_LOCK_MEMBER", `&${member} is an input of ${action.kind} :${action.name} of ${entity.fqn}, and ${owns} owns it: the caller sends \`${field}\`, and the lock writes &${member}`,
+          report("MESH_LOCK_MEMBER", `&${member} is an input of ${action.kind} :${action.name} of ${entity.fqn}, and ${owns(at)} owns it: the caller sends \`${field}\`, and the lock writes &${member}`,
             at, `remove \`&${member}\` from \`input\``);
         if (name === field)
-          report("MESH_DUPLICATE_INPUT", `Input ${field} conflicts with the one ${owns} adds`, at,
+          report("MESH_DUPLICATE_INPUT", `Input ${field} conflicts with the one ${owns(at)} adds`, at,
             input.kind === "member" ? `remove \`&${field}\` from \`input\`, or rename the attribute` : "rename the argument");
       }
       // A destroy's `set` is `MESH_DESTROY_STEP` already.
       if (action.kind === "update")
         for (const set of [...blocks.flatMap((block) => setsOf(block.do, member)), ...setsOf(action.do, member)])
-          report("MESH_LOCK_MEMBER", `\`set &${member}\` in ${action.kind} :${action.name} of ${entity.fqn} writes the version that ${owns} owns: the lock adds 1 on every write`,
+          report("MESH_LOCK_MEMBER", `\`set &${member}\` in ${action.kind} :${action.name} of ${entity.fqn} writes the version that ${owns(set)} owns: the lock adds 1 on every write`,
             set, "remove the `set` line");
     }
   }

@@ -66,8 +66,8 @@ describe("the contract", () => {
     const lower = (source: string) => parseEntitySource(source, `${ROOT}billing/x.mesh.mx`).diagnostics.map((d) => [d.line, d.column, d.code, d.message]);
     // A line at the top level (rule H4), a section under an event or a command root, and the section twice in an aggregate.
     expect(lower(`${INVOICE}listen :x [on=InvoicePaid] ({ event }) {}\n`)).toEqual([[32, 0, "MESH_PARENT_NOT_ALLOWED", "`listen` must be inside `handlers`; found at the top level"]]);
-    expect(lower("event :E\n  uuid :id\n  handlers\n    listen :x [on=E] ({ event }) {}\n")).toEqual([[3, 2, "MESH_PARENT_NOT_ALLOWED", "`handlers` must be inside `entity`, `aggregate`; found inside `event`"]]);
-    expect(lower("command :C\n  uuid :id\n  handlers\n")).toEqual([[3, 2, "MESH_PARENT_NOT_ALLOWED", "`handlers` must be inside `entity`, `aggregate`; found inside `command`"]]);
+    expect(lower("event :E\n  uuid :id\n  handlers\n    listen :x [on=E] ({ event }) {}\n")).toEqual([[3, 2, "MESH_PARENT_NOT_ALLOWED", "`handlers` must be inside `entity`, `aggregate`, `mixin`; found inside `event`"]]);
+    expect(lower("command :C\n  uuid :id\n  handlers\n")).toEqual([[3, 2, "MESH_PARENT_NOT_ALLOWED", "`handlers` must be inside `entity`, `aggregate`, `mixin`; found inside `command`"]]);
     expect(lower(`${FIXTURES["billing/billing.mesh.mx"]!}  handlers\n`)).toEqual([[13, 2, "MESH_REPEATED_CHILD", "`aggregate`: `handlers` may not be repeated"]]);
   });
   test("the name, `on=` and the body are required, each MX's message", () => {

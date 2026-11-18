@@ -216,7 +216,7 @@ export function checkLifecycleLimits(
         if (reported.has(key)) continue;
         reported.add(key);
         diagnostics.push(error("MESH_DUPLICATE_MEMBER",
-          `Duplicate check &${listing.name}: ${action.kind} :${action.name} already runs it through the \`always\` block at line ${earlier.block!.position.line}, and a check runs once`,
+          `Duplicate check &${listing.name}: ${action.kind} :${action.name} already runs it through the \`always\` block at ${earlier.block!.position.file === listing.at.file ? "line " : `${earlier.block!.position.file}:`}${earlier.block!.position.line}, and a check runs once`,
           listing.at, `remove this \`check &${listing.name}\`, or scope the \`always\` block with \`types=\` or \`actions=\` so it does not cover ${action.kind} :${action.name}`));
       }
     }

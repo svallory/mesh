@@ -53,6 +53,10 @@
               "path": "/docs/entities/"
             },
             {
+              "title": "Mixins",
+              "path": "/docs/mixins/"
+            },
+            {
               "title": "Using your domain",
               "path": "/docs/using-your-domain/"
             },

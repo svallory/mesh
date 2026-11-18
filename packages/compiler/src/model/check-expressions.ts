@@ -1,3 +1,4 @@
+import { includerTagger } from "./includers.ts";
 import { dirname, resolve } from "node:path";
 import type {
   Action,
@@ -151,9 +152,15 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   let via: (Referrer & { declaration: SourcePosition }) | undefined;
   /** Each diagnostic reported while `via` was set: who it was found for, and in which declaration. */
   const found = new WeakMap<Diagnostic, { who: string; through: string; declaration: string }>();
-  /** For each declaration (`file:offset`) of a named check, the referrers it was typed for: `who` to `through`. */
+  /**
+   * For each declaration of a named check, the referrers it was typed for: `who` to `through`. The key holds the entity
+   * being checked: a named check of a mixin is one declaration that several entities use, each with its own referrers.
+   */
   const referrersOf = new Map<string, Map<string, string>>();
-  const keyOf = (position: SourcePosition) => `${position.file}:${position.offset}`;
+  /** The entity being checked, and where its diagnostics start. */
+  let current = "";
+  let currentFrom = 0;
+  const keyOf = (position: SourcePosition) => `${current}\0${position.file}:${position.offset}`;
   const report = (severity: "error" | "warning", code: string, message: string, position: SourcePosition, fix: string | null = null) => {
     const diagnostic = { severity, code, message, position, fix };
     diagnostics.push(diagnostic);
@@ -199,7 +206,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
   const notApplied = (name: string, position: SourcePosition, policy?: string) => {
     const code = policy ? "MESH_POLICY_NOT_APPLIED" : "MESH_VALIDATE_NOT_APPLIED";
     // A named check is reported once per create that uses it, each naming its create (ruling D13, point 5).
-    if (!via && diagnostics.some((d) => d.code === code && d.position.file === position.file && d.position.offset === position.offset)) return;
+    if (!via && diagnostics.slice(currentFrom).some((d) => d.code === code && d.position.file === position.file && d.position.offset === position.offset)) return;
     report("warning", code,
       `${via ? `in ${via.who}, which uses this check${via.through}` : "on a create"}, \`&${name}\` here is the new instance's value before the input is applied (its default, or null), not the caller's: ${policy ? `${policy} sees \`self\` as \`validate\` does,` : "\`validate\` sees \`self\`"} before the input`, position,
       `write \`input.${name}\` for the caller's value, or \`input.${name} ?? &${name}\` for the value the action will store; on an update this changes the meaning (\`input.${name} ?? &${name}\` is the value being sent, \`&${name}\` the stored one), so in a check that also runs on updates and means the stored value, keep \`&${name}\``);
@@ -646,9 +653,13 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
     diagnostics.push(...rest);
   }
 
+  const tagEntity = includerTagger(diagnostics);
   for (const entity of document.entities) {
+    tagEntity(entity);
     const base: Scope = { entity, beforeNullable: true, inputs: null, locals: new Map() };
     const from = diagnostics.length;
+    current = entity.fqn;
+    currentFrom = from;
     for (const computed of entity.computed as Computed[]) {
       if (!computed.body) continue;
       const t = visit(computed.body, { ...base, computed: `computed :${computed.name} of ${entity.fqn}` }, false);
@@ -697,7 +708,7 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       for (const [index, action] of covered.entries()) {
         const copies = pristine[index]!;
         const own: Scope = { ...base, beforeNullable: action.kind === "create", args: argumentsOf(entity, action), inputs: inputsOf(entity, action as Action) };
-        blocks(entity, copies, [], own, action.kind === "create" ? [action] : [], referrerOf(entity, action, ` through the \`always\` block at line ${block.position.line}`));
+        blocks(entity, copies, [], own, action.kind === "create" ? [action] : [], referrerOf(entity, action, ` through the \`always\` block at ${block.position.file === entity.file ? "line " : `${block.position.file}:`}${block.position.line}`));
       }
     }
     mergeFound(from);
@@ -713,4 +724,5 @@ export function checkExpressions(document: ModelDocument, diagnostics: Diagnosti
       }
     }
   }
+  tagEntity();
 }

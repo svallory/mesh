@@ -67,11 +67,21 @@ describe("the contracts (MX, so the editor shows them too)", () => {
     ["a line under disable", arch("  disable :x\n    disable :y\n"), "MESH_TAG_NOT_ALLOWED", 4, 4],
     ["an entity section under architecture", arch("  attributes\n    uuid :id\n"), "MESH_TAG_NOT_ALLOWED", 3, 2],
     ["disable at the top level", "disable :x\n", "MESH_PARENT_NOT_ALLOWED", 1, 0],
-    ["use in an entity, before mixins", "entity :E\n  use preset=X\n  attributes\n    uuid :id primary-key\n", "MESH_TAG_NOT_ALLOWED", 2, 2],
   ])("%s", (_, source, code, line, column) => expect(mx(source)).toEqual([[code, line, column]]));
+  // `use` is shared with the mixins an entity includes (R27): under an entity `preset=` is refused at the option (MX keeps
+  // one diagnostic per line, so the missing `mixin=` is not restated beside it), and `use` alone is the missing `mixin=`;
+  // under the architecture file `mixin=` is refused the same way.
+  test("each parent's `use` refuses the other parent's option", () => {
+    expect(mx("entity :E\n  use preset=X\n  attributes\n    uuid :id primary-key\n")).toEqual([["MESH_UNKNOWN_OPTION", 2, 6]]);
+    expect(mx("entity :E\n  use\n  attributes\n    uuid :id primary-key\n")).toEqual([["MESH_MISSING_OPTION", 2, 2]]);
+    expect(mx(arch("  use preset=MeshRecommended mixin=X\n"))).toEqual([["MESH_UNKNOWN_OPTION", 3, 29]]);
+  });
   test("the messages Mesh writes", () => {
     const messages = (source: string) => parseEntitySource(source, `/project/${FILE}`).diagnostics.map((d) => d.message);
     expect(messages(arch("  use\n"))).toEqual(["`use` names what it includes: `use preset=MeshRecommended`"]);
+    expect(messages(arch("  use preset=MeshRecommended mixin=X\n"))).toEqual(["`mixin` is not an option of `use` in the architecture file: an entity includes a mixin, and the architecture file includes a preset with `use preset=Name`"]);
+    expect(messages("entity :E\n  use preset=X\n")).toEqual(["`preset` is not an option of `use` in an entity file: an entity includes a mixin with `use mixin=Name`"]);
+    expect(messages("entity :E\n  use\n")).toEqual(["`use` names what it includes: `use mixin=Timestamps`"]);
     expect(messages(arch("  use preset=foo()\n"))).toEqual(["`use`: preset must be an imported preset (`preset=MeshRecommended`)"]);
     expect(messages(arch("  use preset=(MeshRecommended)\n"))).toEqual(["`use`: preset must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`preset=MeshRecommended`)"]);
   });

@@ -142,7 +142,7 @@ describe("an event and a command file", () => {
     // event is a field parent with no `children` list (it admits a concept use, ruling D36 OD3), so the line's own
     // `parents` refuse it.
     expect(one("event :R\n  belongs-to :x entity=R\n").map((d) => [d.code, d.message])).toEqual([["MESH_PARENT_NOT_ALLOWED", "`belongs-to` must be inside `relationships`; found inside `event`"]]);
-    expect(one("event :R\n  actions\n    read :all\n").map((d) => [d.code, d.message])).toEqual([["MESH_PARENT_NOT_ALLOWED", "`actions` must be inside `entity`; found inside `event`"]]);
+    expect(one("event :R\n  actions\n    read :all\n").map((d) => [d.code, d.message])).toEqual([["MESH_PARENT_NOT_ALLOWED", "`actions` must be inside `entity`, `mixin`; found inside `event`"]]);
   });
 
   test("two declarations with one FQN are one error naming both files; the same name in two modules is fine", () => {

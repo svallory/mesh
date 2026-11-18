@@ -253,15 +253,15 @@ export const DOCS_SYNTAX = "syntax v4";
 /**
  * A complete v4 file of the domain: comments and imports may come first, then `entity :Name`, or `event :Name` or
  * `command :Name` for an event or a command, which are files of their own (spec, Events and commands), or
- * `aggregate :Name` for an aggregate file, `concept :Name` for a concept file, `service :Name` for a service file, or
- * `architecture :name` for the architecture file.
+ * `aggregate :Name` for an aggregate file, `concept :Name` for a concept file, `service :Name` for a service file,
+ * `mixin :Name` for a mixin file, or `architecture :name` for the architecture file.
  */
 export function isV4EntityFile(block: string): boolean {
   for (const line of block.split("\n")) {
     const text = line.trim();
     if (text === "" || text.startsWith("//")) continue;
     if (text.startsWith("import ")) continue;
-    return /^(?:entity|event|command|aggregate|concept|architecture|surface|service)\s+:\w+/.test(text);
+    return /^(?:entity|event|command|aggregate|concept|architecture|surface|service|mixin)\s+:\w+/.test(text);
   }
   return false;
 }
@@ -356,6 +356,9 @@ function invalidMembersInV4(source: string): string | null {
   const namespaces = new Set<string>();
   const uses: { name: string; line: number; imported: boolean }[] = [];
   const parents: { indent: number; kind: string; self: boolean }[] = [];
+  // A mixin's `&name`s are its includers' members, and an entity that uses a mixin has members another fence declares:
+  // the declared-member rule does not apply to either.
+  let membersElsewhere = false;
   let previous = "";
   for (const [index, line] of masked.split("\n").entries()) {
     const text = line.trim();
@@ -372,6 +375,7 @@ function invalidMembersInV4(source: string): string | null {
     // An entity may name its own type in a relationship with no import (M7).
     const own = /^entity\s+:(\w+)/.exec(text);
     if (own) imports.add(own[1]!);
+    if (/^mixin\s+:\w+/.test(text) || /^use\s+mixin\s*=/.test(text)) membersElsewhere = true;
     const namedImport = /^import\s*\{([^}]+)\}/.exec(text);
     if (namedImport) for (const entry of namedImport[1]!.split(",")) {
       const local = /^\s*\w+(?:\s+as\s+(\w+))?\s*$/.exec(entry);
@@ -419,7 +423,7 @@ function invalidMembersInV4(source: string): string | null {
   // Resolve after collecting the fence: forward member declarations are legal.
   for (const use of uses) {
     if (!use.imported) {
-      if (!members.has(use.name)) return `line ${use.line}: &${use.name} is not a declared member of this entity`;
+      if (!members.has(use.name) && !membersElsewhere) return `line ${use.line}: &${use.name} is not a declared member of this entity`;
       continue;
     }
     const [qualifier, member] = use.name.split(".");
@@ -471,7 +475,7 @@ export function checkDocsSyntaxV4(dir: string) {
     const where = `${name}:${line}`;
     if (!closed) { errors.push(`${where}: unclosed MX fence`); continue; }
     if (!isV4EntityFile(block.join("\n"))) {
-      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\`, \`aggregate :Name\`, \`concept :Name\`, \`service :Name\` or \`architecture :name\`)`);
+      errors.push(`${where}: MX fence is not a complete ${DOCS_SYNTAX} entity file: its root must be \`entity :Name\` (or \`event :Name\`, \`command :Name\`, \`aggregate :Name\`, \`concept :Name\`, \`service :Name\`, \`mixin :Name\` or \`architecture :name\`)`);
       continue;
     }
     checked++;

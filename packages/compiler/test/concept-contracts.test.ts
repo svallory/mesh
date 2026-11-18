@@ -27,9 +27,9 @@ describe("the field parents are open (OD3)", () => {
   test.each([
     ["`check` under attributes", ENTITY("    check that=() => true\n"), "4:4 MESH_PARENT_NOT_ALLOWED `check` must be inside `validate`, `when`, `checks`; found inside `attributes`"],
     ["`belongs-to` in an event", "event :E\n  belongs-to :x entity=E\n", "2:2 MESH_PARENT_NOT_ALLOWED `belongs-to` must be inside `relationships`; found inside `event`"],
-    ["`actions` in a command", "command :C\n  actions\n", "2:2 MESH_PARENT_NOT_ALLOWED `actions` must be inside `entity`; found inside `command`"],
+    ["`actions` in a command", "command :C\n  actions\n", "2:2 MESH_PARENT_NOT_ALLOWED `actions` must be inside `entity`, `mixin`; found inside `command`"],
     ["`belongs-to` in a concept", "concept :Money\n  belongs-to :x entity=E\n", "2:2 MESH_PARENT_NOT_ALLOWED `belongs-to` must be inside `relationships`; found inside `concept`"],
-    ["a `concept` line below the top", ENTITY("  concept :Money\n    integer :x\n"), "4:2 MESH_TAG_NOT_ALLOWED `entity`: `concept` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`"],
+    ["a `concept` line below the top", ENTITY("  concept :Money\n    integer :x\n"), "4:2 MESH_TAG_NOT_ALLOWED `entity`: `concept` is not allowed here; allowed children: `attributes`, `relationships`, `computed`, `checks`, `actions`, `policies`, `events`, `commands`, `handlers`, `use`"],
   ])("%s is refused by the line's parents or its parent's children", (_, source, message) => {
     expect(said(source)).toEqual([message]);
   });

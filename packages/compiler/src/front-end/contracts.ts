@@ -265,6 +265,13 @@ function exposedFields(calls: readonly TagCall[], ctx: Parameters<NonNullable<Cu
   }
 }
 
+/**
+ * The sections an entity holds that a mixin may hold too (`notes/spec/other-file-kinds.md`, "Mixin files": every section
+ * an entity holds, except `events` and `commands`). The builder reads these kinds from a used mixin's lines
+ * (`front-end/build.ts`); `events`, `commands` and `use` are left out of the mixin's children on purpose.
+ */
+export const MIXIN_SECTIONS = ["attributes", "relationships", "computed", "checks", "actions", "policies", "handlers"] as const;
+
 const contracts: ContractMap = {
   entity: closed({
     parents: ["#root"],
@@ -279,7 +286,17 @@ const contracts: ContractMap = {
       events: {},
       commands: {},
       handlers: {},
+      // One line per mixin the entity includes (`notes/spec/entity.md`, "`use`: including a mixin").
+      use: { repeatable: true },
     },
+  }),
+  // A mixin file's root (`notes/spec/other-file-kinds.md`, "Mixin files"): a block of sections that entities include with
+  // `use mixin=Name`, taking only its name. `events` and `commands` are left out of its children on purpose (the spec's
+  // `MESH_TAG_NOT_ALLOWED`), and so is `use` (a mixin includes no mixin).
+  mixin: closed({
+    parents: ["#root"],
+    attributes: named(),
+    children: Object.fromEntries(MIXIN_SECTIONS.map((name) => [name, {}])),
   }),
   // An owner's events and commands (`notes/spec/events-and-commands.md`, "Where a declaration lives"): inline declarations
   // (`event :InvoiceVoided` with its field lines) and listing lines of the events or commands an import of the file names
@@ -302,7 +319,7 @@ const contracts: ContractMap = {
   }),
   // The lines that consume events (`notes/spec/events-and-commands.md`, "Where a declaration lives"): one per handler, of
   // core's two kinds, `process` and `listen`. `project` is the event-sourcing extension's kind, not core's.
-  handlers: closed({ parents: ["entity", "aggregate"], children: children("process", "listen") }),
+  handlers: closed({ parents: ["entity", "aggregate", "mixin"], children: children("process", "listen") }),
   // `root entity=Task`: the aggregate's root entity, a reference written bare as `belongs-to`'s `entity=` is.
   root: closed({
     parents: ["aggregate"],
@@ -329,7 +346,7 @@ const contracts: ContractMap = {
     attributes: named(),
   }),
   attributes: fieldParent({
-    parents: ["entity"],
+    parents: ["entity", "mixin"],
   }),
   // A concept file (`notes/spec/other-file-kinds.md`, "Concept files"; ADR-0080): `concept :Money`, then one field line
   // per field, written as an event's. The root takes only the name. MX finds the file in a `concepts` folder and turns
@@ -345,20 +362,29 @@ const contracts: ContractMap = {
     attributes: named(),
     children: children("use", "severity", "disable"),
   }),
-  // `use preset=MeshRecommended` includes a preset the file imports. `use` is shared with the mixins an entity includes,
-  // so the option is optional here and `checkUseOptions` (`syntax/use-options.ts`) requires the parent's option; the hook
-  // checks the shape of what is written: a reference, written bare.
+  // `use` includes what its parent includes: a preset in the architecture file (`use preset=MeshRecommended`), a mixin in an
+  // entity file (`use mixin=Timestamps`, `use mixin=shared.Audited`). A contract is per tag and an `analyze` hook sees no
+  // parent, so both options are optional here and `checkUseOptions` (`syntax/use-options.ts`) requires the parent's option
+  // and refuses the other one; the hook checks the shape of what is written: a reference, written bare.
   use: closed({
-    parents: ["architecture"],
-    attributes: { preset: { type: "expression" } },
+    parents: ["architecture", "entity"],
+    attributes: { preset: { type: "expression" }, mixin: { type: "expression" } },
     analyze(calls, ctx) {
       for (const call of calls) {
-        const a = get(call, "preset");
-        if (!a) continue;
-        if (!isReference(a))
-          ctx.fail("preset must be an imported preset (`preset=MeshRecommended`)", { at: a.loc, code: "MESH_OPTION_VALUE" });
-        else if (isWrapped(a))
-          ctx.fail("preset must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`preset=MeshRecommended`)", { at: a.valueSpan, code: "MESH_OPTION_VALUE" });
+        const preset = get(call, "preset");
+        if (preset) {
+          if (!isReference(preset))
+            ctx.fail("preset must be an imported preset (`preset=MeshRecommended`)", { at: preset.loc, code: "MESH_OPTION_VALUE" });
+          else if (isWrapped(preset))
+            ctx.fail("preset must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`preset=MeshRecommended`)", { at: preset.valueSpan, code: "MESH_OPTION_VALUE" });
+        }
+        const mixin = get(call, "mixin");
+        if (mixin) {
+          if (!isReference(mixin))
+            ctx.fail("mixin must be an imported mixin (`mixin=Timestamps`) or a member of a namespace import (`mixin=shared.Audited`)", { at: mixin.loc, code: "MESH_OPTION_VALUE" });
+          else if (isWrapped(mixin))
+            ctx.fail("mixin must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`mixin=Timestamps`, `mixin=shared.Audited`)", { at: mixin.valueSpan, code: "MESH_OPTION_VALUE" });
+        }
       }
     },
   }),
@@ -441,15 +467,15 @@ const contracts: ContractMap = {
     },
   }),
   relationships: closed({
-    parents: ["entity"],
+    parents: ["entity", "mixin"],
     children: children(...RELATIONSHIP_KINDS),
   }),
   computed: closed({
-    parents: ["entity"],
+    parents: ["entity", "mixin"],
     children: children(...ATTRIBUTE_TYPES, ...ROLLUPS),
   }),
   actions: closed({
-    parents: ["entity"],
+    parents: ["entity", "mixin"],
     attributes: {
       auto: atomList({ values: [...ACTION_TYPES] }),
       "on:load": member(),
@@ -491,7 +517,7 @@ const contracts: ContractMap = {
     children: children("check", "when", "publish"),
   }),
   // The entity's named checks: each line declares one, which a `validate` block uses with `check &name`.
-  checks: closed({ parents: ["entity"], children: children("check") }),
+  checks: closed({ parents: ["entity", "mixin"], children: children("check") }),
   check: closed({
     parents: ["validate", "when", "checks"],
     children: children("publish"),
@@ -584,7 +610,7 @@ const contracts: ContractMap = {
   }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
   sort: closed({ parents: ["read"], children: children("asc", "desc") }),
-  policies: closed({ parents: ["entity", "service"], children: children("policy") }),
+  policies: closed({ parents: ["entity", "service", "mixin"], children: children("policy") }),
   policy: closed({
     parents: ["policies"],
     attributes: {
