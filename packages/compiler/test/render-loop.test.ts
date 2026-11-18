@@ -47,3 +47,10 @@ test("loops over what the view has, empty or null, still render; a guarded loop 
   ].join("\n")), view, "types");
   expect(out).toBe("id:\na\nb\ntitle:\nelse");
 });
+
+test("an error that is not Jig's passes through unchanged, not as a positioned MESH_TEMPLATE_RENDER", async () => {
+  const boom = new Error("the view broke");
+  const broken = { get record() { throw boom; } };
+  const error = await renderTemplate(template("{{ record.name }}"), broken, "types").then(() => undefined, (cause) => cause);
+  expect(error).toBe(boom);
+});

@@ -634,6 +634,15 @@ const RULES: Record<string, Case> = {
       await refused(Claim.acquire({ task: w.task.id, expectedVersion: 1 }, as(w.bot)), "expected-version");
       await refused(Dependency.add({ dependent: w.task.id, prerequisite: (await Task.create({ title: "pre" }, as(w.alice))).id, expectedVersion: 1 }, as(w.alice)), "expected-version", { expectedVersion: 1, actualVersion: 2 });
       expect(await taskOf(w)).toMatchObject({ priority: 1, version: 2 });
+      // Renew, release and revoke each check the Task's version too.
+      const held = await claim(w);
+      const version = (await taskOf(w)).version;
+      for (const call of [
+        Claim.renew({ id: held.id, fence: held.fence, expectedVersion: version - 1 }, as(w.bot)),
+        Claim.release({ id: held.id, fence: held.fence, expectedVersion: version - 1 }, as(w.bot)),
+        Claim.revoke({ id: held.id, reason: "stale", expectedVersion: version - 1 }, as(w.alice)),
+      ]) await refused(call, "expected-version", { expectedVersion: version - 1, actualVersion: version });
+      expect(await one(Claim.read({ filter: { id: { eq: held.id } } }, as(w.alice)))).toMatchObject({ state: "active" });
     },
   },
   "claim.stale-fence": {
@@ -648,6 +657,10 @@ const RULES: Record<string, Case> = {
       const held = await claim(w);
       await refused(LateResult.record({ task: w.task.id, fence: held.fence, summary: "x" }, as(w.bot)), "claim.stale-fence");
       await refused(LateResult.record({ task: w.task.id, fence: 7, summary: "x" }, as(w.bot)), "claim.stale-fence");
+      // The generated Task.complete with the actor's own revoked fence says the fence is stale.
+      await Task.assign({ id: w.task.id, assignee: w.bot.id, waiveReview: true }, as(w.alice));
+      await Claim.revoke({ id: held.id, reason: "taking over" }, as(w.alice));
+      await refused(Task.complete({ id: w.task.id, fence: held.fence }, as(w.bot)), "claim.current-fence", { currentFence: held.fence, stale: true });
     },
   },
   "dependency.exists": {
@@ -732,7 +745,14 @@ const RULES: Record<string, Case> = {
   },
   "attempt.claimer": {
     pass: async (w) => {
-      expect(await started(w, await running(w))).toMatchObject({ performerId: w.bot.id, claimFence: 1, number: 1 });
+      // With no assignment, the delegator is the run's starter.
+      expect(await started(w, await running(w))).toMatchObject({ performerId: w.bot.id, delegatorId: w.bot.id, claimFence: 1, number: 1 });
+      // On a delegated task it is the task's current delegator, not the starter.
+      const delegated = await Task.create({ title: "delegated" }, as(w.alice));
+      await Task.assign({ id: delegated.id, assignee: w.bot.id }, as(w.alice));
+      await claim(w, w.bot, delegated.id);
+      const run = await Run.start({ task: delegated.id }, as(w.bot));
+      expect(await started(w, run)).toMatchObject({ performerId: w.bot.id, delegatorId: w.alice.id, number: 1 });
     },
     fail: async (w) => {
       // Hyper keeps both a policy and this rule (`runs/checks/reporter.ex:35-41`, `runs/attempt/rules.ex:15-30`): a

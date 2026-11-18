@@ -345,7 +345,8 @@ describe("one deadline for a call", () => {
 });
 
 describe("busy errors inside a transaction", () => {
-  test("a COMMIT that meets a lock is reported as MESH_DATABASE_BUSY, and the transaction rolls back", async () => {
+  // SQLITE_LOCKED (a lock held inside this connection, or a shared-cache one) is busy too, as each extended code is.
+  test.each(["SQLITE_BUSY", "SQLITE_LOCKED", "SQLITE_LOCKED_SHAREDCACHE"])("a COMMIT that meets a lock (%s) is reported as MESH_DATABASE_BUSY, and the transaction rolls back", async (code) => {
     const layer = sqlite({ file });
     try {
       await createSchema(layer, { table });
@@ -353,7 +354,7 @@ describe("busy errors inside a transaction", () => {
       const original = db.run.bind(db);
       const spy = spyOn(db, "run").mockImplementation((statement) => {
         const text = new SQLiteSyncDialect().sqlToQuery(typeof statement === "string" ? sql.raw(statement) : statement.getSQL()).sql;
-        if (text === "COMMIT") throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+        if (text === "COMMIT") throw Object.assign(new Error("database is locked"), { code });
         return original(statement);
       });
       let error: unknown;
@@ -361,7 +362,7 @@ describe("busy errors inside a transaction", () => {
       finally { spy.mockRestore(); db.run = original; }
       expect(error).toBeInstanceOf(DatabaseBusyError);
       expect((error as DatabaseBusyError).waitedMs).toBe(0);
-      expect((error as DatabaseBusyError).cause).toMatchObject({ code: "SQLITE_BUSY" });
+      expect((error as DatabaseBusyError).cause).toMatchObject({ code });
       await layer.transaction(async (tx) => expect(await tx.select(table)).toEqual([]));
     } finally { await layer.close(); }
   });

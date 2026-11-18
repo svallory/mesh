@@ -141,6 +141,15 @@ test("unsubscribe ends only its own stream and keeps the connection and other su
   expect(core.subscriptions()).toHaveLength(0);
 });
 
+test("unsubscribing an id that names no subscription is answered { ok: true } and keeps the connection and its stream", async () => {
+  const client = await connect();
+  const open = await subscribe(client, 3);
+  client.send({ jsonrpc: "2.0", id: 3, method: "unsubscribe", params: { subscriptionId: crypto.randomUUID() } });
+  expect(await client.next()).toEqual({ jsonrpc: "2.0", id: 3, result: { ok: true } });
+  expect(core.subscriptions().map((entry) => entry.name)).toEqual([open]);
+  expect(connection.closed).toBe(false);
+});
+
 // `src/rpc/errors.ts` maps a cursor above the log's head for events.read or events.subscribe; the read side is
 // `events.test.ts`. This calls the deliverer and the mapping function directly: the registered `events.subscribe`
 // method and serve's `error` option are not run here. The refused cursor is the first one past the head.

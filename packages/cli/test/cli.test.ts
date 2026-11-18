@@ -224,6 +224,18 @@ test("explain prints the plan: a create is one insert; usage and unknown names f
   expect((await run(root, "explain", "Todo", "create", "extra")).code).toBe(2);
 }, 30_000);
 
+test("an unknown action's message lists the auto= actions with the written ones", async () => {
+  const root = await project();
+  await writeFile(join(root, sourcePath), source.replace("  actions\n", "  actions auto=[:read]\n"));
+  expect(await run(root, "build")).toMatchObject({ code: 0 });
+  expect(await run(root, "explain", "Todo", "nope")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error MESH_CLI Unknown action "nope" of todos.Todo; known actions: create, read\n1 error, 0 warnings\n' });
+}, 30_000);
+
+test("mesh events forget refuses a config whose data is not a data layer it can open", async () => {
+  const root = await project();
+  expect(await run(root, "events", "forget", "x")).toEqual({ code: 1, stdout: "", stderr: 'mesh.config.ts:1:1 error MESH_CLI the data adapter "sqlite" is not a data layer this command can open\n1 error, 0 warnings\n' });
+}, 30_000);
+
 // Six `mesh` processes, each lowering entity files, so the cost is MX's per-process start-up (the
 // first `lowerSource` call; a second call takes about 2 ms), not something Mesh rebuilds per call.
 // Measured on alpha.16 (2026-10-10, 8 cores, load average about 6, five runs of this test alone):
@@ -353,6 +365,28 @@ test("round 2 M1: replacing a write-only generated file restores the build/check
   expect(after.mode & 0o777).toBe(0o644);
   expect(after.ino).not.toBe(before.ino);
   expect(after.nlink).toBe(1);
+}, 30_000);
+
+test("the guard names a generated directory it cannot list, and a generated path it cannot inspect", async () => {
+  const root = await builtProject();
+  const denied = async (path: string, mode: number, probe: () => Promise<unknown>, message: string) => {
+    const absolute = join(root, path);
+    await chmod(absolute, mode);
+    try {
+      const refused = await probe().then(() => false, (cause: unknown) => cause instanceof Error && "code" in cause && cause.code === "EACCES");
+      if (!refused) { console.warn(`permissions capability: this user ignores mode ${mode.toString(8)}; skipping the "${message}" assertion`); return; }
+      const result = await run(root, "build", "--check");
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(message);
+    } finally { await chmod(absolute, 0o755); }
+  };
+  // Write and search but no read: the directory's names cannot be listed.
+  await denied("generated/domain/todos", 0o300, () => readdir(join(root, "generated/domain/todos")),
+    "generated/domain/todos:1:1 error MESH_CLI Cannot list generated directory (EACCES); fix its permissions and rebuild");
+  // Read but no search: the directory lists its names, and none of them can be inspected.
+  await denied("generated/domain", 0o600, () => lstat(join(root, "generated/domain/todos")),
+    "generated/domain/todos:1:1 error MESH_CLI Cannot inspect generated path (EACCES); fix its permissions and rebuild");
+  expect((await run(root, "build", "--check")).code).toBe(0);
 }, 30_000);
 
 test("round 2 M1: replacing hard-linked generated paths restores the build/check invariant", async () => {

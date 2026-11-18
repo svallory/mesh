@@ -229,14 +229,12 @@ test("an attribute named __proto__ is refused before schema emission", () => {
 
 test("strict object validators reject own inherited-method names and all unknown keys", async () => {
   const { schemas } = await emitted();
-  expect(
-    (
-      await schemas.createPostInputSchema!["~standard"].validate({
-        title: "Hello",
-        constructor: "own",
-      })
-    ).issues,
-  ).toBeDefined();
+  const validate = schemas.createPostInputSchema!["~standard"].validate;
+  const issues = async (input: object) => ((await validate(input)) as { issues?: readonly { path?: readonly PropertyKey[]; message: string }[] }).issues
+    ?.map((issue) => [issue.path ?? [], issue.message]);
+  expect(await issues({ title: "Hello" })).toBeUndefined();
+  expect(await issues({ title: "Hello", constructor: "own" })).toEqual([[[], 'Unrecognized key: "constructor"']]);
+  expect(await issues({ title: "Hello", toString: "own", extra: 1 })).toEqual([[[], 'Unrecognized keys: "toString", "extra"']]);
 });
 
 test("generated import preflight reports all missing packages once at mesh.config.ts:1:1", () => {

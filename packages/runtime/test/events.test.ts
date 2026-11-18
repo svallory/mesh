@@ -826,6 +826,25 @@ describe("delivery needs the layer to name its database", () => {
   });
 });
 
+describe("subscribe's arguments", () => {
+  // The checks run before the layer is asked for its database, so a memory layer without one is enough.
+  const binding = bindDomain({ InvoicePaid }, memoryLayer().layer, { events: { bus: testBus(), load: async () => ({}) } }, new AsyncLocalStorage());
+  test.each([
+    ["a query that is no object", () => subscribe(binding, "s" as never, () => {}), "subscribe takes { name, after, names, entity, key }, and was given a string"],
+    ["a null query", () => subscribe(binding, null as never, () => {}), "subscribe takes { name, after, names, entity, key }, and was given null"],
+    ["a blank name", () => subscribe(binding, { name: "  " }, () => {}), "subscribe needs a name: the subscription's identity and the key of its row, so a client that comes back resumes from what it acknowledged"],
+    ["a callback that is no function", () => subscribe(binding, { name: "s" }, 1 as never), "subscribe takes a callback, (event) => ..., and was given a number"],
+    ["an after that is no number", () => subscribe(binding, { name: "s", after: "0" as never }, () => {}), "subscribe: after must be a position, a whole number, and is a string"],
+    // `describe` names a number's type, not its value (bead mesh-f8q1).
+    ["a negative after", () => subscribe(binding, { name: "s", after: -1 }, () => {}), "subscribe: after must be a position, a whole number, and is a number"],
+    ["a fractional after", () => subscribe(binding, { name: "s", after: 1.5 }, () => {}), "subscribe: after must be a position, a whole number, and is a number"],
+  ] as const)("%s is refused with its message", async (_, run, message) => {
+    const error = await rejection(run);
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect((error as Error).message).toBe(message);
+  });
+});
+
 describe("testBus's round loop", () => {
   test("a wake-up that comes as a round ends starts another round at once, whichever microtask it lands in", async () => {
     for (let depth = 0; depth < 12; depth++) {

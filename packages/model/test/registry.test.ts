@@ -3,6 +3,7 @@ import {
   ATTRIBUTE_TYPES,
   attributeTypeInfo,
   isAttributeTypeName,
+  keyTypeOf,
 } from "../src/index.ts";
 test("registry defines exactly the eleven v4 tags", () => {
   expect(ATTRIBUTE_TYPES.map((t) => t.name)).toEqual([
@@ -62,4 +63,9 @@ test("registry type mappings", () => {
   expect(() => attributeTypeInfo("atom" as never)).toThrow(
     "not a registered attribute type",
   );
+});
+
+test("keyTypeOf gives a member's attribute type, and throws on a concept member, which has none", () => {
+  expect(keyTypeOf({ name: "id", type: "uuid" })).toBe("uuid");
+  expect(() => keyTypeOf({ name: "total", type: "concept" })).toThrow(new Error(":total is a concept member, which has no attribute type here"));
 });

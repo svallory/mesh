@@ -612,6 +612,36 @@ describe("explain", () => {
     expect(body("add")).toContain('$expressions["always.0.check.untouched.that"]');
     expect(body("add")).toContain('$expressions["always.0.step.0.set.edits"]');
   });
+  test("the input lines name a member and an argument, and a check line says when=, details= and a message function", () => {
+    const note = `entity :Note table="notes"
+  attributes
+    uuid :id primary-key
+    string :title
+  actions auto=[:read]
+    create :add
+      input
+        &title
+        string :reason nullable
+      validate
+        check :plain that=() => true code="p" message="p"
+        check :guarded that=() => true code="g" message="g" when=({ input }) => input.reason !== null
+        check :detailed that=() => true code="d" message="d" details=() => ({ n: 1 })
+        check :told that=() => true code="t" message=() => "told"
+  policies
+    policy :open
+      authorize-if=() => true
+`;
+    const all = explainAction(documentOf({ "x/note.mesh.mx": note }).entities[0]!, "add")!;
+    const section = (from: string, to: string) => all.slice(all.findIndex((line) => line.startsWith(from)), all.findIndex((line) => line.startsWith(to)));
+    expect([...section("  input", "  policies"), ...section("  checks", "  steps")]).toEqual([
+        "  input        &title",
+        "               reason (argument, not stored)",
+        "  checks       plain (p)",
+        "               guarded (g) when ({ input }) => input.reason !== null",
+        "               detailed (d), with details",
+        "               told (t), with a message function",
+      ]);
+  });
   test("an update with no check still reads first", () => {
     expect(explainAction(article_(), "rename")![1]).toContain("read-then-write");
   });

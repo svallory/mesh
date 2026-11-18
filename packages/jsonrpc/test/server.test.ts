@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -296,6 +296,17 @@ describe("errors", () => {
     const client = await connect(await start({ fail: { run: async () => { throw boom; } } }));
     expect(await ask(client, "fail", {})).toEqual({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "Internal error" } });
     expect(logged).toEqual([{ message: "fail failed", error: boom }]);
+  });
+
+  test("a log option that throws falls back to console.error, and the call is still answered", async () => {
+    const boom = new Error("secret detail");
+    const broken = new Error("log is down");
+    const fallback = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const client = await connect(await start({ fail: { run: () => { throw boom; } } }, { log: () => { throw broken; } }));
+      expect(await ask(client, "fail", {})).toEqual({ jsonrpc: "2.0", id: 1, error: { code: -32603, message: "Internal error" } });
+      expect(fallback.mock.calls).toEqual([["@meshfw/jsonrpc: the log option threw while logging: fail failed", broken]]);
+    } finally { fallback.mockRestore(); }
   });
 
   test("the error option replaces the error object, and sees the server's own -32601 and -32602", async () => {

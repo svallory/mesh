@@ -218,6 +218,19 @@ test("bun:sqlite: a row that leaves out a key named like an Object.prototype mem
   } finally { database.close(); }
 });
 
+test("a key that is neither text nor a number is not filled: the row reaches the insert as it was, with no max read", async () => {
+  const flagged = sqliteTable("flagged", { id: integer("id", { mode: "boolean" }).primaryKey(), title: text("title") });
+  const inserted: Row[] = [];
+  let maxReads = 0;
+  const commands: DrizzleCommands<typeof flagged> = {
+    dialect: testDialect, table: () => flagged,
+    insert: (_table, values) => { inserted.push(values as Row); return values; },
+    select: () => [], aggregate: () => { maxReads++; return null; }, update: () => [], delete: () => [],
+  };
+  expect(await drizzleOperations(commands, () => {}).insert(flagged, { title: "x" })).toEqual({ title: "x" });
+  expect([inserted, maxReads]).toEqual([[{ title: "x" }], 0]);
+});
+
 test("bun:sqlite: an update that leaves out a column named like an Object.prototype member keeps its value", async () => {
   const { operations, database } = namedOperations();
   try {
@@ -388,6 +401,16 @@ describe("deleteByKeyGuarded (policy-guards, ADR-0046 B)", () => {
     expect(printed!.sql).toContain("json_extract('{}', 'mesh:forbidden:' || ?");
     expect(printed!.sql).toContain('cast("keyed"."id" as text)');
     expect(printed!.params.filter((p) => typeof p === "string" && /^[0-9a-f]{32}$/.test(p))).toHaveLength(1);
+  });
+
+  test("a check the build folded to a constant prints as that constant: true, false and null (unknown)", async () => {
+    let printed: { sql: string; params: unknown[] } | undefined;
+    const operations = guarded(raising, declaring, (statement) => { printed = new SQLiteSyncDialect().sqlToQuery(statement); return [{ id: 3 }]; });
+    await operations.deleteByKeyGuarded!(keyed, { id: 3 }, { checks: [true, false, null], policies: [{ forbid: [1, 2], authorize: [0] }] });
+    // Each check is printed once in the raise's condition and once in the marker's letter for it.
+    for (const constant of ["(true) is true", "(false) is false", "(null) is false"]) expect(printed!.sql).toContain(constant);
+    expect(printed!.sql).toContain("when (true) is true then 't' when (true) is false then 'f' else 'n' end");
+    expect(printed!.sql).toContain("when (null) is true then 't' when (null) is false then 'f' else 'n' end");
   });
 
   test("the driver's raise becomes PolicyGuardDenial; a wrapper's message or another error passes as a FrameworkError", async () => {
