@@ -170,10 +170,10 @@ function references(lists: string[]): NonNullable<CustomTag["analyze"]> {
         const n = node(a);
         const found = membersOf(a);
         if (n?.type !== "ArrayExpression" || !n.elements?.every((e) => found.has(e)))
-          ctx.fail(`\`${key}\` requires a list of member references`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
+          ctx.report(`\`${key}\` requires a list of member references`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
         // As `types=[]`: an empty list names no action, so what it scopes would cover none.
         else if (!n.elements.length)
-          ctx.fail(`\`${key}\` must name at least one action: an empty list covers none`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
+          ctx.report(`\`${key}\` must name at least one action: an empty list covers none`, { at: a.loc, code: "MESH_MEMBER_REFERENCE" });
       }
     }
   };
@@ -218,12 +218,12 @@ function entityReference(options: readonly string[]): NonNullable<CustomTag["ana
         const a = get(call, option);
         if (!a && option !== "entity") continue;
         if (!isReference(a))
-          ctx.fail(`${option} must be an imported identifier (\`List\`) or a member of a namespace import (\`billing.Invoice\`)`, { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
+          ctx.report(`${option} must be an imported identifier (\`List\`) or a member of a namespace import (\`billing.Invoice\`)`, { at: a?.loc, code: "MESH_ENTITY_REFERENCE" });
         // a reference is written bare; `(List)`, `List!`, `List as T`, `List satisfies T` and `<T>List` are refused at
         // the value as written (lead, SYN-21). One error per value: a wrapped value that is no reference either (`(getList())`) keeps the
         // error above alone, which says what to write.
         else if (isWrapped(a))
-          ctx.fail(`${option} must be the reference alone, with no parentheses, \`!\`, \`as\`, \`satisfies\` or \`<T>\` around it (\`${option}=List\`, \`${option}=billing.Invoice\`)`, { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
+          ctx.report(`${option} must be the reference alone, with no parentheses, \`!\`, \`as\`, \`satisfies\` or \`<T>\` around it (\`${option}=List\`, \`${option}=billing.Invoice\`)`, { at: a.valueSpan, code: "MESH_ENTITY_REFERENCE" });
       }
     }
   };
@@ -241,12 +241,12 @@ function exposedFields(calls: readonly TagCall[], ctx: Parameters<NonNullable<Cu
     if (!a) continue;
     if (a.kind === "static" && a.node?.type === "mesh:Atom") {
       if (a.value !== "all")
-        ctx.fail(`fields takes a list of atoms (\`fields=[:${String(a.value)}]\`) or \`:all\` for every field`, { at: a.loc, code: "MESH_ATOM_LIST" });
+        ctx.report(`fields takes a list of atoms (\`fields=[:${String(a.value)}]\`) or \`:all\` for every field`, { at: a.loc, code: "MESH_ATOM_LIST" });
       continue;
     }
     const n = node(a);
     if (n?.type !== "ArrayExpression") {
-      ctx.fail("fields must be a list of atoms (`fields=[:title, :state]`) or `:all`", { at: a.loc, code: "MESH_ATOM_LIST" });
+      ctx.report("fields must be a list of atoms (`fields=[:title, :state]`) or `:all`", { at: a.loc, code: "MESH_ATOM_LIST" });
       continue;
     }
     const atoms = atomsOf(a);
@@ -256,12 +256,12 @@ function exposedFields(calls: readonly TagCall[], ctx: Parameters<NonNullable<Cu
       const item = elements[bad] as (Node & { start?: number | null; end?: number | null }) | null | undefined;
       // An empty item (`[:a, , :b]`) has no place of its own: the option is where it is.
       const at = typeof item?.start === "number" && typeof item.end === "number" ? { sourceStart: item.start, sourceEnd: item.end } : a.loc;
-      ctx.fail(itemNotAtom("fields", bad, item ?? null), { at, code: "MESH_OPTION_VALUE" });
+      ctx.report(itemNotAtom("fields", bad, item ?? null), { at, code: "MESH_OPTION_VALUE" });
       continue;
     }
     const names = elements.map((e) => String(e!.value));
     if (!names.length || new Set(names).size !== names.length)
-      ctx.fail("fields must be non-empty with no repeated values", { at: a.loc, code: "MESH_ATOM_LIST" });
+      ctx.report("fields must be non-empty with no repeated values", { at: a.loc, code: "MESH_ATOM_LIST" });
   }
 }
 
@@ -374,16 +374,16 @@ const contracts: ContractMap = {
         const preset = get(call, "preset");
         if (preset) {
           if (!isReference(preset))
-            ctx.fail("preset must be an imported preset (`preset=MeshRecommended`)", { at: preset.loc, code: "MESH_OPTION_VALUE" });
+            ctx.report("preset must be an imported preset (`preset=MeshRecommended`)", { at: preset.loc, code: "MESH_OPTION_VALUE" });
           else if (isWrapped(preset))
-            ctx.fail("preset must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`preset=MeshRecommended`)", { at: preset.valueSpan, code: "MESH_OPTION_VALUE" });
+            ctx.report("preset must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`preset=MeshRecommended`)", { at: preset.valueSpan, code: "MESH_OPTION_VALUE" });
         }
         const mixin = get(call, "mixin");
         if (mixin) {
           if (!isReference(mixin))
-            ctx.fail("mixin must be an imported mixin (`mixin=Timestamps`) or a member of a namespace import (`mixin=shared.Audited`)", { at: mixin.loc, code: "MESH_OPTION_VALUE" });
+            ctx.report("mixin must be an imported mixin (`mixin=Timestamps`) or a member of a namespace import (`mixin=shared.Audited`)", { at: mixin.loc, code: "MESH_OPTION_VALUE" });
           else if (isWrapped(mixin))
-            ctx.fail("mixin must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`mixin=Timestamps`, `mixin=shared.Audited`)", { at: mixin.valueSpan, code: "MESH_OPTION_VALUE" });
+            ctx.report("mixin must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`mixin=Timestamps`, `mixin=shared.Audited`)", { at: mixin.valueSpan, code: "MESH_OPTION_VALUE" });
         }
       }
     },
@@ -462,7 +462,7 @@ const contracts: ContractMap = {
       for (const call of calls) {
         const list = get(call, "actions");
         if (list && node(list)?.type === "ArrayExpression" && !node(list)?.elements?.length)
-          ctx.fail("actions must list at least one action of the entity, as atoms (`actions=[:complete]`)", { at: list.loc, code: "MESH_ATOM_LIST" });
+          ctx.report("actions must list at least one action of the entity, as atoms (`actions=[:complete]`)", { at: list.loc, code: "MESH_ATOM_LIST" });
       }
     },
   }),
@@ -499,7 +499,7 @@ const contracts: ContractMap = {
           ? (a.value.nodes ?? []).find((each) => each.type === "mesh:Atom" && (each.forward as Node).value === "read")
           : undefined;
         if (read)
-          ctx.fail("`types=` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", { at: read.span, code: "MESH_OPTION_VALUE" });
+          ctx.report("`types=` lists `:read`, and a read runs neither `validate` nor `do`, so an always block never applies to it; remove `:read`", { at: read.span, code: "MESH_OPTION_VALUE" });
       }
     },
   }),
@@ -524,7 +524,7 @@ const contracts: ContractMap = {
     attributes: {
       // A line declares a check (`:name`, `that`, `code`, `message`) or uses one (`&name` alone). Nothing is required here:
       // the builder says what each form needs, line by line (`declaredCheck` and `checks` in `front-end/build.ts`), since a
-      // contract cannot say "required unless `member` is written" and a hook stops at its first failing line.
+      // contract cannot say "required unless `member` is written".
       name: atom(),
       member: member(),
       that: fn(),
@@ -543,10 +543,10 @@ const contracts: ContractMap = {
         if (type === "ArrowFunctionExpression" || type === "FunctionExpression") continue;
         const s = a as { kind: string; value?: unknown; node?: unknown };
         if (s.kind === "static" && typeof s.value === "string" && !s.node) {
-          if (!s.value.trim()) ctx.fail("message cannot be empty", { at: a.loc, code: "MESH_TEXT" });
+          if (!s.value.trim()) ctx.report("message cannot be empty", { at: a.loc, code: "MESH_TEXT" });
           continue;
         }
-        ctx.fail("message is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)", { at: a.loc, code: "MESH_OPTION_VALUE" });
+        ctx.report("message is text (`message=\"the order is empty\"`) or a function (`message=({ self }) => ...`)", { at: a.loc, code: "MESH_OPTION_VALUE" });
       }
     },
   }),
@@ -591,7 +591,7 @@ const contracts: ContractMap = {
         if (!a) continue;
         const type = node(a)?.type;
         if (type !== "ArrowFunctionExpression" && type !== "FunctionExpression")
-          ctx.fail("this value is no function: a `publish` raises the event its function returns, as in `publish=() => new InvoicePaid({ ... })`", { at: a.loc, code: "MESH_PUBLISH" });
+          ctx.report("this value is no function: a `publish` raises the event its function returns, as in `publish=() => new InvoicePaid({ ... })`", { at: a.loc, code: "MESH_PUBLISH" });
       }
     },
   }),
@@ -647,10 +647,10 @@ for (const type of ATTRIBUTE_TYPES)
       for (const call of calls) {
         const match = get(call, "match");
         if (match && node(match)?.type !== "RegExpLiteral")
-          ctx.fail("match must be a regular expression", { at: match.loc, code: "MESH_ATTRIBUTE_RULE" });
+          ctx.report("match must be a regular expression", { at: match.loc, code: "MESH_ATTRIBUTE_RULE" });
         const values = get(call, "values");
         if (values && node(values)?.type !== "ArrayExpression")
-          ctx.fail("values must be a list of atoms", { at: values.loc, code: "MESH_ENUM_VALUES" });
+          ctx.report("values must be a list of atoms", { at: values.loc, code: "MESH_ENUM_VALUES" });
       }
     },
   });
@@ -678,19 +678,19 @@ function answers(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
   for (const call of calls) {
     const a = get(call, "on");
     if (!a && !get(call, "name"))
-      ctx.fail(`an action needs a name or \`on=\`: write \`${call.name} :name\`, or \`${call.name} on=PayInvoice\` to take the name from the command`, { at: call.loc, code: "MESH_NAME" });
+      ctx.report(`an action needs a name or \`on=\`: write \`${call.name} :name\`, or \`${call.name} on=PayInvoice\` to take the name from the command`, { at: call.loc, code: "MESH_NAME" });
     if (!a) continue;
     if (!isReference(a))
-      ctx.fail("on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", { at: a.loc, code: "MESH_UNKNOWN_COMMAND" });
+      ctx.report("on must be an imported command (`on=PayInvoice`) or a member of a namespace import (`on=billing.PayInvoice`)", { at: a.loc, code: "MESH_UNKNOWN_COMMAND" });
     else if (isWrapped(a))
-      ctx.fail("on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=PayInvoice`, `on=billing.PayInvoice`)", { at: a.valueSpan, code: "MESH_UNKNOWN_COMMAND" });
+      ctx.report("on must be the reference alone, with no parentheses, `!`, `as`, `satisfies` or `<T>` around it (`on=PayInvoice`, `on=billing.PayInvoice`)", { at: a.valueSpan, code: "MESH_UNKNOWN_COMMAND" });
   }
 }
 /** A read answers no command (`on=` is no option of it), so a read line with no name has nothing to be named after: `MESH_NAME`, as for the other three. */
 function namedRead(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
   for (const call of calls)
     if (!get(call, "name"))
-      ctx.fail("an action needs a name: write `read :name`; `actions auto=[:read]` generates the plain read", { at: call.loc, code: "MESH_NAME" });
+      ctx.report("an action needs a name: write `read :name`; `actions auto=[:read]` generates the plain read", { at: call.loc, code: "MESH_NAME" });
 }
 for (const kind of ACTION_TYPES)
   contracts[kind] = closed({
@@ -719,15 +719,15 @@ function rollupFilterParameter(call: TagCall, ctx: Parameters<NonNullable<Custom
   const spanOf = (from: { start?: number } | undefined, to: { start?: number; end?: number } | undefined) =>
     typeof from?.start === "number" && typeof (to?.end ?? to?.start) === "number" ? { sourceStart: from.start, sourceEnd: (to!.end ?? to!.start)! } : a.loc;
   if (params.length > 1) {
-    ctx.fail(`filter takes one parameter, the record the path reaches, and this function has ${params.length}`, { at: spanOf(params[1], params.at(-1)), code: "MESH_EXPRESSION" });
+    ctx.report(`filter takes one parameter, the record the path reaches, and this function has ${params.length}`, { at: spanOf(params[1], params.at(-1)), code: "MESH_EXPRESSION" });
     return;
   }
   const param = params[0];
   if (param?.type !== "Identifier")
-    ctx.fail(`filter takes one parameter, the record the path reaches: write filter=(<name>) => ...`, { at: param ? spanOf(param, param) : spanOf(fn, fn.body), code: "MESH_ROLLUP_FILTER" });
+    ctx.report(`filter takes one parameter, the record the path reaches: write filter=(<name>) => ...`, { at: param ? spanOf(param, param) : spanOf(fn, fn.body), code: "MESH_ROLLUP_FILTER" });
   // A scope root's name would stand for the record and for the root at once (`&x` is a member of `self`).
   else if (SCOPE_ROOTS.has(param.name!))
-    ctx.fail(`filter's parameter is the record the path reaches, and \`${param.name}\` is a scope name: call it after the record, filter=(line) => ...`, { at: spanOf(param, param), code: "MESH_ROLLUP_FILTER" });
+    ctx.report(`filter's parameter is the record the path reaches, and \`${param.name}\` is a scope name: call it after the record, filter=(line) => ...`, { at: spanOf(param, param), code: "MESH_ROLLUP_FILTER" });
 }
 /** The scope roots of a function in an entity file (`SCOPE_NAMES` in `expression.ts`, which this file does not import). */
 const SCOPE_ROOTS: ReadonlySet<string> = new Set(["self", "input", "actor", "context", "before"]);
@@ -748,12 +748,12 @@ for (const kind of ROLLUPS)
         const written = a.kind === "static" ? a.value : literal?.type === "StringLiteral" && !atom ? String(literal.value) : undefined;
         if (written !== undefined) {
           const path = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(written) ? written : undefined;
-          ctx.fail(
+          ctx.report(
             `of takes a member reference, not a string: ${path ? `write of=&${path}` : "write of=&relationship for a count, of=&relationship.attribute for the others"}`,
             { at: a.loc, code: "MESH_ROLLUP_PATH_STRING" },
           );
         } else if (!isMemberPath(node(a), membersOf(a)))
-          ctx.fail("of takes a member reference: &relationship for a count, &relationship.attribute for the others", { at: a.loc, code: "MESH_ROLLUP_PATH" });
+          ctx.report("of takes a member reference: &relationship for a count, &relationship.attribute for the others", { at: a.loc, code: "MESH_ROLLUP_PATH" });
       }
     },
   });
@@ -775,7 +775,7 @@ type Item = Node & { start?: number; end?: number; object?: Node; property?: Nod
  * written, so an item's wrapper is found in the list's written text (`value.code`, whose offsets are the source's less
  * `value.span.sourceStart`): the text between two items, comments aside, is one comma and whitespace, and the text after
  * the last is whitespace and at most one comma. A wrapper written before an item is that item's; one after it (`!`,
- * `as T`) is the item before the comma. MX's `ctx.fail` ends the pass, so a line reports its first bad item only.
+ * `as T`) is the item before the comma. A line reports its first bad item only: one error per option.
  */
 function handles(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTag["analyze"]>>[1]) {
   for (const call of calls) {
@@ -783,19 +783,19 @@ function handles(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
     if (!a) continue; // MX reports the missing required option
     const n = node(a);
     if (n?.type !== "ArrayExpression") {
-      if (!isReference(a)) ctx.fail(HANDLES_SHAPE, { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
-      else if (isWrapped(a)) ctx.fail(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
+      if (!isReference(a)) ctx.report(HANDLES_SHAPE, { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
+      else if (isWrapped(a)) ctx.report(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
       continue;
     }
     // A wrapper around the whole list (`([A])`, `[A] as any`) is MX's to strip, as around one reference: the written value
     // (`valueSpan`) then differs from the lowered one.
     if (isWrapped(a)) {
-      ctx.fail(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
+      ctx.report(HANDLES_WRAPPED, { at: a.valueSpan, code: "MESH_UNKNOWN_EVENT" });
       continue;
     }
     const items = (n.elements ?? []) as (Item | null)[];
     if (items.length === 0) {
-      ctx.fail("on must list at least one event: `on=[InvoicePaid]`", { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
+      ctx.report("on must list at least one event: `on=[InvoicePaid]`", { at: a.loc, code: "MESH_UNKNOWN_EVENT" });
       continue;
     }
     const members = membersOf(a);
@@ -804,7 +804,7 @@ function handles(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
     // A hole (`[A, , B]`) has no node, and is no reference.
     const bad = items.find((item) => !item || !isReferenceNode(item, members));
     if (bad !== undefined) {
-      ctx.fail(HANDLES_SHAPE, { at: spanOf(bad), code: "MESH_UNKNOWN_EVENT" });
+      ctx.report(HANDLES_SHAPE, { at: spanOf(bad), code: "MESH_UNKNOWN_EVENT" });
       continue;
     }
     const value = (a as Extract<Attr, { kind: "dynamic" }>).value;
@@ -830,8 +830,8 @@ function handles(calls: readonly TagCall[], ctx: Parameters<NonNullable<CustomTa
       // Before the first item there is no comma; between two there is one; after the last there is at most one.
       const wrappedBefore = index > 0 && head.trim() !== "";
       const wrappedAfter = index === 0 ? gap.trim() !== "" : index < list.length ? comma === -1 || tail.trim() !== "" : tail.trim() !== "";
-      if (wrappedBefore) { ctx.fail(HANDLES_WRAPPED, { at: spanOf(list[index - 1]), code: "MESH_UNKNOWN_EVENT" }); break; }
-      if (wrappedAfter) { ctx.fail(HANDLES_WRAPPED, { at: spanOf(list[Math.min(index, list.length - 1)]), code: "MESH_UNKNOWN_EVENT" }); break; }
+      if (wrappedBefore) { ctx.report(HANDLES_WRAPPED, { at: spanOf(list[index - 1]), code: "MESH_UNKNOWN_EVENT" }); break; }
+      if (wrappedAfter) { ctx.report(HANDLES_WRAPPED, { at: spanOf(list[Math.min(index, list.length - 1)]), code: "MESH_UNKNOWN_EVENT" }); break; }
     }
   }
 }
@@ -862,53 +862,86 @@ export const SYNTAX_MESSAGES = Object.freeze({
 });
 // E1's function/array checks accept dynamic unknowns by design. This static
 // dialect requires the written shape, not a runtime value of a compatible type.
+//
+// Every check reports through `ctx.report` (MX 0.1.0-alpha.38, `@unstable`), which does not end the hook, so a file
+// shows every bad line of a tag, not only the first (`ctx.fail` throws). One error per option: once an option is
+// reported, the next option is checked. The tag's own hook then sees each call without the options reported here, so it
+// does not report the same option again in other words (`values=x`: `MESH_ATOM_LIST` here, `MESH_ENUM_VALUES` there),
+// and still checks the line's other options (`string :b value=x match=y` reports both). Two exceptions: a call with tag
+// parameters or a variable binding is not handed on at all, since none of its options is a declaration; and a reported
+// `name=` stays on the call, since the hooks only test that a name is present (`answers`, `namedRead`) and would
+// otherwise report the same name as missing.
 for (const contract of Object.values(contracts)) {
   const analyze = contract.analyze;
   contract.analyze = (calls, ctx) => {
+    const clean: TagCall[] = [];
     for (const call of calls) {
-      if (call.params.length || call.var)
-        ctx.fail(SYNTAX_MESSAGES.params, { at: call.loc, code: "MESH_SYNTAX" });
+      if (call.params.length || call.var) {
+        ctx.report(SYNTAX_MESSAGES.params, { at: call.loc, code: "MESH_SYNTAX" });
+        continue;
+      }
+      const reported = new Set<Attr>();
       for (const [key, declaration] of Object.entries(
         contract.attributes ?? {},
       )) {
         const a = get(call, key);
         if (!a) continue;
-        if (a.kind === "bound")
-          ctx.fail(SYNTAX_MESSAGES.bound, { at: a.loc, code: "MESH_SYNTAX" });
+        if (a.kind === "bound") {
+          ctx.report(SYNTAX_MESSAGES.bound, { at: a.loc, code: "MESH_SYNTAX" });
+          reported.add(a);
+          continue;
+        }
         const n = node(a);
         if (
           declaration.type === "function" &&
           !["ArrowFunctionExpression", "FunctionExpression"].includes(
             n?.type ?? "",
           )
-        )
-          ctx.fail(`${key} must be a function as written`, { at: a.loc, code: "MESH_EXPRESSION" });
+        ) {
+          ctx.report(`${key} must be a function as written`, { at: a.loc, code: "MESH_EXPRESSION" });
+          reported.add(a);
+          continue;
+        }
         if (
           key === "name" &&
           declaration.type === "mesh:Atom" &&
           !(a.kind === "static" && a.node?.type === "mesh:Atom")
-        )
-          ctx.fail(SYNTAX_MESSAGES.name, { at: a.loc, code: "MESH_NAME" });
+        ) {
+          ctx.report(SYNTAX_MESSAGES.name, { at: a.loc, code: "MESH_NAME" });
+          reported.add(a);
+          continue;
+        }
         if (["auto", "types", "values"].includes(key)) {
-          if (n?.type !== "ArrayExpression")
-            ctx.fail(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });
+          if (n?.type !== "ArrayExpression") {
+            ctx.report(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });
+            reported.add(a);
+            continue;
+          }
           // Only atoms can repeat: an item that is none (`values=[a, b]`, `values=[:a, "a"]`) is refused where it is
           // written (`checkAtomSlots`, or core for a string). A string's node has a string `value` too, so an item counts
           // only when it is an atom's forward.
           const atoms = atomsOf(a);
-          const names = (n?.elements ?? []).flatMap((e) => (e && atoms.has(e) && typeof e.value === "string" ? [e.value] : []));
-          if (!n?.elements?.length || new Set(names).size !== names.length)
-            ctx.fail(`${key} must be non-empty with no repeated values`, { at: a.loc, code: "MESH_ATOM_LIST" });
+          const names = (n.elements ?? []).flatMap((e) => (e && atoms.has(e) && typeof e.value === "string" ? [e.value] : []));
+          if (!n.elements?.length || new Set(names).size !== names.length) {
+            ctx.report(`${key} must be non-empty with no repeated values`, { at: a.loc, code: "MESH_ATOM_LIST" });
+            reported.add(a);
+            continue;
+          }
         }
         if (
           declaration.type === "string" &&
           a.kind === "static" &&
           !a.value.trim()
-        )
-          ctx.fail(`${key} cannot be empty`, { at: a.loc, code: "MESH_TEXT" });
+        ) {
+          ctx.report(`${key} cannot be empty`, { at: a.loc, code: "MESH_TEXT" });
+          reported.add(a);
+        }
       }
+      clean.push(reported.size
+        ? { ...call, attrs: call.attrs.filter((a) => !reported.has(a) || (a.kind !== "spread" && a.name === "name")) }
+        : call);
     }
-    analyze?.(calls, ctx);
+    if (clean.length) analyze?.(clean, ctx);
   };
 }
 export default contracts;

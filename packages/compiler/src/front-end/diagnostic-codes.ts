@@ -2,7 +2,7 @@
  * MX's diagnostic codes as Mesh's: `MESH_DIALECT.diagnosticCodes`. MX applies the map
  * to every diagnostic `lowerSource` and `checkDialectFile` report on an entity file (since MX 0.1.0-alpha.27), so the
  * build and the editor show the same `MESH_*` code for one mistake. Only the code changes: message, position and
- * severity stay MX's. A code a Mesh hook gives (`ctx.fail(message, { code: "MESH_X" })`) is never renamed.
+ * severity stay MX's. A code a Mesh hook gives (`ctx.report(message, { code: "MESH_X" })`) is never renamed.
  *
  * Every code in MX's catalogue (`MX_DIAGNOSTIC_CODES`) has an entry except the four in `MX_KEPT_CODES`, and the type
  * below fails the type check when MX adds a code the map leaves out (`test/diagnostic-codes.test.ts` fails too).
@@ -69,6 +69,9 @@ export const MX_TO_MESH_CODES = Object.freeze({
   MX_UNDECLARED_EXPORT: "MESH_UNDECLARED_EXPORT",
   MX_UNSUPPORTED_MARKO_FILE: "MESH_UNSUPPORTED_MARKO_FILE",
   MX_INVALID_SHORTHAND: "MESH_INVALID_SHORTHAND",
+  // A `.class` shorthand beside a `class=` (since MX 0.1.0-alpha.38; was `MX_DIALECT_HOOK_ERROR`). A Mesh line head has no
+  // `.class` shorthand (`tagShorthands: false`), so it does not reach a Mesh file; the entry keeps the map whole.
+  MX_MERGED_SHORTHAND_CLASS: "MESH_MERGED_SHORTHAND_CLASS",
   MX_RESERVED_BINDING: "MESH_RESERVED_BINDING",
   MX_RESERVED_INPUT: "MESH_RESERVED_INPUT",
   MX_INVALID_ACCESSOR_ASSIGNMENT: "MESH_INVALID_ACCESSOR_ASSIGNMENT",
@@ -169,4 +172,6 @@ export const MX_TO_MESH_CODES = Object.freeze({
   MX_UNREADABLE_CALLEE_INPUT: "MESH_UNREADABLE_CALLEE_INPUT",
   MX_BODY_DROPPED: "MESH_BODY_DROPPED",
   MX_ATTRIBUTE_TAG_DROPPED: "MESH_OPTION_TAG_DROPPED",
+  // The arguments of an option on a `define` or `const` (since MX 0.1.0-alpha.38). A Mesh file refuses both tags first.
+  MX_ATTRIBUTE_ARGUMENTS_DROPPED: "MESH_OPTION_ARGUMENTS_DROPPED",
 } satisfies Record<Exclude<MxDiagnosticCode, (typeof MX_KEPT_CODES)[number]>, `MESH_${string}`>);

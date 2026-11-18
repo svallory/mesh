@@ -2511,7 +2511,7 @@ export type MxDiagnostic = ReturnType<typeof parseEntitySource>["diagnostics"][n
  * Every code passes through as MX gives it. MX has already renamed its own codes to Mesh's through the dialect's
  * `diagnosticCodes` (`diagnostic-codes.ts`), so the build shows the code the editor shows; the four codes MX keeps
  * (`MX_KEPT_CODES`, a bug in MX or in a Mesh hook) arrive as `MX_*`, and Mesh's hook codes
- * (`ctx.fail(message, { code: "MESH_X" })`) as they were given. Only a diagnostic that arrives with no code is a syntax
+ * (`ctx.report(message, { code: "MESH_X" })`) as they were given. Only a diagnostic that arrives with no code is a syntax
  * error to Mesh; MX gives every error a code, so that is a fallback and not a path any entity source is known to reach.
  */
 /**

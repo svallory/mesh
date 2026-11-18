@@ -125,9 +125,21 @@ describe("a .mesh.mx file with an MX error builds to Mesh's code", () => {
         ["the enum written first", "enum A { y } namespace A { export const x = 1 } return A.x === 1"],
         ["a namespace that holds only a type", "namespace A { export type T = string } enum A { y } return A.y === 0"],
         ["two enums of one name", "enum A { y } enum A { z = 1 } return A.y === 0"],
-      ])("%s gives no diagnostic", (_label, body) => {
-        expect(built(inCheck(body))).toEqual([]);
+      ])("%s gives no diagnostic in a method's body", (_label, body) => {
         expect(built(inMethod(body))).toEqual([]);
+      });
+
+      test.each([
+        ["a namespace that holds only a type", "namespace A { export type T = string } enum A { y } return A.y === 0"],
+        ["two enums of one name", "enum A { y } enum A { z = 1 } return A.y === 0"],
+      ])("%s gives no diagnostic in an arrow function's body", (_label, body) => {
+        expect(built(inCheck(body))).toEqual([]);
+      });
+
+      // Since MX 0.1.0-alpha.38 a namespace that holds a value inside an arrow function's body is refused at the namespace
+      // (`MX_INVALID_STATEMENT`, "move it to the top level"), as stock Marko refuses it; a method's body is not checked.
+      test("the enum written first, in an arrow function's body, is MESH_INVALID_STATEMENT at the namespace", () => {
+        expect(built(inCheck("enum A { y } namespace A { export const x = 1 } return A.x === 1"))).toEqual([["MESH_INVALID_STATEMENT", 8, 86]]);
       });
     });
   });

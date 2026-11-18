@@ -4,7 +4,7 @@ import { join, sep } from "node:path";
 import { ACTION_TYPES, ATTRIBUTE_TYPES } from "@meshfw/model";
 import { buildModel, loadConfig, loadProject } from "../src/index.ts";
 import { parse } from "./helpers.ts";
-import { checkDocsSamples, checkDocsSyntaxV4, checkDrizzleImports, checkGeneratedImports, checkMxImports, checkRuntime, checkScratchPrefixes, oldSpellingInV4 } from "./repository-checks.ts";
+import { checkDocsSamples, checkDocsSyntaxV4, checkDrizzleImports, checkGeneratedImports, checkHookFailCodes, checkMxImports, checkRuntime, checkScratchPrefixes, oldSpellingInV4 } from "./repository-checks.ts";
 
 const root = new URL("../../../", import.meta.url).pathname;
 function temporary(run: (dir: string) => void) {
@@ -759,6 +759,32 @@ test("scratch dirs: the prefix guard reads every mkdtemp call in the test direct
       `packages/x/test/member.test.ts:3: ${SCRATCH_TAIL}`,
       `packages/x/test/member.test.ts:4: ${SCRATCH_TAIL}`,
       `packages/x/test/orphan.ts:1: ${SCRATCH_TAIL}`,
+    ]);
+  });
+});
+
+test("hook codes: every fail and report call to MX must pass a code", () => {
+  temporary((dir) => {
+    mkdirSync(join(dir, "front-end/syntax"), { recursive: true });
+    writeFileSync(join(dir, "front-end/contracts.ts"), [
+      'ctx.report("no code", { at: a.loc });',
+      'ctx.report("coded", { at: a.loc, code: "MESH_X" });',
+      'ctx.report(`nested ${f(")")}`, {',
+      '  at: a.loc,',
+      '});',
+      'ctx.fail("no code", { at });',
+      'ctx.fail("coded", { at, code: "MESH_X" });',
+      "x.report(\"another object's method\");",
+    ].join("\n"));
+    writeFileSync(join(dir, "front-end/dialect.ts"), 'unit.report("no code", { at });\nunit.fail("coded", { code: "MESH_X" });\n');
+    writeFileSync(join(dir, "front-end/syntax/row.ts"), 'report("no code", { at });\nfail("no code");\nfail("coded", { code: "MESH_X" });\n');
+    expect(checkHookFailCodes(dir)).toEqual([
+      "front-end/contracts.ts:1",
+      "front-end/contracts.ts:3",
+      "front-end/contracts.ts:6",
+      "front-end/dialect.ts:1",
+      "front-end/syntax/row.ts:1",
+      "front-end/syntax/row.ts:2",
     ]);
   });
 });

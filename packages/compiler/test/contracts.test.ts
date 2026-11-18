@@ -91,7 +91,7 @@ describe("v4 contracts", () => {
   test.each([
     ["  actions\n    read :read filter=someFunction\n", [5, 15, "`read`: filter must be a function as written"]],
     ['  actions\n    create :create\n      validate\n        check :ok that=foo code="bad" message="bad"\n', [7, 18, "`check`: that must be a function as written"]],
-    ["  policies\n    policy :p actions=[:read] authorize-if=nope\n", [5, 30, "`policy`: authorize-if must be a function as written"]],
+    ["  policies\n    policy :p types=[:read] authorize-if=nope\n", [5, 28, "`policy`: authorize-if must be a function as written"]],
   ] as const)("a function option that is no function is MESH_EXPRESSION: %j", (suffix, [line, column, message]) => {
     const { diagnostics } = buildModel({ root: "/p", files: [{ file: "todo/todo.mesh.mx", source: keyed + suffix }] });
     expect(diagnostics.map((d) => [d.code, d.position.line, d.position.column, d.message])).toEqual([["MESH_EXPRESSION", line, column, message]]);
