@@ -163,13 +163,29 @@ const pad = `entity :Pad table="pads"
       authorize-if=({ actor }) => &ownerId === actor.id
 `;
 
+// Staff may delete any memo; anyone else only their own. For staff the record-reading policy does not apply (its
+// `when` reads only the actor), so the guard has no check left and the generated code runs a plain delete by key.
+const memo = `entity :Memo table="memos"
+  attributes
+    uuid :id primary-key
+    uuid :ownerId
+  actions auto=[:read, :destroy]
+  policies
+    policy :open types=[:read]
+      authorize-if=() => true
+    policy :staff types=[:destroy]
+      authorize-if=({ actor }) => actor.id !== null
+    policy :own types=[:destroy] when=({ actor }) => actor.admin !== true
+      authorize-if=({ actor }) => &ownerId === actor.id
+`;
+
 async function generate(): Promise<string> {
   const dir = await mkdtemp(join(import.meta.dir, ".scratch-policy-guard-"));
   const data: ResolvedConfig["data"] = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: { file: ":memory:" } };
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data };
   await mkdir(join(dir, "src/domain"), { recursive: true });
   await Bun.write(join(dir, "src/domain/steps.ts"), steps);
-  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ user, note, doc, folder, item, node, box, thing, pad }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
+  const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ user, note, doc, folder, item, node, box, thing, pad, memo }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
   await Bun.write(join(dir, "mesh.config.ts"), "export default { data: { name: 'sqlite', transaction: async () => undefined, close: async () => undefined } };\n");
@@ -218,6 +234,8 @@ async function seed(tx: DataOperations) {
   await tx.insert(app.tables.things, { id: id(51), done: true, boxId: 1 });
   await tx.insert(app.tables.things, { id: id(52), done: false, boxId: 3 });
   await tx.insert(app.tables.pads, { id: id(61), ownerId: id(91) });
+  await tx.insert(app.tables.memos, { id: id(71), ownerId: id(91) });
+  await tx.insert(app.tables.memos, { id: id(72), ownerId: id(91) });
 }
 
 /**
@@ -287,7 +305,7 @@ describe("the generated files", () => {
   }, 30_000);
 
   test("every destroy here is guarded", async () => {
-    for (const entity of ["note", "doc", "folder", "item", "node", "box", "pad"])
+    for (const entity of ["note", "doc", "folder", "item", "node", "box", "pad", "memo"])
       expect(await Bun.file(join(dir, `.mesh/domain/${entity}.actions.ts`)).text()).toContain("tx.deleteByKeyGuarded!(");
   });
 });
@@ -318,6 +336,21 @@ describe("a guarded destroy", () => {
     const result = await bothPaths((mesh) => mesh.destroyNote({ id: id(1) }, nobody), "notes");
     expect(result.guarded).toEqual(result.read);
     expect((result.guarded as any).forbidden.breakdown).toEqual([{ policy: "mine", kind: "authorize-if", check: "({ actor }) => &owner.id === actor.id", result: null, decisive: true }]);
+  });
+
+  test("a guard with no check left (the record policy's when is false) runs a plain delete by key", async () => {
+    expect(await bothPaths((mesh) => mesh.destroyMemo({ id: id(71) }, admin), "memos"))
+      .toMatchObject({ guarded: "done", read: "done", rows: [id(72)], guardedCounts: { locked: 0, guarded: 0 } });
+    expect(await bothPaths((mesh) => mesh.destroyMemo({ id: id(79) }, admin), "memos"))
+      .toMatchObject({ guarded: "not found", read: "not found", guardedCounts: { locked: 0, guarded: 0 } });
+    // For anyone else (an unset `admin` would make the when unknown) the policy applies and the delete is guarded.
+    const owner: any = { actor: { id: id(91), admin: false } };
+    const stranger: any = { actor: { id: id(92), admin: false } };
+    expect(await bothPaths((mesh) => mesh.destroyMemo({ id: id(71) }, owner), "memos"))
+      .toMatchObject({ guarded: "done", read: "done", rows: [id(72)], guardedCounts: { locked: 0, guarded: 1 } });
+    const denied = await bothPaths((mesh) => mesh.destroyMemo({ id: id(71) }, stranger), "memos");
+    expect(denied.guarded).toEqual(denied.read);
+    expect(denied).toMatchObject({ rows: [id(71), id(72)], guardedCounts: { locked: 0, guarded: 1 } });
   });
 
   test("a key that names no row is not found, never forbidden (R3)", async () => {
@@ -399,7 +432,7 @@ describe("what a guarded check may read", () => {
     expect(await outcomes((mesh, key) => mesh.draftedBox({ id: key }, alice), [3, 2])).toEqual({ 3: true, 2: [false] });
   });
 
-  test("%.now, bound from the clock: past is allowed, future denied, no closing time unknown", async () => {
+  test("%.now, bound from the clock: past is allowed, future denied, no closing time denied (the null guard makes it false)", async () => {
     expect(await outcomes((mesh, key) => mesh.expiredBox({ id: key }, alice), [1, 2, 3])).toEqual({ 1: true, 2: [false], 3: [false] });
   });
 
