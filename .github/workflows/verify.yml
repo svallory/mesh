@@ -35,9 +35,10 @@ jobs:
         # Exactly the group names of scripts/verify-groups.json (scripts/verify/plan.test.ts
         # checks it); verify.ts --group refuses to run when a package is in no group.
         group: [compiler, cli, data, hyper, rest]
-    # The data group runs data-postgres, whose tests need a Postgres server: a service
-    # container that lives for the job. An empty image starts no service, so the other
-    # groups pay nothing for it. The password is a throwaway for that one container; it
+    # The data group runs data-postgres, whose tests need a Postgres server, and
+    # redis-outlet, whose tests need a Redis server: service containers that live for
+    # the job. An empty image starts no service, so the other groups pay nothing for
+    # them. The Postgres password is a throwaway for that one container; it
     # differs from the user and database names, or the test that a connection error never
     # prints the password would find it in the user name.
     services:
@@ -50,10 +51,17 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U mesh" --health-interval 2s --health-timeout 5s --health-retries 15
+      redis:
+        image: ${{ matrix.group == 'data' && 'redis:7-alpine' || '' }}
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 15
     env:
       # data-postgres's tests read it; with CI set and the variable empty they fail
       # instead of skipping, so only the group that runs them sets it.
       MESH_TEST_POSTGRES_URL: ${{ matrix.group == 'data' && 'postgres://mesh:ci-throwaway-pw@localhost:5432/mesh' || '' }}
+      # redis-outlet's tests read it the same way: empty with CI set, they fail.
+      MESH_TEST_REDIS_URL: ${{ matrix.group == 'data' && 'redis://localhost:6379' || '' }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

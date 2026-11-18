@@ -70,6 +70,7 @@ const tsconfig = {
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
       "@meshfw/bus-local": ["../../samples/mesh-api.d.ts"],
       "@meshfw/event-sourcing": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/redis-outlet": ["../../samples/mesh-api.d.ts"],
       "@meshfw/jsonrpc": ["../../samples/mesh-api.d.ts"],
       "meshfw": ["../../samples/mesh-api.d.ts"],
       // Every Mesh project depends on zod (its generated validators import it), so a sample may use it for its own

@@ -1,0 +1,8 @@
+import { Invoice } from "../../domain/billing/invoice.mesh.mx"
+import { InvoicePaid } from "../../domain/billing/invoice-paid.mesh.mx"
+
+surface :billing
+  expose :invoices entity=Invoice fields=[:id]
+    action :pay
+  publishes
+    InvoicePaid

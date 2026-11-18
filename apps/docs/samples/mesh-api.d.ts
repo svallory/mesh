@@ -879,6 +879,39 @@ declare module "meshfw" {
   export { defineConfig, type MeshConfig } from "@meshfw/runtime";
 }
 
+declare module "@meshfw/redis-outlet" {
+  import type { Binding } from "@meshfw/runtime";
+
+  /** What `redisOutlet` takes. */
+  export interface RedisOutletOptions {
+    /** The Redis URL, such as "redis://localhost:6379". Required: there is no default server. */
+    readonly url: string;
+    /** The stream key, such as "billing:events". Required; it names the subscription, `outlet:redis:<stream>`. */
+    readonly stream: string;
+    /** The FQNs of the events to send: a surface manifest's `publishes`. Required and non-empty; nothing else leaves. */
+    readonly events: readonly string[];
+    /** Approximate cap on the stream's length (`XADD MAXLEN ~`). Required: Mesh does not choose another system's retention. */
+    readonly maxLength: number;
+    /** Where a first open starts, as `subscribe`'s `after`; default: now (the highest position). Ignored on a reopen. */
+    readonly after?: number;
+    /** Called with each Redis error and with the reason the outlet stopped; without it, stderr. */
+    readonly onError?: (error: unknown) => void;
+  }
+
+  /** What `redisOutlet` resolves with. */
+  export interface RedisOutlet {
+    /** The subscription's name, `outlet:redis:<stream>`: its row in `mesh_subscription_progress`. */
+    readonly name: string;
+    /** End the subscription (its row is kept, so a later open resumes from what was sent) and close the Redis client. */
+    close(): Promise<void>;
+    /** Resolves when the outlet ends: with null after `close()` or the deliverer's stop, else with the error that ended it. */
+    readonly done: Promise<Error | null>;
+  }
+
+  /** Copy each event in `options.events` that the outbox commits to the Redis stream `options.stream`, as entry `<position>-0`, through a subscription named `outlet:redis:<stream>` on `binding`, in its delivering process. */
+  export function redisOutlet(binding: Binding, options: RedisOutletOptions): Promise<RedisOutlet>;
+}
+
 declare module "@meshfw/event-sourcing" {
   import { MeshError } from "@meshfw/runtime";
   import type { EventBusCapabilities, EventRecord, Handler, HandlerKind, HandlerTools, ListedEvent, OutboxRow } from "@meshfw/runtime";

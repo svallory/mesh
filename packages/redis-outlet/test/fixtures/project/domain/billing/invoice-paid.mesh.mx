@@ -1,0 +1,4 @@
+event :InvoicePaid
+  uuid :invoiceId
+  integer :amount
+  datetime :paidAt
